@@ -29,7 +29,7 @@ urlpatterns = [
     path('trash/', views.trash_list, name='trash_list'),
     path('pending-payments/', views.pending_payments_list, name='pending_payments_list'),
     
-    # Bulk Payer System (inside Pending Payments)
+    # Bulk Payer System (inside Pending Bills)
     path('pending-payments/bulk-payers/', views.bulk_payer_list, name='bulk_payer_list'),
     path('pending-payments/bulk-payers/create/', views.bulk_payer_create, name='bulk_payer_create'),
     path('pending-payments/bulk-payers/<int:pk>/', views.bulk_payer_detail, name='bulk_payer_detail'),

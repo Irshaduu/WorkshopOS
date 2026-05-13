@@ -882,7 +882,7 @@ def update_bill_status(request, pk):
 def bulk_payer_list(request):
     """
     Returns the list of all bulk payers as an AJAX partial.
-    Called from the Pending Payments page.
+    Called from the Pending Bills page.
     Million-data safe: all aggregation done in SQL, zero Python loops.
     """
     from django.db.models import (

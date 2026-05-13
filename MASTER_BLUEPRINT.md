@@ -1,7 +1,7 @@
 # 🏗️ WorkshopOS (Titan) — SUPER MASTER BLUEPRINT
 
 > **Project**: Formula-D Workshop Management System
-> **Framework**: Django 5.2.9 · Python · SQLite
+> **Framework**: Django 5.2 LTS · Python · SQLite
 > **Apps**: `workshop` (core) + `inventory` (warehouse)
 
 ---

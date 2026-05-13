@@ -86,7 +86,7 @@ class DashboardViewsTestCase(TestCase):
 
         url = reverse('restore_jobcard', args=[self.job.id])
         response = self.client.get(url)
-        self.assertRedirects(response, reverse('trash_list'))
+        self.assertRedirects(response, '/trash/?tab=jobcards')
 
         self.job.refresh_from_db()
         self.assertFalse(self.job.is_deleted)

@@ -62,7 +62,7 @@ graph TD
    - View and Generate Invoices
    - Update payment status and amounts
    - Process Bulk/Fleet Payments
-   - View Pending Payments dashboard
+   - View Pending Bills dashboard
    - Manage Master Lists (Brands, Models, Spares, Concerns)
    - View Car Profiles (vehicle history)
    - Create/Delete staff accounts
@@ -330,7 +330,7 @@ DELIVERED LIST
   Filters: Today / Week / Month / Year / Custom range
   Actions: Undo delivery, View invoice
 
-PENDING PAYMENTS
+PENDING BILLS
   Shows: All unpaid/partially paid jobs
   Displays: Total outstanding balance
 

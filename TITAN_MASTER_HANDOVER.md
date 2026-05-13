@@ -2,14 +2,14 @@
 
 > [!IMPORTANT]
 > **Status**: 🛡️ TITAN CERTIFIED | 💎 100% CLEAN | ✅ 91/91 TESTS PASS | 📊 91% COVERAGE  
-> **Last Updated**: April 2026 (Post-Restoration & Deep Clean)  
-> **Architecture Grade**: Enterprise SaaS  
+> **Last Updated**: May 2026 (Post-Restoration & Deep Clean)  
+> **Architecture Grade**: Enterprise Grade  
 
 ---
 
 ## 🏎️ I. THE MISSION
 
-**WorkshopOS** is an industrial-grade, multi-tenant SaaS application meticulously engineered for premium automotive workshop management. 
+**WorkshopOS** is an industrial-grade application meticulously engineered for a single premium automotive workshop. 
 
 - **The Standard**: 100% functional integrity. 91 industrial-strength automated tests are currently passing (91% overall coverage), guaranteeing zero-failure tolerance in core operations.
 
@@ -21,7 +21,7 @@
 > *This section documents the mission-critical security and data-integrity logic of WorkshopOS. These systems are foundational and must never be broken or bypassed.*
 
 ### 1. Zero-Trust Security & Lockout (`FailedAttempt`)
-- **Mechanism**: The system captures and tracks login failures by **Network IP** (`REMOTE_ADDR`), completely bypassing superficial session/cookie-based tracking.
+- **Mechanism**: The system captures and tracks login failures by **Network IP** (`REMOTE_ADDR`), acting alongside standard session tracking to provide superior security.
 - **The Rule**: 5 consecutive failed attempts trigger a global 15-minute lockout for that IP address, effectively neutralizing botnets and brute-force attacks.
 - **Integrity Check**: Verified in `workshop/test_auth.py`. 
   *Note for developers: Tests must call `FailedAttempt.objects.all().delete()` in `setUp` to prevent cross-test contamination.*
@@ -66,7 +66,7 @@ WorkshopOS is optimized for immense scale, ensuring sub-50ms data retrieval even
 
 ---
 
-## 🧹 V. THE PRISTINE WORKSPACE (v4.7.1 Update)
+## 🧹 V. THE PRISTINE WORKSPACE (v5.0 Update)
 
 - **Master Wipe**: Every temporary log, diagnostic script, and forensic trace has been eradicated from the production directory.
 - **Core-Only Architecture**: The repository root is now 100% lean, containing only application code, migration files, and documented standards. 

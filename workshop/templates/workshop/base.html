@@ -297,12 +297,12 @@
                     🔧 Manage
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
-                    <li><a class="dropdown-item fw-bold {% if 'car-profiles' in request.path %}text-primary{% endif %}" href="{% url 'car_profile_list' %}"><i class="bi bi-clock-history"></i> Car Profiles</a></li>
+                    <li><a class="dropdown-item fw-bold {% if 'car-profiles' in request.path %}text-primary{% endif %}" href="{% url 'car_profile_list' %}"><i class="bi bi-car-front"></i> Car Profiles</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item fw-bold" href="{% url 'inventory_restock' %}"><i class="bi bi-box-seam"></i> Inventory</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item fw-bold" href="{% url 'master_lists_home' %}"><i class="bi bi-collection"></i> Master Data</a></li>
-                    <li><a class="dropdown-item fw-bold text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Payments</a></li>
+                    <li><a class="dropdown-item fw-bold text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
                     {% if request.user|has_group:"Owner" or request.user.is_superuser %}
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item fw-bold text-primary" href="{% url 'manage_dashboard' %}"><i class="bi bi-people"></i> Manage Accounts</a></li>
@@ -340,8 +340,8 @@
         <!-- Car Profiles (Office/Owner) -->
         {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
         <a href="{% url 'car_profile_list' %}" class="nav-item {% if 'car-profiles' in request.path %}active{% endif %}">
-            <i class="bi bi-clock-history"></i>
-            <span>History</span>
+            <i class="bi bi-car-front"></i>
+            <span>Profiles</span>
         </a>
         {% endif %}
 
@@ -354,7 +354,7 @@
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom mb-2">
                 {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                 <li><a class="dropdown-item" href="{% url 'delivered_list' %}"><i class="bi bi-check-circle"></i> Delivered Jobs</a></li>
-                <li><a class="dropdown-item text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Payments</a></li>
+                <li><a class="dropdown-item text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
                 {% if request.user|has_group:"Owner" or request.user.is_superuser %}
                 <li><a class="dropdown-item text-muted" href="{% url 'trash_list' %}"><i class="bi bi-trash3"></i> Trash</a></li>
                 {% endif %}

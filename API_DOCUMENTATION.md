@@ -1,4 +1,4 @@
-# 🔧 WorkshopOS: API & Core Engineering Patterns (v4.5)
+# 🔧 WorkshopOS: API & Core Engineering Patterns (v5.0)
 
 This document outlines the **"Elite" industrial patterns** used in WorkshopOS to ensure 1M+ record optimization and zero-failure security.
 
@@ -34,7 +34,7 @@ Instead of standard session-based security, WorkshopOS uses the `FailedAttempt` 
 
 ### 2. The Buddy Watch System
 The security system triggers collaborative oversight via `auth_views.py`.
-- **Alert Pulse**: Whenever an Owner logs in, an asynchronous alert is triggered to the other owner.
+- **Alert Pulse**: Whenever an Owner logs in, an asynchronous alert is triggered to both owners.
 - **Staff Monitoring**: Owners receive real-time identifiers (IP, Device Name) for every Staff/Office login.
 
 ---

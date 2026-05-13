@@ -225,7 +225,7 @@ class JobCardViewsTestCase(TestCase):
     def test_bulk_payment_cascade(self):
         """Test the cascade algorithm for fleet/bulk payments."""
         from decimal import Decimal
-        from workshop.models import JobCardSpareItem
+        from workshop.models import JobCardSpareItem, BulkPayer
         from datetime import timedelta
         
         self.user.groups.add(self.office_group)
@@ -249,23 +249,25 @@ class JobCardViewsTestCase(TestCase):
         JobCardSpareItem.objects.create(job_card=job2, total_price=2000, quantity=1)
         JobCardSpareItem.objects.create(job_card=job3, total_price=3000, quantity=1)
 
+        # Create a BulkPayer and link the cards
+        bulk_payer = BulkPayer.objects.create(customer_name='John')
+        bulk_payer.job_cards.add(self.job, job2, job3)
+
         # Total balance is 6000. Customer pays a lump sum of 2500
-        url = reverse('bulk_payments_process')
+        url = reverse('bulk_payer_pay', args=[bulk_payer.pk])
         response = self.client.post(url, {
-            'customer_name': 'John',
-            'customer_contact': '1234567890',
             'lump_sum': '2500',
             'payment_method': 'CASH'
         })
         
-        self.assertRedirects(response, reverse('bulk_payments_home'))
+        self.assertRedirects(response, reverse('bulk_payer_detail', args=[bulk_payer.pk]))
 
         self.job.refresh_from_db()
         job2.refresh_from_db()
         job3.refresh_from_db()
 
         # Job 1 (oldest): Should be fully PAID (1000)
-        self.assertEqual(self.job.payment_status, 'PAID')
+        self.assertEqual(self.job.payment_status, 'BULK_PAID')
         self.assertEqual(self.job.received_amount, Decimal('1000'))
 
         # Job 2: Should be PARTIAL (1500 received out of 2000)
