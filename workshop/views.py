@@ -207,7 +207,7 @@ def live_report(request):
     q = request.GET.get('q', '').strip()
     status = request.GET.get('status', '').strip()
     
-    active_jobs = JobCard.objects.filter(is_deleted=False).select_related('lead_mechanic').prefetch_related('concerns', 'spares').annotate(
+    active_jobs = JobCard.objects.filter(is_deleted=False, delivered=False).select_related('lead_mechanic').prefetch_related('concerns', 'spares').annotate(
         total_concerns=Count('concerns'),
         fixed_concerns=Count('concerns', filter=Q(concerns__status='FIXED'))
     )
