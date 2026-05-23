@@ -90,114 +90,168 @@
         border: 1px solid rgba(37,99,235,0.2);
     }
 
-    /* ── Financial Summary ────────────────────────── */
+    /* ── Premium Financial Summary ────────────────── */
     .bd-summary {
         display: flex;
-        gap: 1px;
-        background: var(--color-border);
-        border-radius: 12px;
-        overflow: hidden;
-        margin-bottom: 1rem;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    @media (max-width: 768px) {
+        .bd-summary { flex-direction: column; gap: 12px; }
     }
     .bd-summary-item {
         flex: 1;
-        background: var(--color-card);
-        padding: 12px 14px;
-        text-align: center;
+        background: #ffffff;
+        padding: 20px 24px;
+        border-radius: 20px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .bd-summary-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+    }
+    .bd-summary-item.total::before {
+        content: ''; position: absolute; right: -20px; top: -20px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, rgba(255,255,255,0) 70%); border-radius: 50%;
+    }
+    .bd-summary-item.received::before {
+        content: ''; position: absolute; right: -20px; top: -20px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(16,185,129,0.15) 0%, rgba(255,255,255,0) 70%); border-radius: 50%;
+    }
+    .bd-summary-item.balance::before {
+        content: ''; position: absolute; right: -20px; top: -20px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(239,68,68,0.1) 0%, rgba(255,255,255,0) 70%); border-radius: 50%;
     }
     .bd-summary-label {
         font-family: var(--font-body);
-        font-size: 0.58rem;
-        font-weight: 600;
+        font-size: 0.75rem;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 1.2px;
-        color: #94a3b8;
-        display: block;
+        letter-spacing: 1.5px;
+        color: #64748b;
+        margin-bottom: 8px;
+        position: relative;
+        z-index: 1;
     }
     .bd-summary-value {
         font-family: var(--font-display);
-        font-size: 1.35rem;
-        font-weight: 800;
+        font-size: 1.8rem;
+        font-weight: 900;
         letter-spacing: -0.5px;
+        color: #0f172a;
+        position: relative;
+        z-index: 1;
     }
-    .bd-summary-value.danger { color: var(--bd-red); }
-    .bd-summary-value.success { color: var(--bd-green); }
+    .bd-summary-value.danger { color: #e11d48; }
+    .bd-summary-value.success { color: #059669; }
 
     /* ── Pay + Add Controls ──────────────────────── */
     .bd-controls {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 1rem;
+        margin-bottom: 24px;
     }
     .bd-pay-form {
         display: flex;
-        flex: 1;
+        align-items: center;
+        background: #ffffff;
+        padding: 8px;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.025);
+        border: 1px solid rgba(226, 232, 240, 0.8);
         gap: 8px;
-        min-width: 0;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .bd-pay-form:focus-within {
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.1), 0 4px 6px -4px rgba(37, 99, 235, 0.05);
+        border-color: #93c5fd;
     }
     .bd-pay-input {
         flex: 1;
-        min-width: 100px;
-        border: 1px solid var(--color-border);
-        border-radius: 10px;
-        background: var(--color-card);
+        min-width: 150px;
+        border: none;
+        background: transparent;
         font-family: var(--font-display);
-        font-size: 1rem;
+        font-size: 1.1rem;
         font-weight: 700;
-        color: var(--color-text);
-        padding: 8px 12px;
+        color: #0f172a;
+        padding: 10px 16px;
         outline: none;
-        transition: border-color 0.15s;
+        -moz-appearance: textfield; /* Firefox */
     }
-    .bd-pay-input:focus { border-color: var(--bd-blue); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
-    .bd-pay-input::placeholder { color: #94a3b8; font-weight: 500; }
+    .bd-pay-input::-webkit-inner-spin-button, 
+    .bd-pay-input::-webkit-outer-spin-button { 
+        -webkit-appearance: none; 
+        margin: 0; 
+    }
+    .bd-pay-input::placeholder { color: #94a3b8; font-weight: 500; font-size: 1rem; }
 
     .bd-method-select {
-        border: 1px solid var(--color-border);
-        border-radius: 10px;
-        background: var(--color-card);
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
         font-family: var(--font-body);
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--color-text);
-        padding: 8px 10px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #475569;
+        padding: 10px 14px;
         outline: none;
-        width: auto;
+        cursor: pointer;
+        transition: background 0.2s;
     }
+    .bd-method-select:hover { background: #f1f5f9; }
 
     .bd-pay-btn {
         border: none;
-        border-radius: 10px;
-        background: var(--bd-blue);
+        border-radius: 12px;
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
         color: #fff;
         font-family: var(--font-body);
-        font-size: 0.82rem;
+        font-size: 0.9rem;
         font-weight: 700;
-        padding: 8px 20px;
+        padding: 10px 24px;
         cursor: pointer;
         white-space: nowrap;
-        transition: background 0.15s, transform 0.1s;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 6px;
     }
-    .bd-pay-btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+    .bd-pay-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4); }
+    .bd-pay-btn:active { transform: translateY(0); }
 
+    /* Premium Pill Buttons */
     .bd-add-btn {
-        border: 1px dashed var(--color-border);
-        border-radius: 10px;
-        background: transparent;
+        border: none;
+        border-radius: 100px;
+        background: rgba(37, 99, 235, 0.08);
         font-family: var(--font-body);
-        font-size: 0.78rem;
-        font-weight: 600;
-        color: var(--bd-blue);
-        padding: 8px 14px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #2563eb;
+        padding: 10px 20px;
         cursor: pointer;
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
         white-space: nowrap;
-        transition: background 0.15s, border-color 0.15s;
+        transition: all 0.2s ease;
     }
-    .bd-add-btn:hover { background: rgba(37,99,235,0.05); border-color: var(--bd-blue); }
+    .bd-add-btn:hover { 
+        background: rgba(37, 99, 235, 0.15); 
+        transform: translateY(-1px);
+    }
+    .bd-add-btn.history-btn {
+        background: rgba(100, 116, 139, 0.08);
+        color: #475569;
+    }
+    .bd-add-btn.history-btn:hover {
+        background: rgba(100, 116, 139, 0.15);
+        color: #334155;
+    }
 
     /* ── Page 3-dot menu (header) ───────────────── */
     .bd-page-menu-btn {
@@ -693,9 +747,6 @@
 
 <!-- Page Header -->
 <div class="bd-page-header">
-    <a href="{% url 'pending_payments_list' %}" class="bd-back-link">
-        <i class="bi bi-chevron-left"></i> Pending Bills
-    </a>
     <div class="bd-header-top">
         <div class="bd-title-block">
             <div class="bd-page-title">
@@ -722,26 +773,26 @@
 
     <!-- Financial Summary Bar -->
     <div class="bd-summary">
-        <div class="bd-summary-item">
+        <div class="bd-summary-item total">
             <span class="bd-summary-label">Total Bill</span>
             <span class="bd-summary-value">₹{{ total_bill|floatformat:0|intcomma }}</span>
         </div>
-        <div class="bd-summary-item">
+        <div class="bd-summary-item received">
             <span class="bd-summary-label">Received</span>
             <span class="bd-summary-value success">₹{{ total_received|floatformat:0|intcomma }}</span>
         </div>
-        <div class="bd-summary-item">
+        <div class="bd-summary-item balance">
             <span class="bd-summary-label">Balance</span>
             <span class="bd-summary-value danger">₹{{ total_balance|floatformat:0|intcomma }}</span>
         </div>
     </div>
 
     <!-- Action Buttons Row -->
-    <div class="d-flex gap-2 mb-3">
+    <div class="d-flex gap-3 mb-4">
         <button type="button" class="bd-add-btn" id="toggleAddCard">
-            <i class="bi bi-plus-circle"></i> Add Car
+            <i class="bi bi-plus-circle-fill"></i> Add Car
         </button>
-        <button class="bd-add-btn" type="button" data-bs-toggle="offcanvas" data-bs-target="#historyOffcanvas" style="color: var(--color-text);">
+        <button class="bd-add-btn history-btn" type="button" data-bs-toggle="offcanvas" data-bs-target="#historyOffcanvas">
             <i class="bi bi-clock-history"></i> Payment History
         </button>
     </div>
