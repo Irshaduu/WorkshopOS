@@ -1,11 +1,11 @@
 {% extends 'workshop/base.html' %}
 
-{% block title %}Concerns & Solutions{% endblock %}
+{% block title %}Concerns Database{% endblock %}
 
 {% block content %}
 <div class="row mb-4 align-items-center">
     <div class="col">
-        <h4 class="mb-0 text-secondary">Concerns & Solutions</h4>
+        <h4 class="mb-0 text-secondary">Concerns Database</h4>
     </div>
     <div class="col-auto">
         <a href="{% url 'concern_add' %}" class="btn btn-primary fw-bold">
@@ -19,7 +19,7 @@
     <form method="get" action="" class="position-relative">
         <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
         <input name="q" class="form-control border-0 shadow-sm ps-5" 
-               type="text" placeholder="Search concerns or solutions..." value="{{ q|default:'' }}"
+               type="text" placeholder="Search concerns..." value="{{ q|default:'' }}"
                style="border-radius: 12px; height: 48px; background: white;">
     </form>
 </div>
@@ -31,15 +31,9 @@
             <div class="card-body">
                 <div class="row align-items-start">
                     <!-- Concern -->
-                    <div class="col-md-5 mb-2 mb-md-0 border-end-md">
+                    <div class="col-md-11 mb-2 mb-md-0">
                         <label class="small text-muted fw-bold text-uppercase">Concern</label>
                         <p class="mb-0 text-dark">{{ obj.concern }}</p>
-                    </div>
-
-                    <!-- Solution -->
-                    <div class="col-md-6 mb-2 mb-md-0">
-                        <label class="small text-primary fw-bold text-uppercase">Solution</label>
-                        <p class="mb-0 text-dark">{{ obj.solution }}</p>
                     </div>
 
                     <!-- Edit -->
@@ -54,7 +48,7 @@
     </div>
     {% empty %}
     <div class="col-12 text-center py-5">
-        <p class="text-muted">No solutions added yet.</p>
+        <p class="text-muted">No concerns added yet.</p>
     </div>
     {% endfor %}
 </div>

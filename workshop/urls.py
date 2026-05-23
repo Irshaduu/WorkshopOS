@@ -73,7 +73,7 @@ urlpatterns = [
     path('master-lists/spares/add/', views.spare_create, name='spare_add'),
     path('master-lists/spares/<int:pk>/edit/', views.spare_edit, name='spare_edit'),
 
-    # 3C. Concerns & Solutions
+    # 3C. Concerns Database
     path('master-lists/concerns/', views.concern_list, name='concern_list'),
     path('master-lists/concerns/add/', views.concern_create, name='concern_add'),
     path('master-lists/concerns/<int:pk>/edit/', views.concern_edit, name='concern_edit'),

@@ -690,7 +690,7 @@ def spare_edit(request, pk):
         return redirect('spare_list')
     return render(request, 'workshop/master_lists/spare_form.html', {'form': form, 'title': 'Edit Spare'})
 
-# --- CONCERNS & SOLUTIONS ---
+# --- CONCERNS DATABASE ---
 
 @office_required
 def concern_list(request):
@@ -701,7 +701,7 @@ def concern_list(request):
     if q:
         for word in q.split():
             concerns_query = concerns_query.filter(
-                Q(concern__icontains=word) | Q(solution__icontains=word)
+                Q(concern__icontains=word)
             )
             
     paginator = Paginator(concerns_query, 50)
@@ -719,7 +719,7 @@ def concern_create(request):
     if form.is_valid():
         form.save()
         return redirect('concern_list')
-    return render(request, 'workshop/master_lists/concern_form.html', {'form': form, 'title': 'Add Solution'})
+    return render(request, 'workshop/master_lists/concern_form.html', {'form': form, 'title': 'Add Concern'})
 
 @staff_required
 def concern_edit(request, pk):
@@ -728,7 +728,7 @@ def concern_edit(request, pk):
     if form.is_valid():
         form.save()
         return redirect('concern_list')
-    return render(request, 'workshop/master_lists/concern_form.html', {'form': form, 'title': 'Edit Solution'})
+    return render(request, 'workshop/master_lists/concern_form.html', {'form': form, 'title': 'Edit Concern'})
 
 
 # =============================================================================
