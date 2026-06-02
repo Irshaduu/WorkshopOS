@@ -1,0 +1,74 @@
+<div id="trash-count-data" data-count="{{ page_obj.paginator.count }}" style="display:none;"></div>
+
+{% if page_obj %}
+<div class="row g-2">
+    {% for shop in page_obj %}
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="job-card shadow-sm h-100 position-relative">
+            <div class="status-ribbon-trash"></div>
+            <div class="ps-3 p-3 h-100 d-flex flex-column" style="margin-left: 5px;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="registration-plate-trash">
+                        <i class="bi bi-shop me-1"></i> SPARE SHOP
+                    </span>
+                    <small class="text-muted" style="font-size: 0.7rem;">
+                        <i class="bi bi-calendar-x me-1"></i> {{ shop.created_at|date:"d M, Y" }}
+                    </small>
+                </div>
+
+                <div class="mb-4">
+                    <h4 class="card-title fw-bold mb-0 text-truncate" style="letter-spacing: -0.5px; color: var(--color-text); font-size: 1.1rem;">
+                        {{ shop.name }}
+                    </h4>
+                    {% if shop.phone %}
+                    <small class="text-muted d-block mt-1">
+                        <i class="bi bi-telephone-fill me-1"></i> {{ shop.phone }}
+                    </small>
+                    {% endif %}
+                </div>
+
+                <div class="mt-auto pt-3 d-flex gap-2">
+                    <form method="POST" action="{% url 'spare_shop_restore' pk=shop.pk %}" class="flex-grow-1">
+                        {% csrf_token %}
+                        <button type="button" class="btn btn-sm btn-outline-success w-100 fw-bold" 
+                                onclick="confirmSubmit(event, 'Restore <b>{{ shop.name|escapejs }}</b>?', this.form, 'success', 'bi-arrow-counterclockwise');"
+                                style="font-size: 0.75rem; border-radius: 8px;">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i> RESTORE
+                        </button>
+                    </form>
+                    <form method="POST" action="{% url 'spare_shop_permanent_delete' pk=shop.pk %}" class="flex-grow-1">
+                        {% csrf_token %}
+                        <button type="button" class="btn btn-sm btn-outline-danger w-100 fw-bold" 
+                                onclick="confirmSubmit(event, 'Permanently delete <b>{{ shop.name|escapejs }}</b>?<br><small>This cannot be undone.</small>', this.form, 'danger', 'bi-trash3');"
+                                style="font-size: 0.75rem; border-radius: 8px;">
+                            <i class="bi bi-trash3 me-1"></i> DELETE
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination (Reusable) -->
+<div class="mt-4">
+    {% include 'workshop/includes/pagination.html' %}
+</div>
+
+{% else %}
+<div class="text-center py-5">
+    {% if q %}
+        <i class="bi bi-search mb-3 d-block" style="font-size: 3rem; color: var(--color-text-muted); opacity: 0.2;"></i>
+        <h5 class="text-muted">No deleted spare shops match your search</h5>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-4 mt-2" onclick="document.getElementById('trashSearchInput').value=''; document.getElementById('trashSearchInput').dispatchEvent(new Event('input'));">
+            Clear Search
+        </button>
+    {% else %}
+        <div class="mb-3" style="color: var(--color-text-muted); opacity: 0.2;">
+            <i class="bi bi-check-circle-fill display-1"></i>
+        </div>
+        <p style="color: var(--color-text-muted);">No deleted spare shops.</p>
+    {% endif %}
+</div>
+{% endif %}

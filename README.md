@@ -15,6 +15,9 @@ A premium, comprehensive Django-based workshop management system designed to str
 - **Auto-Learning Database** - System automatically captures new concerns and spare parts for future smart-suggestions (Case-insensitive & Whitespace Normalized).
 - **Safety Hardened** - Double-confirmation modals for renames and deletes, and Dynamic Merge Alerts to protect historical data.
 
+### Finance & Suppliers
+- **Spare Shops Management** - Dedicated module for tracking parts suppliers, monitoring outstanding balances, and managing lump-sum supplier payments.
+- **Bulk Payer Management** - Dedicated module for managing repeating/fleet customers and cascading bulk payments chronologically.
 ### Inventory System
 - **Stock Management** - Track parts and consumables with low-stock alerts and percentage-based color coding.
 - **Consumption Tracking** - Automatically record part usage from job cards.

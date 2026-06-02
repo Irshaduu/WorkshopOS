@@ -82,16 +82,16 @@
                 <!-- 4. FOOTER: ACTIONS -->
                 <div class="mt-auto pt-3 d-flex gap-2">
                     <form method="get" action="{% url 'restore_jobcard' job.pk %}" class="flex-grow-1">
-                        <button type="submit" class="btn btn-sm btn-outline-success w-100 fw-bold" 
-                                onclick="return confirm('Restore this job card to the active floor?');"
+                        <button type="button" class="btn btn-sm btn-outline-success w-100 fw-bold" 
+                                onclick="confirmSubmit(event, 'Restore <b>{{ job.registration_number }}</b> to the active floor?', this.form, 'success', 'bi-arrow-counterclockwise');"
                                 style="font-size: 0.75rem; border-radius: 8px;">
                             <i class="bi bi-arrow-counterclockwise me-1"></i> RESTORE
                         </button>
                     </form>
                     <form method="post" action="{% url 'permanent_delete_jobcard' job.pk %}" class="flex-grow-1">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-sm btn-outline-danger w-100 fw-bold" 
-                                onclick="return confirm('Permanently delete {{ job.registration_number }}? This cannot be undone.');"
+                        <button type="button" class="btn btn-sm btn-outline-danger w-100 fw-bold" 
+                                onclick="confirmSubmit(event, 'Permanently delete <b>{{ job.registration_number }}</b>?<br><small>This cannot be undone.</small>', this.form, 'danger', 'bi-trash3');"
                                 style="font-size: 0.75rem; border-radius: 8px;">
                             <i class="bi bi-trash3 me-1"></i> DELETE
                         </button>

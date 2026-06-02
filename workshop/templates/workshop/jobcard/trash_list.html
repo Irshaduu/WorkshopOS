@@ -1,7 +1,7 @@
 {% extends 'workshop/base.html' %}
 {% load custom_filters %}
 
-{% block title %}Trash{% endblock %}
+{% block title %}Trash & Recovery{% endblock %}
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
@@ -48,6 +48,7 @@
         margin-bottom: 1.25rem;
         border-bottom: 1px solid var(--color-border);
         padding-bottom: 0;
+        flex-wrap: wrap;
     }
     .tr-tab {
         font-family: var(--font-body);
@@ -87,7 +88,7 @@
     .tr-search-wrap {
         position: relative;
         max-width: 420px;
-        margin-bottom: 1rem;
+        margin-bottom: 1.5rem;
     }
     .tr-search-icon {
         position: absolute;
@@ -100,252 +101,150 @@
     }
     .tr-search-input {
         width: 100%;
-        padding: 8px 12px 8px 32px;
+        padding: 10px 12px 10px 32px;
         border: 1px solid var(--color-border);
-        border-radius: 10px;
+        border-radius: 12px;
         background: var(--color-card);
         font-family: var(--font-body);
-        font-size: 0.83rem;
+        font-size: 0.85rem;
         font-weight: 500;
         color: var(--color-text);
         outline: none;
+        transition: all 0.2s;
     }
     .tr-search-input:focus { border-color: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,0.08); }
     .tr-search-input::placeholder { color: #94a3b8; }
-
-    /* ── Job card items (existing style preserved) ── */
-    .job-card {
-        background-color: var(--color-card);
-        border: 1px solid var(--color-border);
-        border-radius: 14px;
-        transition: all 0.25s;
-        overflow: hidden;
-        opacity: 0.85;
-        padding: 0 !important;
-    }
-    .job-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.1) !important; opacity: 1; }
-    .status-ribbon-trash {
-        width: 5px;
-        position: absolute; left: 0; top: 0; bottom: 0;
-        background-color: #6c757d;
-        z-index: 5;
-    }
-    .registration-plate-trash {
-        font-size: 0.73rem;
-        letter-spacing: 0.5px;
-        background: rgba(108,117,125,0.1);
-        color: #6c757d;
-        border: 1px solid rgba(108,117,125,0.2);
-        border-radius: 4px;
-        padding: 2px 8px;
-        font-weight: 800;
-        text-transform: uppercase;
-    }
-    .color-square-trash {
-        width: 14px; height: 14px;
-        border-radius: 2px; display: inline-block;
-        vertical-align: middle; border: 1px solid rgba(0,0,0,0.1);
-        margin-top: -3px; filter: grayscale(50%);
-    }
-
-    /* ── Bulk Payer trash items ──────────────── */
-    .bp-trash-item {
-        background: var(--color-card);
-        border: 1px solid var(--color-border);
-        border-radius: 12px;
-        padding: 14px 16px;
-        margin-bottom: 8px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        opacity: 0.9;
-        transition: opacity 0.15s;
-    }
-    .bp-trash-item:hover { opacity: 1; }
-    .bp-trash-name {
-        font-family: var(--font-display);
-        font-size: 1.15rem;
-        font-weight: 800;
-        color: var(--color-text);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .bp-trash-name i { color: #94a3b8; font-size: 0.9rem; }
-    .bp-trash-date {
-        font-family: var(--font-body);
-        font-size: 0.7rem;
-        color: #94a3b8;
-        margin-top: 2px;
-    }
-    .bp-trash-actions { display: flex; gap: 6px; }
-    .bp-restore-btn {
-        border: 1px solid rgba(22,163,74,0.3);
-        border-radius: 8px;
-        background: transparent;
-        font-family: var(--font-body);
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: #16a34a;
-        padding: 5px 12px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        transition: background 0.15s;
-    }
-    .bp-restore-btn:hover { background: rgba(22,163,74,0.06); }
-    .bp-delete-btn {
-        border: 1px solid rgba(220,38,38,0.2);
-        border-radius: 8px;
-        background: transparent;
-        font-family: var(--font-body);
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: #dc2626;
-        padding: 5px 12px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        transition: background 0.15s;
-    }
-    .bp-delete-btn:hover { background: rgba(220,38,38,0.06); }
-
-    /* ── Empty state ─────────────────────────── */
-    .tr-empty {
-        text-align: center;
-        padding: 3rem 1rem;
-        color: #94a3b8;
-    }
-    .tr-empty i { font-size: 2.5rem; opacity: 0.3; display: block; margin-bottom: 8px; }
-
-    /* ── Tab panes ───────────────────────────── */
-    .tr-pane { display: none; }
-    .tr-pane.active { display: block; }
 </style>
 
 <!-- Header -->
 <div class="tr-header">
     <div class="tr-title">
-        <i class="bi bi-trash3-fill"></i> Trash
+        <i class="bi bi-trash3-fill"></i> Trash & Recovery
     </div>
 </div>
 
 <!-- Tabs -->
 <div class="tr-tabs">
-    <a href="?tab=jobcards" class="tr-tab {% if active_tab == 'jobcards' %}active{% endif %}" id="tab-jobcards">
+    <a href="?tab=jobcards" class="tr-tab {% if active_tab == 'jobcards' %}active{% endif %}">
         <i class="bi bi-card-list"></i> Job Cards
         <span class="tr-tab-count">{{ jobcard_trash_count }}</span>
     </a>
-    <a href="?tab=bulkpayers" class="tr-tab {% if active_tab == 'bulkpayers' %}active{% endif %}" id="tab-bulkpayers">
-        <i class="bi bi-wallet2"></i> Bulk Payers
+    <a href="?tab=bulkpayers" class="tr-tab {% if active_tab == 'bulkpayers' %}active{% endif %}">
+        <i class="bi bi-people-fill"></i> Bulk Payers
         <span class="tr-tab-count">{{ bulk_payer_trash_count }}</span>
     </a>
-    <a href="?tab=payments" class="tr-tab {% if active_tab == 'payments' %}active{% endif %}" id="tab-payments">
-        <i class="bi bi-clock-history"></i> Payment History
+    <a href="?tab=payments" class="tr-tab {% if active_tab == 'payments' %}active{% endif %}">
+        <i class="bi bi-cash-stack"></i> Bulk Payments
         <span class="tr-tab-count">{{ payments_trash_count }}</span>
+    </a>
+    <a href="?tab=spare_shops" class="tr-tab {% if active_tab == 'spare_shops' %}active{% endif %}">
+        <i class="bi bi-shop"></i> Spare Shops
+        <span class="tr-tab-count">{{ shop_trash_count }}</span>
+    </a>
+    <a href="?tab=shop_payments" class="tr-tab {% if active_tab == 'shop_payments' %}active{% endif %}">
+        <i class="bi bi-receipt"></i> Shop Payments
+        <span class="tr-tab-count">{{ shop_payments_trash_count }}</span>
     </a>
 </div>
 
-<!-- ── Job Cards Tab ──────────────────────────── -->
-<div class="tr-pane {% if active_tab == 'jobcards' %}active{% endif %}" id="pane-jobcards">
-    <div class="tr-search-wrap">
-        <i class="bi bi-search tr-search-icon"></i>
-        <input type="text" id="trashSearchInput" class="tr-search-input"
-               placeholder="Search reg, brand, model, customer…"
-               value="{{ q }}" autocomplete="off">
-    </div>
+<!-- Search Bar -->
+<div class="tr-search-wrap">
+    <i class="bi bi-search tr-search-icon"></i>
+    <input type="text" id="trashSearchInput" class="tr-search-input"
+           placeholder="Search in {% if active_tab == 'jobcards' %}job cards...{% elif active_tab == 'bulkpayers' %}bulk payers...{% elif active_tab == 'payments' %}bulk payments...{% elif active_tab == 'spare_shops' %}spare shops...{% elif active_tab == 'shop_payments' %}shop payments...{% endif %}"
+           value="{{ q }}" autocomplete="off">
+</div>
 
-    <div id="trash-list-container">
+<!-- AJAX Content Container -->
+<div id="trash-list-container" style="transition: opacity 0.2s;">
+    {% if active_tab == 'jobcards' %}
         {% include 'workshop/jobcard/trash_list_partial.html' %}
+    {% elif active_tab == 'bulkpayers' %}
+        {% include 'workshop/jobcard/trash_bulkpayers_partial.html' %}
+    {% elif active_tab == 'payments' %}
+        {% include 'workshop/jobcard/trash_payments_partial.html' %}
+    {% elif active_tab == 'spare_shops' %}
+        {% include 'workshop/jobcard/trash_spareshops_partial.html' %}
+    {% elif active_tab == 'shop_payments' %}
+        {% include 'workshop/jobcard/trash_shoppayments_partial.html' %}
+    {% endif %}
+</div>
+
+
+<!-- ============================================================ -->
+<!-- GENERIC CONFIRMATION MODAL                                   -->
+<!-- ============================================================ -->
+<div class="modal fade" id="confirmActionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 340px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-body text-center p-4">
+        <i id="confirmActionIcon" class="bi bi-exclamation-triangle-fill text-warning mb-3" style="font-size: 3rem;"></i>
+        <h5 class="fw-bold mb-2">Are you sure?</h5>
+        <p class="text-muted small mb-4" id="confirmActionMsg">This action cannot be undone.</p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary fw-bold rounded-pill px-4" id="confirmActionBtn">Confirm</button>
+        </div>
+      </div>
     </div>
-</div>
-
-<!-- ── Bulk Payers Tab ──────────────────────────── -->
-<div class="tr-pane {% if active_tab == 'bulkpayers' %}active{% endif %}" id="pane-bulkpayers">
-    {% if trashed_bulk_payers %}
-        {% for payer in trashed_bulk_payers %}
-        <div class="bp-trash-item">
-            <div>
-                <div class="bp-trash-name">
-                    <i class="bi bi-person-circle"></i>
-                    {{ payer.customer_name }}
-                </div>
-                <div class="bp-trash-date">
-                    <i class="bi bi-calendar3 me-1"></i>Created {{ payer.created_at|date:"d M, Y" }}
-                </div>
-            </div>
-            <div class="bp-trash-actions">
-                <form method="POST" action="{% url 'bulk_payer_restore' pk=payer.pk %}">
-                    {% csrf_token %}
-                    <button type="submit" class="bp-restore-btn">
-                        <i class="bi bi-arrow-counterclockwise"></i> Restore
-                    </button>
-                </form>
-                <form method="POST" action="{% url 'bulk_payer_permanent_delete' pk=payer.pk %}"
-                      onsubmit="return confirm('Permanently delete {{ payer.customer_name }}? This cannot be undone.');">
-                    {% csrf_token %}
-                    <button type="submit" class="bp-delete-btn">
-                        <i class="bi bi-x-lg"></i> Delete Forever
-                    </button>
-                </form>
-            </div>
-        </div>
-        {% endfor %}
-    {% else %}
-        <div class="tr-empty">
-            <i class="bi bi-check-circle-fill" style="color: #22c55e;"></i>
-            <p style="font-family: var(--font-body); font-size: 0.85rem;">No deleted bulk payers.</p>
-        </div>
-    {% endif %}
-</div>
-
-<!-- ── Payment History Tab ──────────────────────────── -->
-<div class="tr-pane {% if active_tab == 'payments' %}active{% endif %}" id="pane-payments">
-    {% if trashed_payments %}
-        {% for history in trashed_payments %}
-        <div class="bp-trash-item">
-            <div>
-                <div class="bp-trash-name" style="color: #dc2626;">
-                    <i class="bi bi-currency-rupee"></i>
-                    {{ history.amount|floatformat:0 }}
-                    <span style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 500; margin-left: 8px;">
-                        from {{ history.bulk_payer.customer_name }}
-                    </span>
-                </div>
-                <div class="bp-trash-date">
-                    <i class="bi bi-calendar3 me-1"></i>Deleted on {{ history.created_at|date:"d M, Y • h:i A" }}
-                    <span class="ms-2"><i class="bi bi-wallet me-1"></i>{{ history.payment_method }}</span>
-                </div>
-            </div>
-            <div class="bp-trash-actions">
-                <form method="POST" action="{% url 'permanent_delete_payment_history' history_pk=history.pk %}"
-                      onsubmit="return confirm('Permanently delete this payment history record? This cannot be undone.');">
-                    {% csrf_token %}
-                    <button type="submit" class="bp-delete-btn">
-                        <i class="bi bi-x-lg"></i> Delete Forever
-                    </button>
-                </form>
-            </div>
-        </div>
-        {% endfor %}
-    {% else %}
-        <div class="tr-empty">
-            <i class="bi bi-check-circle-fill" style="color: #22c55e;"></i>
-            <p style="font-family: var(--font-body); font-size: 0.85rem;">No deleted payment history.</p>
-        </div>
-    {% endif %}
+  </div>
 </div>
 
 <script>
+// Global form confirmation logic
+let formToSubmit = null;
+let confirmActionModalInstance = null;
+
+function confirmSubmit(event, message, formElement, theme='warning', icon='bi-exclamation-triangle-fill') {
+    event.preventDefault();
+    if (!confirmActionModalInstance) {
+        confirmActionModalInstance = new bootstrap.Modal(document.getElementById('confirmActionModal'));
+    }
+    document.getElementById('confirmActionMsg').innerHTML = message;
+    document.getElementById('confirmActionIcon').className = `bi ${icon} text-${theme} mb-3`;
+    document.getElementById('confirmActionBtn').className = `btn btn-${theme} fw-bold rounded-pill px-4`;
+    formToSubmit = formElement;
+    confirmActionModalInstance.show();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    // ── Job card AJAX search ──
+    const confirmBtn = document.getElementById('confirmActionBtn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            if (formToSubmit) formToSubmit.submit();
+        });
+    }
+
     const searchInput = document.getElementById('trashSearchInput');
     const container = document.getElementById('trash-list-container');
     let timeout = null;
+    const activeTab = "{{ active_tab }}";
 
+    function fetchContent(url) {
+        container.style.opacity = '0.5';
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => r.text())
+            .then(html => {
+                container.innerHTML = html;
+                container.style.opacity = '1';
+                window.history.replaceState({}, '', url);
+                updateTabCounts();
+            })
+            .catch(() => { container.style.opacity = '1'; });
+    }
+
+    function updateTabCounts() {
+        const countData = document.getElementById('trash-count-data');
+        if (countData) {
+            const count = countData.getAttribute('data-count');
+            const activeTabElem = document.querySelector('.tr-tab.active .tr-tab-count');
+            if (activeTabElem) {
+                activeTabElem.textContent = count;
+            }
+        }
+    }
+
+    // 1. AJAX Search
     if (searchInput) {
         searchInput.addEventListener('input', function() {
             const query = this.value.trim();
@@ -353,20 +252,30 @@ document.addEventListener('DOMContentLoaded', function() {
             timeout = setTimeout(() => {
                 const url = new URL(window.location.href);
                 url.searchParams.set('q', query);
-                url.searchParams.set('page', '1');
-                url.searchParams.set('tab', 'jobcards');
-                container.style.opacity = '0.5';
-                fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                    .then(r => r.text())
-                    .then(html => {
-                        container.innerHTML = html;
-                        container.style.opacity = '1';
-                        window.history.replaceState({}, '', url);
-                    })
-                    .catch(() => { container.style.opacity = '1'; });
+                url.searchParams.set('page', '1'); // reset to page 1 on search
+                url.searchParams.set('tab', activeTab);
+                fetchContent(url);
             }, 300);
         });
     }
+
+    // 2. AJAX Pagination (Intercept clicks on .page-link inside the container)
+    container.addEventListener('click', function(e) {
+        if (e.target.classList.contains('page-link') || e.target.closest('.page-link')) {
+            const link = e.target.classList.contains('page-link') ? e.target : e.target.closest('.page-link');
+            if (link.href && !link.closest('.disabled')) {
+                e.preventDefault();
+                const url = new URL(link.href);
+                url.searchParams.set('tab', activeTab);
+                const query = searchInput ? searchInput.value.trim() : '';
+                if (query) {
+                    url.searchParams.set('q', query);
+                }
+                fetchContent(url);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+    });
 });
 </script>
 

@@ -16,7 +16,7 @@ graph TB
     end
 
     subgraph WORKSHOP["Workshop App (Core)"]
-        W_MODELS["models.py — 10 Models"]
+        W_MODELS["models.py — 14 Models"]
         W_VIEWS["views.py — 30 Views"]
         W_AUTH["auth_views.py — 6 Views"]
         W_MGMT["management_views.py — 7 Views"]
@@ -59,7 +59,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (10)
+### Workshop App Models (14)
 
 ```mermaid
 erDiagram
@@ -92,6 +92,10 @@ erDiagram
 | 10 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
 | 11 | **JobCardSpareItem** | job_card (FK), part name, qty, prices, shop, order tracking | Per-job spare parts |
 | 12 | **JobCardLabourItem** | job_card (FK), job_description, amount | Per-job labour charges |
+| 13 | **BulkPayer** | customer_name, is_trashed | Group for fleet/repeat customers |
+| 14 | **BulkPaymentHistory** | bulk_payer (FK), amount, method | Audit trail for bulk payments |
+| 15 | **SpareShop** | name, phone, address, is_trashed | Master list of suppliers |
+| 16 | **SpareShopPayment** | shop (FK), amount, method, note | Audit trail for shop payments |
 
 ### Inventory App Models (3)
 
@@ -176,6 +180,17 @@ Login Event → send_titan_security_alert()
 | | `/bulk-payments/` | `bulk_payments_home` | Office |
 | | `/bulk-payments/search/` | `bulk_payments_search` | Office |
 | | `/bulk-payments/process/` | `bulk_payments_process` | Office |
+| **SPARE SHOPS** | `/spare-shops/` | `spare_shop_list` | Office |
+| | `/spare-shops/<pk>/` | `spare_shop_detail` | Office |
+| | `/spare-shops/create/` | `spare_shop_create` | Office |
+| | `/spare-shops/<pk>/edit/` | `spare_shop_edit` | Office |
+| | `/spare-shops/<pk>/pay/` | `spare_shop_pay` | Office |
+| | `/spare-shops/<pk>/pay-item/<item_pk>/` | `spare_shop_pay_item` | Office |
+| | `/spare-shops/<shop_pk>/payment/<payment_pk>/reverse/` | `spare_shop_payment_reverse` | Owner |
+| | `/spare-shops/<pk>/delete/` | `spare_shop_delete` | Owner |
+| | `/spare-shops/<pk>/restore/` | `spare_shop_restore` | Owner |
+| | `/spare-shops/<pk>/permanent-delete/` | `spare_shop_permanent_delete` | Owner |
+| | `/spare-shops/payment/<pk>/permanent-delete/` | `spare_shop_payment_permanent_delete` | Owner |
 | **MASTER LISTS** | `/master-lists/` | `master_lists_home` | Office |
 | | `/master-lists/brands/` | `brand_list` | Office |
 | | `/master-lists/brands/add/` | `brand_create` | Office |

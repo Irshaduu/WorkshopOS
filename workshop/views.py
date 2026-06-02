@@ -389,48 +389,73 @@ def jobcard_delete(request, pk):
 def trash_list(request):
     """
     Unified Trash dashboard — all soft-deleted records in one place.
-    Sections: Job Cards, Bulk Payers.
+    Optimized for 1M data using strict pagination and AJAX.
     """
     tab = request.GET.get('tab', 'jobcards')
-
-    # ── Job Cards ──
-    trash_query = JobCard.objects.filter(is_deleted=True).select_related('lead_mechanic').order_by('-updated_at')
     is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
     q = request.GET.get('q', '').strip()
-
-    if q:
-        for word in q.split():
-            trash_query = trash_query.filter(
-                Q(registration_number__icontains=word) |
-                Q(brand_name__icontains=word) |
-                Q(model_name__icontains=word) |
-                Q(customer_name__icontains=word)
-            )
-
-    paginator = Paginator(trash_query, 45)
     page_number = request.GET.get('page')
-    trash_cards = paginator.get_page(page_number)
-
-    # ── Bulk Payers ──
-    trashed_bulk_payers = BulkPayer.objects.filter(is_trashed=True).order_by('customer_name')
-
-    # ── Payment History ──
-    trashed_payments = BulkPaymentHistory.objects.filter(is_trashed=True).order_by('-created_at')
 
     context = {
-        'trash_cards': trash_cards,
-        'page_obj': trash_cards,   # partial template uses page_obj
-        'trashed_bulk_payers': trashed_bulk_payers,
-        'trashed_payments': trashed_payments,
-        'q': q,
         'active_tab': tab,
+        'q': q,
         'jobcard_trash_count': JobCard.objects.filter(is_deleted=True).count(),
         'bulk_payer_trash_count': BulkPayer.objects.filter(is_trashed=True).count(),
         'payments_trash_count': BulkPaymentHistory.objects.filter(is_trashed=True).count(),
+        'shop_trash_count': SpareShop.objects.filter(is_trashed=True).count(),
+        'shop_payments_trash_count': SpareShopPayment.objects.filter(is_trashed=True).count(),
     }
 
-    if is_ajax and tab == 'jobcards':
-        return render(request, 'workshop/jobcard/trash_list_partial.html', {'trash_cards': trash_cards, 'page_obj': trash_cards, 'q': q})
+    if tab == 'jobcards':
+        qs = JobCard.objects.filter(is_deleted=True).select_related('lead_mechanic').order_by('-updated_at')
+        if q:
+            for word in q.split():
+                qs = qs.filter(
+                    Q(registration_number__icontains=word) |
+                    Q(brand_name__icontains=word) |
+                    Q(model_name__icontains=word) |
+                    Q(customer_name__icontains=word)
+                )
+        page_obj = Paginator(qs, 45).get_page(page_number)
+        context['page_obj'] = page_obj
+        if is_ajax:
+            return render(request, 'workshop/jobcard/trash_list_partial.html', context)
+            
+    elif tab == 'bulkpayers':
+        qs = BulkPayer.objects.filter(is_trashed=True).order_by('customer_name')
+        if q:
+            qs = qs.filter(customer_name__icontains=q)
+        page_obj = Paginator(qs, 45).get_page(page_number)
+        context['page_obj'] = page_obj
+        if is_ajax:
+            return render(request, 'workshop/jobcard/trash_bulkpayers_partial.html', context)
+            
+    elif tab == 'payments':
+        qs = BulkPaymentHistory.objects.filter(is_trashed=True).order_by('-created_at')
+        if q:
+            qs = qs.filter(bulk_payer__customer_name__icontains=q)
+        page_obj = Paginator(qs, 45).get_page(page_number)
+        context['page_obj'] = page_obj
+        if is_ajax:
+            return render(request, 'workshop/jobcard/trash_payments_partial.html', context)
+            
+    elif tab == 'spare_shops':
+        qs = SpareShop.objects.filter(is_trashed=True).order_by('name')
+        if q:
+            qs = qs.filter(name__icontains=q)
+        page_obj = Paginator(qs, 45).get_page(page_number)
+        context['page_obj'] = page_obj
+        if is_ajax:
+            return render(request, 'workshop/jobcard/trash_spareshops_partial.html', context)
+            
+    elif tab == 'shop_payments':
+        qs = SpareShopPayment.objects.filter(is_trashed=True).order_by('-created_at')
+        if q:
+            qs = qs.filter(shop__name__icontains=q)
+        page_obj = Paginator(qs, 45).get_page(page_number)
+        context['page_obj'] = page_obj
+        if is_ajax:
+            return render(request, 'workshop/jobcard/trash_shoppayments_partial.html', context)
 
     return render(request, 'workshop/jobcard/trash_list.html', context)
 
