@@ -43,13 +43,91 @@
 
   /* ── Form Optimizations ── */
   .form-control::placeholder { font-weight: 400 !important; color: #a1a1aa !important; font-size: 0.9rem !important; }
+
+  /* ── Filter Button ── */
+  .shop-filter-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--color-card);
+      border: 1px solid var(--color-border);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--color-text);
+      cursor: pointer;
+      box-shadow: 0 1px 3px var(--color-shadow);
+      white-space: nowrap;
+      transition: border-color 0.15s;
+  }
+  .shop-filter-btn:hover { border-color: var(--color-primary); }
+  .shop-filter-btn .bi-funnel { font-size: 0.72rem; color: var(--color-text-muted); }
+  .shop-filter-btn .bi-chevron-down { font-size: 0.6rem; opacity: 0.5; }
+  
+  .shop-dropdown-menu {
+      border-radius: 12px;
+      border: 1px solid var(--color-border);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      padding: 6px;
+      min-width: 175px;
+      margin-top: 6px !important;
+  }
+  .shop-dropdown-menu .dropdown-item {
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 7px 12px;
+      color: var(--color-text);
+      transition: background 0.1s;
+  }
+  .shop-dropdown-menu .dropdown-item:hover,
+  .shop-dropdown-menu .dropdown-item.active {
+      background: rgba(37, 99, 235, 0.07);
+      color: var(--color-primary);
+  }
 </style>
 
-<!-- ── Back breadcrumb ── -->
-<div class="mb-3">
+<!-- ── Back breadcrumb & Filters ── -->
+<div class="mb-3 d-flex justify-content-between align-items-center">
   <a href="{% url 'spare_shop_list' %}" class="text-muted text-decoration-none small">
     <i class="bi bi-arrow-left me-1"></i> All Spare Shops
   </a>
+
+  <!-- Filter Dropdown -->
+  <div class="dropdown">
+      <button id="filterDropdownBtn" class="shop-filter-btn" type="button" data-bs-toggle="dropdown">
+          <i class="bi bi-funnel"></i>
+          <span id="filterLabel">
+              {% if filter_type == 'month' %}1 Month
+              {% elif filter_type == 'year' %}1 Year
+              {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
+              {% else %}All Time{% endif %}
+          </span>
+          <i class="bi bi-chevron-down"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end shop-dropdown-menu">
+          <li><a class="dropdown-item {% if filter_type == 'all' or not filter_type %}active{% endif %}" href="?filter=all">All Time</a></li>
+          <li><a class="dropdown-item {% if filter_type == 'month' %}active{% endif %}" href="?filter=month">1 Month</a></li>
+          <li><a class="dropdown-item {% if filter_type == 'year' %}active{% endif %}"  href="?filter=year">1 Year</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a id="customRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">Custom Range</a></li>
+          <li id="customDatePicker"
+              style="display: {% if filter_type == 'custom' %}block{% else %}none{% endif %};"
+              onclick="event.stopPropagation()">
+              <div class="px-2 pt-2 pb-1">
+                  <form id="customDateForm" method="get" class="d-flex flex-column gap-2">
+                      <input type="hidden" name="filter" value="custom">
+                      <label class="small text-muted mb-0" style="font-size:0.7rem;">Start</label>
+                      <input type="date" name="start_date" id="start_date" class="form-control form-control-sm rounded-3" value="{{ start_date }}" required>
+                      <label class="small text-muted mb-0" style="font-size:0.7rem;">End</label>
+                      <input type="date" name="end_date" id="end_date" class="form-control form-control-sm rounded-3" value="{{ end_date }}" required>
+                      <button type="submit" class="btn btn-primary btn-sm rounded-pill mt-1 fw-bold">Apply</button>
+                  </form>
+              </div>
+          </li>
+      </ul>
+  </div>
 </div>
 
 <!-- ── Header Card ── -->
@@ -257,11 +335,11 @@
       <nav>
         <ul class="pagination pagination-sm mb-0">
           {% if page_obj.has_previous %}
-          <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&pay_page={{ pay_page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">‹</a></li>
           {% endif %}
           <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
           {% if page_obj.has_next %}
-          <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&pay_page={{ pay_page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">›</a></li>
           {% endif %}
         </ul>
       </nav>
@@ -326,11 +404,11 @@
         <nav>
           <ul class="pagination pagination-sm mb-0">
             {% if pay_page_obj.has_previous %}
-            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.previous_page_number }}">‹</a></li>
+            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.previous_page_number }}&page={{ page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">‹</a></li>
             {% endif %}
             <li class="page-item disabled"><span class="page-link">{{ pay_page_obj.number }} / {{ pay_page_obj.paginator.num_pages }}</span></li>
             {% if pay_page_obj.has_next %}
-            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.next_page_number }}">›</a></li>
+            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.next_page_number }}&page={{ page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">›</a></li>
             {% endif %}
           </ul>
         </nav>
@@ -489,6 +567,21 @@
         document.getElementById('payNowPartName').textContent = btn.getAttribute('data-part');
         document.getElementById('payNowAmount').textContent = '₹' + btn.getAttribute('data-balance');
       });
+    }
+
+    // Filter Logic
+    const customToggle = document.getElementById('customRangeToggle');
+    if (customToggle) {
+        customToggle.addEventListener('click', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            const picker = document.getElementById('customDatePicker');
+            if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+
+    // Smart Reset: Clear URL parameters so a manual page refresh resets back to Default
+    if (window.history.replaceState && window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
     }
   });
 </script>

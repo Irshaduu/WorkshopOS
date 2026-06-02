@@ -259,3 +259,22 @@ class SpareShopPaymentTests(TestCase):
         self.assertEqual(payment.note, 'Handed to Mohammed directly')
         self.assertEqual(payment.items_affected, 2)
 
+    def test_shop_detail_date_filters(self):
+        """Verify that the date filtering logic successfully renders without errors."""
+        base_url = reverse('spare_shop_detail', args=[self.shop.pk])
+        
+        # Test 1: All time
+        res_all = self.client.get(base_url + '?filter=all')
+        self.assertEqual(res_all.status_code, 200)
+        
+        # Test 2: Month
+        res_month = self.client.get(base_url + '?filter=month')
+        self.assertEqual(res_month.status_code, 200)
+
+        # Test 3: Year
+        res_year = self.client.get(base_url + '?filter=year')
+        self.assertEqual(res_year.status_code, 200)
+
+        # Test 4: Custom
+        res_custom = self.client.get(base_url + '?filter=custom&start_date=2026-01-01&end_date=2026-12-31')
+        self.assertEqual(res_custom.status_code, 200)

@@ -1482,6 +1482,7 @@ def spare_shop_detail(request, pk):
     Shows per-item financials and payment history.
     """
     from decimal import Decimal
+    from datetime import date, timedelta
     from django.db.models import Sum, Value, F, ExpressionWrapper, DecimalField
     from django.db.models.functions import Coalesce
 
@@ -1494,6 +1495,35 @@ def spare_shop_detail(request, pk):
         .select_related('job_card')
         .order_by('job_card__admitted_date', 'pk')
     )
+
+    payment_qs = shop.payments.filter(is_trashed=False).order_by('-created_at')
+
+    # Date Filtering
+    filter_type = request.GET.get('filter', 'all')
+    start_date_str = ''
+    end_date_str = ''
+    today = date.today()
+
+    if filter_type == 'month':
+        sd = today - timedelta(days=30)
+        items_qs = items_qs.filter(job_card__admitted_date__gte=sd)
+        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+    elif filter_type == 'year':
+        sd = today - timedelta(days=365)
+        items_qs = items_qs.filter(job_card__admitted_date__gte=sd)
+        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+    elif filter_type == 'custom':
+        start_date_str = request.GET.get('start_date', '')
+        end_date_str = request.GET.get('end_date', '')
+        if start_date_str and end_date_str:
+            items_qs = items_qs.filter(
+                job_card__admitted_date__gte=start_date_str,
+                job_card__admitted_date__lte=end_date_str
+            )
+            payment_qs = payment_qs.filter(
+                created_at__date__gte=start_date_str,
+                created_at__date__lte=end_date_str
+            )
 
     # Grand totals (pure SQL)
     totals = items_qs.aggregate(
@@ -1516,7 +1546,6 @@ def spare_shop_detail(request, pk):
     paginator = Paginator(items_qs, 45)
     page_obj = paginator.get_page(request.GET.get('page'))
 
-    payment_qs = shop.payments.filter(is_trashed=False).order_by('-created_at')
     pay_paginator = Paginator(payment_qs, 15)
     pay_page_obj = pay_paginator.get_page(request.GET.get('pay_page'))
 
@@ -1530,6 +1559,9 @@ def spare_shop_detail(request, pk):
         'item_count': item_count,
         'pay_page_obj': pay_page_obj,
         'pay_count': payment_qs.count(),
+        'filter_type': filter_type,
+        'start_date': start_date_str if filter_type == 'custom' else '',
+        'end_date': end_date_str if filter_type == 'custom' else '',
     })
 
 
