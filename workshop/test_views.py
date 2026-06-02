@@ -129,7 +129,8 @@ class WorkshopViewTests(TestCase):
     def test_financial_report_exhaustive_filters(self):
         # 1. Access without filters
         url = reverse('live_report')
-        paid_job = JobCard.objects.create(registration_number='PAID001', admitted_date=timezone.now().date(), delivered=True, payment_status='PAID')
+        # live_report only shows delivered=False (active) jobs, so create one that is active
+        paid_job = JobCard.objects.create(registration_number='PAID001', admitted_date=timezone.now().date(), delivered=False, payment_status='PAID')
         
         # 2. Search filter
         response = self.client.get(url, {'q': 'PAID001'})

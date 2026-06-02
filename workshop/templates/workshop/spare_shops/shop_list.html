@@ -1,0 +1,165 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Spare Shops — WorkshopOS{% endblock %}
+
+{% block content %}
+
+<style>
+  .shop-card {
+    border-radius: 14px;
+    border: 1px solid var(--color-border);
+    background: var(--color-card);
+    transition: box-shadow 0.2s, transform 0.15s;
+    text-decoration: none;
+    display: block;
+    color: inherit;
+  }
+  .shop-card:hover {
+    box-shadow: 0 6px 24px rgba(0,0,0,0.09);
+    transform: translateY(-2px);
+    text-decoration: none;
+    color: inherit;
+  }
+  .stat-pill {
+    background: var(--color-border-light);
+    border-radius: 10px;
+    padding: 0.4rem 0.75rem;
+    text-align: center;
+    flex: 1;
+  }
+  .stat-pill .label { font-size: 0.7rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-pill .value { font-size: 1rem; font-weight: 700; }
+  .balance-badge {
+    background: #fef2f2;
+    color: #dc2626;
+    border-radius: 10px;
+    padding: 0.35rem 0.8rem;
+    font-weight: 700;
+    font-size: 1rem;
+  }
+  .balance-zero { background: #f0fdf4; color: #16a34a; }
+</style>
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h5 class="fw-bold mb-0" style="color: var(--color-text);">
+      <i class="bi bi-shop me-2" style="color: var(--color-primary);"></i>Spare Shops
+    </h5>
+    <small class="text-muted">Track purchases & payments to all spare parts suppliers</small>
+  </div>
+  {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+  <button class="btn btn-primary btn-sm fw-bold rounded-pill px-3"
+          data-bs-toggle="modal" data-bs-target="#createShopModal">
+    <i class="bi bi-plus-lg me-1"></i> New Shop
+  </button>
+  {% endif %}
+</div>
+
+{% if shops %}
+
+<!-- Grand Summary Bar -->
+{% with total_all_balance=0 %}
+<div class="card border-0 shadow-sm mb-4" style="background: linear-gradient(135deg, #1e293b, #334155); border-radius: 14px;">
+  <div class="card-body py-3">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="text-white fw-bold"><i class="bi bi-wallet2 me-2"></i>{{ shops|length }} Shop{{ shops|length|pluralize }} Registered</span>
+      <span class="text-white-50 small">Showing all active spare shops</span>
+    </div>
+  </div>
+</div>
+{% endwith %}
+
+<!-- Shop Cards Grid -->
+<div class="d-flex flex-column gap-3">
+  {% for shop in shops %}
+  <a href="{% url 'spare_shop_detail' shop.pk %}" class="shop-card">
+    <div class="card-body p-3">
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <div class="fw-bold" style="font-size: 1rem;">{{ shop.name }}</div>
+          {% if shop.phone %}
+          <div class="text-muted" style="font-size: 0.8rem;"><i class="bi bi-telephone me-1"></i>{{ shop.phone }}</div>
+          {% endif %}
+          {% if shop.address %}
+          <div class="text-muted" style="font-size: 0.78rem;"><i class="bi bi-geo-alt me-1"></i>{{ shop.address }}</div>
+          {% endif %}
+        </div>
+        <div class="balance-badge {% if shop.total_balance <= 0 %}balance-zero{% endif %}">
+          ₹{{ shop.total_balance|floatformat:0 }}
+          <div style="font-size: 0.65rem; font-weight: 500; opacity: 0.75;">Balance Owed</div>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <div class="stat-pill">
+          <div class="label">Purchased</div>
+          <div class="value">₹{{ shop.total_purchases|floatformat:0 }}</div>
+        </div>
+        <div class="stat-pill">
+          <div class="label">Paid</div>
+          <div class="value" style="color: var(--color-success);">₹{{ shop.total_paid|floatformat:0 }}</div>
+        </div>
+        <div class="stat-pill">
+          <div class="label">Items</div>
+          <div class="value">{{ shop.item_count }}</div>
+        </div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% else %}
+<!-- Empty State -->
+<div class="text-center py-5">
+  <div style="font-size: 4rem; opacity: 0.3;">🏪</div>
+  <h6 class="fw-bold mt-3 text-muted">No spare shops yet</h6>
+  <p class="text-muted small">Add your first spare shop to start tracking supplier payments.</p>
+  <button class="btn btn-primary btn-sm rounded-pill px-4"
+          data-bs-toggle="modal" data-bs-target="#createShopModal">
+    + Add First Shop
+  </button>
+</div>
+{% endif %}
+
+
+<!-- ============================================================ -->
+<!-- CREATE SHOP MODAL                                            -->
+<!-- ============================================================ -->
+<div class="modal fade" id="createShopModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 380px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold">
+          <i class="bi bi-shop me-2 text-primary"></i>New Spare Shop
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'spare_shop_create' %}">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small text-muted fw-bold">Shop Name *</label>
+            <input type="text" name="name" id="newShopName" class="form-control"
+                   placeholder="e.g. Al-Hamra Auto Parts" required autofocus>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small text-muted">Phone <span class="text-muted fw-normal">(optional)</span></label>
+            <input type="text" name="phone" class="form-control" placeholder="Phone number">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-muted">Address <span class="text-muted fw-normal">(optional)</span></label>
+            <input type="text" name="address" class="form-control" placeholder="Address">
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary fw-bold rounded-pill px-4">Create Shop</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

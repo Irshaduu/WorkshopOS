@@ -6,6 +6,7 @@ from .models import (
     CarModel,
     SparePart,
     ConcernSolution,
+    SpareShop,
     JobCard,
     JobCardConcern,
     JobCardSpareItem,
@@ -80,6 +81,20 @@ class ConcernSolutionForm(BootstrapFormMixin, forms.ModelForm):
         fields = ['concern']
         widgets = {
             'concern': forms.Textarea(attrs={'rows': 2}),
+        }
+
+
+class SpareShopForm(BootstrapFormMixin, forms.ModelForm):
+    """
+    Form for creating / editing a SpareShop entry.
+    """
+    class Meta:
+        model = SpareShop
+        fields = ['name', 'phone', 'address']
+        labels = {
+            'name': 'Shop Name',
+            'phone': 'Phone (optional)',
+            'address': 'Address (optional)',
         }
 
 
@@ -180,9 +195,9 @@ JobCardSpareFormSet = inlineformset_factory(
             'class': 'form-control text-center',
             'placeholder': 'Qty'
         }),
-        'shop_name': forms.TextInput(attrs={
-            'class': 'form-control',
-            'placeholder': 'Shop Name'
+        'shop_name': forms.Select(attrs={
+            'class': 'form-select form-select-sm shop-name-select',
+            'style': 'min-width: 130px;',
         }),
         'status': forms.Select(attrs={
             'class': 'form-select form-select-sm status-dropdown',

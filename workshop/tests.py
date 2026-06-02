@@ -3,7 +3,7 @@ from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
-from .models import UserSession, FailedAttempt, JobCard, CarBrand, CarModel
+from .models import UserSession, FailedAttempt, JobCard, CarBrand, CarModel, SpareShop, SpareShopPayment, JobCardSpareItem
 from .auth_views import (
     normalize_phone, mask_phone, get_client_ip, 
     get_owner_mobile, get_owner_username_by_mobile
@@ -196,3 +196,66 @@ class AuthHelperTests(TestCase):
         # Proxied IP
         request.META['HTTP_X_FORWARDED_FOR'] = '2.2.2.2, 1.1.1.1'
         self.assertEqual(get_client_ip(request), '2.2.2.2')
+
+class SpareShopPaymentTests(TestCase):
+    """
+    Tests the payment system for Spare Shops, ensuring the cascade algorithm
+    works properly and that custom fields (like notes) are handled safely.
+    """
+    def setUp(self):
+        self.shop = SpareShop.objects.create(name='Test Auto Parts')
+        self.brand = CarBrand.objects.create(name='Ford')
+        self.car_model = CarModel.objects.create(brand=self.brand, name='Mustang')
+        self.job = JobCard.objects.create(
+            registration_number='DL01AA1111',
+            brand_name='Ford',
+            model_name='Mustang',
+            admitted_date=timezone.now().date()
+        )
+        # Create an unpaid spare item for this shop
+        self.item1 = JobCardSpareItem.objects.create(
+            job_card=self.job,
+            shop=self.shop,
+            spare_part_name='Brake Pads',
+            quantity=1,
+            unit_price=2500,
+            shop_paid_amount=0
+        )
+        self.item2 = JobCardSpareItem.objects.create(
+            job_card=self.job,
+            shop=self.shop,
+            spare_part_name='Engine Oil',
+            quantity=1,
+            unit_price=1000,
+            shop_paid_amount=0
+        )
+
+        self.office_group, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='officetest', password='password')
+        self.user.groups.add(self.office_group)
+        self.client = Client()
+        self.client.login(username='officetest', password='password')
+
+    def test_bulk_payment_cascade(self):
+        """Verify that a bulk payment cascades correctly and saves notes."""
+        url = reverse('spare_shop_pay', args=[self.shop.pk])
+        response = self.client.post(url, {
+            'lump_sum': '3000',
+            'payment_method': 'UPI',
+            'note': 'Handed to Mohammed directly'
+        })
+        self.assertEqual(response.status_code, 302)  # Redirects back to detail
+
+        # Check that items were paid (item1 needs 2500, so it gets 2500. item2 gets 500)
+        self.item1.refresh_from_db()
+        self.item2.refresh_from_db()
+        self.assertEqual(self.item1.shop_paid_amount, 2500)
+        self.assertEqual(self.item2.shop_paid_amount, 500)
+
+        # Verify the payment record and the new note field
+        payment = SpareShopPayment.objects.get(shop=self.shop)
+        self.assertEqual(payment.amount, 3000)
+        self.assertEqual(payment.payment_method, 'UPI')
+        self.assertEqual(payment.note, 'Handed to Mohammed directly')
+        self.assertEqual(payment.items_affected, 2)
+

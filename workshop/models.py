@@ -198,6 +198,26 @@ class ConcernSolution(models.Model):
         return f"{self.concern[:50]}..."
 
 
+class SpareShop(models.Model):
+    """
+    Master list of spare parts suppliers/shops.
+    Used for financial tracking of what the workshop owes to each shop.
+    Listed shops appear in the Job Card spare-parts dropdown.
+    The cascade payment algorithm distributes lump-sum payments oldest-invoice-first.
+    """
+    name = models.CharField(max_length=150, unique=True, db_index=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    address = models.CharField(max_length=300, blank=True, null=True)
+    is_trashed = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 # -----------------------------------------------------------------------------
 # 2. JOB CARD SECTION MODELS
 # These handle the daily work. loosely coupled to Study models via text fields.
@@ -462,8 +482,10 @@ class JobCardSpareItem(models.Model):
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Shop price (cost)")
     total_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Customer price (with markup)")
     
-    # Order tracking (NEW)
-    shop_name = models.CharField(max_length=100, blank=True, null=True, help_text="Shop where part was ordered")
+    # Order tracking
+    shop_name = models.CharField(max_length=100, blank=True, null=True, help_text="Shop where part was ordered (text copy for display)")
+    shop = models.ForeignKey('SpareShop', on_delete=models.SET_NULL, null=True, blank=True, related_name='spare_items', help_text="Linked SpareShop profile")
+    shop_paid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Amount paid to this shop for this specific item")
     ordered_date = models.DateField(blank=True, null=True, help_text="Auto-filled when status → ORDERED")
     received_date = models.DateField(blank=True, null=True, help_text="Auto-filled when status → RECEIVED")
 
@@ -547,6 +569,34 @@ class BulkPaymentHistory(models.Model):
 
     def __str__(self):
         return f"₹{self.amount} → {self.bulk_payer.customer_name} ({self.created_at:%d %b %Y})"
+
+
+class SpareShopPayment(models.Model):
+    """
+    Audit trail for every payment made to a spare shop.
+    Supports both individual item (Pay Now) and lump-sum cascade payments.
+    Each record stores a JSON snapshot so it can be fully reversed by the Owner.
+    """
+    PAYMENT_METHODS = [
+        ('CASH', 'Cash'),
+        ('UPI', 'UPI'),
+        ('CARD', 'Card'),
+        ('TRANSFER', 'Bank Transfer'),
+    ]
+    shop = models.ForeignKey(SpareShop, on_delete=models.CASCADE, related_name='payments')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='CASH')
+    note = models.CharField(max_length=255, blank=True, null=True, help_text="Optional description or reference")
+    items_affected = models.PositiveIntegerField(default=0)
+    details = models.TextField(blank=True, help_text="JSON snapshot of which items received how much")
+    is_trashed = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"₹{self.amount} → {self.shop.name} ({self.created_at:%d %b %Y})"
 
 
 @receiver(user_logged_out)

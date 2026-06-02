@@ -1,0 +1,496 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% block title %}{{ shop.name }} — Spare Shop{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Page-level tokens ── */
+  .detail-header {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+    color: #fff;
+  }
+  .stat-box {
+    text-align: center;
+    padding: 0.6rem 1rem;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.07);
+    flex: 1;
+    min-width: 80px;
+  }
+  .stat-box .s-label { font-size: 0.65rem; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-box .s-val { font-size: 1.05rem; font-weight: 700; }
+  .balance-big { font-size: 1.4rem; font-weight: 800; color: #f87171; }
+  .balance-ok  { color: #4ade80 !important; }
+
+  /* ── Items table ── */
+  .items-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); border-bottom: 2px solid var(--color-border); }
+  .items-table td { font-size: 0.85rem; vertical-align: middle; }
+  .paid-badge { background: #f0fdf4; color: #16a34a; border-radius: 8px; padding: 0.2rem 0.55rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+  .unpaid-badge { background: #fef2f2; color: #dc2626; border-radius: 8px; padding: 0.2rem 0.55rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+  .partial-badge { background: #fffbeb; color: #d97706; border-radius: 8px; padding: 0.2rem 0.55rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+
+  /* ── Payment history ── */
+  .history-row { border-bottom: 1px solid var(--color-border-light); }
+  .history-row:last-child { border-bottom: none; }
+
+  /* ── Pay Now modal ── */
+  .pay-method-btn { border-radius: 8px; padding: 0.4rem 0.8rem; font-size: 0.82rem; }
+  .pay-method-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+  /* ── Form Optimizations ── */
+  .form-control::placeholder { font-weight: 400 !important; color: #a1a1aa !important; font-size: 0.9rem !important; }
+</style>
+
+<!-- ── Back breadcrumb ── -->
+<div class="mb-3">
+  <a href="{% url 'spare_shop_list' %}" class="text-muted text-decoration-none small">
+    <i class="bi bi-arrow-left me-1"></i> All Spare Shops
+  </a>
+</div>
+
+<!-- ── Header Card ── -->
+<div class="detail-header mb-3">
+  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+      <div class="fw-bold" style="font-size: 1.25rem;">{{ shop.name }}</div>
+      {% if shop.phone %}<div style="color: rgba(255,255,255,0.6); font-size: 0.82rem;"><i class="bi bi-telephone me-1"></i>{{ shop.phone }}</div>{% endif %}
+      {% if shop.address %}<div style="color: rgba(255,255,255,0.6); font-size: 0.82rem;"><i class="bi bi-geo-alt me-1"></i>{{ shop.address }}</div>{% endif %}
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-info rounded-pill px-3" data-bs-toggle="offcanvas" data-bs-target="#paymentHistoryOffcanvas" style="font-size: 0.8rem;">
+        <i class="bi bi-clock-history"></i> Payments ({{ pay_count }})
+      </button>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-light rounded-circle border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1);">
+          <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px; font-size: 0.85rem;">
+          <li>
+            <button class="dropdown-item py-2" data-bs-toggle="modal" data-bs-target="#editShopModal">
+              <i class="bi bi-pencil me-2 text-primary"></i> Edit Shop
+            </button>
+          </li>
+          {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <form method="post" action="{% url 'spare_shop_delete' shop.pk %}" onsubmit="confirmSubmit(event, 'Move {{ shop.name|escapejs }} to trash?', this, 'danger', 'bi-trash3-fill');">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item py-2 text-danger fw-bold">
+                <i class="bi bi-trash3 me-2"></i> Move to Trash
+              </button>
+            </form>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grand Stats -->
+  <div class="d-flex gap-2 flex-wrap">
+    <div class="stat-box">
+      <div class="s-label">Total Purchased</div>
+      <div class="s-val">₹{{ total_purchases|floatformat:0 }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="s-label">Total Paid</div>
+      <div class="s-val" style="color: #4ade80;">₹{{ total_paid|floatformat:0 }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="s-label">Balance Owed</div>
+      <div class="s-val balance-big {% if total_balance <= 0 %}balance-ok{% endif %}">₹{{ total_balance|floatformat:0 }}</div>
+    </div>
+    <div class="stat-box">
+      <div class="s-label">Items</div>
+      <div class="s-val">{{ item_count }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk Payment Form ── -->
+{% if total_balance > 0 %}
+<div class="card border-0 shadow-sm mb-3" style="border-radius: 14px; border-left: 4px solid var(--color-primary) !important;">
+  <div class="card-body p-3">
+    <h6 class="fw-bold mb-3"><i class="bi bi-cash-stack me-2 text-primary"></i>Make a Bulk Payment</h6>
+    <form method="post" action="{% url 'spare_shop_pay' shop.pk %}">
+      {% csrf_token %}
+      <div class="d-flex gap-2 flex-wrap align-items-end">
+        <div style="flex: 2; min-width: 130px;">
+          <label class="form-label small text-muted mb-1">Amount (₹)</label>
+          <input type="number" name="lump_sum" class="form-control fw-bold"
+                 placeholder="Bulk Amount" min="1" step="1" required
+                 style="font-size: 1.1rem;">
+        </div>
+        <div style="flex: 1; min-width: 120px;">
+          <label class="form-label small text-muted mb-1">Method</label>
+          <select name="payment_method" class="form-select">
+            <option value="CASH">💵 Cash</option>
+            <option value="UPI">📱 UPI</option>
+            <option value="CARD">💳 Card</option>
+            <option value="TRANSFER">🏦 Transfer</option>
+          </select>
+        </div>
+        <div style="flex: 2; min-width: 150px;">
+          <label class="form-label small text-muted mb-1">Note (Optional)</label>
+          <input type="text" name="note" class="form-control" placeholder="Description/Note">
+        </div>
+        <div>
+          <button type="submit" class="btn btn-primary fw-bold rounded-pill px-4"
+                  onclick="confirmSubmit(event, 'Pay <strong class=\'text-success\'>₹' + this.form.lump_sum.value + '</strong> to {{ shop.name|escapejs }}?', this.form, 'success', 'bi-cash-stack');">
+            <i class="bi bi-send-fill me-1"></i> Pay
+          </button>
+        </div>
+      </div>
+      <div class="mt-2">
+        <small class="text-muted">
+          <i class="bi bi-info-circle me-1"></i>
+          Amount will cascade oldest items first. Max outstanding: ₹{{ total_balance|floatformat:0 }}
+        </small>
+      </div>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-success border-0 mb-3" style="border-radius: 12px;">
+  <i class="bi bi-check-circle-fill me-2"></i>
+  <strong>All Clear!</strong> No outstanding balance for {{ shop.name }}.
+</div>
+{% endif %}
+
+
+<!-- ── Purchase Items Table ── -->
+<div class="card border-0 shadow-sm mb-3" style="border-radius: 14px;">
+  <div class="card-header bg-white border-0 pb-0 pt-3 px-3">
+    <h6 class="fw-bold mb-0"><i class="bi bi-receipt me-2 text-muted"></i>Purchase History ({{ item_count }} item{{ item_count|pluralize }})</h6>
+  </div>
+  <div class="card-body p-0">
+    {% if items %}
+    <div class="table-responsive">
+      <table class="table table-borderless align-middle mb-0 items-table text-nowrap">
+        <thead>
+          <tr class="border-bottom" style="background: var(--color-border-light);">
+            <th class="ps-3">Date</th>
+            <th>Job Card</th>
+            <th>Vehicle</th>
+            <th>Part</th>
+            <th class="text-end">Qty</th>
+            <th class="text-end">Shop Price</th>
+            <th class="text-end">Paid</th>
+            <th class="text-center">Status</th>
+            <th class="pe-3 text-center">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          {% with balance=item.item_balance %}
+          <tr class="border-bottom" style="border-color: var(--color-border-light) !important;">
+            <td class="ps-3 text-muted" style="white-space: nowrap;">
+              {{ item.job_card.admitted_date|date:"d/m/Y" }}
+            </td>
+            <td>
+              <a href="{% url 'jobcard_edit' item.job_card.pk %}" class="text-decoration-none fw-bold text-primary" style="font-size: 0.8rem;">
+                {{ item.job_card.bill_number|default:item.job_card.pk }}
+              </a>
+            </td>
+            <td style="white-space: nowrap;">
+              <div class="d-flex align-items-center flex-nowrap">
+                <span class="fw-bold text-dark me-2" style="font-size: 0.82rem;">{{ item.job_card.brand_name }} {{ item.job_card.model_name }}</span>
+                {% if item.job_card.car_color %}
+                <span class="rounded-circle border shadow-sm me-2" 
+                      style="width: 10px; height: 10px; display: inline-block; background-color: {{ item.job_card.get_car_color_hex }}; border-color: rgba(0,0,0,0.1) !important;"
+                      title="{{ item.job_card.get_car_color_display }}"></span>
+                {% endif %}
+                <span class="badge" style="background: var(--color-border-light); color: var(--color-text); font-size: 0.75rem; padding: 0.3rem 0.5rem; letter-spacing: 0.5px;">
+                  {{ item.job_card.registration_number }}
+                </span>
+              </div>
+            </td>
+            <td class="fw-medium">{{ item.spare_part_name|default:"—" }}</td>
+            <td class="text-end text-muted">{% if item.quantity %}{{ item.quantity|floatformat:"-2" }}{% else %}—{% endif %}</td>
+            <td class="text-end fw-bold">
+              {% if item.unit_price %}₹{{ item.unit_price|floatformat:0 }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-end" style="color: var(--color-success);">
+              {% if item.shop_paid_amount > 0 %}₹{{ item.shop_paid_amount|floatformat:0 }}{% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if not item.unit_price %}
+                <span class="unpaid-badge">No Price</span>
+              {% elif balance <= 0 %}
+                <span class="paid-badge">✓ Paid</span>
+              {% elif item.shop_paid_amount > 0 %}
+                <span class="partial-badge">Partial</span>
+              {% else %}
+                <span class="unpaid-badge">Unpaid</span>
+              {% endif %}
+            </td>
+            <td class="pe-3 text-center">
+              {% if item.unit_price and balance > 0 %}
+              <button class="btn btn-sm btn-outline-success rounded-pill"
+                      style="font-size: 0.72rem; padding: 0.2rem 0.6rem;"
+                      data-bs-toggle="modal"
+                      data-bs-target="#payNowModal"
+                      data-item-pk="{{ item.pk }}"
+                      data-part="{{ item.spare_part_name|default:'item' }}"
+                      data-balance="{{ balance|floatformat:0 }}"
+                      data-pay-url="{% url 'spare_shop_pay_item' shop.pk item.pk %}">
+                Pay ₹{{ balance|floatformat:0 }}
+              </button>
+              {% elif item.unit_price and balance <= 0 %}
+              <span class="text-muted" style="font-size: 0.75rem;">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endwith %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="d-flex justify-content-center py-3">
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          {% if page_obj.has_previous %}
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>
+          {% endif %}
+          <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+          {% if page_obj.has_next %}
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-inbox" style="font-size: 2.5rem; opacity: 0.3;"></i>
+      <p class="mt-2 small">No spare items linked to this shop yet.</p>
+      <p class="small text-muted">Select <strong>{{ shop.name }}</strong> in a Job Card's spare parts shop dropdown to link items here automatically.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- PAYMENT HISTORY OFFCANVAS                                    -->
+<!-- ============================================================ -->
+<div class="offcanvas offcanvas-end shadow" tabindex="-1" id="paymentHistoryOffcanvas" style="width: 400px; border-left: none;">
+  <div class="offcanvas-header bg-light border-bottom">
+    <h6 class="offcanvas-title fw-bold"><i class="bi bi-clock-history me-2 text-primary"></i>Payment History</h6>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body p-0">
+    {% if pay_page_obj %}
+      {% for pay in pay_page_obj %}
+      <div class="px-3 py-3 border-bottom d-flex justify-content-between align-items-center">
+        <div>
+          <div class="fw-bold" style="font-size: 1.1rem;">₹{{ pay.amount|floatformat:0 }}</div>
+          <div class="text-muted" style="font-size: 0.75rem;">
+            {{ pay.created_at|date:"d/m/Y, g:i A" }}<br>
+            {{ pay.get_payment_method_display }} · {{ pay.items_affected }} item{{ pay.items_affected|pluralize }}
+            {% if pay.note %}<br><i class="bi bi-chat-text me-1"></i>{{ pay.note }}{% endif %}
+          </div>
+        </div>
+        {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+        <div class="dropdown">
+          <button class="btn btn-link text-muted p-0 text-decoration-none" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-three-dots-vertical" style="font-size: 1.2rem;"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px; min-width: 150px;">
+            <li>
+              <form method="post" action="{% url 'spare_shop_payment_reverse' shop.pk pay.pk %}"
+                    onsubmit="confirmSubmit(event, 'Reverse this <strong class=\'text-success\'>₹{{ pay.amount|floatformat:0 }}</strong> payment?<br><small>This will subtract the paid amounts from the affected items.</small>', this, 'warning', 'bi-arrow-counterclockwise');">
+                {% csrf_token %}
+                <button type="submit" class="dropdown-item py-2 text-danger fw-bold small">
+                  <i class="bi bi-arrow-counterclockwise me-2"></i> Reverse
+                </button>
+              </form>
+            </li>
+          </ul>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      <!-- Offcanvas Pagination -->
+      {% if pay_page_obj.has_other_pages %}
+      <div class="d-flex justify-content-center py-3 bg-light">
+        <nav>
+          <ul class="pagination pagination-sm mb-0">
+            {% if pay_page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.previous_page_number }}">‹</a></li>
+            {% endif %}
+            <li class="page-item disabled"><span class="page-link">{{ pay_page_obj.number }} / {{ pay_page_obj.paginator.num_pages }}</span></li>
+            {% if pay_page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.next_page_number }}">›</a></li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="text-center py-5 text-muted">
+        <i class="bi bi-receipt" style="font-size: 2rem; opacity: 0.3;"></i>
+        <p class="mt-2 small">No payments made yet.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- GENERIC CONFIRMATION MODAL                                   -->
+<!-- ============================================================ -->
+<div class="modal fade" id="confirmActionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 340px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-body text-center p-4">
+        <i id="confirmActionIcon" class="bi bi-exclamation-triangle-fill text-warning mb-3" style="font-size: 3rem;"></i>
+        <h5 class="fw-bold mb-2">Are you sure?</h5>
+        <p class="text-muted small mb-4" id="confirmActionMsg">This action cannot be undone.</p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary fw-bold rounded-pill px-4" id="confirmActionBtn">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- PAY NOW MODAL (Individual Item)                              -->
+<!-- ============================================================ -->
+<div class="modal fade" id="payNowModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 340px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold"><i class="bi bi-cash me-2 text-success"></i>Pay Now</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="payNowForm" method="post" action="">
+        {% csrf_token %}
+        <div class="modal-body">
+          <p class="text-muted small mb-1">Paying for:</p>
+          <p class="fw-bold mb-1" id="payNowPartName">—</p>
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="text-muted small">Amount:</span>
+            <span class="fw-bold text-success" id="payNowAmount" style="font-size: 1.1rem;">₹—</span>
+          </div>
+          <label class="form-label small text-muted fw-bold">Payment Method</label>
+          <select name="payment_method" class="form-select">
+            <option value="CASH">💵 Cash</option>
+            <option value="UPI">📱 UPI</option>
+            <option value="CARD">💳 Card</option>
+            <option value="TRANSFER">🏦 Transfer</option>
+          </select>
+          <div class="mt-3">
+            <label class="form-label small text-muted fw-bold">Note (Optional)</label>
+            <input type="text" name="note" class="form-control" placeholder="Description/Note">
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success fw-bold rounded-pill px-4">Confirm Pay</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- EDIT SHOP MODAL                                              -->
+<!-- ============================================================ -->
+<div class="modal fade" id="editShopModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 360px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold"><i class="bi bi-pencil me-2 text-primary"></i>Edit Shop</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'spare_shop_edit' shop.pk %}">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small text-muted fw-bold">Shop Name *</label>
+            <input type="text" name="name" class="form-control" value="{{ shop.name }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small text-muted">Phone</label>
+            <input type="text" name="phone" class="form-control" value="{{ shop.phone|default:'' }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-muted">Address</label>
+            <input type="text" name="address" class="form-control" value="{{ shop.address|default:'' }}">
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary fw-bold rounded-pill px-4">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Global form confirmation logic
+  let formToSubmit = null;
+  let confirmActionModalInstance = null;
+
+  function confirmSubmit(event, message, formElement, theme='warning', icon='bi-exclamation-triangle-fill') {
+    event.preventDefault();
+    if (!confirmActionModalInstance) {
+      confirmActionModalInstance = new bootstrap.Modal(document.getElementById('confirmActionModal'));
+    }
+    document.getElementById('confirmActionMsg').innerHTML = message;
+    document.getElementById('confirmActionIcon').className = `bi ${icon} text-${theme} mb-3`;
+    document.getElementById('confirmActionBtn').className = `btn btn-${theme} fw-bold rounded-pill px-4`;
+    formToSubmit = formElement;
+    confirmActionModalInstance.show();
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    // Wire the Confirm Action modal button
+    const confirmBtn = document.getElementById('confirmActionBtn');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', function() {
+        if (formToSubmit) {
+          formToSubmit.submit();
+        }
+      });
+    }
+
+    // Auto-open Payment History offcanvas if paginating
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('pay_page')) {
+      const offcanvasEl = document.getElementById('paymentHistoryOffcanvas');
+      if (offcanvasEl) {
+        const offcanvas = new bootstrap.Offcanvas(offcanvasEl);
+        offcanvas.show();
+      }
+    }
+
+    // Wire the Pay Now modal dynamically
+    const payNowModal = document.getElementById('payNowModal');
+    if (payNowModal) {
+      payNowModal.addEventListener('show.bs.modal', function (event) {
+        const btn = event.relatedTarget;
+        const form = document.getElementById('payNowForm');
+        form.action = btn.getAttribute('data-pay-url');
+        document.getElementById('payNowPartName').textContent = btn.getAttribute('data-part');
+        document.getElementById('payNowAmount').textContent = '₹' + btn.getAttribute('data-balance');
+      });
+    }
+  });
+</script>
+
+{% endblock %}
