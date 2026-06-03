@@ -1425,7 +1425,7 @@ def spare_shop_list(request):
         SpareShop.objects.filter(is_trashed=False)
         .annotate(
             total_purchases=Coalesce(
-                Sum('spare_items__unit_price'),
+                Sum(ExpressionWrapper(F('spare_items__unit_price') * Coalesce(F('spare_items__quantity'), Value(1, output_field=DecimalField())), output_field=DecimalField())),
                 Value(0, output_field=DecimalField())
             ),
             total_paid=Coalesce(
@@ -1552,7 +1552,7 @@ def spare_shop_detail(request, pk):
 
     # Grand totals (pure SQL)
     totals = items_qs.aggregate(
-        total_purchases=Coalesce(Sum('unit_price'), Value(Decimal('0')), output_field=DecimalField()),
+        total_purchases=Coalesce(Sum(ExpressionWrapper(F('unit_price') * Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField())), output_field=DecimalField())), Value(Decimal('0'), output_field=DecimalField()), output_field=DecimalField()),
         total_paid=Coalesce(Sum('shop_paid_amount'), Value(Decimal('0')), output_field=DecimalField()),
     )
     total_purchases = totals['total_purchases']
@@ -1563,7 +1563,7 @@ def spare_shop_detail(request, pk):
     # Annotate per-item balance for the template
     items_qs = items_qs.annotate(
         item_balance=ExpressionWrapper(
-            Coalesce(F('unit_price'), Value(Decimal('0'), output_field=DecimalField())) - F('shop_paid_amount'),
+            (Coalesce(F('unit_price'), Value(Decimal('0'), output_field=DecimalField())) * Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField()))) - F('shop_paid_amount'),
             output_field=DecimalField()
         )
     )
@@ -1627,7 +1627,7 @@ def spare_shop_pay(request, pk):
             .exclude(unit_price__isnull=True)
             .annotate(
                 item_balance=ExpressionWrapper(
-                    F('unit_price') - F('shop_paid_amount'),
+                    (F('unit_price') * Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField()))) - F('shop_paid_amount'),
                     output_field=DecimalField()
                 )
             )
@@ -1637,7 +1637,7 @@ def spare_shop_pay(request, pk):
 
         total_outstanding = pending_items.aggregate(
             total=Coalesce(
-                Sum(ExpressionWrapper(F('unit_price') - F('shop_paid_amount'), output_field=DecimalField())),
+                Sum(ExpressionWrapper((F('unit_price') * Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField()))) - F('shop_paid_amount'), output_field=DecimalField())),
                 Value(Decimal('0'), output_field=DecimalField())
             )
         )['total']
@@ -1653,7 +1653,7 @@ def spare_shop_pay(request, pk):
         for item in pending_items:
             if remaining <= 0:
                 break
-            balance = item.unit_price - item.shop_paid_amount
+            balance = (item.unit_price * (item.quantity or Decimal('1'))) - item.shop_paid_amount
             if balance <= 0:
                 continue
 
@@ -1708,15 +1708,17 @@ def spare_shop_pay_item(request, shop_pk, item_pk):
     note = request.POST.get('note', '').strip()
 
     unit_price = item.unit_price or Decimal('0')
+    qty = item.quantity or Decimal('1')
+    total_cost = unit_price * qty
     already_paid = item.shop_paid_amount or Decimal('0')
-    pay_now = unit_price - already_paid
+    pay_now = total_cost - already_paid
 
     if pay_now <= 0:
         messages.info(request, "This item is already fully paid.")
         return redirect('spare_shop_detail', pk=shop_pk)
 
     with transaction.atomic():
-        item.shop_paid_amount = unit_price
+        item.shop_paid_amount = total_cost
         item.save(update_fields=['shop_paid_amount'])
 
         SpareShopPayment.objects.create(

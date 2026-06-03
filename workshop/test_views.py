@@ -170,5 +170,5 @@ class WorkshopViewTests(TestCase):
         self.jobcard.save()
         
         url = reverse('delivered_list')
-        response = self.client.get(url, {'q': 'KL01AB1111'})
+        response = self.client.get(url, {'q': 'KL01AB1111', 'filter': 'all'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertContains(response, 'KL01AB1111')
