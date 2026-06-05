@@ -94,24 +94,25 @@
     <i class="bi bi-arrow-left me-1"></i> All Spare Shops
   </a>
 
-  <!-- Filter Dropdown -->
-  <div class="dropdown">
-      <button id="filterDropdownBtn" class="shop-filter-btn" type="button" data-bs-toggle="dropdown">
-          <i class="bi bi-funnel"></i>
-          <span id="filterLabel">
-              {% if filter_type == 'month' %}1 Month
-              {% elif filter_type == 'year' %}1 Year
-              {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
-              {% else %}All Time{% endif %}
-          </span>
-          <i class="bi bi-chevron-down"></i>
-      </button>
-      <ul class="dropdown-menu dropdown-menu-end shop-dropdown-menu">
-          <li><a class="dropdown-item {% if filter_type == 'all' or not filter_type %}active{% endif %}" href="?filter=all">All Time</a></li>
-          <li><a class="dropdown-item {% if filter_type == 'month' %}active{% endif %}" href="?filter=month">1 Month</a></li>
-          <li><a class="dropdown-item {% if filter_type == 'year' %}active{% endif %}"  href="?filter=year">1 Year</a></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><a id="customRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">Custom Range</a></li>
+  <div class="d-flex align-items-center gap-2">
+    <!-- Filter Dropdown -->
+    <div class="dropdown">
+        <button id="filterDropdownBtn" class="shop-filter-btn" type="button" data-bs-toggle="dropdown">
+            <i class="bi bi-funnel"></i>
+            <span id="filterLabel">
+                {% if filter_type == 'month' %}1 Month
+                {% elif filter_type == 'year' %}1 Year
+                {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date|date:"d M y" }} – {{ end_date|date:"d M y" }}{% else %}Custom{% endif %}
+                {% else %}All Time{% endif %}
+            </span>
+            <i class="bi bi-chevron-down"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shop-dropdown-menu">
+            <li><a class="dropdown-item {% if filter_type == 'all' or not filter_type %}active{% endif %}" href="?filter=all">All Time</a></li>
+            <li><a class="dropdown-item {% if filter_type == 'month' %}active{% endif %}" href="?filter=month">1 Month</a></li>
+            <li><a class="dropdown-item {% if filter_type == 'year' %}active{% endif %}"  href="?filter=year">1 Year</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a id="customRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">Custom Range</a></li>
           <li id="customDatePicker"
               style="display: {% if filter_type == 'custom' %}block{% else %}none{% endif %};"
               onclick="event.stopPropagation()">
@@ -128,6 +129,7 @@
           </li>
       </ul>
   </div>
+</div>
 </div>
 
 <!-- ── Header Card ── -->
@@ -242,41 +244,62 @@
 
 <!-- ── Purchase Items Table ── -->
 <div class="card border-0 shadow-sm mb-3" style="border-radius: 14px;">
-  <div class="card-header bg-white border-0 pb-0 pt-3 px-3">
+  <div class="card-header bg-white border-0 pb-0 pt-3 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
     <h6 class="fw-bold mb-0"><i class="bi bi-receipt me-2 text-muted"></i>Purchase History ({{ item_count }} item{{ item_count|pluralize }})</h6>
+    
+    <div class="d-flex align-items-center gap-2">
+      <!-- Print Button -->
+      <a href="{% url 'spare_shop_print' shop.pk %}?sort_by={{ sort_by }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}" 
+         class="btn btn-sm btn-outline-secondary rounded-pill fw-bold border" 
+         style="font-size: 0.75rem; padding: 0.25rem 0.8rem;">
+         <i class="bi bi-printer-fill me-1"></i> Print
+      </a>
+
+      <!-- Sort Toggle -->
+      <div class="btn-group btn-group-sm border rounded-pill overflow-hidden shadow-sm" style="background: var(--color-bg);">
+        <a href="?sort_by=received&page=1&pay_page={{ pay_page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}" 
+           class="btn {% if sort_by != 'ordered' %}btn-primary fw-bold text-white{% else %}btn-light text-muted{% endif %} border-0 px-3"
+           style="font-size: 0.75rem;">Received Date</a>
+        <a href="?sort_by=ordered&page=1&pay_page={{ pay_page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}" 
+           class="btn {% if sort_by == 'ordered' %}btn-primary fw-bold text-white{% else %}btn-light text-muted{% endif %} border-0 px-3"
+           style="font-size: 0.75rem;">Ordered Date</a>
+      </div>
+    </div>
   </div>
   <div class="card-body p-0">
     {% if items %}
+    {% regroup items by group_date as grouped_items %}
+    
     <div class="table-responsive">
       <table class="table table-borderless align-middle mb-0 items-table text-nowrap">
         <thead>
-          <tr class="border-bottom" style="background: var(--color-border-light);">
-            <th class="ps-3">Date</th>
-            <th>Job Card</th>
-            <th>Vehicle</th>
-            <th>Part</th>
-            <th class="text-end">Qty</th>
-            <th class="text-end">Shop Price</th>
-            <th class="text-end">Paid</th>
-            <th class="text-center">Status</th>
-            <th class="pe-3 text-center">Action</th>
+          <tr class="border-bottom text-muted" style="background: rgba(0,0,0,0.02); font-size: 0.75rem; letter-spacing: 0.5px;">
+            <th class="ps-3 text-uppercase">Vehicle</th>
+            <th class="text-uppercase">Part</th>
+            <th class="text-end text-uppercase">Qty</th>
+            <th class="text-end text-uppercase">Shop Price</th>
+            <th class="text-center text-uppercase">{% if sort_by == 'ordered' %}Received Date{% else %}Ordered Date{% endif %}</th>
+            <th class="text-uppercase">Job Card</th>
+            <th class="text-end text-uppercase">Paid</th>
+            <th class="text-center text-uppercase">Status</th>
+            <th class="pe-3 text-center text-uppercase">Action</th>
           </tr>
         </thead>
         <tbody>
-          {% for item in items %}
+          {% for group in grouped_items %}
+          <!-- Date Separator Row -->
+          <tr>
+            <td colspan="9" class="py-2 ps-3 text-muted" style="font-size: 0.85rem;">
+              {% if group.grouper %}{{ group.grouper|date:"d/m/Y" }}{% else %}Date Pending{% endif %}
+            </td>
+          </tr>
+          
+          {% for item in group.list %}
           {% with balance=item.item_balance %}
           <tr class="border-bottom" style="border-color: var(--color-border-light) !important;">
-            <td class="ps-3 text-muted" style="white-space: nowrap;">
-              {{ item.job_card.admitted_date|date:"d/m/Y" }}
-            </td>
-            <td>
-              <a href="{% url 'jobcard_edit' item.job_card.pk %}" class="text-decoration-none fw-bold text-primary" style="font-size: 0.8rem;">
-                {{ item.job_card.bill_number|default:item.job_card.pk }}
-              </a>
-            </td>
-            <td style="white-space: nowrap;">
+            <td class="ps-3" style="white-space: nowrap;">
               <div class="d-flex align-items-center flex-nowrap">
-                <span class="fw-bold text-dark me-2" style="font-size: 0.82rem;">{{ item.job_card.brand_name }} {{ item.job_card.model_name }}</span>
+                <span class="fw-bold text-dark me-2" style="font-size: 0.85rem;">{{ item.job_card.brand_name }} {{ item.job_card.model_name }}</span>
                 {% if item.job_card.car_color %}
                 <span class="rounded-circle border shadow-sm me-2" 
                       style="width: 10px; height: 10px; display: inline-block; background-color: {{ item.job_card.get_car_color_hex }}; border-color: rgba(0,0,0,0.1) !important;"
@@ -287,12 +310,24 @@
                 </span>
               </div>
             </td>
-            <td class="fw-medium">{{ item.spare_part_name|default:"—" }}</td>
+            <td class="fw-medium text-dark">{{ item.spare_part_name|default:"—" }}</td>
             <td class="text-end text-muted">{% if item.quantity %}{{ item.quantity|floatformat:"-2" }}{% else %}—{% endif %}</td>
-            <td class="text-end fw-bold">
+            <td class="text-end fw-bold text-dark">
               {% if item.unit_price %}₹{{ item.unit_price|floatformat:0 }}{% else %}<span class="text-muted">—</span>{% endif %}
             </td>
-            <td class="text-end" style="color: var(--color-success);">
+            <td class="text-center text-muted" style="font-size: 0.85rem;">
+              {% if sort_by == 'ordered' %}
+                {{ item.received_date|date:"d/m/Y"|default:"—" }}
+              {% else %}
+                {{ item.ordered_date|date:"d/m/Y"|default:"—" }}
+              {% endif %}
+            </td>
+            <td>
+              <a href="{% url 'jobcard_edit' item.job_card.pk %}" class="text-decoration-none fw-bold text-primary" style="font-size: 0.85rem;">
+                {{ item.job_card.bill_number|default:item.job_card.pk }}
+              </a>
+            </td>
+            <td class="text-end fw-bold" style="color: var(--color-success);">
               {% if item.shop_paid_amount > 0 %}₹{{ item.shop_paid_amount|floatformat:0 }}{% else %}—{% endif %}
             </td>
             <td class="text-center">
@@ -325,6 +360,7 @@
           </tr>
           {% endwith %}
           {% endfor %}
+          {% endfor %}
         </tbody>
       </table>
     </div>
@@ -335,11 +371,11 @@
       <nav>
         <ul class="pagination pagination-sm mb-0">
           {% if page_obj.has_previous %}
-          <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&pay_page={{ pay_page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">‹</a></li>
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&sort_by={{ sort_by }}&pay_page={{ pay_page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">‹</a></li>
           {% endif %}
           <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
           {% if page_obj.has_next %}
-          <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&pay_page={{ pay_page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">›</a></li>
+          <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&sort_by={{ sort_by }}&pay_page={{ pay_page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">›</a></li>
           {% endif %}
         </ul>
       </nav>
@@ -404,11 +440,11 @@
         <nav>
           <ul class="pagination pagination-sm mb-0">
             {% if pay_page_obj.has_previous %}
-            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.previous_page_number }}&page={{ page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">‹</a></li>
+            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.previous_page_number }}&page={{ page_obj.number|default:1 }}&sort_by={{ sort_by }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}&open_pay=1">‹</a></li>
             {% endif %}
             <li class="page-item disabled"><span class="page-link">{{ pay_page_obj.number }} / {{ pay_page_obj.paginator.num_pages }}</span></li>
             {% if pay_page_obj.has_next %}
-            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.next_page_number }}&page={{ page_obj.number|default:1 }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}">›</a></li>
+            <li class="page-item"><a class="page-link" href="?pay_page={{ pay_page_obj.next_page_number }}&page={{ page_obj.number|default:1 }}&sort_by={{ sort_by }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}&open_pay=1">›</a></li>
             {% endif %}
           </ul>
         </nav>
@@ -547,9 +583,9 @@
       });
     }
 
-    // Auto-open Payment History offcanvas if paginating
+    // Auto-open Payment History offcanvas if paginating inside it
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('pay_page')) {
+    if (urlParams.has('open_pay')) {
       const offcanvasEl = document.getElementById('paymentHistoryOffcanvas');
       if (offcanvasEl) {
         const offcanvas = new bootstrap.Offcanvas(offcanvasEl);
@@ -579,9 +615,11 @@
         });
     }
 
-    // Smart Reset: Clear URL parameters so a manual page refresh resets back to Default
+    // Smart Reset: Only strip the 'open_pay' helper param so filters survive a browser refresh
     if (window.history.replaceState && window.location.search) {
-        window.history.replaceState({}, '', window.location.pathname);
+        const url = new URL(window.location);
+        url.searchParams.delete('open_pay');
+        window.history.replaceState({}, '', url.toString());
     }
   });
 </script>

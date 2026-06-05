@@ -57,6 +57,7 @@ urlpatterns = [
     path('spare-shops/<int:pk>/restore/', views.spare_shop_restore, name='spare_shop_restore'),
     path('spare-shops/<int:pk>/permanent-delete/', views.spare_shop_permanent_delete, name='spare_shop_permanent_delete'),
     path('spare-shops/payment/<int:payment_pk>/permanent-delete/', views.spare_shop_payment_permanent_delete, name='spare_shop_payment_permanent_delete'),
+    path('spare-shops/<int:pk>/print/', views.spare_shop_print, name='spare_shop_print'),
 
     path('jobcards/<int:pk>/deliver/', views.mark_delivered, name='mark_delivered'),
     path('jobcards/<int:pk>/undo-deliver/', views.undo_delivered, name='undo_delivered'),

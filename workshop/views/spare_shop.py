@@ -1,6 +1,6 @@
 import json
 from decimal import Decimal
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -107,12 +107,19 @@ def spare_shop_detail(request, pk):
     """
     shop = get_object_or_404(SpareShop, pk=pk, is_trashed=False)
 
-    # All spare items from this shop, ordered oldest first (cascade order)
+    # Sort/Group logic
+    sort_by = request.GET.get('sort_by', 'received')
+    group_field = 'ordered_date' if sort_by == 'ordered' else 'received_date'
+
+    # All spare items from this shop, ordered newest first for history display
     items_qs = (
         JobCardSpareItem.objects
         .filter(shop=shop)
         .select_related('job_card')
-        .order_by('job_card__admitted_date', 'pk')
+        .annotate(
+            group_date=Coalesce(group_field, 'job_card__admitted_date')
+        )
+        .order_by('-group_date', '-pk')
     )
 
     payment_qs = shop.payments.filter(is_trashed=False).order_by('-created_at')
@@ -125,19 +132,19 @@ def spare_shop_detail(request, pk):
 
     if filter_type == 'month':
         sd = today - timedelta(days=30)
-        items_qs = items_qs.filter(job_card__admitted_date__gte=sd)
+        items_qs = items_qs.filter(ordered_date__gte=sd)
         payment_qs = payment_qs.filter(created_at__date__gte=sd)
     elif filter_type == 'year':
         sd = today - timedelta(days=365)
-        items_qs = items_qs.filter(job_card__admitted_date__gte=sd)
+        items_qs = items_qs.filter(ordered_date__gte=sd)
         payment_qs = payment_qs.filter(created_at__date__gte=sd)
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
         end_date_str = request.GET.get('end_date', '')
         if start_date_str and end_date_str:
             items_qs = items_qs.filter(
-                job_card__admitted_date__gte=start_date_str,
-                job_card__admitted_date__lte=end_date_str
+                ordered_date__gte=start_date_str,
+                ordered_date__lte=end_date_str
             )
             payment_qs = payment_qs.filter(
                 created_at__date__gte=start_date_str,
@@ -179,6 +186,7 @@ def spare_shop_detail(request, pk):
         'pay_page_obj': pay_page_obj,
         'pay_count': payment_qs.count(),
         'filter_type': filter_type,
+        'sort_by': sort_by,
         'start_date': start_date_str if filter_type == 'custom' else '',
         'end_date': end_date_str if filter_type == 'custom' else '',
     })
@@ -399,3 +407,85 @@ def spare_shop_payment_permanent_delete(request, payment_pk):
         payment.delete()
         messages.success(request, f"Shop payment of ₹{amount:,.0f} permanently deleted.")
     return redirect('/trash/?tab=shop_payments')
+
+
+@office_required
+def spare_shop_print(request, pk):
+    """
+    Print/PDF View: Displays a printer-friendly layout of a spare shop's purchases.
+    Applies the exact same 'Ordered Date' filtering logic as the main detail view.
+    """
+    shop = get_object_or_404(SpareShop, pk=pk, is_trashed=False)
+
+    # Sort logic dynamically matching the main view
+    sort_by = request.GET.get('sort_by', 'received')
+    group_field = 'ordered_date' if sort_by == 'ordered' else 'received_date'
+
+    items_qs = (
+        JobCardSpareItem.objects
+        .filter(shop=shop)
+        .select_related('job_card')
+        .annotate(group_date=Coalesce(group_field, 'job_card__admitted_date'))
+        .order_by('-group_date', '-pk')
+    )
+
+    payment_qs = shop.payments.filter(is_trashed=False)
+
+    # Date Filtering
+    filter_type = request.GET.get('filter', 'all')
+    start_date_str = ''
+    end_date_str = ''
+    today = date.today()
+
+    if filter_type == 'month':
+        sd = today - timedelta(days=30)
+        items_qs = items_qs.filter(ordered_date__gte=sd)
+        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+    elif filter_type == 'year':
+        sd = today - timedelta(days=365)
+        items_qs = items_qs.filter(ordered_date__gte=sd)
+        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+    elif filter_type == 'custom':
+        start_date_str = request.GET.get('start_date', '')
+        end_date_str = request.GET.get('end_date', '')
+        if start_date_str and end_date_str:
+            items_qs = items_qs.filter(
+                ordered_date__gte=start_date_str,
+                ordered_date__lte=end_date_str
+            )
+            payment_qs = payment_qs.filter(
+                created_at__date__gte=start_date_str,
+                created_at__date__lte=end_date_str
+            )
+
+    # Grand totals (pure SQL) — uses shop_paid_amount to match detail view exactly
+    totals = items_qs.aggregate(
+        total_purchases=Coalesce(Sum(ExpressionWrapper(F('unit_price') * Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField())), output_field=DecimalField())), Value(Decimal('0'), output_field=DecimalField()), output_field=DecimalField()),
+        total_paid=Coalesce(Sum('shop_paid_amount'), Value(Decimal('0')), output_field=DecimalField()),
+    )
+    total_purchases = totals['total_purchases']
+    total_paid = totals['total_paid']
+    total_balance = max(Decimal('0'), total_purchases - total_paid)
+
+    start_date_obj = None
+    end_date_obj = None
+    if filter_type == 'custom' and start_date_str and end_date_str:
+        try:
+            start_date_obj = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date_obj = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    return render(request, 'workshop/spare_shops/shop_print.html', {
+        'shop': shop,
+        'items': items_qs,
+        'payments': payment_qs.order_by('-created_at'),
+        'filter_type': filter_type,
+        'sort_by': sort_by,
+        'start_date_obj': start_date_obj,
+        'end_date_obj': end_date_obj,
+        'total_purchases': total_purchases,
+        'total_paid': total_paid,
+        'total_balance': total_balance,
+        'item_count': items_qs.count()
+    })

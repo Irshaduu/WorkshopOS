@@ -486,8 +486,8 @@ class JobCardSpareItem(models.Model):
     shop_name = models.CharField(max_length=100, blank=True, null=True, help_text="Shop where part was ordered (text copy for display)")
     shop = models.ForeignKey('SpareShop', on_delete=models.SET_NULL, null=True, blank=True, related_name='spare_items', help_text="Linked SpareShop profile")
     shop_paid_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Amount paid to this shop for this specific item")
-    ordered_date = models.DateField(blank=True, null=True, help_text="Auto-filled when status → ORDERED")
-    received_date = models.DateField(blank=True, null=True, help_text="Auto-filled when status → RECEIVED")
+    ordered_date = models.DateField(blank=True, null=True, db_index=True, help_text="Auto-filled when status → ORDERED")
+    received_date = models.DateField(blank=True, null=True, db_index=True, help_text="Auto-filled when status → RECEIVED")
 
     def save(self, *args, **kwargs):
         if self.spare_part_name:
