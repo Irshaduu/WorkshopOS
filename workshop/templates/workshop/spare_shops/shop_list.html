@@ -42,17 +42,19 @@
 </style>
 
 <!-- Page Header -->
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-4 gap-2">
   <div>
     <h5 class="fw-bold mb-0" style="color: var(--color-text);">
       <i class="bi bi-shop me-2" style="color: var(--color-primary);"></i>Spare Shops
     </h5>
-    <small class="text-muted">Track purchases & payments to all spare parts suppliers</small>
+    <small class="text-muted">Track purchases &amp; payments to all spare parts suppliers</small>
   </div>
   {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-  <button class="btn btn-primary btn-sm fw-bold rounded-pill px-3"
+  <button class="btn btn-primary fw-bold rounded-pill flex-shrink-0"
+          style="white-space: nowrap;"
           data-bs-toggle="modal" data-bs-target="#createShopModal">
-    <i class="bi bi-plus-lg me-1"></i> New Shop
+    <i class="bi bi-plus-lg"></i>
+    <span class="d-none d-sm-inline ms-1">New Shop</span>
   </button>
   {% endif %}
 </div>

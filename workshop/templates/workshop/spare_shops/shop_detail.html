@@ -157,10 +157,10 @@
           {% if request.user|has_group:"Owner" or request.user.is_superuser %}
           <li><hr class="dropdown-divider"></li>
           <li>
-            <form method="post" action="{% url 'spare_shop_delete' shop.pk %}" onsubmit="confirmSubmit(event, 'Move {{ shop.name|escapejs }} to trash?', this, 'danger', 'bi-trash3-fill');">
+            <form method="post" action="{% url 'spare_shop_delete' shop.pk %}" onsubmit="confirmSubmit(event, 'Delete <strong class=\'text-danger\'>{{ shop.name|escapejs }}</strong> forever?<br><small>All linked items and payment records will be preserved.</small>', this, 'danger', 'bi-trash3-fill');">
               {% csrf_token %}
               <button type="submit" class="dropdown-item py-2 text-danger fw-bold">
-                <i class="bi bi-trash3 me-2"></i> Move to Trash
+                <i class="bi bi-trash3-fill me-2"></i> Delete {{ shop.name }} Forever
               </button>
             </form>
           </li>
@@ -421,10 +421,10 @@
           <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px; min-width: 150px;">
             <li>
               <form method="post" action="{% url 'spare_shop_payment_reverse' shop.pk pay.pk %}"
-                    onsubmit="confirmSubmit(event, 'Reverse this <strong class=\'text-success\'>₹{{ pay.amount|floatformat:0 }}</strong> payment?<br><small>This will subtract the paid amounts from the affected items.</small>', this, 'warning', 'bi-arrow-counterclockwise');">
+                    onsubmit="confirmSubmit(event, 'Delete this <strong class=\'text-danger\'>₹{{ pay.amount|floatformat:0 }}</strong> payment?<br><small>The paid amounts will be deducted from the affected items.</small>', this, 'danger', 'bi-trash3-fill');">
                 {% csrf_token %}
                 <button type="submit" class="dropdown-item py-2 text-danger fw-bold small">
-                  <i class="bi bi-arrow-counterclockwise me-2"></i> Reverse
+                  <i class="bi bi-trash3-fill me-2"></i> Delete this Payment
                 </button>
               </form>
             </li>
