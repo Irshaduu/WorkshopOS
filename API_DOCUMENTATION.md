@@ -1,4 +1,4 @@
-# 🔧 WorkshopOS: API & Core Engineering Patterns (v5.0)
+# 🔧 WorkshopOS: API & Core Engineering Patterns (v6.2)
 
 This document outlines the **"Elite" industrial patterns** used in WorkshopOS to ensure 1M+ record optimization and zero-failure security.
 
@@ -18,8 +18,20 @@ Every view that handles lists of objects (Job Cards, Inventory, Search) must use
 
 ### 2. The "Tiny Search" Pattern
 To find any vehicle among millions, always filter by **B-Tree indexed fields**.
-- **Indexed Fields**: `registration_number`, `bill_number`, `brand_name`, `model_name`, `admitted_date`.
-- **Search Execution**: Use `Q` objects with `icontains` for partial matches, but always lead with an indexed field if possible.
+- **Indexed Fields**: `registration_number`, `bill_number`, `brand_name`, `model_name`, `admitted_date`, `is_deleted`, `delivered`, `updated_at`.
+- **Search Execution**: Use `Q` objects with `icontains` for partial matches. Split multi-word queries for cross-column matching.
+
+### 3. Composite Database Index
+The dashboard query pattern is covered by a composite index for maximum performance:
+```python
+class Meta:
+    indexes = [
+        models.Index(fields=['is_deleted', 'delivered', '-updated_at']),
+    ]
+```
+
+### 4. Denormalized Financials
+`JobCard.total_bill_amount` is a physical column, not a computed value. Updated automatically via `update_totals()` on every spare/labour save or delete.
 
 ---
 
@@ -27,15 +39,17 @@ To find any vehicle among millions, always filter by **B-Tree indexed fields**.
 
 ### 1. The FailedAttempt Logic (IP-Lockout)
 Instead of standard session-based security, WorkshopOS uses the `FailedAttempt` model.
-- **Mechanism**: Captures the visitor's `REMOTE_ADDR`.
+- **Mechanism**: Captures the visitor's `REMOTE_ADDR` (supports `X-Forwarded-For` for reverse proxies).
 - **Lockout Threshold**: 5 consecutive failures (Login or OTP).
-- **Cooldown**: 30-minute automated expiry.
-- **Key View**: `workshop.auth_views.staff_login_view`
+- **Cooldown**: 15-minute automated expiry.
+- **Key Views**: `workshop.auth_views.staff_login_view`, `workshop.auth_views.admin_login_view`
 
-### 2. The Buddy Watch System
+### 2. The Alert System (⚠️ Current — New System Planned)
 The security system triggers collaborative oversight via `auth_views.py`.
-- **Alert Pulse**: Whenever an Owner logs in, an asynchronous alert is triggered to both owners.
-- **Staff Monitoring**: Owners receive real-time identifiers (IP, Device Name) for every Staff/Office login.
+- **Alert Pulse**: Whenever ANY user (Staff or Owner) logs in, both owners receive alerts.
+- **Staff Monitoring**: Owners receive real-time identifiers (IP, Device Name) for every login.
+- **Channels**: Telegram Bot API (primary) + Twilio SMS (parallel).
+- **⚠️ Note**: This notification architecture is subject to replacement.
 
 ---
 
@@ -45,9 +59,13 @@ The inventory system is "Living"—stock counts update automatically based on wo
 
 ### 1. Stock Delta Calculation
 Located in `inventory/signals.py`.
-- **`pre_save`**: Captures the original quantity before modification.
-- **`post_save` / `post_delete`**: Calculates the delta and updates the `Item.current_stock` instantly.
-- **Reliability**: Verified by the Titan Standard `InventorySignalTests`.
+- **`pre_save`**: Snapshots the original quantity and part name before modification.
+- **`post_save`**: Calculates the delta and updates `Item.current_stock`. Handles three scenarios:
+  - **Part Rename**: Restore old stock, deduct new stock
+  - **Quantity Change**: Deduct only the difference (delta)
+  - **New Entry**: Deduct full quantity
+- **`post_delete`**: Restores full quantity to warehouse on deletion.
+- **Reliability**: Verified by `inventory/test_signals.py`.
 
 ---
 
@@ -56,7 +74,42 @@ Located in `inventory/signals.py`.
 All list-based views MUST utilize the `Paginator` class.
 - **Floor Standard**: 50 records per page (for quick scroll on mobile).
 - **Office/Management Standard**: 21 records per page (for grid layouts).
+- **Inventory Standard**: 10 categories per page (heavy nested view).
 - **Template Fragment**: Use `workshop/includes/pagination.html` for consistent UI.
+
+---
+
+## 🔄 V. Autocomplete API Endpoints
+
+| Endpoint | Source Models | Features |
+|----------|-------------|----------|
+| `/api/autocomplete/brands/` | `CarBrand` | Simple name search |
+| `/api/autocomplete/models/` | `CarModel` | Dependent on brand (filter by brand parameter) |
+| `/api/autocomplete/spares/` | `SparePart` + `inventory.Item` | Dual-source with inventory priority (yellow highlight) |
+| `/api/autocomplete/concerns/` | `ConcernSolution` | Concern text search |
+
+All endpoints return JSON arrays and support the `?q=` query parameter with minimum 1-character input.
+
+---
+
+## 💰 VI. Cascade Payment Algorithm
+
+Used in both **Bulk Payer** and **Spare Shop** payment systems:
+
+1. Lock pending items with `select_for_update()` inside `transaction.atomic()`
+2. Order by oldest first (`created_date`, `pk`)
+3. Distribute payment amount across items until exhausted
+4. Each item status transitions: PENDING → PARTIAL → PAID
+5. Create `PaymentHistory` record with JSON snapshot of distribution
+6. Reversal reads the exact JSON snapshot to subtract precise amounts
+
+---
+
+## 🔜 VII. Coming Soon
+
+- **PostgreSQL Production Database** — Configured in `settings/production.py`
+- **Admin Data Analysis & Reports** — Visual analytics for Owners
+- **New Notification System** — Replacing current SMS/Telegram architecture
 
 ---
 

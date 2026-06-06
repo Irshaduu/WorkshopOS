@@ -46,12 +46,14 @@ graph TD
 ## 2. WHO DOES WHAT — STAFF ROLE CONNECTIONS
 
 ```
- OWNER (Sahad/Rijas)
+ OWNER
    Can do EVERYTHING below + these exclusive actions:
-   - View and Restore Trash (deleted job cards)
+   - View and Restore Trash (deleted job cards, bulk payers, payments)
+   - Permanently delete records from trash
+   - Reverse payment transactions (bulk & shop)
    - Monitor all active login sessions
    - Remotely revoke any staff access
-   - Receive security alerts (SMS + Telegram) on every login
+   - Receive security alerts on every login (⚠️ current SMS/Telegram system)
    - Access Django Admin panel
 
  OFFICE STAFF
@@ -61,8 +63,9 @@ graph TD
    - Mark cars as Delivered / Undo delivery
    - View and Generate Invoices
    - Update payment status and amounts
-   - Process Bulk/Fleet Payments
+   - Manage Bulk Payers (create, add cards, process payments)
    - View Pending Bills dashboard
+   - Manage Spare Shops (create, edit, pay, view ledger, print)
    - Manage Master Lists (Brands, Models, Spares, Concerns)
    - View Car Profiles (vehicle history)
    - Create/Delete staff accounts
@@ -92,7 +95,7 @@ Everything in the system connects through the Job Card:
                        |
                   assigned to
                        |
- MASTER LISTS -----> JOB CARD -----> INVOICE
+ MASTER LISTS -----> JOB CARD -------> INVOICE
  (Brands,Models,      |                |
   Spares,Concerns)    |                |
      ^                |             PAYMENT
@@ -105,20 +108,22 @@ Everything in the system connects through the Job Card:
      |  - Status:   - Qty      - Amount
      |   PENDING    - Shop $
      |   WORKING    - Cust $
-     |   FIXED      - Status:
+     |   FIXED      - Shop FK
+     |              - Status:
      |              PENDING
      |              ORDERED
      |              RECEIVED
      |                |
-     |                | auto-sync
+     |                | auto-sync (signals)
      |                v
      |          INVENTORY
      |          (Warehouse)
      |                |
      +------->  TOTAL BILL AMOUNT
-           = Sum(Spare Prices)
+           = Sum(Spare Customer Prices)
            + Sum(Labour Amounts)
            Auto-calculated on every save
+           (denormalized for performance)
 ```
 
 ---
@@ -130,15 +135,25 @@ Everything in the system connects through the Job Card:
 ```
 Spare Part Added (Customer Price) --+
                                     +--> Total Bill Auto-Calculated --> Invoice
-Labour Added (Amount) -------------+     (updates on every save)
+Labour Added (Amount) -------------+     (denormalized, updates on every save)
 ```
 
 ### Payment States
 
 ```
-PENDING  = Nothing received yet
-PARTIAL  = Some money received, balance remains
-PAID     = Full amount received (discount auto-calculated if received < bill)
+PENDING   = Nothing received yet
+PARTIAL   = Some money received, balance remains
+PAID      = Full amount received (discount auto-calculated if received < bill)
+BULK_PAID = Paid via bulk/fleet payment system
+```
+
+### Payment Methods
+
+```
+CASH     = Cash payment
+UPI      = UPI / QR Code
+CARD     = Credit/Debit Card
+TRANSFER = Bank Transfer
 ```
 
 ### Spare Part Pricing (Two-Price System)
@@ -169,6 +184,15 @@ Job 4: Rs.0 -- funds exhausted
 Job 5: Rs.0 -- funds exhausted
 
 Result: 3 jobs fully paid, 2 still pending
+JSON snapshot saved for precise reversal if needed
+```
+
+### Spare Shop Payment (Cascade Algorithm)
+
+```
+Same oldest-first cascade logic applies to shop payments.
+Lump sum distributed across unpaid items chronologically.
+Each payment creates a JSON snapshot for Owner reversal.
 ```
 
 ---
@@ -206,18 +230,42 @@ Health = (Current / Average) x 100%
 MASTER LISTS (Knowledge Base)          JOB CARD FORM
 ----------------------------          ---------------
 CarBrand: Toyota, BMW, Audi      <->  Brand field (autocomplete)
-CarModel: Corolla, 3 Series      <->  Model field (autocomplete)
+CarModel: Corolla, 3 Series      <->  Model field (dependent on brand)
 SparePart: Oil Filter, Brake     <->  Spare Part field (autocomplete)
 ConcernSolution: Brake noise     <->  Concern field (autocomplete)
 ```
 
-**AUTO-LEARN**: When you type a NEW spare part or concern that doesn't exist in the master list, the system AUTOMATICALLY adds it for future use.
+**AUTO-LEARN**: When you type a NEW spare part or concern that doesn't exist in the master list, the system AUTOMATICALLY adds it for future use (case-insensitive, whitespace-normalized).
 
-**INVENTORY PRIORITY**: When searching spares, items found in the Warehouse show FIRST (highlighted), then master list items.
+**INVENTORY PRIORITY**: When searching spares, items found in the Warehouse show FIRST (highlighted in yellow), then master list items.
 
 ---
 
-## 7. CAR PROFILE — VEHICLE HISTORY TRACKING
+## 7. SPARE SHOP MANAGEMENT
+
+```
+SPARE SHOP (Supplier)
+   ├── Name, Phone, Address
+   ├── Linked Spare Items (via FK on JobCardSpareItem)
+   ├── Financial Ledger:
+   │     Total Purchases = Sum(unit_price × quantity) for linked items
+   │     Total Paid = Sum(shop_paid_amount) for linked items
+   │     Balance = Total Purchases - Total Paid
+   │
+   ├── Payment Options:
+   │     Pay Individual Item (Pay Now button)
+   │     Lump Sum Cascade (oldest-first distribution)
+   │
+   ├── Payment History:
+   │     Each payment stored with JSON snapshot
+   │     Owner can reverse any payment
+   │
+   └── Print/Export (shop ledger printable view)
+```
+
+---
+
+## 8. CAR PROFILE — VEHICLE HISTORY TRACKING
 
 ```
 Registration: KL-07-AB-1234
@@ -235,7 +283,7 @@ One click: "New Visit" pre-fills all customer and vehicle details
 
 ---
 
-## 8. SECURITY — COMPLETE PROTECTION CHAIN
+## 9. SECURITY — COMPLETE PROTECTION CHAIN
 
 ```
 SOMEONE TRIES TO LOGIN
@@ -259,10 +307,10 @@ SOMEONE TRIES TO LOGIN
         v
  SESSION CREATED
  Track: Device, IP, Browser, Last Activity
- (updates on every request)
+ (updates on every request via SessionTrackingMiddleware)
         |
         v
- SECURITY ALERT BROADCAST
+ SECURITY ALERT BROADCAST (⚠️ Current system — may change)
  SMS to Owner 1 phone
  SMS to Owner 2 phone
  Telegram to Owner 1 chat
@@ -286,12 +334,13 @@ Owner enters username/mobile
 
 ```
 - See all active sessions (who is logged in, from what device)
+- Sessions auto-cleaned after 40 days of inactivity
 - One click: REVOKE any session (logs them out instantly)
 ```
 
 ---
 
-## 9. DATA CLEANUP — KEEPING THINGS CLEAN
+## 10. DATA CLEANUP — KEEPING THINGS CLEAN
 
 ```
 PROBLEM: Over time, typos accumulate in master lists
@@ -301,7 +350,7 @@ CLEANUP TOOL:
   Spare: "Oil Filtr" (used in 3 job cards)
   [Rename to "Oil Filter"]  [Delete]
   --> Rename updates ALL 3 job cards too!
-  --> If "Oil Filter" already exists: MERGE
+  --> If "Oil Filter" already exists: MERGE WARNING
 
 Same for Concerns:
   "brake noise" + "Brake Noise" --> Merge into one
@@ -309,7 +358,31 @@ Same for Concerns:
 
 ---
 
-## 10. DASHBOARD — WHAT EACH SCREEN SHOWS
+## 11. TRASH SYSTEM — UNIFIED TABBED DASHBOARD
+
+```
+TRASH PAGE (/trash/) — Owner Only
+  ├── Tab: Job Cards
+  │     Search, paginate, restore, permanent delete
+  ├── Tab: Bulk Payers
+  │     Restore, permanent delete
+  ├── Tab: Payments (Bulk Payment History)
+  │     Permanent delete
+  ├── Tab: Spare Shops
+  │     Restore, permanent delete
+  └── Tab: Shop Payments
+        Permanent delete
+
+Each tab has:
+  - Independent search
+  - Badge count showing number of trashed items
+  - Restore (returns to active state)
+  - Permanent Delete (Owner only — irreversible)
+```
+
+---
+
+## 12. DASHBOARD — WHAT EACH SCREEN SHOWS
 
 ```
 MAIN DASHBOARD (home)
@@ -327,24 +400,31 @@ LIVE REPORT
 
 DELIVERED LIST
   Shows: Cars that have been picked up
-  Filters: Today / Week / Month / Year / Custom range
+  Filters: Today / Week / Month / Year / Custom range / All
   Actions: Undo delivery, View invoice
 
 PENDING BILLS
   Shows: All unpaid/partially paid jobs
   Displays: Total outstanding balance
+  Linked to: Bulk Payer system
 
-BULK PAYMENTS
-  Shows: Search by customer -> Grouped pending bills
-  Action: Enter lump sum -> Auto-distribute oldest first
+BULK PAYERS
+  Shows: Fleet/repeat customer groups
+  Actions: Add job cards, process lump-sum payments (cascade)
+  History: Every payment recorded with reversal capability
+
+SPARE SHOPS
+  Shows: Supplier list with balances
+  Drill-down: Full ledger per shop
+  Actions: Pay individual items, lump-sum cascade, print ledger
 
 TRASH (Owner only)
-  Shows: Soft-deleted job cards
-  Action: Restore back to active floor
+  Shows: Soft-deleted items across 5 tabs
+  Action: Restore or permanently delete
 
 CAR PROFILES
   Shows: Unique vehicles grouped by registration
-  Drill-down: Full visit history for any car
+  Drill-down: Full visit history with chronological numbering
 
 INVENTORY
   Restock: View all stock levels with health bars
@@ -361,7 +441,7 @@ MANAGEMENT DASHBOARD
 
 ---
 
-## 11. COMPLETE CONNECTION SUMMARY
+## 13. COMPLETE CONNECTION SUMMARY
 
 ```
                          CUSTOMER
@@ -374,24 +454,24 @@ MANAGEMENT DASHBOARD
        |                  |  |  |             PAYMENT
        v                  |  |  |            PROCESSING
   AUTOCOMPLETE     +------+  |  +------+    - Single
-  API              |         |         |    - Bulk
+  API              |         |         |    - Bulk Payer
                    v         v         v    - Cascade
               CONCERNS    SPARES    LABOUR
               (tracking) (parts)   (work)
                             |
                        auto-sync
                             v
-                       INVENTORY
-                      (Warehouse)
-                      - Stock levels
-                      - Low alerts
-                      - Usage history
+                       INVENTORY          SPARE SHOPS
+                      (Warehouse)         (Suppliers)
+                      - Stock levels      - Purchase Ledger
+                      - Low alerts        - Payment History
+                      - Usage history     - Balance Tracking
 
-  STAFF ACCOUNTS  -------->  SECURITY SYSTEM
+  STAFF ACCOUNTS  --------->  SECURITY SYSTEM
   - Owner (2)                - IP Lockout
-  - Office (1)               - Session Monitor
-  - Floor (many)             - SMS/Telegram Alerts
-  - Mechanics (6)            - Remote Revoke
+  - Office                   - Session Monitor
+  - Floor (many)             - Alert Broadcasts (⚠️ current SMS/Telegram)
+  - Mechanics                - Remote Revoke
                              - OTP Reset
 
   CAR PROFILES
@@ -400,4 +480,12 @@ MANAGEMENT DASHBOARD
 
 ---
 
-> **In one sentence**: Customer arrives -> Job card created -> Concerns/Spares/Labour tracked -> Inventory auto-syncs -> Car delivered -> Invoice generated -> Payment collected -> Everything searchable forever through Car Profiles.
+## 🔜 COMING SOON
+
+- **PostgreSQL Production Database** — Multi-million record deployment
+- **Admin Data Analysis & Reports** — Visual analytics for Owners
+- **New Notification System** — Replacing current SMS/Telegram architecture
+
+---
+
+> **In one sentence**: Customer arrives → Job card created → Concerns/Spares/Labour tracked → Inventory auto-syncs → Car delivered → Invoice generated → Payment collected → Everything searchable forever through Car Profiles.
