@@ -481,6 +481,10 @@
                                 <div class="swipe-cell col-price">
                                     {{ l_form.amount }}
                                 </div>
+                                {% else %}
+                                <div class="d-none">
+                                    {{ l_form.amount }}
+                                </div>
                                 {% endif %}
                             </div>
                             {% endfor %}
@@ -506,12 +510,12 @@
                 </div>
 
                 <div class="card-body p-0">
-                    <div class="table-responsive">
+                    <div class="table-responsive pb-2">
                         <!-- Management Form (Must be outside table) -->
                         {{ spare_formset.management_form }}
 
                         <!-- Standard HTML Table -->
-                        <table class="table table-borderless align-middle mb-0">
+                        <table class="table table-borderless align-middle mb-0" style="min-height: 80px;">
                             <thead class="table-premium-header text-muted small text-uppercase">
                                 <tr class="border-bottom">
                                     <th class="ps-3 col-part" style="min-width: 200px;">Part Name</th>
@@ -583,6 +587,17 @@
                                         {{ s_form.unit_price }}
                                     </td>
                                     <td class="col-price pe-4">
+                                        {{ s_form.total_price }}
+                                    </td>
+                                    {% else %}
+                                    <td class="d-none">
+                                        <select name="{{ s_form.shop_name.html_name }}" class="d-none">
+                                            <option value="">-- Shop --</option>
+                                            {% for shop in spare_shops %}
+                                            <option value="{{ shop.name }}" {% if s_form.instance.shop_name == shop.name %}selected{% endif %}>{{ shop.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        {{ s_form.unit_price }}
                                         {{ s_form.total_price }}
                                     </td>
                                     {% endif %}
@@ -689,6 +704,14 @@
                 <td class="col-price pe-4">
                     {{ spare_formset.empty_form.total_price }}
                 </td>
+                {% else %}
+                <td class="d-none">
+                    <select name="spares-__prefix__-shop_name" class="d-none">
+                        <option value="">-- Shop --</option>
+                    </select>
+                    {{ spare_formset.empty_form.unit_price }}
+                    {{ spare_formset.empty_form.total_price }}
+                </td>
                 {% endif %}
             </tr>
         </tbody>
@@ -704,6 +727,10 @@
         </div>
         {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
         <div class="swipe-cell col-price">
+            {{ labour_formset.empty_form.amount }}
+        </div>
+        {% else %}
+        <div class="d-none">
             {{ labour_formset.empty_form.amount }}
         </div>
         {% endif %}
