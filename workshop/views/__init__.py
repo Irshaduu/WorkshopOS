@@ -29,6 +29,8 @@ from .spare_shop import (
     spare_shop_pay, spare_shop_payment_reverse,
     spare_shop_delete, spare_shop_restore, spare_shop_permanent_delete,
     spare_shop_payment_permanent_delete, spare_shop_print,
+    spare_shop_add_unassigned, spare_shop_unassign_item, spare_shop_update_item_price,
+    unassigned_spares_hub,
 )
 from .pending import pending_payments_list
 from .car_profiles import car_profile_list, car_profile_detail

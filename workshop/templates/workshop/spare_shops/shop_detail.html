@@ -301,6 +301,7 @@
           {% for item in group.list %}
           <tr class="border-bottom" style="border-color: var(--color-border-light) !important;">
             <td class="ps-3" style="white-space: nowrap;">
+              {% if item.job_card %}
               <div class="d-flex align-items-center flex-nowrap">
                 <span class="fw-bold text-dark me-2" style="font-size: 0.85rem;">{{ item.job_card.brand_name }} {{ item.job_card.model_name }}</span>
                 {% if item.job_card.car_color %}
@@ -312,11 +313,25 @@
                   {{ item.job_card.registration_number }}
                 </span>
               </div>
+              {% else %}
+              <div class="d-flex align-items-center flex-nowrap">
+                <span class="text-muted" style="font-size: 0.8rem;">
+                  <i class="bi bi-box-seam me-1"></i>{% if item.original_vehicle_info %}{{ item.original_vehicle_info }}{% else %}Unassigned{% endif %}
+                </span>
+              </div>
+              {% endif %}
             </td>
             <td class="fw-medium text-dark">{{ item.spare_part_name|default:"—" }}</td>
             <td class="text-end text-muted">{% if item.quantity %}{{ item.quantity|floatformat:"-2" }}{% else %}—{% endif %}</td>
             <td class="text-end fw-bold text-dark">
-              {% if item.unit_price %}₹{{ item.unit_price|floatformat:0 }}{% else %}<span class="text-muted">—</span>{% endif %}
+              <div class="d-flex justify-content-end align-items-center">
+                {% if item.unit_price %}₹{{ item.unit_price|floatformat:0 }}{% else %}<span class="text-muted">—</span>{% endif %}
+                <button type="button" class="btn btn-link p-0 ms-2 text-primary border-0" 
+                        onclick="openPriceModal('{{ item.pk }}', '{{ item.spare_part_name|escapejs }}', '{{ item.unit_price|default_if_none:'' }}', '{{ item.quantity|default_if_none:'' }}')" 
+                        title="Edit Shop Price">
+                  <i class="bi bi-pencil-square" style="font-size: 0.9rem;"></i>
+                </button>
+              </div>
             </td>
             <td class="text-center text-muted" style="font-size: 0.85rem;">
               {% if sort_by == 'ordered' %}
@@ -326,9 +341,13 @@
               {% endif %}
             </td>
             <td>
-              <a href="{% url 'jobcard_edit' item.job_card.pk %}" class="text-decoration-none fw-bold text-primary" style="font-size: 0.85rem;">
-                {{ item.job_card.bill_number|default:item.job_card.pk }}
-              </a>
+              {% if item.job_card %}
+                <a href="{% url 'jobcard_edit' item.job_card.pk %}" class="text-decoration-none fw-bold text-primary" style="font-size: 0.85rem;">
+                  {{ item.job_card.bill_number|default:item.job_card.pk }}
+                </a>
+              {% else %}
+                <span class="badge bg-warning text-dark" style="font-size: 0.75rem;">UNASSIGNED</span>
+              {% endif %}
             </td>
             <td class="pe-3 text-center">
               {% if not item.unit_price %}
@@ -513,6 +532,14 @@
 
   function confirmSubmit(event, message, formElement, theme='warning', icon='bi-exclamation-triangle-fill') {
     event.preventDefault();
+
+    // Prevent modal stacking by hiding the parent modal
+    const parentModal = event.currentTarget.closest('.modal');
+    if (parentModal) {
+      const bsModal = bootstrap.Modal.getInstance(parentModal);
+      if (bsModal) bsModal.hide();
+    }
+
     if (!confirmActionModalInstance) {
       confirmActionModalInstance = new bootstrap.Modal(document.getElementById('confirmActionModal'));
     }
@@ -562,6 +589,60 @@
         window.history.replaceState({}, '', url.toString());
     }
   });
+</script>
+
+<!-- Update Shop Price Modal -->
+<div class="modal fade" id="updatePriceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
+      <div class="modal-header bg-light border-bottom-0 pb-2">
+        <h6 class="modal-title fw-bold">Update Shop Price</h6>
+        <button type="button" class="btn-close shadow-none" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="updatePriceForm" method="post" action="">
+        {% csrf_token %}
+        <div class="modal-body pt-2 pb-3">
+          <div class="mb-3 text-muted small" id="updatePricePartName"></div>
+          
+          <div class="mb-3">
+            <label class="form-label small text-muted mb-1">Shop Price (₹)</label>
+            <input type="number" name="unit_price" id="updatePriceInput" class="form-control" placeholder="0" step="0.01" min="0">
+          </div>
+          
+          <div class="mb-2">
+            <label class="form-label small text-muted mb-1">Quantity</label>
+            <input type="number" name="quantity" id="updateQtyInput" class="form-control" placeholder="1" step="0.01" min="0.01">
+          </div>
+        </div>
+        <div class="modal-footer border-top-0 pt-0">
+          <button type="button" class="btn btn-light fw-bold px-3 rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary fw-bold px-3 rounded-pill"
+                  onclick="confirmSubmit(event, 'Update Shop Price to <strong class=\'text-primary\'>₹' + this.form.unit_price.value + '</strong>?', this.form, 'primary', 'bi-pencil-square');">
+            Save Price
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openPriceModal(itemPk, partName, currentPrice, currentQty) {
+    const modal = new bootstrap.Modal(document.getElementById('updatePriceModal'));
+    
+    // Set form action dynamically
+    const form = document.getElementById('updatePriceForm');
+    form.action = `/spare-shops/items/${itemPk}/update-price/`;
+    
+    // Set part name
+    document.getElementById('updatePricePartName').textContent = partName || 'Unnamed Part';
+    
+    // Set values
+    document.getElementById('updatePriceInput').value = currentPrice || '';
+    document.getElementById('updateQtyInput').value = currentQty || '1';
+    
+    modal.show();
+  }
 </script>
 
 {% endblock %}

@@ -48,6 +48,7 @@ urlpatterns = [
     # ------------------
     path('spare-shops/', views.spare_shop_list, name='spare_shop_list'),
     path('spare-shops/create/', views.spare_shop_create, name='spare_shop_create'),
+    path('spare-shops/unassigned/', views.unassigned_spares_hub, name='unassigned_spares_hub'),
     path('spare-shops/<int:pk>/', views.spare_shop_detail, name='spare_shop_detail'),
     path('spare-shops/<int:pk>/edit/', views.spare_shop_edit, name='spare_shop_edit'),
     path('spare-shops/<int:pk>/pay/', views.spare_shop_pay, name='spare_shop_pay'),
@@ -57,7 +58,10 @@ urlpatterns = [
     path('spare-shops/<int:pk>/permanent-delete/', views.spare_shop_permanent_delete, name='spare_shop_permanent_delete'),
     path('spare-shops/payment/<int:payment_pk>/permanent-delete/', views.spare_shop_payment_permanent_delete, name='spare_shop_payment_permanent_delete'),
     path('spare-shops/<int:pk>/print/', views.spare_shop_print, name='spare_shop_print'),
-
+    path('spare-shops/<int:pk>/add-unassigned/', views.spare_shop_add_unassigned, name='spare_shop_add_unassigned'),
+    path('spare-shops/items/<int:item_pk>/unassign/', views.spare_shop_unassign_item, name='spare_shop_unassign_item'),
+    path('spare-shops/items/<int:item_pk>/update-price/', views.spare_shop_update_item_price, name='spare_shop_update_item_price'),
+    
     path('jobcards/<int:pk>/deliver/', views.mark_delivered, name='mark_delivered'),
     path('jobcards/<int:pk>/undo-deliver/', views.undo_delivered, name='undo_delivered'),
     path('jobcards/<int:pk>/toggle-hold/', views.toggle_hold, name='toggle_hold'),

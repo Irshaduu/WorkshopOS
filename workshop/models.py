@@ -510,7 +510,7 @@ class JobCardSpareItem(models.Model):
         ('RECEIVED', 'Received'),
     ]
 
-    job_card = models.ForeignKey(JobCard, on_delete=models.CASCADE, related_name='spares')
+    job_card = models.ForeignKey(JobCard, on_delete=models.CASCADE, related_name='spares', null=True, blank=True)
     spare_part_name = models.CharField(max_length=100, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     quantity = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
@@ -524,12 +524,14 @@ class JobCardSpareItem(models.Model):
     shop = models.ForeignKey('SpareShop', on_delete=models.SET_NULL, null=True, blank=True, related_name='spare_items', help_text="Linked SpareShop profile")
     ordered_date = models.DateField(blank=True, null=True, db_index=True, help_text="Auto-filled when status → ORDERED")
     received_date = models.DateField(blank=True, null=True, db_index=True, help_text="Auto-filled when status → RECEIVED")
+    original_vehicle_info = models.CharField(max_length=255, blank=True, null=True, help_text="Stores car details if unassigned from a job card")
 
     def save(self, *args, **kwargs):
         if self.spare_part_name:
             self.spare_part_name = self.spare_part_name.strip()
         super().save(*args, **kwargs)
-        self.job_card.update_totals()
+        if self.job_card:
+            self.job_card.update_totals()
         if self.shop:
             self.shop.update_totals()
 
@@ -537,7 +539,8 @@ class JobCardSpareItem(models.Model):
         job_card = self.job_card
         shop = self.shop
         super().delete(*args, **kwargs)
-        job_card.update_totals()
+        if job_card:
+            job_card.update_totals()
         if shop:
             shop.update_totals()
 

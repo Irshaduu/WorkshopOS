@@ -168,7 +168,7 @@ def spare_shop_detail(request, pk):
 
     total_purchases = shop.total_purchased_amount
     total_paid = shop.total_paid_amount
-    total_balance = max(Decimal('0'), total_purchases - total_paid)
+    total_balance = total_purchases - total_paid
     item_count = items_qs.count()
 
     paginator = Paginator(items_qs, 45)
@@ -367,7 +367,7 @@ def spare_shop_print(request, pk):
         total_paid=Coalesce(Sum('amount'), Value(Decimal('0')), output_field=DecimalField())
     )['total_paid']
     
-    total_balance = max(Decimal('0'), total_purchases - total_paid)
+    total_balance = total_purchases - total_paid
 
     start_date_obj = None
     end_date_obj = None
@@ -391,3 +391,125 @@ def spare_shop_print(request, pk):
         'total_balance': total_balance,
         'item_count': items_qs.count()
     })
+
+# -----------------------------------------------------------------------------
+# Unassigned Spares / Legacy Balances
+# -----------------------------------------------------------------------------
+
+@office_required
+def spare_shop_add_unassigned(request, pk):
+    """POST: Add a legacy balance or stock item directly to a shop (job_card=None)."""
+    shop = get_object_or_404(SpareShop, pk=pk)
+    if request.method == 'POST':
+        spare_part_name = request.POST.get('spare_part_name', '').strip()
+        unit_price = request.POST.get('unit_price', '0')
+        quantity = request.POST.get('quantity', '1')
+        
+        if spare_part_name:
+            try:
+                from decimal import Decimal, InvalidOperation
+                safe_price = Decimal(unit_price) if unit_price else Decimal('0')
+                safe_qty = Decimal(quantity) if quantity else Decimal('1')
+                
+                JobCardSpareItem.objects.create(
+                    job_card=None,
+                    shop=shop,
+                    spare_part_name=spare_part_name,
+                    unit_price=safe_price,
+                    quantity=safe_qty,
+                    status='RECEIVED',
+                    ordered_date=date.today(),
+                    received_date=date.today()
+                )
+                messages.success(request, f"Added '{spare_part_name}' to shop ledger.")
+            except (InvalidOperation, ValueError, TypeError):
+                messages.error(request, "Invalid number format for price or quantity.")
+        else:
+            messages.error(request, "Item name cannot be empty.")
+    return redirect('spare_shop_detail', pk=pk)
+
+
+@office_required
+def spare_shop_unassign_item(request, item_pk):
+    """POST: Detach an item from a Job Card but keep it in the shop ledger."""
+    item = get_object_or_404(JobCardSpareItem, pk=item_pk)
+    shop_id = item.shop_id
+    if request.method == 'POST':
+        if not shop_id:
+            messages.error(request, "Cannot unassign an item that isn't linked to a Spare Shop.")
+            if item.job_card:
+                return redirect('jobcard_detail', pk=item.job_card.pk)
+            return redirect('home')
+        
+        # Valid shop and request method
+        old_jc = item.job_card
+        if old_jc:
+            brand = old_jc.brand_name or ""
+            model = old_jc.model_name or ""
+            reg = old_jc.registration_number or ""
+            info = f"{brand} {model}".strip()
+            if reg:
+                info += f" ({reg})"
+            item.original_vehicle_info = info.strip()
+            
+        item.job_card = None
+        item.save()
+        # The model's save() won't update old_jc since job_card is now None,
+        # so we must manually refresh the old job card's totals.
+        if old_jc:
+            old_jc.update_totals()
+        messages.success(request, f"'{item.spare_part_name}' moved to unassigned stock.")
+        if old_jc:
+            return redirect('jobcard_detail', pk=old_jc.pk)
+        return redirect('spare_shop_detail', pk=shop_id)
+    return redirect('home')
+
+
+@office_required
+def spare_shop_update_item_price(request, item_pk):
+    """POST: Update unit_price and quantity of an item directly from the shop ledger."""
+    item = get_object_or_404(JobCardSpareItem, pk=item_pk)
+    shop_id = item.shop_id
+    if request.method == 'POST':
+        price = request.POST.get('unit_price')
+        qty = request.POST.get('quantity')
+        
+        updated = False
+        try:
+            from decimal import Decimal, InvalidOperation
+            if price is not None and price != '':
+                item.unit_price = Decimal(price)
+                updated = True
+            if qty is not None and qty != '':
+                item.quantity = Decimal(qty)
+                updated = True
+                
+            if updated:
+                item.save()
+                messages.success(request, f"Updated pricing for '{item.spare_part_name}'.")
+        except (InvalidOperation, ValueError, TypeError):
+            messages.error(request, "Invalid number format for price or quantity.")
+            
+    if shop_id:
+        return redirect('spare_shop_detail', pk=shop_id)
+    return redirect('home')
+
+
+
+
+
+@office_required
+def unassigned_spares_hub(request):
+    """
+    Dedicated hub for viewing and managing all Unassigned Spares.
+    """
+    unassigned_items = JobCardSpareItem.objects.filter(job_card__isnull=True, shop__isnull=False).select_related('shop').order_by('shop__name', '-ordered_date')
+    
+    from ..models import JobCard
+    active_jobcards = JobCard.objects.filter(is_deleted=False).order_by('-pk')[:200]
+    
+    context = {
+        'unassigned_items': unassigned_items,
+        'active_jobcards': active_jobcards,
+    }
+    return render(request, 'workshop/spare_shops/unassigned_hub.html', context)

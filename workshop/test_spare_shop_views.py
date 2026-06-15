@@ -184,3 +184,88 @@ class SpareShopViewsExhaustiveTests(TestCase):
         response = self.client.get(url + '?filter=all')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Auto Parts Center')
+
+    # -------------------------------------------------------------------------
+    # 9. Add Unassigned Spares
+    # -------------------------------------------------------------------------
+    def test_spare_shop_add_unassigned_success(self):
+        url = reverse('spare_shop_add_unassigned', args=[self.shop.pk])
+        response = self.client.post(url, {
+            'spare_part_name': 'Loose Nut',
+            'unit_price': '15.50',
+            'quantity': '10'
+        })
+        self.assertEqual(response.status_code, 302)
+        item = JobCardSpareItem.objects.filter(spare_part_name='Loose Nut').first()
+        self.assertIsNotNone(item)
+        self.assertIsNone(item.job_card)
+        self.assertEqual(item.shop, self.shop)
+        self.assertEqual(item.unit_price, Decimal('15.50'))
+        self.assertEqual(item.quantity, Decimal('10'))
+
+    def test_spare_shop_add_unassigned_empty_name(self):
+        url = reverse('spare_shop_add_unassigned', args=[self.shop.pk])
+        response = self.client.post(url, {
+            'spare_part_name': '   ',
+            'unit_price': '10',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(JobCardSpareItem.objects.count(), 0)
+
+    def test_spare_shop_add_unassigned_invalid_price(self):
+        url = reverse('spare_shop_add_unassigned', args=[self.shop.pk])
+        response = self.client.post(url, {
+            'spare_part_name': 'Loose Nut',
+            'unit_price': 'abc',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(JobCardSpareItem.objects.count(), 0)
+
+    # -------------------------------------------------------------------------
+    # 10. Unassign Item
+    # -------------------------------------------------------------------------
+    def test_spare_shop_unassign_item(self):
+        jc = self._create_jobcard()
+        item = JobCardSpareItem.objects.create(
+            job_card=jc, shop=self.shop, spare_part_name='Filter',
+            unit_price=Decimal('500'), quantity=Decimal('2')
+        )
+        url = reverse('spare_shop_unassign_item', args=[item.pk])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertIsNone(item.job_card)
+        self.assertIn('Honda City (KL01AB1111)', item.original_vehicle_info)
+
+    # -------------------------------------------------------------------------
+    # 11. Update Item Price
+    # -------------------------------------------------------------------------
+    def test_spare_shop_update_item_price_success(self):
+        item = JobCardSpareItem.objects.create(
+            job_card=None, shop=self.shop, spare_part_name='Filter',
+            unit_price=Decimal('500'), quantity=Decimal('2')
+        )
+        url = reverse('spare_shop_update_item_price', args=[item.pk])
+        response = self.client.post(url, {
+            'unit_price': '600',
+            'quantity': '3'
+        })
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertEqual(item.unit_price, Decimal('600'))
+        self.assertEqual(item.quantity, Decimal('3'))
+
+    def test_spare_shop_update_item_price_invalid(self):
+        item = JobCardSpareItem.objects.create(
+            job_card=None, shop=self.shop, spare_part_name='Filter',
+            unit_price=Decimal('500'), quantity=Decimal('2')
+        )
+        url = reverse('spare_shop_update_item_price', args=[item.pk])
+        response = self.client.post(url, {
+            'unit_price': 'xyz',
+            'quantity': 'abc'
+        })
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertEqual(item.unit_price, Decimal('500'))
+        self.assertEqual(item.quantity, Decimal('2'))

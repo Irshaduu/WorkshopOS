@@ -1,0 +1,98 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+{% load humanize %}
+
+{% block title %}Unassigned Spares Hub{% endblock %}
+
+{% block content %}
+<style>
+  .hub-header {
+    background: linear-gradient(135deg, #4f46e5 0%, #312e81 100%);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: #fff;
+  }
+  .items-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); border-bottom: 2px solid var(--color-border); }
+  .items-table td { font-size: 0.85rem; vertical-align: middle; }
+</style>
+
+<!-- ── Back breadcrumb ── -->
+<div class="mb-3">
+  <a href="{% url 'spare_shop_list' %}" class="text-muted text-decoration-none small">
+    <i class="bi bi-arrow-left me-1"></i> Back to Spare Shops
+  </a>
+</div>
+
+<!-- ── Header ── -->
+<div class="hub-header shadow-sm d-flex align-items-center justify-content-between flex-wrap gap-3">
+  <div>
+    <h4 class="fw-bold mb-1"><i class="bi bi-box-seam me-2"></i>Unassigned Spares Hub</h4>
+    <div style="color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+      Manage floating spare parts and legacy balances across all shops
+    </div>
+  </div>
+  <div class="bg-white text-dark rounded-pill px-4 py-2 fw-bold shadow-sm">
+    Total: {{ unassigned_items|length }} Items
+  </div>
+</div>
+
+{% regroup unassigned_items by shop as grouped_spares %}
+
+{% if not grouped_spares %}
+<div class="card border-0 shadow-sm" style="border-radius: 16px;">
+  <div class="card-body text-center py-5 text-muted">
+    <i class="bi bi-check-circle-fill text-success mb-3" style="font-size: 3rem;"></i>
+    <h5 class="fw-bold text-dark">All Caught Up!</h5>
+    <p class="mb-0">There are no unassigned spare parts in any shop ledger.</p>
+  </div>
+</div>
+{% else %}
+
+  {% for group in grouped_spares %}
+  <div class="card border-0 shadow-sm mb-4" style="border-radius: 16px; overflow: hidden;">
+    <div class="card-header border-0 py-3 d-flex align-items-center justify-content-between" style="background: rgba(0,0,0,0.02);">
+      <h6 class="fw-bold mb-0 text-primary">
+        <i class="bi bi-shop me-2"></i>{{ group.grouper.name }}
+      </h6>
+      <span class="badge bg-light text-dark border">{{ group.list|length }} Items</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-borderless align-middle mb-0 items-table text-nowrap">
+          <thead>
+            <tr class="border-bottom text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+              <th class="ps-4">Part Name</th>
+              <th class="text-end">Qty</th>
+              <th class="text-end">Shop Price</th>
+              <th class="pe-4 text-center">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in group.list %}
+            <tr class="border-bottom" style="border-color: var(--color-border-light) !important;">
+              <td class="ps-4">
+                <div class="fw-medium text-dark">{{ item.spare_part_name|default:"Legacy Balance / Unknown" }}</div>
+                {% if item.original_vehicle_info %}
+                <div class="text-muted" style="font-size: 0.75rem;"><i class="bi bi-car-front me-1"></i>Ordered for: {{ item.original_vehicle_info }}</div>
+                {% endif %}
+              </td>
+              <td class="text-end text-muted">{% if item.quantity %}{{ item.quantity|floatformat:"-2" }}{% else %}—{% endif %}</td>
+              <td class="text-end fw-bold text-dark">
+                {% if item.unit_price %}₹{{ item.unit_price|floatformat:0 }}{% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td class="pe-4 text-center text-muted" style="font-size: 0.85rem;">
+                {{ item.ordered_date|date:"d/m/Y"|default:item.received_date|date:"d/m/Y"|default:"—" }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+{% endif %}
+
+{% endblock %}

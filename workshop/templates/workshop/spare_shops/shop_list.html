@@ -50,12 +50,18 @@
     <small class="text-muted">Track purchases &amp; payments to all spare parts suppliers</small>
   </div>
   {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-  <button class="btn btn-primary fw-bold rounded-pill flex-shrink-0"
-          style="white-space: nowrap;"
-          data-bs-toggle="modal" data-bs-target="#createShopModal">
-    <i class="bi bi-plus-lg"></i>
-    <span class="d-none d-sm-inline ms-1">New Shop</span>
-  </button>
+  <div class="d-flex gap-2">
+    <a href="{% url 'unassigned_spares_hub' %}" class="btn btn-light border btn-sm text-secondary fw-medium flex-shrink-0 d-flex align-items-center px-3" style="border-radius: 8px; white-space: nowrap;" title="Unassigned Spares Hub">
+      <i class="bi bi-box-seam"></i>
+      <span class="d-none d-sm-inline ms-2">Unassigned</span>
+    </a>
+    <button class="btn btn-primary fw-bold rounded-pill flex-shrink-0"
+            style="white-space: nowrap;"
+            data-bs-toggle="modal" data-bs-target="#createShopModal">
+      <i class="bi bi-plus-lg"></i>
+      <span class="d-none d-sm-inline ms-1">New Shop</span>
+    </button>
+  </div>
   {% endif %}
 </div>
 

@@ -184,7 +184,11 @@
           {% endif %}
         </td>
         <td>
-          <strong>{{ item.job_card.brand_name }} {{ item.job_card.model_name }}</strong>
+          {% if item.job_card %}
+            <strong>{{ item.job_card.brand_name }} {{ item.job_card.model_name }}</strong>
+          {% else %}
+            <em>{{ item.original_vehicle_info|default:"Unassigned" }}</em>
+          {% endif %}
         </td>
         <td>{{ item.spare_part_name|default:"—" }} {% if item.quantity %}(x{{ item.quantity|floatformat:"-2" }}){% endif %}</td>
         <td class="text-center">

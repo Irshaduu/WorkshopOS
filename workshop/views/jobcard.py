@@ -112,13 +112,33 @@ def jobcard_create(request):
                         if name and not SparePart.objects.filter(name__iexact=name).exists():
                             SparePart.objects.create(name=name)
 
+                # Collect shops that need their totals updated
+                shops_to_update = set()
+
                 # Sync shop FK from shop_name text for all spares on this job card
                 for spare in jobcard.spares.all():
                     if spare.shop_name and spare.shop_name.strip():
                         shop_obj = SpareShop.objects.filter(name__iexact=spare.shop_name.strip(), is_trashed=False).first()
-                        JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
+                        if shop_obj:
+                            JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
+                            shops_to_update.add(shop_obj)
+                        else:
+                            JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=None)
                     else:
                         JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=None)
+
+                # Delete imported unassigned spares to prevent duplicates
+                imported_ids = request.POST.getlist('imported_unassigned_ids')
+                if imported_ids:
+                    old_items = JobCardSpareItem.objects.filter(pk__in=imported_ids, job_card__isnull=True)
+                    for old_item in old_items.select_related('shop'):
+                        if old_item.shop:
+                            shops_to_update.add(old_item.shop)
+                    old_items.delete()
+
+                # Update totals for all affected shops
+                for shop in shops_to_update:
+                    shop.update_totals()
 
                 messages.success(request, f'Job card for {jobcard.registration_number} created successfully!')
                 return redirect('jobcard_edit', pk=jobcard.pk)
@@ -149,6 +169,7 @@ def jobcard_create(request):
         'labour_formset': labour_formset,
         'is_edit': False,
         'spare_shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
+        'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
     }
     return render(request, 'workshop/jobcard/jobcard_form.html', context)
 
@@ -237,13 +258,33 @@ def jobcard_edit(request, pk):
                     if name and not SparePart.objects.filter(name__iexact=name).exists():
                         SparePart.objects.create(name=name)
 
+            # Collect shops that need their totals updated
+            shops_to_update = set()
+
             # Sync shop FK from shop_name text for all spares on this job card
             for spare in jobcard.spares.all():
                 if spare.shop_name and spare.shop_name.strip():
                     shop_obj = SpareShop.objects.filter(name__iexact=spare.shop_name.strip(), is_trashed=False).first()
-                    JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
+                    if shop_obj:
+                        JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
+                        shops_to_update.add(shop_obj)
+                    else:
+                        JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=None)
                 else:
                     JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=None)
+
+            # Delete imported unassigned spares to prevent duplicates
+            imported_ids = request.POST.getlist('imported_unassigned_ids')
+            if imported_ids:
+                old_items = JobCardSpareItem.objects.filter(pk__in=imported_ids, job_card__isnull=True)
+                for old_item in old_items.select_related('shop'):
+                    if old_item.shop:
+                        shops_to_update.add(old_item.shop)
+                old_items.delete()
+
+            # Update totals for all affected shops
+            for shop in shops_to_update:
+                shop.update_totals()
 
             messages.success(request, f'Job card for {jobcard.registration_number} updated successfully!')
             
@@ -268,6 +309,7 @@ def jobcard_edit(request, pk):
         'is_edit': True,
         'next_url': request.GET.get('next'),
         'spare_shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
+        'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
     }
     return render(request, 'workshop/jobcard/jobcard_form.html', context)
 

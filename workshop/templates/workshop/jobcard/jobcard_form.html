@@ -530,10 +530,28 @@
                                 {% for s_form in spare_formset %}
                                 <tr class="spare-row border-bottom" data-original-status="{{ s_form.instance.status }}">
                                     <td class="ps-3 col-part" style="min-width: 300px;">
-                                        {{ s_form.id }}
-                                        <div class="d-none">{{ s_form.DELETE }}</div>
-                                        {{ s_form.spare_part_name }}
-                                        <div class="list-group autocomplete-suggestions"></div>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <div class="flex-grow-1">
+                                                {{ s_form.id }}
+                                                <div class="d-none">{{ s_form.DELETE }}</div>
+                                                {{ s_form.spare_part_name }}
+                                                <div class="list-group autocomplete-suggestions"></div>
+                                            </div>
+                                            {% if s_form.instance.pk and s_form.instance.shop_id %}
+                                            <div class="dropdown">
+                                                <button class="btn btn-link text-muted p-0 border-0 text-decoration-none shadow-none" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                    <i class="bi bi-three-dots-vertical" style="font-size: 1.1rem;"></i>
+                                                </button>
+                                                <ul class="dropdown-menu shadow-sm" style="font-size: 0.85rem; border-radius: 8px;">
+                                                    <li>
+                                                        <button type="button" class="dropdown-item text-warning fw-bold" onclick="confirmUnassign('{{ s_form.instance.pk }}', '{{ s_form.instance.spare_part_name|escapejs }}')">
+                                                            <i class="bi bi-box-arrow-right me-2"></i> Move to Unassigned
+                                                        </button>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            {% endif %}
+                                        </div>
                                     </td>
                                     <td class="col-qty">
                                         {{ s_form.quantity }}
@@ -587,6 +605,15 @@
 
 </form>
 
+<!-- UNASSIGN FORMS (Outside main form) -->
+{% for s_form in spare_formset %}
+    {% if s_form.instance.pk and s_form.instance.shop_id %}
+    <form id="unassign-form-{{ s_form.instance.pk }}" action="{% url 'spare_shop_unassign_item' s_form.instance.pk %}" method="post" class="d-none">
+        {% csrf_token %}
+    </form>
+    {% endif %}
+{% endfor %}
+
 <!-- DATALISTS & FILTERING REMOVED - NOW HANDLED BY API IN script.js -->
 
 
@@ -612,10 +639,26 @@
         <tbody id="empty-spare-form">
             <tr class="spare-row border-bottom" data-original-status="PENDING">
                 <td class="ps-3 col-part">
-                    {{ spare_formset.empty_form.id }}
-                    <div class="d-none">{{ spare_formset.empty_form.DELETE }}</div>
-                    {{ spare_formset.empty_form.spare_part_name }}
-                    <div class="list-group autocomplete-suggestions"></div>
+                    <div class="d-flex align-items-center gap-1">
+                        <div class="flex-grow-1">
+                            {{ spare_formset.empty_form.id }}
+                            <div class="d-none">{{ spare_formset.empty_form.DELETE }}</div>
+                            {{ spare_formset.empty_form.spare_part_name }}
+                            <div class="list-group autocomplete-suggestions"></div>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-link text-muted p-0 border-0 text-decoration-none shadow-none" type="button" data-bs-toggle="dropdown" aria-expanded="false" tabindex="-1">
+                                <i class="bi bi-three-dots-vertical" style="font-size: 1.1rem;"></i>
+                            </button>
+                            <ul class="dropdown-menu shadow-sm" style="font-size: 0.85rem; border-radius: 8px;">
+                                <li>
+                                    <button type="button" class="dropdown-item text-primary fw-bold" onclick="openImportUnassignedModal(this)">
+                                        <i class="bi bi-box-arrow-in-down me-2"></i> Import from Unassigned
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
                 </td>
                 <td class="col-qty">
                     {{ spare_formset.empty_form.quantity }}
@@ -905,5 +948,208 @@
 <!-- Spare Parts Auto-Fill Logic -->
 {% load static %}
 <script src="{% static 'js/spare_autofill.js' %}"></script>
+
+<!-- UNASSIGN CONFIRMATION MODAL -->
+<div class="modal fade" id="unassignConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 380px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-body text-center p-4">
+        <i class="bi bi-box-arrow-right text-warning mb-3" style="font-size: 3rem;"></i>
+        <h5 class="fw-bold mb-2">Move to Unassigned?</h5>
+        <p class="text-muted small mb-4">
+          Are you sure you want to detach <strong id="unassignPartName" class="text-dark"></strong> from this Job Card? 
+          <br><br>
+          <span style="background: rgba(245, 158, 11, 0.1); padding: 6px 12px; border-radius: 6px; display: inline-block;">
+            It will be removed from the customer's bill but kept in the shop's ledger.
+          </span>
+        </p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-warning fw-bold rounded-pill px-4" id="confirmUnassignBtn">Yes, Unassign</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentUnassignPk = null;
+  function confirmUnassign(pk, partName) {
+    currentUnassignPk = pk;
+    document.getElementById('unassignPartName').innerText = partName || 'this part';
+    new bootstrap.Modal(document.getElementById('unassignConfirmModal')).show();
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const btn = document.getElementById('confirmUnassignBtn');
+    if (btn) {
+      btn.addEventListener('click', function() {
+        if (currentUnassignPk) {
+          const form = document.getElementById('unassign-form-' + currentUnassignPk);
+          if (form) form.submit();
+        }
+      });
+    }
+  });
+</script>
+
+<!-- DATA LOSS PREVENTION MODAL -->
+<div class="modal fade" id="dataLossWarningModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 450px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-header border-0 pb-0 justify-content-center">
+        <i class="bi bi-exclamation-triangle-fill text-danger mt-3" style="font-size: 3rem;"></i>
+      </div>
+      <div class="modal-body text-center p-4 pt-2">
+        <h5 class="fw-bold mb-3">Warning: Data Loss Prevention</h5>
+        <p class="text-muted small mb-3 text-start">
+          You are clearing the name of an existing, saved spare part. If you save this form with a blank name, you may permanently lose this purchase record or cause a saving error.
+        </p>
+        <div class="text-start" style="background: rgba(245, 158, 11, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #f59e0b;">
+          <strong class="text-dark d-block mb-1">Did you mean to remove this part?</strong>
+          <span class="text-muted" style="font-size: 0.85rem;">
+            If you bought this part but no longer need it on this car, <strong>do not clear the name</strong>. Instead, click the <i class="bi bi-three-dots-vertical"></i> menu next to the part and select <strong>"Move to Unassigned"</strong>. This safely removes it from the bill while keeping it in your shop's ledger.
+          </span>
+        </div>
+        <div class="mt-4">
+          <button type="button" class="btn btn-dark rounded-pill px-4" data-bs-dismiss="modal">Understood</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('input', function(e) {
+    if (e.target.tagName === 'INPUT' && e.target.name && e.target.name.includes('spare_part_name')) {
+      const row = e.target.closest('.spare-row');
+      if (row) {
+        // Check if this is an existing saved record by looking for a value in the hidden ID field
+        const idInput = row.querySelector('input[name$="-id"]');
+        if (idInput && idInput.value) {
+          if (e.target.value.trim() === '') {
+            if (!e.target.dataset.warned) {
+              e.target.dataset.warned = 'true';
+              new bootstrap.Modal(document.getElementById('dataLossWarningModal')).show();
+            }
+          } else {
+            delete e.target.dataset.warned;
+          }
+        }
+      }
+    }
+  });
+</script>
+
+<!-- IMPORT UNASSIGNED MODAL -->
+<div class="modal fade" id="importUnassignedModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Import Unassigned Spare</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-4">
+        {% if not unassigned_spares %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi bi-check-circle-fill text-success mb-2" style="font-size: 2rem;"></i>
+            <p class="mb-0">No unassigned spares available in the shop ledger.</p>
+          </div>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead class="text-muted small text-uppercase">
+                <tr>
+                  <th>Part Name</th>
+                  <th>Shop</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                  <th class="text-end">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for spare in unassigned_spares %}
+                <tr>
+                  <td>
+                    <div class="fw-bold">{{ spare.spare_part_name }}</div>
+                    {% if spare.original_vehicle_info %}
+                    <div class="text-muted" style="font-size: 0.75rem;"><i class="bi bi-car-front me-1"></i>Ordered for: {{ spare.original_vehicle_info }}</div>
+                    {% endif %}
+                  </td>
+                  <td>{{ spare.shop.name|default:"—" }}</td>
+                  <td>{{ spare.quantity }}</td>
+                  <td>{% if spare.unit_price %}₹{{ spare.unit_price|floatformat:0 }}{% else %}—{% endif %}</td>
+                  <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 fw-bold"
+                            onclick="importSpare(this, '{{ spare.pk }}', '{{ spare.spare_part_name|escapejs }}', '{{ spare.quantity|default:1 }}', '{{ spare.unit_price|default:'' }}', '{{ spare.shop.name|escapejs }}', '{{ spare.ordered_date|date:"Y-m-d"|default:"" }}', '{{ spare.received_date|date:"Y-m-d"|default:"" }}')">
+                      Select
+                    </button>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let targetSpareRow = null;
+
+  function openImportUnassignedModal(btn) {
+    targetSpareRow = btn.closest('.spare-row');
+    new bootstrap.Modal(document.getElementById('importUnassignedModal')).show();
+  }
+
+  function importSpare(btn, pk, name, qty, price, shopName, orderedDate, receivedDate) {
+    if (!targetSpareRow) return;
+
+    const nameInput = targetSpareRow.querySelector('input[name$="-spare_part_name"]');
+    if (nameInput) nameInput.value = name;
+
+    const qtyInput = targetSpareRow.querySelector('input[name$="-quantity"]');
+    if (qtyInput && qty) qtyInput.value = qty;
+
+    const priceInput = targetSpareRow.querySelector('input[name$="-unit_price"]');
+    if (priceInput && price) priceInput.value = price;
+
+    const shopSelect = targetSpareRow.querySelector('select.shop-name-select');
+    if (shopSelect && shopName) {
+      Array.from(shopSelect.options).forEach(opt => {
+        if (opt.text.trim() === shopName) opt.selected = true;
+      });
+    }
+
+    const orderedInput = targetSpareRow.querySelector('input[name$="-ordered_date"]');
+    if (orderedInput && orderedDate) orderedInput.value = orderedDate;
+
+    const receivedInput = targetSpareRow.querySelector('input[name$="-received_date"]');
+    if (receivedInput && receivedDate) receivedInput.value = receivedDate;
+
+    // Attach hidden input to the row so backend can delete the original
+    // IMPORTANT: Remove any existing hidden ID in this row to prevent stacking if user clicks import multiple times on same row!
+    const existingHidden = targetSpareRow.querySelector('input[name="imported_unassigned_ids"]');
+    if (existingHidden) {
+      existingHidden.remove();
+    }
+    
+    const hiddenId = document.createElement('input');
+    hiddenId.type = 'hidden';
+    hiddenId.name = 'imported_unassigned_ids';
+    hiddenId.value = pk;
+    targetSpareRow.appendChild(hiddenId);
+
+    // Close Modal
+    bootstrap.Modal.getInstance(document.getElementById('importUnassignedModal')).hide();
+    
+    // Add visual feedback
+    targetSpareRow.style.transition = 'background-color 0.5s';
+    targetSpareRow.style.backgroundColor = 'rgba(74, 222, 128, 0.2)';
+    setTimeout(() => { targetSpareRow.style.backgroundColor = ''; }, 1000);
+  }
+</script>
 
 {% endblock %}
