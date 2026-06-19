@@ -7,7 +7,7 @@ from django.contrib.auth.models import User, Group
 from django.contrib.sessions.models import Session
 from django.db import models
 from .decorators import owner_required, office_required
-from .models import Mechanic, UserSession
+from .models import Mechanic, UserSession, CashbookEntry
 
 
 @office_required
@@ -46,15 +46,114 @@ def manage_dashboard(request):
         last_activity__gte=active_window
     ).distinct().order_by('-last_activity')
     
+    
+    # -------------------------------------------------------------------------
+    # CASHBOOK LOGIC (AJAX & Date Filtering)
+    # -------------------------------------------------------------------------
+    cashbook_entries = None
+    cashbook_totals = {'income': 0, 'expense': 0, 'net': 0}
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    filter_type = request.GET.get('filter', 'today')
+
+    if section == 'cashbook':
+        if not is_ajax and not request.GET.get('filter'):
+            # Smart Reset: default to today on hard refresh
+            filter_type = 'today'
+            
+        today = timezone.now().date()
+        qs = CashbookEntry.objects.all()
+        
+        if filter_type == 'today':
+            qs = qs.filter(date=today)
+        elif filter_type == 'this_week':
+            start_of_week = today - timedelta(days=today.weekday())
+            qs = qs.filter(date__gte=start_of_week)
+        elif filter_type == 'this_month':
+            qs = qs.filter(date__year=today.year, date__month=today.month)
+        elif filter_type == 'this_year':
+            qs = qs.filter(date__year=today.year)
+            
+        # Calculate totals for the filtered period FIRST (using the un-sliced queryset)
+        income = qs.filter(entry_type='INCOME').aggregate(t=models.Sum('amount'))['t'] or 0
+        expense = qs.filter(entry_type='EXPENSE').aggregate(t=models.Sum('amount'))['t'] or 0
+        cashbook_totals = {
+            'income': income,
+            'expense': expense,
+            'net': income - expense
+        }
+        
+        # Then grab the specific lists, slicing at 300 to prevent crashing the browser on 'This Year' filters with 1M rows
+        expenses = qs.filter(entry_type='EXPENSE').order_by('-date', '-created_at')[:300]
+        incomes  = qs.filter(entry_type='INCOME').order_by('-date', '-created_at')[:300]
+        
+        if is_ajax:
+            return render(request, 'workshop/manage/cashbook_partial.html', {
+                'expenses': expenses,
+                'incomes': incomes,
+                'cashbook_totals': cashbook_totals,
+                'filter_type': filter_type
+            })
+
     return render(request, 'workshop/manage/manage_dashboard.html', {
         'section': section,
+        'expenses': expenses,
+        'incomes': incomes,
+        'cashbook_totals': cashbook_totals,
         'office_users': office_users,
         'floor_users': floor_users,
         'mechanics': mechanics,
         'owner_sessions': owner_sessions,
         'staff_sessions': staff_sessions,
         'current_session_key': request.session.session_key,
+        'cashbook_entries': cashbook_entries,
+        'cashbook_totals': cashbook_totals,
+        'filter_type': filter_type
     })
+
+
+@office_required
+def add_cashbook_entry(request):
+    if request.method == 'POST':
+        entry_type = request.POST.get('entry_type')
+        category = request.POST.get('category')
+        amount = request.POST.get('amount')
+        payment_method = request.POST.get('payment_method', 'CASH')
+        description = request.POST.get('description')
+        
+        CashbookEntry.objects.create(
+            entry_type=entry_type,
+            category=category,
+            amount=amount,
+            payment_method=payment_method,
+            description=description,
+            created_by=request.user
+        )
+        messages.success(request, f"Successfully added {entry_type.lower()} entry.")
+    return redirect(reverse('manage_dashboard') + '?section=cashbook')
+
+@office_required
+def delete_cashbook_entry(request, pk):
+    if request.method == 'POST':
+        entry = get_object_or_404(CashbookEntry, pk=pk)
+        entry.delete()
+        messages.success(request, "Entry deleted.")
+    return redirect(reverse('manage_dashboard') + '?section=cashbook')
+
+
+@office_required
+def edit_cashbook_entry(request, pk):
+    if request.method == 'POST':
+        entry = get_object_or_404(CashbookEntry, pk=pk)
+        category = request.POST.get('category', '').strip()
+        amount   = request.POST.get('amount', '').strip()
+        payment_method = request.POST.get('payment_method', 'CASH')
+        if category and amount:
+            entry.category = category
+            entry.amount   = amount
+            entry.payment_method = payment_method
+            entry.save()
+            messages.success(request, f"Entry updated.")
+    return redirect(reverse('manage_dashboard') + '?section=cashbook')
 
 
 @office_required
@@ -76,8 +175,17 @@ def manage_create_user(request):
             messages.error(request, f"Username '{username}' is already taken. Choose another.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
-        if len(password) < 4:
-            messages.error(request, "Password must be at least 4 characters.")
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+
+        if len(password) < 8:
+            messages.error(request, "Password must be at least 8 characters.")
+            return redirect(reverse('manage_dashboard') + '?section=accounts')
+            
+        try:
+            validate_password(password)
+        except ValidationError as e:
+            messages.error(request, f"Password not strong enough: {', '.join(e.messages)}")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
         user = User.objects.create_user(username=username, password=password)
@@ -103,8 +211,17 @@ def manage_reset_password(request, user_id):
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
         new_password = request.POST.get('new_password', '').strip()
-        if not new_password or len(new_password) < 4:
-            messages.error(request, "Password must be at least 4 characters.")
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+
+        if not new_password or len(new_password) < 8:
+            messages.error(request, "Password must be at least 8 characters.")
+            return redirect(reverse('manage_dashboard') + '?section=accounts')
+            
+        try:
+            validate_password(new_password)
+        except ValidationError as e:
+            messages.error(request, f"Password not strong enough: {', '.join(e.messages)}")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
         user.set_password(new_password)
@@ -195,17 +312,13 @@ def manage_edit_mechanic(request, mechanic_id):
     return redirect(reverse('manage_dashboard') + '?section=accounts')
 
 
-@office_required
+@owner_required
 def manage_terminate_session(request, session_id):
     """
     Remotely terminate a login session. 
     Deletes both the UserSession record and the underlying Django session.
     """
     if request.method == 'POST':
-        # Security: Double check requester is an Owner
-        if not request.user.groups.filter(name='Owner').exists() and not request.user.is_superuser:
-            messages.error(request, "Permission denied. Only Owners can manage security sessions.")
-            return redirect(reverse('manage_dashboard') + '?section=security')
 
         user_session = get_object_or_404(UserSession, pk=session_id)
         

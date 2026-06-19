@@ -1,16 +1,16 @@
-# 🔧 WorkshopOS: API & Core Engineering Patterns (v6.3)
+# WorkshopOS: API & Core Engineering Patterns (v6.3)
 
-This document outlines the **"Elite" industrial patterns** used in WorkshopOS to ensure 1M+ record optimization and zero-failure security.
+This document outlines the core technical patterns used in WorkshopOS.
 
 ---
 
-## 🚀 I. High-Performance Engineering (1M+ Records)
+## I. High-Performance Engineering
 
-### 1. Database Optimization (O(1) Access)
+### 1. Database Optimization
 Every view that handles lists of objects (Job Cards, Inventory, Search) must use **Server-Side Pagination** and **Greedy Query Mapping**.
 
-- **Pattern**: Always use `select_related` for ForeignKeys and `prefetch_related` for ManyToMany/Reverse relations.
 - **Goal**: Reach sub-50ms database retrieval even with 1,000,000+ records.
+- **Pagination Rule**: Standardized at 45 items per page across dashboard and lists to align with UI grid dimensions.
 - **Example**:
   ```python
   JobCard.objects.all().select_related('lead_mechanic').prefetch_related('spares', 'labours')
@@ -31,7 +31,8 @@ class Meta:
 ```
 
 ### 4. Denormalized Financials
-`JobCard.total_bill_amount` is a physical column, not a computed value. Updated automatically via `update_totals()` on every spare/labour save or delete.
+`JobCard.total_bill_amount` is a physical column, not a computed value. Updated automatically via `update_totals()` on every spare/labour save or delete. 
+*(Note: Now strictly enforced across all dashboard and pending payment views using `F('total_bill_amount')` to eliminate correlated subquery N+1 bottlenecks).*
 
 ---
 
@@ -110,8 +111,10 @@ Used in both **Bulk Payer** and **Spare Shop** payment systems:
 2. Order by oldest first (`created_date`, `pk`)
 3. Distribute payment amount across items until exhausted
 4. Each item status transitions: PENDING → PARTIAL → PAID
-5. Create `PaymentHistory` record with JSON snapshot of distribution
-6. Reversal reads the exact JSON snapshot to subtract precise amounts
+5. Create `PaymentHistory` record (with JSON snapshot for **Bulk Payments** only)
+6. Reversal reads the saved record to subtract precise amounts
+
+> **Note**: Spare Shop payments do not use JSON snapshots. Their history is stored as a simple ledger entry. Only `BulkPaymentHistory` stores a JSON `details` field for reversal.
 
 ---
 
@@ -123,4 +126,4 @@ Used in both **Bulk Payer** and **Spare Shop** payment systems:
 
 ---
 
-**WorkshopOS: Industrial Grade. Zero Regression.** 🏁🛡️🏎️💨📋✨
+**WorkshopOS: Practical. Secure. In Active Development.** 🏁🛡️🏎️

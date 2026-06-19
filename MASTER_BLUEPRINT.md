@@ -101,7 +101,7 @@ erDiagram
 | 13 | **JobCardLabourItem** | job_card (FK), job_description, amount | Per-job labour charges |
 | 14 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), is_trashed | Group for fleet/repeat customers |
 | 15 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON) | Audit trail for bulk payments |
-| 16 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, details (JSON), is_trashed | Audit trail for shop payments |
+| 16 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
 
 ### Inventory App Models (8)
 
@@ -150,7 +150,7 @@ graph LR
 | **IP Lockout** | 5 failures → 15 min block via `FailedAttempt` model |
 | **Security Alerts** | On every login → SMS (Twilio) + Telegram to BOTH owners (⚠️ current system — may change) |
 | **Forgot Password** | `/forgot-password/` → OTP via SMS/Telegram → `/reset-password/` |
-| **OTP Protection** | 6-digit, 5-min expiry, 3 attempts max, 60s cooldown |
+| **OTP Authentication** | 6-digit, 5-min expiry, 3 attempts max, 60s cooldown |
 | **Session Tracking** | `SessionTrackingMiddleware` updates `UserSession` on every request |
 | **Remote Revoke** | Owners can terminate any session from management dashboard |
 | **40-day Sessions** | `SESSION_COOKIE_AGE = 3,456,000` seconds |
@@ -213,6 +213,9 @@ Login Event → send_titan_security_alert()
 | | `/spare-shops/<pk>/permanent-delete/` | `spare_shop_permanent_delete` | Owner |
 | | `/spare-shops/payment/<payment_pk>/permanent-delete/` | `spare_shop_payment_permanent_delete` | Owner |
 | | `/spare-shops/<pk>/print/` | `spare_shop_print` | Office |
+| | `/spare-shops/unassigned/add/` | `spare_shop_add_unassigned` | Office |
+| | `/spare-shops/unassign/<pk>/` | `spare_shop_unassign_item` | Office |
+| | `/spare-shops/item/<pk>/update-price/` | `spare_shop_update_item_price` | Office |
 | **MASTER LISTS** | `/master-lists/` | `master_lists_home` | Office |
 | | `/master-lists/brands/` | `brand_list` | Office |
 | | `/master-lists/brands/add/` | `brand_create` | Office |
@@ -237,7 +240,7 @@ Login Event → send_titan_security_alert()
 | | `/car-profiles/<reg>/` | `car_profile_detail` | Office |
 | **INVOICE** | `/invoice/<pk>/` | `invoice_view` | Office |
 | **AUTH** | `/login/` | `staff_login_view` | Public |
-| | `/admin-login/` | `admin_login_view` | Public |
+| | `/admin-login/` | `admin_login_view` | Public (Owner Login) |
 | | `/forgot-password/` | `owner_forgot_password_view` | Public |
 | | `/reset-password/` | `owner_reset_password_view` | Public |
 | | `/logout/` | Django LogoutView | Auth'd |
@@ -255,7 +258,7 @@ Login Event → send_titan_security_alert()
 | | `/manage/cleanup/concern/<id>/delete/` | `cleanup_delete_concern` | Office |
 | | `/manage/cleanup/concern/<id>/rename/` | `cleanup_rename_concern` | Office |
 
-*Note: `manage_terminate_session` has `@office_required` decorator but includes an internal Owner-only check.*
+*Note: [FIXED] `manage_terminate_session` is now properly secured with the `@owner_required` decorator.*
 
 ### Inventory App (33 routes under `/inventory/`)
 
@@ -384,7 +387,7 @@ stateDiagram-v2
 | `/master_lists/` | `master_lists_home.html`, `brand_list.html`, `brand_form.html`, `brand_confirm_delete.html`, `model_list.html`, `model_form.html`, `model_confirm_delete.html`, `spare_list.html`, `spare_form.html`, `spare_confirm_delete.html`, `concern_list.html`, `concern_form.html`, `concern_confirm_delete.html` | 13 master list screens |
 | `/car_profiles/` | `car_profile_list.html`, `car_profile_detail.html`, `car_list_partial.html` | 3 car profile screens |
 | `/invoice/` | `invoice_template.html` | Professional invoice |
-| `/spare_shops/` | `shop_list.html`, `shop_detail.html`, `shop_print.html` | 3 spare shop screens |
+| `/spare_shops/` | `shop_list.html`, `shop_detail.html`, `shop_print.html`, `unassigned_hub.html` | 4 spare shop screens |
 | `/manage/` | `manage_dashboard.html`, `data_cleanup.html` | 2 admin screens |
 | `/includes/` | `pagination.html` | Reusable pagination component |
 

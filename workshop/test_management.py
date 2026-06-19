@@ -43,19 +43,19 @@ class ManagementViewTests(TestCase):
         
         # 2. Duplicate username
         response = self.client.post(url, {
-            'username': 'staff_user', 'password': 'password123', 'role': 'Floor'
+            'username': 'staff_user', 'password': 'StrongP@ssw0rd!', 'role': 'Floor'
         })
         self.assertEqual(User.objects.filter(username='staff_user').count(), 1)
         
         # 3. Invalid role
         response = self.client.post(url, {
-            'username': 'newuser2', 'password': 'password123', 'role': 'InvalidRole'
+            'username': 'newuser2', 'password': 'StrongP@ssw0rd!', 'role': 'InvalidRole'
         })
         self.assertFalse(User.objects.filter(username='newuser2').exists())
         
         # 4. Successful creation
         response = self.client.post(url, {
-            'username': 'newuser', 'password': 'password123', 'role': 'Floor'
+            'username': 'newuser', 'password': 'StrongP@ssw0rd!', 'role': 'Floor'
         })
         self.assertTrue(User.objects.filter(username='newuser').exists())
         self.assertTrue(User.objects.get(username='newuser').groups.filter(name='Floor').exists())
@@ -80,9 +80,9 @@ class ManagementViewTests(TestCase):
         self.assertFalse(self.client.login(username='staff_user', password='123'))
         
         # Valid reset
-        response = self.client.post(url, {'new_password': 'newpassword123'})
+        response = self.client.post(url, {'new_password': 'StrongP@ssw0rd!'})
         self.assertRedirects(response, reverse('manage_dashboard') + '?section=accounts')
-        self.assertTrue(self.client.login(username='staff_user', password='newpassword123'))
+        self.assertTrue(self.client.login(username='staff_user', password='StrongP@ssw0rd!'))
         
     def test_mechanic_management(self):
         # 1. Add invalid (empty)

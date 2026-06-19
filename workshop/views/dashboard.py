@@ -17,7 +17,7 @@ def home(request):
     """
     # Get only non-delivered job cards (where delivered=False)
     # Optimized with select_related and prefetch_related for 1M+ records
-    active_jobcards = JobCard.objects.filter(delivered=False, is_deleted=False).select_related('lead_mechanic').prefetch_related('concerns', 'spares', 'labours').annotate(
+    active_jobcards = JobCard.objects.filter(delivered=False, is_deleted=False).select_related('lead_mechanic').prefetch_related('concerns').annotate(
         total_concerns=Count('concerns'),
         fixed_concerns=Count('concerns', filter=Q(concerns__status='FIXED'))
     ).order_by('-updated_at', '-pk')

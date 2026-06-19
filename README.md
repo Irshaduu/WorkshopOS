@@ -18,9 +18,11 @@ A premium, comprehensive Django-based workshop management system designed to str
 
 ### Finance & Suppliers
 - **Spare Shops Management** — Dedicated module for tracking parts suppliers, monitoring outstanding balances, and managing lump-sum supplier payments with cascade distribution.
+- **Unassigned Spares Hub** — Add legacy stock/balances directly to a shop without linking to a job card. Move parts between job cards and the Unassigned pool. Import unassigned parts into new job cards.
+- **Inline Shop Price Editing** — Update the shop-paid price of any spare item directly from the ledger page.
 - **Bulk Payer Management** — Dedicated module for managing repeating/fleet customers with cascading bulk payments chronologically (oldest-first).
 - **Pending Bills Dashboard** — Centralized view of all unpaid/partially-paid jobs across the system.
-- **JSON Snapshot Reversal** — Every payment records a JSON snapshot enabling precise, surgical reversal by the Owner.
+- **Payment Reversal** — Every bulk payment records a JSON snapshot enabling precise, surgical reversal by the Owner.
 
 ### Inventory System
 - **Stock Management** — Track parts and consumables with low-stock alerts and percentage-based color coding.
@@ -117,15 +119,15 @@ WorkshopOS (Titan)/
 ```
 
 ## 🛡️ Titan Standard: Automated Reliability
-WorkshopOS is backed by an **industrial-grade test suite** across **16 test files** covering security, models, views, API endpoints, signals, middleware, financial logic, and supplier management — all with zero-failure tolerance.
-- **100% Security Coverage**: Verified IP-lockouts, password authentication, and real-time session revocation.
-- **100% Warehouse Pulse**: Verified stock-delta signals (Creation, Update, Name Change, Deletion).
-- **100% Model Integrity**: Verified every lifecycle transition for Job Cards and User Sessions.
+WorkshopOS is backed by an **automated test suite** across **17+ test files** covering security, models, views, API endpoints, signals, middleware, financial logic, supplier management, and spare shop operations.
+- **Security Coverage**: Verified IP-lockouts, OTP authentication, and real-time session revocation.
+- **Warehouse Pulse**: Verified stock-delta signals (Creation, Update, Name Change, Deletion).
+- **Model Integrity**: Verified lifecycle transitions for Job Cards, User Sessions, Spare Shops, and Unassigned Spares.
 
-## 🚀 Enterprise Scalability (1M+ Records)
-Designed from the ground up to handle a **Million Vehicles** without performance degradation:
-- **O(1) Memory Usage**: Server-side pagination (21-50 records per page) ensures constant speed regardless of database size.
-- **B-Tree Database Indexing**: Critical fields (`registration_number`, `admitted_date`, `is_deleted`, `delivered`, `updated_at`) are professionally indexed for sub-50ms retrieval.
+## 🚀 Performance Engineering
+Designed for scale with practical, measured optimizations:
+- **O(1) Memory Usage**: Server-side pagination (21–50 records per page) ensures constant speed regardless of database size.
+- **B-Tree Database Indexing**: Critical fields (`registration_number`, `admitted_date`, `is_deleted`, `delivered`, `updated_at`) are indexed for fast retrieval.
 - **Query Hardening**: All views utilize `select_related` and `prefetch_related` to eliminate N+1 latency.
 - **Composite Indexes**: Dashboard query pattern covered by multi-field composite index (`is_deleted`, `delivered`, `-updated_at`).
 
@@ -141,6 +143,6 @@ Designed from the ground up to handle a **Million Vehicles** without performance
 
 ---
 
-**Version**: 6.2  
+**Version**: 6.3  
 **Last Updated**: June 2026  
-**Status**: 🛡️ SECURITY HARDENED | 🚀 SCALE-READY | 🔧 IN ACTIVE DEVELOPMENT
+**Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT

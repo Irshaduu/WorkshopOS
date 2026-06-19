@@ -121,6 +121,13 @@ def inventory_list(request):
 
 @staff_required
 def update_stock(request, item_id):
+    """
+    Manual stock correction view.
+    INTENTIONAL BYPASS: This view directly sets current_stock without
+    triggering signals. Use only for manual corrections (e.g., physical
+    stock count reconciliation). Signal-based auto-sync still applies
+    to all JobCard and Restock operations.
+    """
     item = get_object_or_404(Item, pk=item_id)
     if request.method == 'POST':
         new_stock = request.POST.get('current_stock')
@@ -129,6 +136,7 @@ def update_stock(request, item_id):
             item.current_stock = float(new_stock or 0)
             item.save()
             messages.success(request, f"Stock updated for {item.name}")
+            messages.warning(request, "⚠️ Manual stock correction saved. This overrides the automatic signal-based count.")
     next_url = request.POST.get('next') or request.GET.get('next')
     if next_url:
         return redirect(next_url)

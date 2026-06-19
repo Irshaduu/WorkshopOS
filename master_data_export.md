@@ -2,13 +2,9 @@
 
 ## 1. Car Brands & Models
 - **Aston Martin**
-  - t2
-  - t3
-  - t4
-  - t5
-  - t6
-  - t7
-  - t8
+  - DB11
+  - DBS
+  - Vantage
 - **Audi**
   - A3
   - A4
@@ -109,7 +105,6 @@
 - AC Filter
 - AC Vent
 - AHC Fluid
-- Abs Sensor
 - Accumulator
 - Air Filter
 - Air Suspension Compressor
@@ -302,6 +297,5 @@
 - Windshield Washer Fluid
 - Windshield Washer Pump
 - Wiper Blades
-- wheel bearing
 
 ## 3. Concerns

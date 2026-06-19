@@ -43,6 +43,7 @@
 32. [N+1 Query Resolution (Page-Scoped Lookups)](#32-n1-query-resolution-page-scoped-lookups)
 33. [Supplier Restock Stock Signals](#33-supplier-restock-stock-signals)
 34. [Supplier Waterfall Bill Status](#34-supplier-waterfall-bill-status)
+35. [Unassigned Spares Hub](#35-unassigned-spares-hub)
 
 ---
 
@@ -324,8 +325,8 @@ with transaction.atomic():
 
 ---
 
-## 9. JSON Snapshot Payment Reversal
-**What It Does:** When reversing a bulk payment, the system reads the exact JSON snapshot saved during payment to subtract the exact right amounts.
+## 9. Payment Reversal
+**What It Does:** Reverses a payment by reading saved record details.
 
 **Backend:**
 ```python
@@ -764,28 +765,35 @@ def check_ip_lockout(request):
 
 def record_login_failure(request):
     ip = get_client_ip(request)
-    attempt, _ = FailedAttempt.objects.get_or_create(ip_address=ip)
-    attempt.failures += 1
-    attempt.save()
+    FailedAttempt.objects.get_or_create(ip_address=ip)
+    # ATOMIC UPDATE: Prevents race conditions during concurrent brute-force attacks
+    FailedAttempt.objects.filter(ip_address=ip).update(failures=F('failures') + 1)
 
 def reset_login_failures(request):
     ip = get_client_ip(request)
     FailedAttempt.objects.filter(ip_address=ip).update(failures=0)
 ```
 
-**IP Detection (works behind proxies like Cloudflare/Nginx):**
+**IP Detection (Hardened against spoofing):**
+> 🛡️ **SECURITY NOTE:** This function deliberately ignores `X-Forwarded-For` proxy headers, pulling strictly from the unforgeable `REMOTE_ADDR` to permanently block client-side IP spoofing bypasses.
 ```python
 def get_client_ip(request):
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        return x_forwarded_for.split(',')[0]
-    return request.META.get('REMOTE_ADDR')
+    """
+    Returns the direct client IP.
+    Only use REMOTE_ADDR — never trust client-supplied headers without a
+    verified trusted proxy configuration.
+    """
+    return request.META.get('REMOTE_ADDR', '0.0.0.0')
 ```
 
 ---
 
-## 23. Owner 2FA: OTP via SMS + Telegram (Dual Channel)
-**What It Does:** Owner enters username → system sends a 6-digit OTP via both Twilio SMS and Telegram Bot. 60-second cooldown between sends. 3 wrong attempts = 5-minute lockout.
+## 23. Owner Forgot Password: OTP via SMS + Telegram
+**What It Does:** Security system for password resets using OTP codes via SMS/Telegram.
+> ⚠️ **SECURITY NOTE:** OTP is currently stored in plaintext in the session store (`django_session` table). Anyone with database read access can read active OTPs. Should be stored as a hash (`hashlib.sha256`) in future iterations.
+
+| **Forgot Password** | `/forgot-password/` → OTP via SMS/Telegram → `/reset-password/` |
+| **OTP Authentication** | 6-digit, 5-min expiry, 3 attempts max, 60s cooldown |
 
 **OTP Generation:**
 ```python

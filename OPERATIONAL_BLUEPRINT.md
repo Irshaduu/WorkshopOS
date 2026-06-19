@@ -192,7 +192,7 @@ JSON snapshot saved for precise reversal if needed
 ```
 Same oldest-first cascade logic applies to shop payments.
 Lump sum distributed across unpaid items chronologically.
-Each payment creates a JSON snapshot for Owner reversal.
+Payment history is recorded; Owner can reverse any payment.
 ```
 
 ---
@@ -306,7 +306,7 @@ SPARE SHOP (Supplier)
    ├── Linked Spare Items (via FK on JobCardSpareItem)
    ├── Financial Ledger:
    │     Total Purchases = Sum(unit_price × quantity) for linked items
-   │     Total Paid = Sum(shop_paid_amount) for linked items
+   │     Total Paid = Sum of all payments
    │     Balance = Total Purchases - Total Paid
    │
    ├── Payment Options:
@@ -314,8 +314,14 @@ SPARE SHOP (Supplier)
    │     Lump Sum Cascade (oldest-first distribution)
    │
    ├── Payment History:
-   │     Each payment stored with JSON snapshot
+   │     Each payment is stored as a ledger record
    │     Owner can reverse any payment
+   │
+   ├── Unassigned Spares Hub:
+   │     Add legacy stock/balances not linked to any job card
+   │     Items can be moved from job cards to Unassigned
+   │     Original vehicle info is preserved when unassigning
+   │     Unassigned items can be imported into new job cards
    │
    └── Print/Export (shop ledger printable view)
 ```

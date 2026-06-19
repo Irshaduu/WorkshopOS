@@ -81,9 +81,10 @@ class AuthFlowTests(TestCase):
         self.assertContains(response, "Please wait")
 
         # 3. Reset View: Password Match & Length
+        import hashlib
         session = self.client.session
         session['pwd_reset_user_id'] = self.owner.id
-        session['pwd_reset_otp'] = '123456'
+        session['pwd_reset_otp'] = hashlib.sha256('123456'.encode()).hexdigest()
         session['pwd_reset_expire'] = time.time() + 300
         session.save()
         

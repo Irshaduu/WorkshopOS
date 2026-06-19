@@ -158,25 +158,9 @@ def bulk_payer_detail(request, pk):
     # -------------------------------------------------------------------------
     cards_query = base_cards_query.select_related('lead_mechanic')
     
-    spares_subquery = JobCardSpareItem.objects.filter(
-        job_card=OuterRef('pk')
-    ).values('job_card').annotate(total=Sum('total_price')).values('total')
-    
-    labours_subquery = JobCardLabourItem.objects.filter(
-        job_card=OuterRef('pk')
-    ).values('job_card').annotate(total=Sum('amount')).values('total')
-    
     cards_query = cards_query.annotate(
-        annotated_spares=Coalesce(Subquery(spares_subquery), Value(Decimal('0.0'), output_field=DecimalField())),
-        annotated_labour=Coalesce(Subquery(labours_subquery), Value(Decimal('0.0'), output_field=DecimalField()))
-    ).annotate(
-        total_bill=ExpressionWrapper(
-            F('annotated_spares') + F('annotated_labour'),
-            output_field=DecimalField()
-        )
-    ).annotate(
         balance_amount=ExpressionWrapper(
-            F('total_bill') - F('received_amount'),
+            F('total_bill_amount') - F('received_amount'),
             output_field=DecimalField()
         )
     ).order_by('admitted_date', 'pk')
@@ -313,19 +297,12 @@ def bulk_payer_pay(request, pk):
         messages.error(request, "Invalid payment amount.")
         return redirect('bulk_payer_detail', pk=pk)
     
-    spares_subquery = JobCardSpareItem.objects.filter(job_card=OuterRef('pk')).values('job_card').annotate(total=Sum('total_price')).values('total')
-    labours_subquery = JobCardLabourItem.objects.filter(job_card=OuterRef('pk')).values('job_card').annotate(total=Sum('amount')).values('total')
-    
+
     with transaction.atomic():
         pending_cards = bulk_payer.job_cards.select_for_update().filter(
             payment_status__in=['PENDING', 'PARTIAL']
         ).annotate(
-            annotated_spares=Coalesce(Subquery(spares_subquery), Value(Decimal('0.0'), output_field=DecimalField())),
-            annotated_labour=Coalesce(Subquery(labours_subquery), Value(Decimal('0.0'), output_field=DecimalField()))
-        ).annotate(
-            total_bill=ExpressionWrapper(F('annotated_spares') + F('annotated_labour'), output_field=DecimalField())
-        ).annotate(
-            balance_amount=ExpressionWrapper(F('total_bill') - F('received_amount'), output_field=DecimalField())
+            balance_amount=ExpressionWrapper(F('total_bill_amount') - F('received_amount'), output_field=DecimalField())
         ).order_by('admitted_date', 'pk')  # Oldest first
         
         remaining_funds = lump_sum

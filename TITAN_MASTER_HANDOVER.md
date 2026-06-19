@@ -1,9 +1,9 @@
-# 🏛️ TITAN MASTER HANDOVER: WorkshopOS (v6.2)
+# 🏛️ TITAN MASTER HANDOVER: WorkshopOS (v6.3)
 
 > [!IMPORTANT]
-> **Status**: 🛡️ TITAN CERTIFIED | 💎 100% CLEAN | 🔧 IN ACTIVE DEVELOPMENT  
+> **Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT  
 > **Last Updated**: June 2026  
-> **Architecture Grade**: Enterprise Grade  
+> **Version**: 6.3  
 
 ---
 
@@ -11,7 +11,7 @@
 
 **WorkshopOS** is an industrial-grade application meticulously engineered for a single premium automotive workshop. 
 
-- **The Standard**: 100% functional integrity across all mission-critical operations. The system is backed by a comprehensive test suite spanning 14 test files with zero-failure tolerance in core operations.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a comprehensive test suite spanning **17+ test files** covering security, views, signals, financial logic, and spare shop operations.
 
 ---
 
@@ -20,8 +20,8 @@
 > [!WARNING]
 > *This section documents the mission-critical security and data-integrity logic of WorkshopOS. These systems are foundational and must never be broken or bypassed.*
 
-### 1. Zero-Trust Security & Lockout (`FailedAttempt`)
-- **Mechanism**: The system captures and tracks login failures by **Network IP** (`REMOTE_ADDR`), acting alongside standard session tracking to provide superior security.
+### 1. IP-Based Security & Lockout (`FailedAttempt`)
+- **Mechanism**: The system captures and tracks login failures strictly by the direct **Network IP** (`REMOTE_ADDR`). `X-Forwarded-For` proxy headers are intentionally ignored to permanently prevent client-side IP spoofing bypasses.
 - **The Rule**: 5 consecutive failed attempts trigger a global 15-minute lockout for that IP address, effectively neutralizing botnets and brute-force attacks.
 - **Integrity Check**: Verified in `workshop/test_auth.py`.  
   *Note for developers: Tests must call `FailedAttempt.objects.all().delete()` in `setUp` to prevent cross-test contamination.*
@@ -65,7 +65,7 @@ WorkshopOS is optimized for immense scale, ensuring sub-50ms data retrieval even
   ```bash
   .\venv\Scripts\python.exe manage.py test workshop inventory
   ```
-- **Test Coverage**: 16 test files across workshop (13) and inventory (3).
+- **Test Coverage**: 17+ test files across workshop (14+) and inventory (3).
 
 ---
 

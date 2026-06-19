@@ -136,6 +136,9 @@ urlpatterns = [
     path('manage/mechanics/<int:mechanic_id>/toggle/', management_views.manage_toggle_mechanic, name='manage_toggle_mechanic'),
     path('manage/mechanics/<int:mechanic_id>/edit/', management_views.manage_edit_mechanic, name='manage_edit_mechanic'),
     path('manage/sessions/<int:session_id>/terminate/', management_views.manage_terminate_session, name='manage_terminate_session'),
+    path('manage/cashbook/add/', management_views.add_cashbook_entry, name='manage_add_cashbook_entry'),
+    path('manage/cashbook/<int:pk>/delete/', management_views.delete_cashbook_entry, name='manage_delete_cashbook_entry'),
+    path('manage/cashbook/<int:pk>/edit/',   management_views.edit_cashbook_entry,   name='manage_edit_cashbook_entry'),
 
     # ------------------
     # DATA CLEANUP TOOL

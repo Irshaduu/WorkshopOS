@@ -60,11 +60,8 @@ def jobcard_create(request):
                     spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
                     labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
                     
-                    # Fetch master lists for datalists
-                    brands = CarBrand.objects.all()
-                    models = CarModel.objects.all()
-                    spares = SparePart.objects.all()
-                    concerns = ConcernSolution.objects.all()
+                    # FIX-4B: Removed 4 full-table objects.all() scans here.
+                    # Autocomplete relies purely on the AJAX endpoints.
                     
                     return render(request, 'workshop/jobcard/jobcard_form.html', {
                         'form': form,
@@ -72,10 +69,6 @@ def jobcard_create(request):
                         'spare_formset': spare_formset,
                         'labour_formset': labour_formset,
                         'is_edit': False,
-                        'brands': brands,
-                        'models': models,
-                        'spares': spares,
-                        'concerns': concerns,
                     })
                 else:
                     # Third attempt - clear counter and proceed with save
@@ -98,34 +91,38 @@ def jobcard_create(request):
                 saved_spares = spare_formset.save()
                 labour_formset.save()
                 
-                # Auto-learn: Add new concerns to master lists (Case-Insensitive)
-                for concern in saved_concerns:
-                    if concern.concern_text:
-                        text = concern.concern_text.strip()
-                        if text and not ConcernSolution.objects.filter(concern__iexact=text).exists():
-                            ConcernSolution.objects.create(concern=text)
+                # FIX-4E: Auto-learn Batch Optimization
+                new_concern_texts = [c.concern_text.strip() for c in saved_concerns if c.concern_text and c.concern_text.strip()]
+                if new_concern_texts:
+                    existing_concerns = set(ConcernSolution.objects.filter(
+                        concern__in=new_concern_texts
+                    ).values_list('concern', flat=True))
+                    new_concerns = [ConcernSolution(concern=t) for t in new_concern_texts if t not in existing_concerns]
+                    ConcernSolution.objects.bulk_create(new_concerns, ignore_conflicts=True)
                 
-                # Auto-learn: Add new spare parts to master lists (Case-Insensitive)
-                for spare in saved_spares:
-                    if spare.spare_part_name:
-                        name = spare.spare_part_name.strip()
-                        if name and not SparePart.objects.filter(name__iexact=name).exists():
-                            SparePart.objects.create(name=name)
+                new_spare_names = [s.spare_part_name.strip() for s in saved_spares if s.spare_part_name and s.spare_part_name.strip()]
+                if new_spare_names:
+                    existing_spares = set(SparePart.objects.filter(
+                        name__in=new_spare_names
+                    ).values_list('name', flat=True))
+                    new_spare_parts = [SparePart(name=n) for n in new_spare_names if n not in existing_spares]
+                    SparePart.objects.bulk_create(new_spare_parts, ignore_conflicts=True)
 
-                # Collect shops that need their totals updated
+                # FIX-4C: Batch shop lookup
+                all_spares = list(jobcard.spares.all())
+                shop_names = {s.shop_name.strip().lower() for s in all_spares if s.shop_name and s.shop_name.strip()}
+                shops_map = {}
+                if shop_names:
+                    for shop in SpareShop.objects.filter(is_trashed=False):
+                        shops_map[shop.name.lower()] = shop
+                
                 shops_to_update = set()
-
-                # Sync shop FK from shop_name text for all spares on this job card
-                for spare in jobcard.spares.all():
-                    if spare.shop_name and spare.shop_name.strip():
-                        shop_obj = SpareShop.objects.filter(name__iexact=spare.shop_name.strip(), is_trashed=False).first()
-                        if shop_obj:
-                            JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
-                            shops_to_update.add(shop_obj)
-                        else:
-                            JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=None)
-                    else:
-                        JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=None)
+                for spare in all_spares:
+                    key = spare.shop_name.strip().lower() if spare.shop_name else None
+                    shop_obj = shops_map.get(key) if key else None
+                    JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
+                    if shop_obj:
+                        shops_to_update.add(shop_obj)
 
                 # Delete imported unassigned spares to prevent duplicates
                 imported_ids = request.POST.getlist('imported_unassigned_ids')
@@ -244,34 +241,38 @@ def jobcard_edit(request, pk):
             saved_spares = spare_formset.save()
             labour_formset.save()
             
-            # Auto-learn: Add new concerns to master lists (Case-Insensitive)
-            for concern in saved_concerns:
-                if concern.concern_text:
-                    text = concern.concern_text.strip()
-                    if text and not ConcernSolution.objects.filter(concern__iexact=text).exists():
-                        ConcernSolution.objects.create(concern=text)
+            # FIX-4E: Auto-learn Batch Optimization
+            new_concern_texts = [c.concern_text.strip() for c in saved_concerns if c.concern_text and c.concern_text.strip()]
+            if new_concern_texts:
+                existing_concerns = set(ConcernSolution.objects.filter(
+                    concern__in=new_concern_texts
+                ).values_list('concern', flat=True))
+                new_concerns = [ConcernSolution(concern=t) for t in new_concern_texts if t not in existing_concerns]
+                ConcernSolution.objects.bulk_create(new_concerns, ignore_conflicts=True)
             
-            # Auto-learn: Add new spare parts to master lists (Case-Insensitive)
-            for spare in saved_spares:
-                if spare.spare_part_name:
-                    name = spare.spare_part_name.strip()
-                    if name and not SparePart.objects.filter(name__iexact=name).exists():
-                        SparePart.objects.create(name=name)
+            new_spare_names = [s.spare_part_name.strip() for s in saved_spares if s.spare_part_name and s.spare_part_name.strip()]
+            if new_spare_names:
+                existing_spares = set(SparePart.objects.filter(
+                    name__in=new_spare_names
+                ).values_list('name', flat=True))
+                new_spare_parts = [SparePart(name=n) for n in new_spare_names if n not in existing_spares]
+                SparePart.objects.bulk_create(new_spare_parts, ignore_conflicts=True)
 
-            # Collect shops that need their totals updated
+            # FIX-4C: Batch shop lookup
+            all_spares = list(jobcard.spares.all())
+            shop_names = {s.shop_name.strip().lower() for s in all_spares if s.shop_name and s.shop_name.strip()}
+            shops_map = {}
+            if shop_names:
+                for shop in SpareShop.objects.filter(is_trashed=False):
+                    shops_map[shop.name.lower()] = shop
+            
             shops_to_update = set()
-
-            # Sync shop FK from shop_name text for all spares on this job card
-            for spare in jobcard.spares.all():
-                if spare.shop_name and spare.shop_name.strip():
-                    shop_obj = SpareShop.objects.filter(name__iexact=spare.shop_name.strip(), is_trashed=False).first()
-                    if shop_obj:
-                        JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
-                        shops_to_update.add(shop_obj)
-                    else:
-                        JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=None)
-                else:
-                    JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=None)
+            for spare in all_spares:
+                key = spare.shop_name.strip().lower() if spare.shop_name else None
+                shop_obj = shops_map.get(key) if key else None
+                JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
+                if shop_obj:
+                    shops_to_update.add(shop_obj)
 
             # Delete imported unassigned spares to prevent duplicates
             imported_ids = request.POST.getlist('imported_unassigned_ids')

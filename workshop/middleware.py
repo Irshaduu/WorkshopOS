@@ -10,6 +10,7 @@ class SessionTrackingMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        response = self.get_response(request)
         # We only track sessions for authenticated users (Sahad/Rijas)
         if request.user.is_authenticated:
             session_key = request.session.session_key
@@ -27,16 +28,21 @@ class SessionTrackingMiddleware:
                 else:
                     ip = request.META.get('REMOTE_ADDR')
 
-                # Update or Create the session record
-                UserSession.objects.update_or_create(
-                    session_key=session_key,
-                    defaults={
-                        'user': request.user,
-                        'ip_address': ip,
-                        'user_agent': request.META.get('HTTP_USER_AGENT', ''),
-                        'last_activity': timezone.now()
-                    }
-                )
+                now = timezone.now()
+                from datetime import timedelta
+                cooldown = timedelta(minutes=5)
+                
+                existing = UserSession.objects.filter(session_key=session_key).first()
+                if not existing or (now - existing.last_activity) >= cooldown:
+                    # Update or Create the session record
+                    UserSession.objects.update_or_create(
+                        session_key=session_key,
+                        defaults={
+                            'user': request.user,
+                            'ip_address': ip,
+                            'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+                            'last_activity': now
+                        }
+                    )
 
-        response = self.get_response(request)
         return response

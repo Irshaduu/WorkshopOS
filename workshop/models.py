@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.contrib.auth.signals import user_logged_out
 from django.dispatch import receiver
+from django.utils import timezone
 
 # -----------------------------------------------------------------------------
 # 0. AUTHENTICATION & USERS
@@ -13,7 +14,10 @@ class UserProfile(models.Model):
     
     Attributes:
         user (OneToOneField): Link to standard Django User.
-        mobile_number (CharField): Verified mobile used for Owner 2FA OTP login.
+        mobile_number (CharField): Verified mobile used for:
+          1. Alternative login identifier (last-10-digit normalised match)
+          2. OTP delivery target (forgot-password flow)
+          3. Security alert recipient (Twilio SMS on every login)
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     mobile_number = models.CharField(max_length=20, blank=True, null=True, help_text="Used for Owner OTP login")
@@ -188,7 +192,7 @@ class ConcernSolution(models.Model):
     """
     Knowledge base for common Concerns.
     """
-    concern = models.TextField(help_text="e.g., Sound when applying brake")
+    concern = models.TextField(help_text="e.g., Sound when applying brake", db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -650,6 +654,45 @@ class SpareShopPayment(models.Model):
 
     def __str__(self):
         return f"₹{self.amount} → {self.shop.name} ({self.created_at:%d %b %Y})"
+
+# -----------------------------------------------------------------------------
+# CASHBOOK / GENERAL EXPENSES & INCOME
+# -----------------------------------------------------------------------------
+class CashbookEntry(models.Model):
+    """
+    General Ledger for tracking day-to-day workshop expenses and miscellaneous income.
+    Data is utilized by the Owner Analysis module for true profit calculations.
+    """
+    ENTRY_TYPES = [
+        ('INCOME', 'Income (Cash In)'),
+        ('EXPENSE', 'Expense (Cash Out)'),
+    ]
+    PAYMENT_METHODS = [
+        ('CASH', 'Cash'),
+        ('UPI', 'UPI'),
+        ('CARD', 'Card'),
+        ('TRANSFER', 'Bank Transfer'),
+    ]
+
+    entry_type = models.CharField(max_length=10, choices=ENTRY_TYPES)
+    category = models.CharField(max_length=100) # Free text: Expense name or Income name
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='CASH')
+    description = models.TextField(blank=True, null=True) # Optional note
+    date = models.DateField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['-date', '-created_at']),
+            models.Index(fields=['entry_type', '-date']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_entry_type_display()} - {self.category}: ₹{self.amount} ({self.get_payment_method_display()})"
+
 
 
 @receiver(user_logged_out)

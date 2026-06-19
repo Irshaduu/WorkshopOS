@@ -11,7 +11,9 @@ from ..decorators import office_required
 def invoice_view(request, pk):
     """Display professional invoice for a job card"""
     
-    jobcard = get_object_or_404(JobCard, pk=pk)
+    jobcard = get_object_or_404(
+        JobCard.objects.prefetch_related('labours', 'spares'), pk=pk
+    )
     
     # Calculate labour subtotal (using correct related name: labours)
     labour_subtotal = sum(
@@ -25,8 +27,8 @@ def invoice_view(request, pk):
         for item in jobcard.spares.all()
     )
     
-    # Calculate grand total
-    grand_total = labour_subtotal + spare_subtotal
+    # Calculate grand total using denormalized field
+    grand_total = jobcard.total_bill_amount or 0
     
     # Calculate final totals (NEW LOGIC)
     discount = 0 # Not used for now, or keep as 0
@@ -68,8 +70,12 @@ def update_bill_status(request, pk):
         
         # Calculate internal discount silently for admin reports
         if status == 'PAID':
-            total_bill = Decimal(str(jobcard.get_total_amount or '0'))
-            jobcard.discount_amount = max(Decimal('0'), total_bill - received)
+            total_bill = Decimal(str(jobcard.total_bill_amount or '0'))
+            if received > total_bill:
+                jobcard.discount_amount = Decimal('0')
+                messages.warning(request, f"Received amount (₹{received}) exceeds total bill (₹{total_bill}). Overpayment recorded.")
+            else:
+                jobcard.discount_amount = max(Decimal('0'), total_bill - received)
         else:
             jobcard.discount_amount = Decimal('0')
 

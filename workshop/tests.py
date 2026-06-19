@@ -193,9 +193,9 @@ class AuthHelperTests(TestCase):
         request = factory.get('/')
         request.META['REMOTE_ADDR'] = '1.1.1.1'
         self.assertEqual(get_client_ip(request), '1.1.1.1')
-        # Proxied IP
+        # Proxied IP (Steel Gate ignores X-Forwarded-For)
         request.META['HTTP_X_FORWARDED_FOR'] = '2.2.2.2, 1.1.1.1'
-        self.assertEqual(get_client_ip(request), '2.2.2.2')
+        self.assertEqual(get_client_ip(request), '1.1.1.1')
 
 class SpareShopPaymentTests(TestCase):
     """

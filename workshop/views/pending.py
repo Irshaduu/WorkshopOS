@@ -35,32 +35,9 @@ def pending_payments_list(request):
                 Q(model_name__icontains=word)
             )
 
-    # 3. SQL Annotations (The Scale Optimizer)
-    # Using Subqueries to prevent Cartesian Product/Double Counting when summing 
-    # over multiple related tables (Spares & Labours).
-    spares_subquery = JobCardSpareItem.objects.filter(
-        job_card=OuterRef('pk')
-    ).values('job_card').annotate(
-        total=Sum('total_price')
-    ).values('total')
-
-    labours_subquery = JobCardLabourItem.objects.filter(
-        job_card=OuterRef('pk')
-    ).values('job_card').annotate(
-        total=Sum('amount')
-    ).values('total')
-
     pending_jobs = pending_jobs.annotate(
-        annotated_spares=Coalesce(Subquery(spares_subquery), Value(Decimal('0.0'), output_field=DecimalField())),
-        annotated_labour=Coalesce(Subquery(labours_subquery), Value(Decimal('0.0'), output_field=DecimalField()))
-    ).annotate(
-        total_bill=ExpressionWrapper(
-            F('annotated_spares') + F('annotated_labour'),
-            output_field=DecimalField()
-        )
-    ).annotate(
         balance_amount=ExpressionWrapper(
-            F('total_bill') - F('received_amount'),
+            F('total_bill_amount') - F('received_amount'),
             output_field=DecimalField()
         )
     ).order_by('-admitted_date')

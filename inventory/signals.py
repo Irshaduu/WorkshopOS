@@ -1,6 +1,8 @@
 # inventory/signals.py
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
+from django.db.models import F, Value
+from django.db.models.functions import Greatest
 from workshop.models import JobCardSpareItem, JobCard
 from .models import Item, SupplierRestockItem
 
@@ -53,14 +55,16 @@ def update_stock_on_save(sender, instance, created, **kwargs):
         # Scenario A: Rename
         old_inv_item = Item.objects.filter(name__iexact=old_name).first()
         if old_inv_item:
-            old_inv_item.current_stock += old_qty
-            old_inv_item.save()
+            Item.objects.filter(pk=old_inv_item.pk).update(
+                current_stock=F('current_stock') + old_qty
+            )
             
         if new_name:
             new_inv_item = Item.objects.filter(name__iexact=new_name).first()
             if new_inv_item:
-                new_inv_item.current_stock -= new_qty
-                new_inv_item.save()
+                Item.objects.filter(pk=new_inv_item.pk).update(
+                    current_stock=Greatest(F('current_stock') - new_qty, Value(0.0))
+                )
                 
     elif new_name:
         # Scenario B/C: Quantity Change
@@ -68,8 +72,9 @@ def update_stock_on_save(sender, instance, created, **kwargs):
         if diff != 0:
             inv_item = Item.objects.filter(name__iexact=new_name).first()
             if inv_item:
-                inv_item.current_stock -= diff
-                inv_item.save()
+                Item.objects.filter(pk=inv_item.pk).update(
+                    current_stock=Greatest(F('current_stock') - diff, Value(0.0))
+                )
 
 @receiver(post_delete, sender=JobCardSpareItem)
 def restore_stock_on_delete(sender, instance, **kwargs):
@@ -80,8 +85,9 @@ def restore_stock_on_delete(sender, instance, **kwargs):
     if instance.spare_part_name and instance.quantity:
         inv_item = Item.objects.filter(name__iexact=instance.spare_part_name).first()
         if inv_item:
-            inv_item.current_stock += float(instance.quantity)
-            inv_item.save()
+            Item.objects.filter(pk=inv_item.pk).update(
+                current_stock=F('current_stock') + float(instance.quantity)
+            )
 
 # -----------------------------------------------------------------------------
 # JobCard Soft-Delete Reversal
@@ -102,22 +108,22 @@ def update_stock_on_jobcard_delete(sender, instance, created, **kwargs):
     old_deleted = getattr(instance, '_old_is_deleted', False)
     new_deleted = instance.is_deleted
 
-    if old_deleted == False and new_deleted == True:
-        # Moved to trash -> Restore stock
-        for spare in instance.spares.all():
-            if spare.spare_part_name and spare.quantity:
-                inv_item = Item.objects.filter(name__iexact=spare.spare_part_name).first()
-                if inv_item:
-                    inv_item.current_stock += float(spare.quantity)
-                    inv_item.save()
-    elif old_deleted == True and new_deleted == False:
-        # Restored from trash -> Deduct stock
-        for spare in instance.spares.all():
-            if spare.spare_part_name and spare.quantity:
-                inv_item = Item.objects.filter(name__iexact=spare.spare_part_name).first()
-                if inv_item:
-                    inv_item.current_stock -= float(spare.quantity)
-                    inv_item.save()
+    if old_deleted == new_deleted:
+        return
+
+    direction = 1 if (old_deleted == False and new_deleted == True) else -1
+
+    spare_items = instance.spares.filter(spare_part_name__isnull=False).exclude(spare_part_name='')
+    
+    qty_map = {}
+    for spare in spare_items:
+        name_lower = spare.spare_part_name.strip().lower()
+        qty_map[name_lower] = qty_map.get(name_lower, 0) + float(spare.quantity or 0)
+
+    for name_lower, total_qty in qty_map.items():
+        Item.objects.filter(name__iexact=name_lower).update(
+            current_stock=Greatest(F('current_stock') + (direction * total_qty), Value(0.0))
+        )
 
 # -----------------------------------------------------------------------------
 # Supplier Restock Signals
@@ -140,11 +146,13 @@ def update_stock_on_restock_save(sender, instance, created, **kwargs):
     diff = new_qty - old_qty
     
     if diff != 0 and instance.item:
-        instance.item.current_stock += diff
-        instance.item.save()
+        Item.objects.filter(pk=instance.item.pk).update(
+            current_stock=Greatest(F('current_stock') + diff, Value(0.0))
+        )
 
 @receiver(post_delete, sender=SupplierRestockItem)
 def restore_stock_on_restock_delete(sender, instance, **kwargs):
     if instance.item and instance.quantity:
-        instance.item.current_stock -= float(instance.quantity)
-        instance.item.save()
+        Item.objects.filter(pk=instance.item.pk).update(
+            current_stock=Greatest(F('current_stock') - float(instance.quantity), Value(0.0))
+        )

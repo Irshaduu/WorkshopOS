@@ -1,3 +1,5 @@
 Django~=5.2.0
 Pillow>=10.0
 python-decouple>=3.8
+twilio>=9.0.0
+requests>=2.31.0

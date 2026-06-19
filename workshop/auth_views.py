@@ -7,6 +7,7 @@ import time
 from datetime import timedelta
 from django.utils import timezone
 from .models import UserSession, FailedAttempt
+from django.db.models import F
 from twilio.rest import Client
 import logging
 import requests
@@ -92,12 +93,12 @@ def mask_phone(phone_str):
 # IP-Based Lockout Infrastructure (Steel Gate)
 # ============================================================
 def get_client_ip(request):
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
+    """
+    Returns the direct client IP.
+    Only use REMOTE_ADDR — never trust client-supplied headers without a
+    verified trusted proxy configuration.
+    """
+    return request.META.get('REMOTE_ADDR', '0.0.0.0')
 
 def check_ip_lockout(request):
     """
@@ -124,9 +125,8 @@ def check_ip_lockout(request):
 
 def record_login_failure(request):
     ip = get_client_ip(request)
-    attempt, created = FailedAttempt.objects.get_or_create(ip_address=ip)
-    attempt.failures += 1
-    attempt.save()
+    FailedAttempt.objects.get_or_create(ip_address=ip)
+    FailedAttempt.objects.filter(ip_address=ip).update(failures=F('failures') + 1)
 
 def reset_login_failures(request):
     ip = get_client_ip(request)
@@ -290,7 +290,7 @@ def staff_login_view(request):
         if user is not None:
             # Block owners from staff portal (Generic Error for security)
             if user.groups.filter(name='Owner').exists() or user.is_superuser:
-                record_login_failure(request)
+                # Do NOT record this as a failure — credentials are valid, wrong portal
                 messages.error(request, "Invalid credentials.")
                 return redirect('login')
 
@@ -426,11 +426,13 @@ def owner_forgot_password_view(request):
                 return render(request, 'workshop/auth/forgot_password.html')
 
         # Generate OTP
+        import hashlib
         otp = get_random_string(length=6, allowed_chars='0123456789')
+        otp_hash = hashlib.sha256(otp.encode()).hexdigest()
 
         # Store in session
         request.session['pwd_reset_user_id'] = user.id
-        request.session['pwd_reset_otp'] = otp
+        request.session['pwd_reset_otp'] = otp_hash
         request.session['pwd_reset_expire'] = time.time() + 300  # 5 minutes
         request.session['last_otp_send_time'] = time.time() # Update cooldown
 
@@ -471,8 +473,11 @@ def owner_reset_password_view(request):
 
         # Track failed OTP attempts
         attempts = request.session.get('pwd_reset_attempts', 0)
+        
+        import hashlib
+        entered_hash = hashlib.sha256(entered_otp.encode()).hexdigest()
 
-        if entered_otp != stored_otp:
+        if entered_hash != stored_otp:
             attempts += 1
             request.session['pwd_reset_attempts'] = attempts
             remaining = 3 - attempts
@@ -498,12 +503,18 @@ def owner_reset_password_view(request):
 
         # All checks passed — update the password
         from django.contrib.auth.models import User
-        user = User.objects.get(id=user_id)
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            messages.error(request, "Account not found. Please restart the reset process.")
+            return redirect('owner_forgot_password')
+            
         user.set_password(new_password)
         user.save()
+        request.session.cycle_key()
 
         # Clean up session
-        for key in ('pwd_reset_user_id', 'pwd_reset_otp', 'pwd_reset_expire', 'pwd_reset_attempts'):
+        for key in ('pwd_reset_user_id', 'pwd_reset_otp', 'pwd_reset_expire', 'pwd_reset_attempts', 'last_otp_send_time'):
             request.session.pop(key, None)
 
         messages.success(request, "Password changed successfully! Please log in with your new password.")
