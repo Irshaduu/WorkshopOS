@@ -297,7 +297,7 @@
                     🔧 Manage
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
-                    <li><a class="dropdown-item fw-bold text-success" href="{% url 'manage_dashboard' %}?section=cashbook"><i class="bi bi-wallet2"></i> Cashbook</a></li>
+                    <li><a class="dropdown-item fw-bold text-success" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> Cashbook</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item fw-bold text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
                     <li><a class="dropdown-item fw-bold {% if 'spare-shops' in request.path %}text-warning{% endif %}" href="{% url 'spare_shop_list' %}"><i class="bi bi-shop"></i> Spare Shops</a></li>
@@ -359,7 +359,7 @@
             </a>
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom mb-2">
                 {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-                <li><a class="dropdown-item fw-bold text-success" href="{% url 'manage_dashboard' %}?section=cashbook"><i class="bi bi-wallet2"></i> Cashbook</a></li>
+                <li><a class="dropdown-item fw-bold text-success" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> Cashbook</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{% url 'delivered_list' %}"><i class="bi bi-check-circle"></i> Delivered Jobs</a></li>
                 <li><a class="dropdown-item text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>

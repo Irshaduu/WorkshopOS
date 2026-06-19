@@ -126,9 +126,10 @@ urlpatterns = [
     path('logout/', django_auth_views.LogoutView.as_view(next_page='home'), name='logout'),
 
     # ------------------
-    # OWNER MANAGEMENT DASHBOARD
+    # MANAGEMENT & SECURITY
     # ------------------
     path('manage/', management_views.manage_dashboard, name='manage_dashboard'),
+    path('cashbook/', management_views.cashbook_view, name='cashbook'),
     path('manage/create-user/', management_views.manage_create_user, name='manage_create_user'),
     path('manage/users/<int:user_id>/reset-password/', management_views.manage_reset_password, name='manage_reset_password'),
     path('manage/users/<int:user_id>/delete/', management_views.manage_delete_user, name='manage_delete_user'),
@@ -136,9 +137,9 @@ urlpatterns = [
     path('manage/mechanics/<int:mechanic_id>/toggle/', management_views.manage_toggle_mechanic, name='manage_toggle_mechanic'),
     path('manage/mechanics/<int:mechanic_id>/edit/', management_views.manage_edit_mechanic, name='manage_edit_mechanic'),
     path('manage/sessions/<int:session_id>/terminate/', management_views.manage_terminate_session, name='manage_terminate_session'),
-    path('manage/cashbook/add/', management_views.add_cashbook_entry, name='manage_add_cashbook_entry'),
-    path('manage/cashbook/<int:pk>/delete/', management_views.delete_cashbook_entry, name='manage_delete_cashbook_entry'),
-    path('manage/cashbook/<int:pk>/edit/',   management_views.edit_cashbook_entry,   name='manage_edit_cashbook_entry'),
+    path('cashbook/add/', management_views.add_cashbook_entry, name='manage_add_cashbook_entry'),
+    path('cashbook/<int:pk>/delete/', management_views.delete_cashbook_entry, name='manage_delete_cashbook_entry'),
+    path('cashbook/<int:pk>/edit/',   management_views.edit_cashbook_entry,   name='manage_edit_cashbook_entry'),
 
     # ------------------
     # DATA CLEANUP TOOL
