@@ -1,0 +1,413 @@
+{% extends "workshop/base.html" %}
+{% load static %}
+
+{% block title %}Analysis & Reports — WorkshopOS{% endblock %}
+
+{% block body_class %}analysis-page{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/analysis.css' %}?v=9">
+{% endblock %}
+
+{% block content %}
+
+<div class="analysis-container">
+
+  <!-- ================================================================ -->
+  <!-- PAGE HEADER — title left, filter right                           -->
+  <!-- ================================================================ -->
+  <div class="analysis-page-header">
+    <div class="analysis-header-left">
+      <h1 class="analysis-title">
+        <i class="bi bi-graph-up-arrow"></i>
+        Analysis &amp; Reports
+      </h1>
+      <p class="analysis-subtitle">Complete workshop intelligence — Owner view only</p>
+      <span class="analysis-badge">
+        <i class="bi bi-shield-lock-fill"></i> Owner Only
+      </span>
+    </div>
+
+    <div class="analysis-header-right">
+      <div class="dropdown">
+        <button class="del-filter-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" id="rangeDropdownBtn">
+          <i class="bi bi-funnel"></i>
+          <span id="rangeDropdownLabel">
+            {% if range_key == 'today' %}Today
+            {% elif range_key == 'this_week' %}This Week
+            {% elif range_key == 'this_month' %}This Month
+            {% elif range_key == 'this_year' %}This Year
+            {% elif range_key == 'last_week' %}Last Week
+            {% elif range_key == 'last_month' %}Last Month
+            {% elif range_key == 'last_year' %}Last Year
+            {% elif range_key == 'custom' %}Custom
+            {% else %}This Year
+            {% endif %}
+          </span>
+          <i class="bi bi-chevron-down"></i>
+        </button>
+
+        <ul class="dropdown-menu dropdown-menu-end del-dropdown-menu" aria-labelledby="rangeDropdownBtn">
+          <!-- Today -->
+          <li><a class="dropdown-item {% if range_key == 'today' %}active{% endif %}" href="?range=today">Today</a></li>
+
+          <li><hr class="dropdown-divider"></li>
+
+          <!-- This period -->
+          <li><a class="dropdown-item {% if range_key == 'this_week' %}active{% endif %}" href="?range=this_week">This Week</a></li>
+          <li><a class="dropdown-item {% if range_key == 'this_month' %}active{% endif %}" href="?range=this_month">This Month</a></li>
+          <li><a class="dropdown-item {% if range_key == 'this_year' %}active{% endif %}" href="?range=this_year">This Year</a></li>
+
+          <li><hr class="dropdown-divider"></li>
+
+          <!-- Last period -->
+          <li><a class="dropdown-item {% if range_key == 'last_week' %}active{% endif %}" href="?range=last_week">Last Week</a></li>
+          <li><a class="dropdown-item {% if range_key == 'last_month' %}active{% endif %}" href="?range=last_month">Last Month</a></li>
+          <li><a class="dropdown-item {% if range_key == 'last_year' %}active{% endif %}" href="?range=last_year">Last Year</a></li>
+
+          <li><hr class="dropdown-divider"></li>
+
+          <!-- Custom -->
+          <li>
+            <a class="dropdown-item {% if range_key == 'custom' %}active{% endif %}" href="#" id="customRangeMenuItem">
+              <i class="bi bi-calendar-range me-1"></i>Custom
+            </a>
+          </li>
+          <!-- Custom date picker (inline, inside dropdown) -->
+          <li id="customRangeInputs" style="display:{% if range_key == 'custom' %}block{% else %}none{% endif %};" onclick="event.stopPropagation()">
+            <div class="px-2 pt-2 pb-1">
+              <form method="get" action="" class="d-flex flex-column gap-2" id="customRangeForm">
+                <input type="hidden" name="range" value="custom">
+                <label class="small text-muted mb-0" style="font-size:0.7rem;">From</label>
+                <input type="date" name="start" class="form-control form-control-sm" value="{{ start_date|default:'' }}" required>
+                <label class="small text-muted mb-0" style="font-size:0.7rem;">To</label>
+                <input type="date" name="end" class="form-control form-control-sm" value="{{ end_date|default:'' }}" required>
+                <button type="submit" class="btn btn-primary btn-sm rounded-pill mt-1" style="font-weight:600;">Apply</button>
+              </form>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- HERO KPI CARDS (Phase 2 will fill with real numbers)             -->
+  <!-- ================================================================ -->
+  <div class="hero-kpi-grid" id="heroKpiGrid">
+    <div class="hero-kpi-card hero-blue">
+      <div class="hero-kpi-icon">💰</div>
+      <div class="hero-kpi-label">Total Revenue</div>
+      <div class="hero-kpi-value" id="kpiTotalRevenue">{{ total_revenue }}</div>
+      <div class="hero-kpi-trend" id="kpiRevenueTrend">
+        <span class="trend-flat">{{ date_label }}</span>
+      </div>
+    </div>
+    <div class="hero-kpi-card hero-green">
+      <div class="hero-kpi-icon">✅</div>
+      <div class="hero-kpi-label">Total Collected</div>
+      <div class="hero-kpi-value" id="kpiTotalCollected">{{ total_collected }}</div>
+      <div class="hero-kpi-trend" id="kpiCollectedTrend">
+        <span class="trend-flat">Delivered jobs</span>
+      </div>
+    </div>
+    <div class="hero-kpi-card hero-cyan">
+      <div class="hero-kpi-icon">🚗</div>
+      <div class="hero-kpi-label">Cars Completed</div>
+      <div class="hero-kpi-value" id="kpiCarsCompleted">{{ cars_completed }}</div>
+      <div class="hero-kpi-trend" id="kpiCarsTrend">
+        <span class="trend-flat">Jobs delivered</span>
+      </div>
+    </div>
+    <div class="hero-kpi-card hero-red">
+      <div class="hero-kpi-icon">⚠️</div>
+      <div class="hero-kpi-label">Outstanding Balance</div>
+      <div class="hero-kpi-value" id="kpiOutstanding">{{ outstanding }}</div>
+      <div class="hero-kpi-trend" id="kpiOutstandingTrend">
+        <span class="trend-flat">Pending + Partial</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- ZONE SHELLS — Content loaded via AJAX when expanded              -->
+  <!-- 7 zones, each collapsible. Data loads on first expand only.      -->
+  <!-- ================================================================ -->
+
+  {% with zones=zones_config %}
+
+  <!-- ZONE 1: Revenue & Profit -->
+  <div class="analysis-zone" id="zone-revenue">
+    <div class="zone-header" data-zone="revenue">
+      <div class="zone-header-left">
+        <span class="zone-icon">💰</span>
+        <span class="zone-title">Revenue & Profit Analytics</span>
+        <span class="zone-meta">8 KPIs · 4 Charts</span>
+      </div>
+      <div class="zone-header-right">
+        <span class="zone-status" id="zone-revenue-status"></span>
+        <i class="bi bi-chevron-down zone-chevron" id="zone-revenue-chevron"></i>
+      </div>
+    </div>
+    <div class="zone-body" id="zone-revenue-body" style="display:none;">
+      <div class="zone-loader" id="zone-revenue-loader">
+        <div class="spinner"></div>
+        <span>Loading revenue data...</span>
+      </div>
+      <div class="zone-content" id="zone-revenue-content"></div>
+    </div>
+  </div>
+
+  <!-- ZONE 2: Mechanic Performance -->
+  <div class="analysis-zone" id="zone-mechanic">
+    <div class="zone-header" data-zone="mechanic">
+      <div class="zone-header-left">
+        <span class="zone-icon">🔧</span>
+        <span class="zone-title">Mechanic Performance Rankings</span>
+        <span class="zone-meta">6 KPIs · 4 Charts</span>
+      </div>
+      <div class="zone-header-right">
+        <span class="zone-status" id="zone-mechanic-status"></span>
+        <i class="bi bi-chevron-down zone-chevron" id="zone-mechanic-chevron"></i>
+      </div>
+    </div>
+    <div class="zone-body" id="zone-mechanic-body" style="display:none;">
+      <div class="zone-loader" id="zone-mechanic-loader">
+        <div class="spinner"></div>
+        <span>Loading mechanic data...</span>
+      </div>
+      <div class="zone-content" id="zone-mechanic-content"></div>
+    </div>
+  </div>
+
+  <!-- ZONE 3: Spare Parts -->
+  <div class="analysis-zone" id="zone-spares">
+    <div class="zone-header" data-zone="spares">
+      <div class="zone-header-left">
+        <span class="zone-icon">⚙️</span>
+        <span class="zone-title">Spare Parts Intelligence</span>
+        <span class="zone-meta">7 KPIs · 3 Charts</span>
+      </div>
+      <div class="zone-header-right">
+        <span class="zone-status" id="zone-spares-status"></span>
+        <i class="bi bi-chevron-down zone-chevron" id="zone-spares-chevron"></i>
+      </div>
+    </div>
+    <div class="zone-body" id="zone-spares-body" style="display:none;">
+      <div class="zone-loader" id="zone-spares-loader">
+        <div class="spinner"></div>
+        <span>Loading spare parts data...</span>
+      </div>
+      <div class="zone-content" id="zone-spares-content"></div>
+    </div>
+  </div>
+
+  <!-- ZONE 4: Customer & Vehicle -->
+  <div class="analysis-zone" id="zone-customer">
+    <div class="zone-header" data-zone="customer">
+      <div class="zone-header-left">
+        <span class="zone-icon">👥</span>
+        <span class="zone-title">Customer & Vehicle Intelligence</span>
+        <span class="zone-meta">9 KPIs · 4 Charts</span>
+      </div>
+      <div class="zone-header-right">
+        <span class="zone-status" id="zone-customer-status"></span>
+        <i class="bi bi-chevron-down zone-chevron" id="zone-customer-chevron"></i>
+      </div>
+    </div>
+    <div class="zone-body" id="zone-customer-body" style="display:none;">
+      <div class="zone-loader" id="zone-customer-loader">
+        <div class="spinner"></div>
+        <span>Loading customer data...</span>
+      </div>
+      <div class="zone-content" id="zone-customer-content"></div>
+    </div>
+  </div>
+
+  <!-- ZONE 5: Inventory & Supplier -->
+  <div class="analysis-zone" id="zone-inventory">
+    <div class="zone-header" data-zone="inventory">
+      <div class="zone-header-left">
+        <span class="zone-icon">📦</span>
+        <span class="zone-title">Inventory & Supplier Health</span>
+        <span class="zone-meta">8 KPIs · 4 Charts</span>
+      </div>
+      <div class="zone-header-right">
+        <span class="zone-status" id="zone-inventory-status"></span>
+        <i class="bi bi-chevron-down zone-chevron" id="zone-inventory-chevron"></i>
+      </div>
+    </div>
+    <div class="zone-body" id="zone-inventory-body" style="display:none;">
+      <div class="zone-loader" id="zone-inventory-loader">
+        <div class="spinner"></div>
+        <span>Loading inventory data...</span>
+      </div>
+      <div class="zone-content" id="zone-inventory-content"></div>
+    </div>
+  </div>
+
+  <!-- ZONE 6: Cashbook P/L -->
+  <div class="analysis-zone" id="zone-cashbook">
+    <div class="zone-header" data-zone="cashbook">
+      <div class="zone-header-left">
+        <span class="zone-icon">💼</span>
+        <span class="zone-title">Cashbook & Profit / Loss</span>
+        <span class="zone-meta">5 KPIs · 3 Charts</span>
+      </div>
+      <div class="zone-header-right">
+        <span class="zone-status" id="zone-cashbook-status"></span>
+        <i class="bi bi-chevron-down zone-chevron" id="zone-cashbook-chevron"></i>
+      </div>
+    </div>
+    <div class="zone-body" id="zone-cashbook-body" style="display:none;">
+      <div class="zone-loader" id="zone-cashbook-loader">
+        <div class="spinner"></div>
+        <span>Loading cashbook data...</span>
+      </div>
+      <div class="zone-content" id="zone-cashbook-content"></div>
+    </div>
+  </div>
+
+  <!-- ZONE 7: Workshop KPIs -->
+  <div class="analysis-zone" id="zone-workshop">
+    <div class="zone-header" data-zone="workshop">
+      <div class="zone-header-left">
+        <span class="zone-icon">🏭</span>
+        <span class="zone-title">Workshop Operational KPIs</span>
+        <span class="zone-meta">10 KPIs · 4 Charts</span>
+      </div>
+      <div class="zone-header-right">
+        <span class="zone-status" id="zone-workshop-status"></span>
+        <i class="bi bi-chevron-down zone-chevron" id="zone-workshop-chevron"></i>
+      </div>
+    </div>
+    <div class="zone-body" id="zone-workshop-body" style="display:none;">
+      <div class="zone-loader" id="zone-workshop-loader">
+        <div class="spinner"></div>
+        <span>Loading workshop data...</span>
+      </div>
+      <div class="zone-content" id="zone-workshop-content"></div>
+    </div>
+  </div>
+
+  {% endwith %}
+
+</div><!-- /.analysis-container -->
+
+{% endblock %}
+
+
+{% block extra_js %}
+<!-- Chart.js v4 — loaded here, used in zone partials Phase 3+ -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<script>
+// ============================================================
+// ANALYSIS DASHBOARD — AJAX Zone Loading Engine
+// ============================================================
+
+const currentRange = "{{ range_key|escapejs }}";
+const currentStart = "{{ start_date|escapejs }}";
+const currentEnd   = "{{ end_date|escapejs }}";
+
+// Track which zones have already loaded (don't re-fetch on re-expand)
+const loadedZones = new Set();
+
+// Track Chart.js instances per zone (for destroy on re-fetch)
+window.analysisCharts = {};
+
+/**
+ * Load a zone via AJAX when its header is clicked.
+ * First expansion fetches from server.
+ * Subsequent expansions just show/hide — no re-fetch.
+ */
+function loadZone(zoneName) {
+  const body     = document.getElementById(`zone-${zoneName}-body`);
+  const chevron  = document.getElementById(`zone-${zoneName}-chevron`);
+  const loader   = document.getElementById(`zone-${zoneName}-loader`);
+  const content  = document.getElementById(`zone-${zoneName}-content`);
+  const status   = document.getElementById(`zone-${zoneName}-status`);
+
+  const zoneEl = document.getElementById(`zone-${zoneName}`);
+
+  // Toggle: if already open, close it
+  if (body.style.display === 'block') {
+    body.style.display = 'none';
+    chevron.classList.remove('rotated');
+    if (zoneEl) zoneEl.classList.remove('zone-expanded');
+    return;
+  }
+
+  // Open the body
+  body.style.display = 'block';
+  chevron.classList.add('rotated');
+  if (zoneEl) zoneEl.classList.add('zone-expanded');
+
+  // If already loaded, just show — no AJAX
+  if (loadedZones.has(zoneName)) return;
+
+  // First time: fetch from server
+  loader.style.display = 'flex';
+  content.innerHTML = '';
+
+  const url = `/analysis/zone/${zoneName}/?range=${currentRange}&start=${currentStart}&end=${currentEnd}`;
+
+  fetch(url, {
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+  .then(response => {
+    if (!response.ok) throw new Error(`Server error: ${response.status}`);
+    return response.text();
+  })
+  .then(html => {
+    loader.style.display = 'none';
+    content.innerHTML = html;
+    loadedZones.add(zoneName);
+
+    // Execute any <script> tags in the returned HTML
+    content.querySelectorAll('script').forEach(oldScript => {
+      const newScript = document.createElement('script');
+      newScript.textContent = oldScript.textContent;
+      oldScript.parentNode.replaceChild(newScript, oldScript);
+    });
+
+    // Update status badge
+    if (status) {
+      status.innerHTML = '<span class="zone-loaded-badge">✓ Loaded</span>';
+    }
+  })
+  .catch(err => {
+    loader.style.display = 'none';
+    content.innerHTML = `
+      <div class="zone-error">
+        <i class="bi bi-exclamation-triangle"></i>
+        Failed to load zone. Please refresh and try again.
+      </div>`;
+    console.error('Zone load error:', err);
+  });
+}
+
+// Attach click handlers to all zone headers
+document.querySelectorAll('.zone-header').forEach(header => {
+  header.addEventListener('click', () => {
+    const zoneName = header.dataset.zone;
+    loadZone(zoneName);
+  });
+});
+
+// Custom date range toggle (via dropdown menu item)
+const customMenuItem = document.getElementById('customRangeMenuItem');
+const customInputs = document.getElementById('customRangeInputs');
+if (customMenuItem && customInputs) {
+  customMenuItem.addEventListener('click', (e) => {
+    e.preventDefault();
+    customInputs.style.display =
+      customInputs.style.display === 'none' ? 'block' : 'none';
+  });
+  // Auto-show if current range is custom
+  if (currentRange === 'custom') {
+    customInputs.style.display = 'block';
+  }
+}
+</script>
+{% endblock %}

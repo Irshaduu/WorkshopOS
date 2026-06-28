@@ -241,12 +241,29 @@
             max-width: 800px;
             margin: 56px auto 0; /* Always offset for top nav */
         }
+
+        /* Analysis & Reports page — full-width override */
+        body.analysis-page .main-content {
+            max-width: 1400px;
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+
+        /* Mobile: analysis page must be truly edge-to-edge */
+        @media (max-width: 640px) {
+            body.analysis-page .main-content {
+                padding: 0 !important;
+                max-width: 100% !important;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+            }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
 </head>
 
-<body>
+<body class="{% block body_class %}{% endblock %}">
 
     <!-- ============================================== -->
     <!-- DESKTOP TOP NAVIGATION (PC View)             -->
@@ -297,6 +314,10 @@
                     🔧 Manage
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
+                    {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+                    <li><a class="dropdown-item fw-bold" href="{% url 'analysis_dashboard' %}" style="color:#7c3aed;"><i class="bi bi-graph-up-arrow"></i> Analysis & Reports</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    {% endif %}
                     <li><a class="dropdown-item fw-bold text-success" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> Cashbook</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item fw-bold text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
@@ -359,6 +380,10 @@
             </a>
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom mb-2">
                 {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+                <li><a class="dropdown-item fw-bold" href="{% url 'analysis_dashboard' %}" style="color:#7c3aed;"><i class="bi bi-graph-up-arrow"></i> Analysis & Reports</a></li>
+                <li><hr class="dropdown-divider"></li>
+                {% endif %}
                 <li><a class="dropdown-item fw-bold text-success" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> Cashbook</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{% url 'delivered_list' %}"><i class="bi bi-check-circle"></i> Delivered Jobs</a></li>

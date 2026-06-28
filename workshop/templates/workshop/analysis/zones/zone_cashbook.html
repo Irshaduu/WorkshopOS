@@ -1,0 +1,210 @@
+<!--
+  Zone 6: Cashbook & P/L Summary — Phase 8
+  Context: cb_income, cb_expense, cb_net, period_label,
+           top_expenses, top_income_cats, pay_methods,
+           ps_pending, ps_partial, ps_paid, ps_bulk,
+           cb_trend_labels/income/expense/profit,
+           pm_labels, pm_revenue, expense_cat_labels/vals,
+           ps_labels, ps_data
+-->
+
+<!-- ── Hero KPI Row ──────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-cash-stack"></i> Cashbook Summary — {{ period_label }}</p>
+<div class="kpi-grid kpi-grid-3">
+
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">📥 Total Income</div>
+    <div class="kpi-card-value">₹{{ cb_income|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Cash-in entries</div>
+  </div>
+
+  <div class="kpi-card kpi-red">
+    <div class="kpi-card-label">📤 Total Expenses</div>
+    <div class="kpi-card-value">₹{{ cb_expense|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Cash-out entries</div>
+  </div>
+
+  <div class="kpi-card {% if cb_net >= 0 %}kpi-blue{% else %}kpi-red{% endif %}">
+    <div class="kpi-card-label">💹 Net Profit / Loss</div>
+    <div class="kpi-card-value">₹{{ cb_net|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Income − Expenses</div>
+  </div>
+
+</div>
+
+<!-- Payment status pills -->
+<div class="status-pill-row">
+  <span class="status-pill" style="background:rgba(239,68,68,0.12);color:#ef4444;">
+    <i class="bi bi-clock"></i> {{ ps_pending }} Pending
+  </span>
+  <span class="status-pill" style="background:rgba(245,158,11,0.12);color:#f59e0b;">
+    <i class="bi bi-hourglass-split"></i> {{ ps_partial }} Partial
+  </span>
+  <span class="status-pill" style="background:rgba(16,185,129,0.12);color:#10b981;">
+    <i class="bi bi-check2-all"></i> {{ ps_paid }} Paid
+  </span>
+  <span class="status-pill" style="background:rgba(99,102,241,0.12);color:#6366f1;">
+    <i class="bi bi-person-check"></i> {{ ps_bulk }} Bulk Paid
+  </span>
+</div>
+
+<!-- ── Charts ──────────────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-bar-chart"></i> Analytics Charts</p>
+<div class="chart-grid">
+
+  <!-- Chart 1: Monthly Income vs Expense vs Profit -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-graph-up-arrow"></i> Monthly Income vs Expense</div>
+    <div class="chart-canvas-wrap"><canvas id="cbTrendChart"></canvas></div>
+  </div>
+
+  <!-- Chart 2: Top Expense Categories (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-list-check"></i> Top Expense Categories</div>
+    <div class="chart-canvas-wrap"><canvas id="expenseCatChart"></canvas></div>
+  </div>
+
+  <!-- Chart 3: Payment Status Doughnut -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-pie-chart-fill"></i> Payment Status Distribution</div>
+    <div class="chart-canvas-wrap"><canvas id="psChart"></canvas></div>
+  </div>
+
+  <!-- Chart 4: Payment Method Revenue bar -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-credit-card-2-back"></i> Revenue by Payment Method</div>
+    <div class="chart-canvas-wrap"><canvas id="pmChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ── Expense Categories Table ─────────────────────────────────────────────── -->
+{% if top_expenses %}
+<p class="zone-section-title"><i class="bi bi-receipt-cutoff"></i> Top Expense Categories</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <table class="kpi-table mech-table">
+    <thead><tr><th>#</th><th>Category</th><th>Total Spent</th></tr></thead>
+    <tbody>
+      {% for e in top_expenses %}
+      <tr>
+        <td><span class="rank-badge rank-other">{{ forloop.counter }}</span></td>
+        <td style="font-weight:600;">{{ e.category }}</td>
+        <td class="inv-balance-due">₹{{ e.total|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if top_income_cats %}
+<p class="zone-section-title"><i class="bi bi-arrow-down-circle"></i> Top Income Categories</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <table class="kpi-table mech-table">
+    <thead><tr><th>#</th><th>Category</th><th>Total Income</th></tr></thead>
+    <tbody>
+      {% for c in top_income_cats %}
+      <tr>
+        <td><span class="rank-badge rank-other">{{ forloop.counter }}</span></td>
+        <td style="font-weight:600;">{{ c.category }}</td>
+        <td class="inv-balance-clear">₹{{ c.total|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  'use strict';
+
+  const cbLbls    = {{ cb_trend_labels|safe }};
+  const cbIncome  = {{ cb_trend_income|safe }};
+  const cbExpense = {{ cb_trend_expense|safe }};
+  const cbProfit  = {{ cb_trend_profit|safe }};
+  const expLbls   = {{ expense_cat_labels|safe }};
+  const expVals   = {{ expense_cat_vals|safe }};
+  const psLbls    = {{ ps_labels|safe }};
+  const psData    = {{ ps_data|safe }};
+  const pmLbls    = {{ pm_labels|safe }};
+  const pmRev     = {{ pm_revenue|safe }};
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+  const baseScales = {
+    x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+    y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+  };
+  const rupee = { tooltip: { callbacks: { label: c => '₹' + c.parsed.y.toLocaleString('en-IN') } } };
+
+  // ── Chart 1: Monthly Income vs Expense vs Profit ──
+  if (document.getElementById('cbTrendChart') && cbLbls.length) {
+    new Chart(document.getElementById('cbTrendChart'), {
+      type: 'bar',
+      data: {
+        labels: cbLbls,
+        datasets: [
+          { label: 'Income',  data: cbIncome,  backgroundColor: '#10b981bb', borderRadius: 4, borderSkipped: false },
+          { label: 'Expense', data: cbExpense, backgroundColor: '#ef4444bb', borderRadius: 4, borderSkipped: false },
+          { label: 'Profit',  data: cbProfit,  type: 'line', borderColor: '#6366f1', borderWidth: 2, pointRadius: 3, fill: false, yAxisID: 'y' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 10 }, boxWidth: 12, padding: 8 } }, ...rupee },
+        scales: baseScales,
+      },
+    });
+  }
+
+  // ── Chart 2: Expense categories horizontal bar ──
+  if (document.getElementById('expenseCatChart') && expLbls.length) {
+    new Chart(document.getElementById('expenseCatChart'), {
+      type: 'bar',
+      data: {
+        labels: expLbls,
+        datasets: [{ label: 'Expense ₹', data: expVals, backgroundColor: '#ef4444cc', borderRadius: 4, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false }, ...rupee },
+        scales: { x: baseScales.x, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } } },
+      },
+    });
+  }
+
+  // ── Chart 3: Payment status doughnut ──
+  if (document.getElementById('psChart') && psData.some(v => v > 0)) {
+    new Chart(document.getElementById('psChart'), {
+      type: 'doughnut',
+      data: {
+        labels: psLbls,
+        datasets: [{ data: psData, backgroundColor: ['#ef4444cc','#f59e0bcc','#10b981cc','#6366f1cc'], borderWidth: 0, hoverOffset: 8 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 10, boxWidth: 12 } } },
+      },
+    });
+  }
+
+  // ── Chart 4: Payment method revenue bar ──
+  if (document.getElementById('pmChart') && pmLbls.length) {
+    new Chart(document.getElementById('pmChart'), {
+      type: 'bar',
+      data: {
+        labels: pmLbls,
+        datasets: [{ label: 'Revenue ₹', data: pmRev, backgroundColor: '#6366f1cc', borderRadius: 6, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, ...rupee },
+        scales: baseScales,
+      },
+    });
+  }
+})();
+</script>

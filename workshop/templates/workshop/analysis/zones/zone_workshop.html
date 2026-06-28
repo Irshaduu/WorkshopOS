@@ -1,0 +1,185 @@
+<!--
+  Zone 7: Workshop Operational KPIs — Phase 9
+  Context: total_jobs, delivered_jobs, active_jobs, on_hold_jobs,
+           delivery_rate, avg_turnaround, avg_revenue, total_revenue,
+           total_collected, period_label, top_brands_ws,
+           ws_trend_labels/total/completed, ws_brand_labels/jobs,
+           ws_ps_labels/data, ws_status_labels/data
+-->
+
+<!-- ── Hero KPI Grid ─────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-speedometer2"></i> Workshop KPIs — {{ period_label }}</p>
+<div class="kpi-grid kpi-grid-4">
+
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-label">📋 Total Jobs</div>
+    <div class="kpi-card-value">{{ total_jobs }}</div>
+    <div class="kpi-card-sub">In this period</div>
+  </div>
+
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">✅ Delivered</div>
+    <div class="kpi-card-value">{{ delivered_jobs }}</div>
+    <div class="kpi-card-sub">Rate: {{ delivery_rate }}%</div>
+  </div>
+
+  <div class="kpi-card kpi-purple">
+    <div class="kpi-card-label">⏱ Avg Turnaround</div>
+    <div class="kpi-card-value">{{ avg_turnaround }}d</div>
+    <div class="kpi-card-sub">Days to deliver</div>
+  </div>
+
+  <div class="kpi-card kpi-yellow">
+    <div class="kpi-card-label">💵 Avg Revenue / Job</div>
+    <div class="kpi-card-value">₹{{ avg_revenue|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Active: {{ active_jobs }} · Hold: {{ on_hold_jobs }}</div>
+  </div>
+
+</div>
+
+<!-- ── Charts ──────────────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-graph-up"></i> Analytics Charts</p>
+<div class="chart-grid">
+
+  <!-- Chart 1: Monthly Jobs Admitted vs Completed (grouped bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-calendar3"></i> Monthly Jobs Trend</div>
+    <div class="chart-canvas-wrap"><canvas id="wsTrendChart"></canvas></div>
+  </div>
+
+  <!-- Chart 2: Job Status Doughnut (Delivered / Active / On Hold) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-pie-chart"></i> Job Status Breakdown</div>
+    <div class="chart-canvas-wrap"><canvas id="wsStatusChart"></canvas></div>
+  </div>
+
+  <!-- Chart 3: Top Brands by Job Count (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-car-front"></i> Jobs by Car Brand</div>
+    <div class="chart-canvas-wrap"><canvas id="wsBrandChart"></canvas></div>
+  </div>
+
+  <!-- Chart 4: Payment Status Distribution (doughnut) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-wallet2"></i> Payment Status</div>
+    <div class="chart-canvas-wrap"><canvas id="wsPsChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ── Top Brands Table ──────────────────────────────────────────────────────── -->
+{% if top_brands_ws %}
+<p class="zone-section-title"><i class="bi bi-award"></i> Jobs by Car Brand</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <table class="kpi-table mech-table">
+    <thead>
+      <tr><th>#</th><th>Brand</th><th>Jobs</th><th>Revenue</th></tr>
+    </thead>
+    <tbody>
+      {% for b in top_brands_ws %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}<span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}<span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}<span class="rank-badge rank-3">3</span>
+          {% else %}<span class="rank-badge rank-other">{{ forloop.counter }}</span>{% endif %}
+        </td>
+        <td style="font-weight:600;">{{ b.brand_name }}</td>
+        <td>{{ b.jobs }}</td>
+        <td class="text-accent">₹{{ b.revenue|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  'use strict';
+
+  const wsLbls      = {{ ws_trend_labels|safe }};
+  const wsTotal     = {{ ws_trend_total|safe }};
+  const wsCompleted = {{ ws_trend_completed|safe }};
+  const brandLbls   = {{ ws_brand_labels|safe }};
+  const brandJobs   = {{ ws_brand_jobs|safe }};
+  const psLbls      = {{ ws_ps_labels|safe }};
+  const psData      = {{ ws_ps_data|safe }};
+  const statusLbls  = {{ ws_status_labels|safe }};
+  const statusData  = {{ ws_status_data|safe }};
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+  const baseScales = {
+    x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+    y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+  };
+
+  // ── Chart 1: Monthly Jobs Trend (grouped bar) ──
+  if (document.getElementById('wsTrendChart') && wsLbls.length) {
+    new Chart(document.getElementById('wsTrendChart'), {
+      type: 'bar',
+      data: {
+        labels: wsLbls,
+        datasets: [
+          { label: 'Total Admitted', data: wsTotal, backgroundColor: '#6366f1bb', borderRadius: 4, borderSkipped: false },
+          { label: 'Delivered',      data: wsCompleted, backgroundColor: '#10b981bb', borderRadius: 4, borderSkipped: false },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 10 }, boxWidth: 12, padding: 8 } } },
+        scales: baseScales,
+      },
+    });
+  }
+
+  // ── Chart 2: Job Status Doughnut ──
+  if (document.getElementById('wsStatusChart') && statusData.some(v => v > 0)) {
+    new Chart(document.getElementById('wsStatusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: statusLbls,
+        datasets: [{ data: statusData, backgroundColor: ['#10b981cc','#6366f1cc','#f59e0bcc'], borderWidth: 0, hoverOffset: 8 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 10, boxWidth: 12 } } },
+      },
+    });
+  }
+
+  // ── Chart 3: Top Brands horizontal bar ──
+  if (document.getElementById('wsBrandChart') && brandLbls.length) {
+    new Chart(document.getElementById('wsBrandChart'), {
+      type: 'bar',
+      data: {
+        labels: brandLbls,
+        datasets: [{ label: 'Jobs', data: brandJobs, backgroundColor: '#f59e0bcc', borderRadius: 4, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: baseScales.x, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } } },
+      },
+    });
+  }
+
+  // ── Chart 4: Payment Status Doughnut ──
+  if (document.getElementById('wsPsChart') && psData.some(v => v > 0)) {
+    new Chart(document.getElementById('wsPsChart'), {
+      type: 'doughnut',
+      data: {
+        labels: psLbls,
+        datasets: [{ data: psData, backgroundColor: ['#ef4444cc','#f59e0bcc','#10b981cc','#6366f1cc'], borderWidth: 0, hoverOffset: 8 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 10, boxWidth: 12 } } },
+      },
+    });
+  }
+})();
+</script>

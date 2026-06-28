@@ -1,0 +1,216 @@
+<!--
+  Zone 4: Customer & Vehicle Intelligence — Phase 6
+  Context: unique_customers, unique_vehicles, avg_bill, total_jobs, period_label,
+           top_customers_rev, top_customers_jobs, top_brands, top_models,
+           returning_customers, new_customers,
+           cust_trend_labels, cust_trend_data, brand_labels, brand_data,
+           model_labels, model_data, loyalty_labels, loyalty_data
+-->
+
+{% if not top_customers_rev %}
+  <div class="zone-empty">
+    <i class="bi bi-people"></i>
+    No customer data found for this period.
+  </div>
+{% else %}
+
+<!-- ── Hero KPI Row ──────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-people-fill"></i> Period Highlights — {{ period_label }}</p>
+<div class="kpi-grid kpi-grid-4">
+
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-label">👤 Unique Customers</div>
+    <div class="kpi-card-value">{{ unique_customers }}</div>
+    <div class="kpi-card-sub">In this period</div>
+  </div>
+
+  <div class="kpi-card kpi-purple">
+    <div class="kpi-card-label">🚗 Unique Vehicles</div>
+    <div class="kpi-card-value">{{ unique_vehicles }}</div>
+    <div class="kpi-card-sub">Registration plates</div>
+  </div>
+
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">💵 Avg Bill / Customer</div>
+    <div class="kpi-card-value">₹{{ avg_bill|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Total jobs: {{ total_jobs }}</div>
+  </div>
+
+  <div class="kpi-card kpi-yellow">
+    <div class="kpi-card-label">🔄 Returning Customers</div>
+    <div class="kpi-card-value">{{ returning_customers }}</div>
+    <div class="kpi-card-sub">New: {{ new_customers }}</div>
+  </div>
+
+</div>
+
+<!-- ── Charts Row ──────────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-graph-up"></i> Analytics Charts</p>
+<div class="chart-grid">
+
+  <!-- Chart 1: Monthly Unique Customers Trend -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-person-lines-fill"></i> Monthly Unique Customers</div>
+    <div class="chart-canvas-wrap"><canvas id="custTrendChart"></canvas></div>
+  </div>
+
+  <!-- Chart 2: Top Car Brands (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-car-front"></i> Top Car Brands</div>
+    <div class="chart-canvas-wrap"><canvas id="brandChart"></canvas></div>
+  </div>
+
+  <!-- Chart 3: Customer Loyalty Doughnut -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-arrow-repeat"></i> Customer Loyalty</div>
+    <div class="chart-canvas-wrap"><canvas id="loyaltyChart"></canvas></div>
+  </div>
+
+  <!-- Chart 4: Top Car Models (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-list-stars"></i> Top Car Models</div>
+    <div class="chart-canvas-wrap"><canvas id="modelChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ── Top Customers by Revenue Table ──────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-currency-rupee"></i> Top Customers by Revenue</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <table class="kpi-table mech-table">
+    <thead>
+      <tr><th>#</th><th>Customer</th><th>Revenue</th><th>Jobs</th></tr>
+    </thead>
+    <tbody>
+      {% for c in top_customers_rev %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}<span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}<span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}<span class="rank-badge rank-3">3</span>
+          {% else %}<span class="rank-badge rank-other">{{ forloop.counter }}</span>{% endif %}
+        </td>
+        <td style="font-weight:600;">{{ c.customer_name }}</td>
+        <td class="text-accent">₹{{ c.revenue|floatformat:0 }}</td>
+        <td>{{ c.jobs }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Top Customers by Jobs Table ─────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-wrench-adjustable-circle"></i> Top Customers by Visits</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <table class="kpi-table mech-table">
+    <thead>
+      <tr><th>#</th><th>Customer</th><th>Visits</th><th>Revenue</th></tr>
+    </thead>
+    <tbody>
+      {% for c in top_customers_jobs %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}<span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}<span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}<span class="rank-badge rank-3">3</span>
+          {% else %}<span class="rank-badge rank-other">{{ forloop.counter }}</span>{% endif %}
+        </td>
+        <td style="font-weight:600;">{{ c.customer_name }}</td>
+        <td>{{ c.jobs }}</td>
+        <td class="text-accent">₹{{ c.revenue|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endif %}
+
+<script>
+(function () {
+  'use strict';
+
+  const custLabels  = {{ cust_trend_labels|safe }};
+  const custData    = {{ cust_trend_data|safe }};
+  const brandLabels = {{ brand_labels|safe }};
+  const brandData   = {{ brand_data|safe }};
+  const modelLabels = {{ model_labels|safe }};
+  const modelData   = {{ model_data|safe }};
+  const loyaltyLbl  = {{ loyalty_labels|safe }};
+  const loyaltyDat  = {{ loyalty_data|safe }};
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+
+  const baseXY = {
+    x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+    y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+  };
+  const noLegend = { legend: { display: false } };
+
+  // ── Chart 1: Monthly unique customers (area line) ──
+  if (document.getElementById('custTrendChart') && custLabels.length) {
+    const ctx = document.getElementById('custTrendChart').getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 220);
+    grad.addColorStop(0, 'rgba(99,102,241,0.3)');
+    grad.addColorStop(1, 'rgba(99,102,241,0.02)');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: custLabels,
+        datasets: [{ label: 'Unique Customers', data: custData, borderColor: '#6366f1', backgroundColor: grad, borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: '#6366f1', fill: true, tension: 0.4 }],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: noLegend, scales: baseXY },
+    });
+  }
+
+  // ── Chart 2: Top car brands (horizontal bar) ──
+  if (document.getElementById('brandChart') && brandLabels.length) {
+    new Chart(document.getElementById('brandChart'), {
+      type: 'bar',
+      data: {
+        labels: brandLabels,
+        datasets: [{ label: 'Jobs', data: brandData, backgroundColor: '#10b981cc', borderRadius: 5, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: noLegend,
+        scales: { x: baseXY.x, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } } },
+      },
+    });
+  }
+
+  // ── Chart 3: Customer loyalty doughnut ──
+  if (document.getElementById('loyaltyChart') && loyaltyDat.some(v => v > 0)) {
+    new Chart(document.getElementById('loyaltyChart'), {
+      type: 'doughnut',
+      data: {
+        labels: loyaltyLbl,
+        datasets: [{ data: loyaltyDat, backgroundColor: ['#6366f1cc', '#f59e0bcc'], borderWidth: 0, hoverOffset: 8 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 12, boxWidth: 12 } } },
+      },
+    });
+  }
+
+  // ── Chart 4: Top car models (horizontal bar) ──
+  if (document.getElementById('modelChart') && modelLabels.length) {
+    new Chart(document.getElementById('modelChart'), {
+      type: 'bar',
+      data: {
+        labels: modelLabels,
+        datasets: [{ label: 'Jobs', data: modelData, backgroundColor: '#6366f1cc', borderRadius: 5, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: noLegend,
+        scales: { x: baseXY.x, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } } },
+      },
+    });
+  }
+})();
+</script>

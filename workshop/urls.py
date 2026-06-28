@@ -5,6 +5,7 @@ from . import auth_views
 from . import management_views
 from . import cashbook_views
 from . import cleanup_views
+from . import analysis_views
 
 urlpatterns = [
 
@@ -145,6 +146,12 @@ urlpatterns = [
     path('cashbook/add/', cashbook_views.add_cashbook_entry, name='manage_add_cashbook_entry'),
     path('cashbook/<int:pk>/delete/', cashbook_views.delete_cashbook_entry, name='manage_delete_cashbook_entry'),
     path('cashbook/<int:pk>/edit/',   cashbook_views.edit_cashbook_entry,   name='manage_edit_cashbook_entry'),
+
+    # ------------------
+    # ANALYSIS & REPORTS (Owner Only)
+    # ------------------
+    path('analysis/', analysis_views.analysis_dashboard, name='analysis_dashboard'),
+    path('analysis/zone/<str:zone_name>/', analysis_views.analysis_zone, name='analysis_zone'),
 
     # ------------------
     # DATA CLEANUP TOOL
