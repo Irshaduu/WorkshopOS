@@ -17,19 +17,20 @@ graph TB
 
     subgraph WORKSHOP["Workshop App (Core)"]
         W_MODELS["models.py — 16 Models"]
-        W_VIEWS["views/ — 12 Module Package"]
+        W_VIEWS["views/ — 13 Module Package"]
+        W_ANALYSIS["analysis_views.py — Owner Dashboard"]
         W_AUTH["auth_views.py — 6 Auth Views"]
         W_MGMT["management_views.py — 5 Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 72 URL Patterns"]
+        W_URLS["urls.py — 90 URL Patterns"]
         W_FORMS["forms.py — 6 Forms + 3 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session Tracker"]
         W_TAGS["templatetags — 6 Filters"]
         W_ADMIN["admin.py — 10 Registered"]
         W_CMD["setup_groups Command"]
-        W_TPL["Templates — 52 HTML Files"]
+        W_TPL["Templates — 63 HTML Files"]
     end
 
     subgraph INVENTORY["Inventory App (Warehouse + Supplies Shops)"]
@@ -140,7 +141,7 @@ graph LR
 |-----------|---------------|---------|
 | `@staff_required` | Floor + Office + Owner | Dashboard, Job Create/Edit, Live Report, Autocomplete, Inventory Restock |
 | `@office_required` | Office + Owner | Job List, Delivered, Invoices, Master Lists, Car Profiles, Management, Cleanup, Payments, Spare Shops, Bulk Payers |
-| `@owner_required` | Owner only | Trash Restore, Permanent Delete, Payment Reversal |
+| `@owner_required` | Owner only | Trash Restore, Permanent Delete, Payment Reversal, Owner Analysis, Session Terminate |
 
 ### 3.2 Auth System
 
@@ -168,9 +169,9 @@ Login Event → send_titan_security_alert()
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (113 Total)
+## 4. ALL URL ROUTES — COMPLETE (123 Total)
 
-### Workshop App (72 routes)
+### Workshop App (90 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -252,7 +253,7 @@ Login Event → send_titan_security_alert()
 | | `/manage/mechanics/create/` | `manage_create_mechanic` | Office |
 | | `/manage/mechanics/<id>/toggle/` | `manage_toggle_mechanic` | Office |
 | | `/manage/mechanics/<id>/edit/` | `manage_edit_mechanic` | Office |
-| | `/manage/sessions/<id>/terminate/` | `manage_terminate_session` | Office* |
+| | `/manage/sessions/<id>/terminate/` | `manage_terminate_session` | Owner |
 | **CASHBOOK** | `/cashbook/` | `cashbook_view` | Office | `cashbook_views.py` |
 | | `/cashbook/add/` | `add_cashbook_entry` | Office | `cashbook_views.py` |
 | | `/cashbook/<id>/delete/` | `delete_cashbook_entry` | Office | `cashbook_views.py` |
@@ -262,6 +263,8 @@ Login Event → send_titan_security_alert()
 | | `/manage/cleanup/spare/<id>/rename/` | `cleanup_rename_spare` | Office |
 | | `/manage/cleanup/concern/<id>/delete/` | `cleanup_delete_concern` | Office |
 | | `/manage/cleanup/concern/<id>/rename/` | `cleanup_rename_concern` | Office |
+| **ANALYSIS** | `/analysis/` | `analysis_dashboard` | Owner |
+| | `/analysis/zone/<zone_name>/` | `analysis_zone` | Owner |
 
 *Note: [FIXED] `manage_terminate_session` is now properly secured with the `@owner_required` decorator.*
 
@@ -378,9 +381,9 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (58 HTML Files)
+## 7. TEMPLATE STRUCTURE (81 HTML Files)
 
-### Workshop Templates (`workshop/templates/workshop/`) — 52 files
+### Workshop Templates (`workshop/templates/workshop/`) — 63 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -596,9 +599,9 @@ graph TB
 
 ---
 
-## 13. TEST SUITE (17 Test Files)
+## 13. TEST SUITE (19 Test Files)
 
-### Workshop Tests (14 files)
+### Workshop Tests (16 files)
 
 | File | Coverage Area |
 |------|--------------|
@@ -616,6 +619,8 @@ graph TB
 | `test_management.py` | Management commands |
 | `test_cashbook.py` | Cashbook ledger — 100% coverage |
 | `test_financial.py` | Financial logic & calculations |
+| `test_spare_shop_views.py` | Spare shop views & operations |
+| `test_analysis.py` | Owner analysis dashboard & zones |
 
 ### Inventory Tests (3 files)
 
@@ -640,7 +645,7 @@ WorkshopOS (Titan)/
 │   ├── urls.py                 ← Root: admin + workshop + inventory
 │   ├── wsgi.py / asgi.py
 │
-├── workshop/                   ← Core App (72 URLs, 72+ Views)
+├── workshop/                   ← Core App (90 URLs, 90+ Views)
 │   ├── models.py               ← 16 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
@@ -659,7 +664,7 @@ WorkshopOS (Titan)/
 │   ├── management_views.py     ← 5 Management Views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook Views (standalone ledger)
 │   ├── cleanup_views.py        ← 5 Cleanup Views
-│   ├── urls.py                 ← 72 URL patterns
+│   ├── urls.py                 ← 90 URL patterns
 │   ├── forms.py                ← 6 Forms + 3 Formsets
 │   ├── decorators.py           ← 3 RBAC decorators
 │   ├── middleware.py            ← Session tracker
@@ -669,9 +674,9 @@ WorkshopOS (Titan)/
 │   │   └── custom_filters.py   ← 6 template filters
 │   ├── management/commands/
 │   │   └── setup_groups.py     ← Group setup command (legacy)
-│   ├── templates/workshop/     ← 52 HTML files across 10 directories
+│   ├── templates/workshop/     ← 63 HTML files across 11 directories
 │   ├── static/css/, static/js/ ← App-specific assets
-│   └── test_*.py + tests.py    ← 14 test files
+│   └── test_*.py + tests.py    ← 16 test files
 │
 ├── inventory/                  ← Warehouse + Supplies Shops App (33 URLs, 33 Views)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)
@@ -697,4 +702,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · 24 Models · 117 URL Routes · 110+ Views · 72 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ current) · 6 Signal Handlers · 17 Test Files
+> **Total**: 2 Django Apps · 24 Models · 123 URL Routes · 110+ Views · 81 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ current) · 6 Signal Handlers · 19 Test Files

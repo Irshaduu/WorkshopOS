@@ -1,4 +1,4 @@
-# WorkshopOS: API & Core Engineering Patterns (v6.3)
+# WorkshopOS: API & Core Engineering Patterns (v7.0)
 
 This document outlines the core technical patterns used in WorkshopOS.
 
@@ -83,8 +83,7 @@ Located in `inventory/signals.py` (second group of handlers).
 ## 📊 IV. Pagination & Rendering
 
 All list-based views MUST utilize the `Paginator` class.
-- **Floor Standard**: 50 records per page (for quick scroll on mobile).
-- **Office/Management Standard**: 21 records per page (for grid layouts).
+- **Standard**: 45 records per page (job card lists, pending payments, delivered).
 - **Inventory Standard**: 10 categories per page (heavy nested view).
 - **Template Fragment**: Use `workshop/includes/pagination.html` for consistent UI.
 
@@ -121,7 +120,6 @@ Used in both **Bulk Payer** and **Spare Shop** payment systems:
 ## 🔜 VII. Coming Soon
 
 - **PostgreSQL Production Database** — Configured in `settings/production.py`
-- **Admin Data Analysis & Reports** — Visual analytics for Owners
 - **New Notification System** — Replacing current SMS/Telegram architecture
 
 ---

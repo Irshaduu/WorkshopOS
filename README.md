@@ -106,10 +106,10 @@ A premium, comprehensive Django-based workshop management system designed to str
 WorkshopOS (Titan)/
 ├── formulad_workshop/      # Django project configuration & split settings
 │   └── settings/           # base.py, development.py, production.py
-├── workshop/               # Core application (80 URL routes, 80+ views)
+├── workshop/               # Core application (90 URL routes, 90+ views)
 │   ├── views/              # Modular views package (12 modules)
 │   ├── cashbook_views.py   # Standalone Cashbook ledger (4 views)
-│   ├── templates/          # 54 HTML templates
+│   ├── templates/          # 63 HTML templates
 │   └── static/             # App-specific CSS & JS
 ├── inventory/              # Inventory, stock & supplies shops app (33 URL routes)
 │   ├── views.py            # 13 core inventory views
@@ -122,14 +122,14 @@ WorkshopOS (Titan)/
 ```
 
 ## 🛡️ Titan Standard: Automated Reliability
-WorkshopOS is backed by an **automated test suite** across **18+ test files** covering security, models, views, API endpoints, signals, middleware, financial logic, cashbook operations, supplier management, and spare shop operations.
+WorkshopOS is backed by an **automated test suite** across **19 test files** covering security, models, views, API endpoints, signals, middleware, financial logic, cashbook operations, supplier management, spare shop operations, and owner analytics.
 - **Security Coverage**: Verified IP-lockouts, OTP authentication, and real-time session revocation.
 - **Warehouse Pulse**: Verified stock-delta signals (Creation, Update, Name Change, Deletion).
 - **Model Integrity**: Verified lifecycle transitions for Job Cards, User Sessions, Spare Shops, and Unassigned Spares.
 
 ## 🚀 Performance Engineering
 Designed for scale with practical, measured optimizations:
-- **O(1) Memory Usage**: Server-side pagination (21–50 records per page) ensures constant speed regardless of database size.
+- **O(1) Memory Usage**: Server-side pagination (45 records per page for lists, 10 for categories) ensures constant speed regardless of database size.
 - **B-Tree Database Indexing**: Critical fields (`registration_number`, `admitted_date`, `is_deleted`, `delivered`, `updated_at`) are indexed for fast retrieval.
 - **Query Hardening**: All views utilize `select_related` and `prefetch_related` to eliminate N+1 latency.
 - **Composite Indexes**: Dashboard query pattern covered by multi-field composite index (`is_deleted`, `delivered`, `-updated_at`).
@@ -141,7 +141,6 @@ Designed for scale with practical, measured optimizations:
 
 ## 🔜 Coming Soon
 - **PostgreSQL Production Database** — Multi-million record production-grade deployment.
-- **Admin Data Analysis & Reports** — High-level visual analytics and financial reporting for Owners.
 - **New Notification System** — Replacement for current SMS/Telegram bot architecture.
 
 ---

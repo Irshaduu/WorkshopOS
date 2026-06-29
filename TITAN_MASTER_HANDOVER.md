@@ -11,7 +11,7 @@
 
 **WorkshopOS** is an industrial-grade application meticulously engineered for a single premium automotive workshop. 
 
-- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a comprehensive test suite spanning **18+ test files** covering security, views, signals, financial logic, cashbook operations, and spare shop management.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a comprehensive test suite spanning **19 test files** covering security, views, signals, financial logic, cashbook operations, spare shop management, and owner analytics.
 
 ---
 
@@ -21,7 +21,7 @@
 > *This section documents the mission-critical security and data-integrity logic of WorkshopOS. These systems are foundational and must never be broken or bypassed.*
 
 ### 1. IP-Based Security & Lockout (`FailedAttempt`)
-- **Mechanism**: The system captures and tracks login failures strictly by the direct **Network IP** (`REMOTE_ADDR`). `X-Forwarded-For` proxy headers are intentionally ignored to permanently prevent client-side IP spoofing bypasses.
+- **Mechanism**: The system captures and tracks login failures strictly by the direct **Network IP** (`REMOTE_ADDR`). `X-Forwarded-For` proxy headers are intentionally ignored to prevent client-side IP spoofing bypasses.
 - **The Rule**: 5 consecutive failed attempts trigger a global 15-minute lockout for that IP address, effectively neutralizing botnets and brute-force attacks.
 - **Integrity Check**: Verified in `workshop/test_auth.py`.  
   *Note for developers: Tests must call `FailedAttempt.objects.all().delete()` in `setUp` to prevent cross-test contamination.*
@@ -54,7 +54,7 @@ WorkshopOS is optimized for immense scale, ensuring sub-50ms data retrieval even
 
 > [!TIP]
 > **Performance Guardrails**
-> - **O(1) Data Retrieval**: All major list views enforce Server-Side Pagination (21 items for grids, 50 for floor lists).
+> - **O(1) Data Retrieval**: All major list views enforce Server-Side Pagination (45 items for lists, 10 for category grids).
 > - **Greedy Query Mapping**: Strict enforcement of `select_related` and `prefetch_related` across models to eliminate Django's N+1 query latency.
 > - **Denormalized Financials**: The `JobCard.total_bill_amount` is a physical database column, updated via `update_totals()` during part/labour saves to prevent expensive runtime calculations.
 > - **B-Tree Indexing**: Critical lookup fields (`is_deleted`, `registration_number`, `admitted_date`, `delivered`, `updated_at`) utilize `db_index=True`.

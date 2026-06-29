@@ -48,6 +48,7 @@ graph TD
 ```
  OWNER
    Can do EVERYTHING below + these exclusive actions:
+   - Access the Owner Analysis & Reports Dashboard (v7.0) for high-level operational KPIs and insights.
    - View and Restore Trash (deleted job cards, bulk payers, payments)
    - Permanently delete records from trash
    - Reverse payment transactions (bulk & shop)
@@ -457,7 +458,7 @@ MAIN DASHBOARD (home)
 
 JOB LIST
   Shows: ALL job cards (active + delivered, not trash)
-  Searchable, Paginated (21 per page), AJAX live search
+  Searchable, Paginated (45 per page), AJAX live search
 
 LIVE REPORT
   Shows: Quick overview of all jobs for floor workers
@@ -508,39 +509,109 @@ MANAGEMENT DASHBOARD
 
 ## 14. COMPLETE CONNECTION SUMMARY
 
-```
-                         CUSTOMER
-                            |
-               Brings car / Picks up car
-                            |
-                            v
-  MASTER LISTS <--auto--> JOB CARD <-------> INVOICE
-  (knowledge)    learn   (Hub of All)            |
-       |                  |  |  |             PAYMENT
-       v                  |  |  |            PROCESSING
-  AUTOCOMPLETE     +------+  |  +------+    - Single
-  API              |         |         |    - Bulk Payer
-                   v         v         v    - Cascade
-              CONCERNS    SPARES    LABOUR
-              (tracking) (parts)   (work)
-                            |
-                       auto-sync
-                            |
-                       INVENTORY          SPARE SHOPS        SUPPLIES SHOPS
-                       - Stock levels      (Workshop App)     (Inventory App)
-                       - Low alerts        - Purchase Ledger  - Restock Bills
-                       - Usage history     - Payment History  - Supplier Payments
-                                           - Balance Tracking - Catalog Management
+Every connection below is **verified line-by-line** against the actual codebase.
 
-  STAFF ACCOUNTS  --------->  SECURITY SYSTEM
-  - Owner (2)                - IP Lockout
-  - Office                   - Session Monitor
-  - Floor (many)             - Alert Broadcasts (⚠️ current SMS/Telegram)
-  - Mechanics                - Remote Revoke
-                             - OTP Reset
+```mermaid
+graph TD
+    classDef hub fill:#2563eb,stroke:#1e40af,stroke-width:2px,color:#fff,rx:8px;
+    classDef actor fill:#059669,stroke:#047857,stroke-width:2px,color:#fff,rx:20px;
+    classDef intel fill:#8b5cf6,stroke:#6d28d9,stroke-width:2px,color:#fff;
+    classDef finance fill:#ea580c,stroke:#c2410c,stroke-width:2px,color:#fff;
+    classDef logistics fill:#0891b2,stroke:#0e7490,stroke-width:2px,color:#fff;
+    classDef execution fill:#475569,stroke:#334155,stroke-width:2px,color:#fff;
+    classDef security fill:#dc2626,stroke:#991b1b,stroke-width:2px,color:#fff;
 
-  CAR PROFILES
-  Full vehicle history from all job cards
+    CUST(["🚘 CUSTOMER"]):::actor
+
+    subgraph SYSTEM_INTELLIGENCE ["🧠 System Intelligence & Master Data"]
+        ML["MASTER LISTS<br/>(Brands, Models, Spares, Concerns)"]:::intel
+        API["AUTOCOMPLETE API<br/>(Brands, Models, Spares, Concerns)"]:::intel
+        CAR["CAR PROFILES<br/>(Vehicle History by Registration)"]:::intel
+        ANALYTICS["OWNER ANALYSIS<br/>(Dashboard KPIs & 7 Analysis Zones)"]:::intel
+    end
+
+    subgraph CORE_WORKFLOW ["⚙️ Core Hub & Finance"]
+        JC["📝 JOB CARD<br/>(The Central Hub)"]:::hub
+        INV["🧾 INVOICE<br/>(Bill Display & Single Payment)"]:::hub
+        PAY["💳 PAYMENT PROCESSING<br/>(Bulk Payer & Pending Bills)"]:::hub
+    end
+
+    subgraph JOB_EXECUTION ["🛠️ Job Execution"]
+        CON["CONCERNS<br/>(Status: Pending → Working → Fixed)"]:::execution
+        SPR["SPARES<br/>(Parts Usage & Shop Tracking)"]:::execution
+        LAB["LABOUR<br/>(Work Done & Charges)"]:::execution
+    end
+
+    subgraph LOGISTICS_FINANCE ["📦 Logistics & External Finance"]
+        INVENT["INVENTORY<br/>(Warehouse Stock Levels)"]:::logistics
+        SS["SPARE SHOPS<br/>(Workshop App: Local Purchases)"]:::finance
+        SUP["SUPPLIER SHOPS<br/>(Inventory App: Bulk Restock)"]:::finance
+        CB["CASHBOOK<br/>(Daily Expense/Income Ledger)"]:::finance
+    end
+
+    subgraph SECURITY ["🛡️ Security & Access Control"]
+        STAFF["STAFF ACCOUNTS<br/>(Owner, Office, Floor, Mechanics)"]:::security
+        SYS["SECURITY SYSTEM<br/>(IP Lockout, Session Monitor, SMS/Telegram Alerts)"]:::security
+    end
+
+    %% 1. Customer Flow
+    CUST -->|"Brings Car"| JC
+
+    %% 2. Intelligence & Master Data
+    JC -->|"Auto-learns Concerns & Spares"| ML
+    ML -->|"Feeds Search Data"| API
+    INVENT -->|"Feeds Spare Names"| API
+    API -->|"Powers Autocomplete"| JC
+    JC -->|"Builds Vehicle History"| CAR
+
+    %% 3. Core Workflow
+    JC <-->|"Generates Bill & Records Payment"| INV
+    JC <-->|"Pending Bills & Bulk Payments"| PAY
+
+    %% 4. Job Execution
+    JC -->|"Defines"| CON
+    JC -->|"Requires"| SPR
+    JC -->|"Requires"| LAB
+
+    %% 5. Logistics & Sync
+    SPR <-->|"Auto-Sync Stock Deduct/Restore"| INVENT
+    SPR -->|"Purchased From"| SS
+    INVENT <-->|"Restocked via Bills"| SUP
+
+    %% 6. Analytics Feeds (One-way)
+    JC -->|"Feeds Core Data"| ANALYTICS
+    SPR -->|"Feeds Parts Data"| ANALYTICS
+    LAB -->|"Feeds Labour Revenue"| ANALYTICS
+    SS -->|"Feeds Vendor Data"| ANALYTICS
+    SUP -->|"Feeds Supplier Data"| ANALYTICS
+    CB -->|"Feeds Cashflow"| ANALYTICS
+
+    %% 7. Security
+    STAFF -->|"Protected By"| SYS
+    SYS -->|"Guards System Access"| JC
+
+    linkStyle 0 stroke:#10b981,stroke-width:2px;
+    linkStyle 1 stroke:#8b5cf6,stroke-width:2px;
+    linkStyle 2 stroke:#8b5cf6,stroke-width:2px;
+    linkStyle 3 stroke:#8b5cf6,stroke-width:2px;
+    linkStyle 4 stroke:#8b5cf6,stroke-width:2px;
+    linkStyle 5 stroke:#8b5cf6,stroke-width:2px;
+    linkStyle 6 stroke:#2563eb,stroke-width:2px;
+    linkStyle 7 stroke:#2563eb,stroke-width:2px;
+    linkStyle 8 stroke:#64748b,stroke-width:2px;
+    linkStyle 9 stroke:#64748b,stroke-width:2px;
+    linkStyle 10 stroke:#64748b,stroke-width:2px;
+    linkStyle 11 stroke:#0ea5e9,stroke-width:2px;
+    linkStyle 12 stroke:#0ea5e9,stroke-width:2px;
+    linkStyle 13 stroke:#0ea5e9,stroke-width:2px;
+    linkStyle 14 stroke:#db2777,stroke-width:2px;
+    linkStyle 15 stroke:#db2777,stroke-width:2px;
+    linkStyle 16 stroke:#db2777,stroke-width:2px;
+    linkStyle 17 stroke:#db2777,stroke-width:2px;
+    linkStyle 18 stroke:#db2777,stroke-width:2px;
+    linkStyle 19 stroke:#db2777,stroke-width:2px;
+    linkStyle 20 stroke:#ef4444,stroke-width:2px;
+    linkStyle 21 stroke:#ef4444,stroke-width:2px;
 ```
 
 ---
@@ -548,7 +619,6 @@ MANAGEMENT DASHBOARD
 ## 🔜 COMING SOON
 
 - **PostgreSQL Production Database** — Multi-million record deployment
-- **Admin Data Analysis & Reports** — Visual analytics for Owners
 - **New Notification System** — Replacing current SMS/Telegram architecture
 
 ---
