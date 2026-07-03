@@ -277,14 +277,14 @@ from django.db import transaction
 with transaction.atomic():
     pending_items = (
         MyModel.objects.select_for_update()         # Lock rows to prevent race conditions
-        .filter(status__in=['PENDING', 'PARTIAL'])
+        .filter(payment_status__in=['PENDING', 'PARTIAL'])
         .annotate(
             balance=ExpressionWrapper(
-                F('total_bill') - F('received_amount'),
+                F('total_bill_amount') - F('received_amount'),
                 output_field=DecimalField()
             )
         )
-        .order_by('created_date', 'pk')              # Oldest first
+        .order_by('created_at', 'pk')              # Oldest first
     )
 
     remaining = lump_sum
@@ -302,16 +302,16 @@ with transaction.atomic():
             # Fully pay this item
             paid = balance
             item.received_amount += balance
-            item.status = 'PAID'
+            item.payment_status = 'BULK_PAID'  # Or 'PAID' depending on model
             remaining -= balance
         else:
             # Partial payment — all money used up
             paid = remaining
             item.received_amount += remaining
-            item.status = 'PARTIAL'
+            item.payment_status = 'PARTIAL'
             remaining = Decimal('0')
 
-        item.save(update_fields=['received_amount', 'status'])
+        item.save(update_fields=['received_amount', 'payment_status'])
         history_details.append({'item_id': item.pk, 'paid': str(paid)})
 
     # Save the history snapshot for future reversal
@@ -336,13 +336,13 @@ with transaction.atomic():
         try:
             item = MyModel.objects.select_for_update().get(pk=entry['item_id'])
             reversed_amount = Decimal(str(entry['paid']))
-            item.paid_amount = max(Decimal('0'), item.paid_amount - reversed_amount)
+            item.received_amount = max(Decimal('0'), item.received_amount - reversed_amount)
 
             # Recalculate status
-            if item.paid_amount <= 0:
-                item.status = 'PENDING'
+            if item.received_amount <= 0:
+                item.payment_status = 'PENDING'
             else:
-                item.status = 'PARTIAL'
+                item.payment_status = 'PARTIAL'
 
             item.save()
         except MyModel.DoesNotExist:
@@ -1114,5 +1114,36 @@ def _annotate_bill_status(bills, total_paid):
 
 ---
 
-> **END OF BLUEPRINT.** This document covers every technical pattern in the Titan system (v6.3). To use in a new project, tell your AI agent: *"Read TECH_INFO.md section [number] and implement it here."*  
+## 35. Unassigned Spares Hub
+**What It Does:** Allows spares to exist in a shop's ledger without being assigned to a job card. Useful for legacy balances or bulk purchases. Spares can be detached from a job card and remain unassigned, preserving original vehicle info, and can be managed from a central hub.
+
+**Backend (Unassigning logic):**
+```python
+def spare_shop_unassign_item(request, item_pk):
+    item = get_object_or_404(JobCardSpareItem, pk=item_pk)
+    old_jc = item.job_card
+
+    if old_jc:
+        # Preserve vehicle details before unassigning
+        brand = old_jc.brand_name or ""
+        model = old_jc.model_name or ""
+        reg = old_jc.registration_number or ""
+        info = f"{brand} {model}".strip()
+        if reg:
+            info += f" ({reg})"
+        item.original_vehicle_info = info.strip()
+        
+    item.job_card = None
+    item.save()
+    
+    # Must manually refresh old job card's totals since the FK is now broken
+    if old_jc:
+        old_jc.update_totals()
+```
+
+**Why manual `update_totals()`?** Because the model's `save()` method usually triggers `update_totals()` on its `self.job_card`. Once `job_card` is `None`, the model cannot update the old job card, so the view must do it manually to ensure dashboard denormalization stays accurate.
+
+---
+
+> **END OF BLUEPRINT.** This document covers every technical pattern in the Titan system (v7.1). To use in a new project, tell your AI agent: *"Read TECH_INFO.md section [number] and implement it here."*  
 > **Note:** Sections 23-24 (SMS/Telegram notifications) document the current system which may be replaced with a new notification architecture.

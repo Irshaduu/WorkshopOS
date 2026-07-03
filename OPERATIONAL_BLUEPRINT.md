@@ -37,7 +37,7 @@ graph TD
     T --> U["Car Moves to Delivered Section"]
     U --> V["Invoice Generated"]
     V --> W["Payment Collected"]
-    W --> X["Payment Status: PENDING to PARTIAL to PAID"]
+    W --> X["Payment Status: PENDING to PARTIAL to PAID / BULK_PAID"]
     X --> Y["Job Complete"]
 ```
 
@@ -49,6 +49,8 @@ graph TD
  OWNER
    Can do EVERYTHING below + these exclusive actions:
    - Access the Owner Analysis & Reports Dashboard (v7.0) for high-level operational KPIs and insights.
+   - View Paid Bills Dashboard (fully settled jobs and revenue filters)
+   - View Financial Audits (High Discounts, Deleted Bulk Payers)
    - View and Restore Trash (deleted job cards, bulk payers, payments)
    - Permanently delete records from trash
    - Reverse payment transactions (bulk & shop)
@@ -64,7 +66,7 @@ graph TD
    - Mark cars as Delivered / Undo delivery
    - View and Generate Invoices
    - Update payment status and amounts
-   - Manage Bulk Payers (create, add cards, process payments)
+   - Manage Bulk Payers (create, transfer bills, process cascade payments)
    - View Pending Bills dashboard
    - Manage Spare Shops (create, edit, pay, view ledger, print)
    - Manage Master Lists (Brands, Models, Spares, Concerns)
@@ -474,10 +476,20 @@ PENDING BILLS
   Displays: Total outstanding balance
   Linked to: Bulk Payer system
 
+PAID BILLS (Owner only)
+  Shows: All fully settled job cards (PAID and BULK_PAID)
+  Filters: Time ranges (Today, 1 Week, 1 Month, 1 Year, Custom) and Payment Methods
+  Displays: Total collected revenue for the filtered period
+
 BULK PAYERS
   Shows: Fleet/repeat customer groups
-  Actions: Add job cards, process lump-sum payments (cascade)
-  History: Every payment recorded with reversal capability
+  Actions: 2-step UI to move bills, process lump-sum payments (cascade with locking)
+  History: Every payment recorded with precise reversal capability
+
+AUDITS (Owner only)
+  Shows: Security and financial logs
+  High Discounts: Flags jobs where received amount is significantly lower than total bill
+  Deleted Bulk Payers: Tracks manually deleted bulk payer records for accountability
 
 SPARE SHOPS
   Shows: Supplier list with balances
@@ -533,7 +545,7 @@ graph TD
     subgraph CORE_WORKFLOW ["⚙️ Core Hub & Finance"]
         JC["📝 JOB CARD<br/>(The Central Hub)"]:::hub
         INV["🧾 INVOICE<br/>(Bill Display & Single Payment)"]:::hub
-        PAY["💳 PAYMENT PROCESSING<br/>(Bulk Payer & Pending Bills)"]:::hub
+        PAY["💳 PAYMENT PROCESSING<br/>(Bulk Payer, Pending & Paid Ledgers)"]:::hub
     end
 
     subgraph JOB_EXECUTION ["🛠️ Job Execution"]

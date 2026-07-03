@@ -16,14 +16,14 @@ graph TB
     end
 
     subgraph WORKSHOP["Workshop App (Core)"]
-        W_MODELS["models.py — 16 Models"]
+        W_MODELS["models.py — 17 Models"]
         W_VIEWS["views/ — 13 Module Package"]
         W_ANALYSIS["analysis_views.py — Owner Dashboard"]
         W_AUTH["auth_views.py — 6 Auth Views"]
         W_MGMT["management_views.py — 5 Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 90 URL Patterns"]
+        W_URLS["urls.py — 92 URL Patterns"]
         W_FORMS["forms.py — 6 Forms + 3 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session Tracker"]
@@ -61,7 +61,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (16)
+### Workshop App Models (17)
 
 ```mermaid
 erDiagram
@@ -104,6 +104,7 @@ erDiagram
 | 14 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), is_trashed | Group for fleet/repeat customers |
 | 15 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON) | Audit trail for bulk payments |
 | 16 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
+| 17 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
 
 ### Inventory App Models (8)
 
@@ -171,7 +172,7 @@ Login Event → send_titan_security_alert()
 
 ## 4. ALL URL ROUTES — COMPLETE (123 Total)
 
-### Workshop App (90 routes)
+### Workshop App (92 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -191,10 +192,11 @@ Login Event → send_titan_security_alert()
 | | `/jobcards/<pk>/restore/` | `restore_jobcard` | Owner |
 | | `/jobcards/<pk>/permanent-delete/` | `permanent_delete_jobcard` | Owner |
 | **PENDING PAYMENTS** | `/pending-payments/` | `pending_payments_list` | Office |
+| **PAID BILLS** | `/paid-bills/` | `paid_bills_list` | Owner |
 | **BULK PAYERS** | `/pending-payments/bulk-payers/` | `bulk_payer_list` | Office |
 | | `/pending-payments/bulk-payers/create/` | `bulk_payer_create` | Office |
 | | `/pending-payments/bulk-payers/<pk>/` | `bulk_payer_detail` | Office |
-| | `/pending-payments/bulk-payers/<pk>/add-card/` | `bulk_payer_add_card` | Office |
+| | `/pending-payments/jobcards/move-to-bulk/` | `move_jobcard_to_bulk` | Office |
 | | `/pending-payments/bulk-payers/<pk>/remove-card/` | `bulk_payer_remove_card` | Office |
 | | `/pending-payments/bulk-payers/<pk>/pay/` | `bulk_payer_pay` | Office |
 | | `/pending-payments/bulk-payers/<pk>/delete/` | `bulk_payer_delete` | Office |
@@ -203,6 +205,9 @@ Login Event → send_titan_security_alert()
 | | `/pending-payments/bulk-payers/<pk>/restore/` | `bulk_payer_restore` | Owner |
 | | `/pending-payments/bulk-payers/<pk>/permanent-delete/` | `bulk_payer_permanent_delete` | Owner |
 | | `/pending-payments/history/<hpk>/permanent-delete/` | `permanent_delete_payment_history` | Owner |
+| **AUDITS** | `/audits/high-discounts/` | `audit_high_discounts` | Owner |
+| | `/audits/deleted-bulk-payers/` | `audit_deleted_bulk_payers` | Owner |
+| | `/audits/restore-bulk-payer/<pk>/` | `restore_bulk_payer` | Owner |
 | **SPARE SHOPS** | `/spare-shops/` | `spare_shop_list` | Office |
 | | `/spare-shops/create/` | `spare_shop_create` | Office |
 | | `/spare-shops/<pk>/` | `spare_shop_detail` | Office |
@@ -215,9 +220,10 @@ Login Event → send_titan_security_alert()
 | | `/spare-shops/<pk>/permanent-delete/` | `spare_shop_permanent_delete` | Owner |
 | | `/spare-shops/payment/<payment_pk>/permanent-delete/` | `spare_shop_payment_permanent_delete` | Owner |
 | | `/spare-shops/<pk>/print/` | `spare_shop_print` | Office |
-| | `/spare-shops/unassigned/add/` | `spare_shop_add_unassigned` | Office |
-| | `/spare-shops/unassign/<pk>/` | `spare_shop_unassign_item` | Office |
-| | `/spare-shops/item/<pk>/update-price/` | `spare_shop_update_item_price` | Office |
+| | `/spare-shops/unassigned/` | `unassigned_spares_hub` | Office |
+| | `/spare-shops/<pk>/add-unassigned/` | `spare_shop_add_unassigned` | Office |
+| | `/spare-shops/items/<item_pk>/unassign/` | `spare_shop_unassign_item` | Office |
+| | `/spare-shops/items/<item_pk>/update-price/` | `spare_shop_update_item_price` | Office |
 | **MASTER LISTS** | `/master-lists/` | `master_lists_home` | Office |
 | | `/master-lists/brands/` | `brand_list` | Office |
 | | `/master-lists/brands/add/` | `brand_create` | Office |
@@ -645,8 +651,8 @@ WorkshopOS (Titan)/
 │   ├── urls.py                 ← Root: admin + workshop + inventory
 │   ├── wsgi.py / asgi.py
 │
-├── workshop/                   ← Core App (90 URLs, 90+ Views)
-│   ├── models.py               ← 16 Models
+├── workshop/                   ← Core App (92 URL routes, 90+ views)
+│   ├── models.py               ← 17 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
 │   │   ├── dashboard.py        ← home, live_report
@@ -654,9 +660,11 @@ WorkshopOS (Titan)/
 │   │   ├── delivered.py        ← delivered_list, mark/undo/toggle
 │   │   ├── trash.py            ← trash_list, restore, permanent_delete
 │   │   ├── billing.py          ← invoice_view, update_bill_status
-│   │   ├── bulk_payer.py       ← 12 bulk payer views
-│   │   ├── spare_shop.py       ← 12 spare shop views
+│   │   ├── bulk_payer.py       ← 12 bulk payer views (w/ lock cascade)
+│   │   ├── spare_shop.py       ← 15 spare shop views
 │   │   ├── pending.py          ← pending_payments_list
+│   │   ├── paid.py             ← paid_bills_list (w/ time filters)
+│   │   ├── audits.py           ← audit_high_discounts, audit_deleted_bulk_payers, restore_bulk_payer
 │   │   ├── car_profiles.py     ← car_profile_list, detail
 │   │   ├── master_lists.py     ← 17 master list views
 │   │   └── autocomplete.py     ← 4 autocomplete API views
@@ -664,7 +672,7 @@ WorkshopOS (Titan)/
 │   ├── management_views.py     ← 5 Management Views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook Views (standalone ledger)
 │   ├── cleanup_views.py        ← 5 Cleanup Views
-│   ├── urls.py                 ← 90 URL patterns
+│   ├── urls.py                 ← 92 URL patterns
 │   ├── forms.py                ← 6 Forms + 3 Formsets
 │   ├── decorators.py           ← 3 RBAC decorators
 │   ├── middleware.py            ← Session tracker
@@ -702,4 +710,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · 24 Models · 123 URL Routes · 110+ Views · 81 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ current) · 6 Signal Handlers · 19 Test Files
+> **Total**: 2 Django Apps · 25 Models · 125 URL Routes · 110+ Views · 81 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ current) · 6 Signal Handlers · 19 Test Files

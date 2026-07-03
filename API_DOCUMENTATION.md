@@ -1,4 +1,4 @@
-# WorkshopOS: API & Core Engineering Patterns (v7.0)
+# WorkshopOS: API & Core Engineering Patterns (v7.1)
 
 This document outlines the core technical patterns used in WorkshopOS.
 
@@ -34,6 +34,9 @@ class Meta:
 `JobCard.total_bill_amount` is a physical column, not a computed value. Updated automatically via `update_totals()` on every spare/labour save or delete. 
 *(Note: Now strictly enforced across all dashboard and pending payment views using `F('total_bill_amount')` to eliminate correlated subquery N+1 bottlenecks).*
 
+### 5. Architectural Isolation (Dedicated Ledgers)
+To maintain peak performance as data grows, the billing architecture strictly isolates **Pending Bills** from **Paid Bills**. This separation (introduced in v7.1) eliminates complex conditional database filtering, enabling each dedicated ledger to process its dataset efficiently with specialized time-range filters and identical search patterns.
+
 ---
 
 ## 🛡️ II. Steel Gate Security Logic
@@ -51,6 +54,11 @@ The security system triggers collaborative oversight via `auth_views.py`.
 - **Staff Monitoring**: Owners receive real-time identifiers (IP, Device Name) for every login.
 - **Channels**: Telegram Bot API (primary) + Twilio SMS (parallel).
 - **⚠️ Note**: This notification architecture is subject to replacement.
+
+### 3. Financial Audit Trails (v7.1)
+The system automatically logs specialized security audits for critical financial events:
+- **High Discounts**: Flags job cards where the received payment amount is significantly lower than the total bill.
+- **Deleted Bulk Payers**: Tracks manually deleted bulk payer records for absolute financial accountability.
 
 ---
 
@@ -109,9 +117,10 @@ Used in both **Bulk Payer** and **Spare Shop** payment systems:
 1. Lock pending items with `select_for_update()` inside `transaction.atomic()`
 2. Order by oldest first (`created_date`, `pk`)
 3. Distribute payment amount across items until exhausted
-4. Each item status transitions: PENDING → PARTIAL → PAID
+4. Each item status transitions: PENDING → PARTIAL → PAID (or BULK_PAID)
 5. Create `PaymentHistory` record (with JSON snapshot for **Bulk Payments** only)
 6. Reversal reads the saved record to subtract precise amounts
+7. Trigger automated recalculation of bulk payer ledgers upon bill deletion or restoration
 
 > **Note**: Spare Shop payments do not use JSON snapshots. Their history is stored as a simple ledger entry. Only `BulkPaymentHistory` stores a JSON `details` field for reversal.
 

@@ -21,8 +21,10 @@ A premium, comprehensive Django-based workshop management system designed to str
 - **Spare Shops Management** — Dedicated module for tracking parts suppliers, monitoring outstanding balances, and managing lump-sum supplier payments with cascade distribution.
 - **Unassigned Spares Hub** — Add legacy stock/balances directly to a shop without linking to a job card. Move parts between job cards and the Unassigned pool. Import unassigned parts into new job cards.
 - **Inline Shop Price Editing** — Update the shop-paid price of any spare item directly from the ledger page.
-- **Bulk Payer Management** — Dedicated module for managing repeating/fleet customers with cascading bulk payments chronologically (oldest-first).
+- **Bulk Payer Management** — Dedicated module for managing repeating/fleet customers with cascading bulk payments chronologically (oldest-first) and a 2-step UI for bulk bill transfers.
 - **Pending Bills Dashboard** — Centralized view of all unpaid/partially-paid jobs across the system.
+- **Paid Bills Dashboard** — Dedicated ledger for all fully settled jobs with time-range and payment method filters (Owner only).
+- **Financial Audits** — Built-in security tracking for High Discounts and Deleted Bulk Payers to ensure absolute financial accountability.
 - **Payment Reversal** — Every bulk payment records a JSON snapshot enabling precise, surgical reversal by the Owner.
 - **General Ledger (Cashbook)** — Standalone income & expense tracking module for recording daily workshop overhead (rent, electricity, scrap sales, etc.) with date-range filters and net balance totals. Office and Owner only.
 
@@ -107,7 +109,7 @@ WorkshopOS (Titan)/
 ├── formulad_workshop/      # Django project configuration & split settings
 │   └── settings/           # base.py, development.py, production.py
 ├── workshop/               # Core application (90 URL routes, 90+ views)
-│   ├── views/              # Modular views package (12 modules)
+│   ├── views/              # Modular views package (13 modules)
 │   ├── cashbook_views.py   # Standalone Cashbook ledger (4 views)
 │   ├── templates/          # 63 HTML templates
 │   └── static/             # App-specific CSS & JS
@@ -145,6 +147,6 @@ Designed for scale with practical, measured optimizations:
 
 ---
 
-**Version**: 7.0  
-**Last Updated**: June 2026  
+**Version**: 7.1  
+**Last Updated**: July 2026  
 **Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT

@@ -1,9 +1,9 @@
-# 🏛️ TITAN MASTER HANDOVER: WorkshopOS (v7.0)
+# 🏛️ TITAN MASTER HANDOVER: WorkshopOS (v7.1)
 
 > [!IMPORTANT]
 > **Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT  
-> **Last Updated**: June 2026  
-> **Version**: 7.0  
+> **Last Updated**: July 2026  
+> **Version**: 7.1  
 
 ---
 
@@ -46,6 +46,12 @@
 - **Architecture**: Employs a hybrid rendering pattern—vital hero KPIs load synchronously on page load, while heavy data zones (Revenue, Mechanics, Spares, Inventory, Cashbook, Customers) fetch asynchronously via AJAX.
 - **Reporting & Print-Ready**: Features an advanced print-mode CSS `@media print` to auto-expand zones, hide navigation, and prepare clean reports for physical/PDF exports.
 
+### 6. Billing Architecture & Bulk Payer Cascade (v7.1)
+- **Bulk Payer System**: Complex locking (`select_for_update`) ensures atomic operations when a Bulk Payer makes a payment that cascades across multiple unpaid job cards.
+- **Data Integrity**: Bill deletions or restorations automatically recalculate bulk payer ledgers. Trash and Permanent Delete mechanisms are separated into robust phases.
+- **Audit Trails**: Security audits integrated directly into the system for High Discounts and Deleted Bulk Payers.
+- **Dedicated Ledgers**: Completely split `Pending Bills` and `Paid Bills` architectures with specialized time-range filters, identical search patterns, and strictly enforced RBAC.
+
 ---
 
 ## 🚀 III. HIGH-PERFORMANCE ENGINEERING (1M+ Records)
@@ -70,7 +76,7 @@ WorkshopOS is optimized for immense scale, ensuring sub-50ms data retrieval even
   ```bash
   .\venv\Scripts\python.exe manage.py test workshop inventory
   ```
-- **Test Coverage**: 18+ test files across workshop (15+) and inventory (3).
+- **Test Coverage**: 19 test files across workshop (16) and inventory (3).
 
 ---
 
@@ -79,7 +85,7 @@ WorkshopOS is optimized for immense scale, ensuring sub-50ms data retrieval even
 - **Core-Only Architecture**: The repository root contains only application code, migration files, and documented standards.
 - **Environment Isolation**: All critical credentials (Owner mobile numbers, Telegram Chat IDs, Twilio keys) are strictly segregated into the `.env` file, maintaining absolute "Separation of Configuration from Code".
 - **Split Settings**: `settings/` package auto-selects development (SQLite) or production (PostgreSQL) via `DJANGO_ENV` environment variable.
-- **Modular Views**: The monolithic `views.py` has been refactored into a `views/` package with 12 focused modules, maintaining full backward compatibility via re-exports in `__init__.py`.
+- **Modular Views**: The monolithic `views.py` has been refactored into a `views/` package with 13 focused modules, maintaining full backward compatibility via re-exports in `__init__.py`.
 
 ---
 
