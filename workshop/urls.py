@@ -6,6 +6,7 @@ from . import management_views
 from . import cashbook_views
 from . import cleanup_views
 from . import analysis_views
+from .views import audits
 
 urlpatterns = [
 
@@ -30,12 +31,13 @@ urlpatterns = [
     path('delivered/', views.delivered_list, name='delivered_list'),
     path('trash/', views.trash_list, name='trash_list'),
     path('pending-payments/', views.pending_payments_list, name='pending_payments_list'),
+    path('paid-bills/', views.paid_bills_list, name='paid_bills_list'),
     
     # Bulk Payer System (inside Pending Bills)
     path('pending-payments/bulk-payers/', views.bulk_payer_list, name='bulk_payer_list'),
     path('pending-payments/bulk-payers/create/', views.bulk_payer_create, name='bulk_payer_create'),
     path('pending-payments/bulk-payers/<int:pk>/', views.bulk_payer_detail, name='bulk_payer_detail'),
-    path('pending-payments/bulk-payers/<int:pk>/add-card/', views.bulk_payer_add_card, name='bulk_payer_add_card'),
+    path('pending-payments/jobcards/move-to-bulk/', views.move_jobcard_to_bulk, name='move_jobcard_to_bulk'),
     path('pending-payments/bulk-payers/<int:pk>/remove-card/', views.bulk_payer_remove_card, name='bulk_payer_remove_card'),
     path('pending-payments/bulk-payers/<int:pk>/pay/', views.bulk_payer_pay, name='bulk_payer_pay'),
     path('pending-payments/bulk-payers/<int:pk>/delete/', views.bulk_payer_delete, name='bulk_payer_delete'),
@@ -44,6 +46,11 @@ urlpatterns = [
     path('pending-payments/bulk-payers/<int:pk>/restore/', views.bulk_payer_restore, name='bulk_payer_restore'),
     path('pending-payments/bulk-payers/<int:pk>/permanent-delete/', views.bulk_payer_permanent_delete, name='bulk_payer_permanent_delete'),
     path('pending-payments/history/<int:history_pk>/permanent-delete/', views.permanent_delete_payment_history, name='permanent_delete_payment_history'),
+
+    # Audits
+    path('audits/high-discounts/', audits.audit_high_discounts, name='audit_high_discounts'),
+    path('audits/deleted-bulk-payers/', audits.audit_deleted_bulk_payers, name='audit_deleted_bulk_payers'),
+    path('audits/restore-bulk-payer/<int:pk>/', audits.restore_bulk_payer, name='restore_bulk_payer'),
 
     # ------------------
     # SPARE SHOP SYSTEM

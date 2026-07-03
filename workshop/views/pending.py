@@ -19,9 +19,10 @@ def pending_payments_list(request):
     Highly optimized for 10M+ records using SQL Subqueries & Annotations.
     """
     # 1. Base Query with Filtering by Payment Status (Indexed)
+    # Hide any jobs that are assigned to a bulk payer group
     pending_jobs = JobCard.objects.filter(
         payment_status__in=['PENDING', 'PARTIAL']
-    )
+    ).exclude(bulk_payer__isnull=False)
 
     # 2. AJAX Search (Smart Reset: Clear on full refresh)
     is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
@@ -51,12 +52,17 @@ def pending_payments_list(request):
     paginator = Paginator(pending_jobs, 45)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+    
+    # 5.5 Fetch active bulk payers for the "Move to Bulk Bill" modal
+    from ..models import BulkPayer
+    active_bulk_payers = BulkPayer.objects.filter(is_trashed=False).order_by('customer_name')
 
     context = {
         'pending_jobs': page_obj,
         'total_outstanding': total_outstanding,
         'q': q,
         'page_obj': page_obj,
+        'active_bulk_payers': active_bulk_payers,
     }
 
     # 6. AJAX Return Partial

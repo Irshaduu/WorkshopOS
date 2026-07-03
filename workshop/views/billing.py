@@ -61,22 +61,23 @@ def update_bill_status(request, pk):
         except (ValueError, TypeError, ArithmeticError):
             received = Decimal('0')
             
-        method = request.POST.get('payment_method')
-        status = request.POST.get('payment_status', 'PAID')
+        method = request.POST.get('payment_method', 'CASH')
 
         jobcard.received_amount = received
         jobcard.payment_method = method
-        jobcard.payment_status = status
         
-        # Calculate internal discount silently for admin reports
-        if status == 'PAID':
-            total_bill = Decimal(str(jobcard.total_bill_amount or '0'))
+        total_bill = Decimal(str(jobcard.total_bill_amount or '0'))
+        
+        # Automated status and discount calculation
+        if received > 0:
+            jobcard.payment_status = 'PAID'
             if received > total_bill:
                 jobcard.discount_amount = Decimal('0')
                 messages.warning(request, f"Received amount (₹{received}) exceeds total bill (₹{total_bill}). Overpayment recorded.")
             else:
                 jobcard.discount_amount = max(Decimal('0'), total_bill - received)
         else:
+            jobcard.payment_status = 'PENDING'
             jobcard.discount_amount = Decimal('0')
 
         jobcard.save()

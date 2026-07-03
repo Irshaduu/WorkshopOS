@@ -1,0 +1,320 @@
+{% load custom_filters %}
+
+<style>
+    :root {
+        --font-display: 'Barlow Condensed', sans-serif;
+        --font-body:    'Barlow', sans-serif;
+        --pb-green:     #16a34a;
+        --pb-teal:      #0d9488;
+    }
+
+    /* ── Paid Card ─────────────────────────────────── */
+    .pb-card {
+        background: var(--color-card);
+        border-radius: 12px;
+        border: 1px solid var(--color-border);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04);
+        position: relative;
+        display: flex;
+        flex-direction: row;
+        text-decoration: none;
+        color: inherit;
+        height: 100%;
+        transition: box-shadow 0.2s;
+    }
+    .pb-card:hover {
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        text-decoration: none;
+        color: inherit;
+    }
+
+    /* Left stripe */
+    .pb-stripe {
+        width: 10px;
+        flex-shrink: 0;
+        background: var(--stripe-color, #e2e8f0);
+        border-top-left-radius: 12px;
+        border-bottom-left-radius: 12px;
+    }
+    .pb-stripe.stripe-unset {
+        background: repeating-linear-gradient(
+            -45deg,
+            #e2e8f0 0px, #e2e8f0 3px,
+            #f8fafc 3px, #f8fafc 8px
+        );
+    }
+    .pb-stripe.stripe-white {
+        background: #f8fafc;
+        box-shadow: inset -1px 0 0 #e2e8f0, inset 1px 0 0 #e2e8f0;
+    }
+
+    /* Card body */
+    .pb-body {
+        flex: 1;
+        padding: 0.9rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+
+    .pb-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    /* Status badge */
+    .pb-status-badge {
+        font-family: var(--font-body);
+        font-size: 0.58rem;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        border-radius: 20px;
+    }
+    .pb-badge-paid      { background: rgba(22,163,74,0.09);  color: #16a34a; border: 1px solid rgba(22,163,74,0.22); }
+    .pb-badge-bulk-paid { background: rgba(13,148,136,0.09); color: #0d9488; border: 1px solid rgba(13,148,136,0.22); }
+
+    .pb-date {
+        font-family: var(--font-body);
+        font-size: 0.68rem;
+        font-weight: 500;
+        color: var(--color-text-muted);
+    }
+
+    /* Vehicle name */
+    .pb-vehicle {
+        font-family: var(--font-display);
+        font-size: 1.3rem;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+        color: var(--color-text);
+        line-height: 1.1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Reg + bill row */
+    .pb-meta-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: -2px;
+        margin-bottom: 2px;
+    }
+    .pb-reg {
+        font-family: var(--font-display);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        color: #334155;
+        white-space: nowrap;
+        display: inline-block;
+    }
+    .pb-bill-no {
+        font-family: var(--font-display);
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        padding: 2px 7px;
+        background: rgba(37,99,235,0.07);
+        border: 1px solid rgba(37,99,235,0.15);
+        border-radius: 4px;
+        color: #2563eb;
+        white-space: nowrap;
+    }
+
+    .pb-customer {
+        font-family: var(--font-body);
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 4px;
+    }
+    .pb-customer i { font-size: 0.65rem; flex-shrink: 0; }
+
+    /* Financials block */
+    .pb-financials {
+        background: rgba(22,163,74,0.04);
+        border: 1px solid rgba(22,163,74,0.12);
+        border-radius: 8px;
+        padding: 9px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        margin-top: 2px;
+    }
+    .pb-fin-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 0;
+    }
+    .pb-fin-row + .pb-fin-row {
+        border-top: 1px dashed rgba(22,163,74,0.15);
+    }
+    .pb-fin-label {
+        font-family: var(--font-body);
+        font-size: 0.62rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #94a3b8;
+    }
+    .pb-fin-value {
+        font-family: var(--font-display);
+        font-size: 1rem;
+        font-weight: 800;
+        color: var(--color-text);
+        letter-spacing: 0.3px;
+    }
+    .pb-fin-value.paid-green { color: #16a34a; }
+
+    /* Payment method pill */
+    .pb-method-pill {
+        font-family: var(--font-body);
+        font-size: 0.6rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        border-radius: 20px;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        color: #15803d;
+    }
+    .pb-method-pill.online  { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+    .pb-method-pill.cheque  { background: #fefce8; border-color: #fde68a; color: #92400e; }
+    .pb-method-pill.upi     { background: #f5f3ff; border-color: #ddd6fe; color: #6d28d9; }
+
+    /* ── Empty State ─────────────────────────────── */
+    .pb-empty {
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: 14px;
+        padding: 3.5rem 1rem;
+        text-align: center;
+    }
+    .pb-empty .empty-icon {
+        font-size: 3rem;
+        color: #94a3b8;
+        opacity: 0.5;
+        display: block;
+        margin-bottom: 1rem;
+    }
+    .pb-empty h5 {
+        font-family: var(--font-display);
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #64748b;
+        margin-bottom: 0.4rem;
+    }
+    .pb-empty p {
+        font-family: var(--font-body);
+        font-size: 0.85rem;
+        color: #94a3b8;
+        margin-bottom: 0;
+    }
+</style>
+
+{% if paid_jobs %}
+<div class="row g-3">
+    {% for job in paid_jobs %}
+    {% with color=job.get_car_color_hex|default:'#475569' %}
+    <div class="col-12 col-md-6 col-lg-4">
+        <a href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}" class="pb-card"
+           style="--card-glow: {{ color }}22;">
+
+            <!-- Left stripe -->
+            <div class="pb-stripe
+                {% if not job.car_color %}stripe-unset
+                {% elif job.car_color == 'White' %}stripe-white
+                {% endif %}"
+                style="--stripe-color: {{ color }};"></div>
+
+            <div class="pb-body">
+
+                <!-- Status + Date -->
+                <div class="pb-top">
+                    <div class="d-flex align-items-center gap-2">
+                        {% if job.payment_status == 'BULK_PAID' %}
+                            <span class="pb-status-badge pb-badge-bulk-paid">
+                                <i class="bi bi-people-fill me-1" style="font-size:0.55rem;"></i>Bulk Paid
+                            </span>
+                        {% else %}
+                            <span class="pb-status-badge pb-badge-paid">
+                                <i class="bi bi-check-circle-fill me-1" style="font-size:0.55rem;"></i>Paid
+                            </span>
+                        {% endif %}
+                        <span class="pb-date">{{ job.updated_at|date:"d M, Y" }}</span>
+                    </div>
+
+                    <!-- Payment method pill -->
+                    {% if job.payment_method %}
+                    <span class="pb-method-pill
+                        {% if job.payment_method == 'ONLINE' %}online
+                        {% elif job.payment_method == 'CHEQUE' %}cheque
+                        {% elif job.payment_method == 'UPI' %}upi
+                        {% endif %}">
+                        {{ job.payment_method|title }}
+                    </span>
+                    {% endif %}
+                </div>
+
+                <!-- Vehicle name -->
+                <div class="pb-vehicle">{{ job.brand_name }} {{ job.model_name }}</div>
+
+                <!-- Reg + Bill number -->
+                <div class="pb-meta-row">
+                    <span class="pb-reg">{{ job.registration_number }}</span>
+                    {% if job.bill_number %}
+                    <span class="pb-bill-no"><i class="bi bi-receipt me-1"></i>{{ job.bill_number }}</span>
+                    {% endif %}
+                </div>
+
+                <!-- Customer -->
+                <div class="pb-customer">
+                    <i class="bi bi-person"></i>
+                    {{ job.customer_name|default:"—" }}
+                </div>
+
+                <!-- Financials -->
+                <div class="pb-financials">
+                    <div class="pb-fin-row">
+                        <span class="pb-fin-label">Total Bill</span>
+                        <span class="pb-fin-value">₹{{ job.total_bill_amount|floatformat:2 }}</span>
+                    </div>
+                    <div class="pb-fin-row">
+                        <span class="pb-fin-label">Amount Paid</span>
+                        <span class="pb-fin-value paid-green">₹{{ job.received_amount|floatformat:2 }}</span>
+                    </div>
+                </div>
+
+            </div>
+        </a>
+    </div>
+    {% endwith %}
+    {% endfor %}
+</div>
+
+{% include 'workshop/includes/pagination.html' %}
+
+{% else %}
+<div class="pb-empty">
+    <i class="bi bi-receipt empty-icon"></i>
+    <h5>No paid bills found.</h5>
+    <p>Try adjusting your search or filter.</p>
+</div>
+{% endif %}

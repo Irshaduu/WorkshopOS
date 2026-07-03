@@ -378,7 +378,7 @@
             {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
             <button type="button" class="btn btn-warning fw-bold" data-bs-toggle="modal" data-bs-target="#billStatusModal"
                 style="padding: 12px 25px; border-radius: 8px; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                <i class="bi bi-currency-rupee"></i> Bill Status
+                <i class="bi bi-currency-rupee"></i> Settle Bill
             </button>
             {% endif %}
 
@@ -410,29 +410,19 @@
                             <input type="number" step="0.01" class="form-control form-control-lg border-primary" id="received_amount" name="received_amount" value="{{ grand_total|floatformat:2 }}" required>
                         </div>
 
-                        <div class="row g-2 mb-3">
-                            <div class="col-6">
-                                <label for="payment_method" class="form-label fw-bold small">Payment Method</label>
-                                <select class="form-select" id="payment_method" name="payment_method">
-                                    <option value="UPI">UPI / QR Code</option>
-                                    <option value="CASH">Cash</option>
-                                    <option value="TRANSFER">Bank Transfer</option>
-                                    <option value="CARD">Card</option>
-                                </select>
-                            </div>
-                            <div class="col-6">
-                                <label for="payment_status" class="form-label fw-bold small">Status</label>
-                                <select class="form-select" id="payment_status" name="payment_status">
-                                    <option value="PAID">Fully Paid</option>
-                                    <option value="PARTIAL">Partial</option>
-                                    <option value="PENDING">Pending</option>
-                                </select>
-                            </div>
+                        <div class="mb-3">
+                            <label for="payment_method" class="form-label fw-bold small">Payment Method</label>
+                            <select class="form-select" id="payment_method" name="payment_method">
+                                <option value="UPI">UPI / QR Code</option>
+                                <option value="CASH">Cash</option>
+                                <option value="TRANSFER">Bank Transfer</option>
+                                <option value="CARD">Card</option>
+                            </select>
                         </div>
                     </div>
                     <div class="modal-footer bg-light border-top-0 py-3">
                         <button type="button" class="btn btn-secondary px-4 py-2" data-bs-toggle="modal">Close</button>
-                        <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">Update & Save</button>
+                        <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">Settle Bill</button>
                     </div>
                 </form>
             </div>

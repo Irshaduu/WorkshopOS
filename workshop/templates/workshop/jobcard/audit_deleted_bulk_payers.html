@@ -1,0 +1,132 @@
+{% extends 'workshop/base.html' %}
+{% load humanize %}
+
+{% block title %}Deleted Bulk Payers{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --font-display: 'Barlow Condensed', sans-serif;
+        --font-body:    'Barlow', sans-serif;
+    }
+    .page-header {
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .page-title {
+        font-family: var(--font-display);
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .title-icon { color: #2563eb; }
+    
+    .audit-card {
+        background: #fff;
+        border-radius: 12px;
+        border: 1px dashed #cbd5e1;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        opacity: 0.85;
+    }
+    .audit-left {
+        display: flex;
+        flex-direction: column;
+    }
+    .customer-name {
+        font-family: var(--font-display);
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: #334155;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .archived-badge {
+        font-family: var(--font-body);
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        background: #f1f5f9;
+        color: #64748b;
+        padding: 2px 8px;
+        border-radius: 20px;
+        border: 1px solid #cbd5e1;
+    }
+    .audit-right {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .btn-restore {
+        background: #10b981;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-family: var(--font-body);
+        font-size: 0.85rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.15s;
+    }
+    .btn-restore:hover { background: #059669; transform: translateY(-1px); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-archive-fill title-icon"></i> Deleted Bulk Payers
+    </h1>
+    <p class="text-muted mt-2" style="font-family: var(--font-body);">Showing all soft-deleted bulk payer groups. You can safely restore them here.</p>
+</div>
+
+{% if archived_payers %}
+    <div class="row">
+        {% for payer in archived_payers %}
+        <div class="col-md-6 mb-3">
+            <div class="audit-card">
+                <div class="audit-left">
+                    <div class="customer-name">
+                        <i class="bi bi-person-circle text-muted"></i> {{ payer.customer_name }}
+                        <span class="archived-badge">Archived</span>
+                    </div>
+                    <div class="text-muted mt-2" style="font-size: 0.85rem; font-family: var(--font-body);">
+                        Total Bill: ₹{{ payer.total_billed_amount|floatformat:0|intcomma }} | 
+                        Paid: ₹{{ payer.total_paid_amount|floatformat:0|intcomma }}
+                    </div>
+                </div>
+                <div class="audit-right">
+                    <form method="POST" action="{% url 'restore_bulk_payer' payer.pk %}" onsubmit="return confirm('Restore {{ payer.customer_name }}?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-restore">
+                            <i class="bi bi-arrow-counterclockwise"></i> Restore
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="text-center py-5">
+        <i class="bi bi-folder2-open text-muted" style="font-size: 3rem;"></i>
+        <h4 class="mt-3" style="font-family: var(--font-display); font-weight: 700; color: #64748b;">Trash is Empty</h4>
+        <p class="text-muted" style="font-family: var(--font-body);">There are no deleted bulk payers.</p>
+    </div>
+{% endif %}
+{% endblock %}

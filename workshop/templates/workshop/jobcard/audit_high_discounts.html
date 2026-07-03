@@ -1,0 +1,151 @@
+{% extends 'workshop/base.html' %}
+{% load humanize %}
+
+{% block title %}High Discount Bills{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --font-display: 'Barlow Condensed', sans-serif;
+        --font-body:    'Barlow', sans-serif;
+    }
+    .page-header {
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .page-title {
+        font-family: var(--font-display);
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .title-icon { color: #dc2626; }
+    
+    .audit-card {
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        margin-bottom: 1rem;
+        padding: 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .audit-card:hover {
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    }
+    .audit-left {
+        display: flex;
+        flex-direction: column;
+    }
+    .car-name {
+        font-family: var(--font-display);
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .reg-number {
+        font-family: var(--font-body);
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #64748b;
+        background: #f1f5f9;
+        padding: 2px 8px;
+        border-radius: 4px;
+        display: inline-block;
+        margin-top: 4px;
+    }
+    .audit-right {
+        text-align: right;
+    }
+    .fin-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        font-family: var(--font-body);
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+    }
+    .fin-label {
+        font-weight: 600;
+        color: #64748b;
+    }
+    .fin-val {
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .fin-val.danger {
+        color: #dc2626;
+    }
+    
+    .btn-view {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 16px;
+        font-family: var(--font-body);
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+        display: inline-block;
+        margin-top: 10px;
+    }
+    .btn-view:hover { background: #1d4ed8; color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <i class="bi bi-tags-fill title-icon"></i> High Discount Audit
+    </h1>
+    <p class="text-muted mt-2" style="font-family: var(--font-body);">Showing paid bills with discounts exceeding 30% of the total amount.</p>
+</div>
+
+{% if bills %}
+    <div class="row">
+        {% for bill in bills %}
+        <div class="col-md-6 mb-3">
+            <div class="audit-card">
+                <div class="audit-left">
+                    <div class="car-name">{{ bill.brand_name }} {{ bill.model_name }}</div>
+                    <div><span class="reg-number">{{ bill.registration_number }}</span></div>
+                    <div class="text-muted mt-2" style="font-size: 0.75rem;">
+                        Billed on: {{ bill.updated_at|date:"d M Y" }}
+                    </div>
+                </div>
+                <div class="audit-right">
+                    <div class="fin-row">
+                        <span class="fin-label">Total Bill:</span>
+                        <span class="fin-val">₹{{ bill.total_bill_amount|floatformat:0|intcomma }}</span>
+                    </div>
+                    <div class="fin-row">
+                        <span class="fin-label">Received:</span>
+                        <span class="fin-val">₹{{ bill.received_amount|floatformat:0|intcomma }}</span>
+                    </div>
+                    <div class="fin-row border-top pt-1 mt-1">
+                        <span class="fin-label text-danger">Discount:</span>
+                        <span class="fin-val danger">₹{{ bill.discount_amount|floatformat:0|intcomma }}</span>
+                    </div>
+                    <a href="{% url 'invoice_view' bill.pk %}" class="btn-view" target="_blank">View Invoice</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="text-center py-5">
+        <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
+        <h4 class="mt-3" style="font-family: var(--font-display); font-weight: 700;">All Clear!</h4>
+        <p class="text-muted" style="font-family: var(--font-body);">No high discount bills found in the system.</p>
+    </div>
+{% endif %}
+{% endblock %}

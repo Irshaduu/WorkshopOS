@@ -207,20 +207,33 @@ class JobCardViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_update_bill_status(self):
-        """update_bill_status should save payment info and redirect to invoice."""
+        """update_bill_status should save payment info, auto-set status and discount."""
+        from workshop.models import JobCardSpareItem
         self.user.groups.add(self.office_group)
         url = reverse('update_bill_status', args=[self.job.pk])
+        
+        # Add a spare so total bill is 600
+        JobCardSpareItem.objects.create(job_card=self.job, total_price=600, quantity=1)
 
         response = self.client.post(url, {
             'received_amount': '500',
             'payment_method': 'Cash',
-            'payment_status': 'PAID',
         })
 
         self.assertRedirects(response, reverse('invoice_view', args=[self.job.pk]))
         self.job.refresh_from_db()
         self.assertEqual(float(self.job.received_amount), 500.0)
         self.assertEqual(self.job.payment_status, 'PAID')
+        self.assertEqual(float(self.job.discount_amount), 100.0)
+        
+        # Test 0 amount -> PENDING
+        self.client.post(url, {
+            'received_amount': '0',
+            'payment_method': 'Cash',
+        })
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.payment_status, 'PENDING')
+        self.assertEqual(float(self.job.discount_amount), 0.0)
 
     def test_bulk_payment_cascade(self):
         """Test the cascade algorithm for fleet/bulk payments."""

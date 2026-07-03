@@ -1,0 +1,360 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Paid Bills{% endblock %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+
+<style>
+    :root {
+        --font-display: 'Barlow Condensed', sans-serif;
+        --font-body:    'Barlow', sans-serif;
+        --pb-green:     #16a34a;
+        --pb-blue:      #2563eb;
+    }
+
+    /* ── Page Header ─────────────────────────────── */
+    .pb-page-header {
+        margin-bottom: 1.5rem;
+        margin-top: 0.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid var(--color-border);
+        position: relative;
+    }
+    .pb-page-header::after {
+        content: '';
+        position: absolute;
+        bottom: -2px; left: 0;
+        width: 48px; height: 2px;
+        background: var(--pb-green);
+    }
+
+    .pb-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .pb-page-title {
+        font-family: var(--font-display);
+        font-size: 1.6rem;
+        font-weight: 800;
+        letter-spacing: -0.3px;
+        color: var(--color-text);
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+    }
+    .pb-page-title .title-icon { color: var(--pb-green); }
+
+    .pb-total-block {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+    }
+    .pb-total-label {
+        font-family: var(--font-body);
+        font-size: 0.62rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: #94a3b8;
+    }
+    .pb-total-amount {
+        font-family: var(--font-display);
+        font-size: 1.8rem;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        color: var(--pb-green);
+        line-height: 1;
+    }
+
+    /* ── Controls Row ─────────────────────────────── */
+    .pb-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Search */
+    .pb-search-wrap {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+    }
+    .pb-search-wrap .search-icon {
+        position: absolute;
+        left: 12px; top: 50%;
+        transform: translateY(-50%);
+        color: var(--color-text-muted);
+        font-size: 0.75rem;
+        pointer-events: none;
+    }
+    .pb-search-input {
+        width: 100%;
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        background: var(--color-card);
+        font-family: var(--font-body);
+        font-size: 0.8rem;
+        color: var(--color-text);
+        padding: 7px 14px 7px 32px;
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+        box-shadow: 0 1px 3px var(--color-shadow);
+    }
+    .pb-search-input:focus {
+        border-color: var(--pb-blue);
+        box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+    .pb-search-input::placeholder { color: var(--color-text-muted); }
+
+    /* Filter Button — identical to Delivered section */
+    .pb-filter-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-family: var(--font-body);
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--color-text);
+        cursor: pointer;
+        box-shadow: 0 1px 3px var(--color-shadow);
+        white-space: nowrap;
+        flex-shrink: 0;
+        transition: border-color 0.15s;
+    }
+    .pb-filter-btn:hover { border-color: var(--pb-blue); }
+    .pb-filter-btn .bi-funnel      { font-size: 0.72rem; color: var(--color-text-muted); }
+    .pb-filter-btn .bi-chevron-down { font-size: 0.6rem; opacity: 0.5; }
+
+    /* Filter Dropdown */
+    .pb-dropdown-menu {
+        border-radius: 12px;
+        border: 1px solid var(--color-border);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+        padding: 6px;
+        min-width: 175px;
+        margin-top: 6px !important;
+    }
+    .pb-dropdown-menu .dropdown-item {
+        border-radius: 8px;
+        font-family: var(--font-body);
+        font-size: 0.8rem;
+        font-weight: 500;
+        padding: 7px 12px;
+        color: var(--color-text);
+        transition: background 0.1s;
+    }
+    .pb-dropdown-menu .dropdown-item:hover,
+    .pb-dropdown-menu .dropdown-item.active {
+        background: rgba(37,99,235,0.07);
+        color: var(--pb-blue);
+    }
+    .pb-dropdown-menu .dropdown-divider { margin: 4px 8px; }
+
+    /* Custom date inputs */
+    .pb-dropdown-menu .form-control-sm {
+        font-family: var(--font-body);
+        font-size: 0.78rem;
+        border-radius: 8px;
+    }
+</style>
+
+<!-- Page Header -->
+<div class="pb-page-header">
+    <div class="pb-header-top">
+        <div class="pb-page-title">
+            <i class="bi bi-check-circle-fill title-icon"></i>
+            Paid Bills
+        </div>
+
+        <!-- Total collected stat -->
+        <div class="pb-total-block">
+            <span class="pb-total-label">Total Collected</span>
+            <span class="pb-total-amount">₹{{ total_collected|floatformat:2 }}</span>
+        </div>
+    </div>
+
+    <!-- Controls: Search + Date Filter -->
+    <div class="pb-controls">
+        <form id="paidSearchForm" class="pb-search-wrap">
+            <i class="bi bi-search search-icon"></i>
+            <input type="text" id="paidSearch" name="q"
+                   class="pb-search-input"
+                   placeholder="Search reg, customer, brand, model, bill no…"
+                   value="{{ q }}" autocomplete="off">
+        </form>
+
+        <!-- Date range filter dropdown -->
+        <div class="dropdown">
+            <button id="pbFilterDropdownBtn" class="pb-filter-btn" type="button"
+                    data-bs-toggle="dropdown">
+                <i class="bi bi-funnel"></i>
+                <span id="pbFilterLabel">
+                    {% if filter_type == 'today' %}Today
+                    {% elif filter_type == 'week' %}1 Week
+                    {% elif filter_type == 'month' %}1 Month
+                    {% elif filter_type == 'year' %}1 Year
+                    {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
+                    {% else %}All Time{% endif %}
+                </span>
+                <i class="bi bi-chevron-down"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end pb-dropdown-menu">
+                <li><a class="dropdown-item {% if filter_type == 'today' %}active{% endif %}"  href="?filter=today">Today</a></li>
+                <li><a class="dropdown-item {% if filter_type == 'week' %}active{% endif %}"   href="?filter=week">1 Week</a></li>
+                <li><a class="dropdown-item {% if filter_type == 'month' %}active{% endif %}"  href="?filter=month">1 Month</a></li>
+                <li><a class="dropdown-item {% if filter_type == 'year' %}active{% endif %}"   href="?filter=year">1 Year</a></li>
+                <li><a class="dropdown-item {% if filter_type == 'all' %}active{% endif %}"    href="?filter=all">All Time</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a id="pbCustomRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">Custom Range</a></li>
+                <li id="pbCustomDatePicker"
+                    style="display: {% if filter_type == 'custom' %}block{% else %}none{% endif %};"
+                    onclick="event.stopPropagation()">
+                    <div class="px-2 pt-2 pb-1">
+                        <form id="pbCustomDateForm" method="get" class="d-flex flex-column gap-2">
+                            <input type="hidden" name="filter" value="custom">
+                            <label class="small text-muted mb-0" style="font-size:0.7rem; font-family: var(--font-body);">Start</label>
+                            <input type="date" name="start_date" id="pb_start_date" class="form-control form-control-sm" value="{{ start_date }}" required>
+                            <label class="small text-muted mb-0" style="font-size:0.7rem; font-family: var(--font-body);">End</label>
+                            <input type="date" name="end_date" id="pb_end_date" class="form-control form-control-sm" value="{{ end_date }}" required>
+                            <button type="submit" class="btn btn-primary btn-sm rounded-pill mt-1"
+                                    style="font-family: var(--font-body); font-weight: 600;">Apply</button>
+                        </form>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Results -->
+<div id="paidResultsContainer">
+    {% include "workshop/jobcard/paid_bills_partial.html" %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput      = document.getElementById('paidSearch');
+    const searchForm       = document.getElementById('paidSearchForm');
+    const resultsContainer = document.getElementById('paidResultsContainer');
+    let currentFilter = '{{ filter_type }}';
+    let debounceTimer;
+
+    function updateResults(q, page = 1, event = null) {
+        if (event && event.type === 'submit') event.preventDefault();
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('q', q);
+        url.searchParams.set('filter', currentFilter);
+        url.searchParams.set('page', page);
+
+        if (currentFilter === 'custom') {
+            const s = document.getElementById('pb_start_date').value;
+            const e = document.getElementById('pb_end_date').value;
+            if (s) url.searchParams.set('start_date', s);
+            if (e) url.searchParams.set('end_date', e);
+        } else {
+            url.searchParams.delete('start_date');
+            url.searchParams.delete('end_date');
+        }
+
+        // Update label
+        const labelMap = { today: 'Today', week: '1 Week', month: '1 Month', year: '1 Year', all: 'All Time' };
+        const label = document.getElementById('pbFilterLabel');
+        if (label) {
+            if (currentFilter === 'custom') {
+                const s = document.getElementById('pb_start_date')?.value;
+                const e = document.getElementById('pb_end_date')?.value;
+                label.textContent = (s && e) ? `${s} – ${e}` : 'Custom';
+            } else {
+                label.textContent = labelMap[currentFilter] || 'All Time';
+            }
+        }
+
+        const delay = (event && event.type === 'submit') ? 0 : 300;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(res => res.text())
+                .then(html => {
+                    resultsContainer.innerHTML = html;
+                    window.history.pushState({}, '', url);
+                })
+                .catch(err => console.error('Search error:', err));
+        }, delay);
+    }
+
+    searchInput.addEventListener('input', function () { updateResults(this.value); });
+    searchForm.addEventListener('submit', function (e) { updateResults(searchInput.value, 1, e); });
+
+    resultsContainer.addEventListener('click', function (e) {
+        const link = e.target.closest('.page-link');
+        if (link && !link.parentElement.classList.contains('disabled')) {
+            e.preventDefault();
+            const url = new URL(link.href);
+            updateResults(searchInput.value || '', url.searchParams.get('page'));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    });
+
+    // Filter dropdown item clicks
+    document.querySelectorAll('.pb-dropdown-menu a.dropdown-item').forEach(item => {
+        item.addEventListener('click', function (e) {
+            const href = this.getAttribute('href');
+            if (href && href.includes('filter=')) {
+                const params = new URLSearchParams(href.split('?')[1]);
+                const newFilter = params.get('filter');
+                if (newFilter && newFilter !== 'custom') {
+                    e.preventDefault();
+                    currentFilter = newFilter;
+                    updateResults(searchInput.value);
+                }
+            }
+        });
+    });
+
+    // Custom range toggle
+    const customToggle = document.getElementById('pbCustomRangeToggle');
+    if (customToggle) {
+        customToggle.addEventListener('click', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            const picker = document.getElementById('pbCustomDatePicker');
+            if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+
+    // Custom date form submit
+    const customForm = document.getElementById('pbCustomDateForm');
+    if (customForm) {
+        customForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const s  = document.getElementById('pb_start_date').value;
+            const en = document.getElementById('pb_end_date').value;
+            if (s && en) {
+                currentFilter = 'custom';
+                updateResults(searchInput.value, 1);
+                const dropdownEl = document.getElementById('pbFilterDropdownBtn');
+                const dropdown   = bootstrap.Dropdown.getInstance(dropdownEl);
+                if (dropdown) dropdown.hide();
+            }
+        });
+    }
+});
+</script>
+
+{% endblock %}

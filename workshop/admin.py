@@ -111,7 +111,6 @@ class BulkPayerAdmin(admin.ModelAdmin):
     list_display = ('customer_name', 'is_trashed', 'created_at')
     list_filter = ('is_trashed',)
     search_fields = ('customer_name',)
-    filter_horizontal = ('job_cards',)
 
 
 @admin.register(BulkPaymentHistory)

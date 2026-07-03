@@ -331,6 +331,7 @@ class JobCard(models.Model):
 
     # Assignment
     lead_mechanic = models.ForeignKey(Mechanic, on_delete=models.SET_NULL, null=True, blank=True, related_name='job_cards', help_text="The main mechanic assigned to this job")
+    bulk_payer = models.ForeignKey('BulkPayer', on_delete=models.SET_NULL, null=True, blank=True, related_name='job_cards', help_text="Assigned bulk payer")
 
     # Financials (NEW - Optimized for 1M+ records)
     total_bill_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Denormalized total for instant dashboard loading")
@@ -420,6 +421,8 @@ class JobCard(models.Model):
             self.total_bill_amount = new_total
             # Use update to avoid triggering save() recursion if called from save()
             JobCard.objects.filter(pk=self.pk).update(total_bill_amount=new_total)
+            if self.bulk_payer_id:
+                self.bulk_payer.update_totals()
 
     def __str__(self):
         return f"{self.bill_number or f'#{self.id}'}"
@@ -582,11 +585,37 @@ class BulkPayer(models.Model):
     """
     customer_name = models.CharField(max_length=150, unique=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    job_cards = models.ManyToManyField(JobCard, blank=True, related_name='bulk_payers')
     is_trashed = models.BooleanField(default=False, db_index=True)
+    
+    total_billed_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     class Meta:
         ordering = ['customer_name']
+
+    def update_totals(self):
+        """
+        Calculates and caches the sum of all assigned job cards vs total payments.
+        """
+        from django.db.models import Sum, DecimalField, Value
+        from django.db.models.functions import Coalesce
+        from decimal import Decimal
+
+        billed = self.job_cards.aggregate(
+            total=Coalesce(Sum('total_bill_amount'), Value(Decimal('0'), output_field=DecimalField()), output_field=DecimalField())
+        )['total']
+
+        payments = self.payment_history.filter(is_trashed=False).aggregate(
+            total=Coalesce(Sum('amount'), Value(Decimal('0'), output_field=DecimalField()), output_field=DecimalField())
+        )['total']
+
+        self.total_billed_amount = billed
+        self.total_paid_amount = payments
+        self.save(update_fields=['total_billed_amount', 'total_paid_amount'])
+
+    @property
+    def get_pending_balance(self):
+        return self.total_billed_amount - self.total_paid_amount
 
     def __str__(self):
         return self.customer_name
@@ -614,6 +643,17 @@ class BulkPaymentHistory(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.bulk_payer:
+            self.bulk_payer.update_totals()
+
+    def delete(self, *args, **kwargs):
+        bulk_payer = self.bulk_payer
+        super().delete(*args, **kwargs)
+        if bulk_payer:
+            bulk_payer.update_totals()
 
     def __str__(self):
         return f"₹{self.amount} → {self.bulk_payer.customer_name} ({self.created_at:%d %b %Y})"

@@ -19,7 +19,7 @@ from .trash import (
 from .billing import invoice_view, update_bill_status
 from .bulk_payer import (
     bulk_payer_list, bulk_payer_create, bulk_payer_detail,
-    bulk_payer_add_card, bulk_payer_remove_card, bulk_payer_pay,
+    move_jobcard_to_bulk, bulk_payer_remove_card, bulk_payer_pay,
     bulk_payer_delete, bulk_payer_trash_list, bulk_payer_restore,
     bulk_payer_permanent_delete, bulk_payment_history_delete,
     permanent_delete_payment_history,
@@ -33,6 +33,7 @@ from .spare_shop import (
     unassigned_spares_hub,
 )
 from .pending import pending_payments_list
+from .paid import paid_bills_list
 from .car_profiles import car_profile_list, car_profile_detail
 from .master_lists import (
     master_lists_home,

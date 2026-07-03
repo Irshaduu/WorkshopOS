@@ -227,14 +227,30 @@
 
             <div class="pp-body">
 
-                <!-- Status + Date -->
+                <!-- Status + Date + Menu -->
                 <div class="pp-top">
-                    {% if job.payment_status == 'PARTIAL' %}
-                        <span class="pp-status-badge pp-badge-partial">Partial</span>
-                    {% else %}
-                        <span class="pp-status-badge pp-badge-pending">Pending</span>
-                    {% endif %}
-                    <span class="pp-date">{{ job.updated_at|date:"d M, Y" }}</span>
+                    <div class="d-flex align-items-center gap-2">
+                        {% if job.payment_status == 'PARTIAL' %}
+                            <span class="pp-status-badge pp-badge-partial">Partial</span>
+                        {% else %}
+                            <span class="pp-status-badge pp-badge-pending">Pending</span>
+                        {% endif %}
+                        <span class="pp-date">{{ job.updated_at|date:"d M, Y" }}</span>
+                    </div>
+                    
+                    <div class="dropdown" onclick="event.preventDefault();">
+                        <button class="btn btn-link text-muted p-0 border-0 shadow-none" type="button" data-bs-toggle="dropdown" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;">
+                            <i class="bi bi-three-dots-vertical" style="font-size: 1rem;"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius: 12px; font-family: var(--font-body); font-size: 0.85rem; font-weight: 600; z-index: 1050;">
+                            <li>
+                                <button type="button" class="dropdown-item py-2 text-primary"
+                                        onclick="openMoveToBulkModal('{{ job.pk }}', '{{ job.registration_number }}', '{{ job.brand_name|escapejs }} {{ job.model_name|escapejs }}', '{{ job.bill_number|escapejs }}')">
+                                    <i class="bi bi-box-arrow-in-right me-2"></i> Move to Bulk Bill
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
 
                 <!-- Vehicle name -->

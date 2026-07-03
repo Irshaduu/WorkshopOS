@@ -27,25 +27,25 @@ def bulk_payer_list(request):
     """
     # SQL subquery: count of PENDING/PARTIAL job cards per payer
     pending_count_sq = (
-        BulkPayer.job_cards.through.objects
+        JobCard.objects
         .filter(
-            bulkpayer_id=OuterRef('pk'),
-            jobcard__payment_status__in=['PENDING', 'PARTIAL'],
+            bulk_payer=OuterRef('pk'),
+            payment_status__in=['PENDING', 'PARTIAL'],
         )
-        .values('bulkpayer_id')
-        .annotate(n=Count('jobcard_id'))
+        .values('bulk_payer')
+        .annotate(n=Count('pk'))
         .values('n')
     )
 
     # SQL subquery: sum of received_amount for PENDING/PARTIAL job cards
     received_sq = (
-        BulkPayer.job_cards.through.objects
+        JobCard.objects
         .filter(
-            bulkpayer_id=OuterRef('pk'),
-            jobcard__payment_status__in=['PENDING', 'PARTIAL'],
+            bulk_payer=OuterRef('pk'),
+            payment_status__in=['PENDING', 'PARTIAL'],
         )
-        .values('bulkpayer_id')
-        .annotate(s=Sum('jobcard__received_amount'))
+        .values('bulk_payer')
+        .annotate(s=Sum('received_amount'))
         .values('s')
     )
 
@@ -53,10 +53,10 @@ def bulk_payer_list(request):
     spares_sq = (
         JobCardSpareItem.objects
         .filter(
-            job_card__bulk_payers=OuterRef('pk'),
+            job_card__bulk_payer=OuterRef('pk'),
             job_card__payment_status__in=['PENDING', 'PARTIAL'],
         )
-        .values('job_card__bulk_payers')
+        .values('job_card__bulk_payer')
         .annotate(s=Sum('total_price'))
         .values('s')
     )
@@ -65,10 +65,10 @@ def bulk_payer_list(request):
     labour_sq = (
         JobCardLabourItem.objects
         .filter(
-            job_card__bulk_payers=OuterRef('pk'),
+            job_card__bulk_payer=OuterRef('pk'),
             job_card__payment_status__in=['PENDING', 'PARTIAL'],
         )
-        .values('job_card__bulk_payers')
+        .values('job_card__bulk_payer')
         .annotate(s=Sum('amount'))
         .values('s')
     )
@@ -99,8 +99,7 @@ def bulk_payer_list(request):
 @office_required
 def bulk_payer_create(request):
     """
-    POST: Create a new BulkPayer and auto-add all matching PENDING/PARTIAL 
-    job cards with the same customer_name.
+    POST: Create a new BulkPayer.
     """
     if request.method == 'POST':
         customer_name = request.POST.get('customer_name', '').strip()
@@ -115,15 +114,7 @@ def bulk_payer_create(request):
         
         bulk_payer = BulkPayer.objects.create(customer_name=customer_name)
         
-        # Auto-add all PENDING/PARTIAL job cards with matching customer name
-        matching_cards = JobCard.objects.filter(
-            customer_name__iexact=customer_name,
-            payment_status__in=['PENDING', 'PARTIAL']
-        )
-        bulk_payer.job_cards.add(*matching_cards)
-        
-        count = matching_cards.count()
-        messages.success(request, f"Bulk payer '{customer_name}' created with {count} pending job card(s).")
+        messages.success(request, f"Bulk payer '{customer_name}' created successfully. You can now add job cards manually.")
         return redirect('bulk_payer_detail', pk=bulk_payer.pk)
     
     return redirect('pending_payments_list')
@@ -216,39 +207,36 @@ def bulk_payer_detail(request, pk):
 
 
 @office_required
-def bulk_payer_add_card(request, pk):
+def move_jobcard_to_bulk(request):
     """
-    POST: Add a job card to a bulk payer group by job card ID.
+    POST: Move a job card to a bulk payer group.
+    Called from the Pending Bills list.
     """
     if request.method == 'POST':
-        bulk_payer = get_object_or_404(BulkPayer, pk=pk)
         job_card_id = request.POST.get('job_card_id', '').strip()
+        bulk_payer_id = request.POST.get('bulk_payer_id', '').strip()
         
-        if not job_card_id:
-            # Search by registration number instead
-            reg_number = request.POST.get('registration_number', '').strip().upper()
-            if reg_number:
-                matching = JobCard.objects.filter(
-                    registration_number__iexact=reg_number,
-                    payment_status__in=['PENDING', 'PARTIAL']
-                ).exclude(bulk_payers=bulk_payer)
-                
-                if matching.exists():
-                    bulk_payer.job_cards.add(*matching)
-                    messages.success(request, f"Added {matching.count()} job card(s) for {reg_number}.")
-                else:
-                    messages.error(request, f"No pending job cards found for '{reg_number}' or already added.")
-            else:
-                messages.error(request, "Please provide a registration number or job card ID.")
-        else:
-            try:
-                job_card = JobCard.objects.get(pk=int(job_card_id))
-                bulk_payer.job_cards.add(job_card)
-                messages.success(request, f"Added {job_card.registration_number} to {bulk_payer.customer_name}.")
-            except (JobCard.DoesNotExist, ValueError):
-                messages.error(request, "Job card not found.")
-    
-    return redirect('bulk_payer_detail', pk=pk)
+        if not job_card_id or not bulk_payer_id:
+            messages.error(request, "Missing job card or bulk payer selection.")
+            return redirect('pending_payments_list')
+            
+        try:
+            job_card = JobCard.objects.get(pk=int(job_card_id))
+            bulk_payer = BulkPayer.objects.get(pk=int(bulk_payer_id))
+            
+            # Prevent moving already fully paid cards or cards already assigned
+            if job_card.payment_status not in ['PENDING', 'PARTIAL'] or job_card.bulk_payer:
+                messages.error(request, "This job card cannot be assigned to a bulk payer.")
+                return redirect('pending_payments_list')
+
+            bulk_payer.job_cards.add(job_card)
+            bulk_payer.update_totals()
+            
+            messages.success(request, f"Moved {job_card.registration_number} to {bulk_payer.customer_name}.")
+        except (JobCard.DoesNotExist, BulkPayer.DoesNotExist, ValueError):
+            messages.error(request, "Invalid job card or bulk payer selected.")
+            
+    return redirect('pending_payments_list')
 
 
 @office_required
@@ -264,6 +252,7 @@ def bulk_payer_remove_card(request, pk):
         try:
             job_card = JobCard.objects.get(pk=int(job_card_id))
             bulk_payer.job_cards.remove(job_card)
+            bulk_payer.update_totals()
             messages.success(
                 request,
                 f"Removed {job_card.brand_name} {job_card.model_name} ({job_card.registration_number}) from {bulk_payer.customer_name}."

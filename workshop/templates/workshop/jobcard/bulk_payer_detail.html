@@ -789,9 +789,6 @@
 
     <!-- Action Buttons Row -->
     <div class="d-flex gap-3 mb-4">
-        <button type="button" class="bd-add-btn" id="toggleAddCard">
-            <i class="bi bi-plus-circle-fill"></i> Add Car
-        </button>
         <button class="bd-add-btn history-btn" type="button" data-bs-toggle="offcanvas" data-bs-target="#historyOffcanvas">
             <i class="bi bi-clock-history"></i> Payment History
         </button>
@@ -812,15 +809,6 @@
             <button type="button" class="bd-pay-btn" onclick="initiatePayment()">
                 <i class="bi bi-wallet2"></i> Pay
             </button>
-        </form>
-    </div>
-
-    <!-- Add Card Panel (hidden by default) -->
-    <div class="bd-add-panel" id="addCardPanel">
-        <form method="POST" action="{% url 'bulk_payer_add_card' pk=bulk_payer.pk %}">
-            {% csrf_token %}
-            <input type="text" name="registration_number" placeholder="Enter Registration Number (e.g., KL-07-AB-1234)" autocomplete="off" required>
-            <button type="submit"><i class="bi bi-plus"></i> Add</button>
         </form>
     </div>
 </div>
@@ -1079,19 +1067,7 @@ function executePayment() {
     document.getElementById('masterPaymentForm').submit();
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Toggle Add Card Panel
-    const toggleBtn = document.getElementById('toggleAddCard');
-    const addPanel = document.getElementById('addCardPanel');
-    if (toggleBtn && addPanel) {
-        toggleBtn.addEventListener('click', function() {
-            addPanel.classList.toggle('active');
-            if (addPanel.classList.contains('active')) {
-                addPanel.querySelector('input').focus();
-            }
-        });
-    }
-});
+
 
 // Remove car from bulk
 function showRemoveConfirm(carName, regNumber, payerName, jobCardId) {
