@@ -26,9 +26,9 @@ wheels/
 
 # Django
 *.log
-# db.sqlite3  # Allowed for personal backup
-# db.sqlite3-journal  # Allowed for personal backup
-/static/
+db.sqlite3
+db.sqlite3-journal
+/backups/
 /staticfiles/
 /media/
 

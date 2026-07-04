@@ -1,12 +1,17 @@
 """
 Settings Package — Auto-selects environment based on DJANGO_ENV variable.
-Default: development
+Fails safely if DJANGO_ENV is not set.
 """
 import os
+from django.core.exceptions import ImproperlyConfigured
 
-env = os.environ.get('DJANGO_ENV', 'development')
+env = os.environ.get('DJANGO_ENV')
 
 if env == 'production':
     from .production import *  # noqa: F401,F403
-else:
+elif env == 'development':
     from .development import *  # noqa: F401,F403
+else:
+    raise ImproperlyConfigured(
+        "DJANGO_ENV environment variable must be set to 'development' or 'production'."
+    )
