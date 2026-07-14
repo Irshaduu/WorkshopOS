@@ -99,6 +99,7 @@
 {# ── TOP 5 CUSTOMERS TABLE ────────────────────────────────────── #}
 {% if top_customers %}
 <div class="zone-section-title">🏆 Top Customers by Revenue</div>
+<div class="table-responsive">
 <table class="kpi-table">
   <thead>
     <tr>
@@ -125,9 +126,18 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endif %}
 
 {# ── CHART.JS SCRIPTS ─────────────────────────────────────────── #}
+{{ daily_labels|json_script:"daily_labels_data" }}
+{{ daily_revenue|json_script:"daily_revenue_data" }}
+{{ monthly_labels|json_script:"monthly_labels_data" }}
+{{ monthly_revenue|json_script:"monthly_revenue_data" }}
+{{ payment_counts|json_script:"payment_counts_data" }}
+{{ payment_labels|json_script:"payment_labels_data" }}
+{{ split_data|json_script:"split_data_data" }}
+{{ split_labels|json_script:"split_labels_data" }}
 <script>
 (function() {
   // ------------------------------------------------------------------
@@ -177,8 +187,8 @@
   // ------------------------------------------------------------------
   // Chart 1: Monthly Revenue Trend
   // ------------------------------------------------------------------
-  const monthlyLabels  = {{ monthly_labels|safe }};
-  const monthlyRevenue = {{ monthly_revenue|safe }};
+  const monthlyLabels = JSON.parse(document.getElementById('monthly_labels_data').textContent);
+  const monthlyRevenue = JSON.parse(document.getElementById('monthly_revenue_data').textContent);
 
   if (monthlyLabels.length > 0) {
     const ctx1 = document.getElementById('revMonthlyChart');
@@ -225,8 +235,8 @@
   // ------------------------------------------------------------------
   // Chart 2: Revenue Split (Spares vs Labour)
   // ------------------------------------------------------------------
-  const splitLabels = {{ split_labels|safe }};
-  const splitData   = {{ split_data|safe }};
+  const splitLabels = JSON.parse(document.getElementById('split_labels_data').textContent);
+  const splitData = JSON.parse(document.getElementById('split_data_data').textContent);
 
   const ctx2 = document.getElementById('revSplitChart');
   if (ctx2) {
@@ -264,8 +274,8 @@
   // ------------------------------------------------------------------
   // Chart 3: Payment Methods (Doughnut)
   // ------------------------------------------------------------------
-  const paymentLabels = {{ payment_labels|safe }};
-  const paymentCounts = {{ payment_counts|safe }};
+  const paymentLabels = JSON.parse(document.getElementById('payment_labels_data').textContent);
+  const paymentCounts = JSON.parse(document.getElementById('payment_counts_data').textContent);
 
   const ctx3 = document.getElementById('revPaymentChart');
   if (ctx3 && paymentLabels.length > 0) {
@@ -305,8 +315,8 @@
   // ------------------------------------------------------------------
   // Chart 4: Daily Revenue Bar
   // ------------------------------------------------------------------
-  const dailyLabels  = {{ daily_labels|safe }};
-  const dailyRevenue = {{ daily_revenue|safe }};
+  const dailyLabels = JSON.parse(document.getElementById('daily_labels_data').textContent);
+  const dailyRevenue = JSON.parse(document.getElementById('daily_revenue_data').textContent);
 
   if (dailyLabels.length > 0) {
     const ctx4 = document.getElementById('revDailyChart');

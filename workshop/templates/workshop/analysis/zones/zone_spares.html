@@ -84,7 +84,8 @@
 <!-- ── Top 20 Parts by Quantity Table ──────────────────────────────────────── -->
 <p class="zone-section-title"><i class="bi bi-tools"></i> Most Used Spare Parts</p>
 <div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead>
       <tr>
         <th>#</th>
@@ -113,11 +114,13 @@
     </tbody>
   </table>
 </div>
+</div>
 
 <!-- ── Top 10 Most Profitable Parts Table ──────────────────────────────────── -->
 <p class="zone-section-title"><i class="bi bi-currency-rupee"></i> Most Profitable Spare Parts</p>
 <div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead>
       <tr>
         <th>#</th>
@@ -144,21 +147,30 @@
     </tbody>
   </table>
 </div>
+</div>
 
 {% endif %}
 
+{{ chart_part_names|json_script:"chart_part_names_data" }}
+{{ chart_part_qty|json_script:"chart_part_qty_data" }}
+{{ chart_shop_names|json_script:"chart_shop_names_data" }}
+{{ chart_shop_rev|json_script:"chart_shop_rev_data" }}
+{{ status_data|json_script:"status_data_data" }}
+{{ status_labels|json_script:"status_labels_data" }}
+{{ trend_labels|json_script:"trend_labels_data" }}
+{{ trend_revenue|json_script:"trend_revenue_data" }}
 <script>
 (function () {
   'use strict';
 
-  const trendLabels   = {{ trend_labels|safe }};
-  const trendRevenue  = {{ trend_revenue|safe }};
-  const partNames     = {{ chart_part_names|safe }};
-  const partQty       = {{ chart_part_qty|safe }};
-  const shopNames     = {{ chart_shop_names|safe }};
-  const shopRev       = {{ chart_shop_rev|safe }};
-  const statusLabels  = {{ status_labels|safe }};
-  const statusData    = {{ status_data|safe }};
+  const trendLabels = JSON.parse(document.getElementById('trend_labels_data').textContent);
+  const trendRevenue = JSON.parse(document.getElementById('trend_revenue_data').textContent);
+  const partNames = JSON.parse(document.getElementById('chart_part_names_data').textContent);
+  const partQty = JSON.parse(document.getElementById('chart_part_qty_data').textContent);
+  const shopNames = JSON.parse(document.getElementById('chart_shop_names_data').textContent);
+  const shopRev = JSON.parse(document.getElementById('chart_shop_rev_data').textContent);
+  const statusLabels = JSON.parse(document.getElementById('status_labels_data').textContent);
+  const statusData = JSON.parse(document.getElementById('status_data_data').textContent);
 
   const isDark = document.documentElement.classList.contains('dark') ||
                  document.body.classList.contains('dark-mode');

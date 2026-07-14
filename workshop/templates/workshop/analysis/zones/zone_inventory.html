@@ -27,7 +27,8 @@
 <!-- Spare shops table -->
 {% if spare_shops %}
 <div class="chart-card mech-table-wrap" style="margin-bottom:1.5rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead>
       <tr><th>#</th><th>Shop Name</th><th>Purchased</th><th>Paid</th><th>Balance</th></tr>
     </thead>
@@ -45,6 +46,7 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
 </div>
 {% endif %}
 
@@ -71,7 +73,8 @@
 
 {% if inv_suppliers %}
 <div class="chart-card mech-table-wrap" style="margin-bottom:1.5rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead>
       <tr><th>#</th><th>Supplier</th><th>Billed</th><th>Paid</th><th>Balance</th></tr>
     </thead>
@@ -89,6 +92,7 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
 </div>
 {% else %}
   <div class="zone-empty" style="margin-bottom:1.5rem;">
@@ -124,19 +128,28 @@
 
 </div>
 
+{{ inv_supplier_billed|json_script:"inv_supplier_billed_data" }}
+{{ inv_supplier_names|json_script:"inv_supplier_names_data" }}
+{{ inv_trend_billed|json_script:"inv_trend_billed_data" }}
+{{ inv_trend_labels|json_script:"inv_trend_labels_data" }}
+{{ spare_shop_balance|json_script:"spare_shop_balance_data" }}
+{{ spare_shop_names|json_script:"spare_shop_names_data" }}
+{{ spare_shop_purchased|json_script:"spare_shop_purchased_data" }}
+{{ spare_trend_cost|json_script:"spare_trend_cost_data" }}
+{{ spare_trend_labels|json_script:"spare_trend_labels_data" }}
 <script>
 (function () {
   'use strict';
 
-  const spareTrendLbl  = {{ spare_trend_labels|safe }};
-  const spareTrendCost = {{ spare_trend_cost|safe }};
-  const shopNames      = {{ spare_shop_names|safe }};
-  const shopPurchased  = {{ spare_shop_purchased|safe }};
-  const shopBalance    = {{ spare_shop_balance|safe }};
-  const invTrendLbl    = {{ inv_trend_labels|safe }};
-  const invTrendBilled = {{ inv_trend_billed|safe }};
-  const invSupNames    = {{ inv_supplier_names|safe }};
-  const invSupBilled   = {{ inv_supplier_billed|safe }};
+  const spareTrendLbl = JSON.parse(document.getElementById('spare_trend_labels_data').textContent);
+  const spareTrendCost = JSON.parse(document.getElementById('spare_trend_cost_data').textContent);
+  const shopNames = JSON.parse(document.getElementById('spare_shop_names_data').textContent);
+  const shopPurchased = JSON.parse(document.getElementById('spare_shop_purchased_data').textContent);
+  const shopBalance = JSON.parse(document.getElementById('spare_shop_balance_data').textContent);
+  const invTrendLbl = JSON.parse(document.getElementById('inv_trend_labels_data').textContent);
+  const invTrendBilled = JSON.parse(document.getElementById('inv_trend_billed_data').textContent);
+  const invSupNames = JSON.parse(document.getElementById('inv_supplier_names_data').textContent);
+  const invSupBilled = JSON.parse(document.getElementById('inv_supplier_billed_data').textContent);
 
   const isDark = document.documentElement.classList.contains('dark') ||
                  document.body.classList.contains('dark-mode');

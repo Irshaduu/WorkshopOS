@@ -25,12 +25,9 @@ def has_group(user, group_name):
     if user.is_superuser:
         return True
         
-    try:
-        group = Group.objects.get(name=group_name)
-    except Group.DoesNotExist:
-        return False
-        
-    return group in user.groups.all()
+    # AUD-0046: Avoid N+1 Group.objects.get queries.
+    # user.groups.all() is cached on the user instance after the first call.
+    return any(g.name == group_name for g in user.groups.all())
 
 @register.filter
 def divide(value, arg):

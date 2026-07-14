@@ -150,13 +150,15 @@ class ManagementViewTests(TestCase):
         self.assertFalse(UserSession.objects.filter(pk=user_session.pk).exists())
 
     def test_create_user_weak_password(self):
-        """Cover validate_password ValidationError branch (lines 208-210) — password passes length but fails strength"""
+        """Admin has full freedom to set any password for staff (AUD-0019).
+        Only the 8-character minimum is enforced — common/weak passwords are now allowed."""
         url = reverse('manage_create_user')
-        # 'password1' is 9 chars (passes length check) but is a common password
+        # 'password1' is 9 chars and passes length check — should now succeed
         response = self.client.post(url, {
             'username': 'weakpwduser', 'password': 'password1', 'role': 'Floor'
         })
-        self.assertFalse(User.objects.filter(username='weakpwduser').exists())
+        # Admin freedom: user is created with whatever password admin chooses
+        self.assertTrue(User.objects.filter(username='weakpwduser').exists())
 
     def test_reset_password_for_owner_blocked(self):
         """Cover the Owner-protection branch in reset_password (lines 231-232)"""
@@ -170,12 +172,13 @@ class ManagementViewTests(TestCase):
         self.assertFalse(owner2.check_password('NewPassword123!'))
 
     def test_reset_password_weak_password(self):
-        """Cover validate_password ValidationError branch in reset_password (lines 244-246)"""
+        """Admin has full freedom to reset staff passwords (AUD-0019).
+        Only the 8-character minimum is enforced — common/weak passwords are now allowed."""
         url = reverse('manage_reset_password', args=[self.staff.id])
         response = self.client.post(url, {'new_password': 'password1'})
         self.assertRedirects(response, reverse('manage_dashboard') + '?section=accounts')
-        # Password should NOT have changed
-        self.assertFalse(self.client.login(username='staff_user', password='password1'))
+        # Admin freedom: password should have been updated successfully
+        self.assertTrue(self.client.login(username='staff_user', password='password1'))
 
     def test_delete_owner_blocked(self):
         """Cover the Owner-protection branch in delete_user (lines 264-265)"""
@@ -204,3 +207,4 @@ class ManagementViewTests(TestCase):
         self.assertRedirects(response, reverse('manage_dashboard') + '?section=accounts')
         mech2.refresh_from_db()
         self.assertEqual(mech2.name, 'Bilal')  # Name unchanged
+

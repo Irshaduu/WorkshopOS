@@ -9,6 +9,14 @@ from .auth_views import (
     get_owner_mobile, get_owner_username_by_mobile
 )
 import time
+from unittest.mock import patch
+from decouple import config as real_config
+
+def mocked_config(key, default=''):
+    if key == 'OWNER_1_MOBILE': return '+15005550001'
+    if key == 'OWNER_2_MOBILE': return '+15005550002'
+    if key == 'TWILIO_ACCOUNT_SID': return ''  # Trigger terminal fallback
+    return real_config(key, default=default)
 
 class SecurityHardeningTests(TestCase):
     """
@@ -18,6 +26,10 @@ class SecurityHardeningTests(TestCase):
     """
 
     def setUp(self):
+        patcher = patch('workshop.auth_views.config', side_effect=mocked_config)
+        self.mock_config = patcher.start()
+        self.addCleanup(patcher.stop)
+
         FailedAttempt.objects.all().delete()
         # 1. Create a baseline 'Owner' user for 2FA tests
         self.owner_group, _ = Group.objects.get_or_create(name='Owner')

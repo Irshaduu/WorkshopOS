@@ -2,6 +2,7 @@ from datetime import date
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.db import transaction
 from django.db.models import Q
 from django.core.paginator import Paginator
 
@@ -80,62 +81,80 @@ def jobcard_create(request):
             labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
 
             if concern_formset.is_valid() and spare_formset.is_valid() and labour_formset.is_valid():
-                jobcard.save()
+                # AUD-0014: Wrap all formset saves in a single atomic transaction.
+                # Without this, a partial failure (e.g. a spare save fails after the
+                # JobCard itself is committed) would leave an orphaned record.
+                with transaction.atomic():
+                    jobcard.save()
 
-                # Associate instances with jobcard before saving
-                concern_formset.instance = jobcard
-                spare_formset.instance = jobcard
-                labour_formset.instance = jobcard
+                    # Associate instances with jobcard before saving
+                    concern_formset.instance = jobcard
+                    spare_formset.instance = jobcard
+                    labour_formset.instance = jobcard
 
-                saved_concerns = concern_formset.save()
-                saved_spares = spare_formset.save()
-                labour_formset.save()
-                
-                # FIX-4E: Auto-learn Batch Optimization
-                new_concern_texts = [c.concern_text.strip() for c in saved_concerns if c.concern_text and c.concern_text.strip()]
-                if new_concern_texts:
-                    existing_concerns = set(ConcernSolution.objects.filter(
-                        concern__in=new_concern_texts
-                    ).values_list('concern', flat=True))
-                    new_concerns = [ConcernSolution(concern=t) for t in new_concern_texts if t not in existing_concerns]
-                    ConcernSolution.objects.bulk_create(new_concerns, ignore_conflicts=True)
-                
-                new_spare_names = [s.spare_part_name.strip() for s in saved_spares if s.spare_part_name and s.spare_part_name.strip()]
-                if new_spare_names:
-                    existing_spares = set(SparePart.objects.filter(
-                        name__in=new_spare_names
-                    ).values_list('name', flat=True))
-                    new_spare_parts = [SparePart(name=n) for n in new_spare_names if n not in existing_spares]
-                    SparePart.objects.bulk_create(new_spare_parts, ignore_conflicts=True)
+                    saved_concerns = concern_formset.save()
+                    saved_spares = spare_formset.save()
+                    labour_formset.save()
+                    
+                    # AUD-0052: Auto-learn — use case-insensitive lookup to prevent
+                    # ghost duplicates like 'Brake Pad' vs 'brake pad'.
+                    new_concern_texts = [c.concern_text.strip() for c in saved_concerns if c.concern_text and c.concern_text.strip()]
+                    if new_concern_texts:
+                        existing_concern_texts = set()
+                        for t in new_concern_texts:
+                            if ConcernSolution.objects.filter(concern__iexact=t).exists():
+                                existing_concern_texts.add(t)
+                        new_concerns = [ConcernSolution(concern=t) for t in new_concern_texts if t not in existing_concern_texts]
+                        ConcernSolution.objects.bulk_create(new_concerns, ignore_conflicts=True)
+                    
+                    new_spare_names = [s.spare_part_name.strip() for s in saved_spares if s.spare_part_name and s.spare_part_name.strip()]
+                    if new_spare_names:
+                        existing_spare_names = set()
+                        for n in new_spare_names:
+                            if SparePart.objects.filter(name__iexact=n).exists():
+                                existing_spare_names.add(n)
+                        new_spare_parts = [SparePart(name=n) for n in new_spare_names if n not in existing_spare_names]
+                        SparePart.objects.bulk_create(new_spare_parts, ignore_conflicts=True)
 
-                # FIX-4C: Batch shop lookup
-                all_spares = list(jobcard.spares.all())
-                shop_names = {s.shop_name.strip().lower() for s in all_spares if s.shop_name and s.shop_name.strip()}
-                shops_map = {}
-                if shop_names:
-                    for shop in SpareShop.objects.filter(is_trashed=False):
-                        shops_map[shop.name.lower()] = shop
-                
-                shops_to_update = set()
-                for spare in all_spares:
-                    key = spare.shop_name.strip().lower() if spare.shop_name else None
-                    shop_obj = shops_map.get(key) if key else None
-                    JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
-                    if shop_obj:
-                        shops_to_update.add(shop_obj)
+                    # AUD-0023: Resolve spare → shop FK using the posted PK, not free-text name.
+                    # The template submits shop.pk as the option value, so we can do a direct
+                    # ID-based lookup — no case-folding or name-parsing needed.
+                    all_spares = list(jobcard.spares.all())
 
-                # Delete imported unassigned spares to prevent duplicates
-                imported_ids = request.POST.getlist('imported_unassigned_ids')
-                if imported_ids:
-                    old_items = JobCardSpareItem.objects.filter(pk__in=imported_ids, job_card__isnull=True)
-                    for old_item in old_items.select_related('shop'):
-                        if old_item.shop:
-                            shops_to_update.add(old_item.shop)
-                    old_items.delete()
+                    # Pre-build a PK→ShopObject map (single query for all shops)
+                    shops_by_pk = {s.pk: s for s in SpareShop.objects.filter(is_trashed=False)}
 
-                # Update totals for all affected shops
-                for shop in shops_to_update:
-                    shop.update_totals()
+                    shops_to_update = set()
+                    for spare in all_spares:
+                        # spare_formset.save() just saved the posted PK into spare.shop_name
+                        raw_pk = spare.shop_name.strip() if spare.shop_name else ''
+                        shop_obj = None
+                        if raw_pk:
+                            try:
+                                shop_obj = shops_by_pk.get(int(raw_pk))
+                            except (ValueError, TypeError):
+                                shop_obj = None
+                        # Set both the FK and the human-readable display name
+                        shop_name_val = shop_obj.name if shop_obj else ''
+                        JobCardSpareItem.objects.filter(pk=spare.pk).update(
+                            shop=shop_obj,
+                            shop_name=shop_name_val,
+                        )
+                        if shop_obj:
+                            shops_to_update.add(shop_obj)
+
+                    # Delete imported unassigned spares to prevent duplicates
+                    imported_ids = request.POST.getlist('imported_unassigned_ids')
+                    if imported_ids:
+                        old_items = JobCardSpareItem.objects.filter(pk__in=imported_ids, job_card__isnull=True)
+                        for old_item in old_items.select_related('shop'):
+                            if old_item.shop:
+                                shops_to_update.add(old_item.shop)
+                        old_items.delete()
+
+                    # Update totals for all affected shops
+                    for shop in shops_to_update:
+                        shop.update_totals()
 
                 messages.success(request, f'Job card for {jobcard.registration_number} created successfully!')
                 return redirect('jobcard_edit', pk=jobcard.pk)
@@ -236,56 +255,69 @@ def jobcard_edit(request, pk):
         labour_formset = JobCardLabourFormSet(request.POST, instance=jobcard, prefix='labours')
 
         if form.is_valid() and concern_formset.is_valid() and spare_formset.is_valid() and labour_formset.is_valid():
-            form.save()
-            saved_concerns = concern_formset.save()
-            saved_spares = spare_formset.save()
-            labour_formset.save()
-            
-            # FIX-4E: Auto-learn Batch Optimization
-            new_concern_texts = [c.concern_text.strip() for c in saved_concerns if c.concern_text and c.concern_text.strip()]
-            if new_concern_texts:
-                existing_concerns = set(ConcernSolution.objects.filter(
-                    concern__in=new_concern_texts
-                ).values_list('concern', flat=True))
-                new_concerns = [ConcernSolution(concern=t) for t in new_concern_texts if t not in existing_concerns]
-                ConcernSolution.objects.bulk_create(new_concerns, ignore_conflicts=True)
-            
-            new_spare_names = [s.spare_part_name.strip() for s in saved_spares if s.spare_part_name and s.spare_part_name.strip()]
-            if new_spare_names:
-                existing_spares = set(SparePart.objects.filter(
-                    name__in=new_spare_names
-                ).values_list('name', flat=True))
-                new_spare_parts = [SparePart(name=n) for n in new_spare_names if n not in existing_spares]
-                SparePart.objects.bulk_create(new_spare_parts, ignore_conflicts=True)
+            # AUD-0014: Wrap all formset saves in a single atomic transaction.
+            with transaction.atomic():
+                form.save()
+                saved_concerns = concern_formset.save()
+                saved_spares = spare_formset.save()
+                labour_formset.save()
+                
+                # AUD-0052: Auto-learn — case-insensitive duplicate check.
+                new_concern_texts = [c.concern_text.strip() for c in saved_concerns if c.concern_text and c.concern_text.strip()]
+                if new_concern_texts:
+                    existing_concern_texts = set()
+                    for t in new_concern_texts:
+                        if ConcernSolution.objects.filter(concern__iexact=t).exists():
+                            existing_concern_texts.add(t)
+                    new_concerns = [ConcernSolution(concern=t) for t in new_concern_texts if t not in existing_concern_texts]
+                    ConcernSolution.objects.bulk_create(new_concerns, ignore_conflicts=True)
+                
+                new_spare_names = [s.spare_part_name.strip() for s in saved_spares if s.spare_part_name and s.spare_part_name.strip()]
+                if new_spare_names:
+                    existing_spare_names = set()
+                    for n in new_spare_names:
+                        if SparePart.objects.filter(name__iexact=n).exists():
+                            existing_spare_names.add(n)
+                    new_spare_parts = [SparePart(name=n) for n in new_spare_names if n not in existing_spare_names]
+                    SparePart.objects.bulk_create(new_spare_parts, ignore_conflicts=True)
 
-            # FIX-4C: Batch shop lookup
-            all_spares = list(jobcard.spares.all())
-            shop_names = {s.shop_name.strip().lower() for s in all_spares if s.shop_name and s.shop_name.strip()}
-            shops_map = {}
-            if shop_names:
-                for shop in SpareShop.objects.filter(is_trashed=False):
-                    shops_map[shop.name.lower()] = shop
-            
-            shops_to_update = set()
-            for spare in all_spares:
-                key = spare.shop_name.strip().lower() if spare.shop_name else None
-                shop_obj = shops_map.get(key) if key else None
-                JobCardSpareItem.objects.filter(pk=spare.pk).update(shop=shop_obj)
-                if shop_obj:
-                    shops_to_update.add(shop_obj)
+                # AUD-0023: Resolve spare → shop FK using the posted PK, not free-text name.
+                all_spares = list(jobcard.spares.all())
 
-            # Delete imported unassigned spares to prevent duplicates
-            imported_ids = request.POST.getlist('imported_unassigned_ids')
-            if imported_ids:
-                old_items = JobCardSpareItem.objects.filter(pk__in=imported_ids, job_card__isnull=True)
-                for old_item in old_items.select_related('shop'):
-                    if old_item.shop:
-                        shops_to_update.add(old_item.shop)
-                old_items.delete()
+                # Pre-build a PK→ShopObject map (single query for all shops)
+                shops_by_pk = {s.pk: s for s in SpareShop.objects.filter(is_trashed=False)}
 
-            # Update totals for all affected shops
-            for shop in shops_to_update:
-                shop.update_totals()
+                shops_to_update = set()
+                for spare in all_spares:
+                    # spare_formset.save() just saved the posted PK into spare.shop_name
+                    raw_pk = spare.shop_name.strip() if spare.shop_name else ''
+                    shop_obj = None
+                    if raw_pk:
+                        try:
+                            shop_obj = shops_by_pk.get(int(raw_pk))
+                        except (ValueError, TypeError):
+                            shop_obj = None
+                    # Set both the FK and the human-readable display name
+                    shop_name_val = shop_obj.name if shop_obj else ''
+                    JobCardSpareItem.objects.filter(pk=spare.pk).update(
+                        shop=shop_obj,
+                        shop_name=shop_name_val,
+                    )
+                    if shop_obj:
+                        shops_to_update.add(shop_obj)
+
+                # Delete imported unassigned spares to prevent duplicates
+                imported_ids = request.POST.getlist('imported_unassigned_ids')
+                if imported_ids:
+                    old_items = JobCardSpareItem.objects.filter(pk__in=imported_ids, job_card__isnull=True)
+                    for old_item in old_items.select_related('shop'):
+                        if old_item.shop:
+                            shops_to_update.add(old_item.shop)
+                    old_items.delete()
+
+                # Update totals for all affected shops
+                for shop in shops_to_update:
+                    shop.update_totals()
 
             messages.success(request, f'Job card for {jobcard.registration_number} updated successfully!')
             

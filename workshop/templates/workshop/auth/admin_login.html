@@ -117,17 +117,17 @@
                 {% csrf_token %}
 
                 <div class="mb-3">
-                    <label class="hq-label ms-1">HQ IDENTIFIER</label>
-                    <input type="text" name="username" class="form-control hq-input" 
+                    <label for="id_login_username" class="hq-label ms-1">HQ IDENTIFIER</label>
+                    <input type="text" id="id_login_username" name="username" class="form-control hq-input" 
                            placeholder="System Signature" required autofocus>
                 </div>
 
                 <div class="mb-4">
                     <div class="d-flex justify-content-between">
-                        <label class="hq-label ms-1">PASSWORD</label>
+                        <label for="id_login_password" class="hq-label ms-1">PASSWORD</label>
                         <a href="{% url 'owner_forgot_password' %}" class="text-primary text-decoration-none small fw-bold">Forgot?</a>
                     </div>
-                    <input type="password" name="password" class="form-control hq-input" 
+                    <input type="password" id="id_login_password" name="password" class="form-control hq-input" 
                            placeholder="••••••••" required>
                 </div>
 

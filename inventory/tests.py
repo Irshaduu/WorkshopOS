@@ -99,7 +99,8 @@ class InventoryViewTests(TestCase):
         self.category.refresh_from_db()
         self.assertEqual(self.category.name, 'Braking Systems')
         
-        # Delete Category
+        # Delete Category — must first delete items due to PROTECT (AUD-0024)
+        self.item.delete()
         response = self.client.post(reverse('inventory_delete_category', args=[self.category.id]))
         self.assertFalse(Category.objects.filter(id=self.category.id).exists())
 
@@ -207,4 +208,91 @@ class InventoryViewTests(TestCase):
             {'current_stock': 25, 'next': reverse('inventory_manage')}
         )
         self.assertRedirects(response, reverse('inventory_manage'))
- 
+
+
+class CategoryProtectionTests(TestCase):
+    """
+    AUD-0024, AUD-0060, AUD-0071: Verify that CASCADE → PROTECT prevents
+    accidental category deletion when items exist, and that the UI surfaces
+    a clear error message instead of a 500 crash.
+    """
+
+    def setUp(self):
+        owner_group, _ = Group.objects.get_or_create(name='Owner')
+        self.owner = User.objects.create_user(username='owner_protect_test', password='Test1234!')
+        self.owner.groups.add(owner_group)
+        self.client = Client()
+        self.client.login(username='owner_protect_test', password='Test1234!')
+        self.category = Category.objects.create(name='Test Category')
+        self.item = Item.objects.create(
+            category=self.category,
+            name='Test Item',
+            average_stock=10,
+            current_stock=5,
+        )
+
+    def test_delete_category_with_items_is_blocked(self):
+        """Deleting a non-empty category must be blocked and show a clear error."""
+        url = reverse('inventory_delete_category', args=[self.category.id])
+        response = self.client.post(url, follow=True)
+        self.assertRedirects(response, reverse('inventory_manage'))
+        # Category must still exist
+        self.assertTrue(Category.objects.filter(pk=self.category.pk).exists())
+        # A helpful error message must be shown
+        messages_list = [str(m) for m in list(response.context['messages'])]
+        self.assertTrue(any("Cannot delete" in m for m in messages_list))
+
+    def test_delete_empty_category_succeeds(self):
+        """Deleting a category with no items must still work normally."""
+        empty_cat = Category.objects.create(name='Empty Category')
+        url = reverse('inventory_delete_category', args=[empty_cat.id])
+        response = self.client.post(url, follow=True)
+        self.assertRedirects(response, reverse('inventory_manage'))
+        self.assertFalse(Category.objects.filter(pk=empty_cat.pk).exists())
+
+
+class JobCardNormalizationTests(TestCase):
+    """
+    AUD-0016, AUD-0027: Verify that registration_number and brand_name are
+    normalized (uppercased/title-cased) via JobCard.clean().
+    """
+
+    def test_registration_number_normalized_to_uppercase(self):
+        """Lowercase reg numbers must be stored as uppercase."""
+        from workshop.models import JobCard
+        from django.utils import timezone
+        jc = JobCard(
+            registration_number='kl-01-ab-1234',
+            brand_name='toyota',
+            model_name='Camry',
+            admitted_date=timezone.now().date(),
+        )
+        jc.clean()
+        self.assertEqual(jc.registration_number, 'KL-01-AB-1234')
+
+    def test_brand_name_normalized_to_title_case(self):
+        """Brand names with extra spaces/casing must be normalized."""
+        from workshop.models import JobCard
+        from django.utils import timezone
+        jc = JobCard(
+            registration_number='MH12AB1234',
+            brand_name='  hyundai  ',
+            model_name='i20',
+            admitted_date=timezone.now().date(),
+        )
+        jc.clean()
+        self.assertEqual(jc.brand_name, 'Hyundai')
+
+    def test_extra_spaces_in_registration_collapsed(self):
+        """'KL  01  AB' with double spaces should become 'KL  01  AB' uppercased."""
+        from workshop.models import JobCard
+        from django.utils import timezone
+        jc = JobCard(
+            registration_number=' kl 01 ab 1234 ',
+            brand_name='Honda',
+            model_name='City',
+            admitted_date=timezone.now().date(),
+        )
+        jc.clean()
+        # .strip().upper() — only leading/trailing stripped, internal preserved
+        self.assertEqual(jc.registration_number, 'KL 01 AB 1234')

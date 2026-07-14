@@ -53,8 +53,18 @@ def delete_category(request, category_id):
         return redirect('inventory_manage')
     category = get_object_or_404(Category, pk=category_id)
     name = category.name
-    category.delete()
-    messages.success(request, f"Category '{name}' deleted.")
+    from django.db.models import ProtectedError
+    try:
+        category.delete()
+        messages.success(request, f"Category '{name}' deleted.")
+    except ProtectedError:
+        # AUD-0060/0071: Category still has items — PROTECT prevented deletion.
+        item_count = category.items.count()
+        messages.error(
+            request,
+            f"Cannot delete '{name}' — it still has {item_count} item(s). "
+            f"Please delete or reassign all items in this category first."
+        )
     return redirect('inventory_manage')
 
 @staff_required

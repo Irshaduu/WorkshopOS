@@ -82,7 +82,8 @@
 {% if top_expenses %}
 <p class="zone-section-title"><i class="bi bi-receipt-cutoff"></i> Top Expense Categories</p>
 <div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead><tr><th>#</th><th>Category</th><th>Total Spent</th></tr></thead>
     <tbody>
       {% for e in top_expenses %}
@@ -95,12 +96,14 @@
     </tbody>
   </table>
 </div>
+</div>
 {% endif %}
 
 {% if top_income_cats %}
 <p class="zone-section-title"><i class="bi bi-arrow-down-circle"></i> Top Income Categories</p>
 <div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead><tr><th>#</th><th>Category</th><th>Total Income</th></tr></thead>
     <tbody>
       {% for c in top_income_cats %}
@@ -113,22 +116,33 @@
     </tbody>
   </table>
 </div>
+</div>
 {% endif %}
 
+{{ cb_trend_expense|json_script:"cb_trend_expense_data" }}
+{{ cb_trend_income|json_script:"cb_trend_income_data" }}
+{{ cb_trend_labels|json_script:"cb_trend_labels_data" }}
+{{ cb_trend_profit|json_script:"cb_trend_profit_data" }}
+{{ expense_cat_labels|json_script:"expense_cat_labels_data" }}
+{{ expense_cat_vals|json_script:"expense_cat_vals_data" }}
+{{ pm_labels|json_script:"pm_labels_data" }}
+{{ pm_revenue|json_script:"pm_revenue_data" }}
+{{ ps_data|json_script:"ps_data_data" }}
+{{ ps_labels|json_script:"ps_labels_data" }}
 <script>
 (function () {
   'use strict';
 
-  const cbLbls    = {{ cb_trend_labels|safe }};
-  const cbIncome  = {{ cb_trend_income|safe }};
-  const cbExpense = {{ cb_trend_expense|safe }};
-  const cbProfit  = {{ cb_trend_profit|safe }};
-  const expLbls   = {{ expense_cat_labels|safe }};
-  const expVals   = {{ expense_cat_vals|safe }};
-  const psLbls    = {{ ps_labels|safe }};
-  const psData    = {{ ps_data|safe }};
-  const pmLbls    = {{ pm_labels|safe }};
-  const pmRev     = {{ pm_revenue|safe }};
+  const cbLbls = JSON.parse(document.getElementById('cb_trend_labels_data').textContent);
+  const cbIncome = JSON.parse(document.getElementById('cb_trend_income_data').textContent);
+  const cbExpense = JSON.parse(document.getElementById('cb_trend_expense_data').textContent);
+  const cbProfit = JSON.parse(document.getElementById('cb_trend_profit_data').textContent);
+  const expLbls = JSON.parse(document.getElementById('expense_cat_labels_data').textContent);
+  const expVals = JSON.parse(document.getElementById('expense_cat_vals_data').textContent);
+  const psLbls = JSON.parse(document.getElementById('ps_labels_data').textContent);
+  const psData = JSON.parse(document.getElementById('ps_data_data').textContent);
+  const pmLbls = JSON.parse(document.getElementById('pm_labels_data').textContent);
+  const pmRev = JSON.parse(document.getElementById('pm_revenue_data').textContent);
 
   const isDark = document.documentElement.classList.contains('dark') ||
                  document.body.classList.contains('dark-mode');

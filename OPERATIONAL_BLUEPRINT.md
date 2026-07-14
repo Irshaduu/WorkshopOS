@@ -71,7 +71,7 @@ graph TD
    - Manage Spare Shops (create, edit, pay, view ledger, print)
    - Manage Master Lists (Brands, Models, Spares, Concerns)
    - View Car Profiles (vehicle history)
-   - Create/Delete staff accounts
+   - Create/Delete/Reset passwords for staff accounts
    - Add/Edit/Toggle mechanics
    - Run Data Cleanup (rename, merge, delete duplicates)
    - Manage Inventory categories and items
@@ -511,7 +511,7 @@ INVENTORY
   History: Who used what, when
 
 MANAGEMENT DASHBOARD
-  Accounts: Create/delete Office and Floor staff
+  Accounts: Create/delete/reset passwords for Office and Floor staff
   Mechanics: Add/rename/toggle active status
   Security: View all devices, revoke sessions
   Cleanup: Fix typos, merge duplicates in master lists
@@ -628,9 +628,15 @@ graph TD
 
 ---
 
+## 🛠️ OPERATIONAL TOOLING
+
+- **Automated SQLite Backups** — Run `python manage.py backup_db` to securely clone the database into a timestamped archive (automatically retains the 7 most recent backups).
+- **Production Static Serving** — Integrated `WhiteNoiseMiddleware` to seamlessly serve static assets directly from the application in production environments.
+
+---
+
 ## 🔜 COMING SOON
 
-- **PostgreSQL Production Database** — Multi-million record deployment
 - **New Notification System** — Replacing current SMS/Telegram architecture
 
 ---

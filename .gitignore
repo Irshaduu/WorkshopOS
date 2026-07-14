@@ -49,3 +49,5 @@ Thumbs.db
 
 # Temporary / Logs
 *.txt
+TITAN_BLUEPRINT.html
+AUDIT_LOG.md

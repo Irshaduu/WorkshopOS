@@ -77,24 +77,19 @@ def manage_create_user(request):
             messages.error(request, f"Username '{username}' is already taken. Choose another.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
-        from django.contrib.auth.password_validation import validate_password
-        from django.core.exceptions import ValidationError
-
+        # Admin has full freedom to set any password for staff.
+        # Only enforce a minimum length of 8 characters.
+        # For security, encourage strong passwords by convention (e.g., at least one number).
         if len(password) < 8:
             messages.error(request, "Password must be at least 8 characters.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
-            
-        try:
-            validate_password(password)
-        except ValidationError as e:
-            messages.error(request, f"Password not strong enough: {', '.join(e.messages)}")
-            return redirect(reverse('manage_dashboard') + '?section=accounts')
-        
+
         user = User.objects.create_user(username=username, password=password)
         group = Group.objects.get(name=role)
         user.groups.add(group)
         user.save()
         messages.success(request, f"✅ {role} account '{username}' created successfully!")
+
     
     return redirect(reverse('manage_dashboard') + '?section=accounts')
 
@@ -113,22 +108,17 @@ def manage_reset_password(request, user_id):
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
         new_password = request.POST.get('new_password', '').strip()
-        from django.contrib.auth.password_validation import validate_password
-        from django.core.exceptions import ValidationError
 
+        # Admin has full freedom to set any password for staff.
+        # Only enforce a minimum length of 8 characters.
         if not new_password or len(new_password) < 8:
             messages.error(request, "Password must be at least 8 characters.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
-            
-        try:
-            validate_password(new_password)
-        except ValidationError as e:
-            messages.error(request, f"Password not strong enough: {', '.join(e.messages)}")
-            return redirect(reverse('manage_dashboard') + '?section=accounts')
-        
+
         user.set_password(new_password)
         user.save()
         messages.success(request, f"✅ Password for '{user.username}' has been reset.")
+
     
     return redirect(reverse('manage_dashboard') + '?section=accounts')
 

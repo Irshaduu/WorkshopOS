@@ -3,6 +3,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.contrib import messages
 from django.db import models
+from decimal import Decimal, InvalidOperation
 from .decorators import office_required
 from .models import CashbookEntry
 
@@ -69,12 +70,13 @@ def add_cashbook_entry(request):
 
         if category and amount:
             try:
-                float_amount = float(amount)
-                if float_amount > 0:
+                # AUD-0022: Use Decimal — float() introduces rounding errors for money.
+                decimal_amount = Decimal(amount)
+                if decimal_amount > 0:
                     CashbookEntry.objects.create(
                         entry_type=entry_type,
                         category=category,
-                        amount=float_amount,
+                        amount=decimal_amount,
                         payment_method=payment_method,
                         description=description,
                         created_by=request.user,
@@ -82,7 +84,7 @@ def add_cashbook_entry(request):
                     messages.success(request, f"Successfully added {entry_type.lower()} entry.")
                 else:
                     messages.error(request, "Amount must be greater than zero.")
-            except ValueError:
+            except (ValueError, InvalidOperation):
                 messages.error(request, "Invalid amount provided.")
         else:
             messages.error(request, "Name and Amount are required.")
@@ -110,16 +112,17 @@ def edit_cashbook_entry(request, pk):
 
         if category and amount:
             try:
-                float_amount = float(amount)
-                if float_amount > 0:
+                # AUD-0022: Use Decimal — float() introduces rounding errors for money.
+                decimal_amount = Decimal(amount)
+                if decimal_amount > 0:
                     entry.category       = category
-                    entry.amount         = float_amount
+                    entry.amount         = decimal_amount
                     entry.payment_method = payment_method
                     entry.save()
                     messages.success(request, "Entry updated.")
                 else:
                     messages.error(request, "Amount must be greater than zero.")
-            except ValueError:
+            except (ValueError, InvalidOperation):
                 messages.error(request, "Invalid amount provided.")
         else:
             messages.error(request, "Name and Amount are required.")

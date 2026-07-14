@@ -29,7 +29,7 @@ graph TB
         W_MID["middleware.py — Session Tracker"]
         W_TAGS["templatetags — 6 Filters"]
         W_ADMIN["admin.py — 10 Registered"]
-        W_CMD["setup_groups Command"]
+        W_CMD["Commands — setup_groups, backup_db"]
         W_TPL["Templates — 63 HTML Files"]
     end
 
@@ -387,7 +387,15 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (81 HTML Files)
+## 7. TEMPLATE STRUCTURE (84 HTML Files)
+
+### Root Templates (`templates/`) — 3 files
+
+| File | Purpose |
+|------|---------|
+| `403.html` | Custom Forbidden Error |
+| `404.html` | Custom Not Found Error |
+| `500.html` | Custom Server Error |
 
 ### Workshop Templates (`workshop/templates/workshop/`) — 63 files
 
@@ -460,9 +468,10 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 | `SessionTrackingMiddleware` | `middleware.py` | Logs every authenticated request to `UserSession` |
 | `create_user_groups` | `apps.py` | Auto-creates Owner/Office/Floor groups on migrate |
 | `inventory.signals` | `signals.py` | Auto stock sync — 6 handlers: 3 for JobCardSpareItem (workshop consumption) + 3 for SupplierRestockItem (supplier restock) |
-| `setup_groups` command | `management/commands/` | Manual group creation (legacy) |
+| Management Commands | `management/commands/` | `setup_groups` (legacy setup), `backup_db` (automated SQLite backups) |
 | Custom template filters | `templatetags/custom_filters.py` | `has_group`, `is_tomorrow`, `divide`, `multiply`, `clean_qty`, `get_range` |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV` |
+| `WhiteNoiseMiddleware` | `settings/production.py` | Serves static assets directly from the application in production |
 
 ---
 
@@ -681,7 +690,8 @@ WorkshopOS (Titan)/
 │   ├── templatetags/
 │   │   └── custom_filters.py   ← 6 template filters
 │   ├── management/commands/
-│   │   └── setup_groups.py     ← Group setup command (legacy)
+│   │   ├── setup_groups.py     ← Group setup command (legacy)
+│   │   └── backup_db.py        ← Automated SQLite backup command
 │   ├── templates/workshop/     ← 63 HTML files across 11 directories
 │   ├── static/css/, static/js/ ← App-specific assets
 │   └── test_*.py + tests.py    ← 16 test files
@@ -697,12 +707,16 @@ WorkshopOS (Titan)/
 │   ├── templates/inventory/    ← 18 templates (6 core + 10 supplier + 2 partials)
 │   └── tests.py, test_signals.py, tests_suppliers.py ← 3 test files (74 tests)
 │
+├── templates/                  ← Root Templates
+│   ├── 403.html                ← Custom Forbidden Error
+│   ├── 404.html                ← Custom Not Found Error
+│   └── 500.html                ← Custom Server Error
 ├── static/css/                 ← Global static assets
 ├── .env                        ← Secrets & owner config
 ├── .gitignore                  ← Git exclusions
 ├── db.sqlite3                  ← SQLite database
 ├── errors.log                  ← Rotating error log
-├── requirements.txt            ← Dependencies (Django 5.2, Pillow, python-decouple)
+├── requirements.txt            ← Dependencies (Django 5.2, Pillow, python-decouple, whitenoise, psycopg2-binary)
 ├── manage.py                   ← Django CLI
 ├── verify_alerts.py            ← Alert verification script
 └── verify_twilio.py            ← Twilio verification script
@@ -710,4 +724,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · 25 Models · 125 URL Routes · 110+ Views · 81 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ current) · 6 Signal Handlers · 19 Test Files
+> **Total**: 2 Django Apps · 25 Models · 125 URL Routes · 110+ Views · 84 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ current) · 6 Signal Handlers · 19 Test Files

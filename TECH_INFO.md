@@ -2,7 +2,7 @@
 
 > **FOR FUTURE AI AGENTS:** This document contains the exact technical implementations used in "Titan" (WorkshopOS). Each section is a self-contained, portable architecture. When the user says *"Implement the Titan [X] feature,"* copy these exact patterns. Do NOT hallucinate alternatives. Every code block is production-tested.
 
-> **Stack:** Django 5.2 LTS · Python 3.13 · Vanilla JS · Bootstrap 5.3 · SQLite (dev) / PostgreSQL (🔜 production)  
+> **Stack:** Django 5.2 LTS · Python 3.13 · Vanilla JS · Bootstrap 5.3 · SQLite (dev) / PostgreSQL (production deployment)  
 > **Notifications:** Twilio SMS + Telegram Bot API (⚠️ current system — new system planned)
 
 ---
@@ -44,6 +44,10 @@
 33. [Supplier Restock Stock Signals](#33-supplier-restock-stock-signals)
 34. [Supplier Waterfall Bill Status](#34-supplier-waterfall-bill-status)
 35. [Unassigned Spares Hub](#35-unassigned-spares-hub)
+36. [Zero-Query Properties (N+1 Prevention)](#36-zero-query-properties-n1-prevention)
+37. [Absolute Financial Precision (Decimal vs Float)](#37-absolute-financial-precision-decimal-vs-float)
+38. [Referential Integrity & Safe Deletions](#38-referential-integrity--safe-deletions)
+39. [Template Rendering & XSS Prevention](#39-template-rendering--xss-prevention)
 
 ---
 
@@ -1142,6 +1146,86 @@ def spare_shop_unassign_item(request, item_pk):
 ```
 
 **Why manual `update_totals()`?** Because the model's `save()` method usually triggers `update_totals()` on its `self.job_card`. Once `job_card` is `None`, the model cannot update the old job card, so the view must do it manually to ensure dashboard denormalization stays accurate.
+
+---
+
+## 36. Zero-Query Properties (N+1 Prevention)
+
+Model properties that calculate aggregates (like percentages) must actively check for pre-annotated fields before hitting the database.
+
+```python
+    @property
+    def get_completion_percentage(self):
+        # 1. First, check if the values were pre-annotated in the queryset (O(1) memory lookup)
+        if hasattr(self, 'total_concerns') and hasattr(self, 'fixed_concerns'):
+            total = self.total_concerns
+            fixed = self.fixed_concerns
+        else:
+            # 2. Fallback to costly database query (N+1 risk)
+            total = self.concerns.count()
+            fixed = self.concerns.filter(status='FIXED').count()
+            
+        if total == 0:
+            return 0
+        return int((fixed / total) * 100)
+```
+**Why?** This guarantees high performance when rendering dashboards with 45+ items, but safely falls back to a query if a single object is instantiated outside of a dashboard context.
+
+---
+
+## 37. Absolute Financial Precision (Decimal vs Float)
+
+When developing billing, invoice, or ledger modules, floating-point arithmetic is strictly prohibited to prevent decimal drift.
+
+```python
+# BAD (Will drift over time)
+amount = models.FloatField(default=0.0)
+
+# GOOD (Titan Standard)
+from decimal import Decimal
+amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+```
+**Cascade Payment Implication:** The oldest-first bulk payment algorithm relies on subtracting exact amounts until `0.00` is reached. Float drift can cause a balance of `0.000000001`, leaving a bill permanently "Partially Paid".
+
+---
+
+## 38. Referential Integrity & Safe Deletions
+
+In financial systems, destroying historical records via cascading deletion is dangerous.
+
+```python
+# Models
+lead_mechanic = models.ForeignKey(Mechanic, on_delete=models.PROTECT, null=True)
+
+# Views
+from django.db.models import ProtectedError
+
+try:
+    mechanic.delete()
+    messages.success(request, f"Mechanic '{mechanic.name}' deleted successfully.")
+except ProtectedError:
+    messages.error(request, "Cannot delete this mechanic because they are assigned to existing job cards.")
+```
+**Why?** If a mechanic is fired, deleting them must NOT delete the 500 job cards (and revenue history) they completed. Catch `ProtectedError` and return a user-friendly message rather than a 500 Server Error.
+
+---
+
+## 39. Template Rendering & XSS Prevention
+
+When passing data from Django to JavaScript (such as rendering charting data for dashboards), the legacy `{{ variable|safe }}` is strictly prohibited due to Stored XSS vulnerabilities.
+
+```html
+<!-- BAD (Vulnerable to unescaped quotes) -->
+<script>
+    const data = {{ chart_data|safe }};
+</script>
+
+<!-- GOOD (Titan Standard) -->
+{{ chart_data|json_script:"chart-data" }}
+<script>
+    const data = JSON.parse(document.getElementById('chart-data').textContent);
+</script>
+```
 
 ---
 

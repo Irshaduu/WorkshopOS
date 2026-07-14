@@ -53,9 +53,10 @@ A premium, comprehensive Django-based workshop management system designed to str
 ## Tech Stack
 
 - **Backend**: Python 3.13 / Django 5.2 LTS
-- **Database**: SQLite (development & personal backup) · PostgreSQL (🔜 future production)
+- **Database**: SQLite (development & personal backup) · PostgreSQL (production deployment)
 - **Frontend**: Bootstrap 5, Vanilla JavaScript, CSS3
 - **Security**: python-decouple for environment variables, role-based decorators, IP-based lockout
+- **Static Assets**: WhiteNoise for seamless production static serving
 - **Notifications**: Twilio SMS + Telegram Bot API (⚠️ current system — new notification system planned)
 
 ## Installation
@@ -117,8 +118,9 @@ WorkshopOS (Titan)/
 │   ├── views.py            # 13 core inventory views
 │   ├── views_suppliers.py  # 20 supplier shop views
 │   └── templates/          # 18 HTML templates (6 core + 12 supplier)
+├── templates/              # Root templates (403, 404, 500 error pages)
 ├── static/                 # Global static assets
-├── requirements.txt        # Python dependencies (Django, Pillow, python-decouple)
+├── requirements.txt        # Python dependencies (Django, Pillow, python-decouple, whitenoise, psycopg2-binary)
 ├── db.sqlite3              # SQLite database
 └── manage.py               # Django management script
 ```
@@ -134,6 +136,7 @@ Designed for scale with practical, measured optimizations:
 - **O(1) Memory Usage**: Server-side pagination (45 records per page for lists, 10 for categories) ensures constant speed regardless of database size.
 - **B-Tree Database Indexing**: Critical fields (`registration_number`, `admitted_date`, `is_deleted`, `delivered`, `updated_at`) are indexed for fast retrieval.
 - **Query Hardening**: All views utilize `select_related` and `prefetch_related` to eliminate N+1 latency.
+- **Zero-Query Properties**: Property methods like `get_completion_percentage` utilize active annotation checking to perform calculations in-memory, eliminating severe N+1 bottlenecks on heavy dashboards.
 - **Composite Indexes**: Dashboard query pattern covered by multi-field composite index (`is_deleted`, `delivered`, `-updated_at`).
 
 ## 🔐 Steel Gate Security
@@ -141,8 +144,11 @@ Designed for scale with practical, measured optimizations:
 - **Collaborative Alert System**: Instant cross-notifications to both Owners on every login event via SMS + Telegram (⚠️ current system — new notification system planned).
 - **HQ Command Switch**: One-click termination of any unauthorized session from the management dashboard.
 
+## 🛠️ Operational Tooling
+- **Automated SQLite Backups** — Includes a custom `python manage.py backup_db` command for secure, rotated archiving of SQLite databases.
+- **Production Static Serving** — Seamlessly serves static files directly from the application layer using `WhiteNoiseMiddleware`.
+
 ## 🔜 Coming Soon
-- **PostgreSQL Production Database** — Multi-million record production-grade deployment.
 - **New Notification System** — Replacement for current SMS/Telegram bot architecture.
 
 ---

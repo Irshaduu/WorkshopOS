@@ -77,7 +77,8 @@
 <!-- ── Top Customers by Revenue Table ──────────────────────────────────────── -->
 <p class="zone-section-title"><i class="bi bi-currency-rupee"></i> Top Customers by Revenue</p>
 <div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead>
       <tr><th>#</th><th>Customer</th><th>Revenue</th><th>Jobs</th></tr>
     </thead>
@@ -98,11 +99,13 @@
     </tbody>
   </table>
 </div>
+</div>
 
 <!-- ── Top Customers by Jobs Table ─────────────────────────────────────────── -->
 <p class="zone-section-title"><i class="bi bi-wrench-adjustable-circle"></i> Top Customers by Visits</p>
 <div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead>
       <tr><th>#</th><th>Customer</th><th>Visits</th><th>Revenue</th></tr>
     </thead>
@@ -123,21 +126,30 @@
     </tbody>
   </table>
 </div>
+</div>
 
 {% endif %}
 
+{{ brand_data|json_script:"brand_data_data" }}
+{{ brand_labels|json_script:"brand_labels_data" }}
+{{ cust_trend_data|json_script:"cust_trend_data_data" }}
+{{ cust_trend_labels|json_script:"cust_trend_labels_data" }}
+{{ loyalty_data|json_script:"loyalty_data_data" }}
+{{ loyalty_labels|json_script:"loyalty_labels_data" }}
+{{ model_data|json_script:"model_data_data" }}
+{{ model_labels|json_script:"model_labels_data" }}
 <script>
 (function () {
   'use strict';
 
-  const custLabels  = {{ cust_trend_labels|safe }};
-  const custData    = {{ cust_trend_data|safe }};
-  const brandLabels = {{ brand_labels|safe }};
-  const brandData   = {{ brand_data|safe }};
-  const modelLabels = {{ model_labels|safe }};
-  const modelData   = {{ model_data|safe }};
-  const loyaltyLbl  = {{ loyalty_labels|safe }};
-  const loyaltyDat  = {{ loyalty_data|safe }};
+  const custLabels = JSON.parse(document.getElementById('cust_trend_labels_data').textContent);
+  const custData = JSON.parse(document.getElementById('cust_trend_data_data').textContent);
+  const brandLabels = JSON.parse(document.getElementById('brand_labels_data').textContent);
+  const brandData = JSON.parse(document.getElementById('brand_data_data').textContent);
+  const modelLabels = JSON.parse(document.getElementById('model_labels_data').textContent);
+  const modelData = JSON.parse(document.getElementById('model_data_data').textContent);
+  const loyaltyLbl = JSON.parse(document.getElementById('loyalty_labels_data').textContent);
+  const loyaltyDat = JSON.parse(document.getElementById('loyalty_data_data').textContent);
 
   const isDark = document.documentElement.classList.contains('dark') ||
                  document.body.classList.contains('dark-mode');

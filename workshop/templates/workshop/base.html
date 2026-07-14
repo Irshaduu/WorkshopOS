@@ -4,7 +4,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Workshop{% endblock %}</title>
 
     <!-- Bootstrap 5 CSS -->
@@ -62,10 +62,13 @@
             display: flex;
         }
 
-        /* Bottom nav hidden on all sizes */
-        .bottom-nav {
-            display: none !important;
+        /* Bottom nav hidden on desktop */
+        @media (min-width: 769px) {
+            .bottom-nav {
+                display: none !important;
+            }
         }
+
 
         .navbar-container {
             width: 100%;

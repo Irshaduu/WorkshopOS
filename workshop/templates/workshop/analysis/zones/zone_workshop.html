@@ -71,7 +71,8 @@
 {% if top_brands_ws %}
 <p class="zone-section-title"><i class="bi bi-award"></i> Jobs by Car Brand</p>
 <div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead>
       <tr><th>#</th><th>Brand</th><th>Jobs</th><th>Revenue</th></tr>
     </thead>
@@ -92,21 +93,31 @@
     </tbody>
   </table>
 </div>
+</div>
 {% endif %}
 
+{{ ws_brand_jobs|json_script:"ws_brand_jobs_data" }}
+{{ ws_brand_labels|json_script:"ws_brand_labels_data" }}
+{{ ws_ps_data|json_script:"ws_ps_data_data" }}
+{{ ws_ps_labels|json_script:"ws_ps_labels_data" }}
+{{ ws_status_data|json_script:"ws_status_data_data" }}
+{{ ws_status_labels|json_script:"ws_status_labels_data" }}
+{{ ws_trend_completed|json_script:"ws_trend_completed_data" }}
+{{ ws_trend_labels|json_script:"ws_trend_labels_data" }}
+{{ ws_trend_total|json_script:"ws_trend_total_data" }}
 <script>
 (function () {
   'use strict';
 
-  const wsLbls      = {{ ws_trend_labels|safe }};
-  const wsTotal     = {{ ws_trend_total|safe }};
-  const wsCompleted = {{ ws_trend_completed|safe }};
-  const brandLbls   = {{ ws_brand_labels|safe }};
-  const brandJobs   = {{ ws_brand_jobs|safe }};
-  const psLbls      = {{ ws_ps_labels|safe }};
-  const psData      = {{ ws_ps_data|safe }};
-  const statusLbls  = {{ ws_status_labels|safe }};
-  const statusData  = {{ ws_status_data|safe }};
+  const wsLbls = JSON.parse(document.getElementById('ws_trend_labels_data').textContent);
+  const wsTotal = JSON.parse(document.getElementById('ws_trend_total_data').textContent);
+  const wsCompleted = JSON.parse(document.getElementById('ws_trend_completed_data').textContent);
+  const brandLbls = JSON.parse(document.getElementById('ws_brand_labels_data').textContent);
+  const brandJobs = JSON.parse(document.getElementById('ws_brand_jobs_data').textContent);
+  const psLbls = JSON.parse(document.getElementById('ws_ps_labels_data').textContent);
+  const psData = JSON.parse(document.getElementById('ws_ps_data_data').textContent);
+  const statusLbls = JSON.parse(document.getElementById('ws_status_labels_data').textContent);
+  const statusData = JSON.parse(document.getElementById('ws_status_data_data').textContent);
 
   const isDark = document.documentElement.classList.contains('dark') ||
                  document.body.classList.contains('dark-mode');

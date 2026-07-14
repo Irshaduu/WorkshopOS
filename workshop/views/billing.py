@@ -60,6 +60,11 @@ def update_bill_status(request, pk):
             received = Decimal(str(raw_received) if raw_received else '0')
         except (ValueError, TypeError, ArithmeticError):
             received = Decimal('0')
+
+        # AUD-0015: Guard against negative received amounts — would corrupt financials.
+        if received < Decimal('0'):
+            messages.error(request, "Received amount cannot be negative.")
+            return redirect('invoice_view', pk=pk)
             
         method = request.POST.get('payment_method', 'CASH')
 

@@ -45,11 +45,12 @@
 - **Overview**: A high-performance, mobile-first analytics dashboard tailored exclusively for Workshop Owners, accessible only via strict authentication guardrails.
 - **Architecture**: Employs a hybrid rendering pattern—vital hero KPIs load synchronously on page load, while heavy data zones (Revenue, Mechanics, Spares, Inventory, Cashbook, Customers) fetch asynchronously via AJAX.
 - **Reporting & Print-Ready**: Features an advanced print-mode CSS `@media print` to auto-expand zones, hide navigation, and prepare clean reports for physical/PDF exports.
+- **XSS Prevention**: Strict prohibition of legacy `{{ variable|safe }}`. All JavaScript data injections utilize Django's native `json_script` serialization to prevent Stored XSS attacks.
 
 ### 6. Billing Architecture & Bulk Payer Cascade (v7.1)
 - **Bulk Payer System**: Complex locking (`select_for_update`) ensures atomic operations when a Bulk Payer makes a payment that cascades across multiple unpaid job cards.
-- **Data Integrity**: Bill deletions or restorations automatically recalculate bulk payer ledgers. Trash and Permanent Delete mechanisms are separated into robust phases.
-- **Audit Trails**: Security audits integrated directly into the system for High Discounts and Deleted Bulk Payers.
+- **Financial Precision**: All monetary columns strictly enforce `DecimalField(max_digits=10, decimal_places=2)`. `FloatField` is prohibited to prevent cascading float drift.
+- **Referential Integrity**: Safe deletions are enforced via `models.PROTECT`. Critical foreign keys explicitly catch `ProtectedError` to prevent the destruction of historical financial ledgers.
 - **Dedicated Ledgers**: Completely split `Pending Bills` and `Paid Bills` architectures with specialized time-range filters, identical search patterns, and strictly enforced RBAC.
 
 ---
@@ -62,6 +63,7 @@ WorkshopOS is optimized for immense scale, ensuring sub-50ms data retrieval even
 > **Performance Guardrails**
 > - **O(1) Data Retrieval**: All major list views enforce Server-Side Pagination (45 items for lists, 10 for category grids).
 > - **Greedy Query Mapping**: Strict enforcement of `select_related` and `prefetch_related` across models to eliminate Django's N+1 query latency.
+> - **Zero-Query Properties**: Methods like `get_completion_percentage` actively check for pre-annotated fields before hitting the database, resolving heavy dashboard bottlenecks.
 > - **Denormalized Financials**: The `JobCard.total_bill_amount` is a physical database column, updated via `update_totals()` during part/labour saves to prevent expensive runtime calculations.
 > - **B-Tree Indexing**: Critical lookup fields (`is_deleted`, `registration_number`, `admitted_date`, `delivered`, `updated_at`) utilize `db_index=True`.
 > - **Composite Indexes**: Dashboard query pattern covered by `[is_deleted, delivered, -updated_at]` composite index.
@@ -93,18 +95,14 @@ WorkshopOS is optimized for immense scale, ensuring sub-50ms data retrieval even
 
 *Strategic goals for upcoming sprints:*
 
-### 1. PostgreSQL Production Database
-- Full production deployment with PostgreSQL for multi-million record reliability.
-- Production settings already prepared in `settings/production.py` with SSL/HSTS hardening.
-
-### 2. New Notification System (Replacing SMS/Telegram)
+### 1. New Notification System (Replacing SMS/Telegram)
 - The current Twilio SMS + Telegram Bot notification architecture will be replaced.
 - New system architecture is under planning.
 
-### 3. Production Hardening
-- `DEBUG` will be set to `False` in production.
-- `ALLOWED_HOSTS` will be restricted to specific domains (currently `['*']` for development).
-- Full SSL enforcement and HSTS headers.
+### 2. Operational Tooling (Recently Completed)
+- **Automated SQLite Backups**: Custom `backup_db` command implemented for secure, rotated archiving.
+- **Production Static Serving**: `WhiteNoiseMiddleware` fully integrated for native static asset delivery.
+- **PostgreSQL Production**: Dependency tree updated (`psycopg2-binary`) for full PostgreSQL deployment.
 
 ---
 

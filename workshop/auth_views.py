@@ -188,29 +188,41 @@ def send_telegram_msg(chat_id, message):
         return False
 
 def send_otp_sms(mobile_number, otp):
-    """Sends OTP for Owner 2FA via Twilio & Telegram."""
+    """Sends OTP for Owner password reset via Twilio & Telegram."""
+    from django.conf import settings as django_settings
+
     msg = f"Your WorkshopOS Login Code: <b>{otp}</b>"
-    
+
     # 1. Twilio SMS
     success_sms = send_twilio_sms(mobile_number, f"Your WorkshopOS Login Code: {otp}")
     if success_sms:
-        print(f"[OK] OTP Sent via SMS to {mobile_number}")
+        if django_settings.DEBUG:
+            print(f"[OK] OTP Sent via SMS to {mobile_number}")
     else:
-        print(f"[WARN] OTP SMS Fallback to Terminal: {mobile_number} | Code: {otp}")
-        
+        # In development only: fallback so the developer can still test without Twilio
+        if django_settings.DEBUG:
+            print(f"[DEV ONLY] OTP SMS unavailable. Code for {mobile_number}: {otp}")
+        # Note: production failure is handled by the caller (owner_forgot_password_view)
+        # which checks the return value and surfaces a real error to the user.
+
     # 2. Telegram Broadcast
     owner1_mobile = normalize_phone(config('OWNER_1_MOBILE', default=''))
     owner2_mobile = normalize_phone(config('OWNER_2_MOBILE', default=''))
     norm_target = normalize_phone(mobile_number)
-    
+
     if norm_target == owner1_mobile:
         chat_id = config('OWNER_1_CHAT_ID', default='').strip()
         if send_telegram_msg(chat_id, msg):
-             print(f"[OK] OTP Sent via Telegram to Owner 1")
+            if django_settings.DEBUG:
+                print(f"[OK] OTP Sent via Telegram to Owner 1")
     elif norm_target == owner2_mobile:
         chat_id = config('OWNER_2_CHAT_ID', default='').strip()
         if send_telegram_msg(chat_id, msg):
-             print(f"[OK] OTP Sent via Telegram to Owner 2")
+            if django_settings.DEBUG:
+                print(f"[OK] OTP Sent via Telegram to Owner 2")
+
+    return success_sms
+
 
 
 # ============================================================
@@ -402,19 +414,22 @@ def owner_forgot_password_view(request):
             if resolved:
                 target_username = resolved
 
-        # Validate existence in .env
+        # Validate existence in .env — use identical message whether found or not (AUD-0044)
         mobile = get_owner_mobile(target_username)
-        if not mobile:
-            messages.error(request, "No Owner account found with that identifier.")
+        user_obj = None
+        if mobile:
+            from django.contrib.auth.models import User
+            try:
+                user_obj = User.objects.get(username=target_username)
+            except User.DoesNotExist:
+                user_obj = None
+
+        if not mobile or not user_obj:
+            # Identical message regardless of reason — prevents username enumeration
+            messages.success(request, "If that account exists, an OTP has been sent to the registered mobile number.")
             return redirect('owner_forgot_password')
 
-        # Check the user actually exists in Django
-        from django.contrib.auth.models import User
-        try:
-            user = User.objects.get(username=target_username)
-        except User.DoesNotExist:
-            messages.error(request, "No Owner account found with that identifier.")
-            return redirect('owner_forgot_password')
+        user = user_obj
 
         # 60-Second Cooldown Check (Prevent SMS Spam)
         last_send = request.session.get('last_otp_send_time')
@@ -436,13 +451,20 @@ def owner_forgot_password_view(request):
         request.session['pwd_reset_expire'] = time.time() + 300  # 5 minutes
         request.session['last_otp_send_time'] = time.time() # Update cooldown
 
-        # Send OTP
-        send_otp_sms(mobile, otp)
+        # Send OTP — check if delivery actually succeeded
+        sms_delivered = send_otp_sms(mobile, otp)
 
-        messages.success(request, "OTP sent to your registered mobile number.")
+        from django.conf import settings as django_settings
+        if sms_delivered or django_settings.DEBUG:
+            messages.success(request, "If that account exists, an OTP has been sent to the registered mobile number.")
+        else:
+            # SMS genuinely failed in production — tell the user instead of lying
+            messages.error(request, "OTP delivery failed. Please try again in a moment or contact support.")
+
         return redirect('owner_reset_password')
 
     return render(request, 'workshop/auth/forgot_password.html')
+
 
 
 # ============================================================
@@ -499,6 +521,15 @@ def owner_reset_password_view(request):
 
         if new_password != confirm_password:
             messages.error(request, "Passwords do not match.")
+            return render(request, 'workshop/auth/reset_password.html')
+
+        # Apply full Django password validators (same rules as staff resets)
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+        try:
+            validate_password(new_password)
+        except ValidationError as e:
+            messages.error(request, f"Password not strong enough: {', '.join(e.messages)}")
             return render(request, 'workshop/auth/reset_password.html')
 
         # All checks passed — update the password

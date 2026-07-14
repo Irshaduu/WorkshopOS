@@ -93,16 +93,17 @@
                 <form method="post" action="{% url 'manage_create_user' %}" class="row g-3 align-items-end">
                     {% csrf_token %}
                     <div class="col-12 col-md-4">
-                        <label class="form-label small text-muted">Username</label>
-                        <input type="text" name="username" class="form-control" placeholder="e.g. sarah_office" required>
+                        <label for="id_create_username" class="form-label small text-muted">Username</label>
+                        <input type="text" id="id_create_username" name="username" class="form-control" placeholder="e.g. sarah_office" required>
                     </div>
                     <div class="col-12 col-md-3">
-                        <label class="form-label small text-muted">Password</label>
-                        <input type="password" name="password" class="form-control" placeholder="Min. 4 chars" required minlength="4">
+                        <label for="id_create_password" class="form-label small text-muted">Password</label>
+                        <input type="password" id="id_create_password" name="password" class="form-control" placeholder="Min. 8 chars" required minlength="8">
+                        <div class="form-text" style="font-size: 0.75rem;">Admin can set any password. No complex characters required, just 8 characters minimum.</div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <label class="form-label small text-muted">Role</label>
-                        <select name="role" class="form-select" required>
+                        <label for="id_create_role" class="form-label small text-muted">Role</label>
+                        <select id="id_create_role" name="role" class="form-select" required>
                             <option value="">-- Role --</option>
                             <option value="Office">🏢 Office</option>
                             <option value="Floor">🔧 Floor</option>
@@ -136,7 +137,7 @@
                                     </form>
                                 </div>
                             </li>
-                            <div class="modal fade" id="resetModal{{ u.id }}" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content"><div class="modal-header py-2"><h6 class="modal-title">Reset: {{ u.username }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body py-2"><form method="post" action="{% url 'manage_reset_password' u.id %}">{% csrf_token %}<input type="password" name="new_password" class="form-control mb-2" placeholder="New password" required minlength="4"><button type="submit" class="btn btn-primary w-100">Set Password</button></form></div></div></div></div>
+                            <div class="modal fade" id="resetModal{{ u.id }}" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content"><div class="modal-header py-2"><h6 class="modal-title">Reset: {{ u.username }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body py-2"><form method="post" action="{% url 'manage_reset_password' u.id %}">{% csrf_token %}<input type="password" name="new_password" class="form-control mb-2" placeholder="Min. 8 chars" required minlength="8"><div class="form-text mb-2" style="font-size: 0.7rem; line-height: 1.1;">Admin can set any password (8+ chars).</div><button type="submit" class="btn btn-primary w-100">Set Password</button></form></div></div></div></div>
                             {% endfor %}
                         </ul>
                         {% else %}<p class="text-muted small text-center py-3">No office accounts.</p>{% endif %}
@@ -164,7 +165,7 @@
                                     </form>
                                 </div>
                             </li>
-                            <div class="modal fade" id="resetModalFloor{{ u.id }}" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content"><div class="modal-header py-2"><h6 class="modal-title">Reset: {{ u.username }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body py-2"><form method="post" action="{% url 'manage_reset_password' u.id %}">{% csrf_token %}<input type="password" name="new_password" class="form-control mb-2" placeholder="New password" required minlength="4"><button type="submit" class="btn btn-primary w-100">Set Password</button></form></div></div></div></div>
+                            <div class="modal fade" id="resetModalFloor{{ u.id }}" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content"><div class="modal-header py-2"><h6 class="modal-title">Reset: {{ u.username }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body py-2"><form method="post" action="{% url 'manage_reset_password' u.id %}">{% csrf_token %}<input type="password" name="new_password" class="form-control mb-2" placeholder="Min. 8 chars" required minlength="8"><div class="form-text mb-2" style="font-size: 0.7rem; line-height: 1.1;">Admin can set any password (8+ chars).</div><button type="submit" class="btn btn-primary w-100">Set Password</button></form></div></div></div></div>
                             {% endfor %}
                         </ul>
                         {% else %}<p class="text-muted small text-center py-3">No workshop accounts.</p>{% endif %}

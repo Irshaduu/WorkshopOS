@@ -5,6 +5,14 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import FailedAttempt
 import time
+from unittest.mock import patch
+from decouple import config as real_config
+
+def mocked_config(key, default=''):
+    if key == 'OWNER_1_MOBILE': return '+15005550001'
+    if key == 'OWNER_2_MOBILE': return '+15005550002'
+    if key == 'TWILIO_ACCOUNT_SID': return ''  # Trigger terminal fallback
+    return real_config(key, default=default)
 
 class AuthFlowTests(TestCase):
     """
@@ -13,6 +21,10 @@ class AuthFlowTests(TestCase):
     """
 
     def setUp(self):
+        patcher = patch('workshop.auth_views.config', side_effect=mocked_config)
+        self.mock_config = patcher.start()
+        self.addCleanup(patcher.stop)
+        
         FailedAttempt.objects.all().delete()
         # Groups
         self.owner_group, _ = Group.objects.get_or_create(name='Owner')
@@ -61,9 +73,9 @@ class AuthFlowTests(TestCase):
         url_step1 = reverse('admin_login')
         
         # 1. Admin Login: Mobile Resolution (Direct Login in Titan Architecture)
-        # Sahad's mobile is +919567494933 in .env
+        # Sahad's mobile is +15005550001 in mock config
         # The test client uses the database user, mobile resolution is handled in the view
-        response = self.client.post(url_step1, {'username': '9567494933', 'password': 'ownerpassword'}, follow=True)
+        response = self.client.post(url_step1, {'username': '15005550001', 'password': 'ownerpassword'}, follow=True)
         self.assertContains(response, "Welcome back")
         self.assertRedirects(response, reverse('home'))
 
@@ -71,9 +83,9 @@ class AuthFlowTests(TestCase):
         url_forgot = reverse('owner_forgot_password')
         url_reset = reverse('owner_reset_password')
         
-        # 1. Non-existent User
+        # 1. Non-existent User — message is now neutral to prevent username enumeration (AUD-0044)
         response = self.client.post(url_forgot, {'username': 'ghost_user'}, follow=True)
-        self.assertContains(response, "No Owner account found")
+        self.assertContains(response, "If that account exists")
         
         # 2. Cooldown check
         self.client.post(url_forgot, {'username': 'Sahad'})
@@ -96,6 +108,6 @@ class AuthFlowTests(TestCase):
         response = self.client.post(url_reset, {'otp': '123456', 'new_password': 'password123', 'confirm_password': 'mismatch'}, follow=True)
         self.assertContains(response, "do not match")
         
-        # Success
-        response = self.client.post(url_reset, {'otp': '123456', 'new_password': 'newpowerpwd', 'confirm_password': 'newpowerpwd'})
+        # Success — use a password that passes Django's validators (AUD-0019 now enforces this for Owner)
+        response = self.client.post(url_reset, {'otp': '123456', 'new_password': 'TitanHQ!2024', 'confirm_password': 'TitanHQ!2024'})
         self.assertRedirects(response, reverse('admin_login'))

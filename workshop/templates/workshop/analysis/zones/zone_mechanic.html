@@ -46,7 +46,8 @@
 <p class="zone-section-title"><i class="bi bi-bar-chart-steps"></i> Leaderboard — {{ period_label }}</p>
 
 <div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
-  <table class="kpi-table mech-table">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
     <thead>
       <tr>
         <th>#</th>
@@ -96,6 +97,7 @@
     </tbody>
   </table>
 </div>
+</div>
 
 {# ── Charts ───────────────────────────────────────────────────────────────── #}
 <p class="zone-section-title"><i class="bi bi-graph-up"></i> Analytics Charts</p>
@@ -128,6 +130,12 @@
 </div>
 {% endif %}
 
+{{ chart_jobs|json_script:"chart_jobs_data" }}
+{{ chart_names|json_script:"chart_names_data" }}
+{{ chart_revenue|json_script:"chart_revenue_data" }}
+{{ chart_scores|json_script:"chart_scores_data" }}
+{{ month_labels|json_script:"month_labels_data" }}
+{{ trend_datasets|json_script:"trend_datasets_data" }}
 <script>
 (function () {
   'use strict';
@@ -137,12 +145,12 @@
     '#6366f1','#10b981','#f59e0b','#ef4444','#06b6d4',
   ];
 
-  const names   = {{ chart_names|safe }};
-  const jobs    = {{ chart_jobs|safe }};
-  const revenue = {{ chart_revenue|safe }};
-  const scores  = {{ chart_scores|safe }};
-  const monthLabels   = {{ month_labels|safe }};
-  const trendDatasets = {{ trend_datasets|safe }};
+  const names = JSON.parse(document.getElementById('chart_names_data').textContent);
+  const jobs = JSON.parse(document.getElementById('chart_jobs_data').textContent);
+  const revenue = JSON.parse(document.getElementById('chart_revenue_data').textContent);
+  const scores = JSON.parse(document.getElementById('chart_scores_data').textContent);
+  const monthLabels = JSON.parse(document.getElementById('month_labels_data').textContent);
+  const trendDatasets = JSON.parse(document.getElementById('trend_datasets_data').textContent);
 
   const isDark = document.documentElement.classList.contains('dark') ||
                  document.body.classList.contains('dark-mode') ||

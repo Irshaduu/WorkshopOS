@@ -201,27 +201,33 @@
                     <div class="row g-3">
                         <!-- Row 1: Brand -> Model -> Reg -->
                         <div class="col-12 col-md-4">
-                            <label class="form-label small text-muted">Car Brand</label>
+                            <label for="{{ form.brand_name.id_for_label }}" class="form-label small text-muted">Car Brand</label>
                             {{ form.brand_name }}
+{% if form.brand_name.errors %}<div class="text-danger small mt-1">{{ form.brand_name.errors|join:", " }}</div>{% endif %}
+
                             <div class="list-group autocomplete-suggestions"></div>
                         </div>
                         
                         <div class="col-12 col-md-4">
-                            <label class="form-label small text-muted">Car Model</label>
+                            <label for="{{ form.model_name.id_for_label }}" class="form-label small text-muted">Car Model</label>
                             {{ form.model_name }}
+{% if form.model_name.errors %}<div class="text-danger small mt-1">{{ form.model_name.errors|join:", " }}</div>{% endif %}
+
                             <div class="list-group autocomplete-suggestions"></div>
                         </div>
 
                         <div class="col-12 col-md-4">
-                            <label class="form-label small text-muted">Registration Number</label>
+                            <label for="{{ form.registration_number.id_for_label }}" class="form-label small text-muted">Registration Number</label>
                             {{ form.registration_number }}
+{% if form.registration_number.errors %}<div class="text-danger small mt-1">{{ form.registration_number.errors|join:", " }}</div>{% endif %}
+
                         </div>
 
                         <!-- Row 2: Color -> Mileage -> Mechanic -> Admitted Date -->
                         <div class="col-12 col-md-4">
                             <div class="d-flex gap-3">
                                 <div style="flex: 0 0 45px;">
-                                    <label class="form-label small text-muted">Color</label>
+                                    <label for="{{ form.mileage.id_for_label }}" class="form-label small text-muted">Color</label>
                                     <!-- COMPACT COLOR PICKER -->
                                     <div class="dropdown">
                                         <div id="color-picker-trigger" class="cursor-pointer border shadow-sm {% if not jobcard.car_color %}rainbow-dot{% endif %}" 
@@ -248,18 +254,24 @@
                                 <div class="flex-grow-1">
                                     <label class="form-label small text-muted">Mileage (Km)</label>
                                     {{ form.mileage }}
+{% if form.mileage.errors %}<div class="text-danger small mt-1">{{ form.mileage.errors|join:", " }}</div>{% endif %}
+
                                 </div>
                             </div>
                         </div>
 
                         <div class="col-12 col-md-4">
-                            <label class="form-label small text-muted"><i class="bi bi-person-badge"></i> Mechanic (Staff)</label>
+                            <label for="{{ form.lead_mechanic.id_for_label }}" class="form-label small text-muted"><i class="bi bi-person-badge"></i> Mechanic (Staff)</label>
                             {{ form.lead_mechanic }}
+{% if form.lead_mechanic.errors %}<div class="text-danger small mt-1">{{ form.lead_mechanic.errors|join:", " }}</div>{% endif %}
+
                         </div>
 
                         <div class="col-12 col-md-4">
-                            <label class="form-label small text-muted">Admitted Date</label>
+                            <label for="{{ form.admitted_date.id_for_label }}" class="form-label small text-muted">Admitted Date</label>
                             {{ form.admitted_date }}
+{% if form.admitted_date.errors %}<div class="text-danger small mt-1">{{ form.admitted_date.errors|join:", " }}</div>{% endif %}
+
                         </div>
 
 
@@ -400,12 +412,16 @@
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-12 col-md-6">
-                            <label class="form-label small text-muted">Customer Name</label>
+                            <label for="{{ form.customer_name.id_for_label }}" class="form-label small text-muted">Customer Name</label>
                             {{ form.customer_name }}
+{% if form.customer_name.errors %}<div class="text-danger small mt-1">{{ form.customer_name.errors|join:", " }}</div>{% endif %}
+
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label small text-muted">Contact Number</label>
+                            <label for="{{ form.customer_contact.id_for_label }}" class="form-label small text-muted">Contact Number</label>
                             {{ form.customer_contact }}
+{% if form.customer_contact.errors %}<div class="text-danger small mt-1">{{ form.customer_contact.errors|join:", " }}</div>{% endif %}
+
                         </div>
                     </div>
 
@@ -576,8 +592,8 @@
                                                 style="min-width: 130px;">
                                             <option value="">-- Shop --</option>
                                             {% for shop in spare_shops %}
-                                            <option value="{{ shop.name }}"
-                                                    {% if s_form.instance.shop_name == shop.name %}selected{% endif %}>
+                                            <option value="{{ shop.pk }}"
+                                                    {% if s_form.instance.shop_id == shop.pk %}selected{% endif %}>
                                                 {{ shop.name }}
                                             </option>
                                             {% endfor %}
@@ -594,7 +610,7 @@
                                         <select name="{{ s_form.shop_name.html_name }}" class="d-none">
                                             <option value="">-- Shop --</option>
                                             {% for shop in spare_shops %}
-                                            <option value="{{ shop.name }}" {% if s_form.instance.shop_name == shop.name %}selected{% endif %}>{{ shop.name }}</option>
+                                            <option value="{{ shop.pk }}" {% if s_form.instance.shop_id == shop.pk %}selected{% endif %}>{{ shop.name }}</option>
                                             {% endfor %}
                                         </select>
                                         {{ s_form.unit_price }}
@@ -694,7 +710,7 @@
                             style="min-width: 130px;">
                         <option value="">-- Shop --</option>
                         {% for shop in spare_shops %}
-                        <option value="{{ shop.name }}">{{ shop.name }}</option>
+                        <option value="{{ shop.pk }}">{{ shop.name }}</option>
                         {% endfor %}
                     </select>
                 </td>

@@ -367,12 +367,29 @@ class JobCard(models.Model):
         verbose_name = "Job Card"
         verbose_name_plural = "Job Cards"
 
+    def clean(self):
+        """
+        Normalize key text fields before saving to prevent ghost duplicates.
+        e.g., 'kl-01 ab 1234' and 'KL-01 AB 1234' would create two separate
+        records without this normalization. (AUD-0016, AUD-0027)
+        """
+        if self.registration_number:
+            # Strip whitespace and uppercase: 'kl 01 ab 1234' → 'KL 01 AB 1234'
+            self.registration_number = self.registration_number.strip().upper()
+        if self.brand_name:
+            # Strip and title-case: 'toyota  ' → 'Toyota'
+            self.brand_name = ' '.join(self.brand_name.split()).title()
+
     def save(self, *args, **kwargs):
         """
         Auto-generate bill number if not set.
         Thread-safe implementation to prevent duplicate numbers
         when multiple users create job cards simultaneously.
+        AUD-0016/0027: Always call clean() to normalize casing even on
+        direct .save() calls (e.g. management commands, shell).
         """
+        # Normalize fields regardless of whether called via form or directly
+        self.clean()
         from django.db import transaction
         
         if not self.bill_number:
@@ -474,8 +491,13 @@ class JobCard(models.Model):
     def get_completion_percentage(self):
         """
         Calculates completion percentage based on FIXED concerns.
-        Returns a dictionary with 'percentage' and 'total'.
+        AUD-0045: Uses annotated total_concerns and fixed_concerns if available to prevent N+1 queries.
         """
+        if hasattr(self, 'total_concerns') and hasattr(self, 'fixed_concerns'):
+            if self.total_concerns == 0:
+                return 0
+            return int((self.fixed_concerns / self.total_concerns) * 100)
+
         total = self.concerns.count()
         if total == 0:
             return 0
@@ -691,6 +713,13 @@ class SpareShopPayment(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            # AUD-0030: Database-level guard against negative payment amounts.
+            models.CheckConstraint(
+                check=models.Q(amount__gt=0),
+                name='workshop_spareshoppayment_amount_positive'
+            ),
+        ]
 
     def __str__(self):
         return f"₹{self.amount} → {self.shop.name} ({self.created_at:%d %b %Y})"
@@ -728,6 +757,13 @@ class CashbookEntry(models.Model):
         indexes = [
             models.Index(fields=['-date', '-created_at']),
             models.Index(fields=['entry_type', '-date']),
+        ]
+        constraints = [
+            # AUD-0030: Database-level guard — cashbook amounts must be positive.
+            models.CheckConstraint(
+                check=models.Q(amount__gt=0),
+                name='workshop_cashbookentry_amount_positive'
+            ),
         ]
 
     def __str__(self):

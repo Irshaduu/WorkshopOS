@@ -27,7 +27,14 @@ class Item(models.Model):
         current_stock (FloatField): Real-time quantity on hand.
         usage_count (FloatField): Popularity score for smart-sorting.
     """
-    category = models.ForeignKey(Category, related_name='items', on_delete=models.CASCADE)
+    category = models.ForeignKey(
+        Category,
+        related_name='items',
+        # PROTECT prevents accidental deletion of a category that still has items.
+        # Without this, deleting a category would silently wipe all its inventory
+        # records and any linked billing/restock history. (AUD-0024)
+        on_delete=models.PROTECT
+    )
     name = models.CharField(max_length=200, db_index=True)
     average_stock = models.FloatField(default=0, help_text="Ideal stock level for calculation")
     current_stock = models.FloatField(default=0)
@@ -135,6 +142,18 @@ class SupplierRestockBill(models.Model):
 
     class Meta:
         ordering = ['-bill_date', '-created_at']
+        constraints = [
+            # AUD-0030: Database-level guard against negative bill amounts.
+            # The app validates this in views too, but DB constraints are the last line of defence.
+            models.CheckConstraint(
+                check=models.Q(total_amount__gte=0),
+                name='inventory_restockbill_total_amount_non_negative'
+            ),
+            models.CheckConstraint(
+                check=models.Q(discount_amount__gte=0),
+                name='inventory_restockbill_discount_amount_non_negative'
+            ),
+        ]
 
     def __str__(self):
         return f"Bill {self.id} - {self.supplier.name} ({self.bill_date})"
@@ -205,6 +224,13 @@ class SupplierPayment(models.Model):
 
     class Meta:
         ordering = ['-date', '-created_at']
+        constraints = [
+            # AUD-0030: Database-level guard against negative payment amounts.
+            models.CheckConstraint(
+                check=models.Q(amount__gt=0),
+                name='inventory_supplierpayment_amount_positive'
+            ),
+        ]
 
     def __str__(self):
         return f"₹{self.amount} → {self.supplier.name} ({self.date})"
