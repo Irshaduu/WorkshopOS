@@ -51,16 +51,16 @@ def supplier_shop_detail(request, shop_id):
     # select_related on catalog items avoids per-item queries into Item and Category
     catalog = shop.catalog_items.select_related('item', 'item__category').all()
 
-    # ── Time-range filter on bills ──
-    filter_type = request.GET.get('filter', 'all')
+    # ── Time-range filter — calendar-aligned, consistent with other sections ──
+    filter_type = request.GET.get('filter', 'this_year')
     start_date_str = request.GET.get('start_date', '')
     end_date_str = request.GET.get('end_date', '')
-    today = date.today()
+    today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
 
     older_bills_sum_sq = SupplierRestockBill.objects.filter(
         supplier=OuterRef('supplier')
     ).filter(
-        Q(bill_date__lt=OuterRef('bill_date')) | 
+        Q(bill_date__lt=OuterRef('bill_date')) |
         Q(bill_date=OuterRef('bill_date'), id__lte=OuterRef('id'))
     ).values('supplier').annotate(
         total=Sum(F('total_amount') - F('discount_amount'))
@@ -76,22 +76,53 @@ def supplier_shop_detail(request, shop_id):
     )
     payments_qs = shop.payments.filter(is_trashed=False).order_by('-date', '-id')
 
-    if filter_type == 'month':
-        start_dt = today - timedelta(days=30)
-        bills_qs = bills_qs.filter(bill_date__gte=start_dt)
-        payments_qs = payments_qs.filter(date__gte=start_dt)
-    elif filter_type == 'year':
-        start_dt = today - timedelta(days=365)
-        bills_qs = bills_qs.filter(bill_date__gte=start_dt)
-        payments_qs = payments_qs.filter(date__gte=start_dt)
+    if filter_type == 'today':
+        bills_qs    = bills_qs.filter(bill_date=today)
+        payments_qs = payments_qs.filter(date=today)
+
+    elif filter_type == 'this_week':
+        start = today - timedelta(days=today.weekday())
+        bills_qs    = bills_qs.filter(bill_date__gte=start)
+        payments_qs = payments_qs.filter(date__gte=start)
+
+    elif filter_type == 'this_month':
+        start = today.replace(day=1)
+        bills_qs    = bills_qs.filter(bill_date__gte=start)
+        payments_qs = payments_qs.filter(date__gte=start)
+
+    elif filter_type == 'this_year':
+        start = today.replace(month=1, day=1)
+        bills_qs    = bills_qs.filter(bill_date__gte=start)
+        payments_qs = payments_qs.filter(date__gte=start)
+
+    elif filter_type == 'last_week':
+        start = today - timedelta(days=today.weekday() + 7)
+        end   = start + timedelta(days=6)
+        bills_qs    = bills_qs.filter(bill_date__gte=start, bill_date__lte=end)
+        payments_qs = payments_qs.filter(date__gte=start, date__lte=end)
+
+    elif filter_type == 'last_month':
+        first_of_this = today.replace(day=1)
+        last_of_last  = first_of_this - timedelta(days=1)
+        first_of_last = last_of_last.replace(day=1)
+        bills_qs    = bills_qs.filter(bill_date__gte=first_of_last, bill_date__lte=last_of_last)
+        payments_qs = payments_qs.filter(date__gte=first_of_last, date__lte=last_of_last)
+
+    elif filter_type == 'last_year':
+        start = today.replace(year=today.year - 1, month=1,  day=1)
+        end   = today.replace(year=today.year - 1, month=12, day=31)
+        bills_qs    = bills_qs.filter(bill_date__gte=start, bill_date__lte=end)
+        payments_qs = payments_qs.filter(date__gte=start, date__lte=end)
+
     elif filter_type == 'custom' and start_date_str and end_date_str:
         try:
             start_dt = date.fromisoformat(start_date_str)
-            end_dt = date.fromisoformat(end_date_str)
-            bills_qs = bills_qs.filter(bill_date__range=(start_dt, end_dt))
+            end_dt   = date.fromisoformat(end_date_str)
+            bills_qs    = bills_qs.filter(bill_date__range=(start_dt, end_dt))
             payments_qs = payments_qs.filter(date__range=(start_dt, end_dt))
         except ValueError:
             pass
+    # any other value (incl. legacy 'all') → no date filter applied
 
     bills_count = bills_qs.count()
     payments_count = payments_qs.count()
@@ -462,18 +493,28 @@ def ajax_supplier_bills(request, shop_id):
         absolute_running_sum=Coalesce(Subquery(older_bills_sum_sq), Decimal('0'), output_field=DecimalField())
     ).order_by('-bill_date', '-id')
 
-    # Quick filters
-    from django.utils import timezone
-    from datetime import timedelta
-    now = timezone.now()
-    if filter_type == 'month':
-        bills_qs = bills_qs.filter(bill_date__month=now.month, bill_date__year=now.year)
+    # Quick filters — calendar-aligned
+    filter_today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
+    if filter_type == 'today':
+        bills_qs = bills_qs.filter(bill_date=filter_today)
+    elif filter_type == 'this_week':
+        start = filter_today - timedelta(days=filter_today.weekday())
+        bills_qs = bills_qs.filter(bill_date__gte=start)
+    elif filter_type == 'this_month':
+        bills_qs = bills_qs.filter(bill_date__gte=filter_today.replace(day=1))
+    elif filter_type == 'this_year':
+        bills_qs = bills_qs.filter(bill_date__gte=filter_today.replace(month=1, day=1))
+    elif filter_type == 'last_week':
+        start = filter_today - timedelta(days=filter_today.weekday() + 7)
+        bills_qs = bills_qs.filter(bill_date__gte=start, bill_date__lte=start + timedelta(days=6))
     elif filter_type == 'last_month':
-        last_month = now.replace(day=1) - timedelta(days=1)
-        bills_qs = bills_qs.filter(bill_date__month=last_month.month, bill_date__year=last_month.year)
-    elif filter_type == 'last_3_months':
-        three_months_ago = now - timedelta(days=90)
-        bills_qs = bills_qs.filter(bill_date__gte=three_months_ago.date())
+        first_of_this = filter_today.replace(day=1)
+        last_of_last  = first_of_this - timedelta(days=1)
+        bills_qs = bills_qs.filter(bill_date__gte=last_of_last.replace(day=1), bill_date__lte=last_of_last)
+    elif filter_type == 'last_year':
+        start = filter_today.replace(year=filter_today.year - 1, month=1,  day=1)
+        end   = filter_today.replace(year=filter_today.year - 1, month=12, day=31)
+        bills_qs = bills_qs.filter(bill_date__gte=start, bill_date__lte=end)
 
     # Slice directly via SQL for the requested page (50 per page)
     start = (page - 1) * 50

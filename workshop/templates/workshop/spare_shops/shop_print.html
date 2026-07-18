@@ -142,10 +142,20 @@
         <span style="color: #6c757d; font-weight: 400; font-size: 22px; margin-left: 8px;">Purchase Report</span>
       </h2>
       <div class="filter-badge">
-        {% if filter_type == 'month' %}
-          Last 30 Days
-        {% elif filter_type == 'year' %}
-          Last 365 Days
+        {% if filter_type == 'today' %}
+          Today
+        {% elif filter_type == 'this_week' %}
+          This Week
+        {% elif filter_type == 'this_month' %}
+          This Month
+        {% elif filter_type == 'this_year' %}
+          This Year
+        {% elif filter_type == 'last_week' %}
+          Last Week
+        {% elif filter_type == 'last_month' %}
+          Last Month
+        {% elif filter_type == 'last_year' %}
+          Last Year
         {% elif filter_type == 'custom' %}
           {{ start_date_obj|date:"d-m-Y"|default:"Unknown" }} to {{ end_date_obj|date:"d-m-Y"|default:"Unknown" }}
         {% else %}

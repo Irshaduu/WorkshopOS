@@ -143,25 +143,63 @@
 
     /* Filter Dropdown */
     .pb-dropdown-menu {
-        border-radius: 12px;
+        border-radius: 16px;
         border: 1px solid var(--color-border);
-        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-        padding: 6px;
-        min-width: 175px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.14), 0 6px 16px rgba(0,0,0,0.07);
+        padding: 4px;
+        min-width: 155px;
+        width: max-content;
+        max-height: calc(100vh - 160px);
+        overflow-y: auto;
         margin-top: 6px !important;
+    }
+    .pb-group-label {
+        font-family: var(--font-body);
+        font-size: 0.58rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1.8px;
+        color: #94a3b8;
+        padding: 6px 12px 2px;
+        pointer-events: none;
+        user-select: none;
     }
     .pb-dropdown-menu .dropdown-item {
         border-radius: 8px;
         font-family: var(--font-body);
         font-size: 0.8rem;
         font-weight: 500;
-        padding: 7px 12px;
+        padding: 6px 12px;
         color: var(--color-text);
-        transition: background 0.1s;
+        transition: background 0.12s, color 0.12s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
-    .pb-dropdown-menu .dropdown-item:hover,
-    .pb-dropdown-menu .dropdown-item.active {
+    .pb-dropdown-menu .dropdown-item .item-icon {
+        font-size: 0.72rem;
+        opacity: 0.38;
+        flex-shrink: 0;
+        width: 14px;
+        text-align: center;
+        transition: opacity 0.12s;
+    }
+    .pb-dropdown-menu .dropdown-item:hover {
         background: rgba(37,99,235,0.07);
+        color: var(--pb-blue);
+    }
+    .pb-dropdown-menu .dropdown-item:hover .item-icon { opacity: 0.7; }
+    .pb-dropdown-menu .dropdown-item.active {
+        background: rgba(37,99,235,0.1);
+        color: var(--pb-blue);
+        font-weight: 700;
+    }
+    .pb-dropdown-menu .dropdown-item.active .item-icon { opacity: 1; }
+    .pb-dropdown-menu .dropdown-item.active::after {
+        content: '✓';
+        margin-left: auto;
+        font-size: 0.75rem;
+        font-weight: 900;
         color: var(--pb-blue);
     }
     .pb-dropdown-menu .dropdown-divider { margin: 4px 8px; }
@@ -206,22 +244,48 @@
                 <i class="bi bi-funnel"></i>
                 <span id="pbFilterLabel">
                     {% if filter_type == 'today' %}Today
-                    {% elif filter_type == 'week' %}1 Week
-                    {% elif filter_type == 'month' %}1 Month
-                    {% elif filter_type == 'year' %}1 Year
+                    {% elif filter_type == 'this_week' %}This Week
+                    {% elif filter_type == 'this_month' %}This Month
+                    {% elif filter_type == 'this_year' %}This Year
+                    {% elif filter_type == 'last_week' %}Last Week
+                    {% elif filter_type == 'last_month' %}Last Month
+                    {% elif filter_type == 'last_year' %}Last Year
                     {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
-                    {% else %}All Time{% endif %}
+                    {% else %}Today{% endif %}
                 </span>
                 <i class="bi bi-chevron-down"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end pb-dropdown-menu">
-                <li><a class="dropdown-item {% if filter_type == 'today' %}active{% endif %}"  href="?filter=today">Today</a></li>
-                <li><a class="dropdown-item {% if filter_type == 'week' %}active{% endif %}"   href="?filter=week">1 Week</a></li>
-                <li><a class="dropdown-item {% if filter_type == 'month' %}active{% endif %}"  href="?filter=month">1 Month</a></li>
-                <li><a class="dropdown-item {% if filter_type == 'year' %}active{% endif %}"   href="?filter=year">1 Year</a></li>
-                <li><a class="dropdown-item {% if filter_type == 'all' %}active{% endif %}"    href="?filter=all">All Time</a></li>
+                <li><a class="dropdown-item {% if filter_type == 'today' %}active{% endif %}" data-filter="today" href="#">
+                    <i class="bi bi-brightness-high item-icon"></i>Today
+                </a></li>
+
                 <li><hr class="dropdown-divider"></li>
-                <li><a id="pbCustomRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">Custom Range</a></li>
+                <li><a class="dropdown-item {% if filter_type == 'this_week' %}active{% endif %}" data-filter="this_week" href="#">
+                    <i class="bi bi-calendar3 item-icon"></i>This Week
+                </a></li>
+                <li><a class="dropdown-item {% if filter_type == 'this_month' %}active{% endif %}" data-filter="this_month" href="#">
+                    <i class="bi bi-calendar3 item-icon"></i>This Month
+                </a></li>
+                <li><a class="dropdown-item {% if filter_type == 'this_year' %}active{% endif %}" data-filter="this_year" href="#">
+                    <i class="bi bi-calendar3 item-icon"></i>This Year
+                </a></li>
+
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item {% if filter_type == 'last_week' %}active{% endif %}" data-filter="last_week" href="#">
+                    <i class="bi bi-calendar2 item-icon"></i>Last Week
+                </a></li>
+                <li><a class="dropdown-item {% if filter_type == 'last_month' %}active{% endif %}" data-filter="last_month" href="#">
+                    <i class="bi bi-calendar2 item-icon"></i>Last Month
+                </a></li>
+                <li><a class="dropdown-item {% if filter_type == 'last_year' %}active{% endif %}" data-filter="last_year" href="#">
+                    <i class="bi bi-calendar2 item-icon"></i>Last Year
+                </a></li>
+
+                <li><hr class="dropdown-divider"></li>
+                <li><a id="pbCustomRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">
+                    <i class="bi bi-calendar-range item-icon"></i>Custom Range
+                </a></li>
                 <li id="pbCustomDatePicker"
                     style="display: {% if filter_type == 'custom' %}block{% else %}none{% endif %};"
                     onclick="event.stopPropagation()">
@@ -273,8 +337,17 @@ document.addEventListener('DOMContentLoaded', function () {
             url.searchParams.delete('end_date');
         }
 
-        // Update label
-        const labelMap = { today: 'Today', week: '1 Week', month: '1 Month', year: '1 Year', all: 'All Time' };
+        // Update filter label in button
+        const labelMap = {
+            today:      'Today',
+            this_week:  'This Week',
+            this_month: 'This Month',
+            this_year:  'This Year',
+            last_week:  'Last Week',
+            last_month: 'Last Month',
+            last_year:  'Last Year',
+            all:        'All Time',
+        };
         const label = document.getElementById('pbFilterLabel');
         if (label) {
             if (currentFilter === 'custom') {
@@ -294,6 +367,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(html => {
                     resultsContainer.innerHTML = html;
                     window.history.pushState({}, '', url);
+                    // Sync total collected from hidden data carrier in partial
+                    const sync = resultsContainer.querySelector('#pbSyncData');
+                    if (sync) {
+                        const totalEl = document.querySelector('.pb-total-amount');
+                        if (totalEl) totalEl.textContent = '₹' + parseFloat(sync.dataset.total).toFixed(2);
+                    }
                 })
                 .catch(err => console.error('Search error:', err));
         }, delay);
@@ -312,19 +391,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Filter dropdown item clicks
-    document.querySelectorAll('.pb-dropdown-menu a.dropdown-item').forEach(item => {
+    // Filter dropdown — uses data-filter attribute; manages active class in JS
+    document.querySelectorAll('.pb-dropdown-menu a[data-filter]').forEach(item => {
         item.addEventListener('click', function (e) {
-            const href = this.getAttribute('href');
-            if (href && href.includes('filter=')) {
-                const params = new URLSearchParams(href.split('?')[1]);
-                const newFilter = params.get('filter');
-                if (newFilter && newFilter !== 'custom') {
-                    e.preventDefault();
-                    currentFilter = newFilter;
-                    updateResults(searchInput.value);
-                }
-            }
+            e.preventDefault();
+            // Update active highlight
+            document.querySelectorAll('.pb-dropdown-menu a[data-filter]').forEach(a => a.classList.remove('active'));
+            this.classList.add('active');
+            currentFilter = this.getAttribute('data-filter');
+            updateResults(searchInput.value);
         });
     });
 

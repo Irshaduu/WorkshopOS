@@ -1,4 +1,6 @@
 {% load custom_filters %}
+{# Hidden data carrier — JS reads this to sync the total collected in the page header #}
+<span id="pbSyncData" data-total="{{ total_collected|floatformat:2 }}" data-count="{{ total_count }}" hidden></span>
 
 <style>
     :root {

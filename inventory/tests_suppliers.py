@@ -499,7 +499,8 @@ class SupplierShopViewTests(TestCase):
         # Pay 5000 of 9000 total
         SupplierPayment.objects.create(supplier=shop, amount=5000)
         response = self.client.get(
-            reverse('supplier_shop_detail', args=[shop.id])
+            reverse('supplier_shop_detail', args=[shop.id]),
+            {'filter': 'all'}   # bypass date filter — bills are from 2025
         )
         # Should contain at least one of each status
         self.assertContains(response, 'Fully Covered')

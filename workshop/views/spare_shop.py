@@ -3,6 +3,7 @@ from decimal import Decimal
 from datetime import date, datetime, timedelta
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
 from django.contrib import messages
 from django.db.models import Sum, Count, F, Value, ExpressionWrapper, DecimalField
 from django.db.models.functions import Coalesce
@@ -114,32 +115,58 @@ def spare_shop_detail(request, pk):
 
     payment_qs = shop.payments.filter(is_trashed=False).order_by('-created_at')
 
-    # Date Filtering
-    filter_type = request.GET.get('filter', 'all')
+    # Date Filtering — calendar-aligned, consistent with Paid Bills & Delivered sections
+    filter_type = request.GET.get('filter', 'this_year')
     start_date_str = ''
     end_date_str = ''
-    today = date.today()
+    today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
 
-    if filter_type == 'month':
-        sd = today - timedelta(days=30)
-        items_qs = items_qs.filter(ordered_date__gte=sd)
-        payment_qs = payment_qs.filter(created_at__date__gte=sd)
-    elif filter_type == 'year':
-        sd = today - timedelta(days=365)
-        items_qs = items_qs.filter(ordered_date__gte=sd)
-        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+    if filter_type == 'today':
+        items_qs    = items_qs.filter(ordered_date=today)
+        payment_qs  = payment_qs.filter(created_at__date=today)
+
+    elif filter_type == 'this_week':
+        start = today - timedelta(days=today.weekday())  # Monday of current week
+        items_qs    = items_qs.filter(ordered_date__gte=start)
+        payment_qs  = payment_qs.filter(created_at__date__gte=start)
+
+    elif filter_type == 'this_month':
+        start = today.replace(day=1)
+        items_qs    = items_qs.filter(ordered_date__gte=start)
+        payment_qs  = payment_qs.filter(created_at__date__gte=start)
+
+    elif filter_type == 'this_year':
+        start = today.replace(month=1, day=1)
+        items_qs    = items_qs.filter(ordered_date__gte=start)
+        payment_qs  = payment_qs.filter(created_at__date__gte=start)
+
+    elif filter_type == 'last_week':
+        start = today - timedelta(days=today.weekday() + 7)  # Previous Mon
+        end   = start + timedelta(days=6)                     # Previous Sun
+        items_qs    = items_qs.filter(ordered_date__gte=start, ordered_date__lte=end)
+        payment_qs  = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+
+    elif filter_type == 'last_month':
+        first_of_this_month = today.replace(day=1)
+        last_of_last_month  = first_of_this_month - timedelta(days=1)
+        first_of_last_month = last_of_last_month.replace(day=1)
+        items_qs    = items_qs.filter(ordered_date__gte=first_of_last_month, ordered_date__lte=last_of_last_month)
+        payment_qs  = payment_qs.filter(created_at__date__gte=first_of_last_month, created_at__date__lte=last_of_last_month)
+
+    elif filter_type == 'last_year':
+        start = today.replace(year=today.year - 1, month=1,  day=1)
+        end   = today.replace(year=today.year - 1, month=12, day=31)
+        items_qs    = items_qs.filter(ordered_date__gte=start, ordered_date__lte=end)
+        payment_qs  = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
-        end_date_str = request.GET.get('end_date', '')
+        end_date_str   = request.GET.get('end_date', '')
         if start_date_str and end_date_str:
-            items_qs = items_qs.filter(
-                ordered_date__gte=start_date_str,
-                ordered_date__lte=end_date_str
-            )
-            payment_qs = payment_qs.filter(
-                created_at__date__gte=start_date_str,
-                created_at__date__lte=end_date_str
-            )
+            items_qs   = items_qs.filter(ordered_date__gte=start_date_str, ordered_date__lte=end_date_str)
+            payment_qs = payment_qs.filter(created_at__date__gte=start_date_str, created_at__date__lte=end_date_str)
+    # filter_type == 'all' → no date filter applied
+
 
     from django.db.models import OuterRef, Subquery, Q
     older_items_sum_sq = JobCardSpareItem.objects.filter(

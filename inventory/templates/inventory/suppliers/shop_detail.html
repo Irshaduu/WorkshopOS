@@ -37,18 +37,35 @@
   }
   .shop-filter-btn:hover { border-color: var(--color-primary); }
   .shop-dropdown-menu {
-    border-radius: 12px; border: 1px solid var(--color-border);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.12); padding: 6px;
-    min-width: 175px; margin-top: 6px !important;
+    border-radius: 16px; border: 1px solid var(--color-border);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.14), 0 6px 16px rgba(0,0,0,0.07);
+    padding: 4px; min-width: 155px; width: max-content;
+    max-height: calc(100vh - 160px); overflow-y: auto;
+    margin-top: 6px !important;
   }
   .shop-dropdown-menu .dropdown-item {
     border-radius: 8px; font-size: 0.8rem; font-weight: 500;
-    padding: 7px 12px; color: var(--color-text); transition: background 0.1s;
+    padding: 6px 12px; color: var(--color-text);
+    transition: background 0.12s, color 0.12s;
+    display: flex; align-items: center; gap: 8px;
   }
-  .shop-dropdown-menu .dropdown-item:hover,
-  .shop-dropdown-menu .dropdown-item.active {
+  .shop-dropdown-menu .dropdown-item .item-icon {
+    font-size: 0.72rem; opacity: 0.38; flex-shrink: 0;
+    width: 14px; text-align: center; transition: opacity 0.12s;
+  }
+  .shop-dropdown-menu .dropdown-item:hover {
     background: rgba(37,99,235,0.07); color: var(--color-primary);
   }
+  .shop-dropdown-menu .dropdown-item:hover .item-icon { opacity: 0.7; }
+  .shop-dropdown-menu .dropdown-item.active {
+    background: rgba(37,99,235,0.1); color: var(--color-primary); font-weight: 700;
+  }
+  .shop-dropdown-menu .dropdown-item.active .item-icon { opacity: 1; }
+  .shop-dropdown-menu .dropdown-item.active::after {
+    content: '✓'; margin-left: auto; font-size: 0.75rem;
+    font-weight: 900; color: var(--color-primary);
+  }
+  .shop-dropdown-menu .dropdown-divider { margin: 4px 8px; }
 
   /* ── CATALOG GRID ── */
   .catalog-grid {
@@ -133,19 +150,49 @@
       <button id="filterDropdownBtn" class="shop-filter-btn" type="button" data-bs-toggle="dropdown">
         <i class="bi bi-funnel" style="font-size:0.72rem; color:var(--color-text-muted);"></i>
         <span>
-          {% if filter_type == 'month' %}1 Month
-          {% elif filter_type == 'year' %}1 Year
+          {% if filter_type == 'today' %}Today
+          {% elif filter_type == 'this_week' %}This Week
+          {% elif filter_type == 'this_month' %}This Month
+          {% elif filter_type == 'this_year' %}This Year
+          {% elif filter_type == 'last_week' %}Last Week
+          {% elif filter_type == 'last_month' %}Last Month
+          {% elif filter_type == 'last_year' %}Last Year
           {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
-          {% else %}All Time{% endif %}
+          {% else %}This Year{% endif %}
         </span>
         <i class="bi bi-chevron-down" style="font-size:0.6rem; opacity:0.5;"></i>
       </button>
       <ul class="dropdown-menu dropdown-menu-end shop-dropdown-menu">
-        <li><a class="dropdown-item {% if filter_type == 'all' or not filter_type %}active{% endif %}" href="?filter=all">All Time</a></li>
-        <li><a class="dropdown-item {% if filter_type == 'month' %}active{% endif %}" href="?filter=month">1 Month</a></li>
-        <li><a class="dropdown-item {% if filter_type == 'year' %}active{% endif %}"  href="?filter=year">1 Year</a></li>
+        <li><a class="dropdown-item {% if filter_type == 'today' %}active{% endif %}" href="?filter=today">
+            <i class="bi bi-brightness-high item-icon"></i>Today
+        </a></li>
+
         <li><hr class="dropdown-divider"></li>
-        <li><a id="customRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">Custom Range</a></li>
+        <li><a class="dropdown-item {% if filter_type == 'this_week' %}active{% endif %}" href="?filter=this_week">
+            <i class="bi bi-calendar3 item-icon"></i>This Week
+        </a></li>
+        <li><a class="dropdown-item {% if filter_type == 'this_month' %}active{% endif %}" href="?filter=this_month">
+            <i class="bi bi-calendar3 item-icon"></i>This Month
+        </a></li>
+        <li><a class="dropdown-item {% if filter_type == 'this_year' or not filter_type %}active{% endif %}" href="?filter=this_year">
+            <i class="bi bi-calendar3 item-icon"></i>This Year
+        </a></li>
+
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item {% if filter_type == 'last_week' %}active{% endif %}" href="?filter=last_week">
+            <i class="bi bi-calendar2 item-icon"></i>Last Week
+        </a></li>
+        <li><a class="dropdown-item {% if filter_type == 'last_month' %}active{% endif %}" href="?filter=last_month">
+            <i class="bi bi-calendar2 item-icon"></i>Last Month
+        </a></li>
+        <li><a class="dropdown-item {% if filter_type == 'last_year' %}active{% endif %}" href="?filter=last_year">
+            <i class="bi bi-calendar2 item-icon"></i>Last Year
+        </a></li>
+
+        <li><hr class="dropdown-divider"></li>
+        <li><a id="customRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">
+            <i class="bi bi-calendar-range item-icon"></i>Custom Range
+        </a></li>
         <li id="customDatePicker" style="display:{% if filter_type == 'custom' %}block{% else %}none{% endif %};" onclick="event.stopPropagation()">
           <div class="px-2 pt-2 pb-1">
             <form id="customDateForm" method="get" class="d-flex flex-column gap-2">
@@ -370,7 +417,7 @@
     {% else %}
       <div class="text-center py-5 text-muted">
         <i class="bi bi-receipt" style="font-size:2.5rem; opacity:0.3;"></i>
-        <p class="mt-2 small">No restock bills {% if filter_type != 'all' %}in this period{% endif %}.</p>
+        <p class="mt-2 small">No restock bills in this period.</p>
       </div>
     {% endif %}
   </div>
@@ -402,7 +449,7 @@
     {% else %}
       <div class="text-center py-5 text-muted">
         <i class="bi bi-receipt" style="font-size:2rem; opacity:0.3;"></i>
-        <p class="mt-2 small">No payments{% if filter_type != 'all' %} in this period{% endif %}.</p>
+        <p class="mt-2 small">No payments in this period.</p>
       </div>
     {% endif %}
   </div>
@@ -602,7 +649,7 @@
     
     // Maintain filter parameter if exists
     const urlParams = new URLSearchParams(window.location.search);
-    const filter = urlParams.get('filter') || 'all';
+    const filter = urlParams.get('filter') || 'this_year';
     
     fetch(`/inventory/shops/${shopId}/bills/ajax/?page=${currentBillsPage}&filter=${filter}`)
       .then(response => response.text())
