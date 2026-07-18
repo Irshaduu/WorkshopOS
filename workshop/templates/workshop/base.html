@@ -236,6 +236,30 @@
             margin: 0.2rem 0;
         }
 
+        /* Active item highlight in Manage dropdown */
+        .dropdown-menu-custom .dropdown-item.manage-active {
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+            font-weight: 800 !important;
+            position: relative;
+            padding-left: 16px;
+        }
+        .dropdown-menu-custom .dropdown-item.manage-active::before {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 55%;
+            background: currentColor;
+            border-radius: 2px;
+            opacity: 0.85;
+        }
+        [data-theme="dark"] .dropdown-menu-custom .dropdown-item.manage-active {
+            background: rgba(255,255,255,0.06);
+        }
+
         /* ========================================== */
         /* CONTENT WRAPPER                            */
         /* ========================================== */
@@ -318,36 +342,36 @@
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
                     {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                    <li><a class="dropdown-item fw-bold" href="{% url 'analysis_dashboard' %}" style="color:#7c3aed;"><i class="bi bi-graph-up-arrow"></i> Analysis & Reports</a></li>
+                    <li><a class="dropdown-item fw-bold {% if 'analysis' in request.path %}manage-active{% endif %}" href="{% url 'analysis_dashboard' %}" style="color:#7c3aed;"><i class="bi bi-graph-up-arrow"></i> Analysis & Reports</a></li>
                     <li><hr class="dropdown-divider"></li>
                     {% endif %}
                     
-                    <li><a class="dropdown-item fw-bold text-success" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> General Cashbook</a></li>
+                    <li><a class="dropdown-item fw-bold text-success {% if 'cashbook' in request.path %}manage-active{% endif %}" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> General Cashbook</a></li>
                     <li><hr class="dropdown-divider"></li>
                     
-                    <li><a class="dropdown-item fw-bold" href="{% url 'inventory_list' %}"><i class="bi bi-box-seam"></i> Inventory</a></li>
+                    <li><a class="dropdown-item fw-bold {% if 'inventory/list' in request.path %}manage-active{% endif %}" href="{% url 'inventory_list' %}"><i class="bi bi-box-seam"></i> Inventory</a></li>
                     <li><hr class="dropdown-divider"></li>
                     
-                    <li><a class="dropdown-item fw-bold text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
+                    <li><a class="dropdown-item fw-bold text-danger {% if 'pending-payments' in request.path %}manage-active{% endif %}" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
                     {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                    <li><a class="dropdown-item fw-bold {% if 'paid-bills' in request.path %}text-success{% else %}text-success{% endif %}" href="{% url 'paid_bills_list' %}" style="color: #16a34a !important;"><i class="bi bi-check-circle-fill"></i> Paid Bills</a></li>
+                    <li><a class="dropdown-item fw-bold text-success {% if 'paid-bills' in request.path %}manage-active{% endif %}" href="{% url 'paid_bills_list' %}" style="color: #16a34a !important;"><i class="bi bi-check-circle-fill"></i> Paid Bills</a></li>
                     {% endif %}
                     <li><hr class="dropdown-divider"></li>
 
-                    <li><a class="dropdown-item fw-bold {% if 'spare-shops' in request.path %}text-warning{% endif %}" href="{% url 'spare_shop_list' %}"><i class="bi bi-shop"></i> Spare Shops</a></li>
-                    <li><a class="dropdown-item fw-bold text-primary" href="{% url 'supplier_shop_list' %}"><i class="bi bi-shop-window"></i> Supplies Shops</a></li>
+                    <li><a class="dropdown-item fw-bold text-warning {% if 'spare-shops' in request.path %}manage-active{% endif %}" href="{% url 'spare_shop_list' %}"><i class="bi bi-shop"></i> Spare Shops</a></li>
+                    <li><a class="dropdown-item fw-bold text-primary {% if 'inventory/shops' in request.path %}manage-active{% endif %}" href="{% url 'supplier_shop_list' %}"><i class="bi bi-shop-window"></i> Supplies Shops</a></li>
                     <li><hr class="dropdown-divider"></li>
 
-                    <li><a class="dropdown-item fw-bold {% if 'car-profiles' in request.path %}text-primary{% endif %}" href="{% url 'car_profile_list' %}"><i class="bi bi-car-front"></i> Car Profiles</a></li>
+                    <li><a class="dropdown-item fw-bold {% if 'car-profiles' in request.path %}manage-active{% endif %}" href="{% url 'car_profile_list' %}"><i class="bi bi-car-front"></i> Car Profiles</a></li>
                     <li><hr class="dropdown-divider"></li>
 
                     {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                    <li><a class="dropdown-item fw-bold text-primary" href="{% url 'manage_dashboard' %}"><i class="bi bi-people"></i> Manage Accounts</a></li>
+                    <li><a class="dropdown-item fw-bold text-primary {% if '/manage/' in request.path %}manage-active{% endif %}" href="{% url 'manage_dashboard' %}"><i class="bi bi-people"></i> Manage Accounts</a></li>
                     {% endif %}
-                    <li><a class="dropdown-item fw-bold" href="{% url 'master_lists_home' %}"><i class="bi bi-collection"></i> Master Data</a></li>
+                    <li><a class="dropdown-item fw-bold {% if 'master-lists' in request.path %}manage-active{% endif %}" href="{% url 'master_lists_home' %}"><i class="bi bi-collection"></i> Master Data</a></li>
                     {% if request.user|has_group:"Owner" or request.user.is_superuser %}
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item fw-bold text-muted" href="{% url 'trash_list' %}"><i class="bi bi-trash3"></i> Trash</a></li>
+                    <li><a class="dropdown-item fw-bold text-muted {% if request.path == '/trash/' %}manage-active{% endif %}" href="{% url 'trash_list' %}"><i class="bi bi-trash3"></i> Trash</a></li>
                     {% endif %}
                     
                     {% if user.is_authenticated %}
