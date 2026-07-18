@@ -665,7 +665,7 @@
             </form>
         </div>
         <button type="button" class="pp-bulk-btn" id="toggleBulkPanel">
-            <i class="bi bi-wallet2"></i> Bulk Pay
+            <i class="bi bi-wallet2"></i> Fleet Pay
         </button>
 
         <div class="dropdown d-flex align-items-center">
@@ -681,7 +681,7 @@
                 {% if request.user|has_group:"Owner" or request.user.is_superuser %}
                 <li>
                     <a class="dropdown-item py-2" href="{% url 'audit_deleted_bulk_payers' %}">
-                        <i class="bi bi-archive-fill text-primary me-2"></i> Deleted Bulk Payers
+                        <i class="bi bi-archive-fill text-primary me-2"></i> Deleted Fleet Accounts
                     </a>
                 </li>
                 {% endif %}
@@ -694,10 +694,10 @@
 <div class="pp-bulk-panel" id="bulkPayerPanel">
     <div class="pp-bulk-panel-header">
         <span class="pp-bulk-panel-title">
-            <i class="bi bi-wallet2"></i> Bulk Payers
+            <i class="bi bi-wallet2"></i> Fleet Accounts
         </span>
         <button type="button" class="pp-create-btn" id="openCreateModal">
-            <i class="bi bi-plus-circle"></i> Create Bulk Payer
+            <i class="bi bi-plus-circle"></i> Add Fleet Account
         </button>
     </div>
     <div id="bulkPayerListContainer">
@@ -715,7 +715,7 @@
 <!-- Create Bulk Payer Modal -->
 <div class="pp-modal-overlay" id="createBulkModal">
     <div class="pp-modal-box">
-        <h6><i class="bi bi-person-plus text-primary me-1"></i> Create Bulk Payer</h6>
+        <h6><i class="bi bi-person-plus text-primary me-1"></i> Add Fleet Account</h6>
         <p>Enter the customer's name. All their pending job cards will be auto-added.</p>
         <form method="POST" action="{% url 'bulk_payer_create' %}">
             {% csrf_token %}
@@ -739,7 +739,7 @@
             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
                 <div class="pp-picker-title">
                     <i class="bi bi-people-fill" style="color:#2563eb;"></i>
-                    Select Bulk Payer
+                    Select Fleet Account
                 </div>
                 <button class="pp-picker-close" id="pickerCloseBtn" aria-label="Close" style="position:static; flex-shrink:0; margin-top:2px;">
                     <i class="bi bi-x"></i>
@@ -770,7 +770,7 @@
             {% else %}
                 <div class="pp-picker-empty">
                     <i class="bi bi-people" style="font-size:2rem; display:block; margin-bottom:8px; opacity:0.4;"></i>
-                    No bulk payers found.<br>
+                    No fleet accounts found.<br>
                     <a href="#" onclick="openCreateModal(); closePayerPicker(); return false;" style="color:#2563eb; font-weight:600;">Create one first</a>
                 </div>
             {% endif %}
@@ -789,7 +789,7 @@
                 <i class="bi bi-box-arrow-in-right"></i>
             </div>
             <h5>Confirm Transfer</h5>
-            <p>This bill will be moved to a bulk payer group.</p>
+            <p>This bill will be moved to a fleet account.</p>
         </div>
 
         <!-- Body -->
@@ -805,7 +805,7 @@
                     <i class="bi bi-arrow-right"></i>
                 </div>
                 <div class="pp-confirm-route-to">
-                    <div class="pp-confirm-route-label">Bulk Payer</div>
+                    <div class="pp-confirm-route-label">Fleet Account</div>
                     <div class="pp-confirm-route-value" id="confirm-payer">—</div>
                     <div class="pp-confirm-route-sub">Group Account</div>
                 </div>

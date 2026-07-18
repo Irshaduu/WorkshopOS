@@ -9,6 +9,8 @@ from unittest.mock import patch
 from decouple import config as real_config
 
 def mocked_config(key, default=''):
+    if key == 'OWNER_1_USERNAME': return 'Sahad'
+    if key == 'OWNER_2_USERNAME': return 'Rijas'
     if key == 'OWNER_1_MOBILE': return '+15005550001'
     if key == 'OWNER_2_MOBILE': return '+15005550002'
     if key == 'TWILIO_ACCOUNT_SID': return ''  # Trigger terminal fallback

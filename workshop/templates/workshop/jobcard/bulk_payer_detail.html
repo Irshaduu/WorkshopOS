@@ -1,7 +1,7 @@
 {% extends 'workshop/base.html' %}
 {% load humanize custom_filters %}
 
-{% block title %}{{ bulk_payer.customer_name }} — Bulk Payer{% endblock %}
+{% block title %}{{ bulk_payer.customer_name }} — Fleet Account{% endblock %}
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
@@ -126,6 +126,28 @@
     .bd-summary-item.balance::before {
         content: ''; position: absolute; right: -20px; top: -20px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(239,68,68,0.1) 0%, rgba(255,255,255,0) 70%); border-radius: 50%;
     }
+    .bd-summary-item.advance::before {
+        content: ''; position: absolute; right: -20px; top: -20px; width: 120px; height: 120px; background: radial-gradient(circle, rgba(5,150,105,0.2) 0%, rgba(255,255,255,0) 70%); border-radius: 50%;
+    }
+    .bd-summary-value.advance-credit { color: #059669; }
+    /* Settled Bills section */
+    .bd-settled-toggle {
+        display: flex; align-items: center; gap: 10px;
+        padding: 14px 20px; background: #f0fdf4;
+        border: 1px solid #bbf7d0; border-radius: 16px;
+        cursor: pointer; font-family: var(--font-body);
+        font-size: 0.85rem; font-weight: 700; color: #15803d;
+        margin-top: 28px; width: 100%; text-align: left;
+        transition: background 0.2s ease;
+    }
+    .bd-settled-toggle:hover { background: #dcfce7; }
+    .bd-settled-count {
+        background: #bbf7d0; color: #15803d;
+        border-radius: 20px; padding: 2px 10px;
+        font-size: 0.75rem; font-weight: 800;
+    }
+    .bd-card-settled { opacity: 0.7; }
+    .bd-badge-settled { background: #dcfce7 !important; color: #15803d !important; border: none !important; }
     .bd-summary-label {
         font-family: var(--font-body);
         font-size: 0.75rem;
@@ -785,6 +807,12 @@
             <span class="bd-summary-label">Balance</span>
             <span class="bd-summary-value danger">₹{{ total_balance|floatformat:0|intcomma }}</span>
         </div>
+        {% if advance_balance > 0 %}
+        <div class="bd-summary-item advance">
+            <span class="bd-summary-label">Advance Credit</span>
+            <span class="bd-summary-value advance-credit">₹{{ advance_balance|floatformat:0|intcomma }}</span>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Action Buttons Row -->
@@ -909,6 +937,57 @@
     <i class="bi bi-car-front-fill empty-icon"></i>
     <h5 style="font-family: var(--font-display); font-size: 1.3rem; font-weight: 700; color: #64748b;">No pending cars</h5>
     <p style="font-family: var(--font-body); font-size: 0.85rem; color: #94a3b8;">All bills for {{ bulk_payer.customer_name }} are settled, or no cars have been added yet.</p>
+</div>
+{% endif %}
+
+{% if paid_cards %}
+<button class="bd-settled-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#settledBillsSection" aria-expanded="false">
+    <i class="bi bi-check-circle-fill"></i>
+    Settled Bills
+    <span class="bd-settled-count">{{ paid_cards|length }}</span>
+    <i class="bi bi-chevron-down ms-auto"></i>
+</button>
+<div class="collapse" id="settledBillsSection">
+    <div class="row g-3 mt-1">
+        {% for job in paid_cards %}
+        {% with color=job.get_car_color_hex|default:'#475569' %}
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="bd-card bd-card-settled" style="--card-glow: {{ color }}22;">
+                <a href="{% url 'jobcard_detail' job.pk %}" class="bd-card-link">
+                    <div class="bd-stripe
+                        {% if not job.car_color %}stripe-unset
+                        {% elif job.car_color == 'White' %}stripe-white
+                        {% endif %}"
+                        style="--stripe-color: {{ color }};"></div>
+                    <div class="bd-body">
+                        <div class="bd-card-top">
+                            <span class="bd-status-badge bd-badge-settled">Settled ✓</span>
+                        </div>
+                        <div class="bd-vehicle">{{ job.brand_name }} {{ job.model_name }}</div>
+                        <div class="bd-reg-row">
+                            <span class="bd-reg">{{ job.registration_number }}</span>
+                        </div>
+                        <div class="bd-date">
+                            <i class="bi bi-calendar3"></i>
+                            Admitted: {{ job.admitted_date|date:"d M, Y" }}
+                        </div>
+                        <div class="bd-financials">
+                            <div class="bd-fin-row">
+                                <span class="bd-fin-label">Bill</span>
+                                <span class="bd-fin-value">₹{{ job.total_bill_amount|floatformat:0|intcomma }}</span>
+                            </div>
+                            <div class="bd-fin-row">
+                                <span class="bd-fin-label">Received</span>
+                                <span class="bd-fin-value success">₹{{ job.received_amount|floatformat:0|intcomma }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+        {% endwith %}
+        {% endfor %}
+    </div>
 </div>
 {% endif %}
 

@@ -611,6 +611,10 @@ class BulkPayer(models.Model):
     
     total_billed_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    advance_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="Running credit from overpayments. Applied automatically on the next payment."
+    )
 
     class Meta:
         ordering = ['customer_name']

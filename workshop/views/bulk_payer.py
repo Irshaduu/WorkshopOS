@@ -128,20 +128,27 @@ def bulk_payer_detail(request, pk):
     """
     bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=False)
     
-    # Get pending/partial job cards only (PAID and BULK_PAID are hidden)
+    # Pending/Partial cards — used for totals and the main active list
     base_cards_query = bulk_payer.job_cards.filter(
         payment_status__in=['PENDING', 'PARTIAL']
+    )
+    # Settled cards — display-only, capped at 30 most recent to avoid huge lists
+    paid_cards = list(
+        bulk_payer.job_cards
+        .filter(payment_status='BULK_PAID')
+        .order_by('-admitted_date', '-pk')[:30]
     )
     
     # -------------------------------------------------------------------------
     # 1. Grand totals (Calculated efficiently in SQL without Python loops)
+    #    Totals are always calculated from pending/partial only.
     # -------------------------------------------------------------------------
     total_received_all = base_cards_query.aggregate(s=Sum('received_amount'))['s'] or Decimal('0.0')
     total_spares = JobCardSpareItem.objects.filter(job_card__in=base_cards_query).aggregate(s=Sum('total_price'))['s'] or Decimal('0.0')
     total_labour = JobCardLabourItem.objects.filter(job_card__in=base_cards_query).aggregate(s=Sum('amount'))['s'] or Decimal('0.0')
     
     total_bill_all = total_spares + total_labour
-    total_balance_all = max(Decimal('0.0'), total_bill_all - total_received_all)
+    total_balance_all = total_bill_all - total_received_all  # Can be negative (fully settled)
     card_count = base_cards_query.count()
 
     # -------------------------------------------------------------------------
@@ -198,9 +205,11 @@ def bulk_payer_detail(request, pk):
         'bulk_payer': bulk_payer,
         'cards': page_obj,
         'page_obj': page_obj,
+        'paid_cards': paid_cards,
         'total_bill': total_bill_all,
         'total_received': total_received_all,
         'total_balance': total_balance_all,
+        'advance_balance': bulk_payer.advance_balance,
         'card_count': card_count,
         'payment_history': bulk_payer.payment_history.filter(is_trashed=False).order_by('-created_at')
     })
@@ -288,13 +297,20 @@ def bulk_payer_pay(request, pk):
     
 
     with transaction.atomic():
+        # Lock the payer row to safely read/update advance_balance
+        bulk_payer = BulkPayer.objects.select_for_update().get(pk=pk)
+
+        # Pool new payment with any existing advance credit
+        advance_used = bulk_payer.advance_balance
+        remaining_funds = lump_sum + advance_used
+        bulk_payer.advance_balance = Decimal('0')
+
         pending_cards = bulk_payer.job_cards.select_for_update().filter(
             payment_status__in=['PENDING', 'PARTIAL']
         ).annotate(
             balance_amount=ExpressionWrapper(F('total_bill_amount') - F('received_amount'), output_field=DecimalField())
         ).order_by('admitted_date', 'pk')  # Oldest first
         
-        remaining_funds = lump_sum
         jobs_updated = 0
         history_details = []  # Track per-job breakdown for history
         
@@ -332,16 +348,31 @@ def bulk_payer_pay(request, pk):
                 'status': job.payment_status,
             })
         
-        # Create payment history record
+        # Store any remaining funds as advance credit for future bills
+        new_advance = remaining_funds if remaining_funds > Decimal('0') else Decimal('0')
+        bulk_payer.advance_balance = new_advance
+        bulk_payer.save(update_fields=['advance_balance'])
+
+        # Record history with full advance tracking (dict format for new records)
         BulkPaymentHistory.objects.create(
             bulk_payer=bulk_payer,
             amount=lump_sum,
             payment_method=payment_method,
             jobs_affected=jobs_updated,
-            details=json.dumps(history_details),
+            details=json.dumps({
+                'jobs': history_details,
+                'advance_used': str(advance_used),
+                'advance_stored': str(new_advance),
+            }),
         )
-    
-    messages.success(request, f"₹{lump_sum:,.0f} distributed across {jobs_updated} job(s) for {bulk_payer.customer_name}.")
+
+    # Build descriptive success message
+    msg_parts = [f"₹{lump_sum:,.0f} processed for {bulk_payer.customer_name}."]
+    if jobs_updated:
+        msg_parts.append(f"{jobs_updated} job(s) settled.")
+    if new_advance > 0:
+        msg_parts.append(f"₹{new_advance:,.0f} stored as advance credit.")
+    messages.success(request, " ".join(msg_parts))
     return redirect('bulk_payer_detail', pk=pk)
 
 
@@ -409,13 +440,27 @@ def bulk_payment_history_delete(request, pk, history_pk):
     history = get_object_or_404(BulkPaymentHistory, pk=history_pk, bulk_payer=bulk_payer)
     
     with transaction.atomic():
-        # Reverse payments from the history snapshot
+        # Lock the payer row for safe advance_balance reversal
+        bulk_payer = BulkPayer.objects.select_for_update().get(pk=pk)
+
+        # Parse history details — handle both old list format and new dict format
         try:
-            details = json.loads(history.details)
+            raw = json.loads(history.details)
         except (json.JSONDecodeError, TypeError):
-            details = []
-        
-        for entry in details:
+            raw = []
+
+        if isinstance(raw, list):
+            # Old format: plain list of job entries
+            job_entries = raw
+            advance_stored = Decimal('0')
+            advance_used = Decimal('0')
+        else:
+            # New format: dict with jobs + advance tracking
+            job_entries = raw.get('jobs', [])
+            advance_stored = Decimal(str(raw.get('advance_stored', '0')))
+            advance_used = Decimal(str(raw.get('advance_used', '0')))
+
+        for entry in job_entries:
             try:
                 job = JobCard.objects.select_for_update().get(pk=entry['job_id'])
                 reversed_amount = Decimal(str(entry['paid']))
@@ -430,7 +475,13 @@ def bulk_payment_history_delete(request, pk, history_pk):
                 job.save()
             except (JobCard.DoesNotExist, KeyError, Exception):
                 continue
-        
+
+        # Reverse advance balance changes from this payment:
+        # remove what this payment stored as advance, restore what it consumed
+        new_advance = max(Decimal('0'), bulk_payer.advance_balance - advance_stored + advance_used)
+        bulk_payer.advance_balance = new_advance
+        bulk_payer.save(update_fields=['advance_balance'])
+
         history.is_trashed = True
         history.save()
     
