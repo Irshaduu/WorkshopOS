@@ -103,67 +103,85 @@ def spare_shop_detail(request, pk):
     group_field = 'ordered_date' if sort_by == 'ordered' else 'received_date'
 
     # All spare items from this shop, ordered newest first for history display
+    # NOTE: No Coalesce fallback — items with no date get group_date=None
+    # and are correctly shown under "No Date Recorded" in the template.
     items_qs = (
         JobCardSpareItem.objects
         .filter(shop=shop)
         .select_related('job_card')
         .annotate(
-            group_date=Coalesce(group_field, 'job_card__admitted_date')
+            group_date=F(group_field)
         )
-        .order_by('-group_date', '-pk')
+        .order_by(F('group_date').desc(nulls_first=True), '-pk')
     )
 
     payment_qs = shop.payments.filter(is_trashed=False).order_by('-created_at')
 
     # Date Filtering — calendar-aligned, consistent with Paid Bills & Delivered sections
+    # Filter applies to group_field so "Today" in Received mode = received today,
+    # and "Today" in Ordered mode = ordered today.
     filter_type = request.GET.get('filter', 'this_year')
     start_date_str = ''
     end_date_str = ''
     today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
+    null_key = f'{group_field}__isnull'  # e.g. 'received_date__isnull'
+
+    from django.db.models import Q as _Q
+
+    def _date_q(exact=None, gte=None, lte=None):
+        """Build a Q that matches group_field date range + always includes NULL-date items."""
+        if exact is not None:
+            return _Q(**{group_field: exact}) | _Q(**{null_key: True})
+        kwargs = {}
+        if gte is not None:
+            kwargs[f'{group_field}__gte'] = gte
+        if lte is not None:
+            kwargs[f'{group_field}__lte'] = lte
+        return _Q(**kwargs) | _Q(**{null_key: True})
 
     if filter_type == 'today':
-        items_qs    = items_qs.filter(ordered_date=today)
-        payment_qs  = payment_qs.filter(created_at__date=today)
+        items_qs   = items_qs.filter(_date_q(exact=today))
+        payment_qs = payment_qs.filter(created_at__date=today)
 
     elif filter_type == 'this_week':
         start = today - timedelta(days=today.weekday())  # Monday of current week
-        items_qs    = items_qs.filter(ordered_date__gte=start)
-        payment_qs  = payment_qs.filter(created_at__date__gte=start)
+        items_qs   = items_qs.filter(_date_q(gte=start))
+        payment_qs = payment_qs.filter(created_at__date__gte=start)
 
     elif filter_type == 'this_month':
         start = today.replace(day=1)
-        items_qs    = items_qs.filter(ordered_date__gte=start)
-        payment_qs  = payment_qs.filter(created_at__date__gte=start)
+        items_qs   = items_qs.filter(_date_q(gte=start))
+        payment_qs = payment_qs.filter(created_at__date__gte=start)
 
     elif filter_type == 'this_year':
         start = today.replace(month=1, day=1)
-        items_qs    = items_qs.filter(ordered_date__gte=start)
-        payment_qs  = payment_qs.filter(created_at__date__gte=start)
+        items_qs   = items_qs.filter(_date_q(gte=start))
+        payment_qs = payment_qs.filter(created_at__date__gte=start)
 
     elif filter_type == 'last_week':
         start = today - timedelta(days=today.weekday() + 7)  # Previous Mon
         end   = start + timedelta(days=6)                     # Previous Sun
-        items_qs    = items_qs.filter(ordered_date__gte=start, ordered_date__lte=end)
-        payment_qs  = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+        items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
+        payment_qs = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
 
     elif filter_type == 'last_month':
         first_of_this_month = today.replace(day=1)
         last_of_last_month  = first_of_this_month - timedelta(days=1)
         first_of_last_month = last_of_last_month.replace(day=1)
-        items_qs    = items_qs.filter(ordered_date__gte=first_of_last_month, ordered_date__lte=last_of_last_month)
-        payment_qs  = payment_qs.filter(created_at__date__gte=first_of_last_month, created_at__date__lte=last_of_last_month)
+        items_qs   = items_qs.filter(_date_q(gte=first_of_last_month, lte=last_of_last_month))
+        payment_qs = payment_qs.filter(created_at__date__gte=first_of_last_month, created_at__date__lte=last_of_last_month)
 
     elif filter_type == 'last_year':
         start = today.replace(year=today.year - 1, month=1,  day=1)
         end   = today.replace(year=today.year - 1, month=12, day=31)
-        items_qs    = items_qs.filter(ordered_date__gte=start, ordered_date__lte=end)
-        payment_qs  = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+        items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
+        payment_qs = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
 
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
         end_date_str   = request.GET.get('end_date', '')
         if start_date_str and end_date_str:
-            items_qs   = items_qs.filter(ordered_date__gte=start_date_str, ordered_date__lte=end_date_str)
+            items_qs   = items_qs.filter(_date_q(gte=start_date_str, lte=end_date_str))
             payment_qs = payment_qs.filter(created_at__date__gte=start_date_str, created_at__date__lte=end_date_str)
     # filter_type == 'all' → no date filter applied
 
@@ -352,38 +370,89 @@ def spare_shop_print(request, pk):
         JobCardSpareItem.objects
         .filter(shop=shop)
         .select_related('job_card')
-        .annotate(group_date=Coalesce(group_field, 'job_card__admitted_date'))
-        .order_by('-group_date', '-pk')
+        .annotate(group_date=F(group_field))
+        .order_by(F('group_date').desc(nulls_first=True), '-pk')
     )
 
     payment_qs = shop.payments.filter(is_trashed=False)
-
-    # Date Filtering
+    
+    # Date Filtering — mirrors detail view exactly (calendar-aligned)
+    # Filters on group_field so sort mode and filter mode always agree.
     filter_type = request.GET.get('filter', 'all')
     start_date_str = ''
     end_date_str = ''
-    today = date.today()
+    today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
+    null_key = f'{group_field}__isnull'
 
-    if filter_type == 'month':
-        sd = today - timedelta(days=30)
-        items_qs = items_qs.filter(ordered_date__gte=sd)
-        payment_qs = payment_qs.filter(created_at__date__gte=sd)
-    elif filter_type == 'year':
-        sd = today - timedelta(days=365)
-        items_qs = items_qs.filter(ordered_date__gte=sd)
-        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+    from django.db.models import Q as _Q
+
+    def _date_q(exact=None, gte=None, lte=None):
+        if exact is not None:
+            return _Q(**{group_field: exact}) | _Q(**{null_key: True})
+        kwargs = {}
+        if gte is not None:
+            kwargs[f'{group_field}__gte'] = gte
+        if lte is not None:
+            kwargs[f'{group_field}__lte'] = lte
+        return _Q(**kwargs) | _Q(**{null_key: True})
+
+    if filter_type == 'today':
+        items_qs   = items_qs.filter(_date_q(exact=today))
+        payment_qs = payment_qs.filter(created_at__date=today)
+
+    elif filter_type == 'this_week':
+        start = today - timedelta(days=today.weekday())
+        items_qs   = items_qs.filter(_date_q(gte=start))
+        payment_qs = payment_qs.filter(created_at__date__gte=start)
+
+    elif filter_type == 'this_month':
+        start = today.replace(day=1)
+        items_qs   = items_qs.filter(_date_q(gte=start))
+        payment_qs = payment_qs.filter(created_at__date__gte=start)
+
+    elif filter_type == 'this_year':
+        start = today.replace(month=1, day=1)
+        items_qs   = items_qs.filter(_date_q(gte=start))
+        payment_qs = payment_qs.filter(created_at__date__gte=start)
+
+    elif filter_type == 'last_week':
+        start = today - timedelta(days=today.weekday() + 7)
+        end   = start + timedelta(days=6)
+        items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
+        payment_qs = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+
+    elif filter_type == 'last_month':
+        first_of_this_month = today.replace(day=1)
+        last_of_last_month  = first_of_this_month - timedelta(days=1)
+        first_of_last_month = last_of_last_month.replace(day=1)
+        items_qs   = items_qs.filter(_date_q(gte=first_of_last_month, lte=last_of_last_month))
+        payment_qs = payment_qs.filter(created_at__date__gte=first_of_last_month, created_at__date__lte=last_of_last_month)
+
+    elif filter_type == 'last_year':
+        start = today.replace(year=today.year - 1, month=1,  day=1)
+        end   = today.replace(year=today.year - 1, month=12, day=31)
+        items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
+        payment_qs = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
-        end_date_str = request.GET.get('end_date', '')
+        end_date_str   = request.GET.get('end_date', '')
         if start_date_str and end_date_str:
-            items_qs = items_qs.filter(
-                ordered_date__gte=start_date_str,
-                ordered_date__lte=end_date_str
-            )
+            items_qs   = items_qs.filter(_date_q(gte=start_date_str, lte=end_date_str))
             payment_qs = payment_qs.filter(
                 created_at__date__gte=start_date_str,
                 created_at__date__lte=end_date_str
             )
+    # Legacy aliases for any old bookmarked print URLs
+    elif filter_type == 'month':
+        sd = today - timedelta(days=30)
+        items_qs   = items_qs.filter(_date_q(gte=sd))
+        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+    elif filter_type == 'year':
+        sd = today - timedelta(days=365)
+        items_qs   = items_qs.filter(_date_q(gte=sd))
+        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+    # filter_type == 'all' → no date filter applied
 
     # Grand totals (pure SQL)
     total_purchases = items_qs.aggregate(
@@ -445,8 +514,8 @@ def spare_shop_add_unassigned(request, pk):
                     unit_price=safe_price,
                     quantity=safe_qty,
                     status='RECEIVED',
-                    ordered_date=date.today(),
-                    received_date=date.today()
+                    ordered_date=timezone.localdate(),
+                    received_date=timezone.localdate()
                 )
                 messages.success(request, f"Added '{spare_part_name}' to shop ledger.")
             except (InvalidOperation, ValueError, TypeError):

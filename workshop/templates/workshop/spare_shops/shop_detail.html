@@ -183,6 +183,17 @@
                     </form>
                 </div>
             </li>
+
+            <li><hr class="dropdown-divider"></li>
+            <li>
+                <div class="px-2 pb-1 pt-1">
+                    <a class="dropdown-item {% if filter_type == 'all' %}active{% endif %}" href="?filter=all"
+                       style="border: 1px dashed rgba(239,68,68,0.4); border-radius: 6px; color: #f87171; font-size: 0.72rem; padding: 3px 8px;">
+                        <i class="bi bi-exclamation-triangle" style="opacity: 0.5; font-size: 0.65rem; margin-right: 4px;"></i>All Time
+                        <span style="font-size: 0.6rem; opacity: 0.5; margin-left: 3px; font-style: italic;">slow</span>
+                    </a>
+                </div>
+            </li>
         </ul>
   </div>
 </div>
@@ -351,8 +362,14 @@
           {% for group in grouped_items %}
           <!-- Date Separator Row -->
           <tr>
-            <td colspan="9" class="py-2 ps-3 text-muted" style="font-size: 0.85rem;">
-              {% if group.grouper %}{{ group.grouper|date:"d/m/Y" }}{% else %}Date Pending{% endif %}
+            <td colspan="9" class="py-2 ps-3" style="font-size: 0.82rem;">
+              {% if group.grouper %}
+                <span class="text-muted">{{ group.grouper|date:"d/m/Y" }}</span>
+              {% else %}
+                <span style="color: #f87171; font-style: italic;">
+                  <i class="bi bi-calendar-x me-1" style="font-size: 0.75rem;"></i>No Date Recorded
+                </span>
+              {% endif %}
             </td>
           </tr>
           

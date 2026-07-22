@@ -1,7 +1,7 @@
 from django.test import TestCase, Client, RequestFactory
 from django.contrib.auth.models import User
-from .models import UserSession
-from .middleware import SessionTrackingMiddleware
+from workshop.models import UserSession
+from workshop.middleware import SessionTrackingMiddleware
 from django.utils import timezone
 
 class MiddlewareSecurityTests(TestCase):

@@ -3,8 +3,8 @@ from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
-from .models import UserSession, FailedAttempt, JobCard, CarBrand, CarModel, SpareShop, SpareShopPayment, JobCardSpareItem
-from .auth_views import (
+from workshop.models import UserSession, FailedAttempt, JobCard, CarBrand, CarModel, SpareShop, SpareShopPayment, JobCardSpareItem
+from workshop.auth_views import (
     normalize_phone, mask_phone, get_client_ip, 
     get_owner_mobile, get_owner_username_by_mobile
 )

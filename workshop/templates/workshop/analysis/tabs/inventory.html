@@ -1,0 +1,504 @@
+<!--
+  Zone 3: Spare Parts Intelligence — Phase 5
+  Context: spare_revenue, spare_cost, spare_profit, spare_margin, total_qty,
+           total_items, top_by_qty, top_by_profit, top_shops,
+           status_pending/ordered/received, period_label,
+           trend_labels, trend_revenue, chart_part_names, chart_part_qty,
+           chart_shop_names, chart_shop_rev, status_labels, status_data
+-->
+
+{% if not top_by_qty %}
+  <div class="zone-empty">
+    <i class="bi bi-box-seam"></i>
+    No spare parts data found for this period.
+  </div>
+{% else %}
+
+<!-- ── Hero KPI Row ──────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-stars"></i> Period Highlights — {{ period_label }}</p>
+<div class="kpi-grid kpi-grid-3">
+
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-label">🔩 Spare Revenue</div>
+    <div class="kpi-card-value">₹{{ spare_revenue|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Cost: ₹{{ spare_cost|floatformat:0 }}</div>
+  </div>
+
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">💰 Spare Profit</div>
+    <div class="kpi-card-value">₹{{ spare_profit|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Margin: {{ spare_margin }}%</div>
+  </div>
+
+  <div class="kpi-card kpi-purple">
+    <div class="kpi-card-label">📦 Parts Used</div>
+    <div class="kpi-card-value">{{ total_qty }}</div>
+    <div class="kpi-card-sub">Across {{ total_items }} line items</div>
+  </div>
+
+</div>
+
+<!-- Status pills row -->
+<div class="status-pill-row">
+  <span class="status-pill pill-pending">
+    <i class="bi bi-clock-history"></i> {{ status_pending }} Pending
+  </span>
+  <span class="status-pill pill-ordered">
+    <i class="bi bi-truck"></i> {{ status_ordered }} Ordered
+  </span>
+  <span class="status-pill pill-received">
+    <i class="bi bi-check2-circle"></i> {{ status_received }} Received
+  </span>
+</div>
+
+<!-- ── Charts Row ──────────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-bar-chart-line"></i> Analytics Charts</p>
+<div class="chart-grid">
+
+  <!-- Chart 1: Monthly Spare Revenue Trend -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-graph-up-arrow"></i> Monthly Spare Revenue Trend</div>
+    <div class="chart-canvas-wrap"><canvas id="spareTrendChart"></canvas></div>
+  </div>
+
+  <!-- Chart 2: Top Parts by Quantity (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-list-ol"></i> Top Parts by Usage</div>
+    <div class="chart-canvas-wrap"><canvas id="spareQtyChart"></canvas></div>
+  </div>
+
+  <!-- Chart 3: Parts Status Doughnut -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-pie-chart"></i> Parts Status Breakdown</div>
+    <div class="chart-canvas-wrap"><canvas id="spareStatusChart"></canvas></div>
+  </div>
+
+  <!-- Chart 4: Top Shops by Revenue -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-shop"></i> Top Supplier Shops</div>
+    <div class="chart-canvas-wrap"><canvas id="spareShopChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ── Top 20 Parts by Quantity Table ──────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-tools"></i> Most Used Spare Parts</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Part Name</th>
+        <th>Qty Used</th>
+        <th>Jobs</th>
+        <th>Revenue</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for part in top_by_qty %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}<span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}<span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}<span class="rank-badge rank-3">3</span>
+          {% else %}<span class="rank-badge rank-other">{{ forloop.counter }}</span>
+          {% endif %}
+        </td>
+        <td style="font-weight:600;">{{ part.spare_part_name }}</td>
+        <td>{{ part.qty|floatformat:1 }}</td>
+        <td>{{ part.jobs }}</td>
+        <td class="text-accent">₹{{ part.revenue|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+
+<!-- ── Top 10 Most Profitable Parts Table ──────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-currency-rupee"></i> Most Profitable Spare Parts</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Part Name</th>
+        <th>Total Profit</th>
+        <th>Total Revenue</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for part in top_by_profit %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}<span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}<span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}<span class="rank-badge rank-3">3</span>
+          {% else %}<span class="rank-badge rank-other">{{ forloop.counter }}</span>
+          {% endif %}
+        </td>
+        <td style="font-weight:600;">{{ part.spare_part_name }}</td>
+        <td class="text-accent">₹{{ part.profit|floatformat:0 }}</td>
+        <td>₹{{ part.revenue|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+
+{% endif %}
+
+{{ chart_part_names|json_script:"chart_part_names_data" }}
+{{ chart_part_qty|json_script:"chart_part_qty_data" }}
+{{ chart_shop_names|json_script:"chart_shop_names_data" }}
+{{ chart_shop_rev|json_script:"chart_shop_rev_data" }}
+{{ status_data|json_script:"status_data_data" }}
+{{ status_labels|json_script:"status_labels_data" }}
+{{ trend_labels|json_script:"trend_labels_data" }}
+{{ trend_revenue|json_script:"trend_revenue_data" }}
+<script>
+(function () {
+  'use strict';
+
+  const trendLabels = JSON.parse(document.getElementById('trend_labels_data').textContent);
+  const trendRevenue = JSON.parse(document.getElementById('trend_revenue_data').textContent);
+  const partNames = JSON.parse(document.getElementById('chart_part_names_data').textContent);
+  const partQty = JSON.parse(document.getElementById('chart_part_qty_data').textContent);
+  const shopNames = JSON.parse(document.getElementById('chart_shop_names_data').textContent);
+  const shopRev = JSON.parse(document.getElementById('chart_shop_rev_data').textContent);
+  const statusLabels = JSON.parse(document.getElementById('status_labels_data').textContent);
+  const statusData = JSON.parse(document.getElementById('status_data_data').textContent);
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+
+  const baseScales = {
+    x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+    y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+  };
+  const noLegend = { legend: { display: false } };
+
+  // ── Chart 1: Monthly Spare Revenue Trend (area line) ──
+  if (document.getElementById('spareTrendChart') && trendLabels.length) {
+    const ctx = document.getElementById('spareTrendChart').getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 220);
+    grad.addColorStop(0, 'rgba(245,158,11,0.35)');
+    grad.addColorStop(1, 'rgba(245,158,11,0.02)');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: trendLabels,
+        datasets: [{
+          label: 'Spare Revenue',
+          data: trendRevenue,
+          borderColor: '#f59e0b',
+          backgroundColor: grad,
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: '#f59e0b',
+          fill: true,
+          tension: 0.4,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { ...noLegend, tooltip: { callbacks: { label: (c) => '₹' + c.parsed.y.toLocaleString('en-IN') } } },
+        scales: baseScales,
+      },
+    });
+  }
+
+  // ── Chart 2: Top Parts by Quantity (horizontal bar) ──
+  if (document.getElementById('spareQtyChart') && partNames.length) {
+    new Chart(document.getElementById('spareQtyChart'), {
+      type: 'bar',
+      data: {
+        labels: partNames,
+        datasets: [{ label: 'Qty', data: partQty, backgroundColor: '#6366f1cc', borderRadius: 5, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: noLegend,
+        scales: {
+          x: baseScales.x,
+          y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } },
+        },
+      },
+    });
+  }
+
+  // ── Chart 3: Parts Status Doughnut ──
+  if (document.getElementById('spareStatusChart') && statusData.some(v => v > 0)) {
+    new Chart(document.getElementById('spareStatusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: statusLabels,
+        datasets: [{
+          data: statusData,
+          backgroundColor: ['#f59e0bcc', '#6366f1cc', '#10b981cc'],
+          borderWidth: 0,
+          hoverOffset: 8,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 12, boxWidth: 12 } },
+        },
+        cutout: '65%',
+      },
+    });
+  }
+
+  // ── Chart 4: Top Shops by Revenue (bar) ──
+  if (document.getElementById('spareShopChart') && shopNames.length) {
+    new Chart(document.getElementById('spareShopChart'), {
+      type: 'bar',
+      data: {
+        labels: shopNames,
+        datasets: [{ label: 'Revenue ₹', data: shopRev, backgroundColor: '#10b981cc', borderRadius: 6, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { ...noLegend, tooltip: { callbacks: { label: (c) => '₹' + c.parsed.y.toLocaleString('en-IN') } } },
+        scales: baseScales,
+      },
+    });
+  }
+})();
+</script>
+<!--
+  Zone 5: Inventory & Supplier Health — Phase 7
+  Two supplier systems: A) SpareShop (spare parts), B) SupplierShop (inventory)
+-->
+
+<!-- ── Section A: Spare Parts Shops ──────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-shop-window"></i> Spare Parts Suppliers — All-time Balances</p>
+
+<div class="kpi-grid kpi-grid-3" style="margin-bottom:1rem;">
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-label">🛒 Total Purchased</div>
+    <div class="kpi-card-value">₹{{ total_spare_purchased|floatformat:0 }}</div>
+    <div class="kpi-card-sub">From spare shops</div>
+  </div>
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">✅ Total Paid</div>
+    <div class="kpi-card-value">₹{{ total_spare_paid|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Cleared payments</div>
+  </div>
+  <div class="kpi-card kpi-red">
+    <div class="kpi-card-label">⚠️ Outstanding Balance</div>
+    <div class="kpi-card-value">₹{{ total_spare_balance|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Still owed to shops</div>
+  </div>
+</div>
+
+<!-- Spare shops table -->
+{% if spare_shops %}
+<div class="chart-card mech-table-wrap" style="margin-bottom:1.5rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead>
+      <tr><th>#</th><th>Shop Name</th><th>Purchased</th><th>Paid</th><th>Balance</th></tr>
+    </thead>
+    <tbody>
+      {% for s in spare_shops %}
+      <tr>
+        <td><span class="rank-badge rank-other">{{ forloop.counter }}</span></td>
+        <td style="font-weight:600;">{{ s.name }}</td>
+        <td>₹{{ s.purchased|floatformat:0 }}</td>
+        <td class="text-accent">₹{{ s.paid|floatformat:0 }}</td>
+        <td class="{% if s.balance > 0 %}inv-balance-due{% else %}inv-balance-clear{% endif %}">
+          ₹{{ s.balance|floatformat:0 }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+{% endif %}
+
+<!-- ── Section B: Inventory Supplier Shops ─────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-boxes"></i> Inventory Suppliers — All-time Balances</p>
+
+<div class="kpi-grid kpi-grid-3" style="margin-bottom:1rem;">
+  <div class="kpi-card kpi-purple">
+    <div class="kpi-card-label">📦 Total Billed</div>
+    <div class="kpi-card-value">₹{{ total_inv_billed|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Inventory restocks</div>
+  </div>
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">✅ Total Paid</div>
+    <div class="kpi-card-value">₹{{ total_inv_paid|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Cleared payments</div>
+  </div>
+  <div class="kpi-card kpi-red">
+    <div class="kpi-card-label">⚠️ Outstanding Balance</div>
+    <div class="kpi-card-value">₹{{ total_inv_balance|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Still owed to suppliers</div>
+  </div>
+</div>
+
+{% if inv_suppliers %}
+<div class="chart-card mech-table-wrap" style="margin-bottom:1.5rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead>
+      <tr><th>#</th><th>Supplier</th><th>Billed</th><th>Paid</th><th>Balance</th></tr>
+    </thead>
+    <tbody>
+      {% for s in inv_suppliers %}
+      <tr>
+        <td><span class="rank-badge rank-other">{{ forloop.counter }}</span></td>
+        <td style="font-weight:600;">{{ s.name }}</td>
+        <td>₹{{ s.billed|floatformat:0 }}</td>
+        <td class="text-accent">₹{{ s.paid|floatformat:0 }}</td>
+        <td class="{% if s.balance > 0 %}inv-balance-due{% else %}inv-balance-clear{% endif %}">
+          ₹{{ s.balance|floatformat:0 }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+{% else %}
+  <div class="zone-empty" style="margin-bottom:1.5rem;">
+    <i class="bi bi-box"></i> No inventory suppliers found.
+  </div>
+{% endif %}
+
+<!-- ── Analytics Charts ────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-graph-up"></i> Analytics Charts — {{ period_label }}</p>
+<div class="chart-grid">
+
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-calendar3"></i> Monthly Spare Purchases (Cost)</div>
+    <div class="chart-canvas-wrap"><canvas id="sparePurchaseTrend"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-shop"></i> Top Shops by Purchased Amount</div>
+    <div class="chart-canvas-wrap"><canvas id="spareShopChart"></canvas></div>
+  </div>
+
+  {% if inv_suppliers %}
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-calendar-check"></i> Monthly Inventory Restock Bills</div>
+    <div class="chart-canvas-wrap"><canvas id="invTrendChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-boxes"></i> Top Inventory Suppliers</div>
+    <div class="chart-canvas-wrap"><canvas id="invSupplierChart"></canvas></div>
+  </div>
+  {% endif %}
+
+</div>
+
+{{ inv_supplier_billed|json_script:"inv_supplier_billed_data" }}
+{{ inv_supplier_names|json_script:"inv_supplier_names_data" }}
+{{ inv_trend_billed|json_script:"inv_trend_billed_data" }}
+{{ inv_trend_labels|json_script:"inv_trend_labels_data" }}
+{{ spare_shop_balance|json_script:"spare_shop_balance_data" }}
+{{ spare_shop_names|json_script:"spare_shop_names_data" }}
+{{ spare_shop_purchased|json_script:"spare_shop_purchased_data" }}
+{{ spare_trend_cost|json_script:"spare_trend_cost_data" }}
+{{ spare_trend_labels|json_script:"spare_trend_labels_data" }}
+<script>
+(function () {
+  'use strict';
+
+  const spareTrendLbl = JSON.parse(document.getElementById('spare_trend_labels_data').textContent);
+  const spareTrendCost = JSON.parse(document.getElementById('spare_trend_cost_data').textContent);
+  const shopNames = JSON.parse(document.getElementById('spare_shop_names_data').textContent);
+  const shopPurchased = JSON.parse(document.getElementById('spare_shop_purchased_data').textContent);
+  const shopBalance = JSON.parse(document.getElementById('spare_shop_balance_data').textContent);
+  const invTrendLbl = JSON.parse(document.getElementById('inv_trend_labels_data').textContent);
+  const invTrendBilled = JSON.parse(document.getElementById('inv_trend_billed_data').textContent);
+  const invSupNames = JSON.parse(document.getElementById('inv_supplier_names_data').textContent);
+  const invSupBilled = JSON.parse(document.getElementById('inv_supplier_billed_data').textContent);
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+
+  const baseXY = {
+    x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+    y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+  };
+  const noLegend = { legend: { display: false } };
+  const rupeeTooltip = { tooltip: { callbacks: { label: (c) => '₹' + c.parsed.y.toLocaleString('en-IN') } } };
+
+  // ── Chart 1: Monthly spare purchases trend ──
+  if (document.getElementById('sparePurchaseTrend') && spareTrendLbl.length) {
+    const ctx = document.getElementById('sparePurchaseTrend').getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 220);
+    grad.addColorStop(0, 'rgba(239,68,68,0.3)');
+    grad.addColorStop(1, 'rgba(239,68,68,0.02)');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: spareTrendLbl,
+        datasets: [{ label: 'Cost ₹', data: spareTrendCost, borderColor: '#ef4444', backgroundColor: grad, borderWidth: 2.5, pointRadius: 4, fill: true, tension: 0.4 }],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { ...noLegend, ...rupeeTooltip }, scales: baseXY },
+    });
+  }
+
+  // ── Chart 2: Top shops purchased vs balance ──
+  if (document.getElementById('spareShopChart') && shopNames.length) {
+    new Chart(document.getElementById('spareShopChart'), {
+      type: 'bar',
+      data: {
+        labels: shopNames,
+        datasets: [
+          { label: 'Purchased', data: shopPurchased, backgroundColor: '#6366f1cc', borderRadius: 4, borderSkipped: false },
+          { label: 'Balance Due', data: shopBalance, backgroundColor: '#ef4444cc', borderRadius: 4, borderSkipped: false },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 10 }, boxWidth: 12, padding: 8 } }, ...rupeeTooltip },
+        scales: baseXY,
+      },
+    });
+  }
+
+  // ── Chart 3: Monthly inventory restock trend ──
+  if (document.getElementById('invTrendChart') && invTrendLbl.length) {
+    const ctx = document.getElementById('invTrendChart').getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 220);
+    grad.addColorStop(0, 'rgba(139,92,246,0.3)');
+    grad.addColorStop(1, 'rgba(139,92,246,0.02)');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: invTrendLbl,
+        datasets: [{ label: 'Billed ₹', data: invTrendBilled, borderColor: '#8b5cf6', backgroundColor: grad, borderWidth: 2.5, pointRadius: 4, fill: true, tension: 0.4 }],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { ...noLegend, ...rupeeTooltip }, scales: baseXY },
+    });
+  }
+
+  // ── Chart 4: Top inventory suppliers bar ──
+  if (document.getElementById('invSupplierChart') && invSupNames.length) {
+    new Chart(document.getElementById('invSupplierChart'), {
+      type: 'bar',
+      data: {
+        labels: invSupNames,
+        datasets: [{ label: 'Billed ₹', data: invSupBilled, backgroundColor: '#8b5cf6cc', borderRadius: 5, borderSkipped: false }],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { ...noLegend, ...rupeeTooltip }, scales: baseXY },
+    });
+  }
+})();
+</script>

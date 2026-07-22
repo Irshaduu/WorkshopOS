@@ -24,6 +24,7 @@ Performance Rules (enforced in every zone handler):
 """
 
 from datetime import date, timedelta
+from django.utils import timezone
 from django.shortcuts import render
 from django.http import Http404
 from django.db.models import Sum, Count, Q, DecimalField, Avg, FloatField, F, ExpressionWrapper, IntegerField, DurationField
@@ -66,7 +67,7 @@ def get_date_range(range_key, start_str=None, end_str=None):
     Financial year: Calendar year (Jan 1 – Dec 31) as agreed.
     Week: Monday-based.
     """
-    today = date.today()
+    today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
 
     if range_key == 'today':
         return today, today, 'Today'

@@ -1,6 +1,6 @@
 from django.test import TestCase
 from django.contrib.auth.models import User, Group
-from .templatetags.custom_filters import has_group
+from workshop.templatetags.custom_filters import has_group
 
 class TemplateTagTests(TestCase):
     """

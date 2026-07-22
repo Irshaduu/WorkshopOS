@@ -1,0 +1,605 @@
+{# Zone 1: Revenue & Profit Analytics — Phase 3 #}
+
+{# ── 8 KPI CARDS ─────────────────────────────────────────────── #}
+<div class="zone-section-title">💰 Revenue Breakdown</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-label">Spare Parts Revenue</div>
+    <div class="kpi-card-value">{{ spare_revenue }}</div>
+    <div class="kpi-card-sub">Customer-charged price</div>
+  </div>
+  <div class="kpi-card kpi-orange">
+    <div class="kpi-card-label">Spare Parts Cost</div>
+    <div class="kpi-card-value">{{ spare_cost }}</div>
+    <div class="kpi-card-sub">Unit cost to workshop</div>
+  </div>
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">Spare Parts Profit</div>
+    <div class="kpi-card-value">{{ spare_profit }}</div>
+    <div class="kpi-card-sub">Revenue − Cost</div>
+  </div>
+  <div class="kpi-card kpi-purple">
+    <div class="kpi-card-label">Labour Revenue</div>
+    <div class="kpi-card-value">{{ labour_revenue }}</div>
+    <div class="kpi-card-sub">Service charges</div>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card kpi-cyan">
+    <div class="kpi-card-label">Collection Efficiency</div>
+    <div class="kpi-card-value">{{ collection_pct }}%</div>
+    <div class="kpi-card-sub">Collected ÷ Billed</div>
+  </div>
+  <div class="kpi-card kpi-yellow">
+    <div class="kpi-card-label">Avg Bill Value</div>
+    <div class="kpi-card-value">{{ avg_bill }}</div>
+    <div class="kpi-card-sub">Per delivered job</div>
+  </div>
+  <div class="kpi-card kpi-red">
+    <div class="kpi-card-label">Total Discount Given</div>
+    <div class="kpi-card-value">{{ total_discount }}</div>
+    <div class="kpi-card-sub">Across all jobs</div>
+  </div>
+  <div class="kpi-card kpi-gray">
+    <div class="kpi-card-label">Jobs Delivered</div>
+    <div class="kpi-card-value">{{ total_jobs }}</div>
+    <div class="kpi-card-sub">In this period</div>
+  </div>
+</div>
+
+{# ── CHARTS ───────────────────────────────────────────────────── #}
+<div class="zone-section-title">📈 Revenue Charts</div>
+
+<div class="chart-grid">
+
+  {# Chart 1: Monthly Revenue Trend (Line) #}
+  <div class="chart-card chart-card-full">
+    <div class="chart-card-title">
+      <i class="bi bi-graph-up"></i> Revenue Trend
+    </div>
+    <div class="chart-canvas-wrap">
+      <canvas id="revMonthlyChart"></canvas>
+    </div>
+  </div>
+
+  {# Chart 2: Revenue Split — Spares vs Labour (Doughnut) #}
+  <div class="chart-card">
+    <div class="chart-card-title">
+      <i class="bi bi-pie-chart"></i> Revenue Split
+    </div>
+    <div class="chart-canvas-wrap">
+      <canvas id="revSplitChart"></canvas>
+    </div>
+  </div>
+
+  {# Chart 3: Payment Method Distribution (Doughnut) #}
+  <div class="chart-card">
+    <div class="chart-card-title">
+      <i class="bi bi-credit-card"></i> Payment Methods
+    </div>
+    <div class="chart-canvas-wrap">
+      <canvas id="revPaymentChart"></canvas>
+    </div>
+  </div>
+
+  {# Chart 4: Daily/Monthly Revenue Bar (auto-scaled by range) #}
+  <div class="chart-card chart-card-full">
+    <div class="chart-card-title">
+      <i class="bi bi-bar-chart"></i> Revenue — {{ daily_chart_title }}
+    </div>
+    <div class="chart-canvas-wrap">
+      <canvas id="revDailyChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+{# ── TOP 5 CUSTOMERS TABLE ────────────────────────────────────── #}
+{% if top_customers %}
+<div class="zone-section-title">🏆 Top Customers by Revenue</div>
+<div class="table-responsive">
+<table class="kpi-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Customer</th>
+      <th>Jobs</th>
+      <th>Revenue</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in top_customers %}
+    <tr>
+      <td>
+        <span class="rank-badge {% if forloop.counter == 1 %}rank-1{% elif forloop.counter == 2 %}rank-2{% elif forloop.counter == 3 %}rank-3{% else %}rank-other{% endif %}">
+          {{ forloop.counter }}
+        </span>
+      </td>
+      <td style="font-weight:600;">{{ c.customer_name|default:"Walk-in" }}</td>
+      <td>{{ c.count }}</td>
+      <td style="font-weight:700; color:var(--color-primary);">
+        ₹{{ c.revenue|floatformat:0 }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{# ── CHART.JS SCRIPTS ─────────────────────────────────────────── #}
+{{ daily_labels|json_script:"daily_labels_data" }}
+{{ daily_revenue|json_script:"daily_revenue_data" }}
+{{ monthly_labels|json_script:"monthly_labels_data" }}
+{{ monthly_revenue|json_script:"monthly_revenue_data" }}
+{{ payment_counts|json_script:"payment_counts_data" }}
+{{ payment_labels|json_script:"payment_labels_data" }}
+{{ split_data|json_script:"split_data_data" }}
+{{ split_labels|json_script:"split_labels_data" }}
+<script>
+(function() {
+  // ------------------------------------------------------------------
+  // Shared Chart.js defaults for this zone
+  // ------------------------------------------------------------------
+  const INR_LAKH_FORMATTER = (val) => {
+    if (val === null || val === undefined) return '₹0';
+    val = Math.abs(Math.round(val));
+    let s = val.toString();
+    if (s.length <= 3) return '₹' + s;
+    let result = s.slice(-3);
+    s = s.slice(0, -3);
+    while (s.length > 2) { result = s.slice(-2) + ',' + result; s = s.slice(0, -2); }
+    if (s) result = s + ',' + result;
+    return '₹' + result;
+  };
+
+  const PALETTE = {
+    blue:   ['rgba(59,130,246,0.85)', 'rgba(59,130,246,1)'],
+    green:  ['rgba(16,185,129,0.85)', 'rgba(16,185,129,1)'],
+    orange: ['rgba(249,115,22,0.85)', 'rgba(249,115,22,1)'],
+    purple: ['rgba(139,92,246,0.85)', 'rgba(139,92,246,1)'],
+    cyan:   ['rgba(6,182,212,0.85)',  'rgba(6,182,212,1)'],
+    red:    ['rgba(239,68,68,0.85)',  'rgba(239,68,68,1)'],
+    teal:   ['rgba(20,184,166,0.85)', 'rgba(20,184,166,1)'],
+    indigo: ['rgba(99,102,241,0.85)', 'rgba(99,102,241,1)'],
+  };
+
+  const gridColor = 'rgba(148,163,184,0.15)';
+  const textColor = '#64748b';
+
+  const defaultScales = {
+    x: {
+      grid: { color: gridColor },
+      ticks: { color: textColor, font: { size: 11 } }
+    },
+    y: {
+      grid: { color: gridColor },
+      ticks: {
+        color: textColor,
+        font: { size: 11 },
+        callback: (v) => INR_LAKH_FORMATTER(v)
+      }
+    }
+  };
+
+  // ------------------------------------------------------------------
+  // Chart 1: Monthly Revenue Trend
+  // ------------------------------------------------------------------
+  const monthlyLabels = JSON.parse(document.getElementById('monthly_labels_data').textContent);
+  const monthlyRevenue = JSON.parse(document.getElementById('monthly_revenue_data').textContent);
+
+  if (monthlyLabels.length > 0) {
+    const ctx1 = document.getElementById('revMonthlyChart');
+    if (ctx1) {
+      new Chart(ctx1, {
+        type: 'line',
+        data: {
+          labels: monthlyLabels,
+          datasets: [{
+            label: 'Revenue',
+            data: monthlyRevenue,
+            fill: true,
+            backgroundColor: 'rgba(99,102,241,0.08)',
+            borderColor: PALETTE.indigo[1],
+            borderWidth: 2.5,
+            pointBackgroundColor: PALETTE.indigo[1],
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.35,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => ' ' + INR_LAKH_FORMATTER(ctx.raw)
+              }
+            }
+          },
+          scales: defaultScales,
+        }
+      });
+    }
+  } else {
+    const c = document.getElementById('revMonthlyChart');
+    if (c && c.parentElement) {
+      c.parentElement.innerHTML = '<div class="zone-empty"><i class="bi bi-graph-up"></i>No data for this period</div>';
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Chart 2: Revenue Split (Spares vs Labour)
+  // ------------------------------------------------------------------
+  const splitLabels = JSON.parse(document.getElementById('split_labels_data').textContent);
+  const splitData = JSON.parse(document.getElementById('split_data_data').textContent);
+
+  const ctx2 = document.getElementById('revSplitChart');
+  if (ctx2) {
+    new Chart(ctx2, {
+      type: 'doughnut',
+      data: {
+        labels: splitLabels,
+        datasets: [{
+          data: splitData,
+          backgroundColor: [PALETTE.blue[0], PALETTE.purple[0]],
+          borderColor:      [PALETTE.blue[1], PALETTE.purple[1]],
+          borderWidth: 2,
+          hoverOffset: 8,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: textColor, font: { size: 11 }, padding: 16 }
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ' ' + ctx.label + ': ' + INR_LAKH_FORMATTER(ctx.raw)
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Chart 3: Payment Methods (Doughnut)
+  // ------------------------------------------------------------------
+  const paymentLabels = JSON.parse(document.getElementById('payment_labels_data').textContent);
+  const paymentCounts = JSON.parse(document.getElementById('payment_counts_data').textContent);
+
+  const ctx3 = document.getElementById('revPaymentChart');
+  if (ctx3 && paymentLabels.length > 0) {
+    const colors = [PALETTE.green[0], PALETTE.cyan[0], PALETTE.orange[0], PALETTE.red[0]];
+    const bcolors = [PALETTE.green[1], PALETTE.cyan[1], PALETTE.orange[1], PALETTE.red[1]];
+    new Chart(ctx3, {
+      type: 'doughnut',
+      data: {
+        labels: paymentLabels,
+        datasets: [{
+          data: paymentCounts,
+          backgroundColor: colors.slice(0, paymentLabels.length),
+          borderColor:      bcolors.slice(0, paymentLabels.length),
+          borderWidth: 2,
+          hoverOffset: 8,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: textColor, font: { size: 11 }, padding: 16 }
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ' ' + ctx.label + ': ' + ctx.raw + ' jobs'
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Chart 4: Daily Revenue Bar
+  // ------------------------------------------------------------------
+  const dailyLabels = JSON.parse(document.getElementById('daily_labels_data').textContent);
+  const dailyRevenue = JSON.parse(document.getElementById('daily_revenue_data').textContent);
+
+  if (dailyLabels.length > 0) {
+    const ctx4 = document.getElementById('revDailyChart');
+    if (ctx4) {
+      new Chart(ctx4, {
+        type: 'bar',
+        data: {
+          labels: dailyLabels,
+          datasets: [{
+            label: 'Revenue',
+            data: dailyRevenue,
+            backgroundColor: dailyRevenue.map((v, i) => {
+              // Highlight the highest bar in gold
+              const max = Math.max(...dailyRevenue);
+              return v === max ? 'rgba(251,191,36,0.9)' : PALETTE.blue[0];
+            }),
+            borderColor: dailyRevenue.map((v) => {
+              const max = Math.max(...dailyRevenue);
+              return v === max ? 'rgba(245,158,11,1)' : PALETTE.blue[1];
+            }),
+            borderWidth: 1.5,
+            borderRadius: 5,
+            borderSkipped: false,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => ' ' + INR_LAKH_FORMATTER(ctx.raw)
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: textColor, font: { size: 10 }, maxRotation: 45 }
+            },
+            y: {
+              grid: { color: gridColor },
+              ticks: {
+                color: textColor,
+                font: { size: 11 },
+                callback: (v) => INR_LAKH_FORMATTER(v)
+              }
+            }
+          }
+        }
+      });
+    }
+  } else {
+    const c = document.getElementById('revDailyChart');
+    if (c && c.parentElement) {
+      c.parentElement.innerHTML = '<div class="zone-empty"><i class="bi bi-bar-chart"></i>No data for this period</div>';
+    }
+  }
+
+})();
+</script>
+<!--
+  Zone 6: Cashbook & P/L Summary — Phase 8
+  Context: cb_income, cb_expense, cb_net, period_label,
+           top_expenses, top_income_cats, pay_methods,
+           ps_pending, ps_partial, ps_paid, ps_bulk,
+           cb_trend_labels/income/expense/profit,
+           pm_labels, pm_revenue, expense_cat_labels/vals,
+           ps_labels, ps_data
+-->
+
+<!-- ── Hero KPI Row ──────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-cash-stack"></i> Cashbook Summary — {{ period_label }}</p>
+<div class="kpi-grid kpi-grid-3">
+
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">📥 Total Income</div>
+    <div class="kpi-card-value">₹{{ cb_income|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Cash-in entries</div>
+  </div>
+
+  <div class="kpi-card kpi-red">
+    <div class="kpi-card-label">📤 Total Expenses</div>
+    <div class="kpi-card-value">₹{{ cb_expense|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Cash-out entries</div>
+  </div>
+
+  <div class="kpi-card {% if cb_net >= 0 %}kpi-blue{% else %}kpi-red{% endif %}">
+    <div class="kpi-card-label">💹 Net Profit / Loss</div>
+    <div class="kpi-card-value">₹{{ cb_net|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Income − Expenses</div>
+  </div>
+
+</div>
+
+<!-- Payment status pills -->
+<div class="status-pill-row">
+  <span class="status-pill" style="background:rgba(239,68,68,0.12);color:#ef4444;">
+    <i class="bi bi-clock"></i> {{ ps_pending }} Pending
+  </span>
+  <span class="status-pill" style="background:rgba(245,158,11,0.12);color:#f59e0b;">
+    <i class="bi bi-hourglass-split"></i> {{ ps_partial }} Partial
+  </span>
+  <span class="status-pill" style="background:rgba(16,185,129,0.12);color:#10b981;">
+    <i class="bi bi-check2-all"></i> {{ ps_paid }} Paid
+  </span>
+  <span class="status-pill" style="background:rgba(99,102,241,0.12);color:#6366f1;">
+    <i class="bi bi-person-check"></i> {{ ps_bulk }} Bulk Paid
+  </span>
+</div>
+
+<!-- ── Charts ──────────────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-bar-chart"></i> Analytics Charts</p>
+<div class="chart-grid">
+
+  <!-- Chart 1: Monthly Income vs Expense vs Profit -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-graph-up-arrow"></i> Monthly Income vs Expense</div>
+    <div class="chart-canvas-wrap"><canvas id="cbTrendChart"></canvas></div>
+  </div>
+
+  <!-- Chart 2: Top Expense Categories (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-list-check"></i> Top Expense Categories</div>
+    <div class="chart-canvas-wrap"><canvas id="expenseCatChart"></canvas></div>
+  </div>
+
+  <!-- Chart 3: Payment Status Doughnut -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-pie-chart-fill"></i> Payment Status Distribution</div>
+    <div class="chart-canvas-wrap"><canvas id="psChart"></canvas></div>
+  </div>
+
+  <!-- Chart 4: Payment Method Revenue bar -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-credit-card-2-back"></i> Revenue by Payment Method</div>
+    <div class="chart-canvas-wrap"><canvas id="pmChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ── Expense Categories Table ─────────────────────────────────────────────── -->
+{% if top_expenses %}
+<p class="zone-section-title"><i class="bi bi-receipt-cutoff"></i> Top Expense Categories</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead><tr><th>#</th><th>Category</th><th>Total Spent</th></tr></thead>
+    <tbody>
+      {% for e in top_expenses %}
+      <tr>
+        <td><span class="rank-badge rank-other">{{ forloop.counter }}</span></td>
+        <td style="font-weight:600;">{{ e.category }}</td>
+        <td class="inv-balance-due">₹{{ e.total|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+{% endif %}
+
+{% if top_income_cats %}
+<p class="zone-section-title"><i class="bi bi-arrow-down-circle"></i> Top Income Categories</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead><tr><th>#</th><th>Category</th><th>Total Income</th></tr></thead>
+    <tbody>
+      {% for c in top_income_cats %}
+      <tr>
+        <td><span class="rank-badge rank-other">{{ forloop.counter }}</span></td>
+        <td style="font-weight:600;">{{ c.category }}</td>
+        <td class="inv-balance-clear">₹{{ c.total|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+{% endif %}
+
+{{ cb_trend_expense|json_script:"cb_trend_expense_data" }}
+{{ cb_trend_income|json_script:"cb_trend_income_data" }}
+{{ cb_trend_labels|json_script:"cb_trend_labels_data" }}
+{{ cb_trend_profit|json_script:"cb_trend_profit_data" }}
+{{ expense_cat_labels|json_script:"expense_cat_labels_data" }}
+{{ expense_cat_vals|json_script:"expense_cat_vals_data" }}
+{{ pm_labels|json_script:"pm_labels_data" }}
+{{ pm_revenue|json_script:"pm_revenue_data" }}
+{{ ps_data|json_script:"ps_data_data" }}
+{{ ps_labels|json_script:"ps_labels_data" }}
+<script>
+(function () {
+  'use strict';
+
+  const cbLbls = JSON.parse(document.getElementById('cb_trend_labels_data').textContent);
+  const cbIncome = JSON.parse(document.getElementById('cb_trend_income_data').textContent);
+  const cbExpense = JSON.parse(document.getElementById('cb_trend_expense_data').textContent);
+  const cbProfit = JSON.parse(document.getElementById('cb_trend_profit_data').textContent);
+  const expLbls = JSON.parse(document.getElementById('expense_cat_labels_data').textContent);
+  const expVals = JSON.parse(document.getElementById('expense_cat_vals_data').textContent);
+  const psLbls = JSON.parse(document.getElementById('ps_labels_data').textContent);
+  const psData = JSON.parse(document.getElementById('ps_data_data').textContent);
+  const pmLbls = JSON.parse(document.getElementById('pm_labels_data').textContent);
+  const pmRev = JSON.parse(document.getElementById('pm_revenue_data').textContent);
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+  const baseScales = {
+    x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+    y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+  };
+  const rupee = { tooltip: { callbacks: { label: c => '₹' + c.parsed.y.toLocaleString('en-IN') } } };
+
+  // ── Chart 1: Monthly Income vs Expense vs Profit ──
+  if (document.getElementById('cbTrendChart') && cbLbls.length) {
+    new Chart(document.getElementById('cbTrendChart'), {
+      type: 'bar',
+      data: {
+        labels: cbLbls,
+        datasets: [
+          { label: 'Income',  data: cbIncome,  backgroundColor: '#10b981bb', borderRadius: 4, borderSkipped: false },
+          { label: 'Expense', data: cbExpense, backgroundColor: '#ef4444bb', borderRadius: 4, borderSkipped: false },
+          { label: 'Profit',  data: cbProfit,  type: 'line', borderColor: '#6366f1', borderWidth: 2, pointRadius: 3, fill: false, yAxisID: 'y' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 10 }, boxWidth: 12, padding: 8 } }, ...rupee },
+        scales: baseScales,
+      },
+    });
+  }
+
+  // ── Chart 2: Expense categories horizontal bar ──
+  if (document.getElementById('expenseCatChart') && expLbls.length) {
+    new Chart(document.getElementById('expenseCatChart'), {
+      type: 'bar',
+      data: {
+        labels: expLbls,
+        datasets: [{ label: 'Expense ₹', data: expVals, backgroundColor: '#ef4444cc', borderRadius: 4, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false }, ...rupee },
+        scales: { x: baseScales.x, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } } },
+      },
+    });
+  }
+
+  // ── Chart 3: Payment status doughnut ──
+  if (document.getElementById('psChart') && psData.some(v => v > 0)) {
+    new Chart(document.getElementById('psChart'), {
+      type: 'doughnut',
+      data: {
+        labels: psLbls,
+        datasets: [{ data: psData, backgroundColor: ['#ef4444cc','#f59e0bcc','#10b981cc','#6366f1cc'], borderWidth: 0, hoverOffset: 8 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 10, boxWidth: 12 } } },
+      },
+    });
+  }
+
+  // ── Chart 4: Payment method revenue bar ──
+  if (document.getElementById('pmChart') && pmLbls.length) {
+    new Chart(document.getElementById('pmChart'), {
+      type: 'bar',
+      data: {
+        labels: pmLbls,
+        datasets: [{ label: 'Revenue ₹', data: pmRev, backgroundColor: '#6366f1cc', borderRadius: 6, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, ...rupee },
+        scales: baseScales,
+      },
+    });
+  }
+})();
+</script>

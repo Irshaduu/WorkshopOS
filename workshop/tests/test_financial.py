@@ -10,7 +10,7 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User, Group
 from django.urls import reverse
 
-from .models import (
+from workshop.models import (
     JobCard, Mechanic, CarBrand, SparePart,
     JobCardSpareItem, JobCardLabourItem,
     BulkPayer, BulkPaymentHistory,
@@ -250,19 +250,26 @@ class DeliveredDateFilterTests(TestCase):
         self.assertEqual(resp.context['page_obj'].paginator.count, 1)
 
     def test_delivered_week_filter(self):
-        """Week filter should show jobs delivered in last 7 days."""
+        """Week filter shows jobs from Monday of the current calendar week onwards."""
         resp = self.client.get(
-            reverse('delivered_list') + '?filter=week',
+            reverse('delivered_list') + '?filter=this_week',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)
-        # Jobs at 0 and 3 days ago = 2
-        self.assertEqual(resp.context['page_obj'].paginator.count, 2)
+        # Dynamically compute how many of the setUp dates fall in the current calendar week
+        # (the view uses Monday-aligned weeks, not a rolling 7-day window)
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())  # Monday of this week
+        expected = sum(
+            1 for days_ago in [0, 3, 15, 60, 200]
+            if today - timedelta(days=days_ago) >= week_start
+        )
+        self.assertEqual(resp.context['page_obj'].paginator.count, expected)
 
     def test_delivered_month_filter(self):
         """Month filter should show jobs delivered in last 30 days."""
         resp = self.client.get(
-            reverse('delivered_list') + '?filter=month',
+            reverse('delivered_list') + '?filter=this_month',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)

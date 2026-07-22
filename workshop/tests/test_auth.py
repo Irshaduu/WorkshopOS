@@ -3,7 +3,7 @@ from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
-from .models import FailedAttempt
+from workshop.models import FailedAttempt
 import time
 from unittest.mock import patch
 from decouple import config as real_config

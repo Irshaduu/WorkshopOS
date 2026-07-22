@@ -5,7 +5,7 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User, Group
 from django.urls import reverse
 
-from .models import SpareShop, SpareShopPayment, JobCard, Mechanic, JobCardSpareItem
+from workshop.models import SpareShop, SpareShopPayment, JobCard, Mechanic, JobCardSpareItem
 
 class SpareShopViewsExhaustiveTests(TestCase):
     """

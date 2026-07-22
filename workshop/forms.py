@@ -205,11 +205,11 @@ JobCardSpareFormSet = inlineformset_factory(
         }),
         'unit_price': forms.TextInput(attrs={
             'class': 'form-control text-end',
-            'placeholder': 'Shop Price'
+            'placeholder': 'Shop Price (₹)'
         }),
         'total_price': forms.TextInput(attrs={
             'class': 'form-control text-end fw-bold',
-            'placeholder': 'Customer Price'
+            'placeholder': 'Price (₹)'
         }),
         'ordered_date': forms.DateInput(attrs={
             'type': 'date',

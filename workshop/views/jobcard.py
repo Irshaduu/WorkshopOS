@@ -1,4 +1,4 @@
-from datetime import date
+from django.utils import timezone
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -165,7 +165,7 @@ def jobcard_create(request):
             labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
     else:
         # Pre-fill admitted_date with today's date
-        initial_data = {'admitted_date': date.today()}
+        initial_data = {'admitted_date': timezone.localdate()}  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
         
         # Pre-fill from GET parameters (Cloning/New Visit feature)
         for field in ['registration_number', 'brand_name', 'model_name', 'customer_name', 'customer_contact']:

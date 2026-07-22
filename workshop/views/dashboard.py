@@ -1,4 +1,4 @@
-from datetime import date
+from django.utils import timezone
 
 from django.shortcuts import render
 from django.db.models import Count, Q
@@ -22,11 +22,11 @@ def home(request):
         fixed_concerns=Count('concerns', filter=Q(concerns__status='FIXED'))
     ).order_by('-updated_at', '-pk')
     
-    # Count delivered today (Active only)
+    # Count delivered today (Active only) — timezone.localdate() is IST-aware
     delivered_count = JobCard.objects.filter(
         delivered=True,
         is_deleted=False,
-        discharged_date=date.today()
+        discharged_date=timezone.localdate()
     ).count()
 
     # Count pending bills (Delivered but not fully paid, Active only)
@@ -45,7 +45,7 @@ def home(request):
         'delivered_count': delivered_count,
         'pending_bills_count': pending_bills_count,
         'page_obj': page_obj,
-        'today': date.today(),
+        'today': timezone.localdate(),  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
     })
 
 

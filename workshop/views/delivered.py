@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -124,7 +124,7 @@ def mark_delivered(request, pk):
     if request.method == 'POST':
         jobcard = get_object_or_404(JobCard, pk=pk)
         jobcard.delivered = True
-        jobcard.discharged_date = date.today()
+        jobcard.discharged_date = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
         jobcard.save()
     return redirect('home')
 

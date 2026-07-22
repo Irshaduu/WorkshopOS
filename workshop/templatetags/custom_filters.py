@@ -1,6 +1,7 @@
 from django import template
 from django.contrib.auth.models import Group
-from datetime import date, timedelta
+from datetime import timedelta
+from django.utils import timezone
 
 register = template.Library()
 
@@ -9,7 +10,7 @@ def is_tomorrow(value):
     """Check if a date is tomorrow"""
     if not value:
         return False
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = timezone.localdate() + timedelta(days=1)  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
     return value == tomorrow
 
 @register.filter(name='has_group')

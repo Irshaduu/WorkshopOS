@@ -75,8 +75,7 @@
                 role="alert" data-level="{{ message.tags }}">
                 <div class="d-flex">
                     <div class="toast-body">
-                        {% if message.tags == 'warning' %}<i class="bi bi-exclamation-triangle me-2"></i>{% else
-                        %}<i class="bi bi-check-circle me-2"></i>{% endif %}{{ message }}
+                        {% if message.tags == 'warning' %}<i class="bi bi-exclamation-triangle me-2"></i>{% else %}<i class="bi bi-check-circle me-2"></i>{% endif %}{{ message }}
                     </div>
                     <button type="button" class="btn-close btn-close-white me-2 m-auto"
                         data-bs-dismiss="toast"></button>
@@ -541,8 +540,8 @@
                                     <th class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">Received</th>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <th class="col-shop" style="min-width: 150px;">Shop</th>
-                                    <th class="col-price">Shop Price</th>
-                                    <th class="col-price pe-4">Customer</th>
+                                    <th class="col-price text-nowrap">Shop Price (₹)</th>
+                                    <th class="col-price pe-4 text-nowrap">Customer Price (₹)</th>
                                     {% endif %}
                                 </tr>
                             </thead>

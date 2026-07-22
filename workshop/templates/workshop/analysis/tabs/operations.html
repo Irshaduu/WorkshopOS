@@ -1,0 +1,699 @@
+<!--
+  Zone 2: Mechanic Performance Rankings — Phase 4
+  Context: mechanics, top_earner, top_jobs, fastest, total_mechanics,
+           period_label, month_labels, trend_datasets, chart_names,
+           chart_jobs, chart_revenue, chart_scores
+-->
+
+{% if not mechanics %}
+  <div class="zone-empty">
+    <i class="bi bi-person-x"></i>
+    No mechanic data found for this period.
+  </div>
+{% else %}
+
+{# ── Hero KPI Row ─────────────────────────────────────────────────────────── #}
+<p class="zone-section-title"><i class="bi bi-trophy"></i> Period Highlights</p>
+<div class="kpi-grid kpi-grid-4">
+
+  <div class="kpi-card kpi-yellow">
+    <div class="kpi-card-label">🏆 Top Performer</div>
+    <div class="kpi-card-value">{% if top_earner %}{{ top_earner.lead_mechanic__name }}{% else %}—{% endif %}</div>
+    <div class="kpi-card-sub">Score {{ top_earner.score }}% &nbsp;·&nbsp; ₹{{ top_earner.revenue_display|floatformat:0 }}</div>
+  </div>
+
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-label">🔧 Most Jobs</div>
+    <div class="kpi-card-value">{% if top_jobs %}{{ top_jobs.lead_mechanic__name }}{% else %}—{% endif %}</div>
+    <div class="kpi-card-sub">{{ top_jobs.jobs_done }} jobs completed</div>
+  </div>
+
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">⚡ Fastest Turnaround</div>
+    <div class="kpi-card-value">{% if fastest %}{{ fastest.lead_mechanic__name }}{% else %}—{% endif %}</div>
+    <div class="kpi-card-sub">Avg {{ fastest.avg_days }} days per job</div>
+  </div>
+
+  <div class="kpi-card kpi-purple">
+    <div class="kpi-card-label">👷 Active Mechanics</div>
+    <div class="kpi-card-value">{{ total_mechanics }}</div>
+    <div class="kpi-card-sub">Registered in system</div>
+  </div>
+
+</div>
+
+{# ── Performance Leaderboard Table ────────────────────────────────────────── #}
+<p class="zone-section-title"><i class="bi bi-bar-chart-steps"></i> Leaderboard — {{ period_label }}</p>
+
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Mechanic</th>
+        <th>Score</th>
+        <th>Jobs Done</th>
+        <th>Revenue</th>
+        <th>Avg Days</th>
+        <th>Active Now</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in mechanics %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}
+            <span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}
+            <span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}
+            <span class="rank-badge rank-3">3</span>
+          {% else %}
+            <span class="rank-badge rank-other">{{ forloop.counter }}</span>
+          {% endif %}
+        </td>
+        <td style="font-weight:700;">{{ m.lead_mechanic__name }}</td>
+        <td>
+          <div class="score-bar-wrap">
+            <div class="score-bar-track">
+              <div class="score-bar-fill" style="width:{{ m.score }}%;"></div>
+            </div>
+            <span class="score-label">{{ m.score }}%</span>
+          </div>
+        </td>
+        <td>{{ m.jobs_done }}</td>
+        <td class="text-accent">₹{{ m.revenue_display|floatformat:0 }}</td>
+        <td>{{ m.avg_days }}d</td>
+        <td>
+          {% if m.active_jobs %}
+            <span class="active-badge">{{ m.active_jobs }} active</span>
+          {% else %}
+            <span style="color:var(--color-text-muted);">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+
+{# ── Charts ───────────────────────────────────────────────────────────────── #}
+<p class="zone-section-title"><i class="bi bi-graph-up"></i> Analytics Charts</p>
+<div class="chart-grid">
+
+  {# Chart 1: Performance Score (horizontal bar) #}
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-award"></i> Performance Score</div>
+    <div class="chart-canvas-wrap"><canvas id="mechScoreChart"></canvas></div>
+  </div>
+
+  {# Chart 2: Jobs completed per mechanic #}
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-wrench"></i> Jobs Completed</div>
+    <div class="chart-canvas-wrap"><canvas id="mechJobsChart"></canvas></div>
+  </div>
+
+  {# Chart 3: Revenue per mechanic #}
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-currency-rupee"></i> Revenue Generated</div>
+    <div class="chart-canvas-wrap"><canvas id="mechRevenueChart"></canvas></div>
+  </div>
+
+  {# Chart 4: Monthly jobs trend (multi-line top-5) #}
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-graph-up-arrow"></i> Monthly Jobs Trend (Top 5)</div>
+    <div class="chart-canvas-wrap"><canvas id="mechTrendChart"></canvas></div>
+  </div>
+
+</div>
+{% endif %}
+
+{{ chart_jobs|json_script:"chart_jobs_data" }}
+{{ chart_names|json_script:"chart_names_data" }}
+{{ chart_revenue|json_script:"chart_revenue_data" }}
+{{ chart_scores|json_script:"chart_scores_data" }}
+{{ month_labels|json_script:"month_labels_data" }}
+{{ trend_datasets|json_script:"trend_datasets_data" }}
+<script>
+(function () {
+  'use strict';
+
+  // Palette for multi-line chart
+  const PALETTE = [
+    '#6366f1','#10b981','#f59e0b','#ef4444','#06b6d4',
+  ];
+
+  const names = JSON.parse(document.getElementById('chart_names_data').textContent);
+  const jobs = JSON.parse(document.getElementById('chart_jobs_data').textContent);
+  const revenue = JSON.parse(document.getElementById('chart_revenue_data').textContent);
+  const scores = JSON.parse(document.getElementById('chart_scores_data').textContent);
+  const monthLabels = JSON.parse(document.getElementById('month_labels_data').textContent);
+  const trendDatasets = JSON.parse(document.getElementById('trend_datasets_data').textContent);
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode') ||
+                 window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+
+  const baseOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+      y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+    },
+  };
+
+  // ── Chart 1: Score (horizontal bar) ──
+  if (document.getElementById('mechScoreChart') && scores.length) {
+    new Chart(document.getElementById('mechScoreChart'), {
+      type: 'bar',
+      data: {
+        labels: names,
+        datasets: [{
+          label: 'Score %',
+          data: scores,
+          backgroundColor: scores.map((s) =>
+            s >= 80 ? '#10b981cc' : s >= 50 ? '#6366f1cc' : '#f59e0bcc'
+          ),
+          borderRadius: 6,
+          borderSkipped: false,
+        }],
+      },
+      options: {
+        ...baseOpts,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ...baseOpts.scales.x, max: 100 },
+          y: { ...baseOpts.scales.y, grid: { display: false }, ticks: { color: labelColor, font: { size: 11 } } },
+        },
+      },
+    });
+  }
+
+  // ── Chart 2: Jobs per mechanic ──
+  if (document.getElementById('mechJobsChart') && jobs.length) {
+    new Chart(document.getElementById('mechJobsChart'), {
+      type: 'bar',
+      data: {
+        labels: names,
+        datasets: [{
+          label: 'Jobs',
+          data: jobs,
+          backgroundColor: '#6366f1cc',
+          borderRadius: 6,
+          borderSkipped: false,
+        }],
+      },
+      options: { ...baseOpts },
+    });
+  }
+
+  // ── Chart 3: Revenue per mechanic ──
+  if (document.getElementById('mechRevenueChart') && revenue.length) {
+    new Chart(document.getElementById('mechRevenueChart'), {
+      type: 'bar',
+      data: {
+        labels: names,
+        datasets: [{
+          label: 'Revenue ₹',
+          data: revenue,
+          backgroundColor: '#10b981cc',
+          borderRadius: 6,
+          borderSkipped: false,
+        }],
+      },
+      options: {
+        ...baseOpts,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => '₹' + ctx.parsed.y.toLocaleString('en-IN'),
+            },
+          },
+        },
+      },
+    });
+  }
+
+  // ── Chart 4: Monthly trend (multi-line) ──
+  if (document.getElementById('mechTrendChart') && trendDatasets.length && monthLabels.length) {
+    new Chart(document.getElementById('mechTrendChart'), {
+      type: 'line',
+      data: {
+        labels: monthLabels,
+        datasets: trendDatasets.map((ds, i) => ({
+          label: ds.name,
+          data: ds.data,
+          borderColor: PALETTE[i % PALETTE.length],
+          backgroundColor: PALETTE[i % PALETTE.length] + '22',
+          borderWidth: 2.5,
+          pointRadius: 3,
+          fill: false,
+          tension: 0.35,
+        })),
+      },
+      options: {
+        ...baseOpts,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: { color: labelColor, font: { size: 10 }, boxWidth: 12, padding: 10 },
+          },
+        },
+      },
+    });
+  }
+})();
+</script>
+<!--
+  Zone 7: Workshop Operational KPIs — Phase 9
+  Context: total_jobs, delivered_jobs, active_jobs, on_hold_jobs,
+           delivery_rate, avg_turnaround, avg_revenue, total_revenue,
+           total_collected, period_label, top_brands_ws,
+           ws_trend_labels/total/completed, ws_brand_labels/jobs,
+           ws_ps_labels/data, ws_status_labels/data
+-->
+
+<!-- ── Hero KPI Grid ─────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-speedometer2"></i> Workshop KPIs — {{ period_label }}</p>
+<div class="kpi-grid kpi-grid-4">
+
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-label">📋 Total Jobs</div>
+    <div class="kpi-card-value">{{ total_jobs }}</div>
+    <div class="kpi-card-sub">In this period</div>
+  </div>
+
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">✅ Delivered</div>
+    <div class="kpi-card-value">{{ delivered_jobs }}</div>
+    <div class="kpi-card-sub">Rate: {{ delivery_rate }}%</div>
+  </div>
+
+  <div class="kpi-card kpi-purple">
+    <div class="kpi-card-label">⏱ Avg Turnaround</div>
+    <div class="kpi-card-value">{{ avg_turnaround }}d</div>
+    <div class="kpi-card-sub">Days to deliver</div>
+  </div>
+
+  <div class="kpi-card kpi-yellow">
+    <div class="kpi-card-label">💵 Avg Revenue / Job</div>
+    <div class="kpi-card-value">₹{{ avg_revenue|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Active: {{ active_jobs }} · Hold: {{ on_hold_jobs }}</div>
+  </div>
+
+</div>
+
+<!-- ── Charts ──────────────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-graph-up"></i> Analytics Charts</p>
+<div class="chart-grid">
+
+  <!-- Chart 1: Monthly Jobs Admitted vs Completed (grouped bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-calendar3"></i> Monthly Jobs Trend</div>
+    <div class="chart-canvas-wrap"><canvas id="wsTrendChart"></canvas></div>
+  </div>
+
+  <!-- Chart 2: Job Status Doughnut (Delivered / Active / On Hold) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-pie-chart"></i> Job Status Breakdown</div>
+    <div class="chart-canvas-wrap"><canvas id="wsStatusChart"></canvas></div>
+  </div>
+
+  <!-- Chart 3: Top Brands by Job Count (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-car-front"></i> Jobs by Car Brand</div>
+    <div class="chart-canvas-wrap"><canvas id="wsBrandChart"></canvas></div>
+  </div>
+
+  <!-- Chart 4: Payment Status Distribution (doughnut) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-wallet2"></i> Payment Status</div>
+    <div class="chart-canvas-wrap"><canvas id="wsPsChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ── Top Brands Table ──────────────────────────────────────────────────────── -->
+{% if top_brands_ws %}
+<p class="zone-section-title"><i class="bi bi-award"></i> Jobs by Car Brand</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead>
+      <tr><th>#</th><th>Brand</th><th>Jobs</th><th>Revenue</th></tr>
+    </thead>
+    <tbody>
+      {% for b in top_brands_ws %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}<span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}<span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}<span class="rank-badge rank-3">3</span>
+          {% else %}<span class="rank-badge rank-other">{{ forloop.counter }}</span>{% endif %}
+        </td>
+        <td style="font-weight:600;">{{ b.brand_name }}</td>
+        <td>{{ b.jobs }}</td>
+        <td class="text-accent">₹{{ b.revenue|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+{% endif %}
+
+{{ ws_brand_jobs|json_script:"ws_brand_jobs_data" }}
+{{ ws_brand_labels|json_script:"ws_brand_labels_data" }}
+{{ ws_ps_data|json_script:"ws_ps_data_data" }}
+{{ ws_ps_labels|json_script:"ws_ps_labels_data" }}
+{{ ws_status_data|json_script:"ws_status_data_data" }}
+{{ ws_status_labels|json_script:"ws_status_labels_data" }}
+{{ ws_trend_completed|json_script:"ws_trend_completed_data" }}
+{{ ws_trend_labels|json_script:"ws_trend_labels_data" }}
+{{ ws_trend_total|json_script:"ws_trend_total_data" }}
+<script>
+(function () {
+  'use strict';
+
+  const wsLbls = JSON.parse(document.getElementById('ws_trend_labels_data').textContent);
+  const wsTotal = JSON.parse(document.getElementById('ws_trend_total_data').textContent);
+  const wsCompleted = JSON.parse(document.getElementById('ws_trend_completed_data').textContent);
+  const brandLbls = JSON.parse(document.getElementById('ws_brand_labels_data').textContent);
+  const brandJobs = JSON.parse(document.getElementById('ws_brand_jobs_data').textContent);
+  const psLbls = JSON.parse(document.getElementById('ws_ps_labels_data').textContent);
+  const psData = JSON.parse(document.getElementById('ws_ps_data_data').textContent);
+  const statusLbls = JSON.parse(document.getElementById('ws_status_labels_data').textContent);
+  const statusData = JSON.parse(document.getElementById('ws_status_data_data').textContent);
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+  const baseScales = {
+    x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+    y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+  };
+
+  // ── Chart 1: Monthly Jobs Trend (grouped bar) ──
+  if (document.getElementById('wsTrendChart') && wsLbls.length) {
+    new Chart(document.getElementById('wsTrendChart'), {
+      type: 'bar',
+      data: {
+        labels: wsLbls,
+        datasets: [
+          { label: 'Total Admitted', data: wsTotal, backgroundColor: '#6366f1bb', borderRadius: 4, borderSkipped: false },
+          { label: 'Delivered',      data: wsCompleted, backgroundColor: '#10b981bb', borderRadius: 4, borderSkipped: false },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 10 }, boxWidth: 12, padding: 8 } } },
+        scales: baseScales,
+      },
+    });
+  }
+
+  // ── Chart 2: Job Status Doughnut ──
+  if (document.getElementById('wsStatusChart') && statusData.some(v => v > 0)) {
+    new Chart(document.getElementById('wsStatusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: statusLbls,
+        datasets: [{ data: statusData, backgroundColor: ['#10b981cc','#6366f1cc','#f59e0bcc'], borderWidth: 0, hoverOffset: 8 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 10, boxWidth: 12 } } },
+      },
+    });
+  }
+
+  // ── Chart 3: Top Brands horizontal bar ──
+  if (document.getElementById('wsBrandChart') && brandLbls.length) {
+    new Chart(document.getElementById('wsBrandChart'), {
+      type: 'bar',
+      data: {
+        labels: brandLbls,
+        datasets: [{ label: 'Jobs', data: brandJobs, backgroundColor: '#f59e0bcc', borderRadius: 4, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: baseScales.x, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } } },
+      },
+    });
+  }
+
+  // ── Chart 4: Payment Status Doughnut ──
+  if (document.getElementById('wsPsChart') && psData.some(v => v > 0)) {
+    new Chart(document.getElementById('wsPsChart'), {
+      type: 'doughnut',
+      data: {
+        labels: psLbls,
+        datasets: [{ data: psData, backgroundColor: ['#ef4444cc','#f59e0bcc','#10b981cc','#6366f1cc'], borderWidth: 0, hoverOffset: 8 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 10, boxWidth: 12 } } },
+      },
+    });
+  }
+})();
+</script>
+<!--
+  Zone 4: Customer & Vehicle Intelligence — Phase 6
+  Context: unique_customers, unique_vehicles, avg_bill, total_jobs, period_label,
+           top_customers_rev, top_customers_jobs, top_brands, top_models,
+           returning_customers, new_customers,
+           cust_trend_labels, cust_trend_data, brand_labels, brand_data,
+           model_labels, model_data, loyalty_labels, loyalty_data
+-->
+
+{% if not top_customers_rev %}
+  <div class="zone-empty">
+    <i class="bi bi-people"></i>
+    No customer data found for this period.
+  </div>
+{% else %}
+
+<!-- ── Hero KPI Row ──────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-people-fill"></i> Period Highlights — {{ period_label }}</p>
+<div class="kpi-grid kpi-grid-4">
+
+  <div class="kpi-card kpi-blue">
+    <div class="kpi-card-label">👤 Unique Customers</div>
+    <div class="kpi-card-value">{{ unique_customers }}</div>
+    <div class="kpi-card-sub">In this period</div>
+  </div>
+
+  <div class="kpi-card kpi-purple">
+    <div class="kpi-card-label">🚗 Unique Vehicles</div>
+    <div class="kpi-card-value">{{ unique_vehicles }}</div>
+    <div class="kpi-card-sub">Registration plates</div>
+  </div>
+
+  <div class="kpi-card kpi-green">
+    <div class="kpi-card-label">💵 Avg Bill / Customer</div>
+    <div class="kpi-card-value">₹{{ avg_bill|floatformat:0 }}</div>
+    <div class="kpi-card-sub">Total jobs: {{ total_jobs }}</div>
+  </div>
+
+  <div class="kpi-card kpi-yellow">
+    <div class="kpi-card-label">🔄 Returning Customers</div>
+    <div class="kpi-card-value">{{ returning_customers }}</div>
+    <div class="kpi-card-sub">New: {{ new_customers }}</div>
+  </div>
+
+</div>
+
+<!-- ── Charts Row ──────────────────────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-graph-up"></i> Analytics Charts</p>
+<div class="chart-grid">
+
+  <!-- Chart 1: Monthly Unique Customers Trend -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-person-lines-fill"></i> Monthly Unique Customers</div>
+    <div class="chart-canvas-wrap"><canvas id="custTrendChart"></canvas></div>
+  </div>
+
+  <!-- Chart 2: Top Car Brands (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-car-front"></i> Top Car Brands</div>
+    <div class="chart-canvas-wrap"><canvas id="brandChart"></canvas></div>
+  </div>
+
+  <!-- Chart 3: Customer Loyalty Doughnut -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-arrow-repeat"></i> Customer Loyalty</div>
+    <div class="chart-canvas-wrap"><canvas id="loyaltyChart"></canvas></div>
+  </div>
+
+  <!-- Chart 4: Top Car Models (horizontal bar) -->
+  <div class="chart-card">
+    <div class="chart-card-title"><i class="bi bi-list-stars"></i> Top Car Models</div>
+    <div class="chart-canvas-wrap"><canvas id="modelChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ── Top Customers by Revenue Table ──────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-currency-rupee"></i> Top Customers by Revenue</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead>
+      <tr><th>#</th><th>Customer</th><th>Revenue</th><th>Jobs</th></tr>
+    </thead>
+    <tbody>
+      {% for c in top_customers_rev %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}<span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}<span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}<span class="rank-badge rank-3">3</span>
+          {% else %}<span class="rank-badge rank-other">{{ forloop.counter }}</span>{% endif %}
+        </td>
+        <td style="font-weight:600;">{{ c.customer_name }}</td>
+        <td class="text-accent">₹{{ c.revenue|floatformat:0 }}</td>
+        <td>{{ c.jobs }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+
+<!-- ── Top Customers by Jobs Table ─────────────────────────────────────────── -->
+<p class="zone-section-title"><i class="bi bi-wrench-adjustable-circle"></i> Top Customers by Visits</p>
+<div class="chart-card mech-table-wrap" style="margin-bottom:1rem;">
+  <div class="table-responsive">
+<table class="kpi-table mech-table">
+    <thead>
+      <tr><th>#</th><th>Customer</th><th>Visits</th><th>Revenue</th></tr>
+    </thead>
+    <tbody>
+      {% for c in top_customers_jobs %}
+      <tr class="{% if forloop.counter == 1 %}mech-rank-1{% elif forloop.counter == 2 %}mech-rank-2{% elif forloop.counter == 3 %}mech-rank-3{% endif %}">
+        <td>
+          {% if forloop.counter == 1 %}<span class="rank-badge rank-1">1</span>
+          {% elif forloop.counter == 2 %}<span class="rank-badge rank-2">2</span>
+          {% elif forloop.counter == 3 %}<span class="rank-badge rank-3">3</span>
+          {% else %}<span class="rank-badge rank-other">{{ forloop.counter }}</span>{% endif %}
+        </td>
+        <td style="font-weight:600;">{{ c.customer_name }}</td>
+        <td>{{ c.jobs }}</td>
+        <td class="text-accent">₹{{ c.revenue|floatformat:0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+
+{% endif %}
+
+{{ brand_data|json_script:"brand_data_data" }}
+{{ brand_labels|json_script:"brand_labels_data" }}
+{{ cust_trend_data|json_script:"cust_trend_data_data" }}
+{{ cust_trend_labels|json_script:"cust_trend_labels_data" }}
+{{ loyalty_data|json_script:"loyalty_data_data" }}
+{{ loyalty_labels|json_script:"loyalty_labels_data" }}
+{{ model_data|json_script:"model_data_data" }}
+{{ model_labels|json_script:"model_labels_data" }}
+<script>
+(function () {
+  'use strict';
+
+  const custLabels = JSON.parse(document.getElementById('cust_trend_labels_data').textContent);
+  const custData = JSON.parse(document.getElementById('cust_trend_data_data').textContent);
+  const brandLabels = JSON.parse(document.getElementById('brand_labels_data').textContent);
+  const brandData = JSON.parse(document.getElementById('brand_data_data').textContent);
+  const modelLabels = JSON.parse(document.getElementById('model_labels_data').textContent);
+  const modelData = JSON.parse(document.getElementById('model_data_data').textContent);
+  const loyaltyLbl = JSON.parse(document.getElementById('loyalty_labels_data').textContent);
+  const loyaltyDat = JSON.parse(document.getElementById('loyalty_data_data').textContent);
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+                 document.body.classList.contains('dark-mode');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#94a3b8' : '#64748b';
+
+  const baseXY = {
+    x: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } } },
+    y: { grid: { color: gridColor }, ticks: { color: labelColor, font: { size: 11 } }, beginAtZero: true },
+  };
+  const noLegend = { legend: { display: false } };
+
+  // ── Chart 1: Monthly unique customers (area line) ──
+  if (document.getElementById('custTrendChart') && custLabels.length) {
+    const ctx = document.getElementById('custTrendChart').getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 220);
+    grad.addColorStop(0, 'rgba(99,102,241,0.3)');
+    grad.addColorStop(1, 'rgba(99,102,241,0.02)');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: custLabels,
+        datasets: [{ label: 'Unique Customers', data: custData, borderColor: '#6366f1', backgroundColor: grad, borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: '#6366f1', fill: true, tension: 0.4 }],
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: noLegend, scales: baseXY },
+    });
+  }
+
+  // ── Chart 2: Top car brands (horizontal bar) ──
+  if (document.getElementById('brandChart') && brandLabels.length) {
+    new Chart(document.getElementById('brandChart'), {
+      type: 'bar',
+      data: {
+        labels: brandLabels,
+        datasets: [{ label: 'Jobs', data: brandData, backgroundColor: '#10b981cc', borderRadius: 5, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: noLegend,
+        scales: { x: baseXY.x, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } } },
+      },
+    });
+  }
+
+  // ── Chart 3: Customer loyalty doughnut ──
+  if (document.getElementById('loyaltyChart') && loyaltyDat.some(v => v > 0)) {
+    new Chart(document.getElementById('loyaltyChart'), {
+      type: 'doughnut',
+      data: {
+        labels: loyaltyLbl,
+        datasets: [{ data: loyaltyDat, backgroundColor: ['#6366f1cc', '#f59e0bcc'], borderWidth: 0, hoverOffset: 8 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: { legend: { display: true, position: 'bottom', labels: { color: labelColor, font: { size: 11 }, padding: 12, boxWidth: 12 } } },
+      },
+    });
+  }
+
+  // ── Chart 4: Top car models (horizontal bar) ──
+  if (document.getElementById('modelChart') && modelLabels.length) {
+    new Chart(document.getElementById('modelChart'), {
+      type: 'bar',
+      data: {
+        labels: modelLabels,
+        datasets: [{ label: 'Jobs', data: modelData, backgroundColor: '#6366f1cc', borderRadius: 5, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: noLegend,
+        scales: { x: baseXY.x, y: { grid: { display: false }, ticks: { color: labelColor, font: { size: 10 } } } },
+      },
+    });
+  }
+})();
+</script>

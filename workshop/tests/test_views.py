@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
-from .models import (
+from workshop.models import (
     JobCard, CarBrand, CarModel, Mechanic, SparePart, 
     ConcernSolution, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
     FailedAttempt

@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
-from .models import Mechanic, UserSession
+from workshop.models import Mechanic, UserSession
 from django.contrib.sessions.models import Session
 
 class ManagementViewTests(TestCase):
