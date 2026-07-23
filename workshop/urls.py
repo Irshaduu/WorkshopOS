@@ -26,9 +26,9 @@ urlpatterns = [
     path('jobcards/<int:pk>/delete/', views.jobcard_delete, name='jobcard_delete'),
 
     # ------------------
-    # NEW: DELIVERED (Workshop Dashboard)
+    # COMPLETED (Workshop Dashboard)
     # ------------------
-    path('delivered/', views.delivered_list, name='delivered_list'),
+    path('completed/', views.completed_list, name='completed_list'),
     path('trash/', views.trash_list, name='trash_list'),
     path('pending-payments/', views.pending_payments_list, name='pending_payments_list'),
     path('paid-bills/', views.paid_bills_list, name='paid_bills_list'),
@@ -71,8 +71,8 @@ urlpatterns = [
     path('spare-shops/items/<int:item_pk>/unassign/', views.spare_shop_unassign_item, name='spare_shop_unassign_item'),
     path('spare-shops/items/<int:item_pk>/update-price/', views.spare_shop_update_item_price, name='spare_shop_update_item_price'),
     
-    path('jobcards/<int:pk>/deliver/', views.mark_delivered, name='mark_delivered'),
-    path('jobcards/<int:pk>/undo-deliver/', views.undo_delivered, name='undo_delivered'),
+    path('jobcards/<int:pk>/complete/', views.mark_completed, name='mark_completed'),
+    path('jobcards/<int:pk>/undo-complete/', views.undo_completed, name='undo_completed'),
     path('jobcards/<int:pk>/toggle-hold/', views.toggle_hold, name='toggle_hold'),
     path('jobcards/<int:pk>/update-bill/', views.update_bill_status, name='update_bill_status'),
     path('jobcards/<int:pk>/restore/', views.restore_jobcard, name='restore_jobcard'),

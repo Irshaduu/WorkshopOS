@@ -117,7 +117,7 @@ def spare_shop_detail(request, pk):
 
     payment_qs = shop.payments.filter(is_trashed=False).order_by('-created_at')
 
-    # Date Filtering — calendar-aligned, consistent with Paid Bills & Delivered sections
+    # Date Filtering — calendar-aligned, consistent with Paid Bills & Completed sections
     # Filter applies to group_field so "Today" in Received mode = received today,
     # and "Today" in Ordered mode = ordered today.
     filter_type = request.GET.get('filter', 'this_year')

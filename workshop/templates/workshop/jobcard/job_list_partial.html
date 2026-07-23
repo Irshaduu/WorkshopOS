@@ -199,7 +199,7 @@
     }
 
     .jl-badge-active    { background: rgba(22,163,74,0.1);  color: #16a34a; border: 1px solid rgba(22,163,74,0.25); }
-    .jl-badge-delivered { background: rgba(217,119,6,0.1);  color: #d97706; border: 1px solid rgba(217,119,6,0.25); }
+    .jl-badge-completed { background: rgba(217,119,6,0.1);  color: #d97706; border: 1px solid rgba(217,119,6,0.25); }
     .jl-badge-billed    { background: rgba(37,99,235,0.08); color: #2563eb; border: 1px solid rgba(37,99,235,0.2); }
 
     /* Dropdown */
@@ -337,8 +337,8 @@
                         {% endif %}
                         {% if job.payment_status == 'PAID' %}
                             <span class="jl-status-badge jl-badge-billed">Billed</span>
-                        {% elif job.delivered %}
-                            <span class="jl-status-badge jl-badge-delivered">Delivered</span>
+                        {% elif job.completed %}
+                            <span class="jl-status-badge jl-badge-completed">Completed</span>
                         {% else %}
                             <span class="jl-status-badge jl-badge-active">Active</span>
                         {% endif %}

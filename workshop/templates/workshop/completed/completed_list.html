@@ -1,6 +1,6 @@
 {% extends "workshop/base.html" %}
 
-{% block title %}Delivered Vehicles{% endblock %}
+{% block title %}Completed Vehicles{% endblock %}
 
 {% block extra_css %}
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
@@ -207,16 +207,16 @@
     <div class="del-header-top">
         <div class="del-page-title">
             <i class="bi bi-check-circle-fill title-icon"></i>
-            Delivered
+            Completed
             <span class="del-count-pill">Completed</span>
         </div>
     </div>
 
     <!-- Controls: Search + Filter -->
     <div class="del-controls">
-        <form id="deliveredSearchForm" class="del-search-wrap">
+        <form id="completedSearchForm" class="del-search-wrap">
             <i class="bi bi-search search-icon"></i>
-            <input type="text" id="deliveredSearch" name="q"
+            <input type="text" id="completedSearch" name="q"
                    class="del-search-input"
                    placeholder="Search reg, brand, customer…"
                    value="{{ q }}" autocomplete="off">
@@ -291,13 +291,13 @@
 
 <!-- Results -->
 <div id="resultsContainer">
-    {% include "workshop/delivered/delivered_list_partial.html" %}
+    {% include "workshop/completed/completed_list_partial.html" %}
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const searchInput      = document.getElementById('deliveredSearch');
-    const searchForm       = document.getElementById('deliveredSearchForm');
+    const searchInput      = document.getElementById('completedSearch');
+    const searchForm       = document.getElementById('completedSearchForm');
     const resultsContainer = document.getElementById('resultsContainer');
     let currentFilter = '{{ filter_type }}';
     let debounceTimer;

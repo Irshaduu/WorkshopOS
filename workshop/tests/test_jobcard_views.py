@@ -114,7 +114,7 @@ class JobCardViewsTestCase(TestCase):
         number is the exact state this check exists to prevent.
         """
         url = reverse('jobcard_create')
-        # Use the existing job's plate (KL01A1234 — active, not delivered)
+        # Use the existing job's plate (KL01A1234 — active, not completed)
         data = self._base_formset_data(reg='KL01A1234')
 
         # Repeated attempts must all be blocked — there is no N-th-attempt bypass.
@@ -125,9 +125,9 @@ class JobCardViewsTestCase(TestCase):
                 registration_number__iexact='KL01A1234'
             ).count(), 1)
 
-    def test_jobcard_create_allowed_once_existing_is_delivered(self):
-        """Creating a job for a plate is allowed once the prior job card is delivered."""
-        self.job.delivered = True
+    def test_jobcard_create_allowed_once_existing_is_completed(self):
+        """Creating a job for a plate is allowed once the prior job card is completed."""
+        self.job.completed = True
         self.job.save()
 
         url = reverse('jobcard_create')
@@ -135,9 +135,9 @@ class JobCardViewsTestCase(TestCase):
         response = self.client.post(url, data)
 
         new_job = JobCard.objects.filter(
-            registration_number__iexact='KL01A1234', delivered=False
+            registration_number__iexact='KL01A1234', completed=False
         ).first()
-        self.assertIsNotNone(new_job, "New job card should be created once the old one is delivered")
+        self.assertIsNotNone(new_job, "New job card should be created once the old one is completed")
         self.assertRedirects(response, reverse('jobcard_edit', args=[new_job.pk]))
 
     def test_jobcard_edit_get(self):
@@ -191,7 +191,7 @@ class JobCardViewsTestCase(TestCase):
         """
         Editing a job card's registration number to match a DIFFERENT active job
         card must be hard-blocked — that's the third door to the same "two active
-        job cards, one vehicle" bug (alongside create and undo_delivered).
+        job cards, one vehicle" bug (alongside create and undo_completed).
         """
         # self.job is active with reg 'KL01A1234'. Create a second, unrelated
         # active job card, then try to edit it to steal self.job's plate.

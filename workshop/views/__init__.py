@@ -10,8 +10,8 @@ from .dashboard import home, live_report
 from .jobcard import (
     jobcard_create, jobcard_list, jobcard_detail, jobcard_edit, jobcard_delete,
 )
-from .delivered import (
-    delivered_list, mark_delivered, undo_delivered, toggle_hold,
+from .completed import (
+    completed_list, mark_completed, undo_completed, toggle_hold,
 )
 from .trash import (
     trash_list, restore_jobcard, permanent_delete_jobcard,

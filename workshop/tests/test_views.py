@@ -129,8 +129,8 @@ class WorkshopViewTests(TestCase):
     def test_financial_report_exhaustive_filters(self):
         # 1. Access without filters
         url = reverse('live_report')
-        # live_report only shows delivered=False (active) jobs, so create one that is active
-        paid_job = JobCard.objects.create(registration_number='PAID001', admitted_date=timezone.now().date(), delivered=False, payment_status='PAID')
+        # live_report only shows completed=False (active) jobs, so create one that is active
+        paid_job = JobCard.objects.create(registration_number='PAID001', admitted_date=timezone.now().date(), completed=False, payment_status='PAID')
         
         # 2. Search filter
         response = self.client.get(url, {'q': 'PAID001'})
@@ -164,11 +164,11 @@ class WorkshopViewTests(TestCase):
         response = self.client.post(reverse('concern_add'), {'concern': 'Brake Sound'})
         self.assertTrue(ConcernSolution.objects.filter(concern='Brake Sound').exists())
 
-    def test_delivered_view_search(self):
-        self.jobcard.delivered = True
-        self.jobcard.discharged_date = timezone.now().date()
+    def test_completed_view_search(self):
+        self.jobcard.completed = True
+        self.jobcard.completed_date = timezone.now().date()
         self.jobcard.save()
         
-        url = reverse('delivered_list')
+        url = reverse('completed_list')
         response = self.client.get(url, {'q': 'KL01AB1111', 'filter': 'all'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertContains(response, 'KL01AB1111')

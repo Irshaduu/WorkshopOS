@@ -68,7 +68,7 @@
         color: var(--pit-track);
     }
 
-    .stat-value.delivered {
+    .stat-value.completed {
         color: var(--pit-green);
     }
 
@@ -480,8 +480,8 @@
         </div>
         <div class="stat-divider"></div>
         <div class="stat-item">
-            <span class="stat-value delivered">{{ delivered_count|default:"0" }}</span>
-            <span class="stat-label">Delivered</span>
+            <span class="stat-value completed">{{ completed_count|default:"0" }}</span>
+            <span class="stat-label">Completed</span>
         </div>
     </div>
     <a href="{% url 'live_report' %}" class="btn-report">
@@ -520,9 +520,9 @@
                         <div class="d-flex align-items-center gap-2">
                             <span class="reg-badge">{{ job.registration_number }}</span>
                             
-                            <!-- Restored Discharge Due Date Badges -->
-                            {% if job.discharged_date %}
-                                {% with d=job.discharged_date %}
+                            <!-- Restored Completion Due Date Badges -->
+                            {% if job.completed_date %}
+                                {% with d=job.completed_date %}
                                 <span class="due-badge 
                                     {% if d < today %}bg-danger-subtle text-danger border border-danger-subtle
                                     {% elif d == today %}bg-warning-subtle text-warning-emphasis border border-warning-subtle
@@ -580,11 +580,11 @@
                         </li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
-                            <form method="post" action="{% url 'mark_delivered' job.pk %}" class="d-inline">
+                            <form method="post" action="{% url 'mark_completed' job.pk %}" class="d-inline">
                                 {% csrf_token %}
                                 <button type="submit" class="dropdown-item text-success"
-                                        onclick="return confirm('Mark {{ job.registration_number }} as delivered?');">
-                                    <i class="bi bi-check-circle"></i> Mark Delivered
+                                        onclick="return confirm('Mark {{ job.registration_number }} as completed?');">
+                                    <i class="bi bi-check-circle"></i> Mark Completed
                                 </button>
                             </form>
                         </li>

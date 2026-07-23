@@ -7,7 +7,7 @@
         --font-body:    'Barlow', sans-serif;
     }
 
-    /* ── Delivered Card ──────────────────────────── */
+    /* ── Completed Card ──────────────────────────── */
     .del-card {
         background: var(--color-card);
         border-radius: 12px;
@@ -236,9 +236,9 @@
     }
 </style>
 
-{% if delivered_jobcards %}
+{% if completed_jobcards %}
 <div class="row g-3">
-    {% for jobcard in delivered_jobcards %}
+    {% for jobcard in completed_jobcards %}
     {% with color=jobcard.get_car_color_hex|default:'#475569' %}
     <div class="col-12 col-md-6 col-lg-4">
         <div class="del-card" data-detail-url="{% url 'jobcard_detail' jobcard.pk %}" style="cursor: pointer;">
@@ -289,11 +289,11 @@
                             {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                             <li><hr class="dropdown-divider"></li>
                             <li>
-                                <form method="post" action="{% url 'undo_delivered' jobcard.pk %}" class="d-inline">
+                                <form method="post" action="{% url 'undo_completed' jobcard.pk %}" class="d-inline">
                                     {% csrf_token %}
                                     <button type="submit" class="dropdown-item text-warning"
                                             onclick="return confirm('Move {{ jobcard.registration_number }} back to active workshop?');">
-                                        <i class="bi bi-arrow-counterclockwise"></i> Undo Delivery
+                                        <i class="bi bi-arrow-counterclockwise"></i> Undo Completion
                                     </button>
                                 </form>
                             </li>
@@ -310,7 +310,7 @@
                     </div>
                     <div class="del-meta-item">
                         <i class="bi bi-calendar-check"></i>
-                        <span class="meta-text">{{ jobcard.discharged_date|date:"d M Y" }}</span>
+                        <span class="meta-text">{{ jobcard.completed_date|date:"d M Y" }}</span>
                     </div>
                 </div>
 
@@ -326,10 +326,10 @@
 {% else %}
 <div class="del-empty">
     <i class="bi bi-search empty-icon"></i>
-    <h5>No delivered vehicles found</h5>
+    <h5>No completed vehicles found</h5>
     <p>Try adjusting your search or filter.</p>
     {% if q %}
-    <button onclick="document.getElementById('deliveredSearch').value=''; document.getElementById('deliveredSearch').dispatchEvent(new Event('input'));"
+    <button onclick="document.getElementById('completedSearch').value=''; document.getElementById('completedSearch').dispatchEvent(new Event('input'));"
             class="btn btn-sm btn-outline-primary rounded-pill px-4"
             style="font-family: var(--font-body); font-weight: 600;">
         Clear Search

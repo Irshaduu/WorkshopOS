@@ -31,7 +31,7 @@ print()
 # All-time spare revenue and cost
 qs = JobCardSpareItem.objects.filter(
     job_card__is_deleted=False,
-    job_card__delivered=True,
+    job_card__completed=True,
 )
 spare_agg = qs.aggregate(
     spare_revenue=Coalesce(Sum('total_price'), Decimal('0')),
@@ -47,7 +47,7 @@ print()
 # Labour all-time
 labour_agg = JobCardLabourItem.objects.filter(
     job_card__is_deleted=False,
-    job_card__delivered=True,
+    job_card__completed=True,
 ).aggregate(
     labour_revenue=Coalesce(Sum('amount'), Decimal('0')),
     count=Count('id'),
@@ -59,13 +59,13 @@ for k, v in labour_agg.items():
 print()
 # Payment methods
 print('=== Payment methods in DB ===')
-pms = JobCard.objects.filter(is_deleted=False, delivered=True).values('payment_method').annotate(n=Count('id')).order_by('-n')
+pms = JobCard.objects.filter(is_deleted=False, completed=True).values('payment_method').annotate(n=Count('id')).order_by('-n')
 for pm in pms:
     print(f"  [{pm['payment_method']}] = {pm['n']}")
 
 print()
 # Discount data
-disc_agg = JobCard.objects.filter(is_deleted=False, delivered=True).aggregate(
+disc_agg = JobCard.objects.filter(is_deleted=False, completed=True).aggregate(
     total_discount=Coalesce(Sum('discount_amount'), Decimal('0')),
     avg_bill=Coalesce(Avg('total_bill_amount'), Decimal('0')),
     jobs_with_discount=Count('id', filter=Q(discount_amount__gt=0)),
@@ -79,7 +79,7 @@ print()
 print('=== Monthly trend (2026) ===')
 monthly = JobCard.objects.filter(
     is_deleted=False,
-    delivered=True,
+    completed=True,
     admitted_date__year=2026,
 ).annotate(month=TruncMonth('admitted_date')).values('month').annotate(
     revenue=Coalesce(Sum('total_bill_amount'), Decimal('0')),
@@ -93,7 +93,7 @@ print()
 print('=== Top 5 discount recipients ===')
 top_disc = JobCard.objects.filter(
     is_deleted=False,
-    delivered=True,
+    completed=True,
     discount_amount__gt=0,
 ).values('customer_name').annotate(
     total_discount=Sum('discount_amount')
@@ -106,7 +106,7 @@ print()
 print('=== Daily revenue June 2026 ===')
 daily = JobCard.objects.filter(
     is_deleted=False,
-    delivered=True,
+    completed=True,
     admitted_date__year=2026,
     admitted_date__month=6,
 ).annotate(day=TruncDay('admitted_date')).values('day').annotate(

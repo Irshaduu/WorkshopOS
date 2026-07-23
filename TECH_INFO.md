@@ -605,7 +605,7 @@ for spare in jobcard.spares.all():
 ---
 
 ## 17. Thread-Safe Auto-Incrementing Bill Numbers
-**What It Does:** Generates sequential bill numbers like `JB-26-001`, `JB-26-002`, etc. Thread-safe — two users creating bills at the same instant will never get the same number.
+**What It Does:** Generates sequential per-year bill numbers like `JB-26-001`, `JB-26-002`, etc. Thread-safe — two users creating bills at the same instant will never get the same number — and **sequenced numerically**, so it stays correct past 999 and 9999 bills in a year.
 
 **Model `save()` override:**
 ```python
@@ -613,28 +613,31 @@ def save(self, *args, **kwargs):
     if not self.bill_number:
         with transaction.atomic():
             year = str(self.admitted_date.year)[2:]  # 2026 → "26"
+            prefix = f'JB-{year}-'
 
-            last_job = JobCard.objects.select_for_update().filter(
-                bill_number__startswith=f'JB-{year}-'
-            ).order_by('-bill_number').first()
-
-            if last_job and last_job.bill_number:
+            # Max computed NUMERICALLY over the locked rows — never by text order.
+            max_num = 0
+            for existing_bill in (
+                JobCard.objects.select_for_update()
+                .filter(bill_number__startswith=prefix)
+                .only('bill_number')
+            ):
                 try:
-                    last_num = int(last_job.bill_number.split('-')[-1])
-                    next_num = last_num + 1
+                    n = int(existing_bill.bill_number.rsplit('-', 1)[-1])
                 except (ValueError, IndexError):
-                    next_num = JobCard.objects.filter(
-                        bill_number__startswith=f'JB-{year}-'
-                    ).count() + 1
-            else:
-                next_num = 1
+                    continue
+                if n > max_num:
+                    max_num = n
 
-            self.bill_number = f'JB-{year}-{str(next_num).zfill(3)}'
+            next_num = max_num + 1
+            self.bill_number = f'{prefix}{str(next_num).zfill(3)}'
 
     super().save(*args, **kwargs)
 ```
 
-**Critical:** `select_for_update()` locks the row during the read so a concurrent request waits instead of reading the same number.
+**Two things make this correct:**
+- `select_for_update()` locks the year's rows during the read so a concurrent request waits instead of reading the same number (effective on PostgreSQL; a harmless no-op on SQLite).
+- The "highest so far" is computed by **parsing the numeric suffix and taking `max`**, not `order_by('-bill_number')`. Because `bill_number` is a `CharField`, a text sort ranks `"JB-26-999"` *above* `"JB-26-1000"` (`'9' > '1'`), which previously reissued `1000` and crashed on the unique constraint at the 1001st bill of a year. Fixed 2026-07-24; regression covered by `test_bill_number_sequences_numerically_past_thousand_and_ten_thousand`.
 
 ---
 
@@ -670,7 +673,7 @@ def save(self, *args, **kwargs):
 
 ## 19. One Active Job Card Per Vehicle (Hard Block)
 
-**What It Does:** Only one active (not delivered, not trashed) job card is allowed per registration number at a time — enforced consistently across all three places that can put a car "on the floor": creating a job card, editing a job card's registration number, and undoing a delivery. There is **no bypass** — this used to be a 3-attempt confirmation that silently saved anyway on the third try, which is exactly how duplicate active job cards happened in practice. Fixed 2026-07-23.
+**What It Does:** Only one active (not completed, not trashed) job card is allowed per registration number at a time — enforced consistently across all three places that can put a car "on the floor": creating a job card, editing a job card's registration number, and undoing a completion. There is **no bypass** — this used to be a 3-attempt confirmation that silently saved anyway on the third try, which is exactly how duplicate active job cards happened in practice. Fixed 2026-07-23.
 
 **Single source of truth** (`workshop/models.py`, `JobCard.get_active_conflict()`):
 ```python
@@ -678,7 +681,7 @@ def save(self, *args, **kwargs):
 def get_active_conflict(cls, registration_number, exclude_pk=None):
     qs = cls.objects.filter(
         registration_number__iexact=registration_number.strip(),
-        delivered=False,
+        completed=False,
         is_deleted=False,
     )
     if exclude_pk:
@@ -689,7 +692,7 @@ def get_active_conflict(cls, registration_number, exclude_pk=None):
 **Used by all three entry points:**
 - `jobcard_create` — blocks save, re-renders the form with an error if another active job card exists for that plate.
 - `jobcard_edit` — blocks save if changing the registration number would collide with a *different* active job card (`exclude_pk` means editing without changing the plate never conflicts with itself).
-- `undo_delivered` — blocks the undo if a different job card is already active for that plate (otherwise you'd end up with two active job cards for the same vehicle at once — the exact bug this closes).
+- `undo_completed` — blocks the undo if a different job card is already active for that plate (otherwise you'd end up with two active job cards for the same vehicle at once — the exact bug this closes).
 
 Each call site shows a `messages.error(...)` explaining which vehicle/job card is blocking, and does not save.
 
@@ -1020,11 +1023,11 @@ return redirect('jobcard_edit', pk=jobcard.pk)
 ```python
 class Meta:
     indexes = [
-        models.Index(fields=['is_deleted', 'delivered', '-updated_at']),
+        models.Index(fields=['is_deleted', 'completed', '-updated_at']),
     ]
 ```
 
-**Matches the dashboard query:** `JobCard.objects.filter(is_deleted=False, delivered=False).order_by('-updated_at')` — the database can use this single index to filter AND sort without scanning the entire table.
+**Matches the dashboard query:** `JobCard.objects.filter(is_deleted=False, completed=False).order_by('-updated_at')` — the database can use this single index to filter AND sort without scanning the entire table.
 
 ---
 

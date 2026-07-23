@@ -14,7 +14,7 @@ class DashboardViewsTestCase(TestCase):
         self.owner = User.objects.create_user(username='owner', password='password')
         self.owner.groups.add(self.owner_group)
 
-        # Office user for delivered_list, live_report, toggle_hold etc.
+        # Office user for completed_list, live_report, toggle_hold etc.
         self.office = User.objects.create_user(username='officestaff', password='password')
         self.office.groups.add(self.office_group)
 
@@ -91,33 +91,33 @@ class DashboardViewsTestCase(TestCase):
         self.job.refresh_from_db()
         self.assertFalse(self.job.is_deleted)
 
-    def test_mark_delivered_and_undo(self):
-        """mark_delivered sets delivered=True; undo_delivered reverses it."""
-        # mark_delivered
-        url_mark = reverse('mark_delivered', args=[self.job.id])
+    def test_mark_completed_and_undo(self):
+        """mark_completed sets completed=True; undo_completed reverses it."""
+        # mark_completed
+        url_mark = reverse('mark_completed', args=[self.job.id])
         response = self.client.post(url_mark)
         self.assertRedirects(response, reverse('home'))
         self.job.refresh_from_db()
-        self.assertTrue(self.job.delivered)
-        self.assertEqual(self.job.discharged_date, date.today())
+        self.assertTrue(self.job.completed)
+        self.assertEqual(self.job.completed_date, date.today())
 
-        # undo_delivered
-        url_undo = reverse('undo_delivered', args=[self.job.id])
+        # undo_completed
+        url_undo = reverse('undo_completed', args=[self.job.id])
         response = self.client.post(url_undo)
-        self.assertRedirects(response, reverse('delivered_list'))
+        self.assertRedirects(response, reverse('completed_list'))
         self.job.refresh_from_db()
-        self.assertFalse(self.job.delivered)
-        self.assertIsNone(self.job.discharged_date)
+        self.assertFalse(self.job.completed)
+        self.assertIsNone(self.job.completed_date)
 
-    def test_undo_delivered_blocked_when_active_conflict_exists(self):
+    def test_undo_completed_blocked_when_active_conflict_exists(self):
         """
-        undo_delivered must refuse to reactivate an old job card if a different
+        undo_completed must refuse to reactivate an old job card if a different
         job card is already active for the same registration number — otherwise
         two active job cards would exist for the same vehicle simultaneously.
         """
-        # self.job (KL01A1234) is delivered, and will be the "old" job card.
-        self.job.delivered = True
-        self.job.discharged_date = date.today()
+        # self.job (KL01A1234) is completed, and will be the "old" job card.
+        self.job.completed = True
+        self.job.completed_date = date.today()
         self.job.save()
 
         # A different, currently-active job card for the same vehicle.
@@ -129,25 +129,25 @@ class DashboardViewsTestCase(TestCase):
             customer_name='Jane Doe',
         )
 
-        url_undo = reverse('undo_delivered', args=[self.job.id])
+        url_undo = reverse('undo_completed', args=[self.job.id])
         response = self.client.post(url_undo)
-        self.assertRedirects(response, reverse('delivered_list'))
+        self.assertRedirects(response, reverse('completed_list'))
 
-        # Old job card must remain delivered — the undo was blocked.
+        # Old job card must remain completed — the undo was blocked.
         self.job.refresh_from_db()
-        self.assertTrue(self.job.delivered)
-        self.assertIsNotNone(self.job.discharged_date)
+        self.assertTrue(self.job.completed)
+        self.assertIsNotNone(self.job.completed_date)
 
         # The live job card is untouched.
         live_job.refresh_from_db()
-        self.assertFalse(live_job.delivered)
+        self.assertFalse(live_job.completed)
 
-    def test_mark_delivered_get_ignored(self):
-        """GET to mark_delivered should not change delivered status."""
-        url_mark = reverse('mark_delivered', args=[self.job.id])
+    def test_mark_completed_get_ignored(self):
+        """GET to mark_completed should not change completed status."""
+        url_mark = reverse('mark_completed', args=[self.job.id])
         self.client.get(url_mark)
         self.job.refresh_from_db()
-        self.assertFalse(self.job.delivered)
+        self.assertFalse(self.job.completed)
 
     def test_toggle_hold(self):
         """toggle_hold should flip the on_hold flag back and forth."""
@@ -166,24 +166,24 @@ class DashboardViewsTestCase(TestCase):
         self.job.refresh_from_db()
         self.assertFalse(self.job.on_hold)
 
-    def test_delivered_list_standard(self):
-        """Standard GET to delivered_list should show today's filter."""
-        self.job.delivered = True
-        self.job.discharged_date = date.today()
+    def test_completed_list_standard(self):
+        """Standard GET to completed_list should show today's filter."""
+        self.job.completed = True
+        self.job.completed_date = date.today()
         self.job.save()
 
-        url = reverse('delivered_list')
+        url = reverse('completed_list')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'workshop/delivered/delivered_list.html')
+        self.assertTemplateUsed(response, 'workshop/completed/completed_list.html')
 
-    def test_delivered_list_ajax_filters(self):
-        """AJAX requests to delivered_list should apply all date filters."""
-        self.job.delivered = True
-        self.job.discharged_date = date.today()
+    def test_completed_list_ajax_filters(self):
+        """AJAX requests to completed_list should apply all date filters."""
+        self.job.completed = True
+        self.job.completed_date = date.today()
         self.job.save()
 
-        url = reverse('delivered_list')
+        url = reverse('completed_list')
 
         for f in ['today', 'week', 'month', 'year']:
             response = self.client.get(
@@ -191,16 +191,16 @@ class DashboardViewsTestCase(TestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertTemplateUsed(
-                response, 'workshop/delivered/delivered_list_partial.html'
+                response, 'workshop/completed/completed_list_partial.html'
             )
 
-    def test_delivered_list_custom_date_filter(self):
+    def test_completed_list_custom_date_filter(self):
         """Custom date range filter should work correctly."""
-        self.job.delivered = True
-        self.job.discharged_date = date.today()
+        self.job.completed = True
+        self.job.completed_date = date.today()
         self.job.save()
 
-        url = reverse('delivered_list')
+        url = reverse('completed_list')
         response = self.client.get(url, {
             'filter': 'custom',
             'start_date': str(date.today() - timedelta(days=7)),
@@ -208,9 +208,9 @@ class DashboardViewsTestCase(TestCase):
         }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertEqual(response.status_code, 200)
 
-    def test_delivered_list_search_query(self):
-        """AJAX search query on delivered list should filter results."""
-        url = reverse('delivered_list')
+    def test_completed_list_search_query(self):
+        """AJAX search query on completed list should filter results."""
+        url = reverse('completed_list')
         response = self.client.get(
             url, {'q': 'Honda'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )

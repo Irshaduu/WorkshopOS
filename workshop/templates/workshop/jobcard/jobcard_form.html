@@ -55,10 +55,10 @@
                     </button>
                     {% endif %}
                 </div>
-            {% elif jobcard.delivered %}
+            {% elif jobcard.completed %}
                 <div class="alert alert-warning py-2 px-3 mb-0 shadow-sm border-0" style="border-radius: 8px; background-color: #fef7e0; color: #b06000;">
                     <div class="small fw-bold">
-                        <i class="bi bi-exclamation-triangle-fill me-1"></i> CAUTION: Car is Delivered. Review before editing.
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> CAUTION: Car is Completed. Review before editing.
                     </div>
                 </div>
             {% endif %}
@@ -109,8 +109,8 @@
                 <h6 class="mb-0 text-primary fw-bold">
                     <i class="bi bi-car-front"></i> Vehicles in Workshop ({{ active_jobcards.count }})
                 </h6>
-                <a href="{% url 'delivered_list' %}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-check-circle"></i> View Delivered
+                <a href="{% url 'completed_list' %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-check-circle"></i> View Completed
                 </a>
             </div>
             <div class="card-body p-3">
@@ -130,7 +130,7 @@
                         </div>
                         <div class="mb-2">
                             <small class="text-muted">
-                                <i class="bi bi-calendar-check"></i> Due: {{ job.discharged_date|date:"d
+                                <i class="bi bi-calendar-check"></i> Due: {{ job.completed_date|date:"d
                                 M"|default:"Not
                                 set" }}
                             </small>
@@ -139,11 +139,11 @@
                             <a href="{% url 'jobcard_detail' job.pk %}" class="btn btn-sm btn-outline-primary flex-fill">
                                 <i class="bi bi-eye"></i> View
                             </a>
-                            <form method="post" action="{% url 'mark_delivered' job.pk %}" class="flex-fill">
+                            <form method="post" action="{% url 'mark_completed' job.pk %}" class="flex-fill">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-success w-100"
-                                    onclick="return confirm('Mark {{ job.registration_number }} as delivered?');">
-                                    <i class="bi bi-check-lg"></i> Delivered
+                                    onclick="return confirm('Mark {{ job.registration_number }} as completed?');">
+                                    <i class="bi bi-check-lg"></i> Completed
                                 </button>
                             </form>
                         </div>

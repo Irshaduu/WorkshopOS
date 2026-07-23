@@ -111,10 +111,10 @@ View Job Card - {{ jobcard.registration_number }}
                         <i class="bi bi-shield-lock-fill me-1"></i> FINANCIAL LOCK ACTIVE - RECORD IS PAID
                     </div>
                 </div>
-            {% elif jobcard.delivered %}
+            {% elif jobcard.completed %}
                 <div class="alert alert-warning py-2 px-3 mb-0 shadow-sm border-0" style="border-radius: 8px; background-color: #fef7e0; color: #b06000;">
                     <div class="small fw-bold">
-                        <i class="bi bi-exclamation-triangle-fill me-1"></i> Car is Delivered
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> Car is Completed
                     </div>
                 </div>
             {% endif %}
@@ -163,8 +163,8 @@ View Job Card - {{ jobcard.registration_number }}
                         <span class="view-label">Dates</span>
                         <span class="view-value">
                             <i class="bi bi-box-arrow-in-right text-muted me-1"></i> {{ jobcard.admitted_date|date:"d M, Y" }}
-                            {% if jobcard.discharged_date %}
-                            <br><i class="bi bi-box-arrow-right text-success me-1 mt-1"></i> <span class="text-success">{{ jobcard.discharged_date|date:"d M, Y" }}</span>
+                            {% if jobcard.completed_date %}
+                            <br><i class="bi bi-box-arrow-right text-success me-1 mt-1"></i> <span class="text-success">{{ jobcard.completed_date|date:"d M, Y" }}</span>
                             {% endif %}
                         </span>
                     </div>

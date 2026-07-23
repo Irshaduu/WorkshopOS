@@ -51,14 +51,14 @@
                     <!-- Security Indicators -->
                     {% if bill.payment_status == 'PAID' %}
                         <span class="ms-1" title="Billed & Finalized (Hard-Locked)">🔴</span>
-                    {% elif bill.delivered %}
-                        <span class="ms-1" title="Delivered (Soft-Locked)">🟡</span>
+                    {% elif bill.completed %}
+                        <span class="ms-1" title="Completed (Soft-Locked)">🟡</span>
                     {% else %}
                         <span class="ms-1" title="Active Service (Editable)">🟢</span>
                     {% endif %}
 
-                    <span class="badge {% if bill.delivered %}bg-success{% else %}bg-warning text-dark{% endif %} ms-2" style="font-size: 0.7rem;">
-                        {% if bill.delivered %}Delivered{% else %}Active{% endif %}
+                    <span class="badge {% if bill.completed %}bg-success{% else %}bg-warning text-dark{% endif %} ms-2" style="font-size: 0.7rem;">
+                        {% if bill.completed %}Completed{% else %}Active{% endif %}
                     </span>
                     <br>
                     <small style="color: var(--color-text-muted);">

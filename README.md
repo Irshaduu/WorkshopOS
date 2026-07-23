@@ -17,7 +17,7 @@ A premium, comprehensive Django-based workshop management system for a single au
 - **Real-time Status Tracking** — Progress bars and visual status cues on the Dashboard and Live Report views.
 - **Auto-Learning Database** — System automatically captures new concerns and spare parts for future smart-suggestions (case-insensitive & whitespace-normalized).
 - **Safety Hardened** — Double-confirmation modals for renames and deletes, and merge alerts to protect historical data.
-- **Duplicate Prevention** — Only one active job card is allowed per registration number at a time, enforced on create, edit, and delivery-undo alike — no bypass.
+- **Duplicate Prevention** — Only one active job card is allowed per registration number at a time, enforced on create, edit, and completion-undo alike — no bypass.
 
 ### Finance & Suppliers
 - **Spare Shops Management** — Dedicated module for tracking parts suppliers, monitoring outstanding balances, and managing lump-sum supplier payments with cascade distribution.

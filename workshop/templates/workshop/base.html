@@ -317,11 +317,11 @@
             </a>
             {% endif %}
 
-            <!-- Delivered (Office/Owner only) -->
+            <!-- Completed (Office/Owner only) -->
             {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-            <a class="nav-link-custom {% if 'delivered' in request.path %}active{% endif %}"
-                href="{% url 'delivered_list' %}">
-                <i class="bi bi-check-circle"></i> Delivered
+            <a class="nav-link-custom {% if 'completed' in request.path %}active{% endif %}"
+                href="{% url 'completed_list' %}">
+                <i class="bi bi-check-circle"></i> Completed
             </a>
             {% endif %}
 
@@ -425,7 +425,7 @@
                 {% endif %}
                 <li><a class="dropdown-item fw-bold text-success" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> Cashbook</a></li>
                 <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'delivered_list' %}"><i class="bi bi-check-circle"></i> Delivered Jobs</a></li>
+                <li><a class="dropdown-item" href="{% url 'completed_list' %}"><i class="bi bi-check-circle"></i> Completed Jobs</a></li>
                 <li><a class="dropdown-item text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
                 {% if request.user|has_group:"Owner" or request.user.is_superuser %}
                 <li><a class="dropdown-item text-muted" href="{% url 'trash_list' %}"><i class="bi bi-trash3"></i> Trash</a></li>

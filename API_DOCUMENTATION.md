@@ -18,7 +18,7 @@ Every view that handles lists of objects (Job Cards, Inventory, Search) must use
 
 ### 2. The "Tiny Search" Pattern
 To find any vehicle among millions, always filter by **B-Tree indexed fields**.
-- **Indexed Fields**: `registration_number`, `bill_number`, `brand_name`, `model_name`, `admitted_date`, `is_deleted`, `delivered`, `updated_at`.
+- **Indexed Fields**: `registration_number`, `bill_number`, `brand_name`, `model_name`, `admitted_date`, `is_deleted`, `completed`, `updated_at`.
 - **Search Execution**: Use `Q` objects with `icontains` for partial matches. Split multi-word queries for cross-column matching.
 
 ### 3. Composite Database Index
@@ -26,7 +26,7 @@ The dashboard query pattern is covered by a composite index for maximum performa
 ```python
 class Meta:
     indexes = [
-        models.Index(fields=['is_deleted', 'delivered', '-updated_at']),
+        models.Index(fields=['is_deleted', 'completed', '-updated_at']),
     ]
 ```
 
@@ -108,7 +108,7 @@ Located in `inventory/signals.py` (second group of handlers).
 ## 📊 IV. Pagination & Rendering
 
 All list-based views MUST utilize the `Paginator` class.
-- **Standard**: 45 records per page (job card lists, pending payments, delivered).
+- **Standard**: 45 records per page (job card lists, pending payments, completed).
 - **Inventory Standard**: 10 categories per page (heavy nested view).
 - **Template Fragment**: Use `workshop/includes/pagination.html` for consistent UI.
 

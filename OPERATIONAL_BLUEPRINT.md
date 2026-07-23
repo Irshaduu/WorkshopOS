@@ -33,12 +33,12 @@ graph TD
     O --> P["Completion % Updates Automatically"]
 
     P --> Q{"All Concerns Fixed?"}
-    Q -->|"Yes"| R["Office Marks as DELIVERED"]
+    Q -->|"Yes"| R["Office Marks as COMPLETED"]
     Q -->|"No"| S["Continue Work or Put ON HOLD"]
     S --> M
 
-    R --> T["Discharge Date Auto-Set to Today"]
-    T --> U["Car Moves to Delivered Section"]
+    R --> T["Completion Date Auto-Set to Today"]
+    T --> U["Car Moves to Completed Section"]
     U --> V["Invoice Generated"]
     V --> W["Payment Collected"]
     W --> X["Payment Status: PENDING to PARTIAL to PAID / BULK_PAID"]
@@ -67,7 +67,7 @@ graph TD
    Everything Floor can do + these actions:
    - View full Job Card List with search
    - Delete job cards (soft-delete to trash)
-   - Mark cars as Delivered / Undo delivery
+   - Mark cars as Completed / Undo completion
    - View and Generate Invoices
    - Update payment status and amounts
    - Manage Bulk Payers (create, transfer bills, process cascade payments)
@@ -473,20 +473,20 @@ Each tab has:
 MAIN DASHBOARD (home)
   Shows: All ACTIVE cars currently on the floor
   Cards: Reg, Brand/Model, Color dot, Mechanic, Completion %
-  Actions: Create Job, Mark Delivered, Toggle Hold
+  Actions: Create Job, Mark Completed, Toggle Hold
 
 JOB LIST
-  Shows: ALL job cards (active + delivered, not trash)
+  Shows: ALL job cards (active + completed, not trash)
   Searchable, Paginated (45 per page), AJAX live search
 
 LIVE REPORT
   Shows: Quick overview of all jobs for floor workers
   Minimal info, fast scroll, search + status filter
 
-DELIVERED LIST
+COMPLETED LIST
   Shows: Cars that have been picked up
   Filters: Today / Week / Month / Year / Custom range / All
-  Actions: Undo delivery, View invoice
+  Actions: Undo completion, View invoice
 
 PENDING BILLS
   Shows: All unpaid/partially paid jobs
@@ -553,14 +553,14 @@ MANAGEMENT DASHBOARD
 
 ## 13. STANDARD TIME FILTERS
 
-Five sections share one calendar-aligned filter vocabulary, so switching between them feels consistent: **Paid Bills, Delivered, Workshop Spare Shop, Supplier Shop (Inventory), Cashbook.**
+Five sections share one calendar-aligned filter vocabulary, so switching between them feels consistent: **Paid Bills, Completed, Workshop Spare Shop, Supplier Shop (Inventory), Cashbook.**
 
 ```
 Today | This Week | This Month | This Year | Last Week | Last Month | Last Year | Custom range
 ```
 
 - All "today"/range math uses `timezone.localdate()` (IST), not server-local UTC — fixes a class of off-by-one-day bugs around midnight.
-- Defaults differ by purpose: operational pages (Paid Bills, Delivered, Cashbook) default to **Today**; ledger pages (Spare Shop, Supplier Shop) default to **This Year**, since balances are running totals rather than daily activity.
+- Defaults differ by purpose: operational pages (Paid Bills, Completed, Cashbook) default to **Today**; ledger pages (Spare Shop, Supplier Shop) default to **This Year**, since balances are running totals rather than daily activity.
 - Filter selection persists in the URL query string, so a refresh or shared link keeps the same view.
 - Items with no relevant date recorded are shown under an explicit "No Date Recorded" grouping rather than silently folded into another date bucket.
 
@@ -688,4 +688,4 @@ See `TITAN_MASTER_HANDOVER.md` § Roadmap for the authoritative, current list �
 
 ---
 
-> **In one sentence**: Customer arrives → Job card created → Concerns/Spares/Labour tracked → Inventory auto-syncs (both consumption and supplier restocking) → Car delivered → Invoice generated → Payment collected → Everything searchable forever through Car Profiles.
+> **In one sentence**: Customer arrives → Job card created → Concerns/Spares/Labour tracked → Inventory auto-syncs (both consumption and supplier restocking) → Car completed → Invoice generated → Payment collected → Everything searchable forever through Car Profiles.

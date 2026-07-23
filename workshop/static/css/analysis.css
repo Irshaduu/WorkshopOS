@@ -364,10 +364,10 @@ main.main-content:has(.analysis-container) {
 }
 
 /* -----------------------------------------------------------------------------
-   FILTER BUTTON & DROPDOWN — Exact match of Delivered section
+   FILTER BUTTON & DROPDOWN — Exact match of Completed section
    ----------------------------------------------------------------------------- */
 
-/* Filter Button (reuses del-filter-btn from delivered) */
+/* Filter Button (reuses del-filter-btn from the Completed section) */
 .del-filter-btn {
   display: inline-flex;
   align-items: center;

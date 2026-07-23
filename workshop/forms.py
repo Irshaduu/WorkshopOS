@@ -105,7 +105,7 @@ class SpareShopForm(BootstrapFormMixin, forms.ModelForm):
 class JobCardForm(BootstrapFormMixin, forms.ModelForm):
     """
     Main job card form.
-    Note: discharged_date is auto-filled on delivery, not manually entered.
+    Note: completed_date is auto-filled on completion, not manually entered.
     """
     class Meta:
         model = JobCard

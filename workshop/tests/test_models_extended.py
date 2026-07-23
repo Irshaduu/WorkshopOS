@@ -97,6 +97,30 @@ class ExtendedModelsTestCase(TestCase):
         )
         self.assertTrue(job_new.bill_number.startswith(f"JB-{year}-"))
 
+    def test_bill_number_sequences_numerically_past_thousand_and_ten_thousand(self):
+        """
+        Regression: bill numbers must be sequenced NUMERICALLY, not by text.
+
+        bill_number is a CharField, so a lexicographic sort ranks "JB-YY-999"
+        above "JB-YY-1000" ('9' > '1'). The old order_by('-bill_number') logic
+        therefore looped back to 1000 once 1000 existed and crashed on the
+        unique constraint (IntegrityError) at the 1001st bill of the year — and
+        the same defect recurs at the 10000 boundary. This locks in the fix.
+        """
+        year = str(date.today().year)[2:]
+
+        # --- Past 999: 1000 already exists, next must be 1001 (not a re-issued 1000) ---
+        JobCard.objects.create(admitted_date=date.today(), registration_number='SEQ-A', bill_number=f'JB-{year}-999')
+        JobCard.objects.create(admitted_date=date.today(), registration_number='SEQ-B', bill_number=f'JB-{year}-1000')
+        n1 = JobCard.objects.create(admitted_date=date.today(), registration_number='SEQ-C')
+        self.assertEqual(n1.bill_number, f'JB-{year}-1001')
+
+        # --- Past 9999: same defect at the next order of magnitude ---
+        JobCard.objects.create(admitted_date=date.today(), registration_number='SEQ-D', bill_number=f'JB-{year}-9999')
+        JobCard.objects.create(admitted_date=date.today(), registration_number='SEQ-E', bill_number=f'JB-{year}-10000')
+        n2 = JobCard.objects.create(admitted_date=date.today(), registration_number='SEQ-F')
+        self.assertEqual(n2.bill_number, f'JB-{year}-10001')
+
     def test_jobcard_properties(self):
         self.job.car_color = 'Other'
         self.job.car_color_other = '#ff00ff'

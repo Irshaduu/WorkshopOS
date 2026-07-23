@@ -185,11 +185,11 @@ def _get_hero_kpis(start_date, end_date):
     All queries filter by admitted_date range — the primary indexed field.
     
     Returns a dict with:
-      total_revenue     — Sum of total_bill_amount for DELIVERED jobs
-      total_collected   — Sum of received_amount for DELIVERED jobs  
-      cars_completed    — Count of DELIVERED jobs
+      total_revenue     — Sum of total_bill_amount for COMPLETED jobs
+      total_collected   — Sum of received_amount for COMPLETED jobs
+      cars_completed    — Count of COMPLETED jobs
       outstanding       — Sum of (total_bill_amount - received_amount) for
-                          PENDING + PARTIAL (all non-deleted jobs, not just delivered)
+                          PENDING + PARTIAL (all non-deleted jobs, not just completed)
     """
     base_qs = JobCard.objects.filter(
         is_deleted=False,
@@ -197,15 +197,15 @@ def _get_hero_kpis(start_date, end_date):
         admitted_date__lte=end_date,
     )
 
-    # Delivered jobs: revenue and collected
-    delivered_qs = base_qs.filter(delivered=True)
-    delivered_agg = delivered_qs.aggregate(
+    # Completed jobs: revenue and collected
+    completed_qs = base_qs.filter(completed=True)
+    completed_agg = completed_qs.aggregate(
         revenue=Coalesce(Sum('total_bill_amount'), Decimal('0'), output_field=DecimalField()),
         collected=Coalesce(Sum('received_amount'), Decimal('0'), output_field=DecimalField()),
         count=Count('id'),
     )
 
-    # Outstanding = unpaid amount across PENDING and PARTIAL jobs (all, not just delivered)
+    # Outstanding = unpaid amount across PENDING and PARTIAL jobs (all, not just completed)
     # Formula: total_bill_amount - received_amount for status in [PENDING, PARTIAL]
     outstanding_agg = base_qs.filter(
         payment_status__in=['PENDING', 'PARTIAL']
@@ -229,9 +229,9 @@ def _get_hero_kpis(start_date, end_date):
     else:
         outstanding = outstanding_agg['outstanding']
 
-    revenue   = delivered_agg['revenue']
-    collected = delivered_agg['collected']
-    count     = delivered_agg['count']
+    revenue   = completed_agg['revenue']
+    collected = completed_agg['collected']
+    count     = completed_agg['count']
 
     return {
         'total_revenue':   format_inr(revenue),
@@ -339,10 +339,10 @@ def _zone_revenue(start_date, end_date):
     """
     from .models import JobCardSpareItem, JobCardLabourItem
 
-    # Base queryset — delivered, non-deleted, in date range
+    # Base queryset — completed, non-deleted, in date range
     base_jc = JobCard.objects.filter(
         is_deleted=False,
-        delivered=True,
+        completed=True,
         admitted_date__gte=start_date,
         admitted_date__lte=end_date,
     )
@@ -352,7 +352,7 @@ def _zone_revenue(start_date, end_date):
     # -------------------------------------------------------------------------
     spare_agg = JobCardSpareItem.objects.filter(
         job_card__is_deleted=False,
-        job_card__delivered=True,
+        job_card__completed=True,
         job_card__admitted_date__gte=start_date,
         job_card__admitted_date__lte=end_date,
     ).aggregate(
@@ -369,7 +369,7 @@ def _zone_revenue(start_date, end_date):
     # -------------------------------------------------------------------------
     labour_agg = JobCardLabourItem.objects.filter(
         job_card__is_deleted=False,
-        job_card__delivered=True,
+        job_card__completed=True,
         job_card__admitted_date__gte=start_date,
         job_card__admitted_date__lte=end_date,
     ).aggregate(
@@ -526,7 +526,7 @@ def _zone_mechanic(start_date, end_date):
     )
 
     # -------------------------------------------------------------------------
-    # QUERY 1: Per-mechanic delivered stats
+    # QUERY 1: Per-mechanic completed stats
     # -------------------------------------------------------------------------
     mechanic_qs = (
         base_jc
@@ -543,7 +543,7 @@ def _zone_mechanic(start_date, end_date):
                 # Divide by 86400000000 (µs per day) to get days.
                 Avg(
                     ExpressionWrapper(
-                        F('discharged_date') - F('admitted_date'),
+                        F('completed_date') - F('admitted_date'),
                         output_field=FloatField()
                     )
                 ),
@@ -556,12 +556,12 @@ def _zone_mechanic(start_date, end_date):
     mechanics = list(mechanic_qs)
 
     # -------------------------------------------------------------------------
-    # QUERY 2: Active (in-progress) jobs per mechanic (not yet delivered)
+    # QUERY 2: Active (in-progress) jobs per mechanic (not yet completed)
     # -------------------------------------------------------------------------
     active_qs = (
         JobCard.objects.filter(
             is_deleted=False,
-            delivered=False,
+            completed=False,
             lead_mechanic__isnull=False,
         )
         .values('lead_mechanic__id')
@@ -1142,11 +1142,11 @@ def _zone_cashbook(start_date, end_date):
     cb_trend_expense  = [month_map[l]['EXPENSE'] for l in cb_trend_labels]
     cb_trend_profit   = [month_map[l]['INCOME'] - month_map[l]['EXPENSE'] for l in cb_trend_labels]
 
-    # ── QUERY 5: Payment method breakdown from delivered job cards ──
+    # ── QUERY 5: Payment method breakdown from completed job cards ──
     base_jc = JobCard.objects.filter(
-        is_deleted=False, delivered=True,
-        discharged_date__gte=start_date,
-        discharged_date__lte=end_date,
+        is_deleted=False, completed=True,
+        completed_date__gte=start_date,
+        completed_date__lte=end_date,
     )
     pay_method_qs = (
         base_jc.filter(payment_method__isnull=False)
@@ -1204,9 +1204,9 @@ def _zone_workshop(start_date, end_date):
     """
     Zone 7: Workshop Operational KPIs — Phase 9.
     Queries:
-      1. Job counts by status (active, delivered, on-hold)
-      2. Avg turnaround time (delivered jobs only)
-      3. Delivery rate %
+      1. Job counts by status (active, completed, on-hold)
+      2. Avg turnaround time (completed jobs only)
+      3. Completion rate %
       4. Monthly jobs completed trend
       5. Jobs by brand (top 10)
       6. On-hold reasons / count
@@ -1223,29 +1223,29 @@ def _zone_workshop(start_date, end_date):
     # ── QUERY 1: Hero KPIs — job counts ──
     agg = base_jc.aggregate(
         total_jobs=Count('id'),
-        delivered_jobs=Count('id', filter=Q(delivered=True)),
-        active_jobs=Count('id', filter=Q(delivered=False)),
+        completed_jobs=Count('id', filter=Q(completed=True)),
+        active_jobs=Count('id', filter=Q(completed=False)),
         on_hold_jobs=Count('id', filter=Q(on_hold=True)),
         total_revenue=Coalesce(Sum('total_bill_amount'), Decimal('0'), output_field=DecimalField()),
         total_collected=Coalesce(Sum('received_amount'), Decimal('0'), output_field=DecimalField()),
     )
     total_jobs     = agg['total_jobs']     or 0
-    delivered_jobs = agg['delivered_jobs'] or 0
+    completed_jobs = agg['completed_jobs'] or 0
     active_jobs    = agg['active_jobs']    or 0
     on_hold_jobs   = agg['on_hold_jobs']   or 0
-    delivery_rate  = round(delivered_jobs / total_jobs * 100, 1) if total_jobs else 0
+    completion_rate = round(completed_jobs / total_jobs * 100, 1) if total_jobs else 0
     avg_revenue    = round(float(agg['total_revenue'] or 0) / total_jobs, 0) if total_jobs else 0
 
-    # ── QUERY 2: Avg turnaround (delivered + has discharged_date) ──
+    # ── QUERY 2: Avg turnaround (completed + has completed_date) ──
     # SQLite: DateField diff = microseconds → divide by 86_400_000_000
-    delivered_qs = base_jc.filter(
-        delivered=True,
-        discharged_date__isnull=False,
+    completed_qs = base_jc.filter(
+        completed=True,
+        completed_date__isnull=False,
     )
-    avg_days_raw = delivered_qs.aggregate(
+    avg_days_raw = completed_qs.aggregate(
         avg=Avg(
             ExpressionWrapper(
-                F('discharged_date') - F('admitted_date'),
+                F('completed_date') - F('admitted_date'),
                 output_field=DurationField()
             )
         )
@@ -1265,7 +1265,7 @@ def _zone_workshop(start_date, end_date):
         .values('month')
         .annotate(
             total=Count('id'),
-            completed=Count('id', filter=Q(delivered=True)),
+            completed=Count('id', filter=Q(completed=True)),
         )
         .order_by('month')
     )
@@ -1292,10 +1292,10 @@ def _zone_workshop(start_date, end_date):
     return {
         # KPIs
         'total_jobs':        total_jobs,
-        'delivered_jobs':    delivered_jobs,
+        'completed_jobs':    completed_jobs,
         'active_jobs':       active_jobs,
         'on_hold_jobs':      on_hold_jobs,
-        'delivery_rate':     delivery_rate,
+        'completion_rate':   completion_rate,
         'avg_turnaround':    avg_turnaround,
         'avg_revenue':       int(avg_revenue),
         'total_revenue':     int(agg['total_revenue'] or 0),
@@ -1312,6 +1312,6 @@ def _zone_workshop(start_date, end_date):
         'ws_ps_labels':      json.dumps(['Pending', 'Partial', 'Paid', 'Bulk Paid']),
         'ws_ps_data':        json.dumps([ps_map.get('PENDING',0), ps_map.get('PARTIAL',0),
                                          ps_map.get('PAID',0), ps_map.get('BULK_PAID',0)]),
-        'ws_status_labels':  json.dumps(['Delivered', 'Active', 'On Hold']),
-        'ws_status_data':    json.dumps([delivered_jobs, active_jobs - on_hold_jobs, on_hold_jobs]),
+        'ws_status_labels':  json.dumps(['Completed', 'Active', 'On Hold']),
+        'ws_status_data':    json.dumps([completed_jobs, active_jobs - on_hold_jobs, on_hold_jobs]),
     }

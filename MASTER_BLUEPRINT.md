@@ -139,14 +139,14 @@ graph LR
     end
 
     OWNER -->|"Full Access"| ALL["All Features + Trash + Restore + Permanent Delete + Security"]
-    OFFICE -->|"Mid Access"| MID["Jobs + Delivered + Invoices + Master Lists + Car Profiles + Payments + Management + Cleanup"]
+    OFFICE -->|"Mid Access"| MID["Jobs + Completed + Invoices + Master Lists + Car Profiles + Payments + Management + Cleanup"]
     FLOOR -->|"Basic Access"| LOW["Dashboard + Job Create/Edit + Live Report + Inventory Restock"]
 ```
 
 | Decorator | Roles Allowed | Used On |
 |-----------|---------------|---------|
 | `@staff_required` | Floor + Office + Owner | Dashboard, Job Create/Edit/Detail, Live Report, Autocomplete, `concern_edit`, **the entire Inventory app** (stock, categories, items, low-stock, history) **and the entire Supplier-Shops module** (bills, payments, catalog — see access-asymmetry note in `OPERATIONAL_BLUEPRINT.md` §5B) |
-| `@office_required` | Office + Owner | Job List, Job Delete, Delivered, Invoices, Master Lists (except `concern_edit`), Car Profiles, Management, Cleanup, Cashbook, Pending Payments, Spare Shops (non-destructive), Bulk Payer create/detail/pay |
+| `@office_required` | Office + Owner | Job List, Job Delete, Completed, Invoices, Master Lists (except `concern_edit`), Car Profiles, Management, Cleanup, Cashbook, Pending Payments, Spare Shops (non-destructive), Bulk Payer create/detail/pay |
 | `@owner_required` | Owner only | Paid Bills, Audits, Trash + Restore + Permanent Delete, Bulk Payer delete/history-delete, Spare Shop delete/reverse/permanent-delete, Payment Reversal, Owner Analysis, Session Terminate |
 
 Superusers pass every check regardless of group membership. For the human-readable "who can do what" breakdown, see `OPERATIONAL_BLUEPRINT.md` §2.
@@ -192,9 +192,9 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 | | `/jobcards/<pk>/` | `jobcard_detail` | Staff |
 | | `/jobcards/<pk>/edit/` | `jobcard_edit` | Staff |
 | | `/jobcards/<pk>/delete/` | `jobcard_delete` | Office |
-| **DELIVERED** | `/delivered/` | `delivered_list` | Office |
-| | `/jobcards/<pk>/deliver/` | `mark_delivered` | Office |
-| | `/jobcards/<pk>/undo-deliver/` | `undo_delivered` | Office |
+| **COMPLETED** | `/completed/` | `completed_list` | Office |
+| | `/jobcards/<pk>/complete/` | `mark_completed` | Office |
+| | `/jobcards/<pk>/undo-complete/` | `undo_completed` | Office |
 | | `/jobcards/<pk>/toggle-hold/` | `toggle_hold` | Office |
 | | `/jobcards/<pk>/update-bill/` | `update_bill_status` | Office |
 | **TRASH** | `/trash/` | `trash_list` | Owner |
@@ -382,10 +382,10 @@ stateDiagram-v2
     [*] --> Active: Create Job Card
     Active --> OnHold: Toggle Hold
     OnHold --> Active: Toggle Hold
-    Active --> Delivered: Mark Delivered
-    Delivered --> Active: Undo Deliver
+    Active --> Completed: Mark Completed
+    Completed --> Active: Undo Completion
     Active --> Trash: Soft Delete
-    Delivered --> Trash: Soft Delete
+    Completed --> Trash: Soft Delete
     Trash --> Active: Restore (Owner only)
     Trash --> [*]: Permanent Delete (Owner only)
 
@@ -394,7 +394,7 @@ stateDiagram-v2
         Spares: PENDING → ORDERED → RECEIVED
     }
 
-    state Delivered {
+    state Completed {
         Payment: PENDING → PARTIAL → PAID / BULK_PAID
     }
 ```
@@ -427,7 +427,7 @@ stateDiagram-v2
 | `/auth/` | `login.html`, `admin_login.html`, `forgot_password.html`, `reset_password.html`, `otp_verify.html` | 5 auth screens |
 | `/dashboard/` | `dashboard_home.html` | Main floor dashboard with active jobs |
 | `/jobcard/` | 23 files: CRUD (`jobcard_form/detail/list/confirm_delete`), `job_list_partial`, `live_report`, pending/paid bills + partials, bulk payer detail/panel/trash + bulk_payments + partial, audits (`audit_high_discounts`, `audit_deleted_bulk_payers`), unified trash + 4 tab partials | Job, payment, audit & trash screens |
-| `/delivered/` | `delivered_list.html`, `delivered_list_partial.html` | 2 delivery screens |
+| `/completed/` | `completed_list.html`, `completed_list_partial.html` | 2 completed-jobs screens |
 | `/master_lists/` | 13 files across brands/models/spares/concerns (list/form/confirm_delete each) | Master list CRUD screens |
 | `/car_profiles/` | `car_profile_list.html`, `car_profile_detail.html`, `car_list_partial.html` | 3 car profile screens |
 | `/invoice/` | `invoice_template.html` | Professional invoice |
@@ -515,7 +515,7 @@ graph TB
     RBAC -->|Floor+| INV_RESTOCK["Inventory Restock"]
 
     RBAC -->|Office+| JC_LIST["Job Card List"]
-    RBAC -->|Office+| DELIVERED["Delivered List"]
+    RBAC -->|Office+| COMPLETED["Completed List"]
     RBAC -->|Office+| INVOICE["Invoice View"]
     RBAC -->|Office+| PAYMENTS["Pending / Bulk Payments"]
     RBAC -->|Office+| SPARE_SHOPS["Spare Shop Management"]
@@ -648,7 +648,7 @@ graph TB
 | `test_views.py` | Main view tests |
 | `test_auth.py` | Login/logout/lockout |
 | `test_api_views.py` | Autocomplete endpoints |
-| `test_dashboard_views.py` | Dashboard & delivered |
+| `test_dashboard_views.py` | Dashboard & completed |
 | `test_jobcard_views.py` | Job CRUD & formsets |
 | `test_cleanup_views.py` | Data cleanup operations |
 | `test_models_extended.py` | Advanced model logic |
@@ -692,7 +692,7 @@ WorkshopOS (Titan)/
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
 │   │   ├── dashboard.py        ← home, live_report
 │   │   ├── jobcard.py          ← CRUD (create, list, detail, edit, delete)
-│   │   ├── delivered.py        ← delivered_list, mark/undo/toggle
+│   │   ├── completed.py        ← completed_list, mark/undo/toggle
 │   │   ├── trash.py            ← trash_list, restore, permanent_delete
 │   │   ├── billing.py          ← invoice_view, update_bill_status
 │   │   ├── bulk_payer.py       ← bulk payer / "Fleet Account" views incl. advance-balance cascade
@@ -721,7 +721,7 @@ WorkshopOS (Titan)/
 │   │   └── backup_db.py        ← Automated SQLite backup command
 │   ├── templates/workshop/     ← 70 HTML files
 │   ├── static/css/, static/js/ ← App-specific assets
-│   ├── migrations/             ← 47 migrations
+│   ├── migrations/             ← 49 migrations
 │   └── tests/                  ← 16 test files (package, not flat files)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
@@ -752,4 +752,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · 25 Models · 127 URL Routes · 91 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ legacy) · 8 Signal Handlers (3 groups) · 19 Test Files · 52 Migrations (47 workshop + 5 inventory)
+> **Total**: 2 Django Apps · 25 Models · 127 URL Routes · 91 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ legacy) · 8 Signal Handlers (3 groups) · 19 Test Files · 54 Migrations (49 workshop + 5 inventory)

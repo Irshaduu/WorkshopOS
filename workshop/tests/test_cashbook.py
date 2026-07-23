@@ -28,10 +28,10 @@ class CashbookTests(TestCase):
         
         # Create some initial entries
         self.expense1 = CashbookEntry.objects.create(
-            entry_type='EXPENSE', category='Electricity', amount=Decimal('500.00'), payment_method='CASH', created_by=self.owner, date=timezone.now().date()
+            entry_type='EXPENSE', category='Electricity', amount=Decimal('500.00'), payment_method='CASH', created_by=self.owner, date=timezone.localdate()
         )
         self.income1 = CashbookEntry.objects.create(
-            entry_type='INCOME', category='Scrap Sell', amount=Decimal('1500.00'), payment_method='UPI', created_by=self.office, date=timezone.now().date()
+            entry_type='INCOME', category='Scrap Sell', amount=Decimal('1500.00'), payment_method='UPI', created_by=self.office, date=timezone.localdate()
         )
         
     def test_access_control(self):
@@ -69,7 +69,7 @@ class CashbookTests(TestCase):
         self.assertEqual(totals['net'], Decimal('1000.00'))
         
         # Add an entry dated yesterday
-        yesterday = timezone.now().date() - timedelta(days=1)
+        yesterday = timezone.localdate() - timedelta(days=1)
         old_expense = CashbookEntry.objects.create(
             entry_type='EXPENSE', category='Old Expense', amount=Decimal('200.00')
         )

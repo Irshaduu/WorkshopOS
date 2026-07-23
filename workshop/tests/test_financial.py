@@ -1,7 +1,7 @@
 """
 Financial Integration Tests for Titan WorkshopOS.
 Covers: spare shop quantity math, cascade payments, payment reversal,
-invoice totals, delivered date filters.
+invoice totals, completed date filters.
 """
 from decimal import Decimal
 from datetime import date, timedelta
@@ -213,9 +213,9 @@ class FinancialIntegrationTests(TestCase):
         self.assertEqual(resp.context['grand_total'], Decimal('6500'))
 
 
-class DeliveredDateFilterTests(TestCase):
+class CompletedDateFilterTests(TestCase):
     """
-    TEST-2: Verify delivered_list date filter logic.
+    TEST-2: Verify completed_list date filter logic.
     """
 
     def setUp(self):
@@ -229,7 +229,7 @@ class DeliveredDateFilterTests(TestCase):
 
         self.mechanic = Mechanic.objects.create(name='Mech')
 
-        # Create delivered job cards with various dates
+        # Create completed job cards with various dates
         today = date.today()
         for i, days_ago in enumerate([0, 3, 15, 60, 200]):
             jc = JobCard.objects.create(
@@ -238,21 +238,21 @@ class DeliveredDateFilterTests(TestCase):
                 model_name='Car',
                 admitted_date=today - timedelta(days=days_ago + 5),
                 lead_mechanic=self.mechanic,
-                delivered=True,
-                discharged_date=today - timedelta(days=days_ago),
+                completed=True,
+                completed_date=today - timedelta(days=days_ago),
             )
 
-    def test_delivered_today_filter(self):
+    def test_completed_today_filter(self):
         """Full page load defaults to 'today' filter."""
-        resp = self.client.get(reverse('delivered_list'))
+        resp = self.client.get(reverse('completed_list'))
         self.assertEqual(resp.status_code, 200)
-        # Only 1 job delivered today
+        # Only 1 job completed today
         self.assertEqual(resp.context['page_obj'].paginator.count, 1)
 
-    def test_delivered_week_filter(self):
+    def test_completed_week_filter(self):
         """Week filter shows jobs from Monday of the current calendar week onwards."""
         resp = self.client.get(
-            reverse('delivered_list') + '?filter=this_week',
+            reverse('completed_list') + '?filter=this_week',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)
@@ -266,44 +266,44 @@ class DeliveredDateFilterTests(TestCase):
         )
         self.assertEqual(resp.context['page_obj'].paginator.count, expected)
 
-    def test_delivered_month_filter(self):
-        """Month filter should show jobs delivered in last 30 days."""
+    def test_completed_month_filter(self):
+        """Month filter should show jobs completed in last 30 days."""
         resp = self.client.get(
-            reverse('delivered_list') + '?filter=this_month',
+            reverse('completed_list') + '?filter=this_month',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)
         # Jobs at 0, 3, and 15 days ago = 3
         self.assertEqual(resp.context['page_obj'].paginator.count, 3)
 
-    def test_delivered_year_filter(self):
-        """Year filter should show jobs delivered in last 365 days."""
+    def test_completed_year_filter(self):
+        """Year filter should show jobs completed in last 365 days."""
         resp = self.client.get(
-            reverse('delivered_list') + '?filter=year',
+            reverse('completed_list') + '?filter=year',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)
         # All 5 jobs within a year
         self.assertEqual(resp.context['page_obj'].paginator.count, 5)
 
-    def test_delivered_custom_filter(self):
+    def test_completed_custom_filter(self):
         """Custom date range filter should return correct subset."""
         today = date.today()
         start = (today - timedelta(days=20)).isoformat()
         end = (today - timedelta(days=1)).isoformat()
 
         resp = self.client.get(
-            reverse('delivered_list') + f'?filter=custom&start_date={start}&end_date={end}',
+            reverse('completed_list') + f'?filter=custom&start_date={start}&end_date={end}',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)
         # Jobs at 3 and 15 days ago should be in range
         self.assertEqual(resp.context['page_obj'].paginator.count, 2)
 
-    def test_delivered_search_with_filter(self):
+    def test_completed_search_with_filter(self):
         """Search combined with filter should narrow results further."""
         resp = self.client.get(
-            reverse('delivered_list') + '?filter=year&q=KL01DD0000',
+            reverse('completed_list') + '?filter=year&q=KL01DD0000',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)

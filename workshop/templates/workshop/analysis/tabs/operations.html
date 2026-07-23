@@ -275,8 +275,8 @@
 </script>
 <!--
   Zone 7: Workshop Operational KPIs — Phase 9
-  Context: total_jobs, delivered_jobs, active_jobs, on_hold_jobs,
-           delivery_rate, avg_turnaround, avg_revenue, total_revenue,
+  Context: total_jobs, completed_jobs, active_jobs, on_hold_jobs,
+           completion_rate, avg_turnaround, avg_revenue, total_revenue,
            total_collected, period_label, top_brands_ws,
            ws_trend_labels/total/completed, ws_brand_labels/jobs,
            ws_ps_labels/data, ws_status_labels/data
@@ -293,15 +293,15 @@
   </div>
 
   <div class="kpi-card kpi-green">
-    <div class="kpi-card-label">✅ Delivered</div>
-    <div class="kpi-card-value">{{ delivered_jobs }}</div>
-    <div class="kpi-card-sub">Rate: {{ delivery_rate }}%</div>
+    <div class="kpi-card-label">✅ Completed</div>
+    <div class="kpi-card-value">{{ completed_jobs }}</div>
+    <div class="kpi-card-sub">Rate: {{ completion_rate }}%</div>
   </div>
 
   <div class="kpi-card kpi-purple">
     <div class="kpi-card-label">⏱ Avg Turnaround</div>
     <div class="kpi-card-value">{{ avg_turnaround }}d</div>
-    <div class="kpi-card-sub">Days to deliver</div>
+    <div class="kpi-card-sub">Days to complete</div>
   </div>
 
   <div class="kpi-card kpi-yellow">
@@ -322,7 +322,7 @@
     <div class="chart-canvas-wrap"><canvas id="wsTrendChart"></canvas></div>
   </div>
 
-  <!-- Chart 2: Job Status Doughnut (Delivered / Active / On Hold) -->
+  <!-- Chart 2: Job Status Doughnut (Completed / Active / On Hold) -->
   <div class="chart-card">
     <div class="chart-card-title"><i class="bi bi-pie-chart"></i> Job Status Breakdown</div>
     <div class="chart-canvas-wrap"><canvas id="wsStatusChart"></canvas></div>
@@ -411,7 +411,7 @@
         labels: wsLbls,
         datasets: [
           { label: 'Total Admitted', data: wsTotal, backgroundColor: '#6366f1bb', borderRadius: 4, borderSkipped: false },
-          { label: 'Delivered',      data: wsCompleted, backgroundColor: '#10b981bb', borderRadius: 4, borderSkipped: false },
+          { label: 'Completed',      data: wsCompleted, backgroundColor: '#10b981bb', borderRadius: 4, borderSkipped: false },
         ],
       },
       options: {

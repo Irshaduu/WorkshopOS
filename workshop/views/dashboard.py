@@ -12,24 +12,24 @@ from ..decorators import staff_required
 def home(request):
     """
     Dashboard homepage showing all active job cards.
-    Discharge date is a planning field, not a filter.
-    Cars only move to Delivered when "Delivered" button is clicked.
+    Completion date is a planning field, not a filter.
+    Cars only move to Completed when the "Completed" button is clicked.
     """
-    # Get only non-delivered job cards (where delivered=False)
+    # Get only non-completed job cards (where completed=False)
     # Optimized with select_related and prefetch_related for 1M+ records
-    active_jobcards = JobCard.objects.filter(delivered=False, is_deleted=False).select_related('lead_mechanic').prefetch_related('concerns').annotate(
+    active_jobcards = JobCard.objects.filter(completed=False, is_deleted=False).select_related('lead_mechanic').prefetch_related('concerns').annotate(
         total_concerns=Count('concerns'),
         fixed_concerns=Count('concerns', filter=Q(concerns__status='FIXED'))
     ).order_by('-updated_at', '-pk')
-    
-    # Count delivered today (Active only) — timezone.localdate() is IST-aware
-    delivered_count = JobCard.objects.filter(
-        delivered=True,
+
+    # Count completed today (Active only) — timezone.localdate() is IST-aware
+    completed_count = JobCard.objects.filter(
+        completed=True,
         is_deleted=False,
-        discharged_date=timezone.localdate()
+        completed_date=timezone.localdate()
     ).count()
 
-    # Count pending bills (Delivered but not fully paid, Active only)
+    # Count pending bills (Completed but not fully paid, Active only)
     pending_bills_count = JobCard.objects.filter(
         is_deleted=False,
         payment_status__in=['PENDING', 'PARTIAL']
@@ -42,7 +42,7 @@ def home(request):
     
     return render(request, 'workshop/dashboard/dashboard_home.html', {
         'active_jobcards': page_obj, # Pass page_obj as active_jobcards
-        'delivered_count': delivered_count,
+        'completed_count': completed_count,
         'pending_bills_count': pending_bills_count,
         'page_obj': page_obj,
         'today': timezone.localdate(),  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
@@ -59,7 +59,7 @@ def live_report(request):
     q = request.GET.get('q', '').strip()
     status = request.GET.get('status', '').strip()
     
-    active_jobs = JobCard.objects.filter(is_deleted=False, delivered=False).select_related('lead_mechanic').prefetch_related('concerns', 'spares').annotate(
+    active_jobs = JobCard.objects.filter(is_deleted=False, completed=False).select_related('lead_mechanic').prefetch_related('concerns', 'spares').annotate(
         total_concerns=Count('concerns'),
         fixed_concerns=Count('concerns', filter=Q(concerns__status='FIXED'))
     )

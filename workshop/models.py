@@ -271,7 +271,7 @@ class JobCard(models.Model):
     
     Key Features:
     - Auto-Generating Bill Numbers (JB-26-001)
-    - Triple-Tier Security States (Active, Delivered, Billed)
+    - Triple-Tier Security States (Active, Completed, Billed)
     - Soft-Delete 'Trash' Architecture for 100% data integrity.
     - Denormalized Financials for sub-50ms dashboard loading.
     """
@@ -286,10 +286,10 @@ class JobCard(models.Model):
     
     # Dates
     admitted_date = models.DateField(db_index=True)
-    discharged_date = models.DateField(db_index=True, blank=True, null=True, help_text="Auto-filled when job is marked as delivered")
-    
-    # Delivery Status (separate from planning date)
-    delivered = models.BooleanField(default=False, db_index=True, help_text="Actually delivered (marked via Delivered button)")
+    completed_date = models.DateField(db_index=True, blank=True, null=True, help_text="Auto-filled when job is marked as Completed")
+
+    # Completion Status (separate from planning date)
+    completed = models.BooleanField(default=False, db_index=True, help_text="Job is Completed (marked via Completed button)")
     
     # On Hold Status (for jobs waiting for parts or paused)
     on_hold = models.BooleanField(default=False, help_text="Job is on hold (waiting for parts, etc.)")
@@ -360,9 +360,9 @@ class JobCard(models.Model):
 
     class Meta:
         # High-performance composite index for the dashboard query pattern.
-        # Covered: (is_deleted=False, delivered=False) sorted by updated_at DESC.
+        # Covered: (is_deleted=False, completed=False) sorted by updated_at DESC.
         indexes = [
-            models.Index(fields=['is_deleted', 'delivered', '-updated_at']),
+            models.Index(fields=['is_deleted', 'completed', '-updated_at']),
         ]
         verbose_name = "Job Card"
         verbose_name_plural = "Job Cards"
@@ -396,29 +396,41 @@ class JobCard(models.Model):
             with transaction.atomic():
                 # Get year (2 digits)
                 year = str(self.admitted_date.year)[2:]  # 2026 → "26"
-                
-                # Lock and count existing bills for this year
-                # select_for_update() prevents race conditions
-                last_job = JobCard.objects.select_for_update().filter(
-                    bill_number__startswith=f'JB-{year}-'
-                ).order_by('-bill_number').first()
-                
-                if last_job and last_job.bill_number:
-                    # Extract number from last bill (e.g., "JB-26-005" → 5)
+                prefix = f'JB-{year}-'
+
+                # Find the highest existing bill number for this year — computed
+                # NUMERICALLY, not by text ordering.
+                #
+                # A previous version used order_by('-bill_number').first(), but
+                # bill_number is a CharField, so that is a LEXICOGRAPHIC sort:
+                # "JB-26-999" sorts *higher* than "JB-26-1000" (because '9' > '1'
+                # at the first differing character). Past 999 bills/year that made
+                # the sequence loop back to 1000 and collide on the unique
+                # constraint — crashing job-card creation for the rest of the year.
+                #
+                # select_for_update() locks the year's rows so two job cards created
+                # concurrently can't be assigned the same number (effective on
+                # PostgreSQL; a harmless no-op on SQLite).
+                max_num = 0
+                for existing_bill in (
+                    JobCard.objects.select_for_update()
+                    .filter(bill_number__startswith=prefix)
+                    .only('bill_number')
+                ):
                     try:
-                        last_num = int(last_job.bill_number.split('-')[-1])
-                        next_num = last_num + 1
+                        n = int(existing_bill.bill_number.rsplit('-', 1)[-1])
                     except (ValueError, IndexError):
-                        # Fallback if bill number format is unexpected
-                        next_num = JobCard.objects.filter(
-                            bill_number__startswith=f'JB-{year}-'
-                        ).count() + 1
-                else:
-                    # First bill of the year
-                    next_num = 1
-                
-                # Create bill number (pad with zeros)
-                self.bill_number = f'JB-{year}-{str(next_num).zfill(3)}'
+                        # Skip any bill whose suffix isn't a plain integer.
+                        continue
+                    if n > max_num:
+                        max_num = n
+
+                next_num = max_num + 1
+
+                # zfill(3) keeps the familiar JB-26-001 look for 1–999 and grows
+                # naturally beyond that (JB-26-1000, JB-26-10000, …) without breaking
+                # the ordering, since ordering is now numeric.
+                self.bill_number = f'{prefix}{str(next_num).zfill(3)}'
         
         super().save(*args, **kwargs)
     
@@ -444,11 +456,11 @@ class JobCard(models.Model):
     @classmethod
     def get_active_conflict(cls, registration_number, exclude_pk=None):
         """
-        Returns the OTHER active job card (not delivered, not trashed) for this
+        Returns the OTHER active job card (not completed, not trashed) for this
         registration number, if one exists — or None.
 
         Single source of truth for the "one active job card per vehicle" rule.
-        Used by jobcard_create, jobcard_edit, and undo_delivered so all three
+        Used by jobcard_create, jobcard_edit, and undo_completed so all three
         entry points that can put a car "on the floor" agree on what counts as
         a conflict, instead of each re-implementing (or skipping) the check.
         """
@@ -456,7 +468,7 @@ class JobCard(models.Model):
             return None
         qs = cls.objects.filter(
             registration_number__iexact=registration_number.strip(),
-            delivered=False,
+            completed=False,
             is_deleted=False,
         )
         if exclude_pk:

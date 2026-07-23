@@ -11,17 +11,17 @@ from ..decorators import office_required
 
 
 @office_required
-def delivered_list(request):
+def completed_list(request):
     """
-    Show delivered vehicles with calendar-aligned date filters and AJAX search.
+    Show completed vehicles with calendar-aligned date filters and AJAX search.
     """
     # 1. Base Query (Active only)
-    delivered_jobcards = (
+    completed_jobcards = (
         JobCard.objects
-        .filter(delivered=True, is_deleted=False)
+        .filter(completed=True, is_deleted=False)
         .select_related('lead_mechanic')
         .prefetch_related('spares', 'labours')
-        .order_by('-discharged_date')
+        .order_by('-completed_date')
     )
 
     # 2. Read filter from URL always — non-AJAX and AJAX both respect the same param
@@ -33,66 +33,66 @@ def delivered_list(request):
     # 3. Apply Search Filters
     if q:
         for word in q.split():
-            delivered_jobcards = delivered_jobcards.filter(
+            completed_jobcards = completed_jobcards.filter(
                 Q(registration_number__icontains=word) |
                 Q(customer_name__icontains=word) |
                 Q(brand_name__icontains=word) |
                 Q(model_name__icontains=word)
             )
 
-    # 4. Calendar-aligned date filters (discharged_date is a DateField)
+    # 4. Calendar-aligned date filters (completed_date is a DateField)
     today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
 
     if filter_type == 'today':
-        delivered_jobcards = delivered_jobcards.filter(discharged_date=today)
+        completed_jobcards = completed_jobcards.filter(completed_date=today)
 
     elif filter_type == 'this_week':
         start = today - timedelta(days=today.weekday())  # Monday of current week
-        delivered_jobcards = delivered_jobcards.filter(discharged_date__gte=start)
+        completed_jobcards = completed_jobcards.filter(completed_date__gte=start)
 
     elif filter_type == 'this_month':
         start = today.replace(day=1)
-        delivered_jobcards = delivered_jobcards.filter(discharged_date__gte=start)
+        completed_jobcards = completed_jobcards.filter(completed_date__gte=start)
 
     elif filter_type == 'this_year':
         start = today.replace(month=1, day=1)
-        delivered_jobcards = delivered_jobcards.filter(discharged_date__gte=start)
+        completed_jobcards = completed_jobcards.filter(completed_date__gte=start)
 
     elif filter_type == 'last_week':
         start = today - timedelta(days=today.weekday() + 7)  # Previous Mon
         end   = start + timedelta(days=6)                     # Previous Sun
-        delivered_jobcards = delivered_jobcards.filter(
-            discharged_date__gte=start, discharged_date__lte=end
+        completed_jobcards = completed_jobcards.filter(
+            completed_date__gte=start, completed_date__lte=end
         )
 
     elif filter_type == 'last_month':
         first_of_this_month = today.replace(day=1)
         last_of_last_month  = first_of_this_month - timedelta(days=1)
         first_of_last_month = last_of_last_month.replace(day=1)
-        delivered_jobcards = delivered_jobcards.filter(
-            discharged_date__gte=first_of_last_month,
-            discharged_date__lte=last_of_last_month,
+        completed_jobcards = completed_jobcards.filter(
+            completed_date__gte=first_of_last_month,
+            completed_date__lte=last_of_last_month,
         )
 
     elif filter_type == 'last_year':
         start = today.replace(year=today.year - 1, month=1,  day=1)
         end   = today.replace(year=today.year - 1, month=12, day=31)
-        delivered_jobcards = delivered_jobcards.filter(
-            discharged_date__gte=start, discharged_date__lte=end
+        completed_jobcards = completed_jobcards.filter(
+            completed_date__gte=start, completed_date__lte=end
         )
 
     elif filter_type == 'custom':
         start_date = request.GET.get('start_date', '')
         end_date   = request.GET.get('end_date', '')
         if start_date and end_date:
-            delivered_jobcards = delivered_jobcards.filter(
-                discharged_date__gte=start_date,
-                discharged_date__lte=end_date,
+            completed_jobcards = completed_jobcards.filter(
+                completed_date__gte=start_date,
+                completed_date__lte=end_date,
             )
     # filter_type == 'all' → no date filter applied
 
     # 5. Pagination
-    paginator = Paginator(delivered_jobcards, 45)
+    paginator = Paginator(completed_jobcards, 45)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
@@ -101,7 +101,7 @@ def delivered_list(request):
     custom_end   = request.GET.get('end_date',   '') if filter_type == 'custom' else ''
 
     context = {
-        'delivered_jobcards': page_obj,
+        'completed_jobcards': page_obj,
         'page_obj':           page_obj,
         'filter_type':        filter_type,
         'q':                  q,
@@ -111,29 +111,29 @@ def delivered_list(request):
 
     # 6. AJAX return partial only
     if is_ajax:
-        return render(request, 'workshop/delivered/delivered_list_partial.html', context)
+        return render(request, 'workshop/completed/completed_list_partial.html', context)
 
-    return render(request, 'workshop/delivered/delivered_list.html', context)
+    return render(request, 'workshop/completed/completed_list.html', context)
 
 
 @office_required
-def mark_delivered(request, pk):
+def mark_completed(request, pk):
     """
-    Mark job card as delivered.
-    Auto-sets discharged_date to today (actual delivery date).
+    Mark job card as completed.
+    Auto-sets completed_date to today (actual completion date).
     """
     if request.method == 'POST':
         jobcard = get_object_or_404(JobCard, pk=pk)
-        jobcard.delivered = True
-        jobcard.discharged_date = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
+        jobcard.completed = True
+        jobcard.completed_date = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
         jobcard.save()
     return redirect('home')
 
 
 @office_required
-def undo_delivered(request, pk):
+def undo_completed(request, pk):
     """
-    Undo delivery by setting delivered=False and clearing discharged_date.
+    Undo completion by setting completed=False and clearing completed_date.
 
     Hard-blocked if a different job card is already active for this vehicle's
     registration number — undoing would otherwise put two active job cards on
@@ -146,15 +146,15 @@ def undo_delivered(request, pk):
         if existing_job:
             messages.error(
                 request,
-                f'Cannot undo delivery for {jobcard.registration_number} — it already has a '
-                f'different active job card (not yet Delivered). Resolve that one first.'
+                f'Cannot undo completion for {jobcard.registration_number} — it already has a '
+                f'different active job card (not yet Completed). Resolve that one first.'
             )
-            return redirect('delivered_list')
+            return redirect('completed_list')
 
-        jobcard.delivered = False
-        jobcard.discharged_date = None
+        jobcard.completed = False
+        jobcard.completed_date = None
         jobcard.save()
-    return redirect('delivered_list')
+    return redirect('completed_list')
 
 
 @office_required  # Only office/owner can toggle hold as it affects planning

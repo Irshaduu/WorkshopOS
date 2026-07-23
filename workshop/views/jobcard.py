@@ -31,7 +31,7 @@ def jobcard_create(request):
         if form.is_valid():
             jobcard = form.save(commit=False)
 
-            # Hard block: only one active (not delivered, not trashed) job card
+            # Hard block: only one active (not completed, not trashed) job card
             # is allowed per registration number at a time. No bypass — the old
             # "3-attempt confirmation" let staff push through anyway, which is
             # exactly how duplicate active job cards for the same car happened.
@@ -43,7 +43,7 @@ def jobcard_create(request):
                 messages.error(
                     request,
                     f'{vehicle_info} ({registration}) already has an active job card '
-                    f'(not yet Delivered). Deliver or trash that job card before creating a new one.'
+                    f'(not yet Completed). Complete or trash that job card before creating a new one.'
                 )
 
                 concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
@@ -250,7 +250,7 @@ def jobcard_edit(request, pk):
                 messages.error(
                     request,
                     f'{vehicle_info} ({registration}) already has a different active job card '
-                    f'(not yet Delivered). Deliver or trash that job card first.'
+                    f'(not yet Completed). Complete or trash that job card first.'
                 )
                 return render(request, 'workshop/jobcard/jobcard_form.html', {
                     'form': form,

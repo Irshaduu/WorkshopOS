@@ -62,7 +62,7 @@ WorkshopOS uses deliberate, standard performance patterns rather than ad hoc que
 > - **Query Hardening**: `select_related`/`prefetch_related` used throughout to eliminate N+1 query latency.
 > - **Zero-Query Properties**: Methods like `get_completion_percentage` check for pre-annotated fields before hitting the database.
 > - **Denormalized Financials**: `JobCard.total_bill_amount` is a physical database column, updated via `update_totals()` during part/labour saves rather than computed at read time.
-> - **Indexing**: `db_index=True` on high-traffic lookup fields (`is_deleted`, `registration_number`, `admitted_date`, `delivered`, `updated_at`), plus a composite index on `[is_deleted, delivered, -updated_at]` for the dashboard query pattern.
+> - **Indexing**: `db_index=True` on high-traffic lookup fields (`is_deleted`, `registration_number`, `admitted_date`, `completed`, `updated_at`), plus a composite index on `[is_deleted, completed, -updated_at]` for the dashboard query pattern.
 >
 > These are real, verifiable-in-code optimizations. No load testing at extreme scale (e.g. 1M+ rows) has been performed against this dataset — if that claim is ever needed for a specific deployment, it should be backed by an actual benchmark, not asserted here.
 
