@@ -1,48 +1,50 @@
-# WorkshopOS — Workshop Management System
+# WorkshopOS (Titan) — Workshop Management System
 
-A premium, comprehensive Django-based workshop management system designed to streamline automotive service operations. Manage job cards, inventory, customer vehicles, spare shop finances, bulk payments, and invoicing all in one professional platform.
+A premium, comprehensive Django-based workshop management system for a single automotive workshop. Manage job cards, inventory, customer vehicles, spare shop finances, bulk/fleet payments, and invoicing in one platform.
+
+> Full technical reference (models, routes, templates): [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) · Workflow walkthrough: [`OPERATIONAL_BLUEPRINT.md`](OPERATIONAL_BLUEPRINT.md) · Status & roadmap: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md) · Coding conventions: [`CLAUDE.md`](CLAUDE.md)
 
 ## Features
 
 ### Role-Based Access Control (RBAC)
 - **Three-Tier Permissions** — Dedicated access levels for **Owner**, **Office**, and **Floor (Mechanic)** roles.
 - **Secure Admin Hub** — Password-protected Owner login with direct access and real-time security alerts.
-- **Owner Analysis & Reports** — A high-performance, mobile-first analytics dashboard exclusive to Owners, featuring hero KPIs and asynchronous data zones.
+- **Owner Analysis & Reports** — Mobile-first analytics dashboard exclusive to Owners. Hero KPIs are live; the 7 detail zones are currently mid-rebuild (see roadmap).
 - **Role-specific UI** — Dynamic navigation and information visibility based on user groups.
 
 ### Job Card Management
 - **Digital Job Cards** — Create and manage service records with customer details, vehicle information, and work performed.
 - **Real-time Status Tracking** — Progress bars and visual status cues on the Dashboard and Live Report views.
-- **Auto-Learning Database** — System automatically captures new concerns and spare parts for future smart-suggestions (Case-insensitive & Whitespace Normalized).
-- **Safety Hardened** — Double-confirmation modals for renames and deletes, and Dynamic Merge Alerts to protect historical data.
+- **Auto-Learning Database** — System automatically captures new concerns and spare parts for future smart-suggestions (case-insensitive & whitespace-normalized).
+- **Safety Hardened** — Double-confirmation modals for renames and deletes, and merge alerts to protect historical data.
 - **Duplicate Detection** — 3-attempt confirmation system prevents accidental duplicate entries for active vehicles.
 
 ### Finance & Suppliers
 - **Spare Shops Management** — Dedicated module for tracking parts suppliers, monitoring outstanding balances, and managing lump-sum supplier payments with cascade distribution.
 - **Unassigned Spares Hub** — Add legacy stock/balances directly to a shop without linking to a job card. Move parts between job cards and the Unassigned pool. Import unassigned parts into new job cards.
 - **Inline Shop Price Editing** — Update the shop-paid price of any spare item directly from the ledger page.
-- **Bulk Payer Management** — Dedicated module for managing repeating/fleet customers with cascading bulk payments chronologically (oldest-first) and a 2-step UI for bulk bill transfers.
+- **Bulk Payer Management ("Fleet Account" in the UI)** — Manage repeat/fleet customers with oldest-first cascading payments, automatic advance-credit carry-forward on overpayment, and a 2-step UI for bulk bill transfers.
 - **Pending Bills Dashboard** — Centralized view of all unpaid/partially-paid jobs across the system.
-- **Paid Bills Dashboard** — Dedicated ledger for all fully settled jobs with time-range and payment method filters (Owner only).
-- **Financial Audits** — Built-in security tracking for High Discounts and Deleted Bulk Payers to ensure absolute financial accountability.
+- **Paid Bills Dashboard** — Dedicated ledger for all fully settled jobs with time-range and payment-method filters (Owner only).
+- **Financial Audits** — Built-in tracking for High Discounts and Deleted Bulk Payers for financial accountability.
 - **Payment Reversal** — Every bulk payment records a JSON snapshot enabling precise, surgical reversal by the Owner.
-- **General Ledger (Cashbook)** — Standalone income & expense tracking module for recording daily workshop overhead (rent, electricity, scrap sales, etc.) with date-range filters and net balance totals. Office and Owner only.
+- **General Ledger (Cashbook)** — Standalone income & expense tracking for daily workshop overhead, with calendar-aligned date filters and net balance totals. Office and Owner only.
 
 ### Inventory System
 - **Stock Management** — Track parts and consumables with low-stock alerts and percentage-based color coding.
-- **Consumption Tracking** — Automatically record part usage from job cards via Django Signals (real-time delta sync).
+- **Consumption Tracking** — Automatically records part usage from job cards via Django Signals (real-time delta sync).
 - **Category Organization** — Group inventory items for easier management and restocking.
-- **Supplies Shops** — Dedicated supplier management module for tracking inventory suppliers, creating restock bills, recording supplier payments, and maintaining a per-supplier catalog. Stock levels auto-increase on restock and auto-reverse on bill deletion via signals.
+- **Supplier Shops** — Dedicated supplier management module for tracking inventory suppliers, creating restock bills, recording payments, and maintaining a per-supplier catalog. Stock auto-increases on restock and auto-reverses on bill deletion via signals.
 
 ### Dashboard & Layout
 - **Live Report Dashboard** — High-visibility "Floor" view for mechanics and "Live Report" for office staff.
-- **Mobile Optimized** — Premium responsive design with a native-app feel and bottom navigation on mobile.
-- **Skeleton Loading** — Professional shimmer animations for a smooth, high-performance user experience.
+- **Mobile Optimized** — Responsive design with a native-app feel and bottom navigation on mobile.
+- **Skeleton Loading** — Shimmer animations for a smooth loading experience.
 
 ### Invoice & Billing
-- **Professional Invoices** — Auto-generated, itemized invoices with company branding.
-- **Cost Analytics** — Automatic calculations for parts, labour, and tax.
-- **Sequential Billing** — Standardized, thread-safe billing numbers (e.g., JB-26-001).
+- **Professional Invoices** — Auto-generated, itemized invoices.
+- **Cost Analytics** — Automatic calculations for parts and labour.
+- **Sequential Billing** — Thread-safe billing numbers (e.g., `JB-26-001`).
 
 ### Data Management
 - **Soft-Delete & Restore** — Full trash system with Owner-only restore and permanent delete.
@@ -53,11 +55,11 @@ A premium, comprehensive Django-based workshop management system designed to str
 ## Tech Stack
 
 - **Backend**: Python 3.13 / Django 5.2 LTS
-- **Database**: SQLite (development & personal backup) · PostgreSQL (production deployment)
-- **Frontend**: Bootstrap 5, Vanilla JavaScript, CSS3
-- **Security**: python-decouple for environment variables, role-based decorators, IP-based lockout
-- **Static Assets**: WhiteNoise for seamless production static serving
-- **Notifications**: Twilio SMS + Telegram Bot API (⚠️ current system — new notification system planned)
+- **Database**: SQLite (development and current production). PostgreSQL is fully configured in `settings/production.py` — migration is planned but not yet performed (see roadmap).
+- **Frontend**: Bootstrap 5, vanilla JavaScript, CSS3
+- **Security**: `python-decouple` for environment variables, role-based decorators, IP-based lockout
+- **Static Assets**: WhiteNoise for production static serving
+- **Notifications**: Twilio SMS + Telegram Bot API — legacy system, replacement planned (see roadmap)
 
 ## Installation
 
@@ -69,8 +71,8 @@ A premium, comprehensive Django-based workshop management system designed to str
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/Irshaduu/formula-d-workshop.git
-   cd formula-d-workshop
+   git clone https://github.com/Irshaduu/WorkshopOS.git
+   cd WorkshopOS
    ```
 
 2. **Create virtual environment**
@@ -85,8 +87,8 @@ A premium, comprehensive Django-based workshop management system designed to str
    ```
 
 4. **Configure environment**
-   - Create a `.env` file with required variables (see Configuration section below).
-   - Set your `SECRET_KEY`, `DEBUG=True`, and `TIME_ZONE="Asia/Kolkata"`.
+   - Create a `.env` file with the required variables — see `CLAUDE.md` for the full list (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_*`, Twilio/Telegram credentials, and production-only DB settings).
+   - Set `DJANGO_ENV=development` in your shell/session (required — there is no default; see `CLAUDE.md`).
 
 5. **Run migrations**
    ```bash
@@ -109,50 +111,37 @@ A premium, comprehensive Django-based workshop management system designed to str
 WorkshopOS (Titan)/
 ├── formulad_workshop/      # Django project configuration & split settings
 │   └── settings/           # base.py, development.py, production.py
-├── workshop/               # Core application (90 URL routes, 90+ views)
-│   ├── views/              # Modular views package (13 modules)
-│   ├── cashbook_views.py   # Standalone Cashbook ledger (4 views)
-│   ├── templates/          # 63 HTML templates
-│   └── static/             # App-specific CSS & JS
-├── inventory/              # Inventory, stock & supplies shops app (33 URL routes)
-│   ├── views.py            # 13 core inventory views
-│   ├── views_suppliers.py  # 20 supplier shop views
-│   └── templates/          # 18 HTML templates (6 core + 12 supplier)
-├── templates/              # Root templates (403, 404, 500 error pages)
-├── static/                 # Global static assets
-├── requirements.txt        # Python dependencies (Django, Pillow, python-decouple, whitenoise, psycopg2-binary)
-├── db.sqlite3              # SQLite database
-└── manage.py               # Django management script
+├── workshop/               # Core application — job cards, billing, cashbook, analytics
+│   ├── views/               # Modular views package
+│   ├── analysis_views.py    # Owner Analysis dashboard (mid-rebuild)
+│   ├── cashbook_views.py    # Standalone Cashbook ledger
+│   └── templates/
+├── inventory/               # Inventory, stock & supplier shops app
+│   ├── views.py
+│   ├── views_suppliers.py
+│   └── templates/
+├── templates/               # Root templates (403, 404, 500 error pages)
+├── static/                  # Global static assets
+├── requirements.txt         # Django, Pillow, python-decouple, twilio, whitenoise, psycopg2-binary
+└── manage.py
 ```
 
-## 🛡️ Titan Standard: Automated Reliability
-WorkshopOS is backed by an **automated test suite** across **19 test files** covering security, models, views, API endpoints, signals, middleware, financial logic, cashbook operations, supplier management, spare shop operations, and owner analytics.
-- **Security Coverage**: Verified IP-lockouts, OTP authentication, and real-time session revocation.
-- **Warehouse Pulse**: Verified stock-delta signals (Creation, Update, Name Change, Deletion).
-- **Model Integrity**: Verified lifecycle transitions for Job Cards, User Sessions, Spare Shops, and Unassigned Spares.
+Exact model/route/template counts live in [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) — kept there as the single source of truth rather than restated here.
 
-## 🚀 Performance Engineering
-Designed for scale with practical, measured optimizations:
-- **O(1) Memory Usage**: Server-side pagination (45 records per page for lists, 10 for categories) ensures constant speed regardless of database size.
-- **B-Tree Database Indexing**: Critical fields (`registration_number`, `admitted_date`, `is_deleted`, `delivered`, `updated_at`) are indexed for fast retrieval.
-- **Query Hardening**: All views utilize `select_related` and `prefetch_related` to eliminate N+1 latency.
-- **Zero-Query Properties**: Property methods like `get_completion_percentage` utilize active annotation checking to perform calculations in-memory, eliminating severe N+1 bottlenecks on heavy dashboards.
-- **Composite Indexes**: Dashboard query pattern covered by multi-field composite index (`is_deleted`, `delivered`, `-updated_at`).
+## 🛡️ Reliability, Performance & Security
 
-## 🔐 Steel Gate Security
-- **Network-Level Defense**: `FailedAttempt` tracks login failures by IP address, not just cookies.
-- **Collaborative Alert System**: Instant cross-notifications to both Owners on every login event via SMS + Telegram (⚠️ current system — new notification system planned).
-- **HQ Command Switch**: One-click termination of any unauthorized session from the management dashboard.
+WorkshopOS is backed by an automated test suite (19 files) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
 
 ## 🛠️ Operational Tooling
-- **Automated SQLite Backups** — Includes a custom `python manage.py backup_db` command for secure, rotated archiving of SQLite databases.
-- **Production Static Serving** — Seamlessly serves static files directly from the application layer using `WhiteNoiseMiddleware`.
+- **Automated SQLite Backups** — `python manage.py backup_db` for secure, rotated archiving (keeps the 7 most recent).
+- **Production Static Serving** — `WhiteNoiseMiddleware` serves static files directly from the application layer.
 
-## 🔜 Coming Soon
-- **New Notification System** — Replacement for current SMS/Telegram bot architecture.
+## 🔜 Roadmap
+
+See [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md) § Roadmap for the current, authoritative priority list.
 
 ---
 
-**Version**: 7.1  
-**Last Updated**: July 2026  
+**Version**: 7.2
+**Last Updated**: 2026-07-23
 **Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT

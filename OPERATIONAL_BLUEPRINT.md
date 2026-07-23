@@ -1,6 +1,10 @@
 # 🔧 WorkshopOS (Titan) — OPERATIONAL BLUEPRINT
 ## How Every Feature Connects & Works Together
 
+> **Accurate as of**: 2026-07-23, commit `a34537c`
+>
+> This is the **workflow narrative** doc — how features connect for a human reading top to bottom. For exact model/route/template tables see `MASTER_BLUEPRINT.md`; for roadmap and status see `TITAN_MASTER_HANDOVER.md`.
+
 ---
 
 ## 1. THE COMPLETE CAR SERVICE LIFECYCLE
@@ -48,7 +52,7 @@ graph TD
 ```
  OWNER
    Can do EVERYTHING below + these exclusive actions:
-   - Access the Owner Analysis & Reports Dashboard (v7.0) for high-level operational KPIs and insights.
+   - Access the Owner Analysis & Reports Dashboard for hero KPIs (functional) and 7 detail zones (🚧 mid-rebuild — see `TITAN_MASTER_HANDOVER.md` roadmap; zone drill-downs currently show placeholder content, not live analytics).
    - View Paid Bills Dashboard (fully settled jobs and revenue filters)
    - View Financial Audits (High Discounts, Deleted Bulk Payers)
    - View and Restore Trash (deleted job cards, bulk payers, payments)
@@ -171,8 +175,10 @@ Profit per part = Customer Price - (Shop Price x Quantity)
 
 ### Bulk/Fleet Payment (Cascade Algorithm)
 
+> **UI note**: This feature is labeled **"Fleet Account"** in the interface. The underlying model, fields, and URLs are still named `BulkPayer` — same feature, cosmetic rename only.
+
 ```
-Customer "XYZ" has 5 unpaid jobs:
+Customer "XYZ" has 5 unpaid jobs, plus Rs.500 advance credit from a previous overpayment:
 
 Job 1: Rs.3,000 balance (oldest)
 Job 2: Rs.5,000 balance
@@ -182,15 +188,19 @@ Job 5: Rs.1,000 balance (newest)
 
 Customer pays Rs.10,000 lump sum:
 
-Job 1: Rs.3,000 paid  (remaining: Rs.7,000)
-Job 2: Rs.5,000 paid  (remaining: Rs.2,000)
-Job 3: Rs.2,000 paid  (remaining: Rs.0)
-Job 4: Rs.0 -- funds exhausted
+Available funds = Rs.10,000 (payment) + Rs.500 (existing advance) = Rs.10,500
+
+Job 1: Rs.3,000 paid  (remaining: Rs.7,500)
+Job 2: Rs.5,000 paid  (remaining: Rs.2,500)
+Job 3: Rs.2,000 paid  (remaining: Rs.500)
+Job 4: Rs.500 paid, Rs.3,500 still owed
 Job 5: Rs.0 -- funds exhausted
 
-Result: 3 jobs fully paid, 2 still pending
-JSON snapshot saved for precise reversal if needed
+Result: 3 jobs fully paid, 1 partially paid, 1 still pending, Rs.0 advance remaining
+JSON snapshot saved for precise reversal if needed (also reverses any advance change)
 ```
+
+If a payment fully covers every pending/partial job and money is left over, the surplus is stored as `advance_balance` (an account credit) rather than lost — it's automatically pooled into the next payment. This means `total_balance` can legitimately show as negative (in credit).
 
 ### Spare Shop Payment (Cascade Algorithm)
 
@@ -212,7 +222,11 @@ Change qty to 5                -->   Oil Filter: 8 to 5   (auto -3 delta)
 Change to "Air Filter"         -->   Oil Filter: 5 to 10  (auto +5 restore)
                                -->   Air Filter: 7 to 2   (auto -5 deduct)
 Delete spare line              -->   Air Filter: 2 to 7   (auto +5 restore)
+Soft-delete whole job card     -->   All its spares' stock returned to warehouse
+Restore job card from trash    -->   That stock deducted again
 ```
+
+Stock sync runs on **three signal groups** (8 handlers): per-spare consumption (above), whole-job-card soft-delete/restore reversal, and supplier restock (§5B). All are signal-driven, never mutated directly in views.
 
 ### Low Stock Alert System
 
@@ -281,8 +295,11 @@ Linked To:          Inventory Items (FK)        Job Card Spare Items (FK)
 Stock Effect:       Increases stock             N/A (tracked separately)
 Bill Structure:     Restock Bills + Line Items  Per-job spare items
 Payment System:     Quick payments + soft-delete Cascade waterfall + JSON snapshot
-Access:             Office+                     Office+
+Access:             Staff+ (Floor/Office/Owner) Office+ for most; Owner-only
+                    — matches Inventory app     for delete/reverse/permanent-delete
 ```
+
+> ⚠️ **Access asymmetry — worth a design review:** every Supplies-Shop view (including delete-restock-bill and delete-payment) is `@staff_required`, so **Floor mechanics can create/delete supplier bills and payments** — because the whole Inventory app is staff-level. The sibling Spare-Shop module restricts destructive actions to Office/Owner. This is the *current code behavior*, documented here honestly; if Floor should not be touching supplier financial records, the fix is in the code (tighten the decorators), not this doc.
 
 ---
 
@@ -481,10 +498,25 @@ PAID BILLS (Owner only)
   Filters: Time ranges (Today, 1 Week, 1 Month, 1 Year, Custom) and Payment Methods
   Displays: Total collected revenue for the filtered period
 
-BULK PAYERS
-  Shows: Fleet/repeat customer groups
-  Actions: 2-step UI to move bills, process lump-sum payments (cascade with locking)
+BULK PAYERS ("Fleet Account" in UI)
+  Shows: Fleet/repeat customer groups, including any advance credit balance
+  Actions: 2-step UI to move bills, process lump-sum payments (cascade + advance pooling, with locking)
   History: Every payment recorded with precise reversal capability
+
+CASHBOOK
+  Shows: Daily income & expense ledger (rent, electricity, scrap sales, etc.)
+  Filters: Today / This Week / This Month / This Year / Last Week / Last Month / Last Year / Custom
+  Displays: Net balance for the filtered period
+  Access: Office and Owner only
+
+OWNER ANALYSIS & REPORTS (Owner only, 🚧 mid-rebuild)
+  Shows: Hero KPIs on page load (functional)
+  Zone drill-downs (Revenue, Mechanic, Spares, Customer, Inventory, Cashbook, Workshop): currently placeholder content — full rebuild in progress, see `TITAN_MASTER_HANDOVER.md` roadmap
+
+SUPPLIES SHOPS (Inventory App — distinct from Spare Shops, see §5B)
+  Shows: Supplier dashboard with per-supplier billed/paid/pending totals
+  Drill-down: Bills, payments, and catalog per supplier, with AJAX pagination
+  Actions: Create restock bills (auto stock increase), record payments, manage catalog
 
 AUDITS (Owner only)
   Shows: Security and financial logs
@@ -519,6 +551,21 @@ MANAGEMENT DASHBOARD
 
 ---
 
+## 13. STANDARD TIME FILTERS
+
+Five sections share one calendar-aligned filter vocabulary, so switching between them feels consistent: **Paid Bills, Delivered, Workshop Spare Shop, Supplier Shop (Inventory), Cashbook.**
+
+```
+Today | This Week | This Month | This Year | Last Week | Last Month | Last Year | Custom range
+```
+
+- All "today"/range math uses `timezone.localdate()` (IST), not server-local UTC — fixes a class of off-by-one-day bugs around midnight.
+- Defaults differ by purpose: operational pages (Paid Bills, Delivered, Cashbook) default to **Today**; ledger pages (Spare Shop, Supplier Shop) default to **This Year**, since balances are running totals rather than daily activity.
+- Filter selection persists in the URL query string, so a refresh or shared link keeps the same view.
+- Items with no relevant date recorded are shown under an explicit "No Date Recorded" grouping rather than silently folded into another date bucket.
+
+---
+
 ## 14. COMPLETE CONNECTION SUMMARY
 
 Every connection below is **verified line-by-line** against the actual codebase.
@@ -539,7 +586,7 @@ graph TD
         ML["MASTER LISTS<br/>(Brands, Models, Spares, Concerns)"]:::intel
         API["AUTOCOMPLETE API<br/>(Brands, Models, Spares, Concerns)"]:::intel
         CAR["CAR PROFILES<br/>(Vehicle History by Registration)"]:::intel
-        ANALYTICS["OWNER ANALYSIS<br/>(Dashboard KPIs & 7 Analysis Zones)"]:::intel
+        ANALYTICS["OWNER ANALYSIS<br/>(Hero KPIs live; 7 zones 🚧 mid-rebuild)"]:::intel
     end
 
     subgraph CORE_WORKFLOW ["⚙️ Core Hub & Finance"]
@@ -637,7 +684,7 @@ graph TD
 
 ## 🔜 COMING SOON
 
-- **New Notification System** — Replacing current SMS/Telegram architecture
+See `TITAN_MASTER_HANDOVER.md` § Roadmap for the authoritative, current list — kept in one place so it doesn't drift out of sync across docs.
 
 ---
 
