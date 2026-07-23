@@ -27,7 +27,7 @@
 16. [Auto-Sync FK from Text Field](#16-auto-sync-fk-from-text-field)
 17. [Thread-Safe Auto-Incrementing Bill Numbers](#17-thread-safe-auto-incrementing-bill-numbers)
 18. [Denormalized Totals for Dashboard Speed](#18-denormalized-totals-for-dashboard-speed)
-19. [Duplicate Entry Prevention (3-Attempt Confirmation)](#19-duplicate-entry-prevention-3-attempt-confirmation)
+19. [One Active Job Card Per Vehicle (Hard Block)](#19-one-active-job-card-per-vehicle-hard-block)
 20. [Role-Based Access Control (RBAC) Decorators](#20-role-based-access-control-rbac-decorators)
 21. [Template-Level Permission Gating](#21-template-level-permission-gating)
 22. [IP-Based Brute Force Lockout (Steel Gate)](#22-ip-based-brute-force-lockout-steel-gate)
@@ -668,27 +668,30 @@ def save(self, *args, **kwargs):
 
 ---
 
-## 19. Duplicate Entry Prevention (3-Attempt Confirmation)
-**What It Does:** If someone tries to create a job card for a vehicle that already has an active (undelivered) job, the system warns them. They must press "Save" 3 times to force-create it.
+## 19. One Active Job Card Per Vehicle (Hard Block)
 
-**Backend:**
+**What It Does:** Only one active (not delivered, not trashed) job card is allowed per registration number at a time — enforced consistently across all three places that can put a car "on the floor": creating a job card, editing a job card's registration number, and undoing a delivery. There is **no bypass** — this used to be a 3-attempt confirmation that silently saved anyway on the third try, which is exactly how duplicate active job cards happened in practice. Fixed 2026-07-23.
+
+**Single source of truth** (`workshop/models.py`, `JobCard.get_active_conflict()`):
 ```python
-existing_job = JobCard.objects.filter(
-    registration_number__iexact=registration,
-    delivered=False
-).exclude(pk=jobcard.pk).first()
-
-if existing_job:
-    session_key = f'duplicate_confirm_{registration}'
-    confirm_count = request.session.get(session_key, 0)
-
-    if confirm_count < 2:
-        request.session[session_key] = confirm_count + 1
-        messages.warning(request, f'{registration} has an active job.')
-        return render(request, 'jobcard_form.html', {...})  # Re-render form with data intact
-    else:
-        del request.session[session_key]  # 3rd attempt: proceed with save
+@classmethod
+def get_active_conflict(cls, registration_number, exclude_pk=None):
+    qs = cls.objects.filter(
+        registration_number__iexact=registration_number.strip(),
+        delivered=False,
+        is_deleted=False,
+    )
+    if exclude_pk:
+        qs = qs.exclude(pk=exclude_pk)
+    return qs.first()
 ```
+
+**Used by all three entry points:**
+- `jobcard_create` — blocks save, re-renders the form with an error if another active job card exists for that plate.
+- `jobcard_edit` — blocks save if changing the registration number would collide with a *different* active job card (`exclude_pk` means editing without changing the plate never conflicts with itself).
+- `undo_delivered` — blocks the undo if a different job card is already active for that plate (otherwise you'd end up with two active job cards for the same vehicle at once — the exact bug this closes).
+
+Each call site shows a `messages.error(...)` explaining which vehicle/job card is blocking, and does not save.
 
 ---
 

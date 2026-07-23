@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Q
 from django.core.paginator import Paginator
@@ -133,9 +134,23 @@ def mark_delivered(request, pk):
 def undo_delivered(request, pk):
     """
     Undo delivery by setting delivered=False and clearing discharged_date.
+
+    Hard-blocked if a different job card is already active for this vehicle's
+    registration number — undoing would otherwise put two active job cards on
+    the floor for the same car at once.
     """
     if request.method == 'POST':
         jobcard = get_object_or_404(JobCard, pk=pk)
+
+        existing_job = JobCard.get_active_conflict(jobcard.registration_number, exclude_pk=jobcard.pk)
+        if existing_job:
+            messages.error(
+                request,
+                f'Cannot undo delivery for {jobcard.registration_number} — it already has a '
+                f'different active job card (not yet Delivered). Resolve that one first.'
+            )
+            return redirect('delivered_list')
+
         jobcard.delivered = False
         jobcard.discharged_date = None
         jobcard.save()

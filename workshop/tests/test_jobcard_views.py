@@ -107,30 +107,38 @@ class JobCardViewsTestCase(TestCase):
         self.assertTrue(ConcernSolution.objects.filter(concern='Oil change').exists())
         self.assertTrue(SparePart.objects.filter(name='Engine Oil').exists())
 
-    def test_jobcard_create_duplicate_warning(self):
-        """Creating a job for a plate that already has an active job should show warning."""
+    def test_jobcard_create_duplicate_blocked(self):
+        """
+        Creating a job for a plate that already has an active job card must be
+        hard-blocked — no bypass. Two active job cards for the same registration
+        number is the exact state this check exists to prevent.
+        """
         url = reverse('jobcard_create')
         # Use the existing job's plate (KL01A1234 — active, not delivered)
         data = self._base_formset_data(reg='KL01A1234')
 
-        # First attempt — should warn and NOT save
-        response = self.client.post(url, data)
-        self.assertEqual(response.status_code, 200)  # Re-renders with warning
+        # Repeated attempts must all be blocked — there is no N-th-attempt bypass.
+        for _ in range(3):
+            response = self.client.post(url, data)
+            self.assertEqual(response.status_code, 200)  # Re-renders with error, not saved
+            self.assertEqual(JobCard.objects.filter(
+                registration_number__iexact='KL01A1234'
+            ).count(), 1)
 
-        # Count should still be 1 (original job only)
-        self.assertEqual(JobCard.objects.filter(
-            registration_number__iexact='KL01A1234'
-        ).count(), 1)
+    def test_jobcard_create_allowed_once_existing_is_delivered(self):
+        """Creating a job for a plate is allowed once the prior job card is delivered."""
+        self.job.delivered = True
+        self.job.save()
 
-        # Second attempt — still warns (confirm_count now 1)
+        url = reverse('jobcard_create')
+        data = self._base_formset_data(reg='KL01A1234')
         response = self.client.post(url, data)
-        self.assertEqual(response.status_code, 200)
 
-        # Third attempt — bypasses duplicate check and saves
-        response = self.client.post(url, data)
-        self.assertEqual(JobCard.objects.filter(
-            registration_number__iexact='KL01A1234'
-        ).count(), 2)
+        new_job = JobCard.objects.filter(
+            registration_number__iexact='KL01A1234', delivered=False
+        ).first()
+        self.assertIsNotNone(new_job, "New job card should be created once the old one is delivered")
+        self.assertRedirects(response, reverse('jobcard_edit', args=[new_job.pk]))
 
     def test_jobcard_edit_get(self):
         """GET to edit view should render pre-filled form."""
@@ -178,6 +186,39 @@ class JobCardViewsTestCase(TestCase):
         self.assertEqual(self.job.customer_name, 'John Edited')
         # Auto-learning: new concern should appear in master list
         self.assertTrue(ConcernSolution.objects.filter(concern='New Brake Issue').exists())
+
+    def test_jobcard_edit_registration_conflict_blocked(self):
+        """
+        Editing a job card's registration number to match a DIFFERENT active job
+        card must be hard-blocked — that's the third door to the same "two active
+        job cards, one vehicle" bug (alongside create and undo_delivered).
+        """
+        # self.job is active with reg 'KL01A1234'. Create a second, unrelated
+        # active job card, then try to edit it to steal self.job's plate.
+        other_job = JobCard.objects.create(
+            admitted_date=date.today(),
+            brand_name='Honda',
+            model_name='City',
+            registration_number='MH999999',
+            customer_name='Bob',
+        )
+
+        url = reverse('jobcard_edit', args=[other_job.pk])
+        data = self._base_formset_data(reg='KL01A1234')  # collides with self.job
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)  # Re-renders with error, not saved
+
+        other_job.refresh_from_db()
+        self.assertEqual(other_job.registration_number, 'MH999999', "Edit must not have saved the colliding plate")
+
+    def test_jobcard_edit_unchanged_registration_not_a_conflict(self):
+        """Saving an edit with the SAME registration number must never conflict with itself."""
+        url = reverse('jobcard_edit', args=[self.job.pk])
+        data = self._base_formset_data(reg='KL01A1234')  # same as self.job's own plate
+
+        response = self.client.post(url, data)
+        self.assertRedirects(response, reverse('jobcard_edit', args=[self.job.pk]))
 
     def test_invoice_view_access_control(self):
         """Floor-only user should be redirected away from invoice view."""

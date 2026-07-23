@@ -441,6 +441,28 @@ class JobCard(models.Model):
             if self.bulk_payer_id:
                 self.bulk_payer.update_totals()
 
+    @classmethod
+    def get_active_conflict(cls, registration_number, exclude_pk=None):
+        """
+        Returns the OTHER active job card (not delivered, not trashed) for this
+        registration number, if one exists — or None.
+
+        Single source of truth for the "one active job card per vehicle" rule.
+        Used by jobcard_create, jobcard_edit, and undo_delivered so all three
+        entry points that can put a car "on the floor" agree on what counts as
+        a conflict, instead of each re-implementing (or skipping) the check.
+        """
+        if not registration_number:
+            return None
+        qs = cls.objects.filter(
+            registration_number__iexact=registration_number.strip(),
+            delivered=False,
+            is_deleted=False,
+        )
+        if exclude_pk:
+            qs = qs.exclude(pk=exclude_pk)
+        return qs.first()
+
     def __str__(self):
         return f"{self.bill_number or f'#{self.id}'}"
 

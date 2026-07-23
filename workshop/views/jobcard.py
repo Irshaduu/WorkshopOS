@@ -30,51 +30,34 @@ def jobcard_create(request):
 
         if form.is_valid():
             jobcard = form.save(commit=False)
-            
-            # Check for existing active job card for this vehicle
+
+            # Hard block: only one active (not delivered, not trashed) job card
+            # is allowed per registration number at a time. No bypass — the old
+            # "3-attempt confirmation" let staff push through anyway, which is
+            # exactly how duplicate active job cards for the same car happened.
             registration = jobcard.registration_number.strip().upper()
-            existing_job = JobCard.objects.filter(
-                registration_number__iexact=registration,
-                delivered=False
-            ).exclude(pk=jobcard.pk).first()
-            
+            existing_job = JobCard.get_active_conflict(registration)
+
             if existing_job:
-                # Get or initialize confirmation counter
-                session_key = f'duplicate_confirm_{registration}'
-                confirm_count = request.session.get(session_key, 0)
-                
-                if confirm_count < 2:
-                    # Increment counter
-                    request.session[session_key] = confirm_count + 1
-                    
-                    # Build message with vehicle details
-                    vehicle_info = f"{existing_job.brand_name} {existing_job.model_name}" if existing_job.brand_name else registration
-                    
-                    # Show warning message
-                    messages.warning(
-                        request,
-                        f'{vehicle_info} ({registration}) has an active job (not marked Delivered).'
-                    )
-                    
-                    # Don't save, return to form with data
-                    concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
-                    spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
-                    labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
-                    
-                    # FIX-4B: Removed 4 full-table objects.all() scans here.
-                    # Autocomplete relies purely on the AJAX endpoints.
-                    
-                    return render(request, 'workshop/jobcard/jobcard_form.html', {
-                        'form': form,
-                        'concern_formset': concern_formset,
-                        'spare_formset': spare_formset,
-                        'labour_formset': labour_formset,
-                        'is_edit': False,
-                    })
-                else:
-                    # Third attempt - clear counter and proceed with save
-                    del request.session[session_key]
-            
+                vehicle_info = f"{existing_job.brand_name} {existing_job.model_name}" if existing_job.brand_name else registration
+                messages.error(
+                    request,
+                    f'{vehicle_info} ({registration}) already has an active job card '
+                    f'(not yet Delivered). Deliver or trash that job card before creating a new one.'
+                )
+
+                concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
+                spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
+                labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
+
+                return render(request, 'workshop/jobcard/jobcard_form.html', {
+                    'form': form,
+                    'concern_formset': concern_formset,
+                    'spare_formset': spare_formset,
+                    'labour_formset': labour_formset,
+                    'is_edit': False,
+                })
+
             # Formsets initialization for standard save
             concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
             spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
@@ -255,6 +238,32 @@ def jobcard_edit(request, pk):
         labour_formset = JobCardLabourFormSet(request.POST, instance=jobcard, prefix='labours')
 
         if form.is_valid() and concern_formset.is_valid() and spare_formset.is_valid() and labour_formset.is_valid():
+            # Hard block: editing this job card's registration number must not collide
+            # with a different job card that's already active for that vehicle. Excludes
+            # this job card's own pk, so leaving the registration number unchanged never
+            # conflicts with itself.
+            registration = form.cleaned_data['registration_number'].strip().upper()
+            existing_job = JobCard.get_active_conflict(registration, exclude_pk=jobcard.pk)
+
+            if existing_job:
+                vehicle_info = f"{existing_job.brand_name} {existing_job.model_name}" if existing_job.brand_name else registration
+                messages.error(
+                    request,
+                    f'{vehicle_info} ({registration}) already has a different active job card '
+                    f'(not yet Delivered). Deliver or trash that job card first.'
+                )
+                return render(request, 'workshop/jobcard/jobcard_form.html', {
+                    'form': form,
+                    'concern_formset': concern_formset,
+                    'spare_formset': spare_formset,
+                    'labour_formset': labour_formset,
+                    'jobcard': jobcard,
+                    'is_edit': True,
+                    'next_url': request.GET.get('next'),
+                    'spare_shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
+                    'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
+                })
+
             # AUD-0014: Wrap all formset saves in a single atomic transaction.
             with transaction.atomic():
                 form.save()

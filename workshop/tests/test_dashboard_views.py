@@ -109,6 +109,39 @@ class DashboardViewsTestCase(TestCase):
         self.assertFalse(self.job.delivered)
         self.assertIsNone(self.job.discharged_date)
 
+    def test_undo_delivered_blocked_when_active_conflict_exists(self):
+        """
+        undo_delivered must refuse to reactivate an old job card if a different
+        job card is already active for the same registration number — otherwise
+        two active job cards would exist for the same vehicle simultaneously.
+        """
+        # self.job (KL01A1234) is delivered, and will be the "old" job card.
+        self.job.delivered = True
+        self.job.discharged_date = date.today()
+        self.job.save()
+
+        # A different, currently-active job card for the same vehicle.
+        live_job = JobCard.objects.create(
+            admitted_date=date.today(),
+            brand_name='Toyota',
+            model_name='Corolla',
+            registration_number='KL01A1234',
+            customer_name='Jane Doe',
+        )
+
+        url_undo = reverse('undo_delivered', args=[self.job.id])
+        response = self.client.post(url_undo)
+        self.assertRedirects(response, reverse('delivered_list'))
+
+        # Old job card must remain delivered — the undo was blocked.
+        self.job.refresh_from_db()
+        self.assertTrue(self.job.delivered)
+        self.assertIsNotNone(self.job.discharged_date)
+
+        # The live job card is untouched.
+        live_job.refresh_from_db()
+        self.assertFalse(live_job.delivered)
+
     def test_mark_delivered_get_ignored(self):
         """GET to mark_delivered should not change delivered status."""
         url_mark = reverse('mark_delivered', args=[self.job.id])
