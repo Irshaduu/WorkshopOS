@@ -108,6 +108,7 @@ erDiagram
 | 15 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
 | 16 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
 | 17 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
+| 18 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete. No restore. |
 
 `advance_balance` (added migration `0047_bulkpayer_advance_balance`) tracks credit carried forward when a lump-sum Fleet Account payment exceeds the total currently owed; `total_balance` can legitimately go negative once this credit exists.
 
@@ -147,7 +148,9 @@ graph LR
 |-----------|---------------|---------|
 | `@staff_required` | Floor + Office + Owner | Dashboard, Job Create/Edit/Detail, Live Report, Autocomplete, `concern_edit`, **the entire Inventory app** (stock, categories, items, low-stock, history) **and the entire Supplier-Shops module** (bills, payments, catalog — see access-asymmetry note in `OPERATIONAL_BLUEPRINT.md` §5B) |
 | `@office_required` | Office + Owner | Job List, Job Delete, Completed, Invoices, Master Lists (except `concern_edit`), Car Profiles, Management, Cleanup, Cashbook, Pending Payments, Spare Shops (non-destructive), Bulk Payer create/detail/pay |
-| `@owner_required` | Owner only | Paid Bills, Audits, Trash + Restore + Permanent Delete, Bulk Payer delete/history-delete, Spare Shop delete/reverse/permanent-delete, Payment Reversal, Owner Analysis, Session Terminate |
+| `@owner_required` | Owner only | Paid Bills, Audits (high-discount), **Deletion History** (read-only), Owner Analysis, Session Terminate |
+
+> Deletion/deactivation actions (job-card delete, Fleet/Shop/Supplier payment delete, account deactivate/reactivate) are **`@office_required`** (Owner + Office) — Office fixes its own entry mistakes, with the guard + Owner-only Deletion History providing the safety net. Only *reading* the Deletion History is Owner-only.
 
 Superusers pass every check regardless of group membership. For the human-readable "who can do what" breakdown, see `OPERATIONAL_BLUEPRINT.md` §2.
 
@@ -197,9 +200,8 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 | | `/jobcards/<pk>/undo-complete/` | `undo_completed` | Office |
 | | `/jobcards/<pk>/toggle-hold/` | `toggle_hold` | Office |
 | | `/jobcards/<pk>/update-bill/` | `update_bill_status` | Office |
-| **TRASH** | `/trash/` | `trash_list` | Owner |
-| | `/jobcards/<pk>/restore/` | `restore_jobcard` | Owner |
-| | `/jobcards/<pk>/permanent-delete/` | `permanent_delete_jobcard` | Owner |
+| **DELETION HISTORY** | `/deletion-history/` | `deletion_history_list` (read-only) | Owner |
+| | `/deletion-history/<pk>/` | `deletion_history_detail` (read-only) | Owner |
 | **PENDING PAYMENTS** | `/pending-payments/` | `pending_payments_list` | Office |
 | **PAID BILLS** | `/paid-bills/` | `paid_bills_list` | Owner |
 | **BULK PAYERS ("Fleet Account" in UI)** | `/pending-payments/bulk-payers/` | `bulk_payer_list` | Office |
@@ -208,26 +210,21 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 | | `/pending-payments/jobcards/move-to-bulk/` | `move_jobcard_to_bulk` | Office |
 | | `/pending-payments/bulk-payers/<pk>/remove-card/` | `bulk_payer_remove_card` | Office |
 | | `/pending-payments/bulk-payers/<pk>/pay/` | `bulk_payer_pay` | Office |
-| | `/pending-payments/bulk-payers/<pk>/delete/` | `bulk_payer_delete` | Owner |
-| | `/pending-payments/bulk-payers/<pk>/history/<hpk>/delete/` | `bulk_payment_history_delete` | Owner |
-| | `/pending-payments/bulk-payers/trash/` | `bulk_payer_trash_list` | Owner |
-| | `/pending-payments/bulk-payers/<pk>/restore/` | `bulk_payer_restore` | Owner |
-| | `/pending-payments/bulk-payers/<pk>/permanent-delete/` | `bulk_payer_permanent_delete` | Owner |
-| | `/pending-payments/history/<hpk>/permanent-delete/` | `permanent_delete_payment_history` | Owner |
+| | `/pending-payments/bulk-payers/<pk>/delete/` | `bulk_payer_delete` (deactivate/archive) | Owner+Office |
+| | `/pending-payments/bulk-payers/<pk>/history/<hpk>/delete/` | `bulk_payment_history_delete` (reverse + log + hard-delete) | Owner+Office |
+| | `/pending-payments/bulk-payers/archived/` | `bulk_payer_archived` | Owner+Office |
+| | `/pending-payments/bulk-payers/<pk>/restore/` | `bulk_payer_restore` (reactivate) | Owner+Office |
 | **AUDITS** | `/audits/high-discounts/` | `audit_high_discounts` | Owner |
-| | `/audits/deleted-bulk-payers/` | `audit_deleted_bulk_payers` | Owner |
-| | `/audits/restore-bulk-payer/<pk>/` | `restore_bulk_payer` | Owner |
 | **SPARE SHOPS** | `/spare-shops/` | `spare_shop_list` | Office |
 | | `/spare-shops/create/` | `spare_shop_create` | Office |
 | | `/spare-shops/unassigned/` | `unassigned_spares_hub` | Office |
 | | `/spare-shops/<pk>/` | `spare_shop_detail` | Office |
 | | `/spare-shops/<pk>/edit/` | `spare_shop_edit` | Office |
 | | `/spare-shops/<pk>/pay/` | `spare_shop_pay` | Office |
-| | `/spare-shops/<shop_pk>/payment/<payment_pk>/reverse/` | `spare_shop_payment_reverse` | Owner |
-| | `/spare-shops/<pk>/delete/` | `spare_shop_delete` | Owner |
-| | `/spare-shops/<pk>/restore/` | `spare_shop_restore` | Owner |
-| | `/spare-shops/<pk>/permanent-delete/` | `spare_shop_permanent_delete` | Owner |
-| | `/spare-shops/payment/<payment_pk>/permanent-delete/` | `spare_shop_payment_permanent_delete` | Owner |
+| | `/spare-shops/<shop_pk>/payment/<payment_pk>/reverse/` | `spare_shop_payment_reverse` (log + hard-delete) | Owner+Office |
+| | `/spare-shops/archived/` | `spare_shop_archived` | Owner+Office |
+| | `/spare-shops/<pk>/delete/` | `spare_shop_delete` (deactivate/archive) | Owner+Office |
+| | `/spare-shops/<pk>/restore/` | `spare_shop_restore` (reactivate) | Owner+Office |
 | | `/spare-shops/<pk>/print/` | `spare_shop_print` | Office |
 | | `/spare-shops/<pk>/add-unassigned/` | `spare_shop_add_unassigned` | Office |
 | | `/spare-shops/items/<item_pk>/unassign/` | `spare_shop_unassign_item` | Office |
@@ -365,8 +362,8 @@ Stock is synced by **8 signal handlers in 3 groups** (`inventory/signals.py`):
 4. **Spare deleted** → Restore full qty to warehouse
 
 **Group 2 — JobCard Soft-Delete Reversal (`JobCard`, 2 handlers):**
-5. **Job card soft-deleted** → Return all its spares' stock to the warehouse
-6. **Job card restored** → Deduct that stock again (only fires when `is_deleted` actually flips)
+5. **Job card soft-deleted** → Return all its spares' stock to the warehouse *(dormant — job cards are hard-deleted now, so `is_deleted` never flips; kept for safety)*
+6. **Job card restored** → Deduct that stock again *(dormant, same reason)*
 
 **Group 3 — Supplier Restock (`SupplierRestockItem`, 3 handlers):**
 7. **New restock item created** → Increase stock by full qty
@@ -384,10 +381,8 @@ stateDiagram-v2
     OnHold --> Active: Toggle Hold
     Active --> Completed: Mark Completed
     Completed --> Active: Undo Completion
-    Active --> Trash: Soft Delete
-    Completed --> Trash: Soft Delete
-    Trash --> Active: Restore (Owner only)
-    Trash --> [*]: Permanent Delete (Owner only)
+    Active --> [*]: Delete — guarded (blocked if spares/labour/payment), logged, permanent
+    Completed --> [*]: Delete — guarded, logged to Deletion History, permanent
 
     state Active {
         Concerns: PENDING → WORKING → FIXED
@@ -693,7 +688,7 @@ WorkshopOS (Titan)/
 │   │   ├── dashboard.py        ← home, live_report
 │   │   ├── jobcard.py          ← CRUD (create, list, detail, edit, delete)
 │   │   ├── completed.py        ← completed_list, mark/undo/toggle
-│   │   ├── trash.py            ← trash_list, restore, permanent_delete
+│   │   ├── deletion_history.py ← deletion_history_list/detail (Owner-only, read-only)
 │   │   ├── billing.py          ← invoice_view, update_bill_status
 │   │   ├── bulk_payer.py       ← bulk payer / "Fleet Account" views incl. advance-balance cascade
 │   │   ├── spare_shop.py       ← spare shop views

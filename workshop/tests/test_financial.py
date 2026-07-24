@@ -133,8 +133,13 @@ class FinancialIntegrationTests(TestCase):
         self.shop.refresh_from_db()
         self.assertEqual(self.shop.total_paid_amount, Decimal('0'))
 
-        payment.refresh_from_db()
-        self.assertTrue(payment.is_trashed)
+        # Payment is now permanently deleted (not soft-trashed) and recorded
+        # in the Owner-only Deletion History.
+        from workshop.models import DeletionLog
+        self.assertFalse(SpareShopPayment.objects.filter(pk=payment.pk).exists())
+        self.assertTrue(
+            DeletionLog.objects.filter(entity_type=DeletionLog.ENTITY_SHOP_PAYMENT).exists()
+        )
 
     # -------------------------------------------------------------------------
     # Bulk Payer: Cascade across job cards
@@ -190,6 +195,53 @@ class FinancialIntegrationTests(TestCase):
         self.assertIsNotNone(history)
         self.assertEqual(history.amount, Decimal('2000'))
         self.assertEqual(history.jobs_affected, 2)
+
+    def test_bulk_payment_history_delete_reverses_and_logs(self):
+        """Deleting a Fleet payment must reverse balances, log a snapshot, then hard-delete."""
+        from workshop.models import DeletionLog
+        jc1 = self._create_jobcard('KL01CC0001', admitted_date=date.today() - timedelta(days=20))
+        jc2 = self._create_jobcard('KL01CC0002', admitted_date=date.today() - timedelta(days=10))
+        JobCardSpareItem.objects.create(
+            job_card=jc1, spare_part_name='Engine Oil',
+            unit_price=Decimal('500'), quantity=Decimal('2'), total_price=Decimal('1000'),
+        )
+        JobCardLabourItem.objects.create(job_card=jc1, job_description='Svc', amount=Decimal('500'))
+        JobCardSpareItem.objects.create(
+            job_card=jc2, spare_part_name='Air Filter',
+            unit_price=Decimal('400'), quantity=Decimal('2'), total_price=Decimal('800'),
+        )
+        JobCardLabourItem.objects.create(job_card=jc2, job_description='Filt', amount=Decimal('200'))
+
+        bp = BulkPayer.objects.create(customer_name='Reversal Fleet')
+        bp.job_cards.add(jc1, jc2)
+
+        # Pay 2000 → jc1 fully paid (1500), jc2 partial (500)
+        self.client.post(
+            reverse('bulk_payer_pay', args=[bp.pk]),
+            {'lump_sum': '2000', 'payment_method': 'CASH'},
+        )
+        history = BulkPaymentHistory.objects.filter(bulk_payer=bp).first()
+        self.assertIsNotNone(history)
+
+        # Delete the payment → reverse effect + log + hard-delete, atomically
+        resp = self.client.post(
+            reverse('bulk_payment_history_delete', args=[bp.pk, history.pk])
+        )
+        self.assertEqual(resp.status_code, 302)
+
+        jc1.refresh_from_db()
+        jc2.refresh_from_db()
+        # Balances fully restored
+        self.assertEqual(jc1.received_amount, Decimal('0'))
+        self.assertEqual(jc1.payment_status, 'PENDING')
+        self.assertEqual(jc2.received_amount, Decimal('0'))
+        self.assertEqual(jc2.payment_status, 'PENDING')
+
+        # Record is hard-deleted (not soft-trashed) and recorded in Deletion History
+        self.assertFalse(BulkPaymentHistory.objects.filter(pk=history.pk).exists())
+        self.assertTrue(
+            DeletionLog.objects.filter(entity_type=DeletionLog.ENTITY_BULK_PAYMENT).exists()
+        )
 
     # -------------------------------------------------------------------------
     # Invoice: Total = spares + labours

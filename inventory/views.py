@@ -1,10 +1,21 @@
 # inventory/views.py
+from decimal import Decimal, InvalidOperation
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from .models import Category, Item, ConsumptionRecord
 from workshop.decorators import staff_required
 from django.db.models import F, Q
 from django.core.paginator import Paginator
+
+
+def _parse_qty(raw, default='0'):
+    """Parse a user-supplied stock quantity into an exact Decimal.
+    Falls back to `default` on blank/invalid input instead of raising."""
+    try:
+        return Decimal(str(raw).strip())
+    except (InvalidOperation, TypeError, ValueError, AttributeError):
+        return Decimal(default)
 
 @staff_required
 def inventory_home(request):
@@ -77,8 +88,8 @@ def add_item(request, category_id):
     category = get_object_or_404(Category, pk=category_id)
     if request.method == 'POST':
         name = request.POST.get('name')
-        avg_stock = float(request.POST.get('average_stock') or 0)
-        cur_stock = float(request.POST.get('current_stock') or 0)
+        avg_stock = _parse_qty(request.POST.get('average_stock'))
+        cur_stock = _parse_qty(request.POST.get('current_stock'))
 
         Item.objects.create(
             category=category,
@@ -95,10 +106,10 @@ def edit_item(request, item_id):
     item = get_object_or_404(Item, pk=item_id)
     if request.method == 'POST':
         item.name = request.POST.get('name')
-        item.average_stock = float(request.POST.get('average_stock') or 0)
+        item.average_stock = _parse_qty(request.POST.get('average_stock'))
         cur = request.POST.get('current_stock')
         if cur is not None:
-             item.current_stock = float(cur)
+             item.current_stock = _parse_qty(cur)
         item.save()
         messages.success(request, f"Item '{item.name}' updated.")
         return redirect('inventory_category_detail', category_id=item.category.id)
@@ -143,7 +154,7 @@ def update_stock(request, item_id):
         new_stock = request.POST.get('current_stock')
         if new_stock is not None:
             # Optionally add a record to StockLedger if keeping audit
-            item.current_stock = float(new_stock or 0)
+            item.current_stock = _parse_qty(new_stock)
             item.save()
             messages.success(request, f"Stock updated for {item.name}")
             messages.warning(request, "⚠️ Manual stock correction saved. This overrides the automatic signal-based count.")
@@ -157,8 +168,8 @@ def inventory_low_stock(request):
     low_stock_query = Item.objects.select_related('category').filter(
         average_stock__gt=0
     ).filter(
-        Q(current_stock__lte=0) | 
-        Q(current_stock__lt=F('average_stock') * 0.25)
+        Q(current_stock__lte=0) |
+        Q(current_stock__lt=F('average_stock') * Decimal('0.25'))
     ).order_by('name')
     
     paginator = Paginator(low_stock_query, 50)

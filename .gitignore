@@ -58,5 +58,9 @@ htmlcov/
 TITAN_BLUEPRINT.html
 AUDIT_LOG.md
 
+# Database dumps / one-off exports (may contain password hashes & session keys)
+sqlite_data_dump.json
+*_dump.json
+
 # Local editing workspace
 Aditing files/

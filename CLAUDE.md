@@ -44,8 +44,8 @@ Required `.env` keys (see `settings/base.py`, `auth_views.py`): `SECRET_KEY`, `D
 ## Architecture
 
 ### App boundaries
-- **`workshop/`** — job cards, billing, bulk payers, spare shops, cashbook, auth, owner analytics, trash/soft-delete, master data (brands/models/spares/concerns).
-  - `views/` is a package (13 modules: `dashboard`, `jobcard`, `completed`, `trash`, `billing`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
+- **`workshop/`** — job cards, billing, bulk payers, spare shops, cashbook, auth, owner analytics, deletion history, master data (brands/models/spares/concerns).
+  - `views/` is a package (13 modules: `dashboard`, `jobcard`, `completed`, `deletion_history`, `billing`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
   - `analysis_views.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`.
   - `decorators.py` defines the RBAC decorators (`owner_required`, `office_required`, `staff_required`) built on three Django auth Groups: **Owner**, **Office**, **Floor**. Superusers pass every check. Use these decorators on any new view instead of rolling custom permission checks.
   - `middleware.py` (`SessionTrackingMiddleware`) updates `UserSession` (device/IP/last-activity) on every authenticated request, throttled to a 5-minute cooldown per session.
@@ -60,10 +60,16 @@ Split into `formulad_workshop/settings/{base,development,production}.py`. `__ini
 - `UserSession` + `management_views.manage_terminate_session` give owners a kill switch over any active Django session from the dashboard.
 
 ### Financial/data integrity rules (enforced across the codebase, follow them in new code)
-- All monetary fields are `DecimalField(max_digits=10, decimal_places=2)`. Never use `FloatField` for money.
+- All monetary fields are `DecimalField(max_digits=10, decimal_places=2)`. Never use `FloatField` for money. Inventory **stock quantities** are also `DecimalField` now (exact fractional units like 1.5 L of oil); display them with the `clean_qty` / `qty` template filter in `workshop/templatetags/custom_filters.py`, which strips trailing zeros (1.00→"1", 1.50→"1.5").
 - `JobCard.total_bill_amount` is a denormalized physical column updated via `update_totals()` on every spare/labour save — don't recompute it ad hoc in views/templates.
 - Model properties like `get_completion_percentage` check for pre-annotated aggregates on the instance before falling back to a `.count()` query; when adding list views, annotate rather than relying on the property's DB fallback.
-- Foreign keys to historical/financial records use `on_delete=models.PROTECT`; views must catch `ProtectedError` and show a friendly message instead of a 500.
+- **Deletion model — two verbs, enforced everywhere (see `DeletionLog` and the plan in git history):**
+  - *Accounts that other records point to* — Spare Shops, Fleet Accounts (`BulkPayer`), Supplier Shops, Mechanics — are **deactivated (archived)**, never hard-deleted (that would CASCADE-destroy their financial ledgers). They keep a boolean flag (`is_trashed` on SpareShop/BulkPayer, `is_active` on SupplierShop/Mechanic — the name differs by model, internal only), drop out of active lists/dropdowns, and reactivate safely from a per-module **Archived** list.
+  - *Transactions & records* — Job Cards, Fleet/Shop/Supplier payments, Restock bills, Cashbook entries — are **permanently deleted**, but every delete first writes a snapshot via `DeletionLog.record(...)` to the Owner-only, read-only **Deletion History** (`/deletion-history/`). There is deliberately **no restore** (reviving stale financial data corrupts running balances).
+  - **Job-card delete guard:** a job card carrying spares, labour, or a received payment **cannot** be deleted — its spares must be removed/moved to Unassigned and labour cleared first (`jobcard_delete` in `views/jobcard.py`). A deletable card holds no spares, so no stock is affected.
+  - Financial-transaction deletes **reverse their effect** (restore job-card balances / warehouse stock) inside the same atomic block, then log + hard-delete.
+  - `is_deleted` (JobCard) is retained as a **dormant** column (still filtered on for compatibility with dashboards/analysis) but is no longer written — job cards are hard-deleted, not soft-deleted.
+  - Most FKs use `CASCADE`/`SET_NULL`; the **only** `on_delete=PROTECT` in the codebase is inventory `Category → Item`. (An earlier version of this file claimed financial FKs use `PROTECT` — that was inaccurate.)
 - Auto-learned taxonomy (Brands, Models, Spares, Concerns) must dedupe with `__iexact`, never plain `=`, to avoid case-variant duplicates.
 - Only one active (`completed=False, is_deleted=False`) job card is allowed per registration number at a time — a hard block, no bypass, enforced via `JobCard.get_active_conflict()`. Any code path that can put a job card into the active state (create, edit the registration number, undo a completion) must call it first. Previously `jobcard_create` had a 3-attempt "confirm and save anyway" bypass that let duplicates through, and `undo_completed`/`jobcard_edit` had no check at all — fixed 2026-07-23. If you add a new way to reactivate or create a job card, route it through the same check.
 - The job-card completion status is the field `JobCard.completed` (boolean) with `completed_date`, surfaced in the UI as "Completed" and served at `/completed/` (`completed_list`/`mark_completed`/`undo_completed`, in `views/completed.py`). This was renamed from `delivered`/`discharged_date` on 2026-07-24 — the whole stack (field, DB column, URLs, module, templates) uses `completed` now; don't reintroduce "delivered" naming.
@@ -79,7 +85,7 @@ Split into `formulad_workshop/settings/{base,development,production}.py`. `__ini
 ### Signals-driven stock sync
 `inventory/signals.py` has three independent signal groups (8 `@receiver` handlers total) on `pre_save`/`post_save`/`post_delete`:
 1. Workshop consumption (`JobCardSpareItem`, 3 handlers) — deducts stock (handles rename/quantity-change/deletion via delta calculated from a `pre_save` snapshot).
-2. JobCard soft-delete reversal (`JobCard`, 2 handlers) — when a job card is soft-deleted its spares' stock is returned to the warehouse; restoring it deducts again. Uses a `pre_save` `_old_is_deleted` snapshot and only acts when the flag actually flips.
+2. JobCard soft-delete reversal (`JobCard`, 2 handlers) — historically returned spare stock to the warehouse when a job card was soft-deleted (and re-deducted on restore), via a `pre_save` `_old_is_deleted` snapshot that only acts when the flag flips. **Now dormant:** job cards are hard-deleted (never soft-deleted), and the delete guard forbids deleting a card that still holds spares — so `is_deleted` never flips and these handlers no longer fire. Kept for safety; don't rely on them for new stock logic.
 3. Supplier restocking (`SupplierRestockItem`, 3 handlers) — increases stock using the same snapshot+delta pattern.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 

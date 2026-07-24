@@ -13,22 +13,21 @@ from .jobcard import (
 from .completed import (
     completed_list, mark_completed, undo_completed, toggle_hold,
 )
-from .trash import (
-    trash_list, restore_jobcard, permanent_delete_jobcard,
+from .deletion_history import (
+    deletion_history_list, deletion_history_detail,
 )
 from .billing import invoice_view, update_bill_status
 from .bulk_payer import (
     bulk_payer_list, bulk_payer_create, bulk_payer_detail,
     move_jobcard_to_bulk, bulk_payer_remove_card, bulk_payer_pay,
-    bulk_payer_delete, bulk_payer_trash_list, bulk_payer_restore,
-    bulk_payer_permanent_delete, bulk_payment_history_delete,
-    permanent_delete_payment_history,
+    bulk_payer_delete, bulk_payer_archived, bulk_payer_restore,
+    bulk_payment_history_delete,
 )
 from .spare_shop import (
     spare_shop_list, spare_shop_create, spare_shop_edit, spare_shop_detail,
     spare_shop_pay, spare_shop_payment_reverse,
-    spare_shop_delete, spare_shop_restore, spare_shop_permanent_delete,
-    spare_shop_payment_permanent_delete, spare_shop_print,
+    spare_shop_delete, spare_shop_archived, spare_shop_restore,
+    spare_shop_print,
     spare_shop_add_unassigned, spare_shop_unassign_item, spare_shop_update_item_price,
     unassigned_spares_hub,
 )

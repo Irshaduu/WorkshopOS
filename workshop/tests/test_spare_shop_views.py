@@ -151,30 +151,33 @@ class SpareShopViewsExhaustiveTests(TestCase):
         self.assertFalse(self.shop.is_trashed)
 
     # -------------------------------------------------------------------------
-    # 6. Shop Permanent Delete
+    # 6. Archived (deactivated) shops list
     # -------------------------------------------------------------------------
-    def test_spare_shop_permanent_delete(self):
-        self.client.login(username='ownertest', password='password') # Owner required
+    def test_spare_shop_archived_list(self):
+        self.client.login(username='ownertest', password='password')
         self.shop.is_trashed = True
-        self.shop.save()
-        
-        url = reverse('spare_shop_permanent_delete', args=[self.shop.pk])
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 302)
-        self.assertFalse(SpareShop.objects.filter(pk=self.shop.pk).exists())
+        self.shop.save(update_fields=['is_trashed'])
+
+        response = self.client.get(reverse('spare_shop_archived'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.shop.name)
 
     # -------------------------------------------------------------------------
-    # 7. Payment Permanent Delete
+    # 7. Payment delete is permanent + logged (no soft-trash, no restore)
     # -------------------------------------------------------------------------
-    def test_spare_shop_payment_permanent_delete(self):
+    def test_spare_shop_payment_delete_logs(self):
+        from workshop.models import DeletionLog
         self.client.login(username='ownertest', password='password')
         payment = SpareShopPayment.objects.create(
-            shop=self.shop, amount=1000, payment_method='CASH', is_trashed=True
+            shop=self.shop, amount=1000, payment_method='CASH'
         )
-        url = reverse('spare_shop_payment_permanent_delete', args=[payment.pk])
+        url = reverse('spare_shop_payment_reverse', args=[self.shop.pk, payment.pk])
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)
         self.assertFalse(SpareShopPayment.objects.filter(pk=payment.pk).exists())
+        self.assertTrue(
+            DeletionLog.objects.filter(entity_type=DeletionLog.ENTITY_SHOP_PAYMENT).exists()
+        )
 
     # -------------------------------------------------------------------------
     # 8. Shop Print View

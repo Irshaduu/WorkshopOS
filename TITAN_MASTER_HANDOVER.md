@@ -37,7 +37,7 @@
 - **The HQ Kill Switch**: From the management dashboard, Owners have full visibility over active staff sessions (40-day window) and can remotely terminate any unauthorized session.
 
 ### 4. The Warehouse Pulse (Stock Delta Engine)
-- **Mechanism**: Django Signals (`inventory/signals.py`) orchestrate stock synchronization across **three independent groups (8 handlers)**, all using the same pre_save-snapshot + post_save-delta pattern: Workshop Consumption (3 — replacement, quantity adjustment, deletion), JobCard Soft-Delete Reversal (2 — deleting a job card returns its spares' stock, restoring it deducts again), and Supplier Restocking (3 — creation, edit, deletion).
+- **Mechanism**: Django Signals (`inventory/signals.py`) orchestrate stock synchronization across **three independent groups (8 handlers)**, all using the same pre_save-snapshot + post_save-delta pattern: Workshop Consumption (3 — replacement, quantity adjustment, deletion), JobCard Soft-Delete Reversal (2 — historically returned a soft-deleted card's spare stock and re-deducted on restore; **now dormant**, since job cards are hard-deleted and the delete guard forbids deleting a card that still holds spares), and Supplier Restocking (3 — creation, edit, deletion).
 
 ### 5. Owner Analysis & Reports Dashboard — 🚧 Mid-Rebuild
 - Hero KPIs load synchronously and are functional today. The 7 detail zones (Revenue, Mechanics, Spares, Inventory, Cashbook, Customers, Workshop) are **being rebuilt from the ground up** — their current templates are intentional 8-line placeholders, and the fuller replacement templates (`analysis/tabs/*.html`) exist but aren't wired to a view yet. This is a known, in-progress state, not a bug — see Roadmap §VI. Do not "restore" the old zone content or wire up the tabs templates without it being the explicit task at hand.
@@ -47,7 +47,7 @@
 - **Locking**: `select_for_update()` inside `transaction.atomic()` ensures atomic operations when a payment cascades across multiple unpaid job cards, oldest-first.
 - **Advance credit**: `BulkPayer.advance_balance` banks any surplus when a lump-sum payment exceeds what's currently owed, and is automatically pooled into the next payment — `total_balance` can legitimately show negative (in credit). The UI labels this feature "Fleet Account"; the model/field/URL names are unchanged.
 - **Financial Precision**: All monetary columns strictly enforce `DecimalField(max_digits=10, decimal_places=2)`. `FloatField` is prohibited.
-- **Referential Integrity**: Safe deletions are enforced via `models.PROTECT`; critical foreign keys explicitly catch `ProtectedError` to prevent destroying historical financial ledgers.
+- **Referential Integrity / deletion model**: Accounts that other records reference (Spare Shops, Fleet Accounts, Supplier Shops, Mechanics) are **deactivated/archived**, never hard-deleted — protecting their financial ledgers. Transactions and job cards are **permanently deleted but snapshotted first** to the Owner-only, read-only `DeletionLog` (Deletion History); a guard blocks deleting a job card that still holds spares/labour/payment. The only `on_delete=PROTECT` in the codebase is inventory `Category → Item`. *(An earlier version of this doc claimed financial FKs use `PROTECT`/`ProtectedError` — that was inaccurate; they are `CASCADE`/`SET_NULL`, and safety now comes from the deactivate-vs-log-and-delete structure.)*
 - **Dedicated Ledgers**: Split `Pending Bills` / `Paid Bills` architectures with time-range filters (see `OPERATIONAL_BLUEPRINT.md` §13) and strictly enforced RBAC.
 
 ---

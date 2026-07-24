@@ -10,7 +10,7 @@ from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.core.paginator import Paginator
 
-from ..models import JobCardSpareItem, SpareShop, SpareShopPayment
+from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
 from ..decorators import office_required, owner_required
 
 
@@ -291,67 +291,64 @@ def spare_shop_pay(request, pk):
     return redirect('spare_shop_detail', pk=pk)
 
 
-@owner_required
+@office_required
 @transaction.atomic
 def spare_shop_payment_reverse(request, shop_pk, payment_pk):
     """
-    POST: Reverse a SpareShopPayment (Soft Delete). Owner only.
+    POST: Permanently delete a spare-shop payment.
+
+    Logs a full snapshot to the Owner-only Deletion History, then removes the
+    record and recomputes the shop balance. Owner + Office. No restore.
     """
     if request.method != 'POST':
         return redirect('spare_shop_detail', pk=shop_pk)
 
     shop = get_object_or_404(SpareShop, pk=shop_pk)
-    payment = get_object_or_404(SpareShopPayment, pk=payment_pk, shop=shop, is_trashed=False)
+    payment = get_object_or_404(SpareShopPayment, pk=payment_pk, shop=shop)
+    reason = request.POST.get('reason', '').strip()
+    amount = payment.amount
 
-    payment.is_trashed = True
-    payment.save()
+    DeletionLog.record(
+        DeletionLog.ENTITY_SHOP_PAYMENT, payment,
+        user=request.user, reason=reason, amount=amount,
+        label=f"₹{amount:,.0f} → {shop.name}",
+    )
+    payment.delete()  # SpareShopPayment.delete() recomputes shop.update_totals()
 
-    messages.success(request, f"Payment of ₹{payment.amount:,.0f} reversed and moved to Trash.")
+    messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Deletion History).")
     return redirect('spare_shop_detail', pk=shop_pk)
 
 
-@owner_required
+@office_required
 def spare_shop_delete(request, pk):
-    """POST: Soft-delete a spare shop (move to trash). Owner only."""
+    """POST: Deactivate (archive) a spare shop — reversible, keeps all history."""
     if request.method == 'POST':
         shop = get_object_or_404(SpareShop, pk=pk, is_trashed=False)
         shop.is_trashed = True
-        shop.save()
-        messages.success(request, f"Shop '{shop.name}' moved to trash.")
+        shop.save(update_fields=['is_trashed'])
+        messages.success(request, f"Shop '{shop.name}' deactivated (archived).")
     return redirect('spare_shop_list')
 
 
-@owner_required
+@office_required
+def spare_shop_archived(request):
+    """List archived (deactivated) spare shops, each with a Reactivate action."""
+    shops = SpareShop.objects.filter(is_trashed=True).order_by('name')
+    page_obj = Paginator(shops, 45).get_page(request.GET.get('page'))
+    return render(request, 'workshop/spare_shops/shop_archived.html', {
+        'page_obj': page_obj,
+    })
+
+
+@office_required
 def spare_shop_restore(request, pk):
-    """POST: Restore a trashed spare shop. Owner only."""
+    """POST: Reactivate an archived spare shop."""
     if request.method == 'POST':
         shop = get_object_or_404(SpareShop, pk=pk, is_trashed=True)
         shop.is_trashed = False
-        shop.save()
-        messages.success(request, f"Shop '{shop.name}' restored.")
-    return redirect('/trash/?tab=spare_shops')
-
-
-@owner_required
-def spare_shop_permanent_delete(request, pk):
-    """POST: Permanently delete a trashed spare shop. Owner only."""
-    if request.method == 'POST':
-        shop = get_object_or_404(SpareShop, pk=pk, is_trashed=True)
-        name = shop.name
-        shop.delete()
-        messages.success(request, f"Shop '{name}' permanently deleted.")
-    return redirect('/trash/?tab=spare_shops')
-
-
-@owner_required
-def spare_shop_payment_permanent_delete(request, payment_pk):
-    """POST: Permanently delete a trashed shop payment record. Owner only."""
-    if request.method == 'POST':
-        payment = get_object_or_404(SpareShopPayment, pk=payment_pk, is_trashed=True)
-        amount = payment.amount
-        payment.delete()
-        messages.success(request, f"Shop payment of ₹{amount:,.0f} permanently deleted.")
-    return redirect('/trash/?tab=shop_payments')
+        shop.save(update_fields=['is_trashed'])
+        messages.success(request, f"Shop '{shop.name}' reactivated.")
+    return redirect('spare_shop_archived')
 
 
 @office_required

@@ -297,5 +297,3 @@
 - Windshield Washer Fluid
 - Windshield Washer Pump
 - Wiper Blades
-
-## 3. Concerns

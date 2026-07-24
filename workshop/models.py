@@ -1,3 +1,6 @@
+import json
+from decimal import Decimal
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.contrib.auth.signals import user_logged_out
@@ -642,7 +645,7 @@ class BulkPayer(models.Model):
     customer_name = models.CharField(max_length=150, unique=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     is_trashed = models.BooleanField(default=False, db_index=True)
-    
+
     total_billed_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     advance_balance = models.DecimalField(
@@ -807,6 +810,96 @@ class CashbookEntry(models.Model):
     def __str__(self):
         return f"{self.get_entry_type_display()} - {self.category}: ₹{self.amount} ({self.get_payment_method_display()})"
 
+
+
+# -----------------------------------------------------------------------------
+# DELETION HISTORY (read-only audit of permanent deletions)
+# -----------------------------------------------------------------------------
+class DeletionLog(models.Model):
+    """
+    Immutable, Owner-only record of every permanent deletion in the system.
+
+    The deletion model is: *accounts are deactivated* (reversible — see `is_active`
+    on SpareShop/BulkPayer/SupplierShop/Mechanic), while *transactions and records
+    are permanently deleted* — but never silently. Every permanent delete first
+    writes one row here with a full readable snapshot of what was removed, who
+    removed it, and (optionally) why.
+
+    This is a **read-only history**. There is deliberately no restore path: reviving
+    stale financial data long after the fact would corrupt running balances. Owners
+    read it purely for oversight of what Office cleared.
+    """
+    ENTITY_JOBCARD = 'JOBCARD'
+    ENTITY_BULK_PAYMENT = 'BULK_PAYMENT'
+    ENTITY_SHOP_PAYMENT = 'SHOP_PAYMENT'
+    ENTITY_SUPPLIER_PAYMENT = 'SUPPLIER_PAYMENT'
+    ENTITY_RESTOCK_BILL = 'RESTOCK_BILL'
+    ENTITY_CASHBOOK = 'CASHBOOK'
+    ENTITY_CHOICES = [
+        (ENTITY_JOBCARD, 'Job Card'),
+        (ENTITY_BULK_PAYMENT, 'Fleet Account Payment'),
+        (ENTITY_SHOP_PAYMENT, 'Spare-Shop Payment'),
+        (ENTITY_SUPPLIER_PAYMENT, 'Supplier Payment'),
+        (ENTITY_RESTOCK_BILL, 'Restock Bill'),
+        (ENTITY_CASHBOOK, 'Cashbook Entry'),
+    ]
+
+    entity_type = models.CharField(max_length=20, choices=ENTITY_CHOICES, db_index=True)
+    entity_label = models.CharField(max_length=255, help_text="Human-readable identity of the deleted record")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Financial magnitude, if any")
+    snapshot = models.JSONField(default=dict, help_text="Full readable copy of the deleted record for later reference")
+    reason = models.CharField(max_length=255, blank=True, help_text="Optional note entered at delete time")
+    deleted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='deletions')
+    deleted_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-deleted_at']
+        indexes = [
+            models.Index(fields=['entity_type', '-deleted_at']),
+        ]
+        verbose_name = "Deletion Log"
+        verbose_name_plural = "Deletion History"
+
+    def __str__(self):
+        return f"{self.get_entity_type_display()}: {self.entity_label} ({self.deleted_at:%d %b %Y})"
+
+    @staticmethod
+    def _snapshot(instance, extra_children=None):
+        """Build a JSON-safe dict of an instance's fields (+ optional child data)."""
+        from django.forms.models import model_to_dict
+        import datetime
+
+        def _safe(v):
+            if isinstance(v, Decimal):
+                return str(v)
+            if isinstance(v, (datetime.date, datetime.datetime)):
+                return v.isoformat()
+            try:
+                json.dumps(v)
+                return v
+            except (TypeError, ValueError):
+                return str(v)
+
+        data = {k: _safe(v) for k, v in model_to_dict(instance).items()}
+        if extra_children:
+            data.update(extra_children)
+        return data
+
+    @classmethod
+    def record(cls, entity_type, instance, user=None, reason="", amount=None, label=None, extra=None):
+        """
+        Write one deletion-history row. Call this immediately BEFORE the hard delete,
+        inside the same atomic block, so the snapshot is captured even if the delete
+        cascades children. Central single entry point (also the future Notifications hook).
+        """
+        return cls.objects.create(
+            entity_type=entity_type,
+            entity_label=(label or str(instance))[:255],
+            amount=amount,
+            snapshot=cls._snapshot(instance, extra),
+            reason=(reason or "")[:255],
+            deleted_by=user if (user is not None and getattr(user, 'is_authenticated', False)) else None,
+        )
 
 
 @receiver(user_logged_out)

@@ -11,8 +11,27 @@ from .models import (
     UserProfile,
     Mechanic,
     BulkPayer,
-    BulkPaymentHistory
+    BulkPaymentHistory,
+    DeletionLog,
 )
+
+
+@admin.register(DeletionLog)
+class DeletionLogAdmin(admin.ModelAdmin):
+    """Read-only oversight of every permanent deletion. Never editable/creatable."""
+    list_display = ('deleted_at', 'entity_type', 'entity_label', 'amount', 'deleted_by')
+    list_filter = ('entity_type', 'deleted_at')
+    search_fields = ('entity_label', 'reason')
+    readonly_fields = ('entity_type', 'entity_label', 'amount', 'snapshot', 'reason', 'deleted_by', 'deleted_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 # -------------------------
 # AUTHENTICATION & USERS

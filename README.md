@@ -47,8 +47,8 @@ A premium, comprehensive Django-based workshop management system for a single au
 - **Sequential Billing** — Thread-safe billing numbers (e.g., `JB-26-001`).
 
 ### Data Management
-- **Soft-Delete & Restore** — Full trash system with Owner-only restore and permanent delete.
-- **Unified Tabbed Trash** — Single trash page with tabbed views for Job Cards, Bulk Payers, Payments, Spare Shops, and Shop Payments.
+- **Deactivate & Archive** — Accounts (Spare Shops, Fleet Accounts, Supplier Shops, Mechanics) are deactivated/reactivated rather than destroyed, so all linked job-card and financial history is preserved.
+- **Deletion History** — Job cards and financial transactions are permanently deleted (with a guard that blocks deleting a job card still holding financial data), each recorded in an Owner-only, read-only audit log. No restore — reversing stale deletions would corrupt running balances.
 - **Data Cleanup Tool** — Rename, merge, and delete duplicate entries across master lists with cascade updates.
 - **Car Profiles** — Vehicle history tracking grouped by registration number with chronological visit numbering.
 

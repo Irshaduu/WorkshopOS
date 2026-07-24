@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.db import models
 from decimal import Decimal, InvalidOperation
 from .decorators import office_required
-from .models import CashbookEntry
+from .models import CashbookEntry, DeletionLog
 
 
 @office_required
@@ -124,11 +124,17 @@ def add_cashbook_entry(request):
 
 @office_required
 def delete_cashbook_entry(request, pk):
-    """Delete a single cashbook entry."""
+    """Permanently delete a cashbook entry, logged to the Owner-only Deletion History."""
     if request.method == 'POST':
         entry = get_object_or_404(CashbookEntry, pk=pk)
+        reason = request.POST.get('reason', '').strip()
+        DeletionLog.record(
+            DeletionLog.ENTITY_CASHBOOK, entry,
+            user=request.user, reason=reason, amount=entry.amount,
+            label=f"{entry.get_entry_type_display()} · {entry.category} · ₹{entry.amount:,.0f}",
+        )
         entry.delete()
-        messages.success(request, "Entry deleted.")
+        messages.success(request, "Entry permanently deleted (logged to Deletion History).")
     return redirect('cashbook')
 
 

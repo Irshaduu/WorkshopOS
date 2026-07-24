@@ -54,10 +54,8 @@ graph TD
    Can do EVERYTHING below + these exclusive actions:
    - Access the Owner Analysis & Reports Dashboard for hero KPIs (functional) and 7 detail zones (🚧 mid-rebuild — see `TITAN_MASTER_HANDOVER.md` roadmap; zone drill-downs currently show placeholder content, not live analytics).
    - View Paid Bills Dashboard (fully settled jobs and revenue filters)
-   - View Financial Audits (High Discounts, Deleted Bulk Payers)
-   - View and Restore Trash (deleted job cards, bulk payers, payments)
-   - Permanently delete records from trash
-   - Reverse payment transactions (bulk & shop)
+   - View Financial Audits (High Discounts)
+   - View the **Deletion History** — read-only log of every permanent deletion (no restore)
    - Monitor all active login sessions
    - Remotely revoke any staff access
    - Receive security alerts on every login (⚠️ current SMS/Telegram system)
@@ -66,7 +64,8 @@ graph TD
  OFFICE STAFF
    Everything Floor can do + these actions:
    - View full Job Card List with search
-   - Delete job cards (soft-delete to trash)
+   - Delete job cards (permanent + logged; blocked if the card still holds spares/labour/payment)
+   - Deactivate / reactivate Spare Shops & Fleet Accounts; delete (reverse + log) Fleet/Shop payments
    - Mark cars as Completed / Undo completion
    - View and Generate Invoices
    - Update payment status and amounts
@@ -443,26 +442,30 @@ Same for Concerns:
 
 ---
 
-## 11. TRASH SYSTEM — UNIFIED TABBED DASHBOARD
+## 11. DELETION MODEL — DEACTIVATE vs DELETE + HISTORY
+
+The old unified Trash-with-restore was replaced by a two-verb model. Safety comes
+from the *structure*, so Office can fix its own mistakes without risking irreversible
+damage.
 
 ```
-TRASH PAGE (/trash/) — Owner Only
-  ├── Tab: Job Cards
-  │     Search, paginate, restore, permanent delete
-  ├── Tab: Bulk Payers
-  │     Restore, permanent delete
-  ├── Tab: Payments (Bulk Payment History)
-  │     Permanent delete
-  ├── Tab: Spare Shops
-  │     Restore, permanent delete
-  └── Tab: Shop Payments
-        Permanent delete
+ACCOUNTS (Spare Shops, Fleet Accounts, Supplier Shops, Mechanics)
+  → DEACTIVATE (archive). Reversible, non-destructive; keeps all linked
+    job-card & financial history. Reactivate from each module's "Archived" list.
+    (Never hard-deleted — that would CASCADE-destroy their ledgers.)
 
-Each tab has:
-  - Independent search
-  - Badge count showing number of trashed items
-  - Restore (returns to active state)
-  - Permanent Delete (Owner only — irreversible)
+TRANSACTIONS & RECORDS (Job Cards, Fleet/Shop/Supplier payments,
+                        Restock bills, Cashbook entries)
+  → DELETE (permanent). Every delete first snapshots the record to the
+    Owner-only DeletionLog, then hard-deletes. Financial deletes reverse
+    their effect (restore balances/stock) first, atomically.
+      • Job-card delete GUARD: blocked while the card holds spares, labour,
+        or a received payment — clear/unassign them first.
+      • NO RESTORE anywhere — reviving stale records corrupts running balances.
+
+DELETION HISTORY (/deletion-history/) — Owner only, READ-ONLY
+  - One unified list of all deletions, filterable by type, click to read the snapshot.
+  - Also mirrored read-only in Django Admin (DeletionLog).
 ```
 
 ---

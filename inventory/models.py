@@ -1,4 +1,6 @@
 # inventory/models.py
+from decimal import Decimal
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -23,9 +25,10 @@ class Item(models.Model):
     Attributes:
         category (ForeignKey): Link to parent group.
         name (CharField): Part name (matches SparePart master list).
-        average_stock (FloatField): Threshold for low-stock warnings.
-        current_stock (FloatField): Real-time quantity on hand.
-        usage_count (FloatField): Popularity score for smart-sorting.
+        average_stock (DecimalField): Threshold for low-stock warnings.
+        current_stock (DecimalField): Real-time quantity on hand (supports fractional
+            units like 1.5 L of oil, stored exactly — no float drift).
+        usage_count (PositiveIntegerField): Popularity score for smart-sorting.
     """
     category = models.ForeignKey(
         Category,
@@ -36,9 +39,9 @@ class Item(models.Model):
         on_delete=models.PROTECT
     )
     name = models.CharField(max_length=200, db_index=True)
-    average_stock = models.FloatField(default=0, help_text="Ideal stock level for calculation")
-    current_stock = models.FloatField(default=0)
-    usage_count = models.FloatField(default=0, help_text="Cached popularity score (frequency of use)")
+    average_stock = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Ideal stock level for calculation")
+    current_stock = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    usage_count = models.PositiveIntegerField(default=0, help_text="Cached popularity score (frequency of use)")
 
     class Meta:
         constraints = [
@@ -71,7 +74,7 @@ class Item(models.Model):
 class ConsumptionRecord(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
-    quantity = models.FloatField()
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
     date = models.DateField(default=timezone.now)
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -184,7 +187,7 @@ class SupplierRestockBill(models.Model):
 class SupplierRestockItem(models.Model):
     bill = models.ForeignKey(SupplierRestockBill, on_delete=models.CASCADE, related_name='items')
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='restock_items')
-    quantity = models.FloatField()
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -194,8 +197,8 @@ class SupplierRestockItem(models.Model):
     @property
     def per_unit_price(self):
         if self.quantity and self.quantity > 0:
-            return round(float(self.total_price) / float(self.quantity), 2)
-        return 0
+            return (self.total_price / self.quantity).quantize(Decimal('0.01'))
+        return Decimal('0')
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

@@ -168,8 +168,8 @@
             </div>
             <span class="jl-count-pill">{{ jobcards.paginator.count }}</span>
             {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-            <a href="{% url 'trash_list' %}" class="jl-trash-btn">
-                <i class="bi bi-trash3"></i> Trash
+            <a href="{% url 'deletion_history' %}" class="jl-trash-btn">
+                <i class="bi bi-clock-history"></i> Deletion History
             </a>
             {% endif %}
         </div>

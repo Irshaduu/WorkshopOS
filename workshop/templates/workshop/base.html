@@ -371,7 +371,7 @@
                     <li><a class="dropdown-item fw-bold {% if 'master-lists' in request.path %}manage-active{% endif %}" href="{% url 'master_lists_home' %}"><i class="bi bi-collection"></i> Master Data</a></li>
                     {% if request.user|has_group:"Owner" or request.user.is_superuser %}
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item fw-bold text-muted {% if request.path == '/trash/' %}manage-active{% endif %}" href="{% url 'trash_list' %}"><i class="bi bi-trash3"></i> Trash</a></li>
+                    <li><a class="dropdown-item fw-bold text-muted {% if request.path == '/deletion-history/' %}manage-active{% endif %}" href="{% url 'deletion_history' %}"><i class="bi bi-clock-history"></i> Deletion History</a></li>
                     {% endif %}
                     
                     {% if user.is_authenticated %}
@@ -428,7 +428,7 @@
                 <li><a class="dropdown-item" href="{% url 'completed_list' %}"><i class="bi bi-check-circle"></i> Completed Jobs</a></li>
                 <li><a class="dropdown-item text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
                 {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                <li><a class="dropdown-item text-muted" href="{% url 'trash_list' %}"><i class="bi bi-trash3"></i> Trash</a></li>
+                <li><a class="dropdown-item text-muted" href="{% url 'deletion_history' %}"><i class="bi bi-clock-history"></i> Deletion History</a></li>
                 {% endif %}
                 <li><hr class="dropdown-divider"></li>
                 {% endif %}

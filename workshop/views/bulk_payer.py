@@ -1,5 +1,5 @@
 import json
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -13,7 +13,7 @@ from django.core.paginator import Paginator
 
 from ..models import (
     JobCard, JobCardSpareItem, JobCardLabourItem,
-    BulkPayer, BulkPaymentHistory,
+    BulkPayer, BulkPaymentHistory, DeletionLog,
 )
 from ..decorators import office_required, owner_required
 
@@ -376,69 +376,62 @@ def bulk_payer_pay(request, pk):
     return redirect('bulk_payer_detail', pk=pk)
 
 
-@owner_required
+@office_required
 def bulk_payer_delete(request, pk):
     """
-    POST: Soft-delete a bulk payer group (move to trash).
-    Owner only. Does NOT delete job cards — only hides the grouping.
+    POST: Deactivate (archive) a Fleet Account.
+
+    Reversible and safe: hides the account from active lists but keeps every
+    linked job card and all payment history intact. A Fleet Account is NEVER
+    hard-deleted — that would CASCADE-destroy its payment ledger. Reactivate it
+    any time from the Archived list.
     """
     if request.method == 'POST':
         bulk_payer = get_object_or_404(BulkPayer, pk=pk)
         bulk_payer.is_trashed = True
-        bulk_payer.save()
-        messages.success(request, f"Bulk payer '{bulk_payer.customer_name}' moved to trash.")
-    
+        bulk_payer.save(update_fields=['is_trashed'])
+        messages.success(request, f"Fleet Account '{bulk_payer.customer_name}' deactivated (archived).")
     return redirect('pending_payments_list')
 
 
-@owner_required
-def bulk_payer_trash_list(request):
-    """
-    Redirect to unified Trash page, Bulk Payers tab.
-    Kept for backward compatibility with any existing links/bookmarks.
-    """
-    return redirect('/trash/?tab=bulkpayers')
+@office_required
+def bulk_payer_archived(request):
+    """List archived (deactivated) Fleet Accounts, each with a Reactivate action."""
+    payers = BulkPayer.objects.filter(is_trashed=True).order_by('customer_name')
+    page_obj = Paginator(payers, 45).get_page(request.GET.get('page'))
+    return render(request, 'workshop/jobcard/bulk_payer_archived.html', {
+        'page_obj': page_obj,
+    })
 
 
-@owner_required
+@office_required
 def bulk_payer_restore(request, pk):
-    """
-    POST: Restore a trashed bulk payer. Owner only.
-    """
+    """POST: Reactivate an archived Fleet Account."""
     if request.method == 'POST':
         bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=True)
         bulk_payer.is_trashed = False
-        bulk_payer.save()
-        messages.success(request, f"Bulk payer '{bulk_payer.customer_name}' restored.")
-    return redirect('/trash/?tab=bulkpayers')
+        bulk_payer.save(update_fields=['is_trashed'])
+        messages.success(request, f"Fleet Account '{bulk_payer.customer_name}' reactivated.")
+    return redirect('bulk_payer_archived')
 
 
-@owner_required
-def bulk_payer_permanent_delete(request, pk):
-    """
-    POST: Permanently delete a trashed bulk payer. Owner only.
-    """
-    if request.method == 'POST':
-        bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=True)
-        name = bulk_payer.customer_name
-        bulk_payer.delete()
-        messages.success(request, f"Bulk payer '{name}' permanently deleted.")
-    return redirect('/trash/?tab=bulkpayers')
-
-
-@owner_required
+@office_required
 def bulk_payment_history_delete(request, pk, history_pk):
     """
-    POST: Delete a payment history entry and reverse the payments.
-    Reverses the cascade — subtracts amounts from affected job cards.
-    Owner only.
+    POST: Permanently delete a Fleet payment — reverses its effect, logs a
+    snapshot to the Owner-only Deletion History, then removes the record.
+
+    Reversal restores the affected job cards' balances and the payer's advance
+    credit, so running totals stay correct. There is no restore: the record is
+    gone and its financial effect is undone in one atomic step. Owner + Office.
     """
     if request.method != 'POST':
         return redirect('bulk_payer_detail', pk=pk)
-    
+
     bulk_payer = get_object_or_404(BulkPayer, pk=pk)
     history = get_object_or_404(BulkPaymentHistory, pk=history_pk, bulk_payer=bulk_payer)
-    
+    reason = request.POST.get('reason', '').strip()
+
     with transaction.atomic():
         # Lock the payer row for safe advance_balance reversal
         bulk_payer = BulkPayer.objects.select_for_update().get(pk=pk)
@@ -465,15 +458,19 @@ def bulk_payment_history_delete(request, pk, history_pk):
                 job = JobCard.objects.select_for_update().get(pk=entry['job_id'])
                 reversed_amount = Decimal(str(entry['paid']))
                 job.received_amount = max(Decimal('0'), job.received_amount - reversed_amount)
-                
+
                 # Recalculate status
                 if job.received_amount <= 0:
                     job.payment_status = 'PENDING'
                 else:
                     job.payment_status = 'PARTIAL'
-                
+
                 job.save()
-            except (JobCard.DoesNotExist, KeyError, Exception):
+            except (JobCard.DoesNotExist, KeyError, InvalidOperation):
+                # Only skip the entries we can legitimately expect to be bad
+                # (missing job, malformed snapshot key, unparseable amount).
+                # Any other error propagates and rolls back the whole reversal
+                # so we never commit a half-reversed payment.
                 continue
 
         # Reverse advance balance changes from this payment:
@@ -482,22 +479,14 @@ def bulk_payment_history_delete(request, pk, history_pk):
         bulk_payer.advance_balance = new_advance
         bulk_payer.save(update_fields=['advance_balance'])
 
-        history.is_trashed = True
-        history.save()
-    
-    messages.success(request, f"Payment of ₹{history.amount:,.0f} reversed and moved to Trash.")
-    return redirect('bulk_payer_detail', pk=pk)
-
-
-@owner_required
-def permanent_delete_payment_history(request, history_pk):
-    """
-    POST: Permanently delete a payment history entry from the database.
-    Owner only.
-    """
-    if request.method == 'POST':
-        history = get_object_or_404(BulkPaymentHistory, pk=history_pk, is_trashed=True)
+        # Log a full snapshot for the Owner-only Deletion History, then hard-delete.
+        DeletionLog.record(
+            DeletionLog.ENTITY_BULK_PAYMENT, history,
+            user=request.user, reason=reason, amount=history.amount,
+            label=f"₹{history.amount:,.0f} → {bulk_payer.customer_name}",
+        )
         amount = history.amount
         history.delete()
-        messages.success(request, f"Payment history of ₹{amount:,.0f} permanently deleted.")
-    return redirect('/trash/?tab=payments')
+
+    messages.success(request, f"Payment of ₹{amount:,.0f} reversed and permanently deleted (logged to Deletion History).")
+    return redirect('bulk_payer_detail', pk=pk)

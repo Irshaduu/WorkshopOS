@@ -60,36 +60,37 @@ class DashboardViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'workshop/jobcard/job_list_partial.html')
 
-    def test_trash_list_standard_and_ajax(self):
-        """Trash list should show deleted jobs; AJAX returns partial."""
-        self.job.is_deleted = True
-        self.job.save()
-
-        url = reverse('trash_list')
-
-        # Standard GET
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'workshop/jobcard/trash_list.html')
-
-        # AJAX Search
-        response = self.client.get(
-            url, {'q': 'KL01'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+    def test_jobcard_delete_blocked_with_financial_data(self):
+        """A job card holding spares cannot be permanently deleted; it stays put."""
+        from workshop.models import JobCardSpareItem, DeletionLog
+        JobCardSpareItem.objects.create(
+            job_card=self.job, spare_part_name='Oil Filter',
+            quantity=1, unit_price=100, total_price=150,
         )
+        url = reverse('jobcard_delete', args=[self.job.id])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
+        # Guard held: card still exists and nothing was logged.
+        self.assertTrue(JobCard.objects.filter(pk=self.job.pk).exists())
+        self.assertFalse(
+            DeletionLog.objects.filter(entity_type=DeletionLog.ENTITY_JOBCARD).exists()
+        )
+
+    def test_jobcard_delete_permanent_and_logged_when_empty(self):
+        """An empty job card is permanently deleted and recorded in the history."""
+        from workshop.models import DeletionLog
+        url = reverse('jobcard_delete', args=[self.job.id])
+        response = self.client.post(url, {'reason': 'duplicate'})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(JobCard.objects.filter(pk=self.job.pk).exists())
+        log = DeletionLog.objects.filter(entity_type=DeletionLog.ENTITY_JOBCARD).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.reason, 'duplicate')
+
+    def test_deletion_history_view_owner_only(self):
+        """Deletion History page renders for the owner."""
+        response = self.client.get(reverse('deletion_history'))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'workshop/jobcard/trash_list_partial.html')
-
-    def test_restore_jobcard(self):
-        """Restore should un-delete the job and redirect to trash list."""
-        self.job.is_deleted = True
-        self.job.save()
-
-        url = reverse('restore_jobcard', args=[self.job.id])
-        response = self.client.get(url)
-        self.assertRedirects(response, '/trash/?tab=jobcards')
-
-        self.job.refresh_from_db()
-        self.assertFalse(self.job.is_deleted)
 
     def test_mark_completed_and_undo(self):
         """mark_completed sets completed=True; undo_completed reverses it."""

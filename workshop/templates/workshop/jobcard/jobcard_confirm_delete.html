@@ -1,29 +1,48 @@
 {% extends 'workshop/base.html' %}
 
-{% block title %}Confirm Delete{% endblock %}
+{% block title %}Delete Job Card{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center mt-5">
-    <div class="col-md-6 col-lg-4">
+    <div class="col-md-6 col-lg-5">
         <div class="card shadow border-danger">
-            <div class="card-body text-center p-4">
-                <div class="display-1 text-danger mb-3">
-                    <i class="bi bi-exclamation-circle"></i> !
-                </div>
-                <h4 class="mb-3 text-danger">Delete Job Card?</h4>
-                <p class="text-muted mb-4">
-                    Are you sure you want to delete the job card for
-                    <strong>{{ jobcard.registration_number }}</strong>?<br>
-                    This action cannot be undone.
-                </p>
+            <div class="card-body p-4">
+                <h4 class="mb-3 text-danger text-center">
+                    <i class="bi bi-exclamation-circle"></i> Delete Job Card?
+                </h4>
 
+                {% if blockers %}
+                <div class="alert alert-warning">
+                    <strong>{{ jobcard.registration_number }}</strong> can't be deleted yet — it still has
+                    {% for b in blockers %}<strong>{{ b }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}.
+                    <hr>
+                    To delete it, first remove its spare parts (or move them to
+                    <strong>Unassigned</strong>) and clear any labour charges from the job card.
+                </div>
+                <div class="d-grid gap-2">
+                    <a href="{% url 'jobcard_detail' jobcard.pk %}" class="btn btn-primary">Open Job Card</a>
+                    <a href="{% url 'jobcard_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-3">
+                    Permanently delete the job card for
+                    <strong>{{ jobcard.registration_number }}</strong>?<br>
+                    This is <strong>permanent</strong>. It will be recorded in the Owner's
+                    Deletion History but <strong>cannot be restored</strong>.
+                </p>
                 <form method="post">
                     {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Reason (optional)</label>
+                        <input type="text" name="reason" class="form-control" maxlength="255"
+                               placeholder="e.g. duplicate entry">
+                    </div>
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-danger fw-bold">Yes, Delete It</button>
+                        <button type="submit" class="btn btn-danger fw-bold">Yes, Delete Permanently</button>
                         <a href="{% url 'jobcard_list' %}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
+                {% endif %}
             </div>
         </div>
     </div>

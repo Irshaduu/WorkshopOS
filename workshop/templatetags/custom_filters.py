@@ -1,6 +1,7 @@
 from django import template
 from django.contrib.auth.models import Group
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 
 register = template.Library()
@@ -50,16 +51,24 @@ def multiply(value, arg):
 
 @register.filter
 def clean_qty(value):
-    """Removes trailing zeros from decimal (1.0 -> 1, 1.5 -> 1.5)"""
-    if value is None:
+    """Display a quantity without trailing zeros: 1.00 -> 1, 1.50 -> 1.5, 5.50 -> 5.5.
+
+    Works entirely in Decimal so it never reintroduces float rounding drift
+    (quantities are stored as DecimalField for exactness).
+    """
+    if value is None or value == "":
         return ""
     try:
-        f_val = float(value)
-        if f_val == int(f_val):
-            return int(f_val)
-        return f_val
-    except (ValueError, TypeError):
+        d = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
         return value
+    # Whole numbers -> plain int ("1", "10"); fractional -> stripped Decimal ("1.5")
+    if d == d.to_integral_value():
+        return int(d)
+    return d.normalize()
+
+# Backwards/forwards-friendly alias
+register.filter('qty', clean_qty)
 @register.filter
 def get_range(value):
     """

@@ -29,7 +29,8 @@ urlpatterns = [
     # COMPLETED (Workshop Dashboard)
     # ------------------
     path('completed/', views.completed_list, name='completed_list'),
-    path('trash/', views.trash_list, name='trash_list'),
+    path('deletion-history/', views.deletion_history_list, name='deletion_history'),
+    path('deletion-history/<int:pk>/', views.deletion_history_detail, name='deletion_history_detail'),
     path('pending-payments/', views.pending_payments_list, name='pending_payments_list'),
     path('paid-bills/', views.paid_bills_list, name='paid_bills_list'),
     
@@ -42,15 +43,11 @@ urlpatterns = [
     path('pending-payments/bulk-payers/<int:pk>/pay/', views.bulk_payer_pay, name='bulk_payer_pay'),
     path('pending-payments/bulk-payers/<int:pk>/delete/', views.bulk_payer_delete, name='bulk_payer_delete'),
     path('pending-payments/bulk-payers/<int:pk>/history/<int:history_pk>/delete/', views.bulk_payment_history_delete, name='bulk_payment_history_delete'),
-    path('pending-payments/bulk-payers/trash/', views.bulk_payer_trash_list, name='bulk_payer_trash_list'),
+    path('pending-payments/bulk-payers/archived/', views.bulk_payer_archived, name='bulk_payer_archived'),
     path('pending-payments/bulk-payers/<int:pk>/restore/', views.bulk_payer_restore, name='bulk_payer_restore'),
-    path('pending-payments/bulk-payers/<int:pk>/permanent-delete/', views.bulk_payer_permanent_delete, name='bulk_payer_permanent_delete'),
-    path('pending-payments/history/<int:history_pk>/permanent-delete/', views.permanent_delete_payment_history, name='permanent_delete_payment_history'),
 
     # Audits
     path('audits/high-discounts/', audits.audit_high_discounts, name='audit_high_discounts'),
-    path('audits/deleted-bulk-payers/', audits.audit_deleted_bulk_payers, name='audit_deleted_bulk_payers'),
-    path('audits/restore-bulk-payer/<int:pk>/', audits.restore_bulk_payer, name='restore_bulk_payer'),
 
     # ------------------
     # SPARE SHOP SYSTEM
@@ -62,10 +59,9 @@ urlpatterns = [
     path('spare-shops/<int:pk>/edit/', views.spare_shop_edit, name='spare_shop_edit'),
     path('spare-shops/<int:pk>/pay/', views.spare_shop_pay, name='spare_shop_pay'),
     path('spare-shops/<int:shop_pk>/payment/<int:payment_pk>/reverse/', views.spare_shop_payment_reverse, name='spare_shop_payment_reverse'),
+    path('spare-shops/archived/', views.spare_shop_archived, name='spare_shop_archived'),
     path('spare-shops/<int:pk>/delete/', views.spare_shop_delete, name='spare_shop_delete'),
     path('spare-shops/<int:pk>/restore/', views.spare_shop_restore, name='spare_shop_restore'),
-    path('spare-shops/<int:pk>/permanent-delete/', views.spare_shop_permanent_delete, name='spare_shop_permanent_delete'),
-    path('spare-shops/payment/<int:payment_pk>/permanent-delete/', views.spare_shop_payment_permanent_delete, name='spare_shop_payment_permanent_delete'),
     path('spare-shops/<int:pk>/print/', views.spare_shop_print, name='spare_shop_print'),
     path('spare-shops/<int:pk>/add-unassigned/', views.spare_shop_add_unassigned, name='spare_shop_add_unassigned'),
     path('spare-shops/items/<int:item_pk>/unassign/', views.spare_shop_unassign_item, name='spare_shop_unassign_item'),
@@ -75,8 +71,6 @@ urlpatterns = [
     path('jobcards/<int:pk>/undo-complete/', views.undo_completed, name='undo_completed'),
     path('jobcards/<int:pk>/toggle-hold/', views.toggle_hold, name='toggle_hold'),
     path('jobcards/<int:pk>/update-bill/', views.update_bill_status, name='update_bill_status'),
-    path('jobcards/<int:pk>/restore/', views.restore_jobcard, name='restore_jobcard'),
-    path('jobcards/<int:pk>/permanent-delete/', views.permanent_delete_jobcard, name='permanent_delete_jobcard'),
 
     # ------------------
     # SECTION 3: MASTER LISTS

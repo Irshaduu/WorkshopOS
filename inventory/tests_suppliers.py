@@ -424,7 +424,8 @@ class SupplierShopViewTests(TestCase):
 
 
 
-    def test_delete_payment_soft_deletes(self):
+    def test_delete_payment_hard_deletes_and_logs(self):
+        from workshop.models import DeletionLog
         shop = SupplierShop.objects.create(name='Del Pay Shop')
         SupplierRestockBill.objects.create(supplier=shop, total_amount=5000)
         payment = SupplierPayment.objects.create(supplier=shop, amount=3000)
@@ -434,8 +435,11 @@ class SupplierShopViewTests(TestCase):
         self.client.post(
             reverse('delete_shop_payment', args=[shop.id, payment.id])
         )
-        payment.refresh_from_db()
-        self.assertTrue(payment.is_trashed)
+        # Permanently deleted (not soft-trashed) + logged; shop balance recomputed.
+        self.assertFalse(SupplierPayment.objects.filter(pk=payment.id).exists())
+        self.assertTrue(
+            DeletionLog.objects.filter(entity_type=DeletionLog.ENTITY_SUPPLIER_PAYMENT).exists()
+        )
         shop.refresh_from_db()
         self.assertEqual(shop.total_paid_amount, Decimal('0'))
 

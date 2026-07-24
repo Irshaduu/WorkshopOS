@@ -1074,32 +1074,32 @@
     </div>
 </div>
 
-<!-- Delete Group Confirmation Overlay (Owner only) -->
-{% if request.user|has_group:"Owner" or request.user.is_superuser %}
+<!-- Deactivate Fleet Account Confirmation Overlay (Owner + Office) -->
+{% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
 <div class="bd-confirm-overlay" id="deleteGroupOverlay">
     <div class="bd-confirm-box">
-        <h6><i class="bi bi-trash3 text-danger me-1"></i> Delete Group?</h6>
-        <p>Move "{{ bulk_payer.customer_name }}" to trash? Job cards will NOT be deleted.</p>
+        <h6><i class="bi bi-archive text-warning me-1"></i> Deactivate Fleet Account?</h6>
+        <p>Archive "{{ bulk_payer.customer_name }}"? It's hidden from active lists but job cards and payment history are kept. Reactivate any time.</p>
         <div class="btn-group">
             <button type="button" class="bd-confirm-cancel" onclick="hideDeleteGroupConfirm()">Cancel</button>
             <form method="POST" action="{% url 'bulk_payer_delete' pk=bulk_payer.pk %}">
                 {% csrf_token %}
-                <button type="submit" class="bd-confirm-remove">Move to Trash</button>
+                <button type="submit" class="bd-confirm-remove">Deactivate</button>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Delete History Confirmation Overlay (Owner only) -->
+<!-- Delete Payment Confirmation Overlay (Owner + Office) -->
 <div class="bd-confirm-overlay" id="historyDeleteOverlay">
     <div class="bd-confirm-box">
-        <h6><i class="bi bi-arrow-counterclockwise text-danger me-1"></i> Reverse Payment?</h6>
-        <p id="historyDeleteText">This will reverse the payment and return balances to the affected job cards.</p>
+        <h6><i class="bi bi-trash3 text-danger me-1"></i> Delete Payment?</h6>
+        <p id="historyDeleteText">This permanently deletes the payment (logged to Deletion History) and returns balances to the affected job cards.</p>
         <div class="btn-group">
             <button type="button" class="bd-confirm-cancel" onclick="hideHistoryDeleteConfirm()">Cancel</button>
             <form method="POST" id="historyDeleteForm" action="">
                 {% csrf_token %}
-                <button type="submit" class="bd-confirm-remove">Delete & Reverse</button>
+                <button type="submit" class="bd-confirm-remove">Delete Permanently</button>
             </form>
         </div>
     </div>
@@ -1172,7 +1172,7 @@ if (dgo) dgo.addEventListener('click', function(e) { if (e.target === this) hide
 function showHistoryDeleteConfirm(historyPk, amount) {
     var overlay = document.getElementById('historyDeleteOverlay');
     if (!overlay) return;
-    document.getElementById('historyDeleteText').textContent = `Reverse ₹${amount} payment? Balances will be restored to affected job cards.`;
+    document.getElementById('historyDeleteText').textContent = `Delete ₹${amount} payment permanently? It is logged to Deletion History and balances are restored to affected job cards.`;
     document.getElementById('historyDeleteForm').action = '/pending-payments/bulk-payers/{{ bulk_payer.pk }}/history/' + historyPk + '/delete/';
     overlay.classList.add('active');
 }

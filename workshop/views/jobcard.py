@@ -9,7 +9,7 @@ from django.core.paginator import Paginator
 from ..models import (
     CarBrand, CarModel, SparePart, ConcernSolution,
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
-    SpareShop,
+    SpareShop, DeletionLog,
 )
 from ..forms import (
     JobCardForm, JobCardConcernFormSet, JobCardSpareFormSet, JobCardLabourFormSet
@@ -359,12 +359,51 @@ def jobcard_edit(request, pk):
 @office_required
 def jobcard_delete(request, pk):
     """
-    Soft-delete a job card and move it to the Trash.
+    Permanently delete a job card (Owner + Office). Logged to the Owner-only
+    Deletion History; there is no restore.
+
+    GUARD: a job card carrying financial/work data cannot be deleted. Its spares
+    must first be removed or moved to Unassigned, and its labour cleared. This
+    makes deletion a deliberate act and prevents accidental loss of a car's
+    financial history. Because a deletable card holds no spares, no warehouse
+    stock is affected by the delete.
     """
     jobcard = get_object_or_404(JobCard, pk=pk)
-    if request.method == 'POST':
-        jobcard.is_deleted = True
-        jobcard.save()
-        messages.warning(request, f"Job Card {jobcard.registration_number} moved to Trash.")
-        return redirect('jobcard_list')
-    return render(request, 'workshop/jobcard/jobcard_confirm_delete.html', {'jobcard': jobcard})
+
+    # Anything that makes this card financially/operationally "heavy" blocks delete.
+    blockers = []
+    if jobcard.spares.exists():
+        blockers.append("spare parts")
+    if jobcard.labours.exists():
+        blockers.append("labour charges")
+    if (jobcard.received_amount or 0) > 0:
+        blockers.append("a received payment")
+
+    if request.method != 'POST':
+        return render(request, 'workshop/jobcard/jobcard_confirm_delete.html', {
+            'jobcard': jobcard,
+            'blockers': blockers,
+        })
+
+    if blockers:
+        messages.error(
+            request,
+            f"Can't delete {jobcard.registration_number}: it still has {', '.join(blockers)}. "
+            "Remove its spares (or move them to Unassigned) and clear labour first."
+        )
+        return redirect('jobcard_detail', pk=pk)
+
+    reason = request.POST.get('reason', '').strip()
+    reg = jobcard.registration_number
+    label = f"{jobcard.bill_number or '#' + str(jobcard.pk)} · {reg}"
+
+    with transaction.atomic():
+        DeletionLog.record(
+            DeletionLog.ENTITY_JOBCARD, jobcard,
+            user=request.user, reason=reason, amount=jobcard.total_bill_amount, label=label,
+            extra={'concerns': [c.concern_text for c in jobcard.concerns.all()]},
+        )
+        jobcard.delete()
+
+    messages.success(request, f"Job Card {reg} permanently deleted (logged to Deletion History).")
+    return redirect('jobcard_list')

@@ -221,13 +221,18 @@
               <i class="bi bi-pencil me-2 text-primary"></i> Edit Shop
             </button>
           </li>
-          {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+          {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
           <li><hr class="dropdown-divider"></li>
           <li>
-            <form method="post" action="{% url 'spare_shop_delete' shop.pk %}" onsubmit="confirmSubmit(event, 'Delete <strong class=\'text-danger\'>{{ shop.name|escapejs }}</strong> forever?<br><small>All linked items and payment records will be preserved.</small>', this, 'danger', 'bi-trash3-fill');">
+            <a class="dropdown-item py-2" href="{% url 'spare_shop_archived' %}">
+              <i class="bi bi-archive me-2"></i> Archived Shops
+            </a>
+          </li>
+          <li>
+            <form method="post" action="{% url 'spare_shop_delete' shop.pk %}" onsubmit="confirmSubmit(event, 'Deactivate <strong>{{ shop.name|escapejs }}</strong>?<br><small>It will be archived &mdash; all items and payment history are preserved. You can reactivate it any time.</small>', this, 'warning', 'bi-archive-fill');">
               {% csrf_token %}
-              <button type="submit" class="dropdown-item py-2 text-danger fw-bold">
-                <i class="bi bi-trash3-fill me-2"></i> Delete {{ shop.name }} Forever
+              <button type="submit" class="dropdown-item py-2 text-warning fw-bold">
+                <i class="bi bi-archive-fill me-2"></i> Deactivate {{ shop.name }}
               </button>
             </form>
           </li>

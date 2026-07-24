@@ -678,13 +678,11 @@
                         <i class="bi bi-tags-fill me-2"></i> High Discount Bills
                     </a>
                 </li>
-                {% if request.user|has_group:"Owner" or request.user.is_superuser %}
                 <li>
-                    <a class="dropdown-item py-2" href="{% url 'audit_deleted_bulk_payers' %}">
-                        <i class="bi bi-archive-fill text-primary me-2"></i> Deleted Fleet Accounts
+                    <a class="dropdown-item py-2" href="{% url 'bulk_payer_archived' %}">
+                        <i class="bi bi-archive-fill text-primary me-2"></i> Archived Fleet Accounts
                     </a>
                 </li>
-                {% endif %}
             </ul>
         </div>
     </div>

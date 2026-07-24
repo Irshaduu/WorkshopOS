@@ -3,11 +3,21 @@ from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Count, Prefetch, Sum, F, OuterRef, Subquery, Q, DecimalField
 from django.db.models.functions import Coalesce
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date
 from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill, SupplierRestockItem, SupplierPayment
 from workshop.decorators import staff_required
+from workshop.models import DeletionLog
 from django.db import transaction, IntegrityError
+
+
+def _dec(raw, default='0'):
+    """Parse a supplier-form numeric field into an exact Decimal.
+    Falls back to `default` on blank/invalid input instead of raising."""
+    try:
+        return Decimal(str(raw).strip())
+    except (InvalidOperation, TypeError, ValueError, AttributeError):
+        return Decimal(default)
 
 @staff_required
 def supplier_shop_list(request):
@@ -275,12 +285,12 @@ def update_bill_discount(request, shop_id, bill_id):
     if request.method == 'POST':
         discount = request.POST.get('discount_amount', '0')
         try:
-            discount = float(discount)
+            discount = Decimal(str(discount).strip())
             if discount >= 0:
                 SupplierRestockBill.objects.filter(pk=bill.pk).update(discount_amount=discount)
                 shop.update_totals()
                 messages.success(request, f"Discount updated for Bill #{bill.id}.")
-        except ValueError:
+        except (ValueError, InvalidOperation):
             messages.error(request, "Invalid discount amount.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
@@ -315,16 +325,16 @@ def shop_restock_bill(request, shop_id):
     
     if request.method == 'POST':
         try:
-            discount = float(request.POST.get('discount_amount') or 0)
-            
+            discount = _dec(request.POST.get('discount_amount'))
+
             bill = SupplierRestockBill.objects.create(
                 supplier=shop,
                 discount_amount=discount
             )
-            
+
             for item in items:
-                qty = float(request.POST.get(f'qty_{item.id}') or 0)
-                price = float(request.POST.get(f'price_{item.id}') or 0)
+                qty = _dec(request.POST.get(f'qty_{item.id}'))
+                price = _dec(request.POST.get(f'price_{item.id}'))
                 if qty > 0:
                     SupplierRestockItem.objects.create(
                         bill=bill,
@@ -361,7 +371,7 @@ def edit_restock_bill(request, shop_id, bill_id):
             if bill_date_str:
                 bill.bill_date = bill_date_str
                 
-            discount = float(request.POST.get('discount_amount') or 0)
+            discount = _dec(request.POST.get('discount_amount'))
             bill.discount_amount = discount
             bill.save()
             
@@ -371,8 +381,8 @@ def edit_restock_bill(request, shop_id, bill_id):
                 price_str = request.POST.get(f'price_{restock_item.id}')
                 
                 if qty_str is not None:
-                    qty = float(qty_str)
-                    price = float(price_str or 0)
+                    qty = _dec(qty_str)
+                    price = _dec(price_str)
                     if qty <= 0:
                         restock_item.delete()
                     else:
@@ -388,8 +398,8 @@ def edit_restock_bill(request, shop_id, bill_id):
                     qty_str = request.POST.get(f'new_qty_{new_item.id}')
                     price_str = request.POST.get(f'new_price_{new_item.id}')
                     if qty_str:
-                        qty = float(qty_str)
-                        price = float(price_str or 0)
+                        qty = _dec(qty_str)
+                        price = _dec(price_str)
                         if qty > 0:
                             SupplierRestockItem.objects.create(
                                 bill=bill,
@@ -425,8 +435,18 @@ def edit_restock_bill(request, shop_id, bill_id):
 def delete_restock_bill(request, shop_id, bill_id):
     if request.method == 'POST':
         bill = get_object_or_404(SupplierRestockBill, pk=bill_id, supplier_id=shop_id)
+        reason = request.POST.get('reason', '').strip()
+        DeletionLog.record(
+            DeletionLog.ENTITY_RESTOCK_BILL, bill,
+            user=request.user, reason=reason, amount=bill.total_amount,
+            label=f"Restock Bill #{bill.id} · {bill.supplier.name} · ₹{bill.total_amount:,.0f}",
+            extra={'items': [
+                {'item': i.item.name, 'qty': str(i.quantity), 'total': str(i.total_price)}
+                for i in bill.items.select_related('item').all()
+            ]},
+        )
         bill.delete()
-        messages.success(request, "Bill deleted and stock reversed.")
+        messages.success(request, "Bill permanently deleted and stock reversed (logged to Deletion History).")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
 @staff_required
@@ -436,10 +456,10 @@ def add_shop_payment(request, shop_id):
     
     if request.method == 'POST':
         try:
-            amount = float(request.POST.get('amount') or 0)
+            amount = Decimal(str(request.POST.get('amount') or 0).strip())
             method = request.POST.get('payment_method')
             note = request.POST.get('note')
-            
+
             if amount > 0:
                 SupplierPayment.objects.create(
                     supplier=shop,
@@ -449,7 +469,7 @@ def add_shop_payment(request, shop_id):
                 )
                 messages.success(request, "Payment recorded successfully.")
                 return redirect('supplier_shop_detail', shop_id=shop.id)
-        except ValueError:
+        except (ValueError, InvalidOperation):
             messages.error(request, "Invalid payment amount.")
             
     return render(request, 'inventory/suppliers/add_payment.html', {'shop': shop})
@@ -459,9 +479,15 @@ def add_shop_payment(request, shop_id):
 def delete_shop_payment(request, shop_id, payment_id):
     if request.method == 'POST':
         payment = get_object_or_404(SupplierPayment, pk=payment_id, supplier_id=shop_id)
-        payment.is_trashed = True
-        payment.save()
-        messages.success(request, "Payment reversed.")
+        reason = request.POST.get('reason', '').strip()
+        amount = payment.amount
+        DeletionLog.record(
+            DeletionLog.ENTITY_SUPPLIER_PAYMENT, payment,
+            user=request.user, reason=reason, amount=amount,
+            label=f"₹{amount:,.0f} → {payment.supplier.name}",
+        )
+        payment.delete()  # SupplierPayment.delete() recomputes supplier.update_totals()
+        messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Deletion History).")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
 @staff_required
