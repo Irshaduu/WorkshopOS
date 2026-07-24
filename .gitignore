@@ -47,6 +47,12 @@ Thumbs.db
 .env
 .env.local
 
+# Testing / Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+
 # Temporary / Logs
 *.txt
 TITAN_BLUEPRINT.html
