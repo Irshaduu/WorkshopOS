@@ -6,22 +6,17 @@ urlpatterns = [
     path('', views.inventory_home, name='inventory_home'),
     path('manage/', views.inventory_manage, name='inventory_manage'),
     
-    # Category Management
+    # Category Management (add / list / edit — products are read-only inside a category)
     path('category/<int:category_id>/', views.category_detail, name='inventory_category_detail'),
     path('category/add/', views.add_category, name='inventory_add_category'),
     path('category/edit/<int:category_id>/', views.edit_category, name='inventory_edit_category'),
     path('category/delete/<int:category_id>/', views.delete_category, name='inventory_delete_category'),
-    
-    # Item Management
-    path('category/<int:category_id>/item/add/', views.add_item, name='inventory_add_item'),
-    path('item/edit/<int:item_id>/', views.edit_item, name='inventory_edit_item'),
-    path('item/delete/<int:item_id>/', views.delete_item, name='inventory_delete_item'),
-    
+
     # Restock & Low Stock
     path('list/', views.inventory_list, name='inventory_list'),
-    path('restock/update/<int:item_id>/', views.update_stock, name='inventory_update_stock'),
     path('low-stock/', views.inventory_low_stock, name='inventory_low_stock'),
     path('history/', views.consumption_history, name='inventory_history'),
+    path('history/mechanic/<int:mechanic_id>/', views.inventory_history_mechanic, name='inventory_history_mechanic'),
     # Supplier Shops
     path('shops/', views_suppliers.supplier_shop_list, name='supplier_shop_list'),
     path('shops/deactivated/', views_suppliers.deactivated_supplier_shop_list, name='deactivated_supplier_shop_list'),
@@ -35,6 +30,8 @@ urlpatterns = [
     path('shops/<int:shop_id>/catalog/add/', views_suppliers.add_shop_catalog_item, name='add_shop_catalog_item'),
     path('shops/<int:shop_id>/catalog/<int:catalog_item_id>/remove/', views_suppliers.remove_shop_catalog_item, name='remove_shop_catalog_item'),
     path('shops/<int:shop_id>/catalog/<int:catalog_item_id>/edit/', views_suppliers.edit_catalog_item, name='edit_catalog_item'),
+    path('shops/<int:shop_id>/catalog/<int:catalog_item_id>/deactivate/', views_suppliers.deactivate_catalog_item, name='deactivate_catalog_item'),
+    path('shops/<int:shop_id>/catalog/<int:catalog_item_id>/reactivate/', views_suppliers.reactivate_catalog_item, name='reactivate_catalog_item'),
     path('shops/<int:shop_id>/restock/', views_suppliers.shop_restock_select, name='shop_restock_select'),
     path('shops/<int:shop_id>/restock/bill/', views_suppliers.shop_restock_bill, name='shop_restock_bill'),
     path('shops/<int:shop_id>/bill/<int:bill_id>/edit/', views_suppliers.edit_restock_bill, name='edit_restock_bill'),

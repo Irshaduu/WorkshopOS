@@ -351,9 +351,12 @@
 {% if catalog %}
 <div class="catalog-grid mb-4">
   {% for cat_item in catalog %}
-  <div class="catalog-card">
+  <div class="catalog-card" {% if not cat_item.is_active %}style="opacity:0.6;"{% endif %}>
     <div>
-      <div class="catalog-card-name">{{ cat_item.item.name }}</div>
+      <div class="catalog-card-name">
+        {{ cat_item.item.name }}
+        {% if not cat_item.is_active %}<span class="badge bg-secondary ms-1" style="font-size:0.58rem; vertical-align:middle;">Deactivated</span>{% endif %}
+      </div>
       <span class="catalog-card-cat">{{ cat_item.item.category.name }}</span>
     </div>
     <!-- 3-dot menu per catalog card -->
@@ -361,17 +364,30 @@
       <button class="btn btn-sm btn-light rounded-circle" style="width:30px;height:30px;padding:0;" type="button" data-bs-toggle="dropdown">
         <i class="bi bi-three-dots-vertical" style="font-size:0.78rem;"></i>
       </button>
-      <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius:10px; font-size:0.82rem; min-width:140px;">
+      <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius:10px; font-size:0.82rem; min-width:150px;">
         <li>
           <button class="dropdown-item py-2"
-                  onclick="openEditItemModal({{ cat_item.id }}, '{{ cat_item.item.name|escapejs }}')">
-            <i class="bi bi-pencil me-2 text-primary"></i>Edit Name
+                  onclick="openEditItemModal({{ cat_item.id }}, '{{ cat_item.item.name|escapejs }}', '{{ cat_item.item.average_stock|floatformat:"-1" }}')">
+            <i class="bi bi-pencil me-2 text-primary"></i>Edit
           </button>
+        </li>
+        <li>
+          {% if cat_item.is_active %}
+          <form method="post" action="{% url 'deactivate_catalog_item' shop.id cat_item.id %}">
+            {% csrf_token %}
+            <button type="submit" class="dropdown-item py-2"><i class="bi bi-pause-circle me-2 text-warning"></i>Deactivate</button>
+          </form>
+          {% else %}
+          <form method="post" action="{% url 'reactivate_catalog_item' shop.id cat_item.id %}">
+            {% csrf_token %}
+            <button type="submit" class="dropdown-item py-2"><i class="bi bi-play-circle me-2 text-success"></i>Reactivate</button>
+          </form>
+          {% endif %}
         </li>
         <li><hr class="dropdown-divider"></li>
         <li>
           <form method="post" action="{% url 'remove_shop_catalog_item' shop.id cat_item.id %}"
-                onsubmit="confirmSubmit(event, 'Remove <strong class=\'text-danger\'>{{ cat_item.item.name|escapejs }}</strong> from catalog?', this, 'danger', 'bi-trash');">
+                onsubmit="confirmSubmit(event, 'Remove <strong class=\'text-danger\'>{{ cat_item.item.name|escapejs }}</strong> from catalog?<br><small>If it has purchase history it will be deactivated instead of removed.</small>', this, 'danger', 'bi-trash');">
             {% csrf_token %}
             <button type="submit" class="dropdown-item py-2 text-danger fw-bold">
               <i class="bi bi-trash3 me-2"></i>Remove
@@ -463,15 +479,20 @@
   <div class="modal-dialog modal-dialog-centered" style="max-width:340px;">
     <div class="modal-content border-0 shadow-lg" style="border-radius:20px;">
       <div class="modal-header border-0 pb-0">
-        <h6 class="modal-title fw-bold"><i class="bi bi-pencil me-2 text-primary"></i>Edit Product Name</h6>
+        <h6 class="modal-title fw-bold"><i class="bi bi-pencil me-2 text-primary"></i>Edit Product</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form id="editItemForm" method="post" action="">
         {% csrf_token %}
         <div class="modal-body">
           <label class="form-label small text-muted fw-bold">Product Name *</label>
-          <input type="text" name="item_name" id="editItemName" class="form-control" required>
-          <small class="text-muted">This will update the product name across the entire system.</small>
+          <input type="text" name="item_name" id="editItemName" class="form-control mb-3" required>
+          <label class="form-label small text-muted fw-bold">Average Stock *</label>
+          <input type="number" name="average_stock" id="editItemAvg" class="form-control" step="0.5" min="0.5" required>
+          <small class="text-muted d-block mt-1">
+            How many of this product you normally keep in the workshop; Low Stock warns below a quarter of it.
+            Name &amp; Average Stock apply to this product across the whole system.
+          </small>
         </div>
         <div class="modal-footer border-0 pt-0">
           <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
@@ -599,10 +620,11 @@
   }
 
   // Open the edit catalog item modal
-  function openEditItemModal(catalogItemId, currentName) {
+  function openEditItemModal(catalogItemId, currentName, currentAvg) {
     const baseUrl = '{% url "edit_catalog_item" shop.id 0 %}'.replace('/0/', '/' + catalogItemId + '/');
     document.getElementById('editItemForm').action = baseUrl;
     document.getElementById('editItemName').value = currentName;
+    document.getElementById('editItemAvg').value = currentAvg;
     new bootstrap.Modal(document.getElementById('editItemModal')).show();
   }
 

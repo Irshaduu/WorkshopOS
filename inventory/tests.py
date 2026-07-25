@@ -1,10 +1,11 @@
 # inventory/tests.py
+from decimal import Decimal
 from django.test import TestCase, Client
 from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
 from workshop.models import JobCard, JobCardSpareItem
-from .models import Category, Item, ConsumptionRecord
+from .models import Category, Item
 
 class InventorySignalTests(TestCase):
     """
@@ -61,194 +62,479 @@ class InventorySignalTests(TestCase):
         self.assertEqual(self.item.current_stock, 50)
 
 class InventoryViewTests(TestCase):
-    """
-    Tests for all Inventory Management Views.
-    """
+    """Office/Owner management screens + Floor-visible read screens."""
     def setUp(self):
         self.office_group, _ = Group.objects.get_or_create(name='Office')
         self.user = User.objects.create_user(username='office_user', password='password')
         self.user.groups.add(self.office_group)
         self.client = Client()
         self.client.login(username='office_user', password='password')
-        
+
         self.category = Category.objects.create(name='Brakes')
-        self.item = Item.objects.create(category=self.category, name='Brake Pad', current_stock=10)
+        self.item = Item.objects.create(category=self.category, name='Brake Pad', average_stock=10, current_stock=10)
 
     def test_inventory_manage_and_search(self):
-        # 1. Dashboard
-        response = self.client.get(reverse('inventory_manage'))
-        self.assertEqual(response.status_code, 200)
-        
-        # 2. Search
-        response = self.client.get(reverse('inventory_manage'), {'q': 'Brakes'})
-        self.assertContains(response, 'Brakes')
-        
-        # 3. Search miss
-        response = self.client.get(reverse('inventory_manage'), {'q': 'GhostPart'})
-        # Should not contain Brakes if it didn't match
-        self.assertNotContains(response, 'Brake Pad')
+        self.assertEqual(self.client.get(reverse('inventory_manage')).status_code, 200)
+        self.assertContains(self.client.get(reverse('inventory_manage'), {'q': 'Brakes'}), 'Brakes')
+        self.assertNotContains(self.client.get(reverse('inventory_manage'), {'q': 'GhostPart'}), 'Brake Pad')
 
-    def test_category_crud(self):
-        # Add Category
-        response = self.client.post(reverse('inventory_add_category'), {'name': 'Suspension'})
-        self.assertRedirects(response, reverse('inventory_manage'))
+    def test_category_add_and_edit(self):
+        resp = self.client.post(reverse('inventory_add_category'), {'name': 'Suspension'})
+        self.assertRedirects(resp, reverse('inventory_manage'))
         self.assertTrue(Category.objects.filter(name='Suspension').exists())
-        
-        # Edit Category
-        response = self.client.post(reverse('inventory_edit_category', args=[self.category.id]), {'name': 'Braking Systems'})
+        self.client.post(reverse('inventory_edit_category', args=[self.category.id]), {'name': 'Braking Systems'})
         self.category.refresh_from_db()
         self.assertEqual(self.category.name, 'Braking Systems')
-        
-        # Delete Category — must first delete items due to PROTECT (AUD-0024)
-        self.item.delete()
-        response = self.client.post(reverse('inventory_delete_category', args=[self.category.id]))
-        self.assertFalse(Category.objects.filter(id=self.category.id).exists())
 
-    def test_item_management(self):
-        # Detail view
-        response = self.client.get(reverse('inventory_category_detail', args=[self.category.id]))
-        self.assertContains(response, 'Brake Pad')
-        
-        # Add Item
-        response = self.client.post(reverse('inventory_add_item', args=[self.category.id]), {
-            'name': 'Brake Disc',
-            'average_stock': 20,
-            'current_stock': 5
-        })
-        self.assertTrue(Item.objects.filter(name='Brake Disc').exists())
-        
-        # Edit Item
-        response = self.client.post(reverse('inventory_edit_item', args=[self.item.id]), {
-            'name': 'Brake Pad Premium',
-            'average_stock': 15,
-            'current_stock': 12
-        })
-        self.item.refresh_from_db()
-        self.assertEqual(self.item.name, 'Brake Pad Premium')
-        
-        # Delete Item
-        response = self.client.post(reverse('inventory_delete_item', args=[self.item.id]))
-        self.assertFalse(Item.objects.filter(id=self.item.id).exists())
+    def test_category_detail_readonly_shows_shops(self):
+        from .models import SupplierShop, ShopCatalogItem
+        shop = SupplierShop.objects.create(name='Parts Hub')
+        ShopCatalogItem.objects.create(shop=shop, item=self.item)
+        resp = self.client.get(reverse('inventory_category_detail', args=[self.category.id]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Brake Pad')
+        self.assertContains(resp, 'Parts Hub')
 
-    def test_stock_restock_and_low_stock(self):
-        # Restock list
-        response = self.client.get(reverse('inventory_list'))
-        self.assertContains(response, 'Brake Pad')
-        
-        # Update Stock
-        response = self.client.post(reverse('inventory_update_stock', args=[self.item.id]), {'current_stock': 50})
-        self.item.refresh_from_db()
-        self.assertEqual(self.item.current_stock, 50)
-        
-        # Low Stock view
-        # Create a low stock item
+    def test_low_stock_readonly(self):
         Item.objects.create(category=self.category, name='Low Fluid', average_stock=10, current_stock=1)
-        response = self.client.get(reverse('inventory_low_stock'))
-        self.assertContains(response, 'Low Fluid')
+        resp = self.client.get(reverse('inventory_low_stock'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Low Fluid')
 
-    def test_consumption_history(self):
-        ConsumptionRecord.objects.create(user=self.user, item=self.item, quantity=2)
-        response = self.client.get(reverse('inventory_history'))
-        self.assertContains(response, 'Brake Pad')
-        self.assertContains(response, 'office_user')
-
-    def test_get_methods(self):
-        # inventory_home redirects to restock
-        response = self.client.get(reverse('inventory_home'))
-        self.assertRedirects(response, reverse('inventory_list'))
-
-        # delete_category GET (no POST body) → safe redirect, does NOT delete
-        response = self.client.get(
-            reverse('inventory_delete_category', args=[self.category.id])
-        )
-        self.assertRedirects(response, reverse('inventory_manage'))
-        self.assertTrue(Category.objects.filter(id=self.category.id).exists())
-
-        # add_item GET → redirect to category_detail (no template needed)
-        response = self.client.get(
-            reverse('inventory_add_item', args=[self.category.id])
-        )
-        self.assertRedirects(
-            response,
-            reverse('inventory_category_detail', args=[self.category.id])
-        )
-
-        # edit_item GET → redirect to category_detail
-        response = self.client.get(
-            reverse('inventory_edit_item', args=[self.item.id])
-        )
-        self.assertRedirects(
-            response,
-            reverse('inventory_category_detail', args=[self.item.category.id])
-        )
-
-        # delete_item GET → redirect to manage
-        response = self.client.get(
-            reverse('inventory_delete_item', args=[self.item.id])
-        )
-        self.assertRedirects(response, reverse('inventory_manage'))
-        self.assertTrue(Item.objects.filter(id=self.item.id).exists())
-
-        # inventory_list with empty search
-        response = self.client.get(reverse('inventory_list'), {'q': ''})
-        self.assertEqual(response.status_code, 200)
-
-        # update_stock POST without next_url → redirect to restock
-        response = self.client.post(
-            reverse('inventory_update_stock', args=[self.item.id]),
-            {'current_stock': 50}
-        )
-        self.assertRedirects(response, reverse('inventory_list'))
-        self.item.refresh_from_db()
-        self.assertEqual(self.item.current_stock, 50)
-
-        # update_stock POST with next_url → redirect to that url
-        response = self.client.post(
-            reverse('inventory_update_stock', args=[self.item.id]),
-            {'current_stock': 25, 'next': reverse('inventory_manage')}
-        )
-        self.assertRedirects(response, reverse('inventory_manage'))
+    def test_home_redirects(self):
+        self.assertRedirects(self.client.get(reverse('inventory_home')), reverse('inventory_list'))
 
 
-class CategoryProtectionTests(TestCase):
-    """
-    AUD-0024, AUD-0060, AUD-0071: Verify that CASCADE → PROTECT prevents
-    accidental category deletion when items exist, and that the UI surfaces
-    a clear error message instead of a 500 crash.
-    """
-
+class InventoryWorkflowTests(TestCase):
+    """Add Product, catalog edit/deactivate/remove, and Stock History."""
     def setUp(self):
-        owner_group, _ = Group.objects.get_or_create(name='Owner')
-        self.owner = User.objects.create_user(username='owner_protect_test', password='Test1234!')
-        self.owner.groups.add(owner_group)
+        from .models import SupplierShop
+        self.office_group, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='office_wf', password='pw')
+        self.user.groups.add(self.office_group)
         self.client = Client()
-        self.client.login(username='owner_protect_test', password='Test1234!')
-        self.category = Category.objects.create(name='Test Category')
-        self.item = Item.objects.create(
-            category=self.category,
-            name='Test Item',
-            average_stock=10,
-            current_stock=5,
-        )
+        self.client.login(username='office_wf', password='pw')
+        self.shop = SupplierShop.objects.create(name='Shop A')
 
-    def test_delete_category_with_items_is_blocked(self):
-        """Deleting a non-empty category must be blocked and show a clear error."""
-        url = reverse('inventory_delete_category', args=[self.category.id])
-        response = self.client.post(url, follow=True)
-        self.assertRedirects(response, reverse('inventory_manage'))
-        # Category must still exist
+    def _catalog(self, name='Oil X', avg='10'):
+        from .models import ShopCatalogItem
+        self.client.post(reverse('add_shop_catalog_item', args=[self.shop.id]),
+                         {'item_name': name, 'category_name': 'Fluids', 'average_stock': avg})
+        return ShopCatalogItem.objects.get(item__name__iexact=name, shop=self.shop)
+
+    def test_add_product_requires_average_stock(self):
+        # Missing average stock → no item created
+        self.client.post(reverse('add_shop_catalog_item', args=[self.shop.id]),
+                         {'item_name': 'Oil X', 'category_name': 'Fluids'})
+        self.assertFalse(Item.objects.filter(name__iexact='Oil X').exists())
+
+        # With average stock → created + appears in Low Stock (current 0 < threshold)
+        ci = self._catalog()
+        self.assertEqual(ci.item.average_stock, Decimal('10'))
+        self.assertContains(self.client.get(reverse('inventory_low_stock')), 'Oil X')
+
+    def test_edit_catalog_item_name_and_threshold(self):
+        ci = self._catalog()
+        self.client.post(reverse('edit_catalog_item', args=[self.shop.id, ci.id]),
+                         {'item_name': 'Oil Y', 'average_stock': '25'})
+        ci.item.refresh_from_db()
+        self.assertEqual(ci.item.name, 'Oil Y')
+        self.assertEqual(ci.item.average_stock, Decimal('25'))
+
+    def test_deactivate_reactivate_excludes_from_restock(self):
+        ci = self._catalog()
+        self.client.post(reverse('deactivate_catalog_item', args=[self.shop.id, ci.id]))
+        ci.refresh_from_db()
+        self.assertFalse(ci.is_active)
+        # Deactivated → the shop's restock selection has no products to tick
+        self.assertContains(self.client.get(reverse('shop_restock_select', args=[self.shop.id])),
+                            'No products in catalog')
+        self.client.post(reverse('reactivate_catalog_item', args=[self.shop.id, ci.id]))
+        ci.refresh_from_db()
+        self.assertTrue(ci.is_active)
+
+    def test_remove_no_history_deletes_orphan_item(self):
+        ci = self._catalog()
+        item_id = ci.item_id
+        self.client.post(reverse('remove_shop_catalog_item', args=[self.shop.id, ci.id]))
+        self.assertFalse(Item.objects.filter(id=item_id).exists())
+
+    def test_remove_with_bill_history_deactivates(self):
+        from .models import SupplierRestockBill, SupplierRestockItem
+        ci = self._catalog()
+        bill = SupplierRestockBill.objects.create(supplier=self.shop, total_amount=Decimal('100'))
+        SupplierRestockItem.objects.create(bill=bill, item=ci.item, quantity=Decimal('5'), total_price=Decimal('100'))
+        self.client.post(reverse('remove_shop_catalog_item', args=[self.shop.id, ci.id]))
+        ci.refresh_from_db()
+        self.assertFalse(ci.is_active)                          # deactivated, not removed
+        self.assertTrue(Item.objects.filter(id=ci.item_id).exists())
+
+    def test_stock_history_and_mechanic_drilldown(self):
+        from workshop.models import Mechanic
+        mech = Mechanic.objects.create(name='Amlah')
+        jc = JobCard.objects.create(registration_number='KL01AA0001', brand_name='BMW',
+                                    model_name='320d', admitted_date=timezone.localdate(),
+                                    lead_mechanic=mech)
+        JobCardSpareItem.objects.create(job_card=jc, spare_part_name='Castrol 5w40',
+                                        quantity=Decimal('3'), unit_price=Decimal('500'), total_price=Decimal('1500'))
+        resp = self.client.get(reverse('inventory_history'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Castrol 5w40')
+        self.assertContains(resp, 'Amlah')
+        self.assertContains(resp, 'KL01AA0001')
+        resp = self.client.get(reverse('inventory_history_mechanic', args=[mech.id]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Castrol 5w40')
+
+
+class CategoryRulesTests(TestCase):
+    """Categories: no duplicates, and delete only while empty."""
+    def setUp(self):
+        office, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='office_cat', password='pw')
+        self.user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='office_cat', password='pw')
+        self.category = Category.objects.create(name='Fluids')
+
+    def _messages(self, resp):
+        return [str(m) for m in resp.context['messages']]
+
+    def test_duplicate_category_is_rejected_case_insensitively(self):
+        resp = self.client.post(reverse('inventory_add_category'), {'name': 'fluids'}, follow=True)
+        self.assertEqual(Category.objects.filter(name__iexact='fluids').count(), 1)
+        self.assertTrue(any('already exists' in m for m in self._messages(resp)))
+
+    def test_whitespace_only_name_is_rejected(self):
+        self.client.post(reverse('inventory_add_category'), {'name': '   '})
+        self.assertEqual(Category.objects.count(), 1)
+
+    def test_distinct_name_still_creates(self):
+        self.client.post(reverse('inventory_add_category'), {'name': 'Filters'})
+        self.assertTrue(Category.objects.filter(name='Filters').exists())
+
+    def test_rename_onto_another_category_is_rejected(self):
+        other = Category.objects.create(name='Filters')
+        resp = self.client.post(reverse('inventory_edit_category', args=[other.id]),
+                                {'name': 'FLUIDS'}, follow=True)
+        other.refresh_from_db()
+        self.assertEqual(other.name, 'Filters')
+        self.assertTrue(any('already exists' in m for m in self._messages(resp)))
+
+    def test_rename_to_own_case_variant_is_allowed(self):
+        self.client.post(reverse('inventory_edit_category', args=[self.category.id]), {'name': 'FLUIDS'})
+        self.category.refresh_from_db()
+        self.assertEqual(self.category.name, 'FLUIDS')
+
+    def test_empty_category_can_be_deleted(self):
+        self.client.post(reverse('inventory_delete_category', args=[self.category.id]))
+        self.assertFalse(Category.objects.filter(pk=self.category.pk).exists())
+
+    def test_category_with_products_cannot_be_deleted(self):
+        Item.objects.create(category=self.category, name='Oil A', average_stock=Decimal('5'))
+        resp = self.client.post(reverse('inventory_delete_category', args=[self.category.id]), follow=True)
         self.assertTrue(Category.objects.filter(pk=self.category.pk).exists())
-        # A helpful error message must be shown
-        messages_list = [str(m) for m in list(response.context['messages'])]
-        self.assertTrue(any("Cannot delete" in m for m in messages_list))
+        self.assertTrue(any("can't be deleted" in m for m in self._messages(resp)))
 
-    def test_delete_empty_category_succeeds(self):
-        """Deleting a category with no items must still work normally."""
-        empty_cat = Category.objects.create(name='Empty Category')
-        url = reverse('inventory_delete_category', args=[empty_cat.id])
-        response = self.client.post(url, follow=True)
-        self.assertRedirects(response, reverse('inventory_manage'))
-        self.assertFalse(Category.objects.filter(pk=empty_cat.pk).exists())
+    def test_delete_via_get_does_nothing(self):
+        self.client.get(reverse('inventory_delete_category', args=[self.category.id]))
+        self.assertTrue(Category.objects.filter(pk=self.category.pk).exists())
+
+    def test_manage_offers_delete_only_for_empty_categories(self):
+        full = Category.objects.create(name='Filters')
+        Item.objects.create(category=full, name='Air Filter', average_stock=Decimal('5'))
+        html = self.client.get(reverse('inventory_manage')).content.decode()
+        self.assertIn(reverse('inventory_delete_category', args=[self.category.id]), html)
+        self.assertNotIn(reverse('inventory_delete_category', args=[full.id]), html)
+
+
+class LowStockSearchTests(TestCase):
+    """Search must span the whole result set, not just the rendered page."""
+    def setUp(self):
+        floor, _ = Group.objects.get_or_create(name='Floor')
+        self.user = User.objects.create_user(username='floor_ls', password='pw')
+        self.user.groups.add(floor)
+        self.client = Client()
+        self.client.login(username='floor_ls', password='pw')
+        self.category = Category.objects.create(name='Fluids')
+        for i in range(60):
+            Item.objects.create(category=self.category, name=f'Bulk Part {i:02d}',
+                                average_stock=Decimal('10'), current_stock=Decimal('0'))
+        Item.objects.create(category=self.category, name='Zebra Oil',
+                            average_stock=Decimal('10'), current_stock=Decimal('0'))
+
+    def test_match_on_a_later_page_is_found(self):
+        # 'Zebra Oil' sorts last, so it is not on page 1 of 50.
+        page_one = self.client.get(reverse('inventory_low_stock'))
+        self.assertNotContains(page_one, 'Zebra Oil')
+        found = self.client.get(reverse('inventory_low_stock'), {'q': 'zebra'})
+        self.assertContains(found, 'Zebra Oil')
+        self.assertEqual(found.context['page_obj'].paginator.count, 1)
+
+    def test_search_by_category_name(self):
+        resp = self.client.get(reverse('inventory_low_stock'), {'q': 'fluids'})
+        self.assertEqual(resp.context['page_obj'].paginator.count, 61)
+
+
+class CatalogRemovalSafetyTests(TestCase):
+    """Removing a product must never silently destroy stock or delete unlogged."""
+    def setUp(self):
+        from .models import SupplierShop, ShopCatalogItem
+        office, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='office_rm', password='pw')
+        self.user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='office_rm', password='pw')
+        self.shop = SupplierShop.objects.create(name='Remove Shop')
+        self.category = Category.objects.create(name='Fluids')
+        self.item = Item.objects.create(category=self.category, name='Stocked Part',
+                                        average_stock=Decimal('5'), current_stock=Decimal('12'))
+        self.catalog = ShopCatalogItem.objects.create(shop=self.shop, item=self.item)
+
+    def test_product_holding_stock_is_deactivated_not_deleted(self):
+        self.client.post(reverse('remove_shop_catalog_item', args=[self.shop.id, self.catalog.id]))
+        self.catalog.refresh_from_db()
+        self.item.refresh_from_db()
+        self.assertFalse(self.catalog.is_active)
+        self.assertEqual(self.item.current_stock, Decimal('12'))
+        self.assertTrue(Item.objects.filter(pk=self.item.pk).exists())
+
+    def test_zero_stock_orphan_delete_is_logged_to_deletion_history(self):
+        from workshop.models import DeletionLog
+        self.item.current_stock = Decimal('0')
+        self.item.save(update_fields=['current_stock'])
+        self.client.post(reverse('remove_shop_catalog_item', args=[self.shop.id, self.catalog.id]))
+        self.assertFalse(Item.objects.filter(pk=self.item.pk).exists())
+        log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_INVENTORY_ITEM)
+        self.assertIn('Stocked Part', log.entity_label)
+        self.assertEqual(log.deleted_by, self.user)
+
+
+class RestockCatalogGuardTests(TestCase):
+    """Restock bills move real stock, so item ids are re-validated in the writing view."""
+    def setUp(self):
+        from .models import SupplierShop, ShopCatalogItem
+        office, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='office_rs', password='pw')
+        self.user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='office_rs', password='pw')
+        self.shop = SupplierShop.objects.create(name='Guard Shop')
+        self.category = Category.objects.create(name='Fluids')
+        self.item = Item.objects.create(category=self.category, name='Guarded Oil',
+                                        average_stock=Decimal('10'), current_stock=Decimal('0'))
+        self.catalog = ShopCatalogItem.objects.create(shop=self.shop, item=self.item)
+
+    def _bill(self, item, qty='5', price='500'):
+        session = self.client.session
+        session['restock_items'] = [str(item.id)]
+        session.save()
+        return self.client.post(reverse('shop_restock_bill', args=[self.shop.id]),
+                                {f'qty_{item.id}': qty, f'price_{item.id}': price,
+                                 'discount_amount': '0'})
+
+    def test_deactivated_product_cannot_be_billed(self):
+        from .models import SupplierRestockItem
+        self.client.post(reverse('deactivate_catalog_item', args=[self.shop.id, self.catalog.id]))
+        self._bill(self.item)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.current_stock, Decimal('0'))
+        self.assertFalse(SupplierRestockItem.objects.filter(item=self.item).exists())
+
+    def test_product_from_another_shop_cannot_be_billed(self):
+        from .models import SupplierShop, ShopCatalogItem, SupplierRestockItem
+        other = SupplierShop.objects.create(name='Other Guard Shop')
+        foreign = Item.objects.create(category=self.category, name='Foreign Oil',
+                                      average_stock=Decimal('5'), current_stock=Decimal('0'))
+        ShopCatalogItem.objects.create(shop=other, item=foreign)
+        self._bill(foreign)
+        foreign.refresh_from_db()
+        self.assertEqual(foreign.current_stock, Decimal('0'))
+        self.assertFalse(
+            SupplierRestockItem.objects.filter(item=foreign, bill__supplier=self.shop).exists())
+
+    def test_active_catalog_product_still_bills_normally(self):
+        self._bill(self.item)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.current_stock, Decimal('5'))
+
+
+class CatalogEditCollisionTests(TestCase):
+    """Edit is the only way to fix a product name — a clash must message, not 500."""
+    def setUp(self):
+        from .models import SupplierShop, ShopCatalogItem
+        office, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='office_ed', password='pw')
+        self.user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='office_ed', password='pw')
+        self.shop = SupplierShop.objects.create(name='Edit Shop')
+        self.category = Category.objects.create(name='Fluids')
+        self.a = Item.objects.create(category=self.category, name='Oil A', average_stock=Decimal('5'))
+        self.b = Item.objects.create(category=self.category, name='Oil B', average_stock=Decimal('5'))
+        self.catalog = ShopCatalogItem.objects.create(shop=self.shop, item=self.a)
+
+    def test_rename_onto_existing_name_is_rejected_cleanly(self):
+        resp = self.client.post(
+            reverse('edit_catalog_item', args=[self.shop.id, self.catalog.id]),
+            {'item_name': 'Oil B', 'average_stock': '9'}, follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.name, 'Oil A')
+        self.assertEqual(self.a.average_stock, Decimal('5'))   # nothing partially applied
+        self.assertTrue(any('already exists' in str(m) for m in resp.context['messages']))
+
+    def test_case_variant_of_own_name_still_renames(self):
+        self.client.post(reverse('edit_catalog_item', args=[self.shop.id, self.catalog.id]),
+                         {'item_name': 'OIL A', 'average_stock': '9'})
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.name, 'OIL A')
+        self.assertEqual(self.a.average_stock, Decimal('9'))
+
+
+class AddProductExistingItemTests(TestCase):
+    """Linking an existing product must not throw away the Average Stock typed in."""
+    def setUp(self):
+        from .models import SupplierShop
+        office, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='office_ap', password='pw')
+        self.user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='office_ap', password='pw')
+        self.shop = SupplierShop.objects.create(name='Add Shop')
+        self.category = Category.objects.create(name='Fluids')
+
+    def test_threshold_backfills_a_legacy_item_that_has_none(self):
+        from .models import ShopCatalogItem
+        legacy = Item.objects.create(category=self.category, name='Legacy Oil',
+                                     average_stock=Decimal('0'))
+        self.client.post(reverse('add_shop_catalog_item', args=[self.shop.id]),
+                         {'item_name': 'Legacy Oil', 'category_name': 'Fluids',
+                          'average_stock': '12', 'confirm_existing': '1'})
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.average_stock, Decimal('12'))
+        self.assertTrue(ShopCatalogItem.objects.filter(shop=self.shop, item=legacy).exists())
+
+    def test_threshold_already_set_by_another_shop_is_not_overwritten(self):
+        existing = Item.objects.create(category=self.category, name='Shared Oil',
+                                       average_stock=Decimal('8'))
+        self.client.post(reverse('add_shop_catalog_item', args=[self.shop.id]),
+                         {'item_name': 'Shared Oil', 'category_name': 'Fluids',
+                          'average_stock': '99', 'confirm_existing': '1'})
+        existing.refresh_from_db()
+        self.assertEqual(existing.average_stock, Decimal('8'))
+
+    def test_new_product_always_gets_a_catalog_link(self):
+        from .models import ShopCatalogItem
+        self.client.post(reverse('add_shop_catalog_item', args=[self.shop.id]),
+                         {'item_name': 'Brand New Oil', 'category_name': 'Fluids',
+                          'average_stock': '10'})
+        item = Item.objects.get(name='Brand New Oil')
+        self.assertTrue(ShopCatalogItem.objects.filter(item=item).exists())
+
+
+class StockHistoryAccuracyTests(TestCase):
+    """Stock History must reflect what actually moved in the warehouse."""
+    def setUp(self):
+        from workshop.models import Mechanic
+        floor, _ = Group.objects.get_or_create(name='Floor')
+        self.user = User.objects.create_user(username='floor_sh', password='pw')
+        self.user.groups.add(floor)
+        self.client = Client()
+        self.client.login(username='floor_sh', password='pw')
+        self.mechanic = Mechanic.objects.create(name='Rafi')
+        self.category = Category.objects.create(name='Fluids')
+
+    def _card(self, reg='KL01ZZ0001', **kwargs):
+        return JobCard.objects.create(
+            registration_number=reg, brand_name='BMW', model_name='320d',
+            admitted_date=timezone.localdate(), lead_mechanic=self.mechanic, **kwargs)
+
+    def test_soft_deleted_job_cards_are_excluded(self):
+        card = self._card(is_deleted=True)
+        JobCardSpareItem.objects.create(job_card=card, spare_part_name='Ghost Filter',
+                                        quantity=Decimal('2'))
+        self.assertNotContains(self.client.get(reverse('inventory_history')), 'Ghost Filter')
+        self.assertNotContains(
+            self.client.get(reverse('inventory_history_mechanic', args=[self.mechanic.id])),
+            'Ghost Filter')
+
+    def test_part_with_no_matching_item_is_marked_not_from_stock(self):
+        card = self._card()
+        JobCardSpareItem.objects.create(job_card=card, spare_part_name='Bought Outside',
+                                        quantity=Decimal('1'))
+        resp = self.client.get(reverse('inventory_history'))
+        self.assertContains(resp, 'Bought Outside')
+        self.assertContains(resp, 'data-unmatched="1"')     # the row badge, not the legend
+
+    def test_part_matching_a_warehouse_item_is_not_marked(self):
+        """Case-insensitive, matching how the stock signal resolves Item names."""
+        Item.objects.create(category=self.category, name='Castrol 5W40',
+                            average_stock=Decimal('10'), current_stock=Decimal('10'))
+        card = self._card()
+        JobCardSpareItem.objects.create(job_card=card, spare_part_name='castrol 5w40',
+                                        quantity=Decimal('1'))
+        self.assertNotContains(self.client.get(reverse('inventory_history')),
+                               'data-unmatched="1"')
+
+    def test_mechanic_totals_group_case_insensitively(self):
+        Item.objects.create(category=self.category, name='Castrol 5W40',
+                            average_stock=Decimal('10'), current_stock=Decimal('10'))
+        card_a = self._card('KL01ZZ0002')
+        card_b = self._card('KL01ZZ0003')
+        JobCardSpareItem.objects.create(job_card=card_a, spare_part_name='Castrol 5W40',
+                                        quantity=Decimal('2'))
+        JobCardSpareItem.objects.create(job_card=card_b, spare_part_name='castrol 5w40',
+                                        quantity=Decimal('3'))
+        resp = self.client.get(reverse('inventory_history_mechanic', args=[self.mechanic.id]))
+        totals = resp.context['totals']
+        self.assertEqual(len(totals), 1)
+        self.assertEqual(totals[0]['total'], Decimal('5'))
+
+
+class InventoryRBACTests(TestCase):
+    """Floor sees only main / Low Stock / Stock History; management & supplier are Office/Owner."""
+    def setUp(self):
+        self.floor_group, _ = Group.objects.get_or_create(name='Floor')
+        self.floor = User.objects.create_user(username='floor_u', password='pw')
+        self.floor.groups.add(self.floor_group)
+        self.client = Client()
+        self.client.login(username='floor_u', password='pw')
+        self.category = Category.objects.create(name='Fluids')
+
+    def test_floor_can_see_read_screens(self):
+        for name in ('inventory_list', 'inventory_low_stock', 'inventory_history'):
+            self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
+
+    def test_floor_blocked_from_management_and_supplier(self):
+        self.assertNotEqual(self.client.get(reverse('inventory_manage')).status_code, 200)
+        self.assertNotEqual(self.client.get(reverse('supplier_shop_list')).status_code, 200)
+        self.assertNotEqual(
+            self.client.get(reverse('inventory_category_detail', args=[self.category.id])).status_code, 200)
+
+    def test_floor_is_not_offered_links_it_cannot_open(self):
+        """A link Floor can't follow is a dead end — it must not be rendered at all."""
+        item = Item.objects.create(category=self.category, name='Oil A',
+                                   average_stock=10, current_stock=4)
+        html = self.client.get(reverse('inventory_list')).content.decode()
+        self.assertNotContains(
+            self.client.get(reverse('inventory_list')),
+            reverse('inventory_item_suppliers', args=[item.id]))
+        self.assertNotIn(reverse('supplier_shop_list'), html)
+        # ...and the view itself still refuses Floor.
+        self.assertEqual(
+            self.client.get(reverse('inventory_item_suppliers', args=[item.id])).status_code, 302)
+
+    def test_office_still_gets_the_supplier_links(self):
+        item = Item.objects.create(category=self.category, name='Oil B',
+                                   average_stock=10, current_stock=4)
+        office, _ = Group.objects.get_or_create(name='Office')
+        u = User.objects.create_user(username='office_links', password='pw')
+        u.groups.add(office)
+        c = Client()
+        c.login(username='office_links', password='pw')
+        self.assertContains(c.get(reverse('inventory_list')),
+                            reverse('inventory_item_suppliers', args=[item.id]))
 
 
 class JobCardNormalizationTests(TestCase):

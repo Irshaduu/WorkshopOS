@@ -6,8 +6,9 @@ from django.db.models.functions import Coalesce
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date
 from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill, SupplierRestockItem, SupplierPayment
-from workshop.decorators import staff_required
+from workshop.decorators import office_required
 from workshop.models import DeletionLog
+from workshop.templatetags.custom_filters import clean_qty
 from django.db import transaction, IntegrityError
 
 
@@ -19,7 +20,24 @@ def _dec(raw, default='0'):
     except (InvalidOperation, TypeError, ValueError, AttributeError):
         return Decimal(default)
 
-@staff_required
+
+def _active_catalog_items(shop, item_ids):
+    """The subset of `item_ids` that this shop actually stocks and has not deactivated.
+
+    Restock bills add warehouse stock, so which items may appear on one is a real
+    invariant — it must be enforced here, in the view that writes the rows, not only
+    in the picker template that offers them.
+    """
+    if not item_ids:
+        return Item.objects.none()
+    return (
+        Item.objects
+        .filter(id__in=item_ids, shop_catalogs__shop=shop, shop_catalogs__is_active=True)
+        .select_related('category')
+        .distinct()
+    )
+
+@office_required
 def supplier_shop_list(request):
     # Annotate catalog_count in SQL — avoids N+1 per-card `.count()` call in template
     shops = (
@@ -30,7 +48,7 @@ def supplier_shop_list(request):
     )
     return render(request, 'inventory/suppliers/shop_list.html', {'shops': shops, 'is_active_list': True})
 
-@staff_required
+@office_required
 def deactivated_supplier_shop_list(request):
     shops = (
         SupplierShop.objects
@@ -40,7 +58,7 @@ def deactivated_supplier_shop_list(request):
     )
     return render(request, 'inventory/suppliers/shop_list.html', {'shops': shops, 'is_active_list': False})
 
-@staff_required
+@office_required
 def add_supplier_shop(request):
     if request.method == 'POST':
         name = request.POST.get('name')
@@ -55,7 +73,7 @@ def add_supplier_shop(request):
                 messages.error(request, f"A shop with the name '{name}' already exists.")
     return render(request, 'inventory/suppliers/add_shop.html')
 
-@staff_required
+@office_required
 def supplier_shop_detail(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     # select_related on catalog items avoids per-item queries into Item and Category
@@ -172,7 +190,7 @@ def supplier_shop_detail(request, shop_id):
     })
 
 
-@staff_required
+@office_required
 def edit_supplier_shop(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     if request.method == 'POST':
@@ -187,7 +205,7 @@ def edit_supplier_shop(request, shop_id):
             messages.error(request, f"A shop with the name '{shop.name}' already exists.")
     return render(request, 'inventory/suppliers/edit_shop.html', {'shop': shop})
 
-@staff_required
+@office_required
 def deactivate_supplier_shop(request, shop_id):
     if request.method == 'POST':
         shop = get_object_or_404(SupplierShop, pk=shop_id)
@@ -196,7 +214,7 @@ def deactivate_supplier_shop(request, shop_id):
         messages.success(request, f"Shop '{shop.name}' deactivated.")
     return redirect('supplier_shop_list')
 
-@staff_required
+@office_required
 def activate_supplier_shop(request, shop_id):
     if request.method == 'POST':
         shop = get_object_or_404(SupplierShop, pk=shop_id)
@@ -205,15 +223,16 @@ def activate_supplier_shop(request, shop_id):
         messages.success(request, f"Shop '{shop.name}' activated.")
     return redirect('deactivated_supplier_shop_list')
 
-@staff_required
+@office_required
 def add_shop_catalog_item(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     
     if request.method == 'POST':
         item_name = request.POST.get('item_name', '').strip()
         category_name = request.POST.get('category_name', '').strip()
+        avg_stock = _dec(request.POST.get('average_stock'))
         confirm_existing = request.POST.get('confirm_existing') == '1'
-        
+
         if item_name and category_name:
             # Check if item exists globally (case-insensitive)
             existing_item = Item.objects.filter(name__iexact=item_name).first()
@@ -224,7 +243,8 @@ def add_shop_catalog_item(request, shop_id):
                     messages.error(request, f"'{existing_item.name}' is already in this shop's catalog.")
                     return redirect('add_shop_catalog_item', shop_id=shop.id)
                 
-                # If it exists globally but NOT in this shop, ask for confirmation
+                # If it exists globally but NOT in this shop, ask for confirmation.
+                # Linking is deliberate: one product = one Item, stocked by many shops.
                 if not confirm_existing:
                     categories = Category.objects.all().order_by('name')
                     return render(request, 'inventory/suppliers/add_catalog_item.html', {
@@ -232,18 +252,42 @@ def add_shop_catalog_item(request, shop_id):
                         'categories': categories,
                         'item_name': item_name,
                         'category_name': existing_item.category.name,
+                        'average_stock': avg_stock,
                         'requires_confirmation': True,
                         'existing_item': existing_item
                     })
                 else:
                     ShopCatalogItem.objects.create(shop=shop, item=existing_item)
+                    # The Average Stock typed on the form is otherwise thrown away here.
+                    # Only apply it when the shared product has none yet (legacy rows
+                    # created before the threshold was required) — never silently
+                    # overwrite a threshold another shop's screen already set.
+                    if avg_stock > 0 and existing_item.average_stock <= 0:
+                        existing_item.average_stock = avg_stock
+                        existing_item.save(update_fields=['average_stock'])
                     messages.success(request, f"'{existing_item.name}' added to catalog.")
                     return redirect('supplier_shop_detail', shop_id=shop.id)
             else:
+                # New product — Average Stock (how many are normally kept in stock) is
+                # REQUIRED because Low Stock is computed as a fraction of it; at 0 the
+                # product is filtered out of the alert list entirely and never warns.
+                if avg_stock <= 0:
+                    messages.error(request, "Average Stock is required and must be greater than 0.")
+                    categories = Category.objects.all().order_by('name')
+                    return render(request, 'inventory/suppliers/add_catalog_item.html', {
+                        'shop': shop,
+                        'categories': categories,
+                        'item_name': item_name,
+                        'category_name': category_name,
+                        'average_stock': avg_stock,
+                    })
                 # Item doesn't exist at all. Create category if needed, then item.
-                category, _ = Category.objects.get_or_create(name__iexact=category_name, defaults={'name': category_name})
-                new_item = Item.objects.create(category=category, name=item_name)
-                ShopCatalogItem.objects.create(shop=shop, item=new_item)
+                # Atomic so a product can never be left with no catalog link — an
+                # Item with no shop has no edit/remove path anywhere in the UI.
+                with transaction.atomic():
+                    category, _ = Category.objects.get_or_create(name__iexact=category_name, defaults={'name': category_name})
+                    new_item = Item.objects.create(category=category, name=item_name, average_stock=avg_stock)
+                    ShopCatalogItem.objects.create(shop=shop, item=new_item)
                 messages.success(request, f"New item '{new_item.name}' created and added to catalog.")
                 return redirect('supplier_shop_detail', shop_id=shop.id)
                 
@@ -253,30 +297,126 @@ def add_shop_catalog_item(request, shop_id):
         'categories': categories
     })
 
-@staff_required
+@office_required
+@transaction.atomic
 def remove_shop_catalog_item(request, shop_id, catalog_item_id):
+    """
+    Remove a product from this shop's catalog.
+
+    Two safety guards, both of which DEACTIVATE instead of removing:
+      1. Purchase history — this shop has restock bills for the product, so
+         unlinking it would alter historical bill records.
+      2. Stock on hand — the product still holds warehouse stock. Stock can only
+         be changed by signals (there is no manual editing), so deleting the Item
+         here would silently destroy a real, countable quantity.
+
+    Only when neither applies is the catalog link removed. If that leaves the Item
+    orphaned (no shop carries it, no bill history anywhere) the Item itself is
+    permanently deleted — and, like every other permanent delete in the system, a
+    snapshot is written to the Owner-only Deletion History first.
+    """
     if request.method == 'POST':
         catalog_item = get_object_or_404(ShopCatalogItem, pk=catalog_item_id, shop_id=shop_id)
-        name = catalog_item.item.name
+        item = catalog_item.item
+        name = item.name
+
+        shop_has_history = SupplierRestockItem.objects.filter(
+            item=item, bill__supplier_id=shop_id
+        ).exists()
+        if shop_has_history:
+            catalog_item.is_active = False
+            catalog_item.save(update_fields=['is_active'])
+            messages.info(request, f"'{name}' has purchase history from this shop, so it was deactivated instead of removed. Reactivate it any time.")
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
+        if item.current_stock != 0:
+            catalog_item.is_active = False
+            catalog_item.save(update_fields=['is_active'])
+            messages.info(
+                request,
+                f"'{name}' still has {clean_qty(item.current_stock)} in stock, so it was deactivated "
+                f"instead of removed. It can be removed once the stock reaches zero."
+            )
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
+        shop_name = catalog_item.shop.name
         catalog_item.delete()
-        messages.success(request, f"'{name}' removed from catalog.")
+        if not ShopCatalogItem.objects.filter(item=item).exists() and \
+           not SupplierRestockItem.objects.filter(item=item).exists():
+            DeletionLog.record(
+                DeletionLog.ENTITY_INVENTORY_ITEM, item,
+                user=request.user,
+                label=f"{item.category.name} · {name}",
+                extra={'removed_from_shop': shop_name},
+            )
+            item.delete()
+            messages.success(request, f"'{name}' removed and deleted from inventory (logged to Deletion History).")
+        else:
+            messages.success(request, f"'{name}' removed from this shop's catalog.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
-@staff_required
+@office_required
+def deactivate_catalog_item(request, shop_id, catalog_item_id):
+    """Deactivate a catalog entry: stays listed (greyed) but excluded from restock bills."""
+    if request.method == 'POST':
+        ci = get_object_or_404(ShopCatalogItem, pk=catalog_item_id, shop_id=shop_id)
+        ci.is_active = False
+        ci.save(update_fields=['is_active'])
+        messages.success(request, f"'{ci.item.name}' deactivated in this shop's catalog.")
+    return redirect('supplier_shop_detail', shop_id=shop_id)
+
+@office_required
+def reactivate_catalog_item(request, shop_id, catalog_item_id):
+    """Reactivate a deactivated catalog entry."""
+    if request.method == 'POST':
+        ci = get_object_or_404(ShopCatalogItem, pk=catalog_item_id, shop_id=shop_id)
+        ci.is_active = True
+        ci.save(update_fields=['is_active'])
+        messages.success(request, f"'{ci.item.name}' reactivated.")
+    return redirect('supplier_shop_detail', shop_id=shop_id)
+
+@office_required
 def edit_catalog_item(request, shop_id, catalog_item_id):
-    """Rename the item linked to this catalog entry."""
+    """Edit the shared product's name + Average Stock (usual quantity kept in stock).
+
+    `Item` is unique on (category, name), so a rename can collide with another
+    product in the same category. Since this is now the only way to correct a
+    product's name, that collision is reported as a message — never as a 500.
+    """
     catalog_item = get_object_or_404(ShopCatalogItem, pk=catalog_item_id, shop_id=shop_id)
     if request.method == 'POST':
         new_name = request.POST.get('item_name', '').strip()
+        avg_stock = _dec(request.POST.get('average_stock'))
+        item = catalog_item.item
+
+        if new_name and new_name.lower() != item.name.lower():
+            clash = Item.objects.filter(
+                category=item.category, name__iexact=new_name
+            ).exclude(pk=item.pk).exists()
+            if clash:
+                messages.error(
+                    request,
+                    f"'{new_name}' already exists in {item.category.name}. "
+                    f"Pick a different name, or add that existing product to this shop instead."
+                )
+                return redirect('supplier_shop_detail', shop_id=shop_id)
+
         if new_name:
-            catalog_item.item.name = new_name
-            catalog_item.item.save()
-            messages.success(request, f"Item renamed to '{new_name}'.")
+            item.name = new_name
+        if avg_stock > 0:
+            item.average_stock = avg_stock
+        try:
+            item.save()
+        except IntegrityError:
+            # Backstop for a race between the check above and the save.
+            messages.error(request, f"Couldn't rename to '{new_name}' — that name is already taken.")
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+        messages.success(request, f"'{item.name}' updated.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
 
 
-@staff_required
+@office_required
 @transaction.atomic
 def update_bill_discount(request, shop_id, bill_id):
     """Update the discount amount on an existing bill."""
@@ -294,10 +434,10 @@ def update_bill_discount(request, shop_id, bill_id):
             messages.error(request, "Invalid discount amount.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
-@staff_required
+@office_required
 def shop_restock_select(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
-    catalog = shop.catalog_items.select_related('item', 'item__category').all()
+    catalog = shop.catalog_items.filter(is_active=True).select_related('item', 'item__category').all()
     
     if request.method == 'POST':
         selected_item_ids = request.POST.getlist('selected_items')
@@ -311,7 +451,7 @@ def shop_restock_select(request, shop_id):
         
     return render(request, 'inventory/suppliers/restock_select.html', {'shop': shop, 'catalog': catalog})
 
-@staff_required
+@office_required
 @transaction.atomic
 def shop_restock_bill(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
@@ -320,9 +460,25 @@ def shop_restock_bill(request, shop_id):
     if not selected_item_ids:
         messages.error(request, "No items selected.")
         return redirect('shop_restock_select', shop_id=shop.id)
-        
-    items = Item.objects.filter(id__in=selected_item_ids)
-    
+
+    # Re-validate against the shop's ACTIVE catalog on every request. The picker
+    # already filters, but the ids arrive via the session and can be stale (e.g. the
+    # product was deactivated in another tab between selecting and billing).
+    items = _active_catalog_items(shop, selected_item_ids)
+    if not items:
+        messages.error(request, "Those products are no longer in this shop's active catalog.")
+        request.session.pop('restock_items', None)
+        return redirect('shop_restock_select', shop_id=shop.id)
+
+    dropped = len(set(selected_item_ids)) - len(items)
+    if dropped > 0:
+        # Never let a product disappear off the bill silently.
+        messages.warning(
+            request,
+            f"{dropped} selected product(s) are no longer in this shop's active catalog "
+            f"and have been left off this bill."
+        )
+
     if request.method == 'POST':
         try:
             discount = _dec(request.POST.get('discount_amount'))
@@ -358,7 +514,7 @@ def shop_restock_bill(request, shop_id):
         
     return render(request, 'inventory/suppliers/restock_bill.html', {'shop': shop, 'items': items})
 
-@staff_required
+@office_required
 @transaction.atomic
 def edit_restock_bill(request, shop_id, bill_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
@@ -390,10 +546,13 @@ def edit_restock_bill(request, shop_id, bill_id):
                         restock_item.total_price = price
                         restock_item.save()
                         
-            # 3. Add any new items selected from the catalog
+            # 3. Add any new items selected from the catalog.
+            # Same server-side guard as shop_restock_bill: only products this shop
+            # actively stocks may be added. (Lines already on the bill are edited
+            # above and are deliberately left alone even if since deactivated.)
             new_item_ids = request.POST.getlist('new_items')
             if new_item_ids:
-                items_to_add = Item.objects.filter(id__in=new_item_ids)
+                items_to_add = _active_catalog_items(shop, new_item_ids)
                 for new_item in items_to_add:
                     qty_str = request.POST.get(f'new_qty_{new_item.id}')
                     price_str = request.POST.get(f'new_price_{new_item.id}')
@@ -420,8 +579,8 @@ def edit_restock_bill(request, shop_id, bill_id):
     existing_items = bill.items.select_related('item', 'item__category').all()
     existing_item_ids = [ei.item.id for ei in existing_items]
     
-    # Get catalog items NOT in the bill for the "Add new items" section
-    available_catalog_items = shop.catalog_items.exclude(item_id__in=existing_item_ids).select_related('item', 'item__category').all()
+    # Get ACTIVE catalog items NOT in the bill for the "Add new items" section
+    available_catalog_items = shop.catalog_items.filter(is_active=True).exclude(item_id__in=existing_item_ids).select_related('item', 'item__category').all()
     
     return render(request, 'inventory/suppliers/restock_bill_edit.html', {
         'shop': shop,
@@ -430,7 +589,7 @@ def edit_restock_bill(request, shop_id, bill_id):
         'available_catalog_items': available_catalog_items
     })
 
-@staff_required
+@office_required
 @transaction.atomic
 def delete_restock_bill(request, shop_id, bill_id):
     if request.method == 'POST':
@@ -449,7 +608,7 @@ def delete_restock_bill(request, shop_id, bill_id):
         messages.success(request, "Bill permanently deleted and stock reversed (logged to Deletion History).")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
-@staff_required
+@office_required
 @transaction.atomic
 def add_shop_payment(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
@@ -474,7 +633,7 @@ def add_shop_payment(request, shop_id):
             
     return render(request, 'inventory/suppliers/add_payment.html', {'shop': shop})
 
-@staff_required
+@office_required
 @transaction.atomic
 def delete_shop_payment(request, shop_id, payment_id):
     if request.method == 'POST':
@@ -490,7 +649,7 @@ def delete_shop_payment(request, shop_id, payment_id):
         messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Deletion History).")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
-@staff_required
+@office_required
 def inventory_item_suppliers(request, item_id):
     item = get_object_or_404(Item, pk=item_id)
     catalogs = item.shop_catalogs.select_related('shop').filter(shop__is_active=True)
@@ -500,7 +659,7 @@ def inventory_item_suppliers(request, item_id):
         'catalogs': catalogs
     })
 
-@staff_required
+@office_required
 def ajax_supplier_bills(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     page = int(request.GET.get('page', 1))
@@ -570,7 +729,7 @@ def ajax_supplier_bills(request, shop_id):
         'bills': page_bills
     })
 
-@staff_required
+@office_required
 def ajax_supplier_payments(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     page = int(request.GET.get('page', 1))

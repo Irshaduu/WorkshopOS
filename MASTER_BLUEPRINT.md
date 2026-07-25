@@ -108,7 +108,7 @@ erDiagram
 | 15 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
 | 16 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
 | 17 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
-| 18 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete. No restore. |
+| 18 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers Job Card, Fleet/Spare-Shop/Supplier payments, Restock Bill, Cashbook Entry and **Inventory Product**. No restore. |
 
 `advance_balance` (added migration `0047_bulkpayer_advance_balance`) tracks credit carried forward when a lump-sum Fleet Account payment exceeds the total currently owed; `total_balance` can legitimately go negative once this credit exists.
 
@@ -118,9 +118,9 @@ erDiagram
 |---|-------|--------|---------|
 | 1 | **Category** | name | Groups inventory items |
 | 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count | Warehouse part with stock levels |
-| 3 | **ConsumptionRecord** | user (FK→User), item (FK→Item), quantity, date, timestamp | Audit trail for stock changes |
+| 3 | **ConsumptionRecord** | user (FK→User), item (FK→Item), quantity, date, timestamp | **Dormant** — superseded by Stock History, which reads `JobCardSpareItem` live. Nothing writes this model; kept only to avoid a needless migration |
 | 4 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, is_active | Supplier / Supplies Shop master record |
-| 5 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), unique_together(shop,item) | Links a supplier to the items they stock |
+| 5 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), is_active, unique_together(shop,item) | Links a supplier to the items they stock; `is_active=False` = deactivated (listed but excluded from restock bills) |
 | 6 | **SupplierRestockBill** | supplier (FK→SupplierShop), bill_date, total_amount, discount_amount, note | Individual restock purchase from a supplier |
 | 7 | **SupplierRestockItem** | bill (FK→SupplierRestockBill), item (FK→Item), quantity, unit_price, total_price | Line item on a restock bill |
 | 8 | **SupplierPayment** | supplier (FK→SupplierShop), amount, payment_method, date, note, is_trashed | Payment record for supplier accounts |
@@ -286,19 +286,16 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 | URL | View | Purpose |
 |-----|------|---------|
 | `/` | `inventory_home` | Entry point (redirects to stock list) |
-| `/manage/` | `inventory_manage` | Category & item management |
-| `/category/<id>/` | `category_detail` | Items in a category |
-| `/category/add/` | `add_category` | Create category |
-| `/category/edit/<id>/` | `edit_category` | Rename category |
-| `/category/delete/<id>/` | `delete_category` | Delete category |
-| `/category/<id>/item/add/` | `add_item` | Add item to category |
-| `/item/edit/<id>/` | `edit_item` | Edit item details |
-| `/item/delete/<id>/` | `delete_item` | Delete item |
-| `/list/` | `inventory_list` | Stock level dashboard |
-| `/restock/update/<id>/` | `update_stock` | Update stock count |
-| `/low-stock/` | `inventory_low_stock` | Items below 25% threshold |
-| `/history/` | `consumption_history` | Audit log |
-| **SUPPLIER SHOPS** | | |
+| `/manage/` | `inventory_manage` | **Manage Database** — read-only Category browser; add/list/edit categories only (Office/Owner) |
+| `/category/<id>/` | `category_detail` | Read-only: products + shop(s) in a category (Office/Owner) |
+| `/category/add/` | `add_category` | Create category (Office/Owner) |
+| `/category/edit/<id>/` | `edit_category` | Rename category (Office/Owner) |
+| `/category/delete/<id>/` | `delete_category` | Delete category — **only while it holds no products** (Office/Owner) |
+| `/list/` | `inventory_list` | Stock level dashboard (Floor+) |
+| `/low-stock/` | `inventory_low_stock` | Items below 25% threshold — **read-only** (Floor+) |
+| `/history/` | `consumption_history` | **Stock History** — live consumption log, This/Last week (Floor+) |
+| `/history/mechanic/<id>/` | `inventory_history_mechanic` | Per-mechanic consumption totals (Floor+) |
+| **SUPPLIER SHOPS** (all `@office_required` — Office/Owner) | | |
 | `/shops/` | `supplier_shop_list` | All supplier shops dashboard |
 | `/shops/deactivated/` | `deactivated_supplier_shop_list` | View deactivated suppliers |
 | `/shops/add/` | `add_supplier_shop` | Create new supplier |
@@ -306,16 +303,18 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 | `/shops/<id>/edit/` | `edit_supplier_shop` | Edit supplier details |
 | `/shops/<id>/deactivate/` | `deactivate_supplier_shop` | Soft-deactivate supplier |
 | `/shops/<id>/activate/` | `activate_supplier_shop` | Re-activate supplier |
-| `/shops/<id>/catalog/add/` | `add_shop_catalog_item` | Add item to supplier catalog |
-| `/shops/<id>/catalog/<item_id>/remove/` | `remove_shop_catalog_item` | Remove item from catalog |
-| `/shops/<id>/catalog/<item_id>/edit/` | `edit_catalog_item` | Edit catalog item name |
+| `/shops/<id>/catalog/add/` | `add_shop_catalog_item` | **Add Product** (creates the item; requires Average Stock) |
+| `/shops/<id>/catalog/<item_id>/remove/` | `remove_shop_catalog_item` | Remove (deactivates instead if it has bill history) |
+| `/shops/<id>/catalog/<item_id>/edit/` | `edit_catalog_item` | Edit product name + Average Stock |
+| `/shops/<id>/catalog/<item_id>/deactivate/` | `deactivate_catalog_item` | Deactivate catalog entry |
+| `/shops/<id>/catalog/<item_id>/reactivate/` | `reactivate_catalog_item` | Reactivate catalog entry |
 | `/shops/<id>/restock/` | `shop_restock_select` | Select items for restock bill |
 | `/shops/<id>/restock/bill/` | `shop_restock_bill` | Create restock bill |
 | `/shops/<id>/bill/<bill_id>/edit/` | `edit_restock_bill` | Edit existing restock bill |
-| `/shops/<id>/bill/<bill_id>/delete/` | `delete_restock_bill` | Delete restock bill (reverses stock) |
+| `/shops/<id>/bill/<bill_id>/delete/` | `delete_restock_bill` | Delete restock bill (reverses stock + logs to Deletion History) |
 | `/shops/<id>/bill/<bill_id>/discount/` | `update_bill_discount` | Update bill discount |
 | `/shops/<id>/payment/add/` | `add_shop_payment` | Record payment to supplier |
-| `/shops/<id>/payment/<payment_id>/delete/` | `delete_shop_payment` | Soft-delete payment |
+| `/shops/<id>/payment/<payment_id>/delete/` | `delete_shop_payment` | Delete payment (recomputes balance + logs to Deletion History) |
 | `/shops/<id>/bills/ajax/` | `ajax_supplier_bills` | AJAX: paginated bills list |
 | `/shops/<id>/payments/ajax/` | `ajax_supplier_payments` | AJAX: paginated payments list |
 | `/item/<item_id>/suppliers/` | `inventory_item_suppliers` | View all suppliers for an item |

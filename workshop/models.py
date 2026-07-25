@@ -835,6 +835,7 @@ class DeletionLog(models.Model):
     ENTITY_SUPPLIER_PAYMENT = 'SUPPLIER_PAYMENT'
     ENTITY_RESTOCK_BILL = 'RESTOCK_BILL'
     ENTITY_CASHBOOK = 'CASHBOOK'
+    ENTITY_INVENTORY_ITEM = 'INVENTORY_ITEM'
     ENTITY_CHOICES = [
         (ENTITY_JOBCARD, 'Job Card'),
         (ENTITY_BULK_PAYMENT, 'Fleet Account Payment'),
@@ -842,6 +843,7 @@ class DeletionLog(models.Model):
         (ENTITY_SUPPLIER_PAYMENT, 'Supplier Payment'),
         (ENTITY_RESTOCK_BILL, 'Restock Bill'),
         (ENTITY_CASHBOOK, 'Cashbook Entry'),
+        (ENTITY_INVENTORY_ITEM, 'Inventory Product'),
     ]
 
     entity_type = models.CharField(max_length=20, choices=ENTITY_CHOICES, db_index=True)

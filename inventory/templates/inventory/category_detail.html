@@ -1,298 +1,112 @@
 {% extends 'workshop/base.html' %}
 {% load custom_filters %}
-{% block title %}{{ category.name }} Items{% endblock %}
+{% block title %}{{ category.name }} — Products{% endblock %}
 {% block content %}
 <style>
-    :root {
-        --bg-color: #f8fafc;
-        --card-bg: #ffffff;
-        --text-primary: #1e293b;
-        --text-secondary: #64748b;
-        --accent-blue: #0ea5e9;
-        --accent-red: #ef4444;
-        --border-color: #e2e8f0;
+    .cat-wrapper { max-width: 860px; margin: 0 auto; padding: 4px 0 0; }
+
+    .cat-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .cat-head h1 { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+    .btn-round {
+        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 50%; border: 1px solid var(--color-border);
+        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
+    }
+    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
+    .cat-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 18px 52px; }
+
+    .prod-list {
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 16px; box-shadow: 0 1px 3px var(--color-shadow); overflow: hidden;
+    }
+    .prod-item {
+        display: grid; gap: 4px 16px; align-items: center;
+        grid-template-columns: minmax(0, 1fr) auto;
+        padding: 14px 18px; border-bottom: 1px solid var(--color-border-light);
+    }
+    .prod-item:last-child { border-bottom: none; }
+    .prod-item:hover { background: var(--color-hover); }
+
+    .p-name { font-weight: 700; font-size: 0.98rem; line-height: 1.3; overflow-wrap: anywhere; }
+    .p-shops { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+
+    .p-stock { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .p-stock .cur { font-weight: 800; font-size: 1.05rem; }
+    .p-stock .cur.zero { color: var(--color-danger); }
+    .p-stock .avg { display: block; font-size: 0.72rem; color: var(--color-text-muted); font-weight: 500; }
+
+    .chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: var(--color-primary-light); color: var(--color-primary);
+        border-radius: 999px; padding: 2px 10px; font-size: 0.72rem; font-weight: 600;
+    }
+    .chip.off { background: var(--color-border-light); color: var(--color-text-muted); }
+    .chip-none { font-size: 0.72rem; color: var(--color-text-muted); font-style: italic; }
+
+    .note {
+        display: flex; gap: 8px; align-items: flex-start;
+        font-size: 0.74rem; color: var(--color-text-muted);
+        margin: 12px 2px 0; line-height: 1.5;
     }
 
-    .manage-wrapper {
-        font-family: Inter, system-ui, -apple-system, sans-serif;
-        color: var(--text-primary);
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 10px 0;
+    .empty {
+        text-align: center; padding: 44px 20px; background: var(--color-card);
+        border: 1px dashed var(--color-border); border-radius: 16px;
     }
+    .empty i { font-size: 2.6rem; color: var(--color-border); display: block; margin-bottom: 12px; }
+    .empty h2 { font-size: 1rem; font-weight: 700; color: var(--color-text-muted); margin-bottom: 4px; }
+    .empty p { font-size: 0.82rem; color: var(--color-text-muted); margin: 0; }
 
-    .page-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-        flex-wrap: wrap;
-        gap: 12px;
-    }
-
-    .page-header-title {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .page-header h2 {
-        margin: 0;
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: #000;
-    }
-
-    .btn-back {
-        color: var(--text-secondary);
-        font-size: 1.5rem;
-        text-decoration: none;
-        transition: color 0.15s;
-    }
-    .btn-back:hover { color: var(--text-primary); }
-
-    .btn-new-item {
-        background-color: var(--accent-blue);
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 0.95rem;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition: opacity 0.2s;
-    }
-    .btn-new-item:hover { opacity: 0.9; color: white; }
-
-    /* Item Card */
-    .item-card {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: var(--card-bg);
-        border-radius: 12px;
-        padding: 14px 18px;
-        margin-bottom: 10px;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
-        border: 1px solid var(--border-color);
-    }
-    
-    .item-info {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .item-name {
-        font-size: 1.05rem;
-        font-weight: 700;
-        margin-bottom: 4px;
-        color: var(--text-primary);
-    }
-
-    .item-stock {
-        font-size: 0.85rem;
-        color: var(--text-secondary);
-        font-weight: 500;
-    }
-
-    /* Three-dot menu */
-    .details-dropdown {
-        position: relative;
-    }
-
-    .details-dropdown summary {
-        list-style: none;
-        cursor: pointer;
-        font-size: 1.3rem;
-        padding: 4px;
-        border-radius: 50%;
-        color: var(--text-secondary);
-        transition: background-color 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 32px;
-        width: 32px;
-    }
-    
-    .details-dropdown summary:hover {
-        background-color: #f1f5f9;
-        color: var(--text-primary);
-    }
-
-    .details-dropdown summary::-webkit-details-marker {
-        display: none;
-    }
-
-    /* Dropdown */
-    .dropdown-menu-custom {
-        position: absolute;
-        right: 0;
-        top: 36px;
-        background: #fff;
-        border-radius: 10px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-        border: 1px solid var(--border-color);
-        overflow: hidden;
-        min-width: 140px;
-        z-index: 100;
-        padding: 4px 0;
-    }
-
-    .dropdown-menu-custom a {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 16px;
-        font-size: 0.9rem;
-        font-weight: 500;
-        text-decoration: none;
-        color: var(--text-primary);
-        transition: background-color 0.15s;
-    }
-
-    .dropdown-menu-custom a:hover {
-        background: #f8fafc;
-    }
-
-    .text-danger-custom {
-        color: var(--accent-red) !important;
-    }
-    .text-danger-custom:hover {
-        background: rgba(239, 68, 68, 0.05) !important;
+    @media (max-width: 420px) {
+        .cat-sub { margin-left: 0; }
+        .prod-item { padding: 14px 14px; }
     }
 </style>
 
-<div class="manage-wrapper">
-    <div class="page-header">
-        <div class="page-header-title">
-            <a href="{% url 'inventory_manage' %}" class="btn-back"><i class="bi bi-arrow-left-short"></i></a>
-            <h2>{{ category.name }}</h2>
-        </div>
-        <a href="#" class="btn-new-item" data-bs-toggle="modal" data-bs-target="#addItemModal">
-            + New Item
+<div class="cat-wrapper">
+    <div class="cat-head">
+        <a href="{% url 'inventory_manage' %}" class="btn-round" aria-label="Back to categories">
+            <i class="bi bi-arrow-left"></i>
         </a>
+        <h1>{{ category.name }}</h1>
     </div>
+    <p class="cat-sub">{{ page_obj.paginator.count }} product{{ page_obj.paginator.count|pluralize }} in this category</p>
 
-    {% if messages %}
-        {% for message in messages %}
-            <div style="background: rgba(14, 165, 233, 0.1); color: #0284c7; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid rgba(14, 165, 233, 0.2); font-weight: 500; font-size: 0.9rem;">
-                {{ message }}
+    {% if items %}
+    <div class="prod-list">
+        {% for item in items %}
+        <div class="prod-item">
+            <div class="p-name">{{ item.name }}</div>
+            <div class="p-stock">
+                <span class="cur {% if item.current_stock <= 0 %}zero{% endif %}">{{ item.current_stock|clean_qty }}</span>
+                <span class="avg">usually {{ item.average_stock|clean_qty }}</span>
             </div>
+            <div class="p-shops">
+                {% for link in item.shop_catalogs.all %}
+                    <span class="chip {% if not link.is_active %}off{% endif %}">
+                        <i class="bi bi-shop"></i>{{ link.shop.name }}{% if not link.is_active %} (off){% endif %}
+                    </span>
+                {% empty %}
+                    <span class="chip-none">Not stocked by any shop</span>
+                {% endfor %}
+            </div>
+        </div>
         {% endfor %}
+    </div>
+
+    <p class="note">
+        <i class="bi bi-info-circle"></i>
+        <span>View only. Products are added and edited from the <strong>Supplier Shops</strong> that stock them.</span>
+    </p>
+
+    <div class="mt-3">{% include 'workshop/includes/pagination.html' %}</div>
+    {% else %}
+    <div class="empty">
+        <i class="bi bi-box-seam"></i>
+        <h2>No products yet</h2>
+        <p>They appear here once added to a supplier shop&rsquo;s catalog.</p>
+    </div>
     {% endif %}
-
-    {% for item in category.items.all %}
-    <div class="item-card">
-        <div class="item-info">
-            <div class="item-name">{{ item.name }}</div>
-            <div class="item-stock">Avg Required: {{ item.average_stock|floatformat:"-1" }}</div>
-        </div>
-        <div>
-            <details class="details-dropdown">
-                <summary><i class="bi bi-three-dots-vertical"></i></summary>
-                <div class="dropdown-menu-custom">
-                    <a href="#" data-bs-toggle="modal" data-bs-target="#editItemModal{{ item.id }}">
-                        <i class="bi bi-pencil"></i> Edit
-                    </a>
-                    <a href="{% url 'inventory_delete_item' item.id %}" class="text-danger-custom"
-                        onclick="return confirm('Delete item {{ item.name }}? This action cannot be undone.')">
-                        <i class="bi bi-trash"></i> Delete
-                    </a>
-                </div>
-            </details>
-        </div>
-    </div>
-
-    <!-- Edit Item Modal -->
-    <div class="modal fade" id="editItemModal{{ item.id }}" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
-                <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold">Edit Item</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <form method="post" action="{% url 'inventory_edit_item' item.id %}">
-                    {% csrf_token %}
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold small text-muted">Item Name</label>
-                            <input type="text" class="form-control form-control-lg bg-light border-0" name="name" value="{{ item.name }}" required>
-                        </div>
-                        <div class="row">
-                            <div class="col-6 mb-3">
-                                <label class="form-label fw-bold small text-muted">Threshold / Avg</label>
-                                <input type="number" step="0.5" class="form-control form-control-lg bg-light border-0" name="average_stock" value="{{ item.average_stock|floatformat:"-1" }}" required>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <label class="form-label fw-bold small text-muted">Current Stock</label>
-                                <input type="number" step="0.5" class="form-control form-control-lg bg-light border-0" name="current_stock" value="{{ item.current_stock|floatformat:"-1" }}" required>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer border-0 pt-0">
-                        <button type="button" class="btn btn-light rounded-pill px-4 fw-bold" data-bs-dismiss="modal" style="background:var(--bg-color)">Cancel</button>
-                        <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold" style="background:var(--accent-blue); border:none;">Save</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    {% empty %}
-    <div style="text-align: center; padding: 40px; background: white; border-radius: 14px; border: 1px dashed var(--border-color);">
-        <i class="bi bi-box-seam" style="font-size: 3rem; color: var(--border-color); display: block; margin-bottom: 15px;"></i>
-        <h5 style="color: var(--text-secondary); margin-bottom: 5px;">Category is Empty</h5>
-        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0;">Add an item to start tracking {{ category.name }} stock.</p>
-    </div>
-    {% endfor %}
 </div>
-
-<!-- Add Item Modal -->
-<div class="modal fade" id="addItemModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow" style="border-radius: 16px;">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-bold text-primary">Add Item in {{ category.name }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form method="post" action="{% url 'inventory_add_item' category.id %}">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small text-muted">Item Name</label>
-                        <input type="text" class="form-control form-control-lg bg-light border-0" name="name" required>
-                    </div>
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="form-label fw-bold small text-muted">Threshold / Avg</label>
-                            <input type="number" step="0.5" class="form-control form-control-lg bg-light border-0" name="average_stock" value="10" required>
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label fw-bold small text-muted">Current Stock</label>
-                            <input type="number" step="0.5" class="form-control form-control-lg bg-light border-0" name="current_stock" value="0" required>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer border-0 pt-0">
-                    <button type="button" class="btn btn-light rounded-pill px-4 fw-bold" data-bs-dismiss="modal" style="background:var(--bg-color)">Cancel</button>
-                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold" style="background:var(--accent-blue); border:none;">Create</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-    document.addEventListener('click', function(e) {
-        document.querySelectorAll('details.details-dropdown[open]').forEach(details => {
-            if (!details.contains(e.target)) {
-                details.removeAttribute('open');
-            }
-        });
-    });
-</script>
 {% endblock %}

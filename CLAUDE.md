@@ -8,6 +8,40 @@ WorkshopOS ("Titan") is a Django 5.2 monolith for a single premium automotive wo
 
 Built for a low-volume, high-value workshop (premium/luxury car servicing, appointment-driven, not a high-throughput chain garage) with a small, flat staff structure — this is why RBAC only needs three tiers and why performance work should be judged against realistic load, not generic "web scale" assumptions.
 
+### Deliberate decisions — do NOT "fix" these
+Things that look like bugs, were audited as bugs, and are actually business rules. Each
+was raised as a finding and then explicitly ruled *intended* by the owner. If you are
+about to correct one of these, you are about to break the business:
+
+- **A part-paid bill books the shortfall as a discount, and is marked `PAID`.**
+  `update_bill_status` sets `payment_status='PAID'` as soon as `received_amount > 0` and
+  puts `total_bill_amount - received_amount` into `discount_amount`. That is correct here:
+  a normal customer has exactly one payment event — they pay at pickup, at whatever amount
+  the owner verbally agrees — so "unpaid portion" *is* the discount. There is no
+  pay-the-rest-later case for them. Genuine multi-payment relationships are Fleet Accounts
+  (`BulkPayer`), which run through `bulk_payer_pay` and do use `'PARTIAL'` correctly.
+  `audit_high_discounts` is the intended compensating control for anomalies.
+  **`workshop/tests/test_jobcard_views.py:268` is the regression test for this rule — it
+  asserts a ₹100 discount on ₹500-of-₹600. Do not delete it as "locking in a bug".**
+- **Brand / model / spare / concern are free text, not FKs to the master lists.**
+  `CarBrand`, `CarModel`, `SparePart` and `ConcernSolution` exist as reference tables, but
+  `JobCard.brand_name`, `JobCardSpareItem.spare_part_name` etc. are `CharField`s filled by
+  autocomplete. This is a deliberate trade for data-entry speed on the shop floor, not an
+  oversight. The mitigation is normalisation on save (already done for
+  `registration_number` and `brand_name`), not converting them to ForeignKeys.
+
+Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
+
+### Devices the UI must work on
+Every screen is used on **three** form factors, and each role uses a different one:
+**laptop → Office**, **tablet → Floor**, **mobile → Owners**. Owner-only screens
+(Analysis, Deletion History) are read mostly on a phone; Floor screens are tapped on a
+tablet, so interactive controls need ~44px touch targets. Design responsively — a
+desktop-only table or a layout that overflows horizontally on a phone is a defect, not
+a cosmetic issue. `base.html` defines the light-mode CSS variables (`--color-*`) and
+renders Django messages **once** for all pages — never re-render `{% if messages %}` in
+a child template (it double-prints and loses the error/success styling).
+
 ## Commands
 
 All commands assume the venv is active (`venv\Scripts\activate` on Windows) and require `DJANGO_ENV` set — the settings package (`formulad_workshop/settings/__init__.py`) raises `ImproperlyConfigured` if it's missing. It is **not** read from `.env` (python-decouple isn't involved for this one var); it must be a real shell/session env var.
@@ -50,6 +84,11 @@ Required `.env` keys (see `settings/base.py`, `auth_views.py`): `SECRET_KEY`, `D
   - `decorators.py` defines the RBAC decorators (`owner_required`, `office_required`, `staff_required`) built on three Django auth Groups: **Owner**, **Office**, **Floor**. Superusers pass every check. Use these decorators on any new view instead of rolling custom permission checks.
   - `middleware.py` (`SessionTrackingMiddleware`) updates `UserSession` (device/IP/last-activity) on every authenticated request, throttled to a 5-minute cooldown per session.
 - **`inventory/`** — stock items/categories and supplier shops (`views.py` for core inventory, `views_suppliers.py` for the supplier-shop module). Stock levels are kept in sync with workshop activity purely via Django signals in `signals.py` — there is no direct view-to-view coupling between the two apps for stock changes.
+  - **Inventory workflow (automation-first):** stock moves *only* via signals — restock bills add (+), job-card spare usage removes (−); there is **no manual stock-number editing anywhere** (the old `update_stock` was removed; Low Stock is read-only). **Item creation happens only through Supplier → Add Product** (`add_shop_catalog_item`), which now **requires an Average Stock** threshold. A product is one shared `Item` (unique per `category`+`name`) linked to shops via `ShopCatalogItem`; the *same product across shops is that one Item*. Name/threshold are edited from the shop catalog (`edit_catalog_item`). A catalog entry can be **deactivated** (`ShopCatalogItem.is_active`) — it stays listed (greyed) but drops out of restock bills. That exclusion is enforced **server-side** in `shop_restock_bill`/`edit_restock_bill` via `_active_catalog_items()`, not just in the picker template — any view that writes `SupplierRestockItem` rows must re-validate ids against the shop's active catalog, because those rows move real stock. `remove_shop_catalog_item` **deactivates instead of deleting** when the shop has restock-bill history (a hard delete would alter historical bill totals) **or the product still holds stock** (stock is signal-only, so deleting would silently destroy a countable quantity). Only a zero-stock, no-history orphan Item is deleted — and, like every permanent delete, it writes `DeletionLog.record(ENTITY_INVENTORY_ITEM, …)` first, inside the same atomic block.
+  - **`average_stock` means "how many we normally keep in stock"**, not an alert threshold — Low Stock fires at **below 25%** of it (`inventory_low_stock`). Don't relabel the field as a threshold in the UI; the two numbers are different by design.
+  - **Inventory RBAC:** Floor sees only the main list, **Low Stock** (read-only), and **Stock History**; everything else (Manage/Category, Add Product, restock, catalog, payments) is `@office_required`. "Manage Database" is a **read-only Category browser** (add/list/edit/delete Category; drill in to view products + the shop(s) that stock them — no product actions there).
+  - **Category rules:** names dedupe on `__iexact` in both `add_category` and `edit_category`. Duplicates aren't cosmetic — `add_shop_catalog_item` resolves a category with `get_or_create(name__iexact=…)`, which raises `MultipleObjectsReturned` as soon as two spellings coexist. `Category.name` has no DB-level `unique=True` yet (adding it needs a dedupe migration first), so the view guards are the only protection. **Delete is allowed only while the category holds no products** (`Item.category` is `PROTECT`); the three-dot menu hides Delete for non-empty ones and the view re-checks.
+  - **Stock History** (`consumption_history` + `inventory_history_mechanic`) is a **live query over `JobCardSpareItem`** (item · qty · mechanic · car · reg, grouped by `admitted_date`, This/Last-Week filter, per-mechanic totals drill-down). It does **not** use the legacy `ConsumptionRecord` model (now dormant), and adds no signals. Both views filter `job_card__is_deleted=False` (dormant flag, still carried for pre-existing rows) and flag entries whose `spare_part_name` matches no `Item` as **"not from stock"** — the deduction signal matches on `Item.name__iexact`, so an unmatched name deducts nothing and must not be displayed as a warehouse draw. The mechanic drill-down groups on `Lower('spare_part_name')` for the same reason. Rows are capped at `HISTORY_ROW_CAP` rather than paginated, so the day-grouped layout is never split.
 
 ### Settings
 Split into `formulad_workshop/settings/{base,development,production}.py`. `__init__.py` picks one via `DJANGO_ENV` — there is no fallback default, so forgetting to set it fails loudly rather than silently using the wrong DB.
@@ -93,8 +132,8 @@ Keep any new stock-affecting model change signal-driven rather than mutating `It
 Tests live in `workshop/tests/` (16 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`). When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
-- `AUDIT_LOG.md` and `API_DOCUMENTATION.md` are long-form audit/design docs kept at repo root — check them for historical rationale before assuming something is undocumented.
-- `Aditing files/` contains one-off audit reports, not application code.
+- `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.
+- `AUDIT_LOG.md` and `Aditing files/` were **removed on 2026-07-25**. Every finding was re-verified against the code; the ones still open were consolidated into `TECH_DEBT.md` (local, not in git), the deliberate ones into "Deliberate decisions" above, and the rest were confirmed fixed. Don't recreate them — that split was what caused the drift.
 - The SMS/Telegram notification system is explicitly called out in the docs as legacy and due for replacement — don't treat it as the long-term design.
 
 ## Doc ownership map (avoid re-introducing drift)
@@ -103,6 +142,7 @@ As of 2026-07-23 the root docs were restructured so each fact has exactly one ho
 - **`OPERATIONAL_BLUEPRINT.md`** — the workflow narrative: lifecycle flows, "who does what" by role, billing/cascade-algorithm walkthroughs, dashboard screen descriptions. Links to `MASTER_BLUEPRINT.md` for exact field/route names instead of repeating them.
 - **`TITAN_MASTER_HANDOVER.md`** — mission statement, current status, the **single authoritative roadmap** ("Coming Soon"), and the AI/developer working conventions ("Titan Creed"). Other docs link here instead of keeping their own roadmap list.
 - **`README.md`** — the outward-facing summary for this deployment: feature highlights, tech stack, install steps. Summarizes and links to the three docs above rather than duplicating their tables.
-- **`CLAUDE.md`** (this file) — how to work in the codebase day to day.
+- **`CLAUDE.md`** (this file) — how to work in the codebase day to day, plus the **deliberate decisions** that must not be "fixed".
+- **`TECH_DEBT.md`** (local, gitignored) — known issues that are *not yet scheduled*. Distinct from the roadmap: `TITAN_MASTER_HANDOVER.md` says what we plan to do, `TECH_DEBT.md` says what we know is wrong. Re-verify an item before acting on it; it goes stale like anything else.
 
 When a change touches more than trivia (new model/field, new route, new workflow, roadmap item completed), update the owning doc in the same session — that's what let these go four commits stale last time.

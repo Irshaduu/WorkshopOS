@@ -77,7 +77,7 @@ graph TD
    - Create/Delete/Reset passwords for staff accounts
    - Add/Edit/Toggle mechanics
    - Run Data Cleanup (rename, merge, delete duplicates)
-   - Manage Inventory categories and items
+   - Manage inventory Categories (add/list/edit) + create/edit products via Supplier Shops (Add Product); all supplier-shop management
    - Record and review Cashbook entries (income & expenses ledger)
 
 
@@ -87,8 +87,7 @@ graph TD
    - Edit existing Job Cards (add concerns, spares, labour)
    - View Live Report (quick scroll of all jobs)
    - Use Autocomplete (search brands, models, spares, concerns)
-   - View Inventory Restock page
-   - Update stock levels
+   - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
 ```
 
 ---
@@ -221,23 +220,32 @@ Change qty to 5                -->   Oil Filter: 8 to 5   (auto -3 delta)
 Change to "Air Filter"         -->   Oil Filter: 5 to 10  (auto +5 restore)
                                -->   Air Filter: 7 to 2   (auto -5 deduct)
 Delete spare line              -->   Air Filter: 2 to 7   (auto +5 restore)
-Soft-delete whole job card     -->   All its spares' stock returned to warehouse
-Restore job card from trash    -->   That stock deducted again
+Delete a job card              -->   (guarded: a card holding spares can't be deleted —
+                                      clear/unassign its spares first, so no stock moves)
 ```
 
-Stock sync runs on **three signal groups** (8 handlers): per-spare consumption (above), whole-job-card soft-delete/restore reversal, and supplier restock (§5B). All are signal-driven, never mutated directly in views.
+Stock sync runs on **three signal groups** (8 handlers): per-spare consumption (above), a whole-job-card soft-delete/restore reversal that is **now dormant** (job cards are hard-deleted and a card holding spares can't be deleted), and supplier restock (§5B). All stock changes are signal-driven, never mutated directly in views — and there is **no manual stock-number editing anywhere** (Low Stock is read-only).
+
+### Where inventory items come from
+Items are created **only** via **Supplier → Add Product** (which requires an Average Stock — see below); there is no separate "add item" screen, and "Manage Database" is a read-only Category browser (add/list/edit/delete Category; drill in to see products + their shops). Category names can't be duplicated in any casing, and a category can only be deleted while it is **empty** — Delete simply isn't offered once it holds products. Product name and Average Stock are edited on the supplier catalog, where a product can also be **deactivated** (kept and listed, but excluded from restock bills — enforced when the bill is saved, not merely hidden from the picker).
+
+Removing a product from a shop's catalog **deactivates instead of removing** in two cases: it has purchase history from that shop (removing would alter historical bill totals), or it still holds stock (stock is signal-only, so deleting the product would silently destroy a countable quantity — clear the stock first). Only a zero-stock product with no purchase history anywhere is actually deleted, and that deletion is written to the Owner-only **Deletion History** like every other permanent delete.
+
+**Stock History** (Floor-visible) is a live log of every spare used on a car — item · qty · mechanic · car · reg — with a per-mechanic totals drill-down and a This/Last-week filter. Parts whose name matches no warehouse product are marked **"not from stock"**: nothing was deducted for them (bought outside, or the name doesn't match the product), so they must not be read as warehouse draws.
 
 ### Low Stock Alert System
 
+**Average Stock** is *how many of a product the workshop normally keeps on hand* — the number Office types when adding the product. It is **not** an alert threshold: the Low Stock list fires well below it, at under a quarter. Keep the two ideas distinct in any UI copy.
+
 ```
-Each item has:  Average Stock (ideal level)
-                Current Stock (actual count)
+Each item has:  Average Stock (how many you usually keep)
+                Current Stock (actual count, signal-maintained)
 
 Health = (Current / Average) x 100%
 
- Green  (50%+)   = Healthy stock
- Yellow (25-49%) = Warning, reorder soon
- Red    (below 25%) = Critical, order immediately
+ Green  (50%+)      = Healthy stock
+ Yellow (25-49%)    = Warning, reorder soon
+ Red    (below 25%) = Critical — this is what the Low Stock list shows
 ```
 
 ---
@@ -273,6 +281,26 @@ SUPPLIES SHOP (Inventory Supplier)
          Bills and Payments tabs load via AJAX partials
          Independent search + date filtering
 ```
+
+### Why supplier payments are a running balance, not per-bill settlement
+
+This mirrors how the workshop actually trades, and should not be "corrected" into
+invoice-by-invoice payment:
+
+- Suppliers **restock at the workshop on credit** as parts are needed — there is no
+  payment at the time of delivery.
+- They **come round weekly or monthly to collect**, and are rarely paid in full.
+  The workshop pays whatever cash is on hand that day — ₹3,000, ₹5,000, ₹8,000.
+- So a payment is a **lump sum against the shop's whole outstanding balance**, not a
+  settlement of a chosen bill. `SupplierPayment` carries no bill FK by design.
+- The per-bill **Covered / Partial / Unpaid** labels are a *derived view*: payments are
+  applied oldest-bill-first in a running waterfall so staff can see how far the money
+  reached. Nothing stores a bill↔payment link.
+
+The practical consequence: a shop normally sits at a non-zero pending balance, and that
+is healthy, not an error state. A shop created for *cash* purchases (e.g. an urgent
+outside buy under the workshop's own name) needs its payment recorded alongside the bill,
+otherwise it will show an outstanding balance that isn't a real debt.
 
 ### How Supplies Shops Connect to Inventory
 

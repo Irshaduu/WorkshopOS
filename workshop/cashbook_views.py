@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from datetime import date, timedelta
 from django.contrib import messages
-from django.db import models
+from django.db import models, transaction
 from decimal import Decimal, InvalidOperation
 from .decorators import office_required
 from .models import CashbookEntry, DeletionLog
@@ -128,12 +128,15 @@ def delete_cashbook_entry(request, pk):
     if request.method == 'POST':
         entry = get_object_or_404(CashbookEntry, pk=pk)
         reason = request.POST.get('reason', '').strip()
-        DeletionLog.record(
-            DeletionLog.ENTITY_CASHBOOK, entry,
-            user=request.user, reason=reason, amount=entry.amount,
-            label=f"{entry.get_entry_type_display()} · {entry.category} · ₹{entry.amount:,.0f}",
-        )
-        entry.delete()
+        # Log + delete in one transaction so the history can never record a
+        # deletion that didn't happen (see DeletionLog.record).
+        with transaction.atomic():
+            DeletionLog.record(
+                DeletionLog.ENTITY_CASHBOOK, entry,
+                user=request.user, reason=reason, amount=entry.amount,
+                label=f"{entry.get_entry_type_display()} · {entry.category} · ₹{entry.amount:,.0f}",
+            )
+            entry.delete()
         messages.success(request, "Entry permanently deleted (logged to Deletion History).")
     return redirect('cashbook')
 

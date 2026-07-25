@@ -56,7 +56,10 @@ htmlcov/
 # Temporary / Logs
 *.txt
 TITAN_BLUEPRINT.html
-AUDIT_LOG.md
+errors.log
+
+# Local tech-debt backlog (consolidated from the old audit files, kept off git by choice)
+TECH_DEBT.md
 
 # Database dumps / one-off exports (may contain password hashes & session keys)
 sqlite_data_dump.json

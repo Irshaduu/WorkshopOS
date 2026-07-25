@@ -1,75 +1,178 @@
 {% extends 'workshop/base.html' %}
-
 {% block title %}Deletion History{% endblock %}
-
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <h4 class="mb-0"><i class="bi bi-clock-history"></i> Deletion History</h4>
-        <form method="get" class="d-flex align-items-center gap-2">
-            <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+<style>
+    .dh-wrapper { max-width: 940px; margin: 0 auto; padding: 4px 0 0; }
+
+    .dh-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .dh-head h1 { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+    .dh-icon {
+        width: 40px; height: 40px; flex: 0 0 40px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--color-border-light); color: var(--color-text-muted); font-size: 1.05rem;
+    }
+    .dh-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 16px 52px; line-height: 1.5; }
+
+    .dh-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    .dh-controls select {
+        min-height: 44px; min-width: 220px; padding: 8px 14px;
+        border: 1px solid var(--color-border); border-radius: 12px;
+        background: var(--color-card); color: var(--color-text);
+        font-size: 0.9rem; font-weight: 600; outline: none;
+    }
+    .dh-controls select:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); }
+    .dh-count { font-size: 0.78rem; color: var(--color-text-muted); }
+
+    .dh-list {
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 16px; box-shadow: 0 1px 3px var(--color-shadow); overflow: hidden;
+    }
+    .dh-row {
+        display: grid; align-items: center; gap: 4px 14px;
+        grid-template-columns: 128px 150px minmax(0, 1fr) 110px 96px 44px;
+        padding: 13px 16px; border-bottom: 1px solid var(--color-border-light);
+    }
+    .dh-row:last-child { border-bottom: none; }
+    .dh-row:hover { background: var(--color-hover); }
+
+    .dh-when { font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; white-space: nowrap; }
+    .dh-when .t { display: block; font-size: 0.72rem; font-weight: 500; }
+
+    .tag {
+        display: inline-block; border-radius: 999px; padding: 2px 10px;
+        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
+        background: var(--color-border-light); color: var(--color-text-muted);
+    }
+    .tag.jobcard  { background: #eff6ff; color: #1d4ed8; }
+    .tag.money    { background: #ecfdf5; color: #047857; }
+    .tag.bill     { background: #fef3c7; color: #92400e; }
+    .tag.cash     { background: #f5f3ff; color: #6d28d9; }
+    .tag.product  { background: #f1f5f9; color: #475569; }
+
+    .dh-what { font-weight: 700; font-size: 0.92rem; line-height: 1.35; overflow-wrap: anywhere; }
+    .dh-why { display: block; font-size: 0.74rem; font-weight: 400; color: var(--color-text-muted); font-style: italic; margin-top: 2px; }
+
+    .dh-amt { text-align: right; font-weight: 800; font-size: 0.95rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .dh-amt.none { color: var(--color-border); font-weight: 500; }
+    .dh-by { font-size: 0.78rem; color: var(--color-text-muted); overflow-wrap: anywhere; }
+
+    .dh-view {
+        width: 36px; height: 36px; margin-left: auto;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 10px; border: 1px solid var(--color-border);
+        color: var(--color-text-muted); text-decoration: none;
+    }
+    .dh-view:hover { background: var(--color-primary-light); color: var(--color-primary); border-color: var(--color-primary); }
+
+    .empty {
+        text-align: center; padding: 46px 20px; background: var(--color-card);
+        border: 1px solid var(--color-border); border-radius: 16px; box-shadow: 0 1px 3px var(--color-shadow);
+    }
+    .empty i { font-size: 2.8rem; color: var(--color-border); display: block; margin-bottom: 12px; }
+    .empty h2 { font-size: 1.05rem; font-weight: 700; color: var(--color-text-muted); margin-bottom: 4px; }
+    .empty p { font-size: 0.84rem; color: var(--color-text-muted); margin: 0; }
+
+    .dh-pager { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 18px 0 8px; }
+    .dh-pager a, .dh-pager span {
+        min-height: 40px; display: inline-flex; align-items: center; padding: 0 16px;
+        border-radius: 999px; font-size: 0.85rem; font-weight: 600; text-decoration: none;
+    }
+    .dh-pager a { background: var(--color-card); border: 1px solid var(--color-border); color: var(--color-text); }
+    .dh-pager a:hover { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+    .dh-pager span { color: var(--color-text-muted); }
+
+    /* ---- Tablet / Mobile: stacked card per entry ---- */
+    @media (max-width: 820px) {
+        .dh-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas: "tag amt" "what what" "when view";
+            padding: 14px;
+        }
+        .dh-tag-cell { grid-area: tag; }
+        .dh-amt      { grid-area: amt; }
+        .dh-what-cell{ grid-area: what; }
+        .dh-when     { grid-area: when; align-self: center; }
+        .dh-view     { grid-area: view; }
+        .dh-when .t  { display: inline; }
+        .dh-when .t::before { content: " · "; }
+        .dh-by { display: inline; font-size: 0.74rem; }
+        .dh-by::before { content: " · by "; }
+    }
+    @media (max-width: 420px) {
+        .dh-sub { margin-left: 0; }
+        .dh-controls select { width: 100%; min-width: 0; }
+    }
+</style>
+
+<div class="dh-wrapper">
+    <div class="dh-head">
+        <div class="dh-icon"><i class="bi bi-clock-history"></i></div>
+        <h1>Deletion History</h1>
+    </div>
+    <p class="dh-sub">Every permanent deletion, kept for your oversight. Read-only &mdash; nothing here can be restored.</p>
+
+    <div class="dh-controls">
+        <form method="get">
+            <select name="type" onchange="this.form.submit()" aria-label="Filter by type">
                 <option value="">All types</option>
                 {% for value, label in entity_choices %}
                     <option value="{{ value }}" {% if value == entity %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
         </form>
+        <span class="dh-count">{{ page_obj.paginator.count }} record{{ page_obj.paginator.count|pluralize }}</span>
     </div>
 
-    <div class="alert alert-secondary small">
-        <i class="bi bi-info-circle"></i>
-        Every permanent deletion is recorded here for your oversight. This is a
-        <strong>read-only</strong> log — deleted records cannot be restored.
-    </div>
-
-    <div class="card shadow-sm">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>When</th>
-                        <th>Type</th>
-                        <th>Record</th>
-                        <th class="text-end">Amount</th>
-                        <th>By</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for log in page_obj %}
-                    <tr>
-                        <td class="text-nowrap small">{{ log.deleted_at|date:"d M Y, H:i" }}</td>
-                        <td><span class="badge bg-secondary">{{ log.get_entity_type_display }}</span></td>
-                        <td>
-                            {{ log.entity_label }}
-                            {% if log.reason %}<br><span class="small text-muted">&ldquo;{{ log.reason }}&rdquo;</span>{% endif %}
-                        </td>
-                        <td class="text-end">{% if log.amount is not None %}&#8377;{{ log.amount|floatformat:0 }}{% else %}&mdash;{% endif %}</td>
-                        <td class="small">{{ log.deleted_by.username|default:"&mdash;" }}</td>
-                        <td class="text-end">
-                            <a href="{% url 'deletion_history_detail' log.pk %}" class="btn btn-sm btn-outline-secondary">View</a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="6" class="text-center text-muted py-4">No deletions recorded.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    {% if page_obj %}
+    <div class="dh-list">
+        {% for log in page_obj %}
+        <div class="dh-row">
+            <div class="dh-when">
+                {{ log.deleted_at|date:"d M Y" }}<span class="t">{{ log.deleted_at|date:"H:i" }}</span>
+            </div>
+            <div class="dh-tag-cell">
+                <span class="tag
+                    {% if log.entity_type == 'JOBCARD' %}jobcard
+                    {% elif log.entity_type == 'CASHBOOK' %}cash
+                    {% elif log.entity_type == 'RESTOCK_BILL' %}bill
+                    {% elif log.entity_type == 'INVENTORY_ITEM' %}product
+                    {% else %}money{% endif %}">{{ log.get_entity_type_display }}</span>
+            </div>
+            <div class="dh-what-cell">
+                <div class="dh-what">
+                    {{ log.entity_label }}
+                    {% if log.reason %}<span class="dh-why">&ldquo;{{ log.reason }}&rdquo;</span>{% endif %}
+                </div>
+            </div>
+            <div class="dh-amt {% if log.amount is None %}none{% endif %}">
+                {% if log.amount is not None %}&#8377;{{ log.amount|floatformat:0 }}{% else %}&mdash;{% endif %}
+            </div>
+            <div class="dh-by">{{ log.deleted_by.username|default:"unknown" }}</div>
+            <a href="{% url 'deletion_history_detail' log.pk %}" class="dh-view" aria-label="View full snapshot">
+                <i class="bi bi-chevron-right"></i>
+            </a>
         </div>
+        {% endfor %}
     </div>
 
     {% if page_obj.paginator.num_pages > 1 %}
-    <nav class="mt-3">
-        <ul class="pagination pagination-sm justify-content-center">
-            {% if page_obj.has_previous %}
-            <li class="page-item"><a class="page-link" href="?type={{ entity }}&amp;page={{ page_obj.previous_page_number }}">Prev</a></li>
-            {% endif %}
-            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
-            {% if page_obj.has_next %}
-            <li class="page-item"><a class="page-link" href="?type={{ entity }}&amp;page={{ page_obj.next_page_number }}">Next</a></li>
-            {% endif %}
-        </ul>
+    <nav class="dh-pager" aria-label="Pagination">
+        {% if page_obj.has_previous %}
+        <a href="?type={{ entity }}&amp;page={{ page_obj.previous_page_number }}"><i class="bi bi-chevron-left me-1"></i>Prev</a>
+        {% endif %}
+        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+        <a href="?type={{ entity }}&amp;page={{ page_obj.next_page_number }}">Next<i class="bi bi-chevron-right ms-1"></i></a>
+        {% endif %}
     </nav>
+    {% endif %}
+
+    {% else %}
+    <div class="empty">
+        <i class="bi bi-shield-check"></i>
+        <h2>Nothing deleted{% if entity %} in this category{% endif %}</h2>
+        <p>Permanent deletions will be recorded here as they happen.</p>
+    </div>
     {% endif %}
 </div>
 {% endblock %}

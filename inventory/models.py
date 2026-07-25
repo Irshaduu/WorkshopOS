@@ -127,6 +127,7 @@ class SupplierShop(models.Model):
 class ShopCatalogItem(models.Model):
     shop = models.ForeignKey(SupplierShop, on_delete=models.CASCADE, related_name='catalog_items')
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='shop_catalogs')
+    is_active = models.BooleanField(default=True, db_index=True, help_text="Deactivated catalog entries stay listed (greyed) but are excluded from restock bills")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -1,0 +1,58 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+{% block title %}{{ mechanic.name }} — Stock History{% endblock %}
+{% block content %}
+<div class="container py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="{% url 'inventory_history' %}?range={{ range }}" class="text-decoration-none text-muted">Stock History</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ mechanic.name }}</li>
+                </ol>
+            </nav>
+            <h4 class="fw-bold mb-0"><i class="bi bi-person-gear me-2"></i>{{ mechanic.name }}</h4>
+        </div>
+        <a href="{% url 'inventory_history' %}?range={{ range }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="bi bi-arrow-left me-1"></i>Back
+        </a>
+    </div>
+
+    <div class="mb-3">
+        <div class="btn-group btn-group-sm" role="group">
+            <a href="?range=this" class="btn {% if range == 'this' %}btn-primary{% else %}btn-outline-primary{% endif %}">This Week</a>
+            <a href="?range=last" class="btn {% if range == 'last' %}btn-primary{% else %}btn-outline-primary{% endif %}">Last Week</a>
+        </div>
+        <span class="text-muted small ms-2">{{ start|date:"d M" }} &ndash; {{ end|date:"d M Y" }}</span>
+    </div>
+
+    <div class="card border-0 shadow-sm" style="border-radius:12px; background:var(--color-card);">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="color:var(--color-text);">
+                <thead style="background:rgba(0,0,0,0.03);">
+                    <tr><th class="ps-4 py-3">Item</th><th class="text-end pe-4 py-3">Total Used</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in totals %}
+                    <tr>
+                        <td class="ps-4 fw-bold">
+                            {{ row.name }}
+                            {% if not row.in_warehouse %}
+                            <span class="badge bg-secondary-subtle text-secondary border ms-1" data-unmatched="1"
+                                  style="font-size:0.62rem; vertical-align:middle;"
+                                  title="No warehouse product matches this name, so no stock was deducted.">
+                                not from stock
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-4 fw-bold">{{ row.total|clean_qty }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="2" class="text-center py-5 text-muted">No stock used by {{ mechanic.name }} in this period.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

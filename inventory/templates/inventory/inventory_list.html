@@ -1,4 +1,5 @@
 {% extends 'workshop/base.html' %}
+{% load custom_filters %}
 {% block title %}Restock Inventory{% endblock %}
 {% block content %}
 <style>
@@ -210,22 +211,20 @@
                 <i class="bi bi-list" style="font-size: 1.25rem; line-height: 1;"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end shadow" style="border-radius: 12px; margin-top: 8px; min-width: 160px; z-index: 1050;">
+                {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
                 <li><a class="dropdown-item fw-bold py-2 text-primary" href="{% url 'supplier_shop_list' %}"><i class="bi bi-shop me-2"></i> Supplies Shops</a></li>
                 <li><hr class="dropdown-divider"></li>
+                {% endif %}
                 <li><a class="dropdown-item fw-bold text-danger py-2" href="{% url 'inventory_low_stock' %}"><i class="bi bi-exclamation-triangle me-2"></i> Low Stock</a></li>
                 <li><a class="dropdown-item fw-bold py-2" href="{% url 'inventory_history' %}"><i class="bi bi-clock-history me-2"></i> Stock History</a></li>
+                {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
                 <li><a class="dropdown-item fw-bold py-2" href="{% url 'inventory_manage' %}"><i class="bi bi-gear me-2"></i> Manage Database</a></li>
+                {% endif %}
             </ul>
         </div>
     </div>
 
-    {% if messages %}
-        {% for message in messages %}
-            <div style="background: rgba(32, 201, 151, 0.15); color: #20c997; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid rgba(32, 201, 151, 0.3); font-weight: 500; font-size: 0.9rem;">
-                {{ message }}
-            </div>
-        {% endfor %}
-    {% endif %}
+    {# Messages are rendered once by base.html, with correct error/success styling. #}
 
     {% for category in categories %}
     <div class="category-section">
@@ -240,15 +239,17 @@
                     <span class="searchable-text" style="display:none">{{ category.name }}</span>
                 </div>
                 <div class="item-stock">
-                    <span class="stock-badge avg-badge">Avg {{ item.average_stock|floatformat:"-1" }}</span>
+                    <span class="stock-badge avg-badge">Avg {{ item.average_stock|clean_qty }}</span>
                     <span class="stock-badge cur-badge" style="color:{{ item.stock_status_color }}">
-                        Cur <span style="font-weight: 800;">{{ item.current_stock|floatformat:"-1" }}</span>
+                        Cur <span style="font-weight: 800;">{{ item.current_stock|clean_qty }}</span>
                     </span>
                 </div>
             </div>
             <div class="controls">
-                <input type="number" value="{{ item.current_stock|floatformat:"-1" }}" readonly disabled
+                <input type="number" value="{{ item.current_stock|clean_qty }}" readonly disabled
                     style="border-color: {{ item.stock_status_color }}; cursor: not-allowed; opacity: 0.9;">
+                {# Supplier views are Office/Owner only — don't offer Floor a link it can't open. #}
+                {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
                 <a href="{% url 'inventory_item_suppliers' item.id %}" class="btn-view">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -256,6 +257,7 @@
                     </svg>
                     View
                 </a>
+                {% endif %}
             </div>
         </div>
         {% endfor %}
@@ -263,7 +265,11 @@
     {% empty %}
     <div style="text-align: center; margin-top: 40px; color: var(--muted);">
         <p>No categories or items exist.</p>
-        <a href="{% url 'inventory_manage' %}" style="color: var(--accent-blue); text-decoration: none;">Go Setup</a>
+        {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
+        <a href="{% url 'supplier_shop_list' %}" style="color: var(--accent-blue); text-decoration: none;">Go Setup</a>
+        {% else %}
+        <span class="text-muted small">Ask Office to set up inventory.</span>
+        {% endif %}
     </div>
     {% endfor %}
 

@@ -136,6 +136,22 @@ class RenderSmokeTests(TestCase):
         self._get_ok('supplier_shop_list')
         self._get_ok('deactivated_supplier_shop_list')
         self._get_ok('supplier_shop_detail', self.supplier.id)
+        self._get_ok('inventory_history')
+        self._get_ok('inventory_history_mechanic', self.mech.pk)
+        self._get_ok('inventory_category_detail', self.cat.id)
+        self._get_ok('add_shop_catalog_item', self.supplier.id)
+        self._get_ok('edit_restock_bill', self.supplier.id, self.bill.id)
+
+    # ---- Restock bill entry screen (needs the session set by the picker) ----
+    def test_restock_bill_screen(self):
+        from inventory.models import ShopCatalogItem
+        ShopCatalogItem.objects.create(shop=self.supplier, item=self.item)
+        session = self.client.session
+        session['restock_items'] = [str(self.item.id)]
+        session.save()
+        resp = self._get_ok('shop_restock_bill', self.supplier.id)
+        self.assertContains(resp, 'Engine Oil')
+        self._get_ok('shop_restock_select', self.supplier.id)
 
     # ---- Related owner sections that query the changed models ----
     def test_related_owner_sections(self):

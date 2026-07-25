@@ -1,78 +1,160 @@
 {% extends 'workshop/base.html' %}
-{% block title %}Stock History | WorkshopOS{% endblock %}
+{% load custom_filters %}
+{% block title %}Stock History{% endblock %}
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb mb-1">
-                    <li class="breadcrumb-item"><a href="{% url 'inventory_list' %}" class="text-decoration-none text-muted">Inventory</a></li>
-                    <li class="breadcrumb-item active" aria-current="page">Stock History</li>
-                </ol>
-            </nav>
-            <h4 class="fw-bold mb-0">📊 Stock Consumption History</h4>
-        </div>
-        <a href="{% url 'inventory_list' %}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
-            <i class="bi bi-arrow-left me-1"></i>Back
+<style>
+    .sh-wrapper { max-width: 900px; margin: 0 auto; padding: 4px 0 0; }
+
+    .sh-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .sh-head h1 { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+    .btn-round {
+        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 50%; border: 1px solid var(--color-border);
+        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
+    }
+    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
+    .sh-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 16px 52px; }
+
+    /* ---- Week switch ---- */
+    .sh-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+    .seg { display: inline-flex; background: var(--color-border-light); border-radius: 999px; padding: 3px; }
+    .seg a {
+        min-height: 38px; display: inline-flex; align-items: center; padding: 0 18px;
+        border-radius: 999px; font-size: 0.85rem; font-weight: 700;
+        color: var(--color-text-muted); text-decoration: none;
+    }
+    .seg a.on { background: var(--color-card); color: var(--color-primary); box-shadow: 0 1px 3px var(--color-shadow); }
+    .sh-range { font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; }
+
+    .legend { font-size: 0.72rem; color: var(--color-text-muted); margin: 0 2px 16px; line-height: 1.5; }
+
+    /* ---- Day group ---- */
+    .day { margin-bottom: 18px; }
+    .day-head {
+        display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+        padding: 0 4px 6px; margin-bottom: 0;
+    }
+    .day-head h2 { font-size: 0.8rem; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); }
+    .day-head span { font-size: 0.72rem; color: var(--color-text-muted); }
+
+    .day-list {
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 14px; box-shadow: 0 1px 3px var(--color-shadow); overflow: hidden;
+    }
+    .use-row {
+        display: grid; align-items: center; gap: 4px 14px;
+        grid-template-columns: minmax(0, 1fr) 62px minmax(0, 150px) minmax(0, 170px);
+        padding: 12px 16px; border-bottom: 1px solid var(--color-border-light);
+    }
+    .use-row:last-child { border-bottom: none; }
+    .use-row:hover { background: var(--color-hover); }
+
+    .u-part { font-weight: 700; font-size: 0.94rem; line-height: 1.3; overflow-wrap: anywhere; }
+    .u-qty { font-weight: 800; font-size: 0.98rem; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-danger); }
+    .u-qty.muted { color: var(--color-text-muted); }
+    .u-mech a { font-size: 0.85rem; font-weight: 600; color: var(--color-primary); text-decoration: none; }
+    .u-mech a:hover { text-decoration: underline; }
+    .u-mech .none { font-size: 0.85rem; color: var(--color-text-muted); }
+    .u-car { font-size: 0.82rem; color: var(--color-text-muted); text-align: right; overflow-wrap: anywhere; }
+    .u-car .reg { display: block; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; }
+
+    .tag-off {
+        display: inline-block; background: var(--color-border-light); color: var(--color-text-muted);
+        border: 1px solid var(--color-border); border-radius: 999px;
+        padding: 0 7px; font-size: 0.62rem; font-weight: 700; vertical-align: middle; margin-left: 5px;
+    }
+
+    .empty {
+        text-align: center; padding: 46px 20px; background: var(--color-card);
+        border: 1px solid var(--color-border); border-radius: 16px; box-shadow: 0 1px 3px var(--color-shadow);
+    }
+    .empty i { font-size: 2.8rem; color: var(--color-border); display: block; margin-bottom: 12px; }
+    .empty h2 { font-size: 1.05rem; font-weight: 700; color: var(--color-text-muted); margin-bottom: 4px; }
+    .empty p { font-size: 0.84rem; color: var(--color-text-muted); margin: 0; }
+
+    /* ---- Tablet / Mobile: two lines per entry ---- */
+    @media (max-width: 760px) {
+        .use-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas: "part qty" "meta meta";
+            padding: 12px 14px;
+        }
+        .u-part { grid-area: part; }
+        .u-qty  { grid-area: qty; }
+        .u-mech { grid-area: meta; }
+        .u-car  { grid-area: meta; text-align: left; }
+        .u-mech, .u-car { display: inline; }
+        .u-car .reg { display: inline; }
+        .u-car::before { content: " · "; color: var(--color-border); }
+        .u-car .reg::before { content: " · "; color: var(--color-border); }
+    }
+    @media (max-width: 420px) { .sh-sub { margin-left: 0; } }
+</style>
+
+<div class="sh-wrapper">
+    <div class="sh-head">
+        <a href="{% url 'inventory_list' %}" class="btn-round" aria-label="Back to inventory">
+            <i class="bi bi-arrow-left"></i>
         </a>
+        <h1>Stock History</h1>
+    </div>
+    <p class="sh-sub">Every spare fitted to a car, newest first.</p>
+
+    <div class="sh-filter">
+        <div class="seg" role="group" aria-label="Week">
+            <a href="?range=this" class="{% if range == 'this' %}on{% endif %}">This week</a>
+            <a href="?range=last" class="{% if range == 'last' %}on{% endif %}">Last week</a>
+        </div>
+        <span class="sh-range">{{ start|date:"d M" }} &ndash; {{ end|date:"d M Y" }}</span>
     </div>
 
-    <!-- History Table -->
-    <div class="card border-0 shadow-sm overflow-hidden" style="border-radius: 15px; background-color: var(--color-card);">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" style="color: var(--color-text);">
-                <thead style="background-color: rgba(0,0,0,0.03);">
-                    <tr>
-                        <th class="ps-4 py-3 border-0">Timestamp</th>
-                        <th class="py-3 border-0">User</th>
-                        <th class="py-3 border-0">Item</th>
-                        <th class="py-3 border-0 text-center">Qty Used</th>
-                    </tr>
-                </thead>
-                <tbody class="border-top-0">
-                    {% for record in records %}
-                    <tr class="border-bottom" style="border-color: var(--color-border-light) !important;">
-                        <td class="ps-4 text-muted small">
-                            {{ record.timestamp|date:"d M Y" }}<br>
-                            <span style="font-size: 0.75rem;">{{ record.timestamp|date:"H:i" }}</span>
-                        </td>
-                        <td class="fw-bold">
-                            <span class="badge rounded-pill bg-light text-dark px-2 py-1 border">
-                                <i class="bi bi-person me-1"></i>{{ record.user.get_full_name|default:record.user.username }}
-                            </span>
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center">
-                                <div class="bg-primary bg-opacity-10 text-primary rounded p-1 me-2" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
-                                    <i class="bi bi-box-seam"></i>
-                                </div>
-                                <div>
-                                    <span class="d-block fw-bold">{{ record.item.name }}</span>
-                                    <span class="text-muted small">{{ record.item.category.name }}</span>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="text-center fw-bold text-danger">
-                            -{{ record.quantity|floatformat:1 }}
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="4" class="text-center py-5 text-muted">
-                            <i class="bi bi-clock-history d-block mb-2" style="font-size: 2rem;"></i>
-                            No consumption records found yet.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <p class="legend">
+        <span class="tag-off">not from stock</span>
+        = no matching warehouse product, so nothing was deducted.
+    </p>
+
+    {% if truncated %}
+    <div class="alert alert-warning py-2 small" style="border-radius: 12px;">
+        <i class="bi bi-exclamation-triangle me-1"></i>Showing the most recent {{ row_cap }} entries for this period.
+    </div>
+    {% endif %}
+
+    {% for day, entries in grouped %}
+    <div class="day">
+        <div class="day-head">
+            <h2>{{ day|date:"D, d M Y" }}</h2>
+            <span>{{ entries|length }} entr{{ entries|length|pluralize:"y,ies" }}</span>
+        </div>
+        <div class="day-list">
+            {% for r in entries %}
+            <div class="use-row">
+                <div class="u-part">
+                    {{ r.spare_part_name }}
+                    {% if not r.in_warehouse %}<span class="tag-off" data-unmatched="1">not from stock</span>{% endif %}
+                </div>
+                <div class="u-qty {% if not r.in_warehouse %}muted{% endif %}">{{ r.quantity|clean_qty }}</div>
+                <div class="u-mech">
+                    {% if r.job_card.lead_mechanic %}
+                    <a href="{% url 'inventory_history_mechanic' r.job_card.lead_mechanic.id %}?range={{ range }}">
+                        <i class="bi bi-person-gear me-1"></i>{{ r.job_card.lead_mechanic.name }}
+                    </a>
+                    {% else %}<span class="none">No mechanic</span>{% endif %}
+                </div>
+                <div class="u-car">
+                    {{ r.job_card.brand_name }} {{ r.job_card.model_name }}
+                    <span class="reg">{{ r.job_card.registration_number }}</span>
+                </div>
+            </div>
+            {% endfor %}
         </div>
     </div>
-    
-    <!-- Pagination -->
-    <div class="mt-4">
-        {% include 'workshop/includes/pagination.html' %}
+    {% empty %}
+    <div class="empty">
+        <i class="bi bi-clock-history"></i>
+        <h2>Nothing used {% if range == 'last' %}last week{% else %}this week{% endif %}</h2>
+        <p>Spares appear here as soon as they are added to a job card.</p>
     </div>
+    {% endfor %}
 </div>
 {% endblock %}

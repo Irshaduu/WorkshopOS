@@ -1,95 +1,142 @@
 {% extends 'workshop/base.html' %}
+{% load custom_filters %}
 {% block title %}Add Product - {{ shop.name }}{% endblock %}
 {% block content %}
 <style>
-    .catalog-wrapper {
-        max-width: 600px;
-        margin: 0 auto;
-        padding: 20px 10px;
+    .prod-wrapper { max-width: 560px; margin: 0 auto; padding: 4px 0 0; }
+
+    .prod-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .prod-head h1 { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
+    .btn-round {
+        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 50%; border: 1px solid var(--color-border);
+        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
     }
-    .add-card {
-        background: var(--color-card);
-        border: 1px solid var(--color-border);
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 4px 12px var(--color-shadow);
+    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
+    .prod-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 18px 52px; }
+
+    .prod-card {
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 16px; padding: 22px; box-shadow: 0 1px 3px var(--color-shadow);
     }
-    .input-box {
-        background: var(--color-bg);
-        border: 1px solid var(--color-border);
-        border-radius: 12px;
-        padding: 12px 16px;
-        width: 100%;
-        margin-bottom: 20px;
-        outline: none;
-        color: var(--color-text);
+
+    .fld { margin-bottom: 18px; }
+    .fld:last-of-type { margin-bottom: 22px; }
+    .fld label { display: block; font-size: 0.85rem; font-weight: 700; margin-bottom: 6px; }
+    .fld .hint { display: block; font-size: 0.74rem; font-weight: 400; color: var(--color-text-muted); margin-top: 5px; line-height: 1.4; }
+    .fld input {
+        width: 100%; min-height: 46px; padding: 10px 14px;
+        border: 1px solid var(--color-border); border-radius: 11px;
+        background: var(--color-bg); color: var(--color-text);
+        font-size: 1rem; font-weight: 600; outline: none;
+        transition: border-color .15s, background .15s, box-shadow .15s;
     }
-    .input-box:focus {
-        border-color: var(--color-primary);
+    .fld input:focus {
+        border-color: var(--color-primary); background: var(--color-card);
         box-shadow: 0 0 0 3px var(--color-primary-light);
     }
-    .warning-box {
-        background: rgba(255, 193, 7, 0.1);
-        border: 1px solid rgba(255, 193, 7, 0.4);
-        color: #856404;
-        padding: 16px;
-        border-radius: 12px;
-        margin-bottom: 20px;
+    /* A placeholder must never be mistaken for a filled-in value */
+    .fld input::placeholder { color: #a8b1bd; font-weight: 400; font-style: italic; opacity: 1; }
+
+    .btn-primary-full {
+        width: 100%; min-height: 48px; border: none; border-radius: 999px;
+        background: var(--color-primary); color: #fff; font-weight: 700; font-size: 1rem;
+    }
+    .btn-primary-full:hover { filter: brightness(1.08); }
+
+    .confirm-title {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 1rem; font-weight: 800; color: #92400e; margin: 0 0 12px;
+    }
+    .confirm-box {
+        background: #fffbeb; border: 1px solid #fde68a; color: #78350f;
+        border-radius: 12px; padding: 16px; margin-bottom: 18px; font-size: 0.9rem; line-height: 1.5;
+    }
+    .confirm-box .note { display: block; font-size: 0.76rem; margin-top: 10px; color: #92400e; }
+    .btn-row { display: flex; gap: 10px; }
+    .btn-row .btn-ghost {
+        flex: 1; min-height: 48px; display: flex; align-items: center; justify-content: center;
+        border-radius: 999px; border: 1px solid var(--color-border);
+        background: var(--color-card); color: var(--color-text); font-weight: 700; text-decoration: none;
+    }
+    .btn-row .btn-ghost:hover { background: var(--color-hover); }
+    .btn-row .btn-primary-full { flex: 1; }
+
+    @media (max-width: 420px) {
+        .prod-sub { margin-left: 0; }
+        .prod-card { padding: 18px 16px; }
+        .btn-row { flex-direction: column; }
     }
 </style>
 
-<div class="catalog-wrapper">
-    <div class="d-flex align-items-center mb-4">
-        <a href="{% url 'supplier_shop_detail' shop.id %}" class="btn btn-outline-secondary rounded-circle me-3" style="width:40px; height:40px; padding:0; display:flex; align-items:center; justify-content:center;">
+<div class="prod-wrapper">
+    <div class="prod-head">
+        <a href="{% url 'supplier_shop_detail' shop.id %}" class="btn-round" aria-label="Back to shop">
             <i class="bi bi-arrow-left"></i>
         </a>
-        <h2 class="fw-bold m-0">Add Product</h2>
+        <h1>Add Product</h1>
     </div>
+    <p class="prod-sub">Adds it to {{ shop.name }}&rsquo;s catalog so it can go on restock bills.</p>
 
-
-    <div class="add-card">
+    <div class="prod-card">
         {% if requires_confirmation %}
-            <h5 class="fw-bold mb-3 text-warning"><i class="bi bi-exclamation-triangle"></i> Item Already Exists</h5>
-            <div class="warning-box">
-                <strong>"{{ existing_item.name }}"</strong> is already present in the central database under the category <strong>"{{ existing_item.category.name }}"</strong>.
-                <br><br>
-                Do you want to link this existing item to {{ shop.name }}'s catalog?
+            <h2 class="confirm-title"><i class="bi bi-exclamation-triangle"></i> Product Already Exists</h2>
+            <div class="confirm-box">
+                <strong>{{ existing_item.name }}</strong> already exists in the system, under
+                <strong>{{ existing_item.category.name }}</strong>.
+                Link that same product to {{ shop.name }}?
+                {% if existing_item.average_stock > 0 %}
+                <span class="note">
+                    Its Average Stock stays at {{ existing_item.average_stock|clean_qty }} — that number is shared
+                    by every shop stocking it. Change it from the shop catalog if it&rsquo;s wrong.
+                </span>
+                {% endif %}
             </div>
-            
+
             <form method="post" action="">
                 {% csrf_token %}
                 <input type="hidden" name="confirm_existing" value="1">
                 <input type="hidden" name="item_name" value="{{ item_name }}">
                 <input type="hidden" name="category_name" value="{{ category_name }}">
-                
-                <div class="d-flex gap-2">
-                    <a href="{% url 'add_shop_catalog_item' shop.id %}" class="btn btn-outline-secondary w-50 fw-bold rounded-pill py-3">Cancel</a>
-                    <button type="submit" class="btn btn-primary w-50 fw-bold rounded-pill py-3 shadow-sm">
-                        Confirm & Add
-                    </button>
+                <input type="hidden" name="average_stock" value="{{ average_stock|default:'' }}">
+                <div class="btn-row">
+                    <a href="{% url 'add_shop_catalog_item' shop.id %}" class="btn-ghost">Cancel</a>
+                    <button type="submit" class="btn-primary-full">Link it</button>
                 </div>
             </form>
         {% else %}
-            <h5 class="fw-bold mb-3 text-primary">New Product</h5>
-            <p class="text-muted small mb-4">Add a new product to this shop's catalog. If you type the name of a product that exists elsewhere, we'll link it to prevent duplicates.</p>
-            
             <form method="post" action="">
                 {% csrf_token %}
-                
-                <label class="fw-bold text-muted small mb-2">Category (Select or Type New)</label>
-                <input type="text" name="category_name" class="input-box" list="category_list" placeholder="e.g. Engine Oil" required autocomplete="off">
-                <datalist id="category_list">
-                    {% for cat in categories %}
-                        <option value="{{ cat.name }}">
-                    {% endfor %}
-                </datalist>
 
-                <label class="fw-bold text-muted small mb-2">Item Name</label>
-                <input type="text" name="item_name" class="input-box" placeholder="e.g. Liqui Moly 5W30" required autocomplete="off">
-                
-                <button type="submit" class="btn btn-primary w-100 fw-bold rounded-pill py-3 mt-2 shadow-sm">
-                    Add Product
-                </button>
+                <div class="fld">
+                    <label for="category_name">Category</label>
+                    <input type="text" id="category_name" name="category_name" list="category_list"
+                           value="{{ category_name|default:'' }}" placeholder="Engine Oil"
+                           required autocomplete="off">
+                    <datalist id="category_list">
+                        {% for cat in categories %}<option value="{{ cat.name }}">{% endfor %}
+                    </datalist>
+                    <span class="hint">Pick an existing one or type a new name.</span>
+                </div>
+
+                <div class="fld">
+                    <label for="item_name">Product name</label>
+                    <input type="text" id="item_name" name="item_name"
+                           value="{{ item_name|default:'' }}" placeholder="Liqui Moly 5W30"
+                           required autocomplete="off">
+                    <span class="hint">If it already exists elsewhere, we&rsquo;ll link it instead of duplicating.</span>
+                </div>
+
+                <div class="fld">
+                    <label for="average_stock">Average stock</label>
+                    <input type="number" id="average_stock" name="average_stock"
+                           value="{{ average_stock|default:'' }}" placeholder="10"
+                           step="0.5" min="0.5" inputmode="decimal" required autocomplete="off">
+                    <span class="hint">How many you normally keep in the workshop. Low Stock warns below a quarter of it.</span>
+                </div>
+
+                <button type="submit" class="btn-primary-full">Add product</button>
             </form>
         {% endif %}
     </div>

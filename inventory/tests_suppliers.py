@@ -266,7 +266,7 @@ class SupplierShopViewTests(TestCase):
         shop = SupplierShop.objects.create(name='NewItem Shop')
         self.client.post(
             reverse('add_shop_catalog_item', args=[shop.id]),
-            {'item_name': 'Transmission Fluid', 'category_name': 'Oils'}
+            {'item_name': 'Transmission Fluid', 'category_name': 'Oils', 'average_stock': '10'}
         )
         self.assertTrue(Item.objects.filter(name='Transmission Fluid').exists())
         new_item = Item.objects.get(name='Transmission Fluid')
@@ -288,12 +288,29 @@ class SupplierShopViewTests(TestCase):
         )
 
     def test_remove_catalog_item(self):
+        """A product with no stock and no bill history is unlinked outright."""
         shop = SupplierShop.objects.create(name='Remove Shop')
-        ci = ShopCatalogItem.objects.create(shop=shop, item=self.item1)
+        item = Item.objects.create(category=self.category, name='Zero Stock Part',
+                                   average_stock=Decimal('5'), current_stock=Decimal('0'))
+        ci = ShopCatalogItem.objects.create(shop=shop, item=item)
         self.client.post(
             reverse('remove_shop_catalog_item', args=[shop.id, ci.id])
         )
         self.assertFalse(ShopCatalogItem.objects.filter(id=ci.id).exists())
+
+    def test_remove_catalog_item_holding_stock_deactivates(self):
+        """item1 holds stock — removing it would destroy a countable quantity,
+        so the entry is deactivated and both item and stock survive."""
+        shop = SupplierShop.objects.create(name='Remove Stocked Shop')
+        ci = ShopCatalogItem.objects.create(shop=shop, item=self.item1)
+        before = self.item1.current_stock
+        self.client.post(
+            reverse('remove_shop_catalog_item', args=[shop.id, ci.id])
+        )
+        ci.refresh_from_db()
+        self.item1.refresh_from_db()
+        self.assertFalse(ci.is_active)
+        self.assertEqual(self.item1.current_stock, before)
 
     def test_edit_catalog_item_name(self):
         shop = SupplierShop.objects.create(name='Rename Shop')
@@ -335,6 +352,9 @@ class SupplierShopViewTests(TestCase):
 
     def test_create_bill_with_discount(self):
         shop = SupplierShop.objects.create(name='Disc Bill Shop')
+        # A bill may only contain products this shop actively stocks — the picker
+        # enforces it and so does shop_restock_bill.
+        ShopCatalogItem.objects.create(shop=shop, item=self.item1)
         session = self.client.session
         session['restock_items'] = [str(self.item1.id)]
         session.save()
@@ -644,7 +664,8 @@ class SupplierShopViewTests(TestCase):
         unauthenticated_client = Client()
         response = unauthenticated_client.get(reverse('supplier_shop_list'))
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/login/', response.url)
+        # Supplier module is Office/Owner now → admin login gate
+        self.assertIn('/admin-login/', response.url)
 
     def test_restock_select_no_session_redirects(self):
         shop = SupplierShop.objects.create(name='NoSession Shop')
