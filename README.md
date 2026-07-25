@@ -38,7 +38,7 @@ A premium, comprehensive Django-based workshop management system for a single au
 
 ### Dashboard & Layout
 - **Live Report Dashboard** — High-visibility "Floor" view for mechanics and "Live Report" for office staff.
-- **Mobile Optimized** — Responsive design with a native-app feel and bottom navigation on mobile.
+- **One Nav, Three Devices** — A single fixed top bar (Floor · New · Completed · Notifications · Manage) renders identically on laptop (Office), tablet (Floor) and mobile (Owners), with 44px touch targets and labels that shed gracefully on narrow phones. "Manage" opens an off-canvas drawer holding every other destination, grouped by section and filtered by role.
 - **Skeleton Loading** — Shimmer animations for a smooth loading experience.
 
 ### Invoice & Billing

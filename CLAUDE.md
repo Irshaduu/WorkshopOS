@@ -42,6 +42,28 @@ a cosmetic issue. `base.html` defines the light-mode CSS variables (`--color-*`)
 renders Django messages **once** for all pages — never re-render `{% if messages %}` in
 a child template (it double-prints and loses the error/success styling).
 
+### Navigation — one bar, one drawer (rebuilt 2026-07-25)
+There is exactly **one** nav: a fixed top bar in `base.html` that renders identically on
+all three form factors, plus a Bootstrap off-canvas drawer (`#appDrawer`) behind the
+Manage/Menu button. There used to be a second, divergent mobile bottom nav; it was
+deleted because the two menus listed different things. **Don't add a second nav** — a new
+destination goes in the drawer, in the section it belongs to.
+- Top bar is deliberately minimal: Floor · New · Completed · Notifications · Manage
+  (Floor role gets Inventory instead of Completed/Notifications; the bell is Owner/Office
+  only and is an intentional `href="#"` placeholder until the feature exists).
+- `--nav-h` is the single source of truth for the bar height; `.main-content` offsets
+  itself by it. Change the variable, not the individual margins.
+- The bar must carry Bootstrap's `fixed-top` class. It is load-bearing, not cosmetic:
+  Bootstrap's scrollbar helper only pads elements matching `.fixed-top` when the drawer
+  locks body scroll, and without it the bar jumps sideways by the scrollbar width on
+  open. For the same reason `body` uses `overflow-y: scroll` **without**
+  `scrollbar-gutter: stable` — the two together double-count the scrollbar.
+- Labels shed worst-first on narrow phones (Manage below 420px, then
+  `.nav-btn--label-optional` below 350px), so every pill that can become icon-only
+  carries an `aria-label`. Keep that pairing when adding a pill.
+- Drawer items are role-filtered in the template to match each view's decorator. If you
+  change a view's RBAC decorator, update its drawer entry in the same edit.
+
 ## Commands
 
 All commands assume the venv is active (`venv\Scripts\activate` on Windows) and require `DJANGO_ENV` set — the settings package (`formulad_workshop/settings/__init__.py`) raises `ImproperlyConfigured` if it's missing. It is **not** read from `.env` (python-decouple isn't involved for this one var); it must be a real shell/session env var.

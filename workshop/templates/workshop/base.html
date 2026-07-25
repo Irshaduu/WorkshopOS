@@ -5,6 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f1622">
     <title>{% block title %}Workshop{% endblock %}</title>
 
     <!-- Bootstrap 5 CSS -->
@@ -35,6 +36,22 @@
             --color-shadow: rgba(0, 0, 0, 0.04);
             --color-success: #10b981;
             --color-danger: #ef4444;
+
+            /* Navigation — single source of truth for the top-bar height.
+               .main-content offsets itself by this, so changing it here is enough. */
+            --nav-h: 58px;
+
+            /* Premium light-blue — deep on the left, brightening smoothly to
+               the right. The top bar and the drawer header share this
+               gradient so the drawer reads as a continuation of the bar. */
+            --nav-blue-1: #10275c;
+            --nav-blue-mid: #1e4fb8;
+            --nav-blue-2: #2f7de8;
+        }
+
+        /* Phones / tablets: taller bar so the pills clear the 44px touch minimum */
+        @media (max-width: 991.98px) {
+            :root { --nav-h: 62px; }
         }
 
         /* ========================================== */
@@ -44,159 +61,383 @@
             background-color: var(--color-bg);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             color: var(--color-text);
-            padding-bottom: 80px;
-            overflow-y: scroll; /* Always show scrollbar → prevents layout shift */
-            scrollbar-gutter: stable; /* Modern browsers: reserve scrollbar space */
+            padding-bottom: 40px;
+            overflow-y: scroll; /* Always show scrollbar → prevents layout shift.
+                                   NOTE: deliberately NOT paired with scrollbar-gutter:stable —
+                                   Bootstrap's offcanvas/modal already compensates for the
+                                   scrollbar width, and a reserved gutter double-counts it. */
         }
 
         /* ========================================== */
-        /* TOP NAV — All screen sizes                 */
+        /* TOP NAV — one bar, every device            */
+        /* Mobile (Owners) · Tablet (Floor) · Laptop  */
+        /* (Office) all render this same bar.         */
         /* ========================================== */
-        /* NAVBAR STYLES — Racing Dark + Pill Style */
-
-        /* Universal Top Bar */
         .navbar-top {
-            background-color: #111827;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
-            height: 56px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1030;
+            height: var(--nav-h);
             display: flex;
+            align-items: center;
+            background: linear-gradient(90deg, var(--nav-blue-1) 0%, var(--nav-blue-mid) 45%, var(--nav-blue-2) 100%);
+            border-bottom: 1px solid rgba(147, 197, 253, 0.2);
+            box-shadow: 0 2px 16px rgba(10, 25, 60, 0.38);
         }
 
-        /* Bottom nav hidden on desktop */
-        @media (min-width: 769px) {
-            .bottom-nav {
-                display: none !important;
-            }
-        }
-
-
+        /* Same max-width + padding as .main-content, so the bar's outer
+           buttons land exactly above the page content's edges instead of
+           spanning wider or narrower than the frame beneath it. */
         .navbar-container {
             width: 100%;
             max-width: 800px;
             margin: 0 auto;
-            display: flex;
-            justify-content: space-evenly;
-            align-items: center;
-            padding: 0 6px;
             height: 100%;
-        }
-
-        /* Each nav item takes equal space */
-        .navbar-container > a,
-        .navbar-container > div {
-            flex: 1;
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+            padding: 0 1rem;
+            min-width: 0;
         }
 
-        .nav-link-custom {
-            color: #9ca3af;
-            font-weight: 600;
-            text-decoration: none;
-            padding: 0.4rem 0.7rem;
-            font-size: 13.5px;
+        /* ---- Nav button ---- */
+        .nav-btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 5px;
+            gap: 8px;
+            height: 40px;
+            padding: 0 16px;
+            border: 0;
+            background: transparent;
+            border-radius: 10px;
+            color: rgba(255, 255, 255, 0.82);
+            font-size: 13.5px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            line-height: 1;
+            text-decoration: none;
             white-space: nowrap;
-            border-radius: 20px; /* Pill shape */
-            transition: all 0.2s ease;
+            transition: background-color 0.18s ease, color 0.18s ease;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .nav-link-custom:hover,
-        .nav-link-custom:focus {
-            color: #e5e7eb;
-            background-color: rgba(255, 255, 255, 0.08);
+        .nav-btn i {
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .nav-btn:hover,
+        .nav-btn:focus-visible {
+            color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.14);
             text-decoration: none;
         }
 
-        /* Active = red pill with light red text */
-        .nav-link-custom.active {
-            color: #fca5a5;
+        .nav-btn:focus-visible {
+            outline: 2px solid #bfdbfe;
+            outline-offset: 2px;
+        }
+
+        /* Role tint on the Floor/home button (Owner red, Office amber) */
+        .nav-btn--home:not(.active) { color: rgba(255, 255, 255, 0.82); }
+        .nav-btn--home.role-owner:not(.active) { color: #fca5a5; }
+        .nav-btn--home.role-office:not(.active) { color: #fde047; }
+
+        /* Current page — a single restrained accent, no glow/ring */
+        .nav-btn.active {
+            color: #ffffff;
             font-weight: 700;
-            background-color: rgba(239, 68, 68, 0.18);
+            background-color: rgba(239, 68, 68, 0.22);
         }
 
-        /* Compact on small mobile screens */
-        @media (max-width: 480px) {
-            .nav-link-custom {
-                font-size: 12px;
+        .nav-btn.active i { color: #fca5a5; }
+
+        /* Icon-only buttons (notifications, menu on narrow screens) */
+        .nav-btn--icon {
+            width: 40px;
+            padding: 0;
+            flex: 0 0 auto;
+        }
+
+        .nav-btn--icon i { font-size: 17px; }
+
+        /* Menu button matches every other nav button at rest — no more
+           permanently-shaded pill setting it visually apart. */
+        .nav-btn--menu i { font-size: 18px; }
+
+        /* A drawer section is open → same treatment as any active page */
+        .nav-btn--menu.is-open {
+            color: #ffffff;
+            font-weight: 700;
+            background-color: rgba(239, 68, 68, 0.22);
+        }
+
+        .nav-btn--menu.is-open i { color: #fca5a5; }
+
+        /* Notification bell — placeholder until the feature is built */
+        .nav-btn--bell { color: rgba(255, 255, 255, 0.78); }
+
+        /* Tablet: honour the 44px touch-target minimum, keep the horizontal
+           icon+label layout — there's room for it at tablet width. */
+        @media (max-width: 991.98px), (pointer: coarse) {
+            .nav-btn { height: 44px; }
+            .nav-btn--icon { width: 44px; }
+        }
+
+        /* Phones — icon-forward like a native tab bar: a bigger glyph on
+           top, the name small underneath. Needs less horizontal room per
+           button than the tablet's side-by-side layout, so this is when
+           space gets tight, not before. */
+        @media (max-width: 640px) {
+            .navbar-container { gap: 2px; }
+            .nav-btn {
+                flex-direction: column;
                 gap: 3px;
-                padding: 0.35rem 0.5rem;
+                height: 54px;
+                padding: 5px 9px;
+                border-radius: 12px;
             }
-        }
-
-        /* Mobile navbar — slightly taller for better tap targets */
-        @media (max-width: 768px) {
-            .navbar-top {
-                height: 62px;
-            }
-            .main-content {
-                margin-top: 62px;
-            }
-            .nav-link-custom {
-                font-size: 13px;
-                padding: 0.5rem 0.65rem;
-            }
+            .nav-btn i { font-size: 20px; }
+            .nav-btn .nav-label { font-size: 9.5px; letter-spacing: 0.01em; }
+            .nav-btn--icon { width: 54px; padding: 0; }
         }
 
         /* ========================================== */
-        /* MOBILE BOTTOM NAV                          */
+        /* MANAGE DRAWER (off-canvas)                 */
         /* ========================================== */
-        .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 65px;
+        .app-drawer {
+            --bs-offcanvas-width: min(88vw, 360px);
             background-color: var(--color-card);
-            border-top: 1px solid var(--color-border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 10px;
-            z-index: 1000;
-            box-shadow: 0 -2px 10px var(--color-shadow);
+            border-left: 0;
+            box-shadow: -12px 0 40px rgba(15, 23, 42, 0.18);
         }
 
-        .nav-item {
-            flex: 1;
+        /* --- Header — deliberately the same height as the top nav bar,      --- */
+        /* --- so the drawer reads as a direct extension of it, not a        --- */
+        /* --- separate, heavier block.                                     --- */
+        .drawer-head {
+            flex: 0 0 auto;
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            height: var(--nav-h);
+            padding-right: 8px;
+            background: linear-gradient(90deg, var(--nav-blue-1) 0%, var(--nav-blue-mid) 45%, var(--nav-blue-2) 100%);
+            color: #ffffff;
+        }
+
+        /* Clicking the identity strip reveals the (rarely-used) Logout row
+           below it, instead of that row permanently occupying its own
+           full-width footer block. */
+        .drawer-account-toggle {
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            height: 100%;
+            padding: 0 6px 0 16px;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            text-align: left;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+
+        .drawer-account-toggle:hover,
+        .drawer-account-toggle:focus-visible { background-color: rgba(255, 255, 255, 0.06); }
+
+        .drawer-avatar {
+            flex: 0 0 32px;
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            display: flex;
             align-items: center;
             justify-content: center;
-            text-decoration: none;
-            color: var(--color-text-muted);
-            font-size: 10px;
-            height: 100%;
+            font-size: 0.95rem;
         }
 
-        .nav-item i {
-            font-size: 20px;
-            margin-bottom: 2px;
+        .drawer-identity { min-width: 0; }
+
+        .drawer-name {
+            font-size: 0.84rem;
+            font-weight: 700;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .nav-item.active {
-            color: var(--color-primary);
+        .drawer-role {
+            display: inline-block;
+            margin-top: 2px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
         }
 
-        /* Big Center Button */
-        .center-btn {
+        .drawer-head-chevron {
+            flex: 0 0 auto;
+            margin-left: auto;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.65);
+            transition: transform 0.2s ease;
+        }
+
+        .drawer-account-toggle[aria-expanded="true"] .drawer-head-chevron {
+            transform: rotate(180deg);
+            color: #cbd5e1;
+        }
+
+        .drawer-close {
+            flex: 0 0 auto;
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #e2e8f0;
+            font-size: 0.9rem;
+            transition: background-color 0.15s ease;
+        }
+
+        .drawer-close:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
+
+        /* --- Account panel — collapsed by default; a plain menu-style row, --- */
+        /* --- not a heavy permanent button, since Logout is rarely tapped. --- */
+        .drawer-account-panel {
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .drawer-logout-compact {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 18px;
+            border: 0;
+            background: transparent;
+            color: #dc2626;
+            font-size: 0.88rem;
+            font-weight: 700;
+            text-align: left;
+            transition: background-color 0.15s ease;
+        }
+
+        .drawer-logout-compact i { font-size: 1rem; }
+
+        .drawer-logout-compact:hover { background-color: #fef2f2; }
+
+        /* --- Scrollable body --- */
+        .drawer-body {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 6px 10px 14px;
+        }
+
+        .drawer-label {
+            padding: 16px 10px 6px;
+            font-size: 0.66rem;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        .drawer-link {
             position: relative;
-            top: -20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 50px;
+            padding: 7px 10px;
+            border-radius: 12px;
+            color: var(--color-text);
+            font-size: 0.94rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background-color 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .center-btn i {
-            font-size: 45px;
-            color: var(--color-primary);
-            background: var(--color-card);
-            border-radius: 50%;
+        .drawer-link:hover,
+        .drawer-link:focus-visible {
+            background-color: var(--color-hover);
+            color: var(--color-text);
+            text-decoration: none;
         }
+
+        .drawer-ico {
+            flex: 0 0 36px;
+            width: 36px;
+            height: 36px;
+            border-radius: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            background: var(--accent-bg, #f1f5f9);
+            color: var(--accent, #475569);
+            transition: background-color 0.15s ease, color 0.15s ease;
+        }
+
+        .drawer-chevron {
+            margin-left: auto;
+            font-size: 0.75rem;
+            color: #cbd5e1;
+        }
+
+        /* Current page inside the drawer */
+        .drawer-link.active {
+            background: var(--accent-bg, #f1f5f9);
+            color: var(--accent, #475569);
+            font-weight: 800;
+        }
+
+        .drawer-link.active .drawer-ico {
+            background: var(--accent, #475569);
+            color: #ffffff;
+        }
+
+        .drawer-link.active .drawer-chevron { color: var(--accent, #475569); }
+
+        .drawer-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 58%;
+            border-radius: 0 3px 3px 0;
+            background: var(--accent, #475569);
+        }
+
+        /* Per-item accents — one class sets both the tile and the active state */
+        .accent-violet { --accent: #7c3aed; --accent-bg: #f5f3ff; }
+        .accent-green  { --accent: #059669; --accent-bg: #ecfdf5; }
+        .accent-red    { --accent: #dc2626; --accent-bg: #fef2f2; }
+        .accent-blue   { --accent: #2563eb; --accent-bg: #eff6ff; }
+        .accent-indigo { --accent: #4f46e5; --accent-bg: #eef2ff; }
+        .accent-amber  { --accent: #d97706; --accent-bg: #fffbeb; }
+        .accent-teal   { --accent: #0d9488; --accent-bg: #f0fdfa; }
+        .accent-sky    { --accent: #0284c7; --accent-bg: #f0f9ff; }
+        .accent-slate  { --accent: #475569; --accent-bg: #f1f5f9; }
 
         /* ========================================== */
-        /* DROPDOWNS                                  */
+        /* DROPDOWNS (used by page-level 3-dot menus) */
         /* ========================================== */
         .dropdown-menu-custom {
             border: none;
@@ -236,37 +477,13 @@
             margin: 0.2rem 0;
         }
 
-        /* Active item highlight in Manage dropdown */
-        .dropdown-menu-custom .dropdown-item.manage-active {
-            background: rgba(0,0,0,0.05);
-            border-radius: 8px;
-            font-weight: 800 !important;
-            position: relative;
-            padding-left: 16px;
-        }
-        .dropdown-menu-custom .dropdown-item.manage-active::before {
-            content: '';
-            position: absolute;
-            left: 5px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 3px;
-            height: 55%;
-            background: currentColor;
-            border-radius: 2px;
-            opacity: 0.85;
-        }
-        [data-theme="dark"] .dropdown-menu-custom .dropdown-item.manage-active {
-            background: rgba(255,255,255,0.06);
-        }
-
         /* ========================================== */
         /* CONTENT WRAPPER                            */
         /* ========================================== */
         .main-content {
             padding: 1.5rem 1rem;
             max-width: 800px;
-            margin: 56px auto 0; /* Always offset for top nav */
+            margin: var(--nav-h) auto 0; /* Always offset for the fixed top nav */
         }
 
         /* Analysis & Reports page — full-width override */
@@ -285,6 +502,19 @@
                 margin-right: 0 !important;
             }
         }
+
+        /* ========================================== */
+        /* PRINT — chrome off, content only           */
+        /* ========================================== */
+        @media print {
+            .navbar-top,
+            .app-drawer,
+            .offcanvas-backdrop {
+                display: none !important;
+            }
+            body { padding-bottom: 0; }
+            .main-content { margin-top: 0 !important; }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
@@ -292,174 +522,220 @@
 
 <body class="{% block body_class %}{% endblock %}">
 
+{% with is_owner=request.user|has_group:"Owner" is_office=request.user|has_group:"Office" is_floor=request.user|has_group:"Floor" p=request.path %}
+
     <!-- ============================================== -->
-    <!-- DESKTOP TOP NAVIGATION (PC View)             -->
+    <!-- TOP NAVIGATION — mobile, tablet and desktop    -->
     <!-- ============================================== -->
-    <nav class="navbar fixed-top navbar-top">
+    <!-- `fixed-top` is required, not decorative: Bootstrap's scrollbar helper only
+         pads elements matching `.fixed-top` when the drawer locks body scroll.
+         Without it the bar jumps sideways by the scrollbar width on open. -->
+    <nav class="navbar-top fixed-top" aria-label="Main navigation">
+
         <div class="navbar-container">
 
             <!-- Floor / Home -->
-            <a class="nav-link-custom fw-bold {% if request.path == '/' %}active{% endif %}"
-               href="{% url 'home' %}"
-               style="color: {% if request.user|has_group:'Owner' or request.user.is_superuser %}var(--color-danger){% elif request.user|has_group:'Office' %}#d97706{% else %}#e5e7eb{% endif %} !important;">
-                {% if '/jobcards/live-report/' in request.path %}<i class="bi bi-chevron-left me-1"></i>{% endif %}
-                <i class="bi bi-house-door"></i> Floor
+            <a class="nav-btn nav-btn--home{% if is_owner %} role-owner{% elif is_office %} role-office{% endif %}{% if p == '/' %} active{% endif %}"
+               href="{% url 'home' %}">
+                {% if p == '/jobcards/live-report/' %}<i class="bi bi-chevron-left"></i>{% endif %}
+                <i class="bi bi-house-door{% if p == '/' %}-fill{% endif %}"></i><span class="nav-label">Floor</span>
             </a>
 
-            <!-- New -->
             {% if user.is_authenticated %}
-            <a class="nav-link-custom fw-bold {% if 'create' in request.path %}active{% endif %}" href="{% url 'jobcard_create' %}">
-                <i class="bi bi-plus-circle"></i> New
+
+            <!-- New job card -->
+            <a class="nav-btn{% if p == '/jobcards/create/' %} active{% endif %}" href="{% url 'jobcard_create' %}">
+                <i class="bi bi-plus-circle{% if p == '/jobcards/create/' %}-fill{% endif %}"></i><span class="nav-label">New</span>
             </a>
+
+            {% if is_owner or is_office %}
+            <!-- Completed (Office / Owner) -->
+            <a class="nav-btn{% if p|slice:':11' == '/completed/' %} active{% endif %}"
+               href="{% url 'completed_list' %}" aria-label="Completed" title="Completed">
+                <i class="bi bi-check-circle{% if p|slice:':11' == '/completed/' %}-fill{% endif %}"></i><span class="nav-label">Completed</span>
+            </a>
+            {% endif %}
+
+            {% if is_floor and not is_office and not is_owner %}
+            <!-- Inventory (Floor's own quick link) -->
+            <a class="nav-btn{% if p|slice:':11' == '/inventory/' %} active{% endif %}"
+               href="{% url 'inventory_list' %}" aria-label="Inventory" title="Inventory">
+                <i class="bi bi-box-seam"></i><span class="nav-label">Inventory</span>
+            </a>
+            {% endif %}
+
+            {% if is_owner or is_office %}
+            <!-- Notifications — placeholder for a future Owner/Office feature -->
+            <a class="nav-btn nav-btn--icon nav-btn--bell js-notif-placeholder"
+               href="#" role="button" aria-label="Notifications" title="Notifications">
+                <i class="bi bi-bell"></i>
+            </a>
+            {% endif %}
+
+            <!-- Manage / Menu — opens the drawer -->
+            <button type="button"
+                    class="nav-btn nav-btn--menu{% if p|slice:':10' == '/analysis/' or p|slice:':10' == '/cashbook/' or p|slice:':18' == '/pending-payments/' or p|slice:':12' == '/paid-bills/' or p|slice:':11' == '/inventory/' or p|slice:':13' == '/spare-shops/' or p|slice:':14' == '/car-profiles/' or p|slice:':14' == '/master-lists/' or p|slice:':8' == '/manage/' or p|slice:':18' == '/deletion-history/' %} is-open{% endif %}"
+                    data-bs-toggle="offcanvas" data-bs-target="#appDrawer" aria-controls="appDrawer"
+                    aria-label="{% if is_owner or is_office %}Manage{% else %}Menu{% endif %}"
+                    title="{% if is_owner or is_office %}Manage{% else %}Menu{% endif %}">
+                <i class="bi bi-list"></i><span class="nav-label">{% if is_owner or is_office %}Manage{% else %}Menu{% endif %}</span>
+            </button>
+
             {% else %}
-            <a href="{% url 'login' %}" class="nav-link-custom fw-bold text-primary">
-                <i class="bi bi-lock"></i> Login
+            <!-- Signed out -->
+            <a class="nav-btn" href="{% url 'login' %}">
+                <i class="bi bi-lock"></i><span class="nav-label">Login</span>
             </a>
             {% endif %}
 
-            <!-- Completed (Office/Owner only) -->
-            {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-            <a class="nav-link-custom {% if 'completed' in request.path %}active{% endif %}"
-                href="{% url 'completed_list' %}">
-                <i class="bi bi-check-circle"></i> Completed
-            </a>
-            {% endif %}
+        </div>
+    </nav>
 
-            <!-- Inventory (Floor only) -->
-            {% if request.user|has_group:"Floor" and not request.user|has_group:"Office" and not request.user|has_group:"Owner" and not request.user.is_superuser %}
-            <a class="nav-link-custom {% if 'inventory' in request.path %}active{% endif %}"
-                href="{% url 'inventory_list' %}">
-                📦 Inventory
-            </a>
-            {% endif %}
+    <!-- ============================================== -->
+    <!-- MANAGE DRAWER — every "everything else" link   -->
+    <!-- ============================================== -->
+    {% if user.is_authenticated %}
+    <div class="offcanvas offcanvas-end app-drawer" tabindex="-1" id="appDrawer" aria-labelledby="appDrawerName">
 
-            <!-- Manage Dropdown (Office/Owner only) -->
-            {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
-            <div class="dropdown">
-                <a class="nav-link-custom dropdown-toggle {% if 'inventory' in request.path or 'master-lists' in request.path or 'brand' in request.path or 'spare' in request.path or 'concern' in request.path or 'car-profiles' in request.path or 'jobcards' in request.path and 'live-report' not in request.path and 'create' not in request.path %}active{% endif %}"
-                    href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    🔧 Manage
-                </a>
-                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
-                    {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                    <li><a class="dropdown-item fw-bold {% if 'analysis' in request.path %}manage-active{% endif %}" href="{% url 'analysis_dashboard' %}" style="color:#7c3aed;"><i class="bi bi-graph-up-arrow"></i> Analysis & Reports</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    {% endif %}
-                    
-                    <li><a class="dropdown-item fw-bold text-success {% if 'cashbook' in request.path %}manage-active{% endif %}" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> General Cashbook</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    
-                    <li><a class="dropdown-item fw-bold {% if 'inventory/list' in request.path %}manage-active{% endif %}" href="{% url 'inventory_list' %}"><i class="bi bi-box-seam"></i> Inventory</a></li>
-                    <li><hr class="dropdown-divider"></li>
-                    
-                    <li><a class="dropdown-item fw-bold text-danger {% if 'pending-payments' in request.path %}manage-active{% endif %}" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
-                    {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                    <li><a class="dropdown-item fw-bold text-success {% if 'paid-bills' in request.path %}manage-active{% endif %}" href="{% url 'paid_bills_list' %}" style="color: #16a34a !important;"><i class="bi bi-check-circle-fill"></i> Paid Bills</a></li>
-                    {% endif %}
-                    <li><hr class="dropdown-divider"></li>
+        <!-- Who is signed in — tap to reveal Logout; height matches the top nav bar -->
+        <div class="drawer-head">
+            <button type="button" class="drawer-account-toggle"
+                    data-bs-toggle="collapse" data-bs-target="#drawerAccountPanel"
+                    aria-expanded="false" aria-controls="drawerAccountPanel">
+                <span class="drawer-avatar"
+                     style="background: {% if is_owner %}#fee2e2{% elif is_office %}#fef9c3{% else %}#e0f2fe{% endif %};
+                            color: {% if is_owner %}#dc2626{% elif is_office %}#d97706{% else %}#0284c7{% endif %};">
+                    <i class="bi bi-person-fill"></i>
+                </span>
+                <span class="drawer-identity">
+                    <span class="drawer-name" id="appDrawerName">{{ request.user.get_full_name|default:request.user.username }}</span>
+                    <span class="drawer-role"
+                          style="background: {% if is_owner %}#dc2626; color:#fff{% elif is_office %}#fbbf24; color:#3f2d00{% else %}#0284c7; color:#fff{% endif %};">
+                        {% if is_owner %}Admin{% elif is_office %}Office{% else %}Floor{% endif %} Account
+                    </span>
+                </span>
+                <i class="bi bi-chevron-down drawer-head-chevron" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="drawer-close" data-bs-dismiss="offcanvas" aria-label="Close menu">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
 
-                    <li><a class="dropdown-item fw-bold text-warning {% if 'spare-shops' in request.path %}manage-active{% endif %}" href="{% url 'spare_shop_list' %}"><i class="bi bi-shop"></i> Spare Shops</a></li>
-                    <li><a class="dropdown-item fw-bold text-primary {% if 'inventory/shops' in request.path %}manage-active{% endif %}" href="{% url 'supplier_shop_list' %}"><i class="bi bi-shop-window"></i> Supplies Shops</a></li>
-                    <li><hr class="dropdown-divider"></li>
-
-                    <li><a class="dropdown-item fw-bold {% if 'car-profiles' in request.path %}manage-active{% endif %}" href="{% url 'car_profile_list' %}"><i class="bi bi-car-front"></i> Car Profiles</a></li>
-                    <li><hr class="dropdown-divider"></li>
-
-                    {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                    <li><a class="dropdown-item fw-bold text-primary {% if '/manage/' in request.path %}manage-active{% endif %}" href="{% url 'manage_dashboard' %}"><i class="bi bi-people"></i> Manage Accounts</a></li>
-                    {% endif %}
-                    <li><a class="dropdown-item fw-bold {% if 'master-lists' in request.path %}manage-active{% endif %}" href="{% url 'master_lists_home' %}"><i class="bi bi-collection"></i> Master Data</a></li>
-                    {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item fw-bold text-muted {% if request.path == '/deletion-history/' %}manage-active{% endif %}" href="{% url 'deletion_history' %}"><i class="bi bi-clock-history"></i> Deletion History</a></li>
-                    {% endif %}
-                    
-                    {% if user.is_authenticated %}
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#accountProfileModal">
-                        👤 {% if request.user.is_superuser or request.user|has_group:"Owner" %}Admin Account{% elif request.user|has_group:"Office" %}Office Account{% else %}Floor Account{% endif %}
-                    </a></li>
-                    {% endif %}
-                </ul>
+        <!-- Collapsed by default — Logout is a rare action, not a permanent block -->
+        <div class="collapse" id="drawerAccountPanel">
+            <div class="drawer-account-panel">
+                <form method="post" action="{% url 'logout' %}" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="drawer-logout-compact">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </button>
+                </form>
             </div>
+        </div>
+
+        <!-- Sections -->
+        <div class="drawer-body">
+
+            {% if is_owner or is_office %}
+
+                <div class="drawer-label">Money</div>
+                <a class="drawer-link accent-green{% if p|slice:':10' == '/cashbook/' %} active{% endif %}" href="{% url 'cashbook' %}">
+                    <span class="drawer-ico"><i class="bi bi-wallet2"></i></span>
+                    General Cashbook
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                <a class="drawer-link accent-red{% if p|slice:':18' == '/pending-payments/' %} active{% endif %}" href="{% url 'pending_payments_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-exclamation-octagon"></i></span>
+                    Pending Bills
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% if is_owner %}
+                <a class="drawer-link accent-green{% if p|slice:':12' == '/paid-bills/' %} active{% endif %}" href="{% url 'paid_bills_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-check-circle-fill"></i></span>
+                    Paid Bills
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% endif %}
+
+                <div class="drawer-label">Stock &amp; Suppliers</div>
+                <a class="drawer-link accent-blue{% if p == '/inventory/list/' %} active{% endif %}" href="{% url 'inventory_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-box-seam"></i></span>
+                    Inventory
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                <a class="drawer-link accent-indigo{% if p|slice:':17' == '/inventory/shops/' %} active{% endif %}" href="{% url 'supplier_shop_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-shop-window"></i></span>
+                    Supplies Shops
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                <a class="drawer-link accent-amber{% if p|slice:':13' == '/spare-shops/' %} active{% endif %}" href="{% url 'spare_shop_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-shop"></i></span>
+                    Spare Shops
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+
+                <div class="drawer-label">Records</div>
+                <a class="drawer-link accent-sky{% if p|slice:':14' == '/car-profiles/' %} active{% endif %}" href="{% url 'car_profile_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-car-front"></i></span>
+                    Car Profiles
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                <a class="drawer-link accent-teal{% if p|slice:':14' == '/master-lists/' %} active{% endif %}" href="{% url 'master_lists_home' %}">
+                    <span class="drawer-ico"><i class="bi bi-collection"></i></span>
+                    Master Data
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% if is_owner %}
+                <a class="drawer-link accent-slate{% if p|slice:':18' == '/deletion-history/' %} active{% endif %}" href="{% url 'deletion_history' %}">
+                    <span class="drawer-ico"><i class="bi bi-clock-history"></i></span>
+                    Deletion History
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% endif %}
+
+                {% if is_owner %}
+                <div class="drawer-label">Administration</div>
+                <a class="drawer-link accent-blue{% if p|slice:':8' == '/manage/' %} active{% endif %}" href="{% url 'manage_dashboard' %}">
+                    <span class="drawer-ico"><i class="bi bi-people"></i></span>
+                    Manage Accounts
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+
+                <div class="drawer-label">Insights</div>
+                <a class="drawer-link accent-violet{% if p|slice:':10' == '/analysis/' %} active{% endif %}" href="{% url 'analysis_dashboard' %}">
+                    <span class="drawer-ico"><i class="bi bi-graph-up-arrow"></i></span>
+                    Analysis &amp; Reports
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% endif %}
+
+            {% elif is_floor %}
+
+                <div class="drawer-label">Stock</div>
+                <a class="drawer-link accent-blue{% if p == '/inventory/list/' %} active{% endif %}" href="{% url 'inventory_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-box-seam"></i></span>
+                    Inventory
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                <a class="drawer-link accent-red{% if p == '/inventory/low-stock/' %} active{% endif %}" href="{% url 'inventory_low_stock' %}">
+                    <span class="drawer-ico"><i class="bi bi-exclamation-triangle"></i></span>
+                    Low Stock
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                <a class="drawer-link accent-slate{% if p|slice:':19' == '/inventory/history/' %} active{% endif %}" href="{% url 'inventory_history' %}">
+                    <span class="drawer-ico"><i class="bi bi-clock-history"></i></span>
+                    Stock History
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+
             {% endif %}
 
         </div>
-    </nav>
 
-    <!-- ============================================== -->
-    <!-- MOBILE BOTTOM NAVIGATION                     -->
-    <!-- ============================================== -->
-    <nav class="bottom-nav">
-        <!-- Home -->
-        <a href="{% url 'home' %}" class="nav-item {% if request.path == '/' %}active{% endif %}">
-            <i class="bi {% if request.path == '/' %}bi-house-door-fill{% else %}bi-house-door{% endif %}"
-               style="color: {% if request.user|has_group:'Owner' or request.user.is_superuser %}var(--color-danger){% elif request.user|has_group:'Office' %}#d97706{% endif %};"></i>
-            <span>Floor</span>
-        </a>
+    </div>
+    {% endif %}
 
-        <!-- New Job (Center Big Button) -->
-        <a href="{% url 'jobcard_create' %}" class="nav-item center-btn">
-            <i class="bi bi-plus-circle-fill"></i>
-        </a>
-
-        <!-- Car Profiles (Office/Owner) -->
-        {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-        <a href="{% url 'car_profile_list' %}" class="nav-item {% if 'car-profiles' in request.path %}active{% endif %}">
-            <i class="bi bi-car-front"></i>
-            <span>Profiles</span>
-        </a>
-        {% endif %}
-
-        <!-- Menu Dropup -->
-        <div class="nav-item dropup">
-            <a href="#" class="nav-item" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="bi bi-list"></i>
-                <span>Menu</span>
-            </a>
-            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom mb-2">
-                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-                {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                <li><a class="dropdown-item fw-bold" href="{% url 'analysis_dashboard' %}" style="color:#7c3aed;"><i class="bi bi-graph-up-arrow"></i> Analysis & Reports</a></li>
-                <li><hr class="dropdown-divider"></li>
-                {% endif %}
-                <li><a class="dropdown-item fw-bold text-success" href="{% url 'cashbook' %}"><i class="bi bi-wallet2"></i> Cashbook</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'completed_list' %}"><i class="bi bi-check-circle"></i> Completed Jobs</a></li>
-                <li><a class="dropdown-item text-danger" href="{% url 'pending_payments_list' %}"><i class="bi bi-exclamation-octagon"></i> Pending Bills</a></li>
-                {% if request.user|has_group:"Owner" or request.user.is_superuser %}
-                <li><a class="dropdown-item text-muted" href="{% url 'deletion_history' %}"><i class="bi bi-clock-history"></i> Deletion History</a></li>
-                {% endif %}
-                <li><hr class="dropdown-divider"></li>
-                {% endif %}
-
-                {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user|has_group:"Floor" or request.user.is_superuser %}
-                <li><a class="dropdown-item fw-bold text-success" href="{% url 'inventory_list' %}"><i class="bi bi-box-seam"></i> Inventory</a></li>
-                {% endif %}
-
-                {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
-                <li><a class="dropdown-item fw-bold text-primary" href="{% url 'master_lists_home' %}"><i class="bi bi-hdd-stack"></i> Master Data</a></li>
-                <li><hr class="dropdown-divider"></li>
-                {% endif %}
-
-                {% if user.is_authenticated %}
-                <li>
-                    <a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#accountProfileModal">
-                        👤 {% if request.user.is_superuser or request.user|has_group:"Owner" %}Admin Account{% elif request.user|has_group:"Office" %}Office Account{% else %}Floor Account{% endif %}
-                    </a>
-                </li>
-                <li>
-                    <form method="post" action="{% url 'logout' %}" class="d-inline">
-                        {% csrf_token %}
-                        <button type="submit" class="dropdown-item text-danger">🔓 Logout</button>
-                    </form>
-                </li>
-                {% else %}
-                <li><a class="dropdown-item text-primary" href="{% url 'login' %}">🔒 Login</a></li>
-                {% endif %}
-            </ul>
-        </div>
-    </nav>
+{% endwith %}
 
     <!-- CONTENT -->
     <main class="main-content">
@@ -480,45 +756,24 @@
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
+    <script>
+        // Notifications is an intentional placeholder (href="#") — swallow the click
+        // so it never jumps the page or dirties the URL. Remove once it has a target.
+        document.querySelectorAll('.js-notif-placeholder').forEach(function (el) {
+            el.addEventListener('click', function (e) { e.preventDefault(); });
+        });
+
+        // Always re-collapse the account/Logout panel when the drawer closes,
+        // so reopening it never starts mid-expanded.
+        var appDrawer = document.getElementById('appDrawer');
+        if (appDrawer) {
+            appDrawer.addEventListener('hidden.bs.offcanvas', function () {
+                var panel = document.getElementById('drawerAccountPanel');
+                if (panel) bootstrap.Collapse.getOrCreateInstance(panel, { toggle: false }).hide();
+            });
+        }
+    </script>
     {% block extra_js %}{% endblock %}
-
-<!-- Account Profile Modal -->
-{% if user.is_authenticated %}
-<div class="modal fade" id="accountProfileModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 320px;">
-        <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
-            <div class="modal-body text-center p-4">
-                <button type="button" class="btn-close position-absolute" style="top: 16px; right: 16px;" data-bs-dismiss="modal"></button>
-
-                <!-- Avatar -->
-                <div style="width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center;
-                    background: {% if request.user.is_superuser or request.user|has_group:'Owner' %}#fee2e2{% elif request.user|has_group:'Office' %}#fef9c3{% else %}#e0f2fe{% endif %};">
-                    <i class="bi bi-person-fill" style="font-size: 2rem; color: {% if request.user.is_superuser or request.user|has_group:'Owner' %}#dc3545{% elif request.user|has_group:'Office' %}#d97706{% else %}#0ea5e9{% endif %};"></i>
-                </div>
-
-                <!-- Role Badge -->
-                <div class="mb-1">
-                    <span class="badge rounded-pill px-3 py-1" style="font-size: 0.75rem; background: {% if request.user.is_superuser or request.user|has_group:'Owner' %}#dc3545{% elif request.user|has_group:'Office' %}#ffc107; color:#333{% else %}#0ea5e9{% endif %};">
-                        {% if request.user.is_superuser or request.user|has_group:"Owner" %}Admin Account{% elif request.user|has_group:"Office" %}Office Account{% else %}Floor Account{% endif %}
-                    </span>
-                </div>
-
-                <!-- Name & Username -->
-                <h5 class="fw-bold mt-2 mb-0">{{ request.user.get_full_name|default:request.user.username }}</h5>
-                <p class="text-muted small mb-3">@{{ request.user.username }}</p>
-
-                <!-- Logout -->
-                <form method="post" action="{% url 'logout' %}">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-danger w-100 fw-bold rounded-pill">
-                        <i class="bi bi-unlock me-2"></i>Logout
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
 
 </body>
 </html>
