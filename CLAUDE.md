@@ -21,7 +21,7 @@ about to correct one of these, you are about to break the business:
   pay-the-rest-later case for them. Genuine multi-payment relationships are Fleet Accounts
   (`BulkPayer`), which run through `bulk_payer_pay` and do use `'PARTIAL'` correctly.
   `audit_high_discounts` is the intended compensating control for anomalies.
-  **`workshop/tests/test_jobcard_views.py:268` is the regression test for this rule — it
+  **`workshop/tests/test_jobcard_views.py:341` is the regression test for this rule — it
   asserts a ₹100 discount on ₹500-of-₹600. Do not delete it as "locking in a bug".**
 - **Brand / model / spare / concern are free text, not FKs to the master lists.**
   `CarBrand`, `CarModel`, `SparePart` and `ConcernSolution` exist as reference tables, but
@@ -29,6 +29,23 @@ about to correct one of these, you are about to break the business:
   autocomplete. This is a deliberate trade for data-entry speed on the shop floor, not an
   oversight. The mitigation is normalisation on save (already done for
   `registration_number` and `brand_name`), not converting them to ForeignKeys.
+- **The `Mechanic` model is the whole staff roster, not just mechanics — the name is kept
+  for continuity, don't rename it.** Added 2026-07-26: `Mechanic.role` (Mechanic / Assistant
+  Mechanic / Office Staff / General Helper, default `Mechanic`) turned this from a
+  mechanics-only table into the general "Staff Registration" roster shown in the UI at
+  `/manage/?section=staff`. The model/table/FK name stays `Mechanic` — same pattern as
+  `BulkPayer`/"Fleet Account" above — because `JobCard.lead_mechanic` and years of job-card
+  history point at it by id; renaming the class would be a pure-cosmetic, high-blast-radius
+  change for no behavioural gain. Only `Mechanic.JOBCARD_ELIGIBLE_ROLES` (Mechanic, Assistant
+  Mechanic) can ever be assigned as a Job Card's `lead_mechanic` — Office Staff / General
+  Helper never appear in that dropdown. Changing someone's `role` (e.g. Mechanic →
+  Office Staff) is an in-place field update on the same row, never a delete-and-recreate —
+  that's what keeps `lead_mechanic` on old job cards intact, and it's also what makes this
+  roster reusable as-is for the "Salary Advance" section planned next (see
+  `TITAN_MASTER_HANDOVER.md` roadmap) and Attendance after that: one staff identity across
+  role changes, not a fragmented one. There is deliberately no delete for staff, only
+  deactivate (`is_active`) — matches the archived-not-deleted pattern for
+  Spare Shops/Fleet Accounts/Supplier Shops above.
 
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 

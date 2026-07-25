@@ -96,18 +96,21 @@ WorkshopOS uses deliberate, standard performance patterns rather than ad hoc que
 In the order set as of 2026-07-23:
 
 1. ✅ **Documentation accuracy pass** — bring CLAUDE.md, MASTER_BLUEPRINT.md, OPERATIONAL_BLUEPRINT.md, README.md, and this handover back in sync with the actual codebase after several undocumented commits. *(This update.)*
-2. **Noted fixes** — already-identified issues to be resolved during hardening:
+2. ✅ **Staff Registration** (added 2026-07-26) — `Mechanic` model gained a `role` field (Mechanic / Assistant Mechanic / Office Staff / General Helper), giving the workshop one staff roster instead of a mechanics-only list. Lives at `/manage/?section=staff`; only Mechanic/Assistant Mechanic feed the Job Card mechanic picker. See CLAUDE.md's "Deliberate decisions" for why the model keeps the `Mechanic` name.
+3. **Salary Advance** (next) — record staff salary advances taken from the office, against the same staff roster from #2 above, so a person's advance history stays continuous through any future role change.
+4. **Attendance** (later, not yet scheduled) — likely against the same staff roster; deferred until Salary Advance ships.
+5. **Noted fixes** — already-identified issues to be resolved during hardening:
    - **Supplier-Shop RBAC asymmetry** (flagged 2026-07-23): every Supplier-Shop view in the Inventory app is `@staff_required`, so Floor mechanics can create/delete supplier restock bills and delete supplier payment records — broader than the sibling Spare-Shop module, which restricts destructive actions to Office/Owner. Decide whether Floor should keep full access (small-shop trust) or whether destructive supplier ops should require Office/Owner; if tightening, add tests. See `OPERATIONAL_BLUEPRINT.md` §5B.
    - *(Add further noted issues here as they're identified, so "fix later" items have one durable home.)*
-3. **New OTP system** — a proper OTP-based flow, superseding today's ad hoc SMS+Telegram forgot-password OTP and informing the eventual replacement of the legacy dual-channel login-alert system (§II.2).
-4. **Owner Analysis & Reports — full rebuild** — replace the current placeholder zone templates with real, wired-up analytics (see §II.5).
-5. **PostgreSQL migration** — cut the live database over from SQLite to PostgreSQL. `settings/production.py` is already fully configured for this; the migration itself hasn't happened yet.
-6. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
-7. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
-8. **Test coverage toward 100%**.
-9. **Deep debug pass**.
-10. **Repo cleanup** — get the workspace hosting-ready (see §V).
-11. **Hosting** — deploy the live system.
+6. **New OTP system** — a proper OTP-based flow, superseding today's ad hoc SMS+Telegram forgot-password OTP and informing the eventual replacement of the legacy dual-channel login-alert system (§II.2).
+7. **Owner Analysis & Reports — full rebuild** — replace the current placeholder zone templates with real, wired-up analytics (see §II.5).
+8. **PostgreSQL migration** — cut the live database over from SQLite to PostgreSQL. `settings/production.py` is already fully configured for this; the migration itself hasn't happened yet.
+9. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
+10. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
+11. **Test coverage toward 100%**.
+12. **Deep debug pass**.
+13. **Repo cleanup** — get the workspace hosting-ready (see §V).
+14. **Hosting** — deploy the live system.
 
 ---
 

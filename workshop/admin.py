@@ -45,8 +45,8 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Mechanic)
 class MechanicAdmin(admin.ModelAdmin):
-    list_display = ('name', 'is_active', 'created_at')
-    list_filter = ('is_active',)
+    list_display = ('name', 'role', 'is_active', 'created_at')
+    list_filter = ('role', 'is_active')
     search_fields = ('name',)
 
 

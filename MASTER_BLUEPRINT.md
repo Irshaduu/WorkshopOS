@@ -94,7 +94,7 @@ erDiagram
 | 1 | **UserProfile** | user (1:1→User), mobile_number | Extends Django User with mobile for OTP |
 | 2 | **FailedAttempt** | ip_address (unique), failures, last_attempt | IP-based brute-force lockout |
 | 3 | **UserSession** | user (FK→User), session_key (unique), ip, user_agent, last_activity | Live device monitoring & remote revoke |
-| 4 | **Mechanic** | name (unique), is_active, created_at | Workshop staff roster |
+| 4 | **Mechanic** | name (unique), role (Mechanic/Assistant Mechanic/Office Staff/General Helper, default Mechanic), is_active, created_at | Workshop staff roster ("Staff Registration" in the UI — model/table name kept for continuity, see CLAUDE.md). Only Mechanic/Assistant Mechanic roles are selectable as a Job Card's `lead_mechanic`. |
 | 5 | **CarBrand** | name (unique), logo_image, created_at | Master list for autocomplete |
 | 6 | **CarModel** | brand (FK→CarBrand), name, created_at | Master list, unique_together(brand,name) |
 | 7 | **SparePart** | name (unique), created_at | Master list for autocomplete |
@@ -539,8 +539,8 @@ graph TB
     ALERTS --> SMS["Twilio SMS"]
     ALERTS --> TG["Telegram Bot"]
 
-    MANAGE --> USERS["Create/Reset/Delete Staff"]
-    MANAGE --> MECHS["Add/Toggle/Edit Mechanics"]
+    MANAGE --> USERS["Create/Reset/Delete Login Accounts"]
+    MANAGE --> MECHS["Register/Toggle/Edit Staff Roster (4 roles)"]
     MANAGE --> SEC["Session Monitor & Revoke"]
 
     CLEANUP --> RENAME["Rename + Cascade Update"]
@@ -558,7 +558,7 @@ graph TB
 | Model | Admin Features |
 |-------|---------------|
 | `UserProfile` | list: user, mobile · search: username, mobile |
-| `Mechanic` | list: name, active, created · filter: active |
+| `Mechanic` | list: name, role, active, created · filter: role, active |
 | `CarBrand` | list: name, created · exclude: logo_image |
 | `CarModel` | list: name, brand, created · filter: brand |
 | `SparePart` | list: name, created |

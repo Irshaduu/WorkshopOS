@@ -573,9 +573,14 @@ INVENTORY
   Low Stock: Critical items needing reorder
   History: Who used what, when
 
-MANAGEMENT DASHBOARD
-  Accounts: Create/delete/reset passwords for Office and Floor staff
-  Mechanics: Add/rename/toggle active status
+MANAGEMENT DASHBOARD (Owner Control Hub, /manage/)
+  Accounts: Create/delete/reset passwords for Office and Floor login accounts
+  Staff Registration: Register/rename/re-role/toggle-active the staff roster
+    (Mechanic, Assistant Mechanic, Office Staff, General Helper — same
+    Mechanic model as before, just no longer limited to mechanics; see
+    MASTER_BLUEPRINT.md §Models). Only Mechanic/Assistant Mechanic feed the
+    Job Card mechanic picker. Changing someone's role never touches Job
+    Cards already assigned to them — same underlying record, same FK.
   Security: View all devices, revoke sessions
   Cleanup: Fix typos, merge duplicates in master lists
 ```
@@ -640,7 +645,7 @@ graph TD
     end
 
     subgraph SECURITY ["🛡️ Security & Access Control"]
-        STAFF["STAFF ACCOUNTS<br/>(Owner, Office, Floor, Mechanics)"]:::security
+        STAFF["STAFF<br/>(Login: Owner/Office/Floor · Roster: Mechanic/Asst/Office/Helper — not logins)"]:::security
         SYS["SECURITY SYSTEM<br/>(IP Lockout, Session Monitor, SMS/Telegram Alerts)"]:::security
     end
 

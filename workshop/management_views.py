@@ -13,49 +13,57 @@ from .models import Mechanic, UserSession
 @office_required
 def manage_dashboard(request):
     """
-    Central hub for the Owner to manage all staff accounts and mechanics.
-    Supports sectioned views: None (Menu), 'accounts', or 'security'.
+    Central hub for the Owner to manage staff accounts, the staff roster, and
+    device security. Supports sectioned views: None (Menu), 'accounts',
+    'staff', or 'security'.
     """
     section = request.GET.get('section')
-    
-    office_group = Group.objects.filter(name='Office').first()
-    floor_group = Group.objects.filter(name='Floor').first()
-    
-    office_users = list(User.objects.filter(groups=office_group)) if office_group else []
-    floor_users = list(User.objects.filter(groups=floor_group)) if floor_group else []
-    mechanics = Mechanic.objects.all().order_by('name')
-    
-    # 1. SMART CLEANUP: Auto-delete 'ghost' sessions older than 40 days (Sync with Owner Session limit)
+
+    # SMART CLEANUP: auto-delete 'ghost' sessions older than 40 days. Runs on
+    # every visit regardless of section — cheap, and keeps the Security tab
+    # accurate whenever it's next opened.
     cleanup_date = timezone.now() - timedelta(days=40)
     UserSession.objects.filter(last_activity__lt=cleanup_date).delete()
-    
-    # 2. ACTIVE WINDOW: Only show devices seen in the last 40 days
-    active_window = cleanup_date 
-    
-    # Security Monitor: Separate Admin/Owner sessions from Staff sessions
-    admin_groups = Group.objects.filter(name__in=['Owner', 'Admins'])
-    
-    owner_sessions = UserSession.objects.select_related('user').prefetch_related('user__groups').filter(
-        (models.Q(user__groups__in=admin_groups) | models.Q(user__is_superuser=True)),
-        last_activity__gte=active_window
-    ).distinct().order_by('-last_activity')
-    
-    staff_sessions = UserSession.objects.select_related('user').prefetch_related('user__groups').exclude(
-        models.Q(user__groups__in=admin_groups) | models.Q(user__is_superuser=True)
-    ).filter(
-        last_activity__gte=active_window
-    ).distinct().order_by('-last_activity')
-    
-    
-    return render(request, 'workshop/manage/manage_dashboard.html', {
+
+    context = {
         'section': section,
-        'office_users': office_users,
-        'floor_users': floor_users,
-        'mechanics': mechanics,
-        'owner_sessions': owner_sessions,
-        'staff_sessions': staff_sessions,
         'current_session_key': request.session.session_key,
-    })
+    }
+
+    if section == 'accounts':
+        office_group = Group.objects.filter(name='Office').first()
+        floor_group = Group.objects.filter(name='Floor').first()
+        context['office_users'] = list(User.objects.filter(groups=office_group)) if office_group else []
+        context['floor_users'] = list(User.objects.filter(groups=floor_group)) if floor_group else []
+
+    elif section == 'staff':
+        mechanics = list(Mechanic.objects.all().order_by('name'))
+        context['staff_by_role'] = [
+            (role_value, role_label, [m for m in mechanics if m.role == role_value])
+            for role_value, role_label in Mechanic.ROLE_CHOICES
+        ]
+        context['role_choices'] = Mechanic.ROLE_CHOICES
+        context['staff_count'] = len(mechanics)
+
+    elif section == 'security':
+        # Only show devices seen within the same 40-day window just cleaned up.
+        active_window = cleanup_date
+
+        # Separate Admin/Owner sessions from Staff sessions
+        admin_groups = Group.objects.filter(name__in=['Owner', 'Admins'])
+
+        context['owner_sessions'] = UserSession.objects.select_related('user').prefetch_related('user__groups').filter(
+            (models.Q(user__groups__in=admin_groups) | models.Q(user__is_superuser=True)),
+            last_activity__gte=active_window
+        ).distinct().order_by('-last_activity')
+
+        context['staff_sessions'] = UserSession.objects.select_related('user').prefetch_related('user__groups').exclude(
+            models.Q(user__groups__in=admin_groups) | models.Q(user__is_superuser=True)
+        ).filter(
+            last_activity__gte=active_window
+        ).distinct().order_by('-last_activity')
+
+    return render(request, 'workshop/manage/manage_dashboard.html', context)
 
 
 @office_required
@@ -145,63 +153,80 @@ def manage_delete_user(request, user_id):
 @office_required
 def manage_create_mechanic(request):
     """
-    Add a new Mechanic to the workshop roster.
+    Register a new staff member (Mechanic, Assistant Mechanic, Office Staff,
+    or General Helper) to the roster. Only Mechanic/Assistant Mechanic ever
+    appear in the Job Card mechanic picker — see Mechanic.JOBCARD_ELIGIBLE_ROLES.
     """
     if request.method == 'POST':
         name = request.POST.get('name', '').strip().title()  # Auto-capitalize name
-        
+        role = request.POST.get('role', '').strip()
+        role_labels = dict(Mechanic.ROLE_CHOICES)
+
         if not name:
-            messages.error(request, "Mechanic name cannot be empty.")
-            return redirect(reverse('manage_dashboard') + '?section=accounts')
-        
+            messages.error(request, "Staff name cannot be empty.")
+            return redirect(reverse('manage_dashboard') + '?section=staff')
+
+        if role not in role_labels:
+            messages.error(request, "Choose a valid role.")
+            return redirect(reverse('manage_dashboard') + '?section=staff')
+
         if Mechanic.objects.filter(name__iexact=name).exists():
-            messages.error(request, f"Mechanic '{name}' already exists in the roster.")
-            return redirect(reverse('manage_dashboard') + '?section=accounts')
-        
-        Mechanic.objects.create(name=name)
-        messages.success(request, f"✅ Mechanic '{name}' added to the roster!")
-    
-    return redirect(reverse('manage_dashboard') + '?section=accounts')
+            messages.error(request, f"'{name}' is already registered.")
+            return redirect(reverse('manage_dashboard') + '?section=staff')
+
+        Mechanic.objects.create(name=name, role=role)
+        messages.success(request, f"✅ {role_labels[role]} '{name}' registered!")
+
+    return redirect(reverse('manage_dashboard') + '?section=staff')
 
 
 @office_required
 def manage_toggle_mechanic(request, mechanic_id):
     """
-    Toggle a mechanic's active/retired status.
+    Toggle a staff member's active/retired status. Deactivate only — there is
+    deliberately no delete, since job cards may still reference them.
     """
     if request.method == 'POST':
         mechanic = get_object_or_404(Mechanic, pk=mechanic_id)
         mechanic.is_active = not mechanic.is_active
         mechanic.save()
         status = "activated" if mechanic.is_active else "deactivated"
-        messages.success(request, f"✅ Mechanic '{mechanic.name}' has been {status}.")
-    
-    return redirect(reverse('manage_dashboard') + '?section=accounts')
+        messages.success(request, f"✅ '{mechanic.name}' has been {status}.")
+
+    return redirect(reverse('manage_dashboard') + '?section=staff')
 
 
 @office_required
 def manage_edit_mechanic(request, mechanic_id):
     """
-    Rename a mechanic in the roster.
+    Rename a staff member and/or change their role. Changing role never
+    touches existing Job Cards — lead_mechanic points at this same row by id,
+    so past assignments stay intact regardless of role/active changes.
     """
     if request.method == 'POST':
         mechanic = get_object_or_404(Mechanic, pk=mechanic_id)
         new_name = request.POST.get('name', '').strip().title()
+        new_role = request.POST.get('role', '').strip()
+        role_labels = dict(Mechanic.ROLE_CHOICES)
 
         if not new_name:
-            messages.error(request, "Mechanic name cannot be empty.")
-            return redirect(reverse('manage_dashboard') + '?section=accounts')
-        
+            messages.error(request, "Staff name cannot be empty.")
+            return redirect(reverse('manage_dashboard') + '?section=staff')
+
+        if new_role not in role_labels:
+            messages.error(request, "Choose a valid role.")
+            return redirect(reverse('manage_dashboard') + '?section=staff')
+
         if Mechanic.objects.filter(name__iexact=new_name).exclude(pk=mechanic_id).exists():
-            messages.error(request, f"A mechanic named '{new_name}' already exists.")
-            return redirect(reverse('manage_dashboard') + '?section=accounts')
-        
-        old_name = mechanic.name
+            messages.error(request, f"'{new_name}' is already registered.")
+            return redirect(reverse('manage_dashboard') + '?section=staff')
+
         mechanic.name = new_name
+        mechanic.role = new_role
         mechanic.save()
-        messages.success(request, f"✅ Mechanic renamed from '{old_name}' to '{new_name}'.")
-    
-    return redirect(reverse('manage_dashboard') + '?section=accounts')
+        messages.success(request, f"✅ '{new_name}' updated — {role_labels[new_role]}.")
+
+    return redirect(reverse('manage_dashboard') + '?section=staff')
 
 
 @owner_required

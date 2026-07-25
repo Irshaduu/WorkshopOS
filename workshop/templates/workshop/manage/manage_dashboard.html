@@ -4,287 +4,481 @@
 {% block title %}Owner Control Hub{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-3" style="max-width: 1000px;">
+<style>
+    .hub-head {
+        display: flex; align-items: center; gap: 12px; justify-content: space-between;
+        margin-bottom: 22px;
+    }
+    .hub-head-text h1 { font-size: 1.3rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; color: var(--color-text); }
+    .hub-head-text p { font-size: 0.82rem; color: var(--color-text-muted); margin: 4px 0 0; }
+    .btn-round {
+        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 50%; border: 1px solid var(--color-border);
+        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
+    }
+    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
 
-    <!-- HEADER -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h4 class="fw-bold mb-0 text-dark">
-                <span class="text-primary"><i class="bi bi-gear-fill"></i> WorkshopOS</span> Control Hub
-            </h4>
-            <p class="text-muted small mb-0">Management &amp; Security Panel for Sahad &amp; Rijas.</p>
-        </div>
-        {% if section %}
-        <a href="{% url 'manage_dashboard' %}" class="btn btn-sm btn-outline-secondary px-3 shadow-xs">
-            <i class="bi bi-arrow-left"></i> Back to Main Menu
-        </a>
-        {% else %}
-        <div class="text-end">
-            <span class="badge bg-dark-subtle text-dark border p-2">HQ PORTAL v2.1</span>
-        </div>
+    /* ---- Level 0: menu tiles ---- */
+    .hub-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 860px) { .hub-tiles { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) { .hub-tiles { grid-template-columns: 1fr; } }
+
+    .hub-tile {
+        display: block; text-decoration: none; text-align: center;
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 18px; padding: 26px 18px; box-shadow: 0 1px 3px var(--color-shadow);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .hub-tile:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(15, 23, 42, 0.09); }
+    .hub-tile-icon {
+        width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 16px;
+        display: flex; align-items: center; justify-content: center; font-size: 1.55rem;
+    }
+    .hub-tile h2 { font-size: 1rem; font-weight: 800; margin: 0 0 6px; color: var(--color-text); }
+    .hub-tile p { font-size: 0.8rem; color: var(--color-text-muted); margin: 0; line-height: 1.45; }
+    .tile-blue .hub-tile-icon { background: var(--accent-bg, #eff6ff); color: var(--accent, #2563eb); }
+    .tile-blue:hover { border-color: #2563eb; }
+    .tile-teal .hub-tile-icon { background: #f0fdfa; color: #0d9488; }
+    .tile-teal:hover { border-color: #0d9488; }
+    .tile-red .hub-tile-icon { background: #fef2f2; color: #dc2626; }
+    .tile-red:hover { border-color: #dc2626; }
+
+    /* ---- Shared: add-form card ---- */
+    .form-card {
+        background: var(--color-card); border: 1px solid var(--color-border); border-radius: 16px;
+        padding: 18px; margin-bottom: 22px; box-shadow: 0 1px 3px var(--color-shadow);
+    }
+    .form-card h2 {
+        font-size: 0.9rem; font-weight: 800; margin: 0 0 14px; display: flex; align-items: center; gap: 8px;
+        color: var(--color-text);
+    }
+    .form-card label { font-size: 0.76rem; font-weight: 700; color: var(--color-text-muted); margin-bottom: 4px; display: block; }
+    .form-card .form-text { font-size: 0.72rem; }
+    .form-card input.form-control,
+    .form-card select.form-select {
+        min-height: 46px; border: 1px solid var(--color-border); border-radius: 12px;
+        background: var(--color-bg); font-size: 0.92rem; font-weight: 600; color: var(--color-text);
+    }
+    .form-card input.form-control:focus,
+    .form-card select.form-select:focus {
+        border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light);
+        background: var(--color-card);
+    }
+    .form-card input.form-control::placeholder { font-weight: 400; color: #a8b1bd; }
+    .form-card .btn { min-height: 46px; border-radius: 12px; font-weight: 700; }
+
+    /* ---- Roster cards (accounts + staff) ---- */
+    .roster-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+    @media (max-width: 680px) { .roster-grid { grid-template-columns: 1fr; } }
+
+    .roster-card { background: var(--color-card); border: 1px solid var(--color-border); border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px var(--color-shadow); }
+    .roster-card.priority { border-color: #99c4ff; }
+    .roster-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 16px; border-bottom: 1px solid var(--color-border-light); }
+    .roster-head h3 { font-size: 0.85rem; font-weight: 800; margin: 0; display: flex; align-items: center; gap: 8px; color: var(--color-text); }
+    .roster-card.priority .roster-head h3 { color: var(--color-primary); }
+    .roster-head .n { font-size: 0.68rem; font-weight: 800; padding: 2px 9px; border-radius: 999px; background: var(--color-border-light); color: var(--color-text-muted); }
+
+    .roster-list { max-height: 280px; overflow-y: auto; }
+    .roster-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--color-border-light); }
+    .roster-row:last-child { border-bottom: none; }
+    .roster-row:hover { background: var(--color-hover); }
+    .roster-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .roster-avatar {
+        width: 32px; height: 32px; border-radius: 9px; flex: 0 0 32px;
+        display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.82rem;
+    }
+    .roster-name { font-weight: 700; font-size: 0.88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
+    .roster-name.retired { color: var(--color-text-muted); text-decoration: line-through; font-weight: 600; }
+    .retired-tag { font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #b45309; background: #fffbeb; padding: 1px 6px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+
+    .roster-empty { padding: 26px 16px; text-align: center; color: var(--color-text-muted); font-size: 0.8rem; }
+
+    /* ---- Row actions: a 3-dot toggle that swaps in the real icon buttons
+       inline (no floating/absolute panel — that clipped inside the
+       scrollable roster-list and looked broken) ---- */
+    .roster-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+    .icon-btn {
+        width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--color-border);
+        background: var(--color-card); display: flex; align-items: center; justify-content: center;
+        color: var(--color-text-muted); font-size: 0.85rem; padding: 0;
+    }
+    .icon-btn:hover { background: var(--color-hover); color: var(--color-text); }
+    .icon-btn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+    .icon-btn.go:hover { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+
+    .row-icons { display: none; align-items: center; gap: 4px; }
+    .roster-actions.is-open .row-icons { display: flex; }
+    .roster-actions.is-open .row-toggle { display: none; }
+
+    /* Modals shared across create-user / reset / edit-staff */
+    .modal-content { border-radius: 16px; border: 0; }
+</style>
+
+<div class="hub-head">
+    <div class="hub-head-text">
+        {% if not section %}
+            <h1>Owner Control Hub</h1>
+            <p>Staff accounts, the staff roster, and device security.</p>
+        {% elif section == 'accounts' %}
+            <h1>Account Management</h1>
+            <p>Office and Floor login accounts — shared per station, not per person.</p>
+        {% elif section == 'staff' %}
+            <h1>Staff Registration</h1>
+            <p>Real people, not logins. Mechanics and Assistant Mechanics feed the Job Card mechanic box.</p>
+        {% elif section == 'security' %}
+            <h1>Security Hub</h1>
+            <p>Live login sessions across every device, with the ability to revoke access.</p>
         {% endif %}
     </div>
-
-    {# Messages handled by base.html — no duplicate block needed here #}
-
-    <!-- ============================================================ -->
-    <!-- 🏢 LEVEL 0: MANAGEMENT MENU (Default View) -->
-    <!-- ============================================================ -->
-    {% if not section %}
-    <div class="row g-4 py-4">
-        <!-- CARD 1: TEAM & ACCOUNT MANAGEMENT -->
-        <div class="col-12 col-md-6">
-            <a href="?section=accounts" class="text-decoration-none h-100">
-                <div class="card h-100 shadow border-0 overflow-hidden menu-card" style="transition: all 0.3s ease; border-radius: 20px; background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);">
-                    <div class="card-body p-4 text-center">
-                        <div class="icon-box mb-3 mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; border-radius: 50%; background: rgba(13, 110, 253, 0.1);">
-                            <i class="bi bi-person-workspace text-primary" style="font-size: 2.5rem;"></i>
-                        </div>
-                        <h4 class="fw-bold text-dark mb-2">Account Management</h4>
-                        <p class="text-muted small">Create workshop accounts, manage roles, reset passwords, and oversee the mechanic roster.</p>
-                        <div class="mt-4">
-                            <span class="btn btn-primary rounded-pill px-4 shadow-sm">Manage Team <i class="bi bi-chevron-right ms-1"></i></span>
-                        </div>
-                    </div>
-                </div>
-            </a>
-        </div>
-
-        <!-- CARD 2: SECURITY & DEVICE MONITOR -->
-        <div class="col-12 col-md-6">
-            <a href="?section=security" class="text-decoration-none h-100">
-                <div class="card h-100 shadow border-0 overflow-hidden menu-card" style="transition: all 0.3s ease; border-radius: 20px; background: linear-gradient(135deg, #ffffff 0%, #fefefe 100%);">
-                    <div class="card-body p-4 text-center">
-                        <div class="icon-box mb-3 mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; border-radius: 50%; background: rgba(220, 53, 69, 0.1);">
-                            <i class="bi bi-shield-lock-fill text-danger" style="font-size: 2.5rem;"></i>
-                        </div>
-                        <h4 class="fw-bold text-dark mb-2">Track Login Devices</h4>
-                        <p class="text-muted small px-3">Real-time "Security Shield" to monitor active session devices, IPs, and remotely revoke unauthorized access.</p>
-                        <div class="mt-4">
-                            <span class="btn btn-outline-danger rounded-pill px-4 shadow-sm">Security Hub <i class="bi bi-chevron-right ms-1"></i></span>
-                        </div>
-                    </div>
-                </div>
-            </a>
-        </div>
-    </div>
-    <style>
-        .menu-card:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.1) !important; }
-        .menu-card { cursor: pointer; }
-    </style>
+    {% if section %}
+    <a href="{% url 'manage_dashboard' %}" class="btn-round" aria-label="Back to Control Hub">
+        <i class="bi bi-arrow-left"></i>
+    </a>
     {% endif %}
-
-
-    <!-- ============================================================ -->
-    <!-- 👥 SECTION A: TEAM & ACCOUNT MANAGEMENT -->
-    <!-- ============================================================ -->
-    {% if section == 'accounts' %}
-    <div class="mb-5 animate__animated animate__fadeIn">
-        <h5 class="fw-bold mb-3 border-bottom pb-2">
-            <i class="bi bi-people-fill text-primary"></i> Team & Account Control
-        </h5>
-        
-        <!-- Create Account Card -->
-        <div class="card shadow-sm border-0 mb-4 bg-light-subtle">
-            <div class="card-header py-2 bg-transparent border-0 mt-2">
-                <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-person-plus-fill me-1"></i> Add New Staff Member</h6>
-            </div>
-            <div class="card-body pt-1">
-                <form method="post" action="{% url 'manage_create_user' %}" class="row g-3 align-items-end">
-                    {% csrf_token %}
-                    <div class="col-12 col-md-4">
-                        <label for="id_create_username" class="form-label small text-muted">Username</label>
-                        <input type="text" id="id_create_username" name="username" class="form-control" placeholder="e.g. sarah_office" required>
-                    </div>
-                    <div class="col-12 col-md-3">
-                        <label for="id_create_password" class="form-label small text-muted">Password</label>
-                        <input type="password" id="id_create_password" name="password" class="form-control" placeholder="Min. 8 chars" required minlength="8">
-                        <div class="form-text" style="font-size: 0.75rem;">Admin can set any password. No complex characters required, just 8 characters minimum.</div>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <label for="id_create_role" class="form-label small text-muted">Role</label>
-                        <select id="id_create_role" name="role" class="form-select" required>
-                            <option value="">-- Role --</option>
-                            <option value="Office">🏢 Office</option>
-                            <option value="Floor">🔧 Floor</option>
-                        </select>
-                    </div>
-                    <div class="col-6 col-md-2">
-                        <button type="submit" class="btn btn-primary w-100 shadow-sm"><i class="bi bi-plus-lg"></i> Create</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <div class="row g-4 mb-4">
-            <!-- Office Accounts List -->
-            <div class="col-12 col-md-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0 fw-bold"><i class="bi bi-building text-primary"></i> Office Team</h6>
-                        <span class="badge bg-primary-subtle text-primary border border-primary">{{ office_users|length }}</span>
-                    </div>
-                    <div class="card-body p-0">
-                        {% if office_users %}
-                        <ul class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;">
-                            {% for u in office_users %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center py-2">
-                                <span class="text-dark fw-bold">{{ u.username }}</span>
-                                <div class="d-flex gap-1">
-                                    <button class="btn btn-sm btn-light border py-1" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}">Reset</button>
-                                    <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
-                                        {% csrf_token %}<button type="submit" class="btn btn-sm btn-outline-danger py-1"><i class="bi bi-trash"></i></button>
-                                    </form>
-                                </div>
-                            </li>
-                            <div class="modal fade" id="resetModal{{ u.id }}" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content"><div class="modal-header py-2"><h6 class="modal-title">Reset: {{ u.username }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body py-2"><form method="post" action="{% url 'manage_reset_password' u.id %}">{% csrf_token %}<input type="password" name="new_password" class="form-control mb-2" placeholder="Min. 8 chars" required minlength="8"><div class="form-text mb-2" style="font-size: 0.7rem; line-height: 1.1;">Admin can set any password (8+ chars).</div><button type="submit" class="btn btn-primary w-100">Set Password</button></form></div></div></div></div>
-                            {% endfor %}
-                        </ul>
-                        {% else %}<p class="text-muted small text-center py-3">No office accounts.</p>{% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Floor Accounts List -->
-            <div class="col-12 col-md-6">
-                <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0 fw-bold"><i class="bi bi-wrench-adjustable text-warning"></i> Workshop Team</h6>
-                        <span class="badge bg-warning-subtle text-dark border border-warning">{{ floor_users|length }}</span>
-                    </div>
-                    <div class="card-body p-0">
-                        {% if floor_users %}
-                        <ul class="list-group list-group-flush" style="max-height: 250px; overflow-y: auto;">
-                            {% for u in floor_users %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center py-2">
-                                <span class="text-dark fw-bold">{{ u.username }}</span>
-                                <div class="d-flex gap-1">
-                                    <button class="btn btn-sm btn-light border py-1" data-bs-toggle="modal" data-bs-target="#resetModalFloor{{ u.id }}">Reset</button>
-                                    <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
-                                        {% csrf_token %}<button type="submit" class="btn btn-sm btn-outline-danger py-1"><i class="bi bi-trash"></i></button>
-                                    </form>
-                                </div>
-                            </li>
-                            <div class="modal fade" id="resetModalFloor{{ u.id }}" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content"><div class="modal-header py-2"><h6 class="modal-title">Reset: {{ u.username }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body py-2"><form method="post" action="{% url 'manage_reset_password' u.id %}">{% csrf_token %}<input type="password" name="new_password" class="form-control mb-2" placeholder="Min. 8 chars" required minlength="8"><div class="form-text mb-2" style="font-size: 0.7rem; line-height: 1.1;">Admin can set any password (8+ chars).</div><button type="submit" class="btn btn-primary w-100">Set Password</button></form></div></div></div></div>
-                            {% endfor %}
-                        </ul>
-                        {% else %}<p class="text-muted small text-center py-3">No workshop accounts.</p>{% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Mechanic Roster Card -->
-        <div class="card shadow-sm border-0">
-            <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 fw-bold text-success"><i class="bi bi-gear-wide-connected"></i> Licensed Mechanics ({{ mechanics.count }})</h6>
-            </div>
-            <div class="card-body py-2">
-                <form method="post" action="{% url 'manage_create_mechanic' %}" class="d-flex gap-2 mb-3">
-                    {% csrf_token %}
-                    <input type="text" name="name" class="form-control" placeholder="New mechanic name..." required>
-                    <button type="submit" class="btn btn-success text-nowrap"><i class="bi bi-plus-lg"></i> Add</button>
-                </form>
-                <div class="mt-2" style="max-height: 200px; overflow-y: auto;">
-                    <ul class="list-group list-group-flush">
-                        {% for m in mechanics %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center py-1">
-                            <span class="small {% if not m.is_active %}text-muted text-decoration-line-through{% endif %}">{{ m.name }}</span>
-                            <div class="d-flex gap-1">
-                                <button class="btn btn-sm btn-link p-0 text-primary me-2" data-bs-toggle="modal" data-bs-target="#editMechanic{{ m.id }}"><i class="bi bi-pencil"></i></button>
-                                <form method="post" action="{% url 'manage_toggle_mechanic' m.id %}">
-                                    {% csrf_token %}<button type="submit" class="btn p-0 text-{% if m.is_active %}secondary{% else %}success{% endif %}"><i class="bi bi-{% if m.is_active %}pause-fill{% else %}play-fill{% endif %}"></i></button>
-                                </form>
-                            </div>
-                        </li>
-                        <div class="modal fade" id="editMechanic{{ m.id }}" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content"><div class="modal-header py-2"><h6 class="modal-title">Rename: {{ m.name }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body py-2"><form method="post" action="{% url 'manage_edit_mechanic' m.id %}">{% csrf_token %}<input type="text" name="name" class="form-control mb-2" value="{{ m.name }}" required><button type="submit" class="btn btn-primary w-100">Save</button></form></div></div></div></div>
-                        {% endfor %}
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- ============================================================ -->
-    <!-- 🛡️ SECTION B: LIVE SECURITY & DEVICE MONITOR -->
-    <!-- ============================================================ -->
-    {% if section == 'security' %}
-    <div class="animate__animated animate__fadeIn">
-        <h5 class="fw-bold mb-3 border-bottom pb-2">
-            <i class="bi bi-shield-lock-fill text-danger"></i> HQ Security Shield
-        </h5>
-
-        <!-- HQ Shield Card -->
-        <div class="card shadow-sm border-0 mb-4 border-start border-5 border-danger">
-            <div class="card-header py-2 d-flex justify-content-between align-items-center bg-white border-0 mt-1">
-                <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-shield-check"></i> Admin & Owner Access Monitor</h6>
-                <span class="badge bg-danger">LIVE TRACKING</span>
-            </div>
-            <div class="card-body p-0 pt-2">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
-                        <thead class="table-light text-muted" style="font-size: 0.7rem;">
-                            <tr><th class="ps-3">Account</th><th>Device Info</th><th>Last Seen</th><th class="text-end pe-3">Control</th></tr>
-                        </thead>
-                        <tbody>
-                            {% for s in owner_sessions %}
-                            <tr {% if s.session_key == current_session_key %}style="background-color: rgba(220, 53, 69, 0.05);"{% endif %}>
-                                <td class="ps-3 fw-bold text-dark">{{ s.user.username|upper }}</td>
-                                <td class="small text-muted"><i class="bi {% if 'Mobile' in s.device_info %}bi-phone-fill text-primary{% else %}bi-laptop text-secondary{% endif %} me-1"></i> {{ s.device_info }} ({{ s.ip_address }})</td>
-                                <td class="small">{{ s.last_activity|timesince }} ago</td>
-                                <td class="text-end pe-3">
-                                    {% if s.session_key != current_session_key %}
-                                    <form method="post" action="{% url 'manage_terminate_session' s.id %}?section=security">{% csrf_token %}<button type="submit" class="btn btn-sm btn-danger py-0 px-2 fw-bold" style="font-size: 0.7rem;">REVOKE</button></form>
-                                    {% else %}<span class="badge bg-success p-1 rounded-pill" style="font-size: 0.6rem;">MY DEVICE</span>{% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Staff Monitor Card -->
-        <div class="card shadow-sm border-0 border-start border-5 border-info">
-            <div class="card-header py-2 d-flex justify-content-between align-items-center bg-white border-0 mt-1">
-                <h6 class="mb-0 fw-bold text-info"><i class="bi bi-person-video2"></i> Team Login Monitor (Staff)</h6>
-                <span class="badge bg-info text-dark">{{ staff_sessions.count }} Active</span>
-            </div>
-            <div class="card-body p-0 pt-2">
-                <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
-                        <thead class="table-light text-muted" style="font-size: 0.7rem;">
-                            <tr><th class="ps-3">Staff</th><th>Device</th><th>Last Activity</th><th class="text-end pe-3">Status</th></tr>
-                        </thead>
-                        <tbody>
-                            {% if staff_sessions %}
-                                {% for s in staff_sessions %}
-                                <tr>
-                                    <td class="ps-3">
-                                        <div class="fw-bold">{{ s.user.username }}</div>
-                                        <div class="small text-muted" style="font-size: 0.65rem;">
-                                            {% if s.user|has_group:"Office" %}OFFICE{% else %}FLOOR{% endif %}
-                                        </div>
-                                    </td>
-                                    <td class="small text-muted"><i class="bi {% if 'Mobile' in s.device_info %}bi-phone-fill{% else %}bi-laptop{% endif %} me-1"></i> {{ s.device_info }}</td>
-                                    <td class="small">{{ s.last_activity|timesince }} ago</td>
-                                    <td class="text-end pe-3">
-                                        <form method="post" action="{% url 'manage_terminate_session' s.id %}?section=security" style="display:inline;">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.75rem;">Kick</button></form>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}<tr><td colspan="4" class="text-center py-4 text-muted small">No staff currently logged in.</td></tr>{% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-
-    <!-- 💰 SECTION C: GENERAL CASHBOOK -->
 </div>
+
+{# Messages handled by base.html — no duplicate block needed here #}
+
+<!-- ============================================================ -->
+<!-- LEVEL 0: CONTROL HUB MENU -->
+<!-- ============================================================ -->
+{% if not section %}
+<div class="hub-tiles">
+    <a href="?section=staff" class="hub-tile tile-teal">
+        <div class="hub-tile-icon"><i class="bi bi-people-fill"></i></div>
+        <h2>Staff Registration</h2>
+        <p>Register mechanics and other staff who feed the Job Card mechanic box.</p>
+    </a>
+
+    <a href="?section=accounts" class="hub-tile tile-blue">
+        <div class="hub-tile-icon"><i class="bi bi-person-workspace"></i></div>
+        <h2>Account Management</h2>
+        <p>Create Office and Floor login accounts, reset passwords.</p>
+    </a>
+
+    <a href="?section=security" class="hub-tile tile-red">
+        <div class="hub-tile-icon"><i class="bi bi-shield-lock-fill"></i></div>
+        <h2>Security Hub</h2>
+        <p>Monitor active login devices and revoke access remotely.</p>
+    </a>
+</div>
+{% endif %}
+
+
+<!-- ============================================================ -->
+<!-- SECTION: ACCOUNT MANAGEMENT -->
+<!-- ============================================================ -->
+{% if section == 'accounts' %}
+<div class="form-card">
+    <h2><i class="bi bi-person-plus-fill text-primary"></i> Add New Login Account</h2>
+    <form method="post" action="{% url 'manage_create_user' %}" class="row g-3 align-items-start">
+        {% csrf_token %}
+        <div class="col-12 col-md-4">
+            <label for="id_create_username">Username</label>
+            <input type="text" id="id_create_username" name="username" class="form-control" placeholder="e.g. sarah_office" required>
+        </div>
+        <div class="col-12 col-md-3">
+            <label for="id_create_password">Password</label>
+            <input type="password" id="id_create_password" name="password" class="form-control" placeholder="Min. 8 chars" required minlength="8">
+        </div>
+        <div class="col-6 col-md-3">
+            <label for="id_create_role">Role</label>
+            <select id="id_create_role" name="role" class="form-select" required>
+                <option value="">-- Role --</option>
+                <option value="Office">🏢 Office</option>
+                <option value="Floor">🔧 Floor</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="invisible">Create</label>
+            <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i> Create</button>
+        </div>
+    </form>
+</div>
+
+<div class="roster-grid">
+    <!-- Office Accounts -->
+    <div class="roster-card">
+        <div class="roster-head">
+            <h3><i class="bi bi-building text-primary"></i> Office Account</h3>
+            <span class="n">{{ office_users|length }}</span>
+        </div>
+        <div class="roster-list">
+            {% for u in office_users %}
+            <div class="roster-row">
+                <div class="roster-who">
+                    <span class="roster-avatar" style="background:#eff6ff; color:#2563eb;">{{ u.username|slice:":1"|upper }}</span>
+                    <span class="roster-name">{{ u.username }}</span>
+                </div>
+                <div class="roster-actions">
+                    <button type="button" class="icon-btn row-toggle" aria-label="More actions for {{ u.username }}" title="More actions"><i class="bi bi-three-dots-vertical"></i></button>
+                    <div class="row-icons">
+                        <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}" aria-label="Reset password" title="Reset password"><i class="bi bi-key"></i></button>
+                        <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
+                            {% csrf_token %}<button type="submit" class="icon-btn danger" aria-label="Delete account" title="Delete account"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="roster-empty">No Office accounts yet.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Floor Accounts -->
+    <div class="roster-card">
+        <div class="roster-head">
+            <h3><i class="bi bi-wrench-adjustable text-warning"></i> Floor Account</h3>
+            <span class="n">{{ floor_users|length }}</span>
+        </div>
+        <div class="roster-list">
+            {% for u in floor_users %}
+            <div class="roster-row">
+                <div class="roster-who">
+                    <span class="roster-avatar" style="background:#fffbeb; color:#b45309;">{{ u.username|slice:":1"|upper }}</span>
+                    <span class="roster-name">{{ u.username }}</span>
+                </div>
+                <div class="roster-actions">
+                    <button type="button" class="icon-btn row-toggle" aria-label="More actions for {{ u.username }}" title="More actions"><i class="bi bi-three-dots-vertical"></i></button>
+                    <div class="row-icons">
+                        <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}" aria-label="Reset password" title="Reset password"><i class="bi bi-key"></i></button>
+                        <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
+                            {% csrf_token %}<button type="submit" class="icon-btn danger" aria-label="Delete account" title="Delete account"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="roster-empty">No Floor accounts yet.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Reset password modals — one per user, either group -->
+{% for u in office_users %}
+<div class="modal fade" id="resetModal{{ u.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content shadow">
+            <div class="modal-header border-0 pb-0"><h6 class="modal-title fw-bold">Reset: {{ u.username }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="post" action="{% url 'manage_reset_password' u.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <input type="password" name="new_password" class="form-control mb-2" placeholder="Min. 8 chars" required minlength="8">
+                    <div class="form-text text-muted">8+ characters, no complexity rules.</div>
+                </div>
+                <div class="modal-footer border-0 pt-0"><button type="submit" class="btn btn-primary w-100">Set Password</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% for u in floor_users %}
+<div class="modal fade" id="resetModal{{ u.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content shadow">
+            <div class="modal-header border-0 pb-0"><h6 class="modal-title fw-bold">Reset: {{ u.username }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="post" action="{% url 'manage_reset_password' u.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <input type="password" name="new_password" class="form-control mb-2" placeholder="Min. 8 chars" required minlength="8">
+                    <div class="form-text text-muted">8+ characters, no complexity rules.</div>
+                </div>
+                <div class="modal-footer border-0 pt-0"><button type="submit" class="btn btn-primary w-100">Set Password</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+
+<!-- ============================================================ -->
+<!-- SECTION: STAFF REGISTRATION -->
+<!-- ============================================================ -->
+{% if section == 'staff' %}
+<div class="form-card">
+    <h2><i class="bi bi-person-add text-success"></i> Register Staff Member</h2>
+    <form method="post" action="{% url 'manage_create_mechanic' %}" class="row g-3 align-items-start">
+        {% csrf_token %}
+        <div class="col-12 col-md-6">
+            <label for="id_staff_name">Name</label>
+            <input type="text" id="id_staff_name" name="name" class="form-control" placeholder="Full name" required>
+        </div>
+        <div class="col-8 col-md-4">
+            <label for="id_staff_role">Role</label>
+            <select id="id_staff_role" name="role" class="form-select" required>
+                <option value="">-- Role --</option>
+                {% for value, label in role_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-4 col-md-2">
+            <label class="invisible">Add</label>
+            <button type="submit" class="btn btn-success w-100"><i class="bi bi-plus-lg"></i> Add</button>
+        </div>
+    </form>
+</div>
+
+<div class="roster-grid mb-3">
+    {% for role_value, role_label, staff in staff_by_role %}
+    <div class="roster-card{% if forloop.first %} priority{% endif %}">
+        <div class="roster-head">
+            <h3>
+                {% if role_value == 'MECHANIC' %}<i class="bi bi-star-fill"></i>
+                {% elif role_value == 'ASSISTANT_MECHANIC' %}<i class="bi bi-star-half"></i>
+                {% elif role_value == 'OFFICE_STAFF' %}<i class="bi bi-building"></i>
+                {% else %}<i class="bi bi-person-badge"></i>{% endif %}
+                {{ role_label }}{% if role_value == 'ASSISTANT_MECHANIC' %}s{% endif %}
+            </h3>
+            <span class="n">{{ staff|length }}</span>
+        </div>
+        <div class="roster-list">
+            {% for m in staff %}
+            <div class="roster-row">
+                <div class="roster-who">
+                    <span class="roster-avatar" style="background:var(--color-border-light); color:var(--color-text-muted);">{{ m.name|slice:":1"|upper }}</span>
+                    <span class="roster-name{% if not m.is_active %} retired{% endif %}">
+                        {{ m.name }}{% if not m.is_active %}<span class="retired-tag">Retired</span>{% endif %}
+                    </span>
+                </div>
+                <div class="roster-actions">
+                    <button type="button" class="icon-btn row-toggle" aria-label="More actions for {{ m.name }}" title="More actions"><i class="bi bi-three-dots-vertical"></i></button>
+                    <div class="row-icons">
+                        <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#editStaff{{ m.id }}" aria-label="Edit name or role" title="Edit name / role"><i class="bi bi-pencil"></i></button>
+                        <form method="post" action="{% url 'manage_toggle_mechanic' m.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="icon-btn {% if not m.is_active %}go{% endif %}" aria-label="{% if m.is_active %}Deactivate{% else %}Activate{% endif %}" title="{% if m.is_active %}Deactivate{% else %}Activate{% endif %}">
+                                <i class="bi bi-{% if m.is_active %}pause-fill{% else %}play-fill{% endif %}"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="editStaff{{ m.id }}" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content shadow">
+                        <div class="modal-header border-0 pb-0"><h6 class="modal-title fw-bold">Edit Staff</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                        <form method="post" action="{% url 'manage_edit_mechanic' m.id %}">
+                            {% csrf_token %}
+                            <div class="modal-body">
+                                <label class="small fw-bold text-muted mb-1">Name</label>
+                                <input type="text" name="name" class="form-control mb-3" value="{{ m.name }}" required>
+                                <label class="small fw-bold text-muted mb-1">Role</label>
+                                <select name="role" class="form-select">
+                                    {% for value, label in role_choices %}
+                                    <option value="{{ value }}" {% if value == m.role %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="modal-footer border-0 pt-0"><button type="submit" class="btn btn-primary w-100">Save</button></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="roster-empty">None registered yet.</div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+
+<!-- ============================================================ -->
+<!-- SECTION: SECURITY HUB -->
+<!-- ============================================================ -->
+{% if section == 'security' %}
+<div class="card shadow-sm border-0 mb-4 border-start border-5 border-danger">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center bg-white border-0 mt-1">
+        <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-shield-check"></i> Admin & Owner Access Monitor</h6>
+        <span class="badge bg-danger">LIVE TRACKING</span>
+    </div>
+    <div class="card-body p-0 pt-2">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light text-muted" style="font-size: 0.7rem;">
+                    <tr><th class="ps-3">Account</th><th>Device Info</th><th>Last Seen</th><th class="text-end pe-3">Control</th></tr>
+                </thead>
+                <tbody>
+                    {% for s in owner_sessions %}
+                    <tr {% if s.session_key == current_session_key %}style="background-color: rgba(220, 53, 69, 0.05);"{% endif %}>
+                        <td class="ps-3 fw-bold text-dark">{{ s.user.username|upper }}</td>
+                        <td class="small text-muted"><i class="bi {% if 'Mobile' in s.device_info %}bi-phone-fill text-primary{% else %}bi-laptop text-secondary{% endif %} me-1"></i> {{ s.device_info }} ({{ s.ip_address }})</td>
+                        <td class="small">{{ s.last_activity|timesince }} ago</td>
+                        <td class="text-end pe-3">
+                            {% if s.session_key != current_session_key %}
+                            <form method="post" action="{% url 'manage_terminate_session' s.id %}?section=security">{% csrf_token %}<button type="submit" class="btn btn-sm btn-danger py-0 px-2 fw-bold" style="font-size: 0.7rem;">REVOKE</button></form>
+                            {% else %}<span class="badge bg-success p-1 rounded-pill" style="font-size: 0.6rem;">MY DEVICE</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 border-start border-5 border-info">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center bg-white border-0 mt-1">
+        <h6 class="mb-0 fw-bold text-info"><i class="bi bi-person-video2"></i> Team Login Monitor (Staff)</h6>
+        <span class="badge bg-info text-dark">{{ staff_sessions.count }} Active</span>
+    </div>
+    <div class="card-body p-0 pt-2">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light text-muted" style="font-size: 0.7rem;">
+                    <tr><th class="ps-3">Staff</th><th>Device</th><th>Last Activity</th><th class="text-end pe-3">Status</th></tr>
+                </thead>
+                <tbody>
+                    {% if staff_sessions %}
+                        {% for s in staff_sessions %}
+                        <tr>
+                            <td class="ps-3">
+                                <div class="fw-bold">{{ s.user.username }}</div>
+                                <div class="small text-muted" style="font-size: 0.65rem;">
+                                    {% if s.user|has_group:"Office" %}OFFICE{% else %}FLOOR{% endif %}
+                                </div>
+                            </td>
+                            <td class="small text-muted"><i class="bi {% if 'Mobile' in s.device_info %}bi-phone-fill{% else %}bi-laptop{% endif %} me-1"></i> {{ s.device_info }}</td>
+                            <td class="small">{{ s.last_activity|timesince }} ago</td>
+                            <td class="text-end pe-3">
+                                <form method="post" action="{% url 'manage_terminate_session' s.id %}?section=security" style="display:inline;">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.75rem;">Kick</button></form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}<tr><td colspan="4" class="text-center py-4 text-muted small">No staff currently logged in.</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+    // 3-dot toggle swaps in the row's real icon buttons — no floating panel,
+    // so nothing can get clipped by the scrollable roster-list around it.
+    document.addEventListener('click', function (e) {
+        var toggle = e.target.closest('.row-toggle');
+        if (toggle) {
+            var actions = toggle.closest('.roster-actions');
+            document.querySelectorAll('.roster-actions.is-open').forEach(function (el) {
+                if (el !== actions) el.classList.remove('is-open');
+            });
+            actions.classList.toggle('is-open');
+            return;
+        }
+        if (!e.target.closest('.roster-actions')) {
+            document.querySelectorAll('.roster-actions.is-open').forEach(function (el) {
+                el.classList.remove('is-open');
+            });
+        }
+    });
+</script>
+
 {% endblock %}

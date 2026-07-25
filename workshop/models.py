@@ -129,11 +129,28 @@ class UserSession(models.Model):
 
 class Mechanic(models.Model):
     """
-    Represents a mechanic working in the shop.
-    Used for tracking who performed jobs without requiring individual logins.
+    Represents a staff member working in the shop (mechanics and non-mechanic
+    roles alike). Used for tracking who performed jobs / is on staff, without
+    requiring individual logins — model/table name kept as "Mechanic" for
+    historical continuity (JobCard.lead_mechanic and years of data point at
+    it); the UI calls this "Staff Registration".
     """
+    ROLE_MECHANIC = 'MECHANIC'
+    ROLE_ASSISTANT_MECHANIC = 'ASSISTANT_MECHANIC'
+    ROLE_OFFICE_STAFF = 'OFFICE_STAFF'
+    ROLE_GENERAL_HELPER = 'GENERAL_HELPER'
+    ROLE_CHOICES = [
+        (ROLE_MECHANIC, 'Mechanic'),
+        (ROLE_ASSISTANT_MECHANIC, 'Assistant Mechanic'),
+        (ROLE_OFFICE_STAFF, 'Office Staff'),
+        (ROLE_GENERAL_HELPER, 'General Helper'),
+    ]
+    # Only these two roles can be assigned as a Job Card's lead mechanic.
+    JOBCARD_ELIGIBLE_ROLES = [ROLE_MECHANIC, ROLE_ASSISTANT_MECHANIC]
+
     name = models.CharField(max_length=100, unique=True)
-    is_active = models.BooleanField(default=True, help_text="Disable if the mechanic leaves the company")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_MECHANIC)
+    is_active = models.BooleanField(default=True, help_text="Disable if this staff member leaves the workshop")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

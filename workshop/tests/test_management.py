@@ -28,7 +28,7 @@ class ManagementViewTests(TestCase):
     def test_manage_dashboard_sections(self):
         url = reverse('manage_dashboard')
         # All sections
-        for section in ['accounts', 'workshop', 'security', 'inventory', 'invalid']:
+        for section in ['accounts', 'staff', 'workshop', 'security', 'inventory', 'invalid']:
             response = self.client.get(url, {'section': section})
             self.assertEqual(response.status_code, 200)
 
@@ -85,30 +85,41 @@ class ManagementViewTests(TestCase):
         self.assertTrue(self.client.login(username='staff_user', password='StrongP@ssw0rd!'))
         
     def test_mechanic_management(self):
-        # 1. Add invalid (empty)
-        response = self.client.post(reverse('manage_create_mechanic'), {'name': ''})
+        # 1. Add invalid (empty name)
+        response = self.client.post(reverse('manage_create_mechanic'), {'name': '', 'role': 'MECHANIC'})
         self.assertEqual(Mechanic.objects.count(), 0)
-        
-        # 1. Add valid
-        response = self.client.post(reverse('manage_create_mechanic'), {'name': 'New Mech'})
-        self.assertTrue(Mechanic.objects.filter(name='New Mech').exists())
-        
+
+        # 1b. Add invalid (missing/bad role)
+        response = self.client.post(reverse('manage_create_mechanic'), {'name': 'No Role'})
+        self.assertFalse(Mechanic.objects.filter(name='No Role').exists())
+
+        # 1c. Add valid
+        response = self.client.post(reverse('manage_create_mechanic'), {'name': 'New Mech', 'role': 'MECHANIC'})
+        self.assertRedirects(response, reverse('manage_dashboard') + '?section=staff')
+        mech_new = Mechanic.objects.get(name='New Mech')
+        self.assertEqual(mech_new.role, 'MECHANIC')
+
         # 2. Rename invalid
-        mech = Mechanic.objects.create(name='Old Mech')
-        response = self.client.post(reverse('manage_edit_mechanic', args=[mech.id]), {'name': ''})
+        mech = Mechanic.objects.create(name='Old Mech', role='ASSISTANT_MECHANIC')
+        response = self.client.post(reverse('manage_edit_mechanic', args=[mech.id]), {'name': '', 'role': 'ASSISTANT_MECHANIC'})
         mech.refresh_from_db()
         self.assertEqual(mech.name, 'Old Mech')
 
-        # 2. Rename valid
-        response = self.client.post(reverse('manage_edit_mechanic', args=[mech.id]), {'name': 'Renamed Mech'})
+        # 2b. Rename + role change valid — this is how a Mechanic becomes Office
+        # Staff: same row, same pk, so any Job Card already pointing at them
+        # (lead_mechanic FK) is untouched.
+        response = self.client.post(reverse('manage_edit_mechanic', args=[mech.id]), {'name': 'Renamed Mech', 'role': 'OFFICE_STAFF'})
+        self.assertRedirects(response, reverse('manage_dashboard') + '?section=staff')
         mech.refresh_from_db()
         self.assertEqual(mech.name, 'Renamed Mech')
-        
+        self.assertEqual(mech.role, 'OFFICE_STAFF')
+
         # 3. Toggle valid
         response = self.client.post(reverse('manage_toggle_mechanic', args=[mech.id]))
+        self.assertRedirects(response, reverse('manage_dashboard') + '?section=staff')
         mech.refresh_from_db()
         self.assertFalse(mech.is_active)
-        
+
         # Toggle back
         self.client.post(reverse('manage_toggle_mechanic', args=[mech.id]))
         mech.refresh_from_db()
@@ -193,8 +204,8 @@ class ManagementViewTests(TestCase):
         """Cover duplicate mechanic branch in create_mechanic (lines 287-288)"""
         Mechanic.objects.create(name='Ali')
         url = reverse('manage_create_mechanic')
-        response = self.client.post(url, {'name': 'Ali'})
-        self.assertRedirects(response, reverse('manage_dashboard') + '?section=accounts')
+        response = self.client.post(url, {'name': 'Ali', 'role': 'MECHANIC'})
+        self.assertRedirects(response, reverse('manage_dashboard') + '?section=staff')
         self.assertEqual(Mechanic.objects.filter(name='Ali').count(), 1)  # Not duplicated
 
     def test_edit_mechanic_duplicate_name(self):
@@ -203,8 +214,8 @@ class ManagementViewTests(TestCase):
         mech2 = Mechanic.objects.create(name='Bilal')
         url = reverse('manage_edit_mechanic', args=[mech2.id])
         # Try to rename mech2 to the same name as mech1
-        response = self.client.post(url, {'name': 'Ahmed'})
-        self.assertRedirects(response, reverse('manage_dashboard') + '?section=accounts')
+        response = self.client.post(url, {'name': 'Ahmed', 'role': 'MECHANIC'})
+        self.assertRedirects(response, reverse('manage_dashboard') + '?section=staff')
         mech2.refresh_from_db()
         self.assertEqual(mech2.name, 'Bilal')  # Name unchanged
 

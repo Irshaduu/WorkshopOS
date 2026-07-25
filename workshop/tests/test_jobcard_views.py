@@ -220,6 +220,79 @@ class JobCardViewsTestCase(TestCase):
         response = self.client.post(url, data)
         self.assertRedirects(response, reverse('jobcard_edit', args=[self.job.pk]))
 
+    def test_lead_mechanic_dropdown_excludes_non_eligible_roles(self):
+        """
+        Only Mechanic / Assistant Mechanic can be assigned as a Job Card's
+        lead mechanic — Office Staff and General Helper never appear, and a
+        create POST naming one of them is rejected as an invalid choice.
+        """
+        office_staff = Mechanic.objects.create(name='Priya', role=Mechanic.ROLE_OFFICE_STAFF)
+        assistant = Mechanic.objects.create(name='Junior', role=Mechanic.ROLE_ASSISTANT_MECHANIC)
+
+        response = self.client.get(reverse('jobcard_create'))
+        field_queryset = response.context['form'].fields['lead_mechanic'].queryset
+        self.assertIn(self.mechanic, field_queryset)
+        self.assertIn(assistant, field_queryset)
+        self.assertNotIn(office_staff, field_queryset)
+
+        data = self._base_formset_data(reg='KL01Z9999')
+        data['lead_mechanic'] = office_staff.id
+        response = self.client.post(reverse('jobcard_create'), data)
+        self.assertFalse(response.context['form'].is_valid())
+        self.assertIn('lead_mechanic', response.context['form'].errors)
+
+    def test_role_change_does_not_disturb_existing_jobcard_assignment(self):
+        """
+        A mechanic moved to Office Staff (or deactivated) must not lose their
+        historical Job Card assignment — reopening that old card to edit an
+        unrelated field must still validate and keep the same lead_mechanic.
+        """
+        self.job.lead_mechanic = self.mechanic
+        self.job.save()
+
+        self.mechanic.role = Mechanic.ROLE_OFFICE_STAFF
+        self.mechanic.save()
+
+        url = reverse('jobcard_edit', args=[self.job.pk])
+
+        # The now-reassigned mechanic must still be a valid, visible choice
+        # on this specific job card's edit form.
+        get_response = self.client.get(url)
+        field_queryset = get_response.context['form'].fields['lead_mechanic'].queryset
+        self.assertIn(self.mechanic, field_queryset)
+
+        data = {
+            'registration_number': 'KL01A1234',
+            'admitted_date': str(date.today()),
+            'customer_name': 'John Edited',
+            'customer_contact': '1234567890',
+            'brand_name': 'Toyota',
+            'model_name': 'Corolla',
+            'car_color': 'White',
+            'lead_mechanic': self.mechanic.id,
+
+            'concerns-TOTAL_FORMS': '0',
+            'concerns-INITIAL_FORMS': '0',
+            'concerns-MIN_NUM_FORMS': '0',
+            'concerns-MAX_NUM_FORMS': '1000',
+
+            'spares-TOTAL_FORMS': '0',
+            'spares-INITIAL_FORMS': '0',
+            'spares-MIN_NUM_FORMS': '0',
+            'spares-MAX_NUM_FORMS': '1000',
+
+            'labours-TOTAL_FORMS': '0',
+            'labours-INITIAL_FORMS': '0',
+            'labours-MIN_NUM_FORMS': '0',
+            'labours-MAX_NUM_FORMS': '1000',
+        }
+        response = self.client.post(url, data)
+        self.assertRedirects(response, reverse('jobcard_edit', args=[self.job.pk]))
+
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.lead_mechanic_id, self.mechanic.id)
+        self.assertEqual(self.job.customer_name, 'John Edited')
+
     def test_invoice_view_access_control(self):
         """Floor-only user should be redirected away from invoice view."""
         url = reverse('invoice_view', args=[self.job.pk])
