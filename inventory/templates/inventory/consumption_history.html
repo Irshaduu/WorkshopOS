@@ -5,7 +5,7 @@
 <style>
     .sh-wrapper { max-width: 900px; margin: 0 auto; padding: 4px 0 0; }
 
-    .sh-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .sh-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
     .sh-head h1 { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
     .btn-round {
         width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
@@ -14,10 +14,9 @@
         background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
     }
     .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
-    .sh-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 16px 52px; }
 
     /* ---- Week switch ---- */
-    .sh-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+    .sh-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
     .seg { display: inline-flex; background: var(--color-border-light); border-radius: 999px; padding: 3px; }
     .seg a {
         min-height: 38px; display: inline-flex; align-items: center; padding: 0 18px;
@@ -26,8 +25,6 @@
     }
     .seg a.on { background: var(--color-card); color: var(--color-primary); box-shadow: 0 1px 3px var(--color-shadow); }
     .sh-range { font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; }
-
-    .legend { font-size: 0.72rem; color: var(--color-text-muted); margin: 0 2px 16px; line-height: 1.5; }
 
     /* ---- Day group ---- */
     .day { margin-bottom: 18px; }
@@ -53,6 +50,10 @@
     .u-part { font-weight: 700; font-size: 0.94rem; line-height: 1.3; overflow-wrap: anywhere; }
     .u-qty { font-weight: 800; font-size: 0.98rem; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-danger); }
     .u-qty.muted { color: var(--color-text-muted); }
+    /* Desktop: transparent to the grid, so .u-mech/.u-car keep acting as the
+       two direct grid items (columns 3 & 4) exactly as before this wrapper
+       existed. Only takes over as a real box on mobile, below. */
+    .u-meta { display: contents; }
     .u-mech a { font-size: 0.85rem; font-weight: 600; color: var(--color-primary); text-decoration: none; }
     .u-mech a:hover { text-decoration: underline; }
     .u-mech .none { font-size: 0.85rem; color: var(--color-text-muted); }
@@ -82,14 +83,13 @@
         }
         .u-part { grid-area: part; }
         .u-qty  { grid-area: qty; }
-        .u-mech { grid-area: meta; }
-        .u-car  { grid-area: meta; text-align: left; }
+        .u-meta { display: block; grid-area: meta; }
+        .u-car  { text-align: left; }
         .u-mech, .u-car { display: inline; }
         .u-car .reg { display: inline; }
         .u-car::before { content: " · "; color: var(--color-border); }
         .u-car .reg::before { content: " · "; color: var(--color-border); }
     }
-    @media (max-width: 420px) { .sh-sub { margin-left: 0; } }
 </style>
 
 <div class="sh-wrapper">
@@ -99,7 +99,6 @@
         </a>
         <h1>Stock History</h1>
     </div>
-    <p class="sh-sub">Every spare fitted to a car, newest first.</p>
 
     <div class="sh-filter">
         <div class="seg" role="group" aria-label="Week">
@@ -108,11 +107,6 @@
         </div>
         <span class="sh-range">{{ start|date:"d M" }} &ndash; {{ end|date:"d M Y" }}</span>
     </div>
-
-    <p class="legend">
-        <span class="tag-off">not from stock</span>
-        = no matching warehouse product, so nothing was deducted.
-    </p>
 
     {% if truncated %}
     <div class="alert alert-warning py-2 small" style="border-radius: 12px;">
@@ -134,16 +128,18 @@
                     {% if not r.in_warehouse %}<span class="tag-off" data-unmatched="1">not from stock</span>{% endif %}
                 </div>
                 <div class="u-qty {% if not r.in_warehouse %}muted{% endif %}">{{ r.quantity|clean_qty }}</div>
-                <div class="u-mech">
-                    {% if r.job_card.lead_mechanic %}
-                    <a href="{% url 'inventory_history_mechanic' r.job_card.lead_mechanic.id %}?range={{ range }}">
-                        <i class="bi bi-person-gear me-1"></i>{{ r.job_card.lead_mechanic.name }}
-                    </a>
-                    {% else %}<span class="none">No mechanic</span>{% endif %}
-                </div>
-                <div class="u-car">
-                    {{ r.job_card.brand_name }} {{ r.job_card.model_name }}
-                    <span class="reg">{{ r.job_card.registration_number }}</span>
+                <div class="u-meta">
+                    <div class="u-mech">
+                        {% if r.job_card.lead_mechanic %}
+                        <a href="{% url 'inventory_history_mechanic' r.job_card.lead_mechanic.id %}?range={{ range }}">
+                            <i class="bi bi-person-gear me-1"></i>{{ r.job_card.lead_mechanic.name }}
+                        </a>
+                        {% else %}<span class="none">No mechanic</span>{% endif %}
+                    </div>
+                    <div class="u-car">
+                        {{ r.job_card.brand_name }} {{ r.job_card.model_name }}
+                        <span class="reg">{{ r.job_card.registration_number }}</span>
+                    </div>
                 </div>
             </div>
             {% endfor %}
