@@ -87,7 +87,7 @@
         {% for catalog in catalogs %}
         <div class="supplier-card">
             <div class="supplier-info">
-                <h4><i class="bi bi-shop text-primary me-2"></i>{{ catalog.shop.name }}</h4>
+                <h4><i class="bi bi-truck text-primary me-2"></i>{{ catalog.shop.name }}</h4>
                 <p>Added to catalog: {{ catalog.created_at|date:"d M Y" }}</p>
                 {% if catalog.shop.phone %}
                     <p class="mt-1"><i class="bi bi-telephone me-1"></i>{{ catalog.shop.phone }}</p>

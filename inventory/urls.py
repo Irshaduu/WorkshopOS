@@ -32,6 +32,7 @@ urlpatterns = [
     path('shops/<int:shop_id>/catalog/<int:catalog_item_id>/edit/', views_suppliers.edit_catalog_item, name='edit_catalog_item'),
     path('shops/<int:shop_id>/catalog/<int:catalog_item_id>/deactivate/', views_suppliers.deactivate_catalog_item, name='deactivate_catalog_item'),
     path('shops/<int:shop_id>/catalog/<int:catalog_item_id>/reactivate/', views_suppliers.reactivate_catalog_item, name='reactivate_catalog_item'),
+    path('shops/<int:shop_id>/catalog/<int:catalog_item_id>/detail/', views_suppliers.shop_catalog_item_detail, name='shop_catalog_item_detail'),
     path('shops/<int:shop_id>/restock/', views_suppliers.shop_restock_select, name='shop_restock_select'),
     path('shops/<int:shop_id>/restock/bill/', views_suppliers.shop_restock_bill, name='shop_restock_bill'),
     path('shops/<int:shop_id>/bill/<int:bill_id>/edit/', views_suppliers.edit_restock_bill, name='edit_restock_bill'),

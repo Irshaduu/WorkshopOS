@@ -212,7 +212,7 @@
             </button>
             <ul class="dropdown-menu dropdown-menu-end shadow" style="border-radius: 12px; margin-top: 8px; min-width: 160px; z-index: 1050;">
                 {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
-                <li><a class="dropdown-item fw-bold py-2 text-primary" href="{% url 'supplier_shop_list' %}"><i class="bi bi-shop me-2"></i> Supplies Shops</a></li>
+                <li><a class="dropdown-item fw-bold py-2 text-primary" href="{% url 'supplier_shop_list' %}"><i class="bi bi-truck me-2"></i> Supplies Shops</a></li>
                 <li><hr class="dropdown-divider"></li>
                 {% endif %}
                 <li><a class="dropdown-item fw-bold text-danger py-2" href="{% url 'inventory_low_stock' %}"><i class="bi bi-exclamation-triangle me-2"></i> Low Stock</a></li>

@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.contrib import messages
-from django.db.models import Sum, Count, F, Value, ExpressionWrapper, DecimalField
+from django.db.models import Sum, Count, Max, F, Value, ExpressionWrapper, DecimalField
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.core.paginator import Paginator
@@ -20,6 +20,11 @@ def spare_shop_list(request):
     Lists all registered spare shops with annotated financial totals.
     Calculates total purchased (unit_price sum), total paid, and balance owed
     entirely in SQL — zero Python loops.
+
+    Sorted by most recent job-card usage first, so shops the workshop actually
+    deals with day to day surface at the top instead of behind alphabetically-
+    earlier, rarely-used ones. Shops never used on a job sort to the bottom,
+    then by name.
     """
     shops = (
         SpareShop.objects.filter(is_trashed=False)
@@ -28,9 +33,10 @@ def spare_shop_list(request):
             total_balance=ExpressionWrapper(
                 F('total_purchased_amount') - F('total_paid_amount'),
                 output_field=DecimalField()
-            )
+            ),
+            last_activity=Max('spare_items__job_card__admitted_date'),
         )
-        .order_by('name')
+        .order_by(F('last_activity').desc(nulls_last=True), 'name')
     )
 
     return render(request, 'workshop/spare_shops/shop_list.html', {

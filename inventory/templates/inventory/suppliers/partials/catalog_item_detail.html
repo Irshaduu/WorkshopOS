@@ -1,0 +1,29 @@
+{% load humanize %}
+<div class="text-center mb-3">
+  <div class="fw-bold" style="font-size:1.1rem;">{{ item.name }}</div>
+  <span class="badge bg-light text-dark border" style="font-size:0.7rem;">{{ item.category.name }}</span>
+</div>
+
+<div class="d-flex gap-2 mb-3">
+  <div class="flex-fill text-center p-2 rounded-3" style="background:var(--color-bg);">
+    <div class="text-muted" style="font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">This Shop</div>
+    <div class="fw-bold" style="font-size:0.95rem;">{{ this_shop_qty|floatformat:"-1" }} units</div>
+    <div class="text-success fw-bold" style="font-size:0.85rem;">₹{{ this_shop_spent|floatformat:"0"|intcomma }}</div>
+  </div>
+  <div class="flex-fill text-center p-2 rounded-3" style="background:var(--color-bg);">
+    <div class="text-muted" style="font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em;">All Shops Combined</div>
+    <div class="fw-bold" style="font-size:0.95rem;">{{ combined_qty|floatformat:"-1" }} units</div>
+    <div class="text-primary fw-bold" style="font-size:0.85rem;">₹{{ combined_spent|floatformat:"0"|intcomma }}</div>
+  </div>
+</div>
+
+{% if other_shops %}
+<div class="border-top pt-2" style="border-color:var(--color-border-light)!important;">
+  <div class="small text-muted mb-2"><i class="bi bi-shuffle me-1"></i>Also supplied by</div>
+  <div class="d-flex flex-wrap gap-1">
+    {% for name in other_shops %}
+    <span class="badge bg-light text-dark border rounded-pill" style="font-size:0.75rem; font-weight:500;">{{ name }}</span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

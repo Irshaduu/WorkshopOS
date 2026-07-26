@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.utils import timezone
-from django.db.models import Count, Prefetch, Sum, F, OuterRef, Subquery, Q, DecimalField
+from django.db.models import Count, Max, Prefetch, Sum, F, OuterRef, Subquery, Q, DecimalField
 from django.db.models.functions import Coalesce
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date
@@ -39,12 +39,18 @@ def _active_catalog_items(shop, item_ids):
 
 @office_required
 def supplier_shop_list(request):
-    # Annotate catalog_count in SQL — avoids N+1 per-card `.count()` call in template
+    # Annotate catalog_count in SQL — avoids N+1 per-card `.count()` call in template.
+    # Sorted by most recent restock bill first, so shops the workshop actually deals
+    # with day to day surface at the top instead of behind alphabetically-earlier,
+    # rarely-used ones. Shops with no bills yet sort to the bottom, then by name.
     shops = (
         SupplierShop.objects
         .filter(is_active=True)
-        .annotate(catalog_count=Count('catalog_items', distinct=True))
-        .order_by('name')
+        .annotate(
+            catalog_count=Count('catalog_items', distinct=True),
+            last_activity=Max('bills__bill_date'),
+        )
+        .order_by(F('last_activity').desc(nulls_last=True), 'name')
     )
     return render(request, 'inventory/suppliers/shop_list.html', {'shops': shops, 'is_active_list': True})
 
@@ -414,6 +420,51 @@ def edit_catalog_item(request, shop_id, catalog_item_id):
         messages.success(request, f"'{item.name}' updated.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
+
+@office_required
+def shop_catalog_item_detail(request, shop_id, catalog_item_id):
+    """
+    Read-only AJAX fragment for a catalog card's click-to-expand modal.
+
+    Shows what this shop specifically has sold the workshop of this product
+    (`bill__supplier=shop` scoped — `Item` is shared across shops, so an
+    unscoped total would double-count purchases made from other shops),
+    plus which other active shops also carry it and the combined total
+    across all of them (that one is deliberately unscoped — money already
+    spent doesn't un-spend itself just because a shop later goes inactive).
+    """
+    catalog_item = get_object_or_404(ShopCatalogItem, pk=catalog_item_id, shop_id=shop_id)
+    item = catalog_item.item
+
+    this_shop = SupplierRestockItem.objects.filter(
+        bill__supplier_id=shop_id, item=item
+    ).aggregate(
+        qty=Coalesce(Sum('quantity'), Decimal('0'), output_field=DecimalField()),
+        spent=Coalesce(Sum('total_price'), Decimal('0'), output_field=DecimalField()),
+    )
+
+    combined = SupplierRestockItem.objects.filter(item=item).aggregate(
+        qty=Coalesce(Sum('quantity'), Decimal('0'), output_field=DecimalField()),
+        spent=Coalesce(Sum('total_price'), Decimal('0'), output_field=DecimalField()),
+    )
+
+    other_shops = (
+        SupplierShop.objects
+        .filter(catalog_items__item=item, is_active=True)
+        .exclude(pk=shop_id)
+        .values_list('name', flat=True)
+        .distinct()
+        .order_by('name')
+    )
+
+    return render(request, 'inventory/suppliers/partials/catalog_item_detail.html', {
+        'item': item,
+        'this_shop_qty': this_shop['qty'],
+        'this_shop_spent': this_shop['spent'],
+        'combined_qty': combined['qty'],
+        'combined_spent': combined['spent'],
+        'other_shops': other_shops,
+    })
 
 
 @office_required

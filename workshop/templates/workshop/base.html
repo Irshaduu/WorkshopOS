@@ -116,7 +116,7 @@
             border-radius: 10px;
             color: rgba(255, 255, 255, 0.82);
             font-size: 13.5px;
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 0.01em;
             line-height: 1;
             text-decoration: none;
@@ -128,6 +128,17 @@
         .nav-btn i {
             font-size: 16px;
             line-height: 1;
+        }
+
+        /* Keeps a button's icon(s) side-by-side even when the phone
+           breakpoint stacks the button into a column — without this, a
+           button with two icons (Home's back-chevron on the Mini Report
+           page) stacks icon/icon/label into three rows instead of the
+           usual icon-row/label two. */
+        .nav-btn-icon-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
         }
 
         .nav-btn:hover,
@@ -142,19 +153,16 @@
             outline-offset: 2px;
         }
 
-        /* Role tint on the Floor/home button (Owner red, Office amber) */
-        .nav-btn--home:not(.active) { color: rgba(255, 255, 255, 0.82); }
-        .nav-btn--home.role-owner:not(.active) { color: #fca5a5; }
-        .nav-btn--home.role-office:not(.active) { color: #fde047; }
-
-        /* Current page — a single restrained accent, no glow/ring */
+        /* Current page — a translucent white wash, same treatment as the
+           hover state (rgba(255,255,255,0.14)) just a touch stronger so it
+           reads as "selected" rather than "hovered". */
         .nav-btn.active {
             color: #ffffff;
             font-weight: 700;
-            background-color: rgba(239, 68, 68, 0.22);
+            background-color: rgba(255, 255, 255, 0.22);
         }
 
-        .nav-btn.active i { color: #fca5a5; }
+        .nav-btn.active i { color: #ffffff; }
 
         /* Icon-only buttons (notifications, menu on narrow screens) */
         .nav-btn--icon {
@@ -173,10 +181,10 @@
         .nav-btn--menu.is-open {
             color: #ffffff;
             font-weight: 700;
-            background-color: rgba(239, 68, 68, 0.22);
+            background-color: rgba(255, 255, 255, 0.22);
         }
 
-        .nav-btn--menu.is-open i { color: #fca5a5; }
+        .nav-btn--menu.is-open i { color: #ffffff; }
 
         /* Notification bell — placeholder until the feature is built */
         .nav-btn--bell { color: rgba(255, 255, 255, 0.78); }
@@ -357,7 +365,6 @@
         }
 
         .drawer-link {
-            position: relative;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -399,31 +406,17 @@
             color: #cbd5e1;
         }
 
-        /* Current page inside the drawer */
+        /* Current page inside the drawer — one uniform blue highlight for
+           every section. The icon tile keeps its own per-item accent color
+           (set by the accent-* classes below) whether the row is active or
+           not, so the highlight color never touches the symbol color. */
         .drawer-link.active {
-            background: var(--accent-bg, #f1f5f9);
-            color: var(--accent, #475569);
+            background: var(--color-primary-light);
+            color: var(--color-primary);
             font-weight: 800;
         }
 
-        .drawer-link.active .drawer-ico {
-            background: var(--accent, #475569);
-            color: #ffffff;
-        }
-
-        .drawer-link.active .drawer-chevron { color: var(--accent, #475569); }
-
-        .drawer-link.active::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 3px;
-            height: 58%;
-            border-radius: 0 3px 3px 0;
-            background: var(--accent, #475569);
-        }
+        .drawer-link.active .drawer-chevron { color: var(--color-primary); }
 
         /* Per-item accents — one class sets both the tile and the active state */
         .accent-violet { --accent: #7c3aed; --accent-bg: #f5f3ff; }
@@ -535,10 +528,15 @@
         <div class="navbar-container">
 
             <!-- Floor / Home -->
-            <a class="nav-btn nav-btn--home{% if is_owner %} role-owner{% elif is_office %} role-office{% endif %}{% if p == '/' %} active{% endif %}"
-               href="{% url 'home' %}">
-                {% if p == '/jobcards/live-report/' %}<i class="bi bi-chevron-left"></i>{% endif %}
-                <i class="bi bi-house-door{% if p == '/' %}-fill{% endif %}"></i><span class="nav-label">Floor</span>
+            <a class="nav-btn nav-btn--home{% if p == '/' %} active{% endif %}"
+               href="{% url 'home' %}"
+               aria-label="{% if is_owner %}Admin{% elif is_office %}Office{% else %}Floor{% endif %}"
+               title="{% if is_owner %}Admin{% elif is_office %}Office{% else %}Floor{% endif %}">
+                <span class="nav-btn-icon-group">
+                    {% if p == '/jobcards/live-report/' %}<i class="bi bi-chevron-left"></i>{% endif %}
+                    <i class="bi bi-house-door{% if p == '/' %}-fill{% endif %}"></i>
+                </span>
+                <span class="nav-label">{% if is_owner %}Admin{% elif is_office %}Office{% else %}Floor{% endif %}</span>
             </a>
 
             {% if user.is_authenticated %}
@@ -664,12 +662,12 @@
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 <a class="drawer-link accent-indigo{% if p|slice:':17' == '/inventory/shops/' %} active{% endif %}" href="{% url 'supplier_shop_list' %}">
-                    <span class="drawer-ico"><i class="bi bi-shop-window"></i></span>
+                    <span class="drawer-ico"><i class="bi bi-truck"></i></span>
                     Supplies Shops
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 <a class="drawer-link accent-amber{% if p|slice:':13' == '/spare-shops/' %} active{% endif %}" href="{% url 'spare_shop_list' %}">
-                    <span class="drawer-ico"><i class="bi bi-shop"></i></span>
+                    <span class="drawer-ico"><i class="bi bi-tools"></i></span>
                     Spare Shops
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>

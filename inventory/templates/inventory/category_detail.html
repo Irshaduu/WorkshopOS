@@ -85,7 +85,7 @@
             <div class="p-shops">
                 {% for link in item.shop_catalogs.all %}
                     <span class="chip {% if not link.is_active %}off{% endif %}">
-                        <i class="bi bi-shop"></i>{{ link.shop.name }}{% if not link.is_active %} (off){% endif %}
+                        <i class="bi bi-truck"></i>{{ link.shop.name }}{% if not link.is_active %} (off){% endif %}
                     </span>
                 {% empty %}
                     <span class="chip-none">Not stocked by any shop</span>
