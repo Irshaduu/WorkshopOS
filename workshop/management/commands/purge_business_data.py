@@ -17,6 +17,7 @@ REMOVED:
   - SpareShop, SpareShopPayment
   - BulkPayer (Fleet Accounts), BulkPaymentHistory
   - Mechanic (staff roster)
+  - SalaryAdvance, SalaryPayment (+ SalaryPaymentLine via CASCADE)
   - CashbookEntry
   - DeletionLog
   - inventory: SupplierShop, SupplierRestockBill/Item, SupplierPayment,
@@ -34,6 +35,7 @@ from workshop.models import (
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
     Mechanic, CashbookEntry, DeletionLog,
+    SalaryAdvance, SalaryPayment, SalaryPaymentLine,
 )
 from inventory.models import (
     Category, Item, ShopCatalogItem, SupplierShop,
@@ -69,6 +71,9 @@ class Command(BaseCommand):
             ("Inventory items", Item),
             ("Inventory categories", Category),
             ("Cashbook entries", CashbookEntry),
+            ("Salary payment lines", SalaryPaymentLine),
+            ("Salary payments (monthly settlements)", SalaryPayment),
+            ("Salary advances", SalaryAdvance),
             ("Staff roster (Mechanic)", Mechanic),
             ("Deletion history", DeletionLog),
         ]

@@ -45,3 +45,8 @@ from .autocomplete import (
     autocomplete_brands, autocomplete_models,
     autocomplete_spares, autocomplete_concerns,
 )
+from .salary_advance import (
+    salary_advance_home, salary_advance_add, salary_advance_delete,
+    salary_advance_staff_detail, salary_set_amount,
+    salary_payment_form, salary_payment_delete,
+)

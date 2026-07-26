@@ -1,0 +1,99 @@
+{% extends 'workshop/base.html' %}
+{% load humanize %}
+
+{% block title %}Delete {{ payment.month|date:"F Y" }} Settlement — WorkshopOS{% endblock %}
+
+{% block content %}
+
+<style>
+  .warn-card {
+    background: var(--color-card); border: 1px solid #fecaca; border-radius: 16px;
+    padding: 18px 20px; max-width: 480px; margin: 0 auto;
+  }
+  .warn-icon {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: #fef2f2; color: #dc2626; font-size: 1.4rem;
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;
+  }
+  .warn-title { font-weight: 800; font-size: 1.1rem; text-align: center; color: #dc2626; margin-bottom: 6px; }
+  .warn-sub { font-size: 0.86rem; color: var(--color-text-muted); text-align: center; margin-bottom: 16px; }
+
+  .del-summary {
+    background: linear-gradient(135deg, #1e293b, #334155); color: #fff;
+    border-radius: 12px; padding: 12px 16px; display: flex;
+    align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px;
+  }
+  .del-summary .lbl { font-size: 0.68rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; }
+  .del-summary .val { font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+  .del-lines {
+    max-height: 220px; overflow-y: auto; border: 1px solid var(--color-border);
+    border-radius: 12px; margin-bottom: 16px;
+  }
+  .del-line {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 14px; font-size: 0.84rem; border-bottom: 1px solid var(--color-border);
+  }
+  .del-line:last-child { border-bottom: 0; }
+  .del-line .amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .del-btn {
+    width: 100%; min-height: 46px; border: 0; border-radius: 12px;
+    background: #dc2626; color: #fff; font-weight: 800; font-size: 0.95rem;
+  }
+  .del-btn:hover { background: #b91c1c; color: #fff; }
+  .cancel-btn {
+    width: 100%; min-height: 46px; border-radius: 12px; margin-top: 8px;
+  }
+</style>
+
+<div class="mb-3">
+  <a href="{% url 'salary_payment_form' payment.month.year payment.month.month %}"
+     class="text-muted text-decoration-none small">
+    <i class="bi bi-arrow-left me-1"></i>Back to {{ payment.month|date:"F Y" }} Settlement
+  </a>
+</div>
+
+<div class="warn-card">
+  <div class="warn-icon"><i class="bi bi-exclamation-triangle-fill"></i></div>
+  <div class="warn-title">Delete {{ payment.month|date:"F Y" }} Settlement?</div>
+  <div class="warn-sub">
+    This permanently erases the whole month's payroll record. It's logged to the
+    Owner-only Deletion History, but <strong>cannot be restored</strong>. Advances
+    already recorded are <strong>not</strong> affected — only this frozen settlement.
+  </div>
+
+  <div class="del-summary">
+    <div>
+      <div class="lbl">Total Paid</div>
+      <div class="val">₹{{ payment.total_amount|floatformat:0|intcomma }}</div>
+    </div>
+    <div class="text-end">
+      <div class="lbl">Staff</div>
+      <div class="val">{{ lines|length }}</div>
+    </div>
+  </div>
+
+  <div class="del-lines">
+    {% for line in lines %}
+    <div class="del-line">
+      <span>{{ line.staff.name }}</span>
+      <span class="amt">₹{{ line.net_amount|floatformat:0|intcomma }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <label class="form-label small text-muted fw-bold">Reason (optional)</label>
+    <input type="text" name="reason" class="form-control mb-3" maxlength="255"
+           placeholder="e.g. settled by mistake, wrong month">
+    <button type="submit" class="del-btn">
+      <i class="bi bi-trash3 me-1"></i>Yes, Delete Permanently
+    </button>
+    <a href="{% url 'salary_payment_form' payment.month.year payment.month.month %}"
+       class="btn btn-outline-secondary cancel-btn">Cancel</a>
+  </form>
+</div>
+
+{% endblock %}

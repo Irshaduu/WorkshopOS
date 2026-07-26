@@ -654,6 +654,11 @@
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 {% endif %}
+                <a class="drawer-link accent-amber{% if p|slice:':15' == '/salary-advance' %} active{% endif %}" href="{% url 'salary_advance_home' %}">
+                    <span class="drawer-ico"><i class="bi bi-cash-coin"></i></span>
+                    Salary &amp; Advance
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
 
                 <div class="drawer-label">Stock &amp; Suppliers</div>
                 <a class="drawer-link accent-blue{% if p == '/inventory/list/' %} active{% endif %}" href="{% url 'inventory_list' %}">

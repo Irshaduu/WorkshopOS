@@ -1,0 +1,284 @@
+{% extends 'workshop/base.html' %}
+{% load humanize %}
+{% load custom_filters %}
+
+{% block title %}{{ target_month|date:"F Y" }} Salary — WorkshopOS{% endblock %}
+
+{% block content %}
+
+<style>
+  .step-head { margin-bottom: 16px; }
+  .step-head h5 { font-weight: 800; margin: 0; font-size: 1.05rem; }
+  .step-head .sub { font-size: 0.8rem; color: var(--color-text-muted); margin-top: 2px; }
+
+  /* ── One card per staff: shows the whole calculation, nothing hidden ── */
+  .calc-card {
+    background: var(--color-card); border: 1px solid var(--color-border);
+    border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
+  }
+  .calc-card.disabled { background: var(--color-bg); opacity: 0.75; }
+
+  .calc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .calc-avatar {
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--color-primary-light); color: var(--color-primary);
+    font-weight: 800; font-size: 0.85rem;
+  }
+  .calc-name { font-weight: 700; font-size: 0.94rem; line-height: 1.25; }
+  .calc-role { font-size: 0.73rem; color: var(--color-text-muted); }
+
+  .calc-line {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 6px 0; font-size: 0.86rem;
+  }
+  .calc-line .lbl { color: var(--color-text-muted); display: flex; align-items: center; gap: 7px; }
+  .calc-line .amt { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .calc-line .amt.minus { color: #dc2626; }
+
+  .leave-input {
+    width: 62px; padding: 3px 8px; border-radius: 8px;
+    border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c;
+    text-align: center; font-size: 0.85rem; font-weight: 700; min-height: 32px;
+    -moz-appearance: textfield; /* Firefox: hide the native step arrows */
+  }
+  /* Chrome/Safari/Edge: hide the native step arrows — they read as visual
+     noise on a field this small and don't add anything a keyboard/typing
+     input doesn't already offer. */
+  .leave-input::-webkit-inner-spin-button,
+  .leave-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .leave-input:focus { border-color: #ef4444; outline: none; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15); }
+
+  /* Touch devices (Floor tablets, Owner phones) need the 44px minimum target */
+  @media (max-width: 991.98px), (pointer: coarse) {
+    .leave-input { min-height: 44px; width: 72px; font-size: 0.95rem; }
+    .calc-line { padding: 8px 0; }
+  }
+
+  .calc-total {
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px dashed var(--color-border); margin-top: 6px; padding-top: 9px;
+  }
+  .calc-total .lbl { font-weight: 800; font-size: 0.88rem; }
+  .calc-total .amt { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; color: var(--color-success); }
+  .calc-total .amt.negative { color: #dc2626; }
+
+  .neg-warn { font-size: 0.72rem; color: #dc2626; margin-top: 5px; display: none; }
+  .neg-warn.show { display: block; }
+
+  /* ── Total + save (sits at the end of the list, not pinned over it) ── */
+  .settle-footer {
+    background: linear-gradient(135deg, #1e293b, #334155);
+    border-radius: 14px; padding: 16px 18px; color: #fff; margin-top: 18px;
+  }
+  .settle-footer .row-1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .settle-footer .lbl { font-size: 0.72rem; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.05em; }
+  .settle-footer .val { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .settle-btn {
+    width: 100%; min-height: 46px; border: 0; border-radius: 12px;
+    background: #22c55e; color: #fff; font-weight: 800; font-size: 0.95rem;
+  }
+  .settle-btn:hover { background: #16a34a; color: #fff; }
+</style>
+
+<!-- ── Back ── -->
+<div class="mb-3">
+  <a href="{% url 'salary_advance_home' %}" class="text-muted text-decoration-none small">
+    <i class="bi bi-arrow-left me-1"></i><i class="bi bi-cash-coin me-1"></i> Salary &amp; Advance
+  </a>
+</div>
+
+<!-- ── Header ── -->
+<div class="step-head d-flex justify-content-between align-items-start gap-2 flex-wrap">
+  <div>
+    <h5><i class="bi bi-calendar-check me-2 text-primary"></i>{{ target_month|date:"F Y" }} Salary</h5>
+    <div class="sub">
+      {% if payment %}
+        Already settled &mdash; you can correct it and save again.
+      {% else %}
+        Enter each person's leave days. Advances are filled in automatically.
+      {% endif %}
+    </div>
+  </div>
+  {% if payment %}
+    {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+    <div class="dropdown flex-shrink-0">
+      <button class="btn btn-sm btn-light rounded-circle" type="button" data-bs-toggle="dropdown"
+              aria-expanded="false" aria-label="More options"
+              style="width:36px; height:36px; padding:0; display:flex; align-items:center; justify-content:center;">
+        <i class="bi bi-three-dots-vertical"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius:12px; font-size:0.85rem; min-width:200px;">
+        <li>
+          <a class="dropdown-item py-2 text-danger fw-bold" href="{% url 'salary_payment_delete' payment.pk %}">
+            <i class="bi bi-trash3 me-2"></i>Delete Settlement
+          </a>
+        </li>
+      </ul>
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if missing_salary %}
+<div class="alert alert-warning border-0 d-flex align-items-start gap-2" style="border-radius:12px; font-size:0.84rem;">
+  <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+  <div>
+    <strong>{{ missing_salary|length }} staff member{{ missing_salary|length|pluralize }} ha{{ missing_salary|length|pluralize:"s,ve" }} no salary set</strong>
+    ({% for s in missing_salary %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}).
+    They will be left out of this settlement. Set a salary below to include them.
+  </div>
+</div>
+{% endif %}
+
+<form method="post" id="paymentForm">
+  {% csrf_token %}
+
+  {% for row in rows %}
+  <div class="calc-card {% if not row.staff.current_salary %}disabled{% endif %}">
+    <div class="calc-head">
+      <span class="calc-avatar">{{ row.staff.name|first|upper }}</span>
+      <div style="min-width:0;">
+        <div class="calc-name">{{ row.staff.name }}</div>
+        <div class="calc-role">{{ row.staff.get_role_display }}</div>
+      </div>
+    </div>
+
+    {% if row.staff.current_salary %}
+      <div class="calc-line">
+        <span class="lbl"><i class="bi bi-wallet2"></i> Monthly salary</span>
+        <span class="amt">₹{{ row.staff.current_salary|floatformat:0|intcomma }}</span>
+      </div>
+
+      <div class="calc-line">
+        <span class="lbl">
+          <i class="bi bi-calendar-x"></i> Leave days
+          <input type="number" class="leave-input leave-days-input" step="0.5" min="0" max="31"
+                 name="leave_days_{{ row.staff.id }}"
+                 data-salary="{{ row.staff.current_salary }}"
+                 data-advance="{{ row.advance_used }}"
+                 data-staff-id="{{ row.staff.id }}"
+                 value="{{ row.leave_days|floatformat:'-1' }}"
+                 oninput="recalcRow({{ row.staff.id }})">
+        </span>
+        <span class="amt minus" id="leavecut-{{ row.staff.id }}">− ₹0</span>
+      </div>
+
+      <div class="calc-line">
+        <span class="lbl"><i class="bi bi-cash-coin"></i> Advance already taken</span>
+        <span class="amt {% if row.advance_used %}minus{% endif %}">
+          {% if row.advance_used %}− {% endif %}₹{{ row.advance_used|floatformat:0|intcomma }}
+        </span>
+      </div>
+
+      <div class="calc-total">
+        <span class="lbl">Pay now</span>
+        <span class="amt" id="net-{{ row.staff.id }}">₹0</span>
+      </div>
+      <div class="neg-warn" id="negwarn-{{ row.staff.id }}">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>Advance is more than the earned salary — nothing to pay this month.
+      </div>
+    {% else %}
+      <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+        <span class="text-muted" style="font-size:0.84rem;">No salary set &mdash; not included in this settlement.</span>
+        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" style="font-size:0.76rem;"
+                onclick="openInlineSetSalary({{ row.staff.id }}, '{{ row.staff.name|escapejs }}')">
+          Set salary
+        </button>
+      </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <div class="settle-footer">
+    <div class="row-1">
+      <div>
+        <div class="lbl">Total cash to pay</div>
+        <div class="val" id="grandTotal">₹0</div>
+      </div>
+      <div class="text-end">
+        <div class="lbl">Staff</div>
+        <div style="font-weight:700;">{{ payable_count }}</div>
+      </div>
+    </div>
+    <button type="submit" class="settle-btn">
+      <i class="bi bi-check-circle-fill me-1"></i>{% if payment %}Update Settlement{% else %}Save Settlement{% endif %}
+    </button>
+  </div>
+</form>
+
+<!-- Inline Set Salary (for a staff row missing one) -->
+<div class="modal fade" id="inlineSetSalaryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:340px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:20px;">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold"><i class="bi bi-pencil me-2 text-primary"></i>Set Salary — <span id="inlineSalaryStaffName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="inlineSetSalaryForm" action="">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <div class="modal-body">
+          <label class="form-label small text-muted fw-bold">Monthly Salary (₹) *</label>
+          <input type="number" name="amount" class="form-control" step="1" min="1" placeholder="e.g. 20000" required>
+          <div class="small text-muted mt-2">Any leave days you've typed above will need re-entering after saving.</div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary fw-bold rounded-pill px-4">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  const RUPEE = n => '₹' + Math.round(n).toLocaleString('en-IN');
+
+  function rowFigures(input) {
+    const salary = parseFloat(input.dataset.salary) || 0;
+    const leave = parseFloat(input.value) || 0;
+    const advance = parseFloat(input.dataset.advance) || 0;
+    const leaveCut = (salary / 30) * leave;
+    return { salary, leave, advance, leaveCut, net: salary - leaveCut - advance };
+  }
+
+  function recalcRow(staffId) {
+    const input = document.querySelector(`.leave-days-input[data-staff-id="${staffId}"]`);
+    if (!input) return;
+    const f = rowFigures(input);
+
+    const cut = document.getElementById(`leavecut-${staffId}`);
+    if (cut) cut.textContent = '− ' + RUPEE(f.leaveCut);
+
+    const netEl = document.getElementById(`net-${staffId}`);
+    if (netEl) {
+      netEl.textContent = RUPEE(f.net);
+      netEl.classList.toggle('negative', f.net < 0);
+    }
+    const warn = document.getElementById(`negwarn-${staffId}`);
+    if (warn) warn.classList.toggle('show', f.net < 0);
+
+    recalcGrandTotal();
+  }
+
+  function recalcGrandTotal() {
+    let total = 0;
+    document.querySelectorAll('.leave-days-input').forEach(input => {
+      total += rowFigures(input).net;
+    });
+    document.getElementById('grandTotal').textContent = RUPEE(total);
+  }
+
+  function openInlineSetSalary(staffId, staffName) {
+    document.getElementById('inlineSalaryStaffName').textContent = staffName;
+    document.getElementById('inlineSetSalaryForm').action = `/salary-advance/staff/${staffId}/set-salary/`;
+    new bootstrap.Modal(document.getElementById('inlineSetSalaryModal')).show();
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.leave-days-input').forEach(input => recalcRow(input.dataset.staffId));
+  });
+</script>
+
+{% endblock %}

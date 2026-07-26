@@ -267,12 +267,14 @@
         transform: translateY(-1px);
     }
     .bd-add-btn.history-btn {
-        background: rgba(100, 116, 139, 0.08);
-        color: #475569;
+        background: rgba(22, 163, 74, 0.08);
+        border: 1px solid var(--bd-green);
+        color: var(--bd-green);
+        padding: 9px 20px;
     }
     .bd-add-btn.history-btn:hover {
-        background: rgba(100, 116, 139, 0.15);
-        color: #334155;
+        background: rgba(22, 163, 74, 0.15);
+        color: var(--bd-green);
     }
 
     /* ── Page 3-dot menu (header) ───────────────── */
@@ -818,7 +820,7 @@
     <!-- Action Buttons Row -->
     <div class="d-flex gap-3 mb-4">
         <button class="bd-add-btn history-btn" type="button" data-bs-toggle="offcanvas" data-bs-target="#historyOffcanvas">
-            <i class="bi bi-clock-history"></i> Payment History
+            <i class="bi bi-cash-stack"></i> Payment History
         </button>
     </div>
 
@@ -1003,7 +1005,7 @@
 <div class="offcanvas offcanvas-end" tabindex="-1" id="historyOffcanvas" aria-labelledby="historyOffcanvasLabel" style="border-top-left-radius: 16px; border-bottom-left-radius: 16px; width: 400px; max-width: 100%;">
     <div class="offcanvas-header border-bottom">
         <h5 class="offcanvas-title bd-history-title mb-0" id="historyOffcanvasLabel" style="font-family: var(--font-display); font-size: 1.3rem;">
-            <i class="bi bi-clock-history"></i> Payment History
+            <i class="bi bi-cash-stack"></i> Payment History
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>

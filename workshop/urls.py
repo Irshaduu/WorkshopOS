@@ -141,6 +141,17 @@ urlpatterns = [
     path('manage/sessions/<int:session_id>/terminate/', management_views.manage_terminate_session, name='manage_terminate_session'),
 
     # ------------------
+    # SALARY & ADVANCE (Office/Owner)
+    # ------------------
+    path('salary-advance/', views.salary_advance_home, name='salary_advance_home'),
+    path('salary-advance/add/', views.salary_advance_add, name='salary_advance_add'),
+    path('salary-advance/<int:pk>/delete/', views.salary_advance_delete, name='salary_advance_delete'),
+    path('salary-advance/staff/<int:staff_id>/', views.salary_advance_staff_detail, name='salary_advance_staff_detail'),
+    path('salary-advance/staff/<int:staff_id>/set-salary/', views.salary_set_amount, name='salary_set_amount'),
+    path('salary-advance/payment/<int:year>/<int:month>/', views.salary_payment_form, name='salary_payment_form'),
+    path('salary-advance/payment/<int:pk>/delete/', views.salary_payment_delete, name='salary_payment_delete'),
+
+    # ------------------
     # CASHBOOK (Office/Owner) — Standalone ledger, NOT part of Manage Accounts
     # ------------------
     path('cashbook/', cashbook_views.cashbook_view, name='cashbook'),

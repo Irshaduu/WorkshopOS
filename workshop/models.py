@@ -151,6 +151,12 @@ class Mechanic(models.Model):
     name = models.CharField(max_length=100, unique=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_MECHANIC)
     is_active = models.BooleanField(default=True, help_text="Disable if this staff member leaves the workshop")
+    current_salary = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Current monthly salary used by Salary & Advance settlement. "
+                   "Changing this only affects months settled after the change — "
+                   "already-saved months keep the salary that was in effect then."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -158,6 +164,78 @@ class Mechanic(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class SalaryAdvance(models.Model):
+    """
+    A cash advance given to a staff member against their salary, recorded the
+    day it happens. Settled at month-end by subtracting the month's advances
+    from that staff's salary in a SalaryPaymentLine — this row is never itself
+    flagged "used"; a payment line's advance_used is always summed fresh from
+    whichever advances fall inside that calendar month, so re-settling a month
+    (e.g. after a late-recorded advance) just recomputes cleanly.
+    """
+    staff = models.ForeignKey(Mechanic, on_delete=models.CASCADE, related_name='salary_advances')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(default=timezone.now, db_index=True)
+    note = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.staff.name} — ₹{self.amount} ({self.date})"
+
+
+class SalaryPayment(models.Model):
+    """
+    One row per calendar month once that month's salary settlement has been
+    entered — the "box" the office fills in at month-end. A row existing
+    means the month is settled; no row means it's still outstanding.
+    """
+    month = models.DateField(unique=True, db_index=True, help_text="Always the 1st of the month it represents")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-month']
+
+    @property
+    def total_amount(self):
+        from django.db.models import Sum
+        from django.db.models.functions import Coalesce
+        return self.lines.aggregate(
+            total=Coalesce(Sum('net_amount'), Decimal('0'), output_field=models.DecimalField())
+        )['total']
+
+    def __str__(self):
+        return self.month.strftime('%B %Y')
+
+
+class SalaryPaymentLine(models.Model):
+    """
+    One staff member's frozen settlement figures for one month — written once
+    at save time and never recalculated afterwards, even if Mechanic.current_salary
+    changes later. A salary hike next month must never rewrite last month's
+    already-paid numbers, so this row is the permanent record of what was
+    actually used: salary_used, leave_days and advance_used at that moment.
+    """
+    payment = models.ForeignKey(SalaryPayment, on_delete=models.CASCADE, related_name='lines')
+    staff = models.ForeignKey(Mechanic, on_delete=models.CASCADE, related_name='salary_payment_lines')
+    salary_used = models.DecimalField(max_digits=10, decimal_places=2)
+    leave_days = models.DecimalField(max_digits=5, decimal_places=1, default=Decimal('0'))
+    advance_used = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0'))
+    net_amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        unique_together = ('payment', 'staff')
+        ordering = ['staff__name']
+
+    def __str__(self):
+        return f"{self.staff.name} — {self.payment.month.strftime('%b %Y')}: ₹{self.net_amount}"
 
 
 class CarBrand(models.Model):
@@ -854,6 +932,8 @@ class DeletionLog(models.Model):
     ENTITY_RESTOCK_BILL = 'RESTOCK_BILL'
     ENTITY_CASHBOOK = 'CASHBOOK'
     ENTITY_INVENTORY_ITEM = 'INVENTORY_ITEM'
+    ENTITY_SALARY_ADVANCE = 'SALARY_ADVANCE'
+    ENTITY_SALARY_PAYMENT = 'SALARY_PAYMENT'
     ENTITY_CHOICES = [
         (ENTITY_JOBCARD, 'Job Card'),
         (ENTITY_BULK_PAYMENT, 'Fleet Account Payment'),
@@ -862,6 +942,8 @@ class DeletionLog(models.Model):
         (ENTITY_RESTOCK_BILL, 'Restock Bill'),
         (ENTITY_CASHBOOK, 'Cashbook Entry'),
         (ENTITY_INVENTORY_ITEM, 'Inventory Product'),
+        (ENTITY_SALARY_ADVANCE, 'Salary Advance'),
+        (ENTITY_SALARY_PAYMENT, 'Salary Payment'),
     ]
 
     entity_type = models.CharField(max_length=20, choices=ENTITY_CHOICES, db_index=True)

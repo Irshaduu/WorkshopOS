@@ -1,0 +1,34 @@
+{% load humanize %}
+{% if advances %}
+<div class="d-flex flex-column gap-2">
+  {% regroup advances by date|date:"F Y" as month_groups %}
+  {% for group in month_groups %}
+    <div class="d-flex align-items-baseline justify-content-between mt-1">
+      <span class="fw-bold text-muted" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em;">{{ group.grouper }}</span>
+    </div>
+    {% for adv in group.list %}
+    <div class="d-flex justify-content-between align-items-center p-2 rounded-3" style="background:var(--color-bg);">
+      <div style="min-width:0;">
+        <div class="fw-bold" style="font-size:0.9rem;">₹{{ adv.amount|floatformat:0|intcomma }}</div>
+        <div class="text-muted" style="font-size:0.75rem;">
+          {{ adv.date|date:"d M Y" }}{% if adv.note %} · {{ adv.note }}{% endif %}
+        </div>
+      </div>
+      <form method="post" action="{% url 'salary_advance_delete' adv.pk %}"
+            onsubmit="return confirm('Delete this ₹{{ adv.amount|floatformat:0 }} advance permanently?\n\nIf the month it belongs to is already settled, re-open that month and save it again so the figures stay correct.');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-danger rounded-circle flex-shrink-0"
+                style="width:30px;height:30px;padding:0;" title="Delete advance" aria-label="Delete advance">
+          <i class="bi bi-trash3" style="font-size:0.78rem;"></i>
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-muted py-4">
+  <i class="bi bi-inbox" style="font-size:1.8rem; opacity:0.4;"></i>
+  <p class="mt-2 small mb-0">No advances recorded for {{ staff.name }} yet.</p>
+</div>
+{% endif %}

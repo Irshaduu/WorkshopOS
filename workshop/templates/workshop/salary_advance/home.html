@@ -1,0 +1,495 @@
+{% extends 'workshop/base.html' %}
+{% load humanize %}
+
+{% block title %}Salary &amp; Advance — WorkshopOS{% endblock %}
+
+{% block content %}
+
+<style>
+  /* ── One consolidated month strip: status + total in a single block, so the
+        top of the page is one card instead of three stacked banners ── */
+  .month-strip {
+    background: linear-gradient(135deg, #1e293b, #334155);
+    border-radius: 16px; padding: 16px 18px; color: #fff; margin-bottom: 12px;
+  }
+  .month-strip-top {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap;
+  }
+  .ms-label { font-size: 0.68rem; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.06em; }
+  .ms-month { font-size: 1.05rem; font-weight: 800; line-height: 1.25; }
+  .ms-amount { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .ms-sub { font-size: 0.73rem; opacity: 0.6; }
+
+  /* Settlement call-to-action, docked inside the same strip */
+  .ms-action {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-top: 14px; padding-top: 13px; border-top: 1px solid rgba(255,255,255,0.14);
+    flex-wrap: wrap;
+  }
+  .ms-action-text { font-size: 0.84rem; font-weight: 600; min-width: 0; }
+  .ms-action-note { font-size: 0.72rem; opacity: 0.6; font-weight: 400; display: block; margin-top: 1px; }
+  .ms-action.late .ms-action-text { color: #fecaca; }
+  .settle-link {
+    background: #f59e0b; color: #1e293b; border-radius: 999px;
+    padding: 7px 16px; font-size: 0.8rem; font-weight: 800; text-decoration: none;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .settle-link:hover { background: #fbbf24; color: #1e293b; }
+  .settle-link.late { background: #ef4444; color: #fff; }
+  .settle-link.late:hover { background: #dc2626; color: #fff; }
+
+  /* ── Primary action — a right-aligned pill in the Staff header, matching
+        every other list page's "+ New X" placement, not a full-width bar ── */
+  .give-btn {
+    border: 0; border-radius: 999px; padding: 9px 18px;
+    background: linear-gradient(135deg, #2563eb, #1742c4);
+    color: #fff; font-weight: 800; font-size: 0.86rem; letter-spacing: 0.01em;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    white-space: nowrap; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  }
+  .give-btn i { font-size: 1rem; }
+  .give-btn:hover {
+    background: linear-gradient(135deg, #1d4ed8, #1e3a8a); color: #fff;
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.38); transform: translateY(-1px);
+  }
+  .give-btn:active { transform: translateY(0); box-shadow: 0 3px 8px rgba(37, 99, 235, 0.26); }
+
+  @media (max-width: 991.98px), (pointer: coarse) {
+    .give-btn { min-height: 44px; padding: 10px 20px; }
+  }
+
+  /* ── Section headers ── */
+  .sect-hdr {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 2px solid var(--color-border-light);
+    padding-bottom: 8px; margin: 0 0 12px;
+  }
+  .sect-hdr h5 { font-weight: 800; margin: 0; font-size: 1rem; }
+  .sect-hdr .hint { font-size: 0.73rem; color: var(--color-text-muted); }
+
+  /* ── Staff rows ── */
+  .staff-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 13px;
+    background: var(--color-card); border: 1px solid var(--color-border);
+    margin-bottom: 9px; cursor: pointer;
+    transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+  }
+  .staff-row:hover {
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08); transform: translateY(-1px);
+    border-color: var(--color-primary);
+  }
+  .staff-avatar {
+    width: 40px; height: 40px; flex: 0 0 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 0.94rem; color: #fff;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.14);
+  }
+  /* Role-coloured, matching the drawer's accent system elsewhere in the app */
+  .avatar-mechanic   { background: linear-gradient(135deg, #60a5fa, #1d4ed8); }
+  .avatar-assistant  { background: linear-gradient(135deg, #38bdf8, #0284c7); }
+  .avatar-office     { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
+  .avatar-helper     { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+
+  .staff-main { min-width: 0; flex: 1 1 auto; }
+  .staff-name { font-weight: 700; font-size: 0.94rem; line-height: 1.3; }
+  .staff-meta { font-size: 0.74rem; color: var(--color-text-muted); }
+  .no-salary-tag {
+    display: inline-block; font-size: 0.66rem; font-weight: 800;
+    color: #b45309; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 999px; padding: 0 7px; margin-left: 4px;
+  }
+  .staff-adv { text-align: right; flex: 0 0 auto; }
+  .staff-adv .amt {
+    font-weight: 800; font-size: 0.85rem; font-variant-numeric: tabular-nums;
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+  }
+  .staff-adv .amt:not(.zero) { background: #fef2f2; color: #dc2626; }
+  .staff-adv .amt.zero { color: var(--color-border); font-weight: 600; padding: 3px 0; }
+  .staff-adv .cap { font-size: 0.63rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+  /* Row actions — same inline-swap pattern as the Control Hub roster:
+     a 3-dot toggle that replaces itself with the real buttons in place,
+     never a floating panel that can clip. Each action gets its own resting
+     tint (not just a hover color) so the three buttons read as distinct
+     actions at a glance, matching the drawer's per-item accent tiles. */
+  .staff-actions { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+  .icon-btn {
+    width: 38px; height: 40px; border-radius: 10px; border: 1px solid transparent;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1px; font-size: 0.88rem; padding: 4px 0 3px;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .icon-btn i { font-size: 0.9rem; line-height: 1; }
+  .icon-btn-label { font-size: 0.5rem; font-weight: 800; line-height: 1; letter-spacing: 0.01em; }
+  .icon-btn.row-toggle { width: 34px; height: 34px; }
+  .icon-btn:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1); }
+  .icon-btn.act-advance { background: #eff6ff; color: #2563eb; }
+  .icon-btn.act-advance:hover { background: #dbeafe; }
+  .icon-btn.act-history { background: #f1f5f9; color: #475569; }
+  .icon-btn.act-history:hover { background: #e2e8f0; }
+  .icon-btn.act-salary  { background: #fffbeb; color: #b45309; }
+  .icon-btn.act-salary:hover { background: #fef3c7; }
+  .icon-btn.row-toggle { background: var(--color-card); border-color: var(--color-border); color: var(--color-text-muted); }
+  .icon-btn.row-toggle:hover { background: var(--color-hover); color: var(--color-text); }
+
+  .row-icons { display: none; align-items: center; gap: 5px; }
+  .staff-actions.is-open .row-icons { display: flex; }
+  .staff-actions.is-open .row-toggle { display: none; }
+
+  @media (max-width: 991.98px), (pointer: coarse) {
+    .icon-btn { width: 46px; height: 46px; }
+    .icon-btn.row-toggle { width: 40px; height: 40px; }
+  }
+
+  /* ── Settled history, grouped by year ── */
+  .year-block { margin-bottom: 10px; }
+  .year-head {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 11px 14px; border-radius: 12px;
+    background: var(--color-card); border: 1px solid var(--color-border);
+    font-weight: 800; font-size: 0.9rem; color: var(--color-text);
+  }
+  .year-head:hover { background: var(--color-hover); }
+  .year-total { font-variant-numeric: tabular-nums; color: var(--color-success); font-weight: 800; }
+  .year-chevron { transition: transform 0.2s; font-size: 0.75rem; color: var(--color-text-muted); }
+  .year-head[aria-expanded="true"] .year-chevron { transform: rotate(180deg); }
+
+  .done-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 14px; margin: 6px 0 0 12px;
+    border-left: 2px solid var(--color-border); border-radius: 0 10px 10px 0;
+    background: var(--color-card);
+  }
+  .done-row .m { font-weight: 600; font-size: 0.87rem; }
+  .done-row .amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .done-row.unrecorded { border-left-color: #fbbf24; background: #fffdf6; }
+
+  .empty-note {
+    text-align: center; padding: 24px 18px; color: var(--color-text-muted);
+    background: var(--color-card); border: 1px dashed var(--color-border); border-radius: 14px;
+  }
+
+  /* ── Advance form ── */
+  .amount-field {
+    font-size: 1.35rem; font-weight: 800; text-align: center;
+    min-height: 54px; letter-spacing: 0.01em;
+  }
+  .form-label-sm { font-size: 0.74rem; font-weight: 700; color: var(--color-text-muted); margin-bottom: 4px; }
+  .modal-body .form-control, .modal-body .form-select { min-height: 46px; border-radius: 10px; }
+</style>
+
+<!-- ── Header ── -->
+<div class="mb-3">
+  <h5 class="fw-bold mb-0" style="color: var(--color-text);">
+    <i class="bi bi-cash-coin me-2" style="color: var(--color-primary);"></i>Salary &amp; Advance
+  </h5>
+</div>
+
+<!-- ── Current month + settlement status, in one block ── -->
+<div class="month-strip">
+  <div class="month-strip-top">
+    <div>
+      <div class="ms-label">Running month</div>
+      <div class="ms-month">{{ current_month|date:"F Y" }}</div>
+    </div>
+    <div class="text-end">
+      <div class="ms-label">Advances given</div>
+      <div class="ms-amount">₹{{ this_month_total|floatformat:0|intcomma }}</div>
+      {% if needs_salary %}
+      <div class="ms-sub">{{ needs_salary|length }} without a salary set</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% for m in pending_months %}
+  <div class="ms-action {% if m.overdue %}late{% endif %}">
+    <span class="ms-action-text">
+      <i class="bi bi-{% if m.overdue %}exclamation-triangle-fill{% else %}calendar-check{% endif %} me-1"></i>
+      {{ m.month|date:"F Y" }} salary not recorded
+      <span class="ms-action-note">
+        {% if m.overdue %}Overdue — settle it to keep records straight{% elif m.is_current %}Month is ending — you can settle it now{% else %}Ready to settle{% endif %}
+        {% if m.advance_total %} · Advances given: ₹{{ m.advance_total|floatformat:0|intcomma }}{% endif %}
+      </span>
+    </span>
+    <a href="{% url 'salary_payment_form' m.month.year m.month.month %}"
+       class="settle-link {% if m.overdue %}late{% endif %}">Settle {{ m.month|date:"M Y" }} →</a>
+  </div>
+  {% endfor %}
+
+  {% if pending_extra %}
+  <div class="ms-action">
+    <span class="ms-action-text" style="font-weight:500; opacity:0.8;">
+      <i class="bi bi-three-dots me-1"></i>{{ pending_extra }} earlier month{{ pending_extra|pluralize }} still unrecorded
+      <span class="ms-action-note">Listed by year below</span>
+    </span>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Staff ── -->
+<div class="sect-hdr">
+  <h5>Staff <span class="hint fw-normal">· Advances in {{ current_month|date:"F" }}</span></h5>
+  <button type="button" class="give-btn" onclick="openGiveAdvance()">
+    <i class="bi bi-plus-circle-fill"></i> Give an Advance
+  </button>
+</div>
+
+{% if staff %}
+  {% for s in staff %}
+  <div class="staff-row" onclick="toggleStaffActions(event, this)">
+    <span class="staff-avatar
+      {% if s.role == 'MECHANIC' %}avatar-mechanic
+      {% elif s.role == 'ASSISTANT_MECHANIC' %}avatar-assistant
+      {% elif s.role == 'OFFICE_STAFF' %}avatar-office
+      {% else %}avatar-helper{% endif %}">{{ s.name|first|upper }}</span>
+    <div class="staff-main">
+      <div class="staff-name">{{ s.name }}</div>
+      <div class="staff-meta">
+        {{ s.get_role_display }}{% if s.current_salary %} · ₹{{ s.current_salary|floatformat:0|intcomma }}/mo{% endif %}
+        {% if not s.current_salary %}<span class="no-salary-tag">No salary</span>{% endif %}
+      </div>
+    </div>
+    <div class="staff-adv">
+      <div class="amt {% if not s.this_month_advance %}zero{% endif %}">₹{{ s.this_month_advance|floatformat:0|intcomma }}</div>
+      <div class="cap">this month</div>
+    </div>
+    <div class="staff-actions">
+      <button type="button" class="icon-btn row-toggle" aria-label="More actions for {{ s.name }}" title="More actions">
+        <i class="bi bi-three-dots-vertical"></i>
+      </button>
+      <div class="row-icons">
+        <button type="button" class="icon-btn act-advance" onclick="openGiveAdvance({{ s.id }})"
+                aria-label="Give advance to {{ s.name }}" title="Give advance">
+          <i class="bi bi-cash-coin"></i><span class="icon-btn-label">Advance</span>
+        </button>
+        <button type="button" class="icon-btn act-history" onclick="openStaffHistory({{ s.id }}, '{{ s.name|escapejs }}')"
+                aria-label="Advance history for {{ s.name }}" title="Advance history">
+          <i class="bi bi-clock-history"></i><span class="icon-btn-label">History</span>
+        </button>
+        <button type="button" class="icon-btn act-salary"
+                onclick="openSetSalary({{ s.id }}, '{{ s.name|escapejs }}', '{{ s.current_salary|default_if_none:'' }}')"
+                aria-label="Set salary for {{ s.name }}" title="{% if s.current_salary %}Change salary{% else %}Set salary{% endif %}">
+          <i class="bi bi-pencil"></i><span class="icon-btn-label">Salary</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="empty-note">
+  <i class="bi bi-people" style="font-size:2rem; opacity:0.35;"></i>
+  <p class="mt-2 mb-1 fw-bold">No active staff yet</p>
+  <p class="small mb-0">Add staff in Control Hub → Staff Registration first.</p>
+</div>
+{% endif %}
+
+<!-- ── Month history, grouped by year ── -->
+<div class="sect-hdr" style="margin-top:26px;">
+  <h5>Month History</h5>
+  {% if year_blocks %}<span class="hint">Paid per year</span>{% endif %}
+</div>
+
+{% if year_blocks %}
+  {% for y in year_blocks %}
+  <div class="year-block">
+    <button class="year-head" type="button" data-bs-toggle="collapse"
+            data-bs-target="#year{{ y.year }}"
+            aria-expanded="{% if y.year == current_year %}true{% else %}false{% endif %}">
+      <span><i class="bi bi-calendar3 me-2 text-muted"></i>{{ y.year }}
+        {% if y.unsettled %}
+        <span class="no-salary-tag">{{ y.unsettled }} unrecorded</span>
+        {% endif %}
+      </span>
+      <span class="d-flex align-items-center gap-2">
+        <span class="year-total">₹{{ y.total|floatformat:0|intcomma }}</span>
+        <i class="bi bi-chevron-down year-chevron"></i>
+      </span>
+    </button>
+    <div class="collapse {% if y.year == current_year %}show{% endif %}" id="year{{ y.year }}">
+      {% for m in y.months %}
+      <div class="done-row {% if not m.payment and m.due %}unrecorded{% endif %}">
+        <span class="m">
+          {% if m.payment %}
+            <i class="bi bi-check-circle-fill text-success me-1" style="font-size:0.78rem;"></i>
+          {% elif m.due %}
+            <i class="bi bi-circle text-warning me-1" style="font-size:0.72rem;"></i>
+          {% else %}
+            <i class="bi bi-dash-circle text-muted me-1" style="font-size:0.72rem;"></i>
+          {% endif %}
+          {{ m.month|date:"F" }}
+        </span>
+        <span class="d-flex align-items-center gap-3">
+          {% if m.payment %}
+            <span class="amt">₹{{ m.payment.total_net|floatformat:0|intcomma }}</span>
+            <a href="{% url 'salary_payment_form' m.month.year m.month.month %}"
+               class="btn btn-sm btn-outline-secondary rounded-pill px-3" style="font-size:0.74rem;">View</a>
+          {% elif m.due %}
+            <span class="amt text-muted fw-normal" style="font-size:0.78rem;">Not recorded</span>
+            <a href="{% url 'salary_payment_form' m.month.year m.month.month %}"
+               class="btn btn-sm btn-warning fw-bold rounded-pill px-3" style="font-size:0.74rem;">Settle</a>
+          {% else %}
+            <span class="amt text-muted fw-normal" style="font-size:0.78rem;">Month in progress</span>
+          {% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="empty-note">
+  <p class="small mb-0">Nothing recorded yet. When a month ends it appears at the top of this page, ready to settle.</p>
+</div>
+{% endif %}
+
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- GIVE ADVANCE                                       -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="modal fade" id="giveAdvanceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:370px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:20px;">
+      <div class="modal-header border-0 pb-1">
+        <h6 class="modal-title fw-bold"><i class="bi bi-cash-coin me-2 text-primary"></i>Give an Advance</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'salary_advance_add' %}">
+        {% csrf_token %}
+        <div class="modal-body pt-2">
+
+          <div class="form-label-sm">Amount</div>
+          <input type="number" name="amount" class="form-control amount-field mb-3"
+                 step="1" min="1" placeholder="₹0" required autocomplete="off">
+
+          <div class="form-label-sm">Who is taking it?</div>
+          <select name="staff_id" id="advStaffSelect" class="form-select mb-3" required>
+            <option value="">Choose staff…</option>
+            {% for s in staff %}
+            <option value="{{ s.id }}">{{ s.name }} — {{ s.get_role_display }}</option>
+            {% endfor %}
+          </select>
+
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="form-label-sm">Date given</div>
+              <input type="date" name="date" class="form-control" value="{% now 'Y-m-d' %}" required>
+            </div>
+            <div class="col-6">
+              <div class="form-label-sm">Note <span class="fw-normal">(optional)</span></div>
+              <input type="text" name="note" class="form-control" placeholder="e.g. from owner">
+            </div>
+          </div>
+
+          <div class="small text-muted mt-3 d-flex align-items-start gap-2">
+            <i class="bi bi-info-circle mt-1"></i>
+            <span>Subtracted automatically when that month's salary is settled.</span>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary fw-bold rounded-pill px-4">Save Advance</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- SET SALARY                                         -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="modal fade" id="setSalaryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:360px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:20px;">
+      <div class="modal-header border-0 pb-1">
+        <h6 class="modal-title fw-bold"><i class="bi bi-pencil me-2 text-primary"></i>Salary — <span id="salaryStaffName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="setSalaryForm" action="">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <div class="modal-body pt-2">
+          <div class="form-label-sm">Monthly salary</div>
+          <input type="number" name="amount" id="setSalaryAmount" class="form-control amount-field"
+                 step="1" min="1" placeholder="₹0" required autocomplete="off">
+          <div class="small text-muted mt-3 d-flex align-items-start gap-2">
+            <i class="bi bi-shield-check mt-1"></i>
+            <span>Months already settled keep the salary used then — this only affects future settlements.</span>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary fw-bold rounded-pill px-4">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- ADVANCE HISTORY                                    -->
+<!-- ══════════════════════════════════════════════════ -->
+<div class="modal fade" id="staffHistoryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:400px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:20px;">
+      <div class="modal-header border-0 pb-1">
+        <h6 class="modal-title fw-bold"><i class="bi bi-clock-history me-2 text-primary"></i>Advances — <span id="historyStaffName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2" id="staffHistoryBody" style="max-height:60vh; overflow-y:auto;">
+        <div class="text-center py-4"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Tapping a staff row reveals its actions in place (Control Hub pattern).
+  function toggleStaffActions(event, row) {
+    if (event.target.closest('.row-icons')) return;   // let a real button act
+    const actions = row.querySelector('.staff-actions');
+    document.querySelectorAll('.staff-actions.is-open').forEach(el => {
+      if (el !== actions) el.classList.remove('is-open');
+    });
+    actions.classList.toggle('is-open');
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.staff-row')) {
+      document.querySelectorAll('.staff-actions.is-open').forEach(el => el.classList.remove('is-open'));
+    }
+  });
+
+  function openGiveAdvance(staffId) {
+    const select = document.getElementById('advStaffSelect');
+    select.value = staffId ? String(staffId) : '';
+    new bootstrap.Modal(document.getElementById('giveAdvanceModal')).show();
+  }
+
+  function openSetSalary(staffId, staffName, currentSalary) {
+    document.getElementById('salaryStaffName').textContent = staffName;
+    document.getElementById('setSalaryAmount').value = currentSalary || '';
+    document.getElementById('setSalaryForm').action = `/salary-advance/staff/${staffId}/set-salary/`;
+    new bootstrap.Modal(document.getElementById('setSalaryModal')).show();
+  }
+
+  function openStaffHistory(staffId, staffName) {
+    document.getElementById('historyStaffName').textContent = staffName;
+    const body = document.getElementById('staffHistoryBody');
+    body.innerHTML = '<div class="text-center py-4"><span class="spinner-border spinner-border-sm text-primary"></span></div>';
+    new bootstrap.Modal(document.getElementById('staffHistoryModal')).show();
+
+    fetch(`/salary-advance/staff/${staffId}/`)
+      .then(r => r.text())
+      .then(html => { body.innerHTML = html; })
+      .catch(err => {
+        console.error('Error loading advance history:', err);
+        body.innerHTML = '<div class="text-center text-danger py-4">Couldn\'t load history. Try again.</div>';
+      });
+  }
+</script>
+
+{% endblock %}
