@@ -22,7 +22,7 @@ def paid_bills_list(request):
     paid_jobs = JobCard.objects.filter(
         payment_status__in=['PAID', 'BULK_PAID'],
         is_deleted=False,
-    ).order_by('-updated_at', '-admitted_date')
+    ).order_by('-paid_date', '-admitted_date')
 
     # 2. Read filter from URL always — non-AJAX and AJAX both respect the same param
     #    Default: 'today'. URL pushState already keeps ?filter= in sync after JS changes.
@@ -45,48 +45,48 @@ def paid_bills_list(request):
     today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
 
     if filter_type == 'today':
-        paid_jobs = paid_jobs.filter(updated_at__date=today)
+        paid_jobs = paid_jobs.filter(paid_date__date=today)
 
     elif filter_type == 'this_week':
         # Monday of the current calendar week
         start = today - timedelta(days=today.weekday())
-        paid_jobs = paid_jobs.filter(updated_at__date__gte=start)
+        paid_jobs = paid_jobs.filter(paid_date__date__gte=start)
 
     elif filter_type == 'this_month':
         start = today.replace(day=1)
-        paid_jobs = paid_jobs.filter(updated_at__date__gte=start)
+        paid_jobs = paid_jobs.filter(paid_date__date__gte=start)
 
     elif filter_type == 'this_year':
         start = today.replace(month=1, day=1)
-        paid_jobs = paid_jobs.filter(updated_at__date__gte=start)
+        paid_jobs = paid_jobs.filter(paid_date__date__gte=start)
 
     elif filter_type == 'last_week':
         # Previous full calendar week: Mon to Sun
         start = today - timedelta(days=today.weekday() + 7)
         end   = start + timedelta(days=6)
-        paid_jobs = paid_jobs.filter(updated_at__date__gte=start, updated_at__date__lte=end)
+        paid_jobs = paid_jobs.filter(paid_date__date__gte=start, paid_date__date__lte=end)
 
     elif filter_type == 'last_month':
         first_of_this_month = today.replace(day=1)
         last_of_last_month  = first_of_this_month - timedelta(days=1)
         first_of_last_month = last_of_last_month.replace(day=1)
         paid_jobs = paid_jobs.filter(
-            updated_at__date__gte=first_of_last_month,
-            updated_at__date__lte=last_of_last_month,
+            paid_date__date__gte=first_of_last_month,
+            paid_date__date__lte=last_of_last_month,
         )
 
     elif filter_type == 'last_year':
         start = today.replace(year=today.year - 1, month=1,  day=1)
         end   = today.replace(year=today.year - 1, month=12, day=31)
-        paid_jobs = paid_jobs.filter(updated_at__date__gte=start, updated_at__date__lte=end)
+        paid_jobs = paid_jobs.filter(paid_date__date__gte=start, paid_date__date__lte=end)
 
     elif filter_type == 'custom':
         start_date = request.GET.get('start_date', '')
         end_date   = request.GET.get('end_date', '')
         if start_date and end_date:
             paid_jobs = paid_jobs.filter(
-                updated_at__date__gte=start_date,
-                updated_at__date__lte=end_date,
+                paid_date__date__gte=start_date,
+                paid_date__date__lte=end_date,
             )
     # filter_type == 'all' → no date filter applied
 

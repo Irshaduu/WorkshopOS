@@ -135,7 +135,7 @@
                         <span class="fin-label text-danger">Discount:</span>
                         <span class="fin-val danger">₹{{ bill.discount_amount|floatformat:0|intcomma }}</span>
                     </div>
-                    <a href="{% url 'invoice_view' bill.pk %}" class="btn-view" target="_blank">View Invoice</a>
+                    <a href="{% url 'invoice_view' bill.pk %}?back={{ request.get_full_path|urlencode }}" class="btn-view">View Invoice</a>
                 </div>
             </div>
         </div>

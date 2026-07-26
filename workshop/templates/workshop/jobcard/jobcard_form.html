@@ -28,7 +28,7 @@
                         class="btn btn-sm btn-outline-primary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
                         <i class="bi bi-car-front"></i> Profile
                     </a>
-                    <a href="{% url 'invoice_view' jobcard.pk %}" target="_blank" class="btn btn-sm btn-outline-primary"
+                    <a href="{% url 'invoice_view' jobcard.pk %}?back={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-primary"
                         style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
                         <i class="bi bi-receipt"></i> Invoice
                     </a>
@@ -44,10 +44,11 @@
         <!-- Security Tier Banner (Triple-Tier Security) -->
         {% if is_edit %}
         <div class="mb-3">
-            {% if jobcard.payment_status == 'PAID' %}
+            {% if jobcard.payment_status == 'PAID' or jobcard.payment_status == 'BULK_PAID' %}
                 <div class="alert alert-danger py-2 px-3 d-flex justify-content-between align-items-center mb-0 shadow-sm border-0" style="border-radius: 8px; background-color: #fce8e6; color: #c5221f;">
                     <div class="small fw-bold">
                         <i class="bi bi-shield-lock-fill me-1"></i> FINANCIAL LOCK ACTIVE
+                        {% if jobcard.payment_status == 'BULK_PAID' %}<span class="fw-normal">— Fleet Paid</span>{% endif %}
                     </div>
                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                     <button type="button" class="btn btn-sm btn-danger py-0 fw-bold" onclick="toggleRecordLock(true)" style="font-size: 0.75rem;">
@@ -156,6 +157,7 @@
 
         <form method="post" id="jobcardForm" autocomplete="off" {% if next_url %}action="?next={{ next_url }}"{% endif %}>
             {% csrf_token %}
+            <input type="hidden" name="financial_unlock" id="financial_unlock_field" value="false">
 
             {% if form.errors or concern_formset.errors or spare_formset.errors or labour_formset.errors %}
             <div class="alert alert-danger">
@@ -908,6 +910,8 @@
                         submitBtn.classList.remove('opacity-50');
                     }
                     form.setAttribute('data-locked', 'false');
+                    const unlockField = document.getElementById('financial_unlock_field');
+                    if (unlockField) unlockField.value = 'true';
                     
                     // High-impact notification
                     const toast = document.createElement('div');
@@ -937,9 +941,9 @@
             }
         });
 
-        // Auto-lock on load: ONLY for Tier 3 (PAID)
+        // Auto-lock on load: Tier 3 (PAID) and Fleet-settled (BULK_PAID) alike
         {% if is_edit %}
-            {% if jobcard.payment_status == 'PAID' %}
+            {% if jobcard.payment_status == 'PAID' or jobcard.payment_status == 'BULK_PAID' %}
                 setTimeout(() => {
                     const form = document.getElementById('jobcardForm');
                     const editableElements = form.querySelectorAll('input:not([type="hidden"]), select, textarea, button:not([onclick^="toggleRecordLock"])');

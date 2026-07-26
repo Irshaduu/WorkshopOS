@@ -861,12 +861,20 @@
                         </a>
                     </li>
                     <li><hr class="dropdown-divider" style="margin: 2px 8px;"></li>
+                    {% if job.received_amount <= 0 %}
                     <li>
                         <button type="button" class="dropdown-item text-danger"
                             onclick="showRemoveConfirm('{{ job.brand_name }} {{ job.model_name }}', '{{ job.registration_number }}', '{{ bulk_payer.customer_name }}', {{ job.pk }})">
                             <i class="bi bi-x-circle me-2"></i>Remove
                         </button>
                     </li>
+                    {% else %}
+                    <li>
+                        <span class="dropdown-item text-muted" style="cursor: default;" title="Already received ₹{{ job.received_amount }} through this Fleet Account — reverse that payment first if this was a mistake.">
+                            <i class="bi bi-lock-fill me-2"></i>Remove (paid)
+                        </span>
+                    </li>
+                    {% endif %}
                 </ul>
             </div>
 

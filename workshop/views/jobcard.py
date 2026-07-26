@@ -232,6 +232,18 @@ def jobcard_edit(request, pk):
     jobcard = get_object_or_404(JobCard, pk=pk)
 
     if request.method == 'POST':
+        # Financial Lock: the client disables the form for PAID/BULK_PAID
+        # records, but that's UI-only — enforce it here too, since a raw POST
+        # would otherwise bypass it entirely. The "Unlock Record" button sets
+        # financial_unlock=true before it lets the form submit.
+        if jobcard.payment_status in ('PAID', 'BULK_PAID') and request.POST.get('financial_unlock') != 'true':
+            messages.error(
+                request,
+                f"{jobcard.registration_number}'s bill is finalized ({jobcard.get_payment_status_display()}) — "
+                f"unlock the record on this page before editing."
+            )
+            return redirect('jobcard_edit', pk=pk)
+
         form = JobCardForm(request.POST, instance=jobcard)
         concern_formset = JobCardConcernFormSet(request.POST, instance=jobcard, prefix='concerns')
         spare_formset = JobCardSpareFormSet(request.POST, instance=jobcard, prefix='spares')

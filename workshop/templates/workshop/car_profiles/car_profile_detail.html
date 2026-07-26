@@ -70,9 +70,8 @@
                 </div>
                 <div class="d-flex gap-2">
                     {% if user.is_staff %}
-                    <a href="{% url 'invoice_view' bill.pk %}" 
-                       class="btn btn-primary btn-sm" 
-                       target="_blank" 
+                    <a href="{% url 'invoice_view' bill.pk %}?back={{ request.get_full_path|urlencode }}"
+                       class="btn btn-primary btn-sm"
                        onclick="event.stopPropagation();"
                        style="font-size: 0.75rem;">
                         <i class="bi bi-receipt"></i> Invoice

@@ -357,12 +357,13 @@ class JobCard(models.Model):
     total_bill_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Denormalized total for instant dashboard loading")
     received_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Amount actually received from customer")
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Internal discount tracking (calculated on Paid status)")
+    paid_date = models.DateTimeField(null=True, blank=True, db_index=True, help_text="Set only when payment_status becomes PAID/BULK_PAID — Paid Bills filters on this, not updated_at, so an unrelated later edit never resurfaces an old bill under 'Today'")
     
     PAYMENT_STATUS_CHOICES = [
         ('PENDING', 'Pending (Unpaid)'),
         ('PAID', 'Fully Paid'),
         ('PARTIAL', 'Partially Paid'),
-        ('BULK_PAID', 'Bulk Paid'),
+        ('BULK_PAID', 'Fleet Paid'),
     ]
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='PENDING', db_index=True)
     

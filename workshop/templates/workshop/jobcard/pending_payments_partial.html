@@ -267,21 +267,14 @@
                     {{ job.customer_name|default:"—" }}
                 </div>
 
-                <!-- Financials -->
+                <!-- Financials — a job only ever lands on this page while fully
+                     unpaid (received_amount = 0; non-fleet cards never go
+                     PARTIAL), so Total Bill and Balance Due are always the
+                     same figure. Show it once. -->
                 <div class="pp-financials">
                     <div class="pp-fin-row">
                         <span class="pp-fin-label">Total Bill</span>
-                        <span class="pp-fin-value">₹{{ job.total_bill|floatformat:2 }}</span>
-                    </div>
-                    {% if job.received_amount > 0 %}
-                    <div class="pp-fin-row">
-                        <span class="pp-fin-label">Received</span>
-                        <span class="pp-fin-value success">₹{{ job.received_amount|floatformat:2 }}</span>
-                    </div>
-                    {% endif %}
-                    <div class="pp-fin-row">
-                        <span class="pp-fin-label">Balance Due</span>
-                        <span class="pp-fin-value danger">₹{{ job.balance_amount|floatformat:2 }}</span>
+                        <span class="pp-fin-value danger">₹{{ job.total_bill_amount|floatformat:2 }}</span>
                     </div>
                 </div>
 

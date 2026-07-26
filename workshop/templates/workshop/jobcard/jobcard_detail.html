@@ -92,7 +92,7 @@ View Job Card - {{ jobcard.registration_number }}
                 
                 <div class="d-flex gap-2">
                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-                        <a href="{% url 'invoice_view' jobcard.pk %}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold bg-white">
+                        <a href="{% url 'invoice_view' jobcard.pk %}?back={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-primary fw-bold bg-white">
                             <i class="bi bi-receipt"></i> Invoice
                         </a>
                     {% endif %}

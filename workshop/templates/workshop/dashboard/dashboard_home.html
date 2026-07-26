@@ -561,7 +561,7 @@
                         </li>
                         {% if user.is_staff %}
                         <li>
-                            <a class="dropdown-item text-info" href="{% url 'invoice_view' job.pk %}" target="_blank">
+                            <a class="dropdown-item text-info" href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}">
                                 <i class="bi bi-receipt"></i> View Invoice
                             </a>
                         </li>

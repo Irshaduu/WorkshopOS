@@ -123,6 +123,7 @@
     .del-pay-badge.paid    { background: rgba(22,163,74,0.1);  color: #16a34a; border: 1px solid rgba(22,163,74,0.25); }
     .del-pay-badge.partial { background: rgba(217,119,6,0.1);  color: #d97706; border: 1px solid rgba(217,119,6,0.25); }
     .del-pay-badge.pending { background: rgba(220,38,38,0.08); color: #dc2626; border: 1px solid rgba(220,38,38,0.2); }
+    .del-pay-badge.fleet   { background: rgba(91,33,182,0.1);  color: #5b21b6; border: 1px solid rgba(91,33,182,0.25); }
 
     /* 3-dot button */
     .del-dots-btn {
@@ -261,6 +262,8 @@
                             <span class="del-reg">{{ jobcard.registration_number }}</span>
                             {% if jobcard.payment_status == 'PAID' %}
                                 <span class="del-pay-badge paid">Paid</span>
+                            {% elif jobcard.payment_status == 'BULK_PAID' %}
+                                <span class="del-pay-badge fleet">Fleet Paid</span>
                             {% elif jobcard.payment_status == 'PARTIAL' %}
                                 <span class="del-pay-badge partial">Partial</span>
                             {% else %}
@@ -282,7 +285,7 @@
                                 </a>
                             </li>
                             <li>
-                                <a class="dropdown-item text-info" href="{% url 'invoice_view' jobcard.pk %}" target="_blank">
+                                <a class="dropdown-item text-info" href="{% url 'invoice_view' jobcard.pk %}?back={{ request.get_full_path|urlencode }}">
                                     <i class="bi bi-receipt"></i> View Invoice
                                 </a>
                             </li>

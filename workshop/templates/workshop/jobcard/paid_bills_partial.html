@@ -77,7 +77,7 @@
         border-radius: 20px;
     }
     .pb-badge-paid      { background: rgba(22,163,74,0.09);  color: #16a34a; border: 1px solid rgba(22,163,74,0.22); }
-    .pb-badge-bulk-paid { background: rgba(13,148,136,0.09); color: #0d9488; border: 1px solid rgba(13,148,136,0.22); }
+    .pb-badge-bulk-paid { background: rgba(91,33,182,0.09); color: #5b21b6; border: 1px solid rgba(91,33,182,0.22); }
 
     .pb-date {
         font-family: var(--font-body);
@@ -253,14 +253,14 @@
                     <div class="d-flex align-items-center gap-2">
                         {% if job.payment_status == 'BULK_PAID' %}
                             <span class="pb-status-badge pb-badge-bulk-paid">
-                                <i class="bi bi-people-fill me-1" style="font-size:0.55rem;"></i>Bulk Paid
+                                <i class="bi bi-people-fill me-1" style="font-size:0.55rem;"></i>Fleet Paid
                             </span>
                         {% else %}
                             <span class="pb-status-badge pb-badge-paid">
                                 <i class="bi bi-check-circle-fill me-1" style="font-size:0.55rem;"></i>Paid
                             </span>
                         {% endif %}
-                        <span class="pb-date">{{ job.updated_at|date:"d M, Y" }}</span>
+                        <span class="pb-date">{{ job.paid_date|date:"d M, Y" }}</span>
                     </div>
 
                     <!-- Payment method pill -->

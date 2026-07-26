@@ -37,7 +37,7 @@ def manage_dashboard(request):
         context['floor_users'] = list(User.objects.filter(groups=floor_group)) if floor_group else []
 
     elif section == 'staff':
-        mechanics = list(Mechanic.objects.all().order_by('name'))
+        mechanics = list(Mechanic.objects.all().order_by('-is_active', 'name'))
         context['staff_by_role'] = [
             (role_value, role_label, [m for m in mechanics if m.role == role_value])
             for role_value, role_label in Mechanic.ROLE_CHOICES

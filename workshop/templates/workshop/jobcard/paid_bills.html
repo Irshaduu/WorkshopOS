@@ -222,7 +222,18 @@
 
         <!-- Total collected stat -->
         <div class="pb-total-block">
-            <span class="pb-total-label">Total Collected</span>
+            <span class="pb-total-label" id="pbTotalLabel">Total Collected
+                {% if filter_type == 'today' %}Today
+                {% elif filter_type == 'this_week' %}This Week
+                {% elif filter_type == 'this_month' %}This Month
+                {% elif filter_type == 'this_year' %}This Year
+                {% elif filter_type == 'last_week' %}Last Week
+                {% elif filter_type == 'last_month' %}Last Month
+                {% elif filter_type == 'last_year' %}Last Year
+                {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
+                {% elif filter_type == 'all' %}All Time
+                {% else %}Today{% endif %}
+            </span>
             <span class="pb-total-amount">₹{{ total_collected|floatformat:2 }}</span>
         </div>
     </div>
@@ -349,15 +360,17 @@ document.addEventListener('DOMContentLoaded', function () {
             all:        'All Time',
         };
         const label = document.getElementById('pbFilterLabel');
-        if (label) {
-            if (currentFilter === 'custom') {
-                const s = document.getElementById('pb_start_date')?.value;
-                const e = document.getElementById('pb_end_date')?.value;
-                label.textContent = (s && e) ? `${s} – ${e}` : 'Custom';
-            } else {
-                label.textContent = labelMap[currentFilter] || 'All Time';
-            }
+        const totalLabel = document.getElementById('pbTotalLabel');
+        let labelText;
+        if (currentFilter === 'custom') {
+            const s = document.getElementById('pb_start_date')?.value;
+            const e = document.getElementById('pb_end_date')?.value;
+            labelText = (s && e) ? `${s} – ${e}` : 'Custom';
+        } else {
+            labelText = labelMap[currentFilter] || 'All Time';
         }
+        if (label) label.textContent = labelText;
+        if (totalLabel) totalLabel.textContent = 'Total Collected ' + labelText;
 
         const delay = (event && event.type === 'submit') ? 0 : 300;
         if (debounceTimer) clearTimeout(debounceTimer);

@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.utils import timezone
 
 from ..models import JobCard
 from ..decorators import office_required
@@ -53,7 +54,20 @@ def update_bill_status(request, pk):
     """
     if request.method == 'POST':
         jobcard = get_object_or_404(JobCard, pk=pk)
-        
+
+        # Fleet-billed cards settle only through the Bulk Payer cascade
+        # (bulk_payer_pay). Direct settlement here would mark this one job
+        # PAID/PENDING while BulkPayer.total_paid_amount (summed from
+        # BulkPaymentHistory only) never learns about it, permanently
+        # overstating what the fleet still owes.
+        if jobcard.bulk_payer_id:
+            messages.error(
+                request,
+                f"{jobcard.registration_number} is billed to Fleet Account "
+                f"'{jobcard.bulk_payer.customer_name}' — settle it from that account's page, not here."
+            )
+            return redirect('invoice_view', pk=pk)
+
         # Safely convert to Decimal
         raw_received = request.POST.get('received_amount', '0')
         try:
@@ -76,6 +90,7 @@ def update_bill_status(request, pk):
         # Automated status and discount calculation
         if received > 0:
             jobcard.payment_status = 'PAID'
+            jobcard.paid_date = timezone.now()
             if received > total_bill:
                 jobcard.discount_amount = Decimal('0')
                 messages.warning(request, f"Received amount (₹{received}) exceeds total bill (₹{total_bill}). Overpayment recorded.")
@@ -84,6 +99,7 @@ def update_bill_status(request, pk):
         else:
             jobcard.payment_status = 'PENDING'
             jobcard.discount_amount = Decimal('0')
+            jobcard.paid_date = None
 
         jobcard.save()
 

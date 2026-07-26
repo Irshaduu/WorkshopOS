@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.utils import timezone
 from django.db.models import (
     Sum, Count, Value, F, OuterRef, Subquery, Max,
     DecimalField, ExpressionWrapper, IntegerField,
@@ -260,6 +261,23 @@ def bulk_payer_remove_card(request, pk):
         
         try:
             job_card = JobCard.objects.get(pk=int(job_card_id))
+
+            # A card that's PARTIAL or BULK_PAID has already received money
+            # through this fleet's cascade — silently detaching it would
+            # leave a non-fleet job card sitting at PARTIAL (a state normal
+            # customers can never be in) while the fleet's BulkPaymentHistory
+            # still shows that money collected. Block rather than guess at a
+            # reversal — the money may belong to a lump payment shared with
+            # other cards, so there's no clean single amount to claw back.
+            if job_card.received_amount and job_card.received_amount > 0:
+                messages.error(
+                    request,
+                    f"Can't remove {job_card.registration_number} — it has already received "
+                    f"₹{job_card.received_amount} through this Fleet Account's payments. "
+                    f"Reverse the relevant Fleet payment first if this was a mistake."
+                )
+                return redirect('bulk_payer_detail', pk=pk)
+
             bulk_payer.job_cards.remove(job_card)
             bulk_payer.update_totals()
             messages.success(
@@ -329,6 +347,7 @@ def bulk_payer_pay(request, pk):
                 job.payment_status = 'BULK_PAID'
                 job.payment_method = payment_method
                 job.discount_amount = Decimal('0')
+                job.paid_date = timezone.now()
                 remaining_funds -= balance
             else:
                 # Partial payment
@@ -459,11 +478,14 @@ def bulk_payment_history_delete(request, pk, history_pk):
                 reversed_amount = Decimal(str(entry['paid']))
                 job.received_amount = max(Decimal('0'), job.received_amount - reversed_amount)
 
-                # Recalculate status
+                # Recalculate status — reversal always lands on PENDING or
+                # PARTIAL, neither of which is a "paid" state, so clear
+                # paid_date too (it was only ever set on the BULK_PAID branch).
                 if job.received_amount <= 0:
                     job.payment_status = 'PENDING'
                 else:
                     job.payment_status = 'PARTIAL'
+                job.paid_date = None
 
                 job.save()
             except (JobCard.DoesNotExist, KeyError, InvalidOperation):
