@@ -108,7 +108,27 @@ python manage.py migrate
 # One-off management commands
 python manage.py backup_db       # rotated SQLite backup, keeps last 7 in /backups
 python manage.py setup_groups    # (legacy) creates Owner/Office/Floor auth groups
+python manage.py load_master_data  # brands/models/spare parts — prerequisite for seeding
+
+# Demo/dev data. seed_dummy_data needs load_master_data to have run first.
+python manage.py seed_dummy_data                                    # default 5-year range
+python manage.py seed_dummy_data --start 2026-01-01 --end 2026-07-25 --cards-per-day 3
+python manage.py purge_business_data        # DRY RUN — prints what it would delete
+python manage.py purge_business_data --yes  # actually delete
 ```
+
+`purge_business_data` clears **all** business tables (job cards, shops, fleet
+accounts, inventory, cashbook, staff roster, deletion history) — it deliberately
+does *not* try to distinguish "dummy" rows from real ones, because nothing in the
+schema marks them, and a command claiming otherwise would be lying. It never
+touches login accounts, groups, or the master lists. It is the intended reversal
+for `seed_dummy_data`, and the thing to run against Postgres before go-live.
+
+`seed_dummy_data` writes everything through the ORM so signals fire (stock sync,
+`update_totals`), commits one day at a time with monthly bookends (never one long
+transaction — a remote Postgres would time out), and restocks monthly *to demand*
+rather than a fixed quantity, so warehouse stock hovers around `average_stock`
+instead of compounding upward over a multi-year range.
 
 `DJANGO_ENV=production` switches to PostgreSQL + SSL/HSTS enforcement (`settings/production.py`) — only use this if you actually have Postgres configured; otherwise always `development`.
 

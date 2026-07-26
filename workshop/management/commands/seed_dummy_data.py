@@ -2,27 +2,37 @@
 Management command: seed_dummy_data
 ------------------------------------
 Seeds realistic dev/demo data on top of the existing master data
-(CarBrand/CarModel/SparePart, already loaded via load_master_data):
+(CarBrand/CarModel/SparePart, loaded via load_master_data).
 
-  - 3 Spare Shops (workshop.SpareShop)
-  - 3 Supplier Shops (inventory.SupplierShop), 5 Categories, 3 products each
-  - One restock bill + one running-balance payment per Supplier Shop
-  - 2 Fleet Accounts (BulkPayer), with a partial bulk payment run against each
-  - Job Cards for every day from 1 May 2026 to 25 Jul 2026, 3/day (258 total),
-    each fully worked (concerns/spares/labour), delivered, billed per the
-    real discount-as-shortfall rule for normal customers, a handful left
-    unpaid, and a slice assigned to Fleet Accounts. ~15 registration numbers
-    recur 2-3 times (repeat customers), always with a >=15 day gap so the
-    prior visit's completed_date is well before the next admitted_date -
-    consistent with the one-active-job-card-per-plate rule even though it
-    isn't literally re-checked here (every seeded card is created already
-    completed).
+Creates:
+  - 3 Spare Shops, 3 Supplier Shops, 5 Categories, 9 products
+  - A monthly restock bill per supplier shop, plus periodic part-payments.
+    Restocking is monthly rather than once up front because continuous
+    consumption over a multi-year range would otherwise drive warehouse stock
+    thousands of units negative.
+  - 2 Fleet Accounts, settled by a lump payment each quarter through the real
+    cascade (oldest-first, PENDING -> PARTIAL -> BULK_PAID)
+  - Monthly cashbook entries (rent, salaries, utilities, misc income)
+  - Job cards across the requested range, each with concerns, spares (mixed
+    warehouse stock and external spare-shop purchases), labour, completion and
+    billing that follows the real rules: normal customers settle once at
+    pickup with any shortfall booked as discount; fleet cards are settled only
+    by the cascade.
+  - Returning customers: a share of each day's cars are repeat visits by
+    vehicles already in the pool, always at least 30 days after their last
+    visit, so the one-active-job-card-per-plate rule is never contended.
 
-Uses only the 3 already-registered Mechanic/Assistant Mechanic staff -
-does not create any Mechanic rows.
+Every write goes through the ORM so model signals fire (stock sync,
+update_totals). Work is committed one month at a time rather than in a single
+transaction, so a long remote run never holds one enormous open transaction.
+
+Uses only already-registered Mechanic/Assistant Mechanic staff, and creates
+the roster itself only if none exists.
 
 Usage:
     python manage.py seed_dummy_data
+    python manage.py seed_dummy_data --start 2021-07-26 --end 2026-07-25
+    python manage.py seed_dummy_data --cards-per-day 3
 """
 
 import json
@@ -36,8 +46,8 @@ from django.utils import timezone
 from django.db.models import F, ExpressionWrapper, DecimalField
 
 from workshop.models import (
-    Mechanic, SpareShop, BulkPayer, BulkPaymentHistory,
-    CarBrand, CarModel, SparePart, ConcernSolution,
+    Mechanic, SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
+    CarBrand, CarModel, SparePart, ConcernSolution, CashbookEntry,
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
 )
 from inventory.models import (
@@ -47,7 +57,7 @@ from inventory.models import (
 
 
 # =============================================================================
-# Fixed reference data
+# Reference data
 # =============================================================================
 
 SPARE_SHOP_NAMES = ["Kochi Auto Spares", "Malabar Spare Parts", "Trivandrum Motor Spares"]
@@ -69,7 +79,8 @@ SUPPLIER_SHOPS_DATA = [
         ("Wipers & Accessories", "Wiper Blades", 20),
     ]),
 ]
-# name -> (unit cost to shop, customer-facing unit price)
+
+# product -> (unit cost to workshop, customer-facing unit price)
 WAREHOUSE_ITEM_PRICES = {
     "Engine Oil": (420, 600),
     "Oil Filter": (280, 420),
@@ -83,6 +94,18 @@ WAREHOUSE_ITEM_PRICES = {
 }
 
 FLEET_ACCOUNTS = ["Kerala Green Cabs", "Spice Coast Corporate Fleet"]
+
+# Staff created only when the roster is empty (a fresh database).
+# Amlah is seeded retired on purpose: it exercises the deactivated-staff path
+# (excluded from the job-card picker, sorted below active staff).
+DEFAULT_STAFF = [
+    ("Mohammed", Mechanic.ROLE_MECHANIC, True),
+    ("Hijaz", Mechanic.ROLE_MECHANIC, True),
+    ("Amlah", Mechanic.ROLE_MECHANIC, False),
+    ("Soo", Mechanic.ROLE_ASSISTANT_MECHANIC, True),
+    ("Irshu", Mechanic.ROLE_OFFICE_STAFF, True),
+    ("Kaka", Mechanic.ROLE_GENERAL_HELPER, True),
+]
 
 BRAND_WEIGHT = {
     "BMW": 3, "Audi": 3, "Mercedes-Benz": 3, "Volvo": 3, "Land Rover": 3,
@@ -123,54 +146,168 @@ LABOUR_POOL = [
     ("Electrical Fault Finding", 500, 1400),
 ]
 
+CASHBOOK_MONTHLY = [
+    ("EXPENSE", "Workshop Rent", 45000, 45000),
+    ("EXPENSE", "Staff Salaries", 120000, 165000),
+    ("EXPENSE", "Electricity Bill", 8000, 16000),
+    ("EXPENSE", "Water & Utilities", 1500, 3500),
+    ("EXPENSE", "Workshop Consumables", 4000, 12000),
+]
+CASHBOOK_OCCASIONAL = [
+    ("EXPENSE", "Tool Purchase", 3000, 28000),
+    ("EXPENSE", "Equipment Maintenance", 2500, 15000),
+    ("EXPENSE", "Staff Welfare", 2000, 9000),
+    ("INCOME", "Scrap Sale", 3000, 14000),
+    ("INCOME", "Miscellaneous Income", 2000, 11000),
+]
+
+FIRST_NAMES = [
+    "Anoop", "Rejith", "Sreekutty", "Muhammed", "Fathima", "Devika", "Arjun", "Nithya",
+    "Sajeev", "Priya", "Vishnu", "Anjali", "Rahul", "Meera", "Sanjay", "Divya", "Kiran",
+    "Lakshmi", "Manoj", "Reshma", "Naveen", "Athira", "Prasad", "Sruthi", "Vinod",
+    "Aiswarya", "Suresh", "Neethu", "Ajay", "Deepa", "Shameer", "Nisha", "Faisal",
+    "Gopika", "Harish", "Jaseem", "Kavya", "Linto", "Midhun", "Nandana",
+]
+LAST_NAMES = [
+    "Nair", "Menon", "Pillai", "Varma", "Kumar", "Thomas", "Jose", "Iqbal", "Rahman",
+    "Krishnan", "Das", "Mathew", "Joseph", "Nambiar", "Panicker", "Shenoy", "Kurup",
+]
+
 KERALA_DISTRICTS = ["01", "02", "03", "05", "06", "07", "08", "09", "10", "11", "14"]
 PLATE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
 
-START_DATE = date(2026, 5, 1)
-END_DATE = date(2026, 7, 25)
+DEFAULT_START = date(2021, 7, 26)
+DEFAULT_END = date(2026, 7, 25)
+
+# Chance a given slot is a returning vehicle rather than a brand-new one.
+RETURNING_RATE = 0.45
+MIN_REVISIT_GAP_DAYS = 30
 
 
 class Command(BaseCommand):
-    help = "Seed realistic dummy data: shops, categories, products, bills, fleet accounts, and ~3 months of job cards."
+    help = "Seed realistic dummy data: shops, products, restocks, fleet accounts, cashbook and job cards."
 
+    def add_arguments(self, parser):
+        parser.add_argument('--start', type=str, default=DEFAULT_START.isoformat(),
+                            help=f"First admitted date, YYYY-MM-DD (default {DEFAULT_START})")
+        parser.add_argument('--end', type=str, default=DEFAULT_END.isoformat(),
+                            help=f"Last admitted date, YYYY-MM-DD (default {DEFAULT_END})")
+        parser.add_argument('--cards-per-day', type=int, default=3,
+                            help="Job cards created per day (default 3)")
+        parser.add_argument('--seed', type=int, default=2026,
+                            help="Random seed for reproducible output (default 2026)")
+
+    # ------------------------------------------------------------------
     def handle(self, *args, **options):
-        random.seed(2026)
+        try:
+            start = date.fromisoformat(options['start'])
+            end = date.fromisoformat(options['end'])
+        except ValueError as exc:
+            raise CommandError(f"Invalid date: {exc}")
 
-        mechanics = list(Mechanic.objects.filter(is_active=True, role__in=Mechanic.JOBCARD_ELIGIBLE_ROLES))
-        if not mechanics:
-            raise CommandError("No active Mechanic/Assistant Mechanic found — register staff first.")
+        if end < start:
+            raise CommandError("--end must not be earlier than --start.")
 
-        if JobCard.objects.filter(admitted_date__range=(START_DATE, END_DATE)).exists():
+        per_day = options['cards_per_day']
+        if per_day < 1:
+            raise CommandError("--cards-per-day must be at least 1.")
+
+        random.seed(options['seed'])
+
+        if JobCard.objects.filter(admitted_date__range=(start, end)).exists():
             raise CommandError(
-                f"Job cards already exist between {START_DATE} and {END_DATE} — "
-                "aborting to avoid duplicating data. Remove them first if you want to re-seed."
+                f"Job cards already exist between {start} and {end}. "
+                f"Run `purge_business_data --yes` first if you want to re-seed."
             )
 
+        # Validate every prerequisite BEFORE writing anything, so a missing
+        # dependency can't leave half-built foundations behind.
+        brand_model_pool = self._build_brand_model_pool()
+        warehouse_names = list(WAREHOUSE_ITEM_PRICES.keys())
+        external_spares = self._build_external_spare_pool(warehouse_names)
+
+        total_days = (end - start).days + 1
+        self.stdout.write(
+            f"Seeding {start} to {end} ({total_days:,} days x {per_day}/day "
+            f"= {total_days * per_day:,} job cards)\n"
+        )
+
+        # --- Foundations (one short transaction) ---
         with transaction.atomic():
+            mechanics = self._ensure_staff()
             spare_shops = self._create_spare_shops()
-            supplier_shops, warehouse_items = self._create_supplier_shops_and_products()
-            self._create_restock_bills_and_payments(supplier_shops, warehouse_items)
+            supplier_shops, shop_items = self._create_supplier_shops_and_products()
             fleet_accounts = self._create_fleet_accounts()
-            self._seed_autocomplete_pool()
-            brand_model_pool = self._build_brand_model_pool()
-            spare_name_pool = self._build_external_spare_pool(warehouse_items)
+            self._seed_concern_pool()
 
-            job_cards_created = self._create_job_cards(
-                brand_model_pool, mechanics, spare_shops, warehouse_items,
-                spare_name_pool, fleet_accounts,
-            )
+        # --- Main loop, committed one month at a time ---
+        vehicles = {}          # reg -> dict(brand, model, customer, contact, last_visit)
+        used_regs = set()
+        created = 0
+        month_cursor = None
+        month_batch_start = None
 
-            self._settle_fleet_accounts(fleet_accounts)
+        current = start
+        while current <= end:
+            month_key = (current.year, current.month)
+            if month_key != month_cursor:
+                if month_cursor is not None:
+                    self._close_month(
+                        month_batch_start, current - timedelta(days=1),
+                        supplier_shops, shop_items, spare_shops, fleet_accounts,
+                    )
+                month_cursor = month_key
+                month_batch_start = current
+                self._open_month(current, supplier_shops, shop_items)
+
+            with transaction.atomic():
+                for _ in range(per_day):
+                    self._create_one_job_card(
+                        current, vehicles, used_regs, brand_model_pool, mechanics,
+                        spare_shops, warehouse_names, external_spares, fleet_accounts,
+                    )
+                    created += 1
+
+            if created % (per_day * 90) == 0:
+                self.stdout.write(f"  ... {created:,} job cards (through {current})")
+
+            current += timedelta(days=1)
+
+        # Close the final month
+        self._close_month(
+            month_batch_start, end, supplier_shops, shop_items,
+            spare_shops, fleet_accounts,
+        )
+
+        # Fleet totals are denormalized and only recomputed when a payment runs
+        # (quarterly). Cards added since the last one would leave
+        # total_billed_amount stale, so refresh every account at the end.
+        with transaction.atomic():
+            for payer in fleet_accounts:
+                payer.update_totals()
 
         self.stdout.write(self.style.SUCCESS(
-            f"\n[DONE] {len(spare_shops)} Spare Shops, {len(supplier_shops)} Supplier Shops "
-            f"({len(warehouse_items)} products), {len(fleet_accounts)} Fleet Accounts, "
-            f"{job_cards_created} Job Cards ({START_DATE} to {END_DATE})."
+            f"\n[DONE] {created:,} job cards, {len(vehicles):,} distinct vehicles, "
+            f"{len(spare_shops)} spare shops, {len(supplier_shops)} supplier shops, "
+            f"{len(fleet_accounts)} fleet accounts ({start} to {end})."
         ))
 
     # ------------------------------------------------------------------
-    # Foundational data
+    # Foundations
     # ------------------------------------------------------------------
+
+    def _ensure_staff(self):
+        if not Mechanic.objects.exists():
+            for name, role, is_active in DEFAULT_STAFF:
+                Mechanic.objects.create(name=name, role=role, is_active=is_active)
+            self.stdout.write(f"Staff roster created: {len(DEFAULT_STAFF)}")
+
+        mechanics = list(Mechanic.objects.filter(
+            is_active=True, role__in=Mechanic.JOBCARD_ELIGIBLE_ROLES
+        ))
+        if not mechanics:
+            raise CommandError("No active Mechanic/Assistant Mechanic available to assign job cards to.")
+        return mechanics
 
     def _create_spare_shops(self):
         shops = []
@@ -180,18 +317,17 @@ class Command(BaseCommand):
                 defaults={"phone": f"9{800000000 + i * 1111}", "address": f"{name}, Kerala"},
             )
             shops.append(shop)
-        self.stdout.write(f"Spare Shops: {len(shops)}")
         return shops
 
     def _create_supplier_shops_and_products(self):
-        supplier_shops = []
-        warehouse_items = []  # list of Item instances, in the exact order of WAREHOUSE_ITEM_PRICES definition
+        supplier_shops, shop_items = [], {}
         for i, (shop_name, products) in enumerate(SUPPLIER_SHOPS_DATA):
             shop, _ = SupplierShop.objects.get_or_create(
                 name=shop_name,
                 defaults={"phone": f"9{700000000 + i * 1111}", "address": f"{shop_name}, Kerala"},
             )
             supplier_shops.append(shop)
+            shop_items[shop.id] = []
             for cat_name, item_name, avg_stock in products:
                 category, _ = Category.objects.get_or_create(
                     name__iexact=cat_name, defaults={"name": cat_name}
@@ -201,42 +337,13 @@ class Command(BaseCommand):
                     defaults={"average_stock": Decimal(avg_stock)},
                 )
                 ShopCatalogItem.objects.get_or_create(shop=shop, item=item)
-                warehouse_items.append((shop, item))
-        self.stdout.write(f"Supplier Shops: {len(supplier_shops)}, Products: {len(warehouse_items)}")
-        return supplier_shops, warehouse_items
-
-    def _create_restock_bills_and_payments(self, supplier_shops, warehouse_items):
-        by_shop = {}
-        for shop, item in warehouse_items:
-            by_shop.setdefault(shop.id, []).append(item)
-
-        for shop in supplier_shops:
-            bill = SupplierRestockBill.objects.create(supplier=shop, bill_date=date(2026, 4, 22))
-            for item in by_shop[shop.id]:
-                cost, _ = WAREHOUSE_ITEM_PRICES[item.name]
-                qty = Decimal(random.randint(25, 60))
-                line_total = (Decimal(cost) * qty).quantize(Decimal("0.01"))
-                SupplierRestockItem.objects.create(bill=bill, item=item, quantity=qty, total_price=line_total)
-            bill.update_totals()
-
-            payment_amount = (bill.total_amount * Decimal("0.6")).quantize(Decimal("0.01"))
-            SupplierPayment.objects.create(
-                supplier=shop, amount=payment_amount,
-                payment_method=random.choice(["CASH", "UPI", "TRANSFER"]),
-                date=date(2026, 4, 24), note="Initial stock payment",
-            )
-            shop.update_totals()
-        self.stdout.write("Restock bills + payments created for all Supplier Shops")
+                shop_items[shop.id].append(item)
+        return supplier_shops, shop_items
 
     def _create_fleet_accounts(self):
-        accounts = []
-        for name in FLEET_ACCOUNTS:
-            payer, _ = BulkPayer.objects.get_or_create(customer_name=name)
-            accounts.append(payer)
-        self.stdout.write(f"Fleet Accounts: {len(accounts)}")
-        return accounts
+        return [BulkPayer.objects.get_or_create(customer_name=n)[0] for n in FLEET_ACCOUNTS]
 
-    def _seed_autocomplete_pool(self):
+    def _seed_concern_pool(self):
         for text in CONCERNS_POOL:
             if not ConcernSolution.objects.filter(concern__iexact=text).exists():
                 ConcernSolution.objects.create(concern=text)
@@ -251,117 +358,159 @@ class Command(BaseCommand):
             raise CommandError("No CarBrand/CarModel data found — run load_master_data first.")
         return pool
 
-    def _build_external_spare_pool(self, warehouse_items):
-        warehouse_names = {item.name for _, item in warehouse_items}
+    def _build_external_spare_pool(self, warehouse_names):
         names = list(SparePart.objects.exclude(name__in=warehouse_names).values_list("name", flat=True))
-        return names
+        return names or ["Assorted Spare Part"]
 
     # ------------------------------------------------------------------
-    # Job card generation
+    # Monthly bookends
     # ------------------------------------------------------------------
 
-    def _random_reg_number(self, used):
+    def _open_month(self, month_start, supplier_shops, shop_items):
+        """Monthly restock, sized to demand: top each product back up toward the
+        quantity the workshop normally keeps, the way a real reorder works.
+
+        A fixed monthly quantity would compound — over 60 months it buries the
+        warehouse in stock nobody consumed. Ordering only the shortfall keeps
+        levels hovering around average_stock and lets products dip into
+        genuine low-stock between restocks.
+        """
+        with transaction.atomic():
+            for shop in supplier_shops:
+                lines = []
+                for item in shop_items[shop.id]:
+                    # current_stock moves via signals as job cards consume it
+                    item.refresh_from_db(fields=['current_stock'])
+                    target = item.average_stock * Decimal(str(round(random.uniform(1.2, 1.7), 2)))
+                    shortfall = target - item.current_stock
+                    if shortfall <= 0:
+                        continue  # still well stocked — nothing to order
+                    qty = Decimal(int(shortfall))
+                    if qty > 0:
+                        lines.append((item, qty))
+
+                if not lines:
+                    continue
+
+                bill = SupplierRestockBill.objects.create(supplier=shop, bill_date=month_start)
+                for item, qty in lines:
+                    cost, _ = WAREHOUSE_ITEM_PRICES[item.name]
+                    SupplierRestockItem.objects.create(
+                        bill=bill, item=item, quantity=qty,
+                        total_price=(Decimal(cost) * qty).quantize(Decimal("0.01")),
+                    )
+                bill.update_totals()
+
+    def _close_month(self, month_start, month_end, supplier_shops, shop_items,
+                     spare_shops, fleet_accounts):
+        """End-of-month settlements: supplier and spare-shop payments, cashbook
+        entries, and a quarterly fleet cascade payment."""
+        with transaction.atomic():
+            # Supplier part-payments — leaves a running balance, like real trade credit.
+            for shop in supplier_shops:
+                outstanding = shop.total_billed_amount - shop.total_paid_amount
+                if outstanding > 0:
+                    pay = (outstanding * Decimal(str(round(random.uniform(0.55, 0.9), 2)))).quantize(Decimal("0.01"))
+                    if pay > 0:
+                        SupplierPayment.objects.create(
+                            supplier=shop, amount=pay,
+                            payment_method=random.choice(["CASH", "UPI", "TRANSFER"]),
+                            date=month_end, note="Monthly settlement",
+                        )
+                        shop.update_totals()
+
+            # Spare shop part-payments against parts bought that month.
+            for shop in spare_shops:
+                shop.update_totals()
+                pending = shop.total_purchased_amount - shop.total_paid_amount
+                if pending > 0:
+                    pay = (pending * Decimal(str(round(random.uniform(0.6, 0.95), 2)))).quantize(Decimal("0.01"))
+                    if pay > 0:
+                        SpareShopPayment.objects.create(
+                            shop=shop, amount=pay,
+                            payment_method=random.choice(["CASH", "UPI", "TRANSFER"]),
+                            note="Monthly settlement",
+                        )
+
+            self._create_cashbook_entries(month_start, month_end)
+
+        # Fleet settlement once a quarter, through the real cascade.
+        if month_end.month % 3 == 0:
+            for payer in fleet_accounts:
+                self._run_fleet_payment(payer)
+
+    def _create_cashbook_entries(self, month_start, month_end):
+        for entry_type, category, lo, hi in CASHBOOK_MONTHLY:
+            day = min(random.randint(1, 5), (month_end - month_start).days + 1)
+            CashbookEntry.objects.create(
+                entry_type=entry_type, category=category,
+                amount=Decimal(random.randint(lo, hi)),
+                payment_method=random.choice(["CASH", "UPI", "TRANSFER"]),
+                date=month_start + timedelta(days=day - 1),
+                description=f"{category} for {month_start.strftime('%B %Y')}",
+            )
+        for entry_type, category, lo, hi in random.sample(CASHBOOK_OCCASIONAL, random.randint(0, 2)):
+            span = (month_end - month_start).days
+            CashbookEntry.objects.create(
+                entry_type=entry_type, category=category,
+                amount=Decimal(random.randint(lo, hi)),
+                payment_method=random.choice(["CASH", "UPI", "TRANSFER"]),
+                date=month_start + timedelta(days=random.randint(0, max(span, 0))),
+            )
+
+    # ------------------------------------------------------------------
+    # Job cards
+    # ------------------------------------------------------------------
+
+    def _random_reg(self, used):
         while True:
-            reg = "KL" + random.choice(KERALA_DISTRICTS) + \
-                random.choice(PLATE_LETTERS) + random.choice(PLATE_LETTERS) + \
-                str(random.randint(1000, 9999))
+            reg = ("KL" + random.choice(KERALA_DISTRICTS)
+                   + random.choice(PLATE_LETTERS) + random.choice(PLATE_LETTERS)
+                   + str(random.randint(1000, 9999)))
             if reg not in used:
                 used.add(reg)
                 return reg
 
     def _random_customer(self):
-        first = random.choice([
-            "Anoop", "Rejith", "Sreekutty", "Muhammed", "Fathima", "Devika", "Arjun", "Nithya",
-            "Sajeev", "Priya", "Vishnu", "Anjali", "Rahul", "Meera", "Sanjay", "Divya", "Kiran",
-            "Lakshmi", "Manoj", "Reshma", "Naveen", "Athira", "Prasad", "Sruthi", "Vinod",
-            "Aiswarya", "Suresh", "Neethu", "Ajay", "Deepa", "Shameer", "Nisha",
-        ])
-        last = random.choice([
-            "Nair", "Menon", "Pillai", "Varma", "Kumar", "Thomas", "Jose", "Iqbal", "Rahman",
-            "Krishnan", "Das", "Mathew", "Joseph", "Nambiar", "Panicker",
-        ])
         contact = random.choice("6789") + "".join(str(random.randint(0, 9)) for _ in range(9))
-        return f"{first} {last}", contact
+        return f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)}", contact
 
-    def _plan_recurring_registrations(self, used_regs):
-        """Pick ~15 plates that come back 2-3 times, spaced >=15 days apart
-        so the previous visit's completed_date is well before the next
-        admitted_date."""
-        total_days = (END_DATE - START_DATE).days + 1
-        day_to_regs = {}
-        reg_profile = {}  # reg -> (brand, model, customer_name, customer_contact)
+    def _pick_vehicle(self, admitted_date, vehicles, used_regs, brand_model_pool):
+        """Either a returning vehicle (last serviced comfortably in the past) or
+        a brand-new one."""
+        if vehicles and random.random() < RETURNING_RATE:
+            cutoff = admitted_date - timedelta(days=MIN_REVISIT_GAP_DAYS)
+            eligible = [r for r, v in vehicles.items() if v['last_visit'] <= cutoff]
+            if eligible:
+                reg = random.choice(eligible)
+                vehicles[reg]['last_visit'] = admitted_date
+                return reg, vehicles[reg]
 
-        for _ in range(15):
-            reg = self._random_reg_number(used_regs)
-            visits = random.choice([2, 2, 3])
-            offsets = sorted(random.sample(range(total_days), visits))
-            attempts = 0
-            while any(offsets[i + 1] - offsets[i] < 15 for i in range(len(offsets) - 1)) and attempts < 20:
-                offsets = sorted(random.sample(range(total_days), visits))
-                attempts += 1
-            for off in offsets:
-                day_to_regs.setdefault(off, []).append(reg)
-        return day_to_regs, reg_profile
+        reg = self._random_reg(used_regs)
+        brand, model = random.choice(brand_model_pool)
+        name, contact = self._random_customer()
+        vehicles[reg] = {
+            'brand': brand, 'model': model, 'customer': name,
+            'contact': contact, 'last_visit': admitted_date,
+            'color': random.choice(CAR_COLORS),
+        }
+        return reg, vehicles[reg]
 
-    def _create_job_cards(self, brand_model_pool, mechanics, spare_shops,
-                           warehouse_items, spare_name_pool, fleet_accounts):
-        used_regs = set()
-        day_to_recurring, reg_profile = self._plan_recurring_registrations(used_regs)
-        warehouse_by_name = {item.name: (shop, item) for shop, item in warehouse_items}
-        warehouse_names = list(warehouse_by_name.keys())
-
-        total_days = (END_DATE - START_DATE).days + 1
-        created = 0
-
-        for day_offset in range(total_days):
-            current_date = START_DATE + timedelta(days=day_offset)
-            scheduled = day_to_recurring.get(day_offset, [])[:3]
-            slots = list(scheduled) + [None] * (3 - len(scheduled))
-
-            for slot_reg in slots:
-                if slot_reg is None:
-                    reg = self._random_reg_number(used_regs)
-                    brand, model = random.choice(brand_model_pool)
-                    customer_name, customer_contact = self._random_customer()
-                else:
-                    reg = slot_reg
-                    if reg in reg_profile:
-                        brand, model, customer_name, customer_contact = reg_profile[reg]
-                    else:
-                        brand, model = random.choice(brand_model_pool)
-                        customer_name, customer_contact = self._random_customer()
-                        reg_profile[reg] = (brand, model, customer_name, customer_contact)
-
-                self._create_one_job_card(
-                    reg, brand, model, customer_name, customer_contact, current_date,
-                    mechanics, spare_shops, warehouse_by_name, warehouse_names,
-                    spare_name_pool, fleet_accounts,
-                )
-                created += 1
-
-            if created % 60 == 0:
-                self.stdout.write(f"  ... {created} job cards created (through {current_date})")
-
-        return created
-
-    def _create_one_job_card(self, reg, brand, model, customer_name, customer_contact,
-                              admitted_date, mechanics, spare_shops, warehouse_by_name,
-                              warehouse_names, spare_name_pool, fleet_accounts):
-        mechanic = random.choice(mechanics)
-        color = random.choice(CAR_COLORS) if random.random() > 0.03 else "Other"
-        mileage = str(random.randint(8000, 95000))
+    def _create_one_job_card(self, admitted_date, vehicles, used_regs, brand_model_pool,
+                             mechanics, spare_shops, warehouse_names, external_spares,
+                             fleet_accounts):
+        reg, v = self._pick_vehicle(admitted_date, vehicles, used_regs, brand_model_pool)
 
         jobcard = JobCard.objects.create(
             admitted_date=admitted_date,
-            brand_name=brand,
-            model_name=model,
+            brand_name=v['brand'],
+            model_name=v['model'],
             registration_number=reg,
-            mileage=mileage,
-            customer_name=customer_name,
-            customer_contact=customer_contact,
-            lead_mechanic=mechanic,
-            car_color=color,
-            car_color_other="Champagne Gold" if color == "Other" else None,
+            mileage=str(random.randint(8000, 145000)),
+            customer_name=v['customer'],
+            customer_contact=v['contact'],
+            lead_mechanic=random.choice(mechanics),
+            car_color=v['color'],
         )
 
         for text in random.sample(CONCERNS_POOL, random.randint(1, 3)):
@@ -369,22 +518,24 @@ class Command(BaseCommand):
 
         for _ in range(random.randint(0, 3)):
             qty = Decimal(random.choice([1, 1, 1, 2]))
-            if random.random() < 0.55 and warehouse_names:
+            if random.random() < 0.55:
                 name = random.choice(warehouse_names)
                 cost, price = WAREHOUSE_ITEM_PRICES[name]
                 JobCardSpareItem.objects.create(
                     job_card=jobcard, spare_part_name=name, quantity=qty,
-                    unit_price=Decimal(cost), total_price=(Decimal(price) * qty).quantize(Decimal("0.01")),
+                    unit_price=Decimal(cost),
+                    total_price=(Decimal(price) * qty).quantize(Decimal("0.01")),
                     status="RECEIVED", ordered_date=admitted_date, received_date=admitted_date,
                 )
             else:
-                name = random.choice(spare_name_pool)
+                name = random.choice(external_spares)
                 cost = random.randint(400, 6000)
                 price = int(cost * random.uniform(1.25, 1.5))
                 shop = random.choice(spare_shops)
                 JobCardSpareItem.objects.create(
                     job_card=jobcard, spare_part_name=name, quantity=qty,
-                    unit_price=Decimal(cost), total_price=(Decimal(price) * qty).quantize(Decimal("0.01")),
+                    unit_price=Decimal(cost),
+                    total_price=(Decimal(price) * qty).quantize(Decimal("0.01")),
                     status="RECEIVED", shop=shop, shop_name=shop.name,
                     ordered_date=admitted_date, received_date=admitted_date,
                 )
@@ -398,8 +549,8 @@ class Command(BaseCommand):
         jobcard.completed_date = admitted_date + timedelta(days=random.randint(1, 4))
 
         if fleet_accounts and random.random() < 0.08:
-            payer = random.choice(fleet_accounts)
-            jobcard.bulk_payer = payer
+            # Fleet card: left for the cascade to settle, never billed directly.
+            jobcard.bulk_payer = random.choice(fleet_accounts)
             jobcard.payment_status = "PENDING"
             jobcard.received_amount = Decimal("0")
             jobcard.discount_amount = Decimal("0")
@@ -407,6 +558,7 @@ class Command(BaseCommand):
         else:
             total = jobcard.total_bill_amount
             if random.random() < 0.05:
+                # Genuinely unpaid at pickup.
                 jobcard.received_amount = Decimal("0")
                 jobcard.payment_status = "PENDING"
                 jobcard.discount_amount = Decimal("0")
@@ -418,10 +570,9 @@ class Command(BaseCommand):
                     received = total
                 jobcard.received_amount = received
                 jobcard.payment_status = "PAID"
+                # Shortfall is booked as discount — the deliberate rule for
+                # normal customers, who settle exactly once at pickup.
                 jobcard.discount_amount = max(Decimal("0"), total - received)
-                # Settled at pickup — Paid Bills filters on paid_date, so a
-                # seeded PAID bill without it would be invisible to every
-                # date filter.
                 jobcard.paid_date = timezone.make_aware(
                     datetime.combine(jobcard.completed_date, time(14, 30))
                 )
@@ -431,78 +582,71 @@ class Command(BaseCommand):
         return jobcard
 
     # ------------------------------------------------------------------
-    # Fleet cascade settlement
+    # Fleet cascade — mirrors bulk_payer_pay()
     # ------------------------------------------------------------------
 
-    def _settle_fleet_accounts(self, fleet_accounts):
-        for payer in fleet_accounts:
+    def _run_fleet_payment(self, payer):
+        with transaction.atomic():
+            pending = list(
+                payer.job_cards.filter(payment_status__in=["PENDING", "PARTIAL"])
+                .annotate(balance_amount=ExpressionWrapper(
+                    F("total_bill_amount") - F("received_amount"), output_field=DecimalField()))
+                .order_by("admitted_date", "pk")
+            )
+            outstanding = sum((j.balance_amount for j in pending), Decimal("0"))
+            if outstanding <= 0:
+                return
+
+            # Fleets pay most but not all of the quarter's balance.
+            lump_sum = (outstanding * Decimal(str(round(random.uniform(0.6, 0.92), 2)))).quantize(Decimal("0.01"))
+            if lump_sum <= 0:
+                return
+
+            advance_used = payer.advance_balance
+            remaining = lump_sum + advance_used
+            payer.advance_balance = Decimal("0")
+
+            jobs_updated, details = 0, []
+            for job in pending:
+                if remaining <= 0:
+                    break
+                balance = job.balance_amount
+                if balance <= 0:
+                    continue
+                if remaining >= balance:
+                    paid = balance
+                    job.received_amount += balance
+                    job.payment_status = "BULK_PAID"
+                    job.discount_amount = Decimal("0")
+                    job.paid_date = timezone.make_aware(
+                        datetime.combine(job.completed_date or job.admitted_date, time(15, 0))
+                    )
+                    remaining -= balance
+                else:
+                    paid = remaining
+                    job.received_amount += remaining
+                    job.payment_status = "PARTIAL"
+                    remaining = Decimal("0")
+                job.payment_method = "TRANSFER"
+                job.save()
+                jobs_updated += 1
+                details.append({
+                    "job_id": job.pk, "reg": job.registration_number,
+                    "car": f"{job.brand_name} {job.model_name}",
+                    "paid": str(paid), "status": job.payment_status,
+                })
+
+            new_advance = remaining if remaining > 0 else Decimal("0")
+            payer.advance_balance = new_advance
+            payer.save(update_fields=["advance_balance"])
+
+            BulkPaymentHistory.objects.create(
+                bulk_payer=payer, amount=lump_sum, payment_method="TRANSFER",
+                jobs_affected=jobs_updated,
+                details=json.dumps({
+                    "jobs": details,
+                    "advance_used": str(advance_used),
+                    "advance_stored": str(new_advance),
+                }),
+            )
             payer.update_totals()
-            pending_total = sum(
-                (jc.total_bill_amount - jc.received_amount)
-                for jc in payer.job_cards.filter(payment_status__in=["PENDING", "PARTIAL"])
-            )
-            if pending_total <= 0:
-                continue
-            pay_amount = (pending_total * Decimal("0.65")).quantize(Decimal("0.01"))
-            self._run_bulk_payment(payer, pay_amount, "TRANSFER")
-
-    def _run_bulk_payment(self, payer, lump_sum, payment_method):
-        advance_used = payer.advance_balance
-        remaining_funds = lump_sum + advance_used
-        payer.advance_balance = Decimal("0")
-
-        pending_cards = payer.job_cards.select_related(None).filter(
-            payment_status__in=["PENDING", "PARTIAL"]
-        ).annotate(
-            balance_amount=ExpressionWrapper(
-                F("total_bill_amount") - F("received_amount"), output_field=DecimalField()
-            )
-        ).order_by("admitted_date", "pk")
-
-        jobs_updated = 0
-        history_details = []
-        for job in pending_cards:
-            if remaining_funds <= 0:
-                break
-            balance = job.balance_amount
-            if balance <= 0:
-                continue
-            if remaining_funds >= balance:
-                paid_amount = balance
-                job.received_amount += balance
-                job.payment_status = "BULK_PAID"
-                job.payment_method = payment_method
-                job.discount_amount = Decimal("0")
-                job.paid_date = timezone.make_aware(
-                    datetime.combine(job.completed_date or job.admitted_date, time(15, 0))
-                )
-                remaining_funds -= balance
-            else:
-                paid_amount = remaining_funds
-                job.received_amount += remaining_funds
-                job.payment_status = "PARTIAL"
-                job.payment_method = payment_method
-                remaining_funds = Decimal("0")
-            job.save()
-            jobs_updated += 1
-            history_details.append({
-                "job_id": job.pk, "reg": job.registration_number,
-                "car": f"{job.brand_name} {job.model_name}",
-                "paid": str(paid_amount), "status": job.payment_status,
-            })
-
-        new_advance = remaining_funds if remaining_funds > Decimal("0") else Decimal("0")
-        payer.advance_balance = new_advance
-        payer.save(update_fields=["advance_balance"])
-
-        BulkPaymentHistory.objects.create(
-            bulk_payer=payer, amount=lump_sum, payment_method=payment_method,
-            jobs_affected=jobs_updated,
-            details=json.dumps({
-                "jobs": history_details,
-                "advance_used": str(advance_used),
-                "advance_stored": str(new_advance),
-            }),
-        )
-        payer.update_totals()
-        self.stdout.write(f"  Bulk payment: {payer.customer_name} paid ₹{lump_sum}, {jobs_updated} job(s) affected")
