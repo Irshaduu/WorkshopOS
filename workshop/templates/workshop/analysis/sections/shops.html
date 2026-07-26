@@ -1,0 +1,62 @@
+{% load custom_filters %}
+
+<div class="ia-stats">
+  <div class="ia-stat"><div class="k">Spare shop spend</div><div class="v">₹{{ spare_total|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Supplies spend</div><div class="v">₹{{ supplier_total|inr_compact }}</div></div>
+</div>
+
+<div class="ia-sub">Spare Shops — parts bought per job</div>
+{% if spare_rows %}
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr>
+        <th>Shop</th><th class="num">Parts</th><th class="num">Spent</th>
+        <th class="num">Charged on</th><th class="num">Profit</th><th class="num">Owed now</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in spare_rows %}
+      <tr>
+        <td class="strong">{{ r.shop__name }}</td>
+        <td class="num">{{ r.parts }}</td>
+        <td class="num">₹{{ r.spend|inr }}</td>
+        <td class="num">₹{{ r.revenue|inr }}</td>
+        <td class="num pos">₹{{ r.profit|inr }} <span style="font-weight:400; color:var(--color-text-muted);">({{ r.margin|floatformat:0 }}%)</span></td>
+        <td class="num {% if r.due > 0 %}neg{% endif %}">₹{{ r.due|inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted" style="font-size:0.84rem;">No spare-shop purchases in this period.</p>
+{% endif %}
+
+<div class="ia-sub">Supplies Shops — warehouse restocking</div>
+{% if supplier_rows %}
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead><tr><th>Shop</th><th class="num">Bills</th><th class="num">Spent</th><th class="num">Owed now</th></tr></thead>
+    <tbody>
+      {% for r in supplier_rows %}
+      <tr>
+        <td class="strong">{{ r.supplier__name }}</td>
+        <td class="num">{{ r.bills }}</td>
+        <td class="num">₹{{ r.spend|inr }}</td>
+        <td class="num {% if r.due > 0 %}neg{% endif %}">₹{{ r.due|inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted" style="font-size:0.84rem;">No restock bills in this period.</p>
+{% endif %}
+
+<div class="ia-note">
+  <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+  <span>These are the two separate ways parts are paid for, and they never overlap: a spare shop
+    part is bought for one job, a supplies shop bill fills the warehouse shelf. <strong>Owed now</strong>
+    is the live outstanding balance, not a figure for this date range.</span>
+</div>

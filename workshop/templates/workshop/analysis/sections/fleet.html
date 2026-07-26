@@ -1,0 +1,48 @@
+{% load custom_filters %}
+
+<div class="ia-stats">
+  <div class="ia-stat"><div class="k">Fleet accounts</div><div class="v">{{ accounts }}</div></div>
+  <div class="ia-stat"><div class="k">Fleet jobs</div><div class="v">{{ fleet_jobs }}</div></div>
+  <div class="ia-stat"><div class="k">Fleet revenue</div><div class="v">₹{{ fleet_revenue|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Walk-in jobs</div><div class="v">{{ walkin_jobs }}</div></div>
+  <div class="ia-stat"><div class="k">Walk-in revenue</div><div class="v">₹{{ walkin_revenue|inr_compact }}</div></div>
+</div>
+
+{% if rows %}
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr>
+        <th>Fleet Account</th>
+        <th class="num">Jobs</th>
+        <th class="num">Billed</th>
+        <th class="num">Received</th>
+        <th class="num">Collected</th>
+        <th class="num">Balance now</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="strong">{{ r.bulk_payer__customer_name }}</td>
+        <td class="num">{{ r.jobs }}</td>
+        <td class="num">₹{{ r.billed|inr }}</td>
+        <td class="num">₹{{ r.received|inr }}</td>
+        <td class="num">{{ r.collected_pct|floatformat:0 }}%</td>
+        <td class="num {% if r.balance > 0 %}neg{% else %}pos{% endif %}">₹{{ r.balance|inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="ia-note">
+  <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+  <span><strong>Billed / Received / Collected</strong> cover only jobs inside this date range.
+    <strong>Balance now</strong> is the account's live running total across its whole history —
+    a balance is a running figure, so slicing it by date would be meaningless. A negative balance
+    means the account is in credit (paid ahead).</span>
+</div>
+{% else %}
+<p class="text-muted mb-0" style="font-size:0.84rem;">No fleet account jobs in this period.</p>
+{% endif %}

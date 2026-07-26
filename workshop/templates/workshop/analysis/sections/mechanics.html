@@ -1,0 +1,92 @@
+{% load custom_filters %}
+
+<div class="ia-stats">
+  <div class="ia-stat"><div class="k">Jobs</div><div class="v">{{ total_jobs }}</div></div>
+  <div class="ia-stat"><div class="k">Staff working</div><div class="v">{{ rows|length }}</div></div>
+  {% if unassigned %}
+  <div class="ia-stat"><div class="k">No mechanic set</div><div class="v">{{ unassigned }}</div></div>
+  {% endif %}
+</div>
+
+{% if rows %}
+<div class="ia-chart"><canvas id="mechChart"></canvas></div>
+
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr>
+        <th>Mechanic</th>
+        <th class="num">Jobs</th>
+        <th class="num">Revenue</th>
+        <th class="num">Parts cost</th>
+        <th class="num">Profit</th>
+        <th class="num">Margin</th>
+        <th class="num">Avg / job</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>
+          <span class="strong">{{ r.lead_mechanic__name }}</span>
+          <span class="d-block" style="font-size:0.7rem; color:var(--color-text-muted);">{{ r.lead_mechanic__role }}</span>
+        </td>
+        <td class="num">{{ r.jobs }}</td>
+        <td class="num">₹{{ r.revenue|inr }}</td>
+        <td class="num" style="color:var(--color-text-muted);">₹{{ r.cost|inr }}</td>
+        <td class="num {% if r.profit < 0 %}neg{% else %}pos{% endif %}">₹{{ r.profit|inr }}</td>
+        <td class="num">{{ r.margin|floatformat:1 }}%</td>
+        <td class="num">₹{{ r.avg_job|inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="ia-note">
+  <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+  <span>Profit here is the job's revenue minus the parts fitted to it. Labour carries no parts
+    cost, so it flows through whole. Salary is not divided across mechanics — splitting one wage
+    bill over job cards would be a guess, not a measurement, so wages stay on the Profit page.</span>
+</div>
+
+{{ chart_labels|json_script:"mechLabels" }}
+{{ chart_revenue|json_script:"mechRevenue" }}
+{{ chart_profit|json_script:"mechProfit" }}
+<script>
+(function () {
+  const el = document.getElementById('mechChart');
+  if (!el || typeof Chart === 'undefined') return;
+  const read = id => JSON.parse(document.getElementById(id).textContent);
+  const compact = v => {
+    const a = Math.abs(v), s = v < 0 ? '-' : '';
+    if (a >= 1e7) return s + '₹' + (a / 1e7).toFixed(2).replace(/\.?0+$/, '') + 'Cr';
+    if (a >= 1e5) return s + '₹' + (a / 1e5).toFixed(2).replace(/\.?0+$/, '') + 'L';
+    return s + '₹' + Math.round(a).toLocaleString('en-IN');
+  };
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: read('mechLabels'),
+      datasets: [
+        { label: 'Revenue', data: read('mechRevenue'), backgroundColor: 'rgba(37,99,235,0.7)', borderRadius: 4 },
+        { label: 'Profit',  data: read('mechProfit'),  backgroundColor: 'rgba(22,163,74,0.85)', borderRadius: 4 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: {
+        legend: { labels: { usePointStyle: true, boxWidth: 8, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + compact(c.parsed.x) } },
+      },
+      scales: {
+        x: { ticks: { font: { size: 10 }, callback: v => compact(v) } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+      },
+    },
+  });
+})();
+</script>
+{% else %}
+<p class="text-muted mb-0" style="font-size:0.84rem;">No job cards with a mechanic assigned in this period.</p>
+{% endif %}

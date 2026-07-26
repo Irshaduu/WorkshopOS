@@ -1,0 +1,84 @@
+{% load custom_filters %}
+
+<div class="ia-stats">
+  <div class="ia-stat"><div class="k">Job cards</div><div class="v">{{ total_cards }}</div></div>
+  <div class="ia-stat"><div class="k">Distinct cars</div><div class="v">{{ distinct_vehicles }}</div></div>
+  <div class="ia-stat"><div class="k">Came back</div><div class="v">{{ repeat_vehicles }}</div></div>
+  <div class="ia-stat"><div class="k">Repeat rate</div><div class="v">{{ repeat_pct }}%</div></div>
+  <div class="ia-stat"><div class="k">Visits / car</div><div class="v">{{ avg_visits }}</div></div>
+</div>
+
+{% if top_vehicles %}
+<div class="ia-sub">Most Visiting Cars</div>
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr><th>Registration</th><th>Vehicle</th><th class="num">Visits</th><th class="num">Revenue</th></tr>
+    </thead>
+    <tbody>
+      {% for r in top_vehicles %}
+      <tr>
+        <td class="strong">{{ r.registration_number }}</td>
+        <td style="color:var(--color-text-muted);">{{ r.brand }} {{ r.model }}</td>
+        <td class="num strong">{{ r.visits }}</td>
+        <td class="num">₹{{ r.revenue|inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="ia-sub">Brands Serviced</div>
+<div class="ia-chart"><canvas id="brandChart"></canvas></div>
+
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead><tr><th>Brand</th><th class="num">Jobs</th><th class="num">Revenue</th></tr></thead>
+    <tbody>
+      {% for r in brands %}
+      <tr>
+        <td class="strong">{{ r.brand_name }}</td>
+        <td class="num">{{ r.jobs }}</td>
+        <td class="num">₹{{ r.revenue|inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="ia-note">
+  <i class="bi bi-person-badge text-primary mt-1"></i>
+  <span><strong>Customer names:</strong> filled in on {{ named_count }} of {{ total_cards }} job cards
+    ({{ named_pct }}%). Names and contacts are optional on a normal job card and usually left blank,
+    so this section works off the registration number instead — the one field always present.</span>
+</div>
+
+{{ chart_labels|json_script:"brandLabels" }}
+{{ chart_jobs|json_script:"brandJobs" }}
+<script>
+(function () {
+  const el = document.getElementById('brandChart');
+  if (!el || typeof Chart === 'undefined') return;
+  const read = id => JSON.parse(document.getElementById(id).textContent);
+  new Chart(el, {
+    type: 'doughnut',
+    data: {
+      labels: read('brandLabels'),
+      datasets: [{
+        data: read('brandJobs'),
+        backgroundColor: ['#2563eb', '#7c3aed', '#0891b2', '#16a34a', '#f59e0b',
+                          '#dc2626', '#db2777', '#64748b'],
+        borderWidth: 0, hoverOffset: 6,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '55%',
+      plugins: { legend: { position: 'bottom',
+                 labels: { usePointStyle: true, boxWidth: 8, padding: 10, font: { size: 11 } } } },
+    },
+  });
+})();
+</script>
+{% else %}
+<p class="text-muted mb-0" style="font-size:0.84rem;">No vehicles recorded in this period.</p>
+{% endif %}

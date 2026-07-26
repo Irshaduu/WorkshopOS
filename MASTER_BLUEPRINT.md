@@ -21,7 +21,7 @@ graph TB
     subgraph WORKSHOP["Workshop App (Core)"]
         W_MODELS["models.py — 17 Models"]
         W_VIEWS["views/ — 13 Module Package"]
-        W_ANALYSIS["analysis_views.py — Owner Dashboard (mid-rebuild)"]
+        W_ANALYSIS["analysis_views.py + analysis_engine.py — Owner Profit & Insights"]
         W_AUTH["auth_views.py — Auth Views"]
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
@@ -269,8 +269,9 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 | | `/cashbook/add/` | `add_cashbook_entry` | Office |
 | | `/cashbook/<id>/delete/` | `delete_cashbook_entry` | Office |
 | | `/cashbook/<id>/edit/` | `edit_cashbook_entry` | Office |
-| **ANALYSIS** (mid-rebuild — see §14 note) | `/analysis/` | `analysis_dashboard` | Owner |
-| | `/analysis/zone/<zone_name>/` | `analysis_zone` | Owner |
+| **ANALYSIS** | `/analysis/` | `analysis_dashboard` (Profit) | Owner |
+| | `/analysis/insights/` | `analysis_insights` (Deep Analysis shell) | Owner |
+| | `/analysis/insights/<section>/` | `analysis_insight_section` (AJAX partial) | Owner |
 | **CLEANUP** | `/manage/cleanup/` | `data_cleanup_view` | Office |
 | | `/manage/cleanup/spare/<id>/delete/` | `cleanup_delete_spare` | Office |
 | | `/manage/cleanup/spare/<id>/rename/` | `cleanup_rename_spare` | Office |
@@ -415,9 +416,9 @@ stateDiagram-v2
 | Directory | Files | Purpose |
 |-----------|-------|---------|
 | `/` | `base.html`, `home.html` | Base layout with nav + redirector |
-| `/analysis/` | `analysis_dashboard.html` | Owner dashboard shell (hero KPIs, functional) |
-| `/analysis/zones/` | `zone_{revenue,mechanic,spares,customer,inventory,cashbook,workshop}.html` (7) | **Placeholder stubs (8 lines each)** — the AJAX endpoint each dashboard card expands into. Mid-rebuild, not a bug — see `CLAUDE.md` |
-| `/analysis/tabs/` | `financials.html`, `inventory.html`, `operations.html` (3) | Fully-built replacement content (500-700 lines each), **not yet wired to any view** — the rebuild's destination, not currently reachable |
+| `/analysis/` | `profit.html` | The protected Profit page: Turnover − Expenses = Profit, monthly trend, expense split, position |
+| `/analysis/` | `insights.html` | Deep Analysis shell — six AJAX-loaded accordion sections |
+| `/analysis/sections/` | `mechanics.html`, `spares.html`, `vehicles.html`, `fleet.html`, `shops.html`, `operations.html` (6) | One partial per Insights section, each rendered by `analysis_insight_section` |
 | `/auth/` | `login.html`, `admin_login.html`, `forgot_password.html`, `reset_password.html`, `otp_verify.html` | 5 auth screens |
 | `/dashboard/` | `dashboard_home.html` | Main floor dashboard with active jobs |
 | `/jobcard/` | 23 files: CRUD (`jobcard_form/detail/list/confirm_delete`), `job_list_partial`, `live_report`, pending/paid bills + partials, bulk payer detail/panel/trash + bulk_payments + partial, audits (`audit_high_discounts`, `audit_deleted_bulk_payers`), unified trash + 4 tab partials | Job, payment, audit & trash screens |
@@ -522,7 +523,7 @@ graph TB
 
     RBAC -->|Owner| TRASH["Trash, Restore & Permanent Delete"]
     RBAC -->|Owner| REVERSE["Payment Reversal"]
-    RBAC -->|Owner| ANALYSIS["Owner Analysis (mid-rebuild)"]
+    RBAC -->|Owner| ANALYSIS["Owner Analysis (Profit + Deep Analysis)"]
 
     JC_CREATE --> FORMSETS["3 Formsets (Concerns + Spares + Labour)"]
     JC_EDIT --> FORMSETS
@@ -653,7 +654,7 @@ graph TB
 | `test_cashbook.py` | Cashbook ledger |
 | `test_financial.py` | Financial logic & calculations |
 | `test_spare_shop_views.py` | Spare shop views & operations |
-| `test_analysis.py` | Owner analysis dashboard & zones |
+| `test_analysis.py` | Profit engine arithmetic, the double-count rule, periods, RBAC, Insights sections |
 
 ### Inventory Tests (3 files)
 
@@ -697,7 +698,8 @@ WorkshopOS (Titan)/
 │   │   ├── car_profiles.py     ← car_profile_list, detail
 │   │   ├── master_lists.py     ← master list views
 │   │   └── autocomplete.py     ← 4 autocomplete API views
-│   ├── analysis_views.py       ← Owner Analysis dashboard (mid-rebuild)
+│   ├── analysis_views.py       ← Owner Profit + Insights views
+│   ├── analysis_engine.py     ← All Analysis money math (pure functions, no HTML)
 │   ├── auth_views.py           ← Auth views + helpers
 │   ├── management_views.py     ← Management views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook views (standalone ledger)

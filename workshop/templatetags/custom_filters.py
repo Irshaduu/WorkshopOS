@@ -69,6 +69,65 @@ def clean_qty(value):
 
 # Backwards/forwards-friendly alias
 register.filter('qty', clean_qty)
+def _to_decimal(value):
+    """Best-effort Decimal, or None if the value isn't numeric."""
+    if value is None or value == "":
+        return None
+    try:
+        return value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+@register.filter
+def inr(value):
+    """
+    Indian digit grouping: 4523678 -> '45,23,678'.
+
+    Django's humanize `intcomma` groups in thousands (4,523,678), which is not
+    how anyone here reads a rupee figure. Last three digits, then pairs.
+    Rounds to whole rupees — these are display figures, not ledger lines.
+    """
+    d = _to_decimal(value)
+    if d is None:
+        return value
+    neg = d < 0
+    whole = str(int(abs(d).quantize(Decimal('1'))))
+    if len(whole) > 3:
+        head, tail = whole[:-3], whole[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.insert(0, head[-2:])
+            head = head[:-2]
+        if head:
+            parts.insert(0, head)
+        whole = ','.join(parts) + ',' + tail
+    return ('-' if neg else '') + whole
+
+
+@register.filter
+def inr_compact(value):
+    """
+    Short rupee figure for hero numbers on a phone: '45.2L', '4.57Cr', '8,500'.
+
+    Owners read the Profit page on mobile, where a nine-digit number either
+    wraps or shrinks to nothing. Lakh/crore is how the figure gets said out
+    loud anyway. The exact number is always shown next to it, never replaced.
+    """
+    d = _to_decimal(value)
+    if d is None:
+        return value
+    neg = d < 0
+    a = abs(d)
+    if a >= Decimal('10000000'):          # >= 1 crore
+        out = f"{a / Decimal('10000000'):.2f}".rstrip('0').rstrip('.') + 'Cr'
+    elif a >= Decimal('100000'):          # >= 1 lakh
+        out = f"{a / Decimal('100000'):.2f}".rstrip('0').rstrip('.') + 'L'
+    else:
+        out = inr(a)
+    return ('-' if neg else '') + out
+
+
 @register.filter
 def get_range(value):
     """

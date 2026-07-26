@@ -52,7 +52,7 @@ graph TD
 ```
  OWNER
    Can do EVERYTHING below + these exclusive actions:
-   - Access the Owner Analysis & Reports Dashboard for hero KPIs (functional) and 7 detail zones (🚧 mid-rebuild — see `TITAN_MASTER_HANDOVER.md` roadmap; zone drill-downs currently show placeholder content, not live analytics).
+   - Access Owner Analysis & Reports: the **Profit** page (Turnover − Expenses = Profit, filtered by month/year/custom — what profit distribution is decided from) and, from it, the **Deep Analysis** page (mechanics, spares, vehicles, fleet, shops, operations).
    - View Paid Bills Dashboard (fully settled jobs and revenue filters)
    - View Financial Audits (High Discounts)
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
@@ -540,9 +540,18 @@ CASHBOOK
   Displays: Net balance for the filtered period
   Access: Office and Owner only
 
-OWNER ANALYSIS & REPORTS (Owner only, 🚧 mid-rebuild)
-  Shows: Hero KPIs on page load (functional)
-  Zone drill-downs (Revenue, Mechanic, Spares, Customer, Inventory, Cashbook, Workshop): currently placeholder content — full rebuild in progress, see `TITAN_MASTER_HANDOVER.md` roadmap
+OWNER ANALYSIS — PROFIT (Owner only)
+  Shows: Total Turnover − Total Expenses = Profit for one date window, stated as an equation
+  Turnover: Car Bills (bills less discounts) + Cashbook Income
+  Expenses: Spare Shops · Supplies Shops · Salary & Advance · General Cashbook (by category)
+  Also: month-by-month trend, expense split, and what is owed to/by the workshop right now
+  Filters: This Month / Last Month / This Year / Last Year / All Time / Custom
+  Purpose: the figure the owners distribute profit from — kept deliberately plain
+
+OWNER ANALYSIS — DEEP ANALYSIS (Owner only, reached from the Profit page)
+  Sections (each loaded on demand): Mechanics · Spares · Vehicles · Fleet · Shops · Operations
+  Note: customer-level analysis is deliberately minimal — names/contacts are optional on a
+  job card and usually blank, so vehicle registration is used as the identity instead
 
 SUPPLIES SHOPS (Inventory App — distinct from Spare Shops, see §5B)
   Shows: Supplier dashboard with per-supplier billed/paid/pending totals
@@ -622,7 +631,7 @@ graph TD
         ML["MASTER LISTS<br/>(Brands, Models, Spares, Concerns)"]:::intel
         API["AUTOCOMPLETE API<br/>(Brands, Models, Spares, Concerns)"]:::intel
         CAR["CAR PROFILES<br/>(Vehicle History by Registration)"]:::intel
-        ANALYTICS["OWNER ANALYSIS<br/>(Hero KPIs live; 7 zones 🚧 mid-rebuild)"]:::intel
+        ANALYTICS["OWNER ANALYSIS<br/>(Profit + Deep Analysis)"]:::intel
     end
 
     subgraph CORE_WORKFLOW ["⚙️ Core Hub & Finance"]

@@ -181,8 +181,48 @@ Split into `formulad_workshop/settings/{base,development,production}.py`. `__ini
 - Use `timezone.localdate()`, never `date.today()`, for any "today"/date-range logic — the server can run in UTC while the business operates in IST (`TIME_ZONE = 'Asia/Kolkata'`), and `date.today()` silently returns the wrong calendar day near midnight IST. This is already the standard across `cashbook_views.py`, `completed.py`, `paid.py`, `spare_shop.py`, `views_suppliers.py`, and `analysis_views.py`.
 - List/ledger views with a time filter (Paid Bills, Completed, Spare Shop, Supplier Shop, Cashbook) use one shared calendar-aligned filter vocabulary: Today / This Week / This Month / This Year / Last Week / Last Month / Last Year / Custom range. Reuse this set for new filtered views instead of inventing a different one (e.g. a rolling `30d`/`365d` window).
 
-### Owner Analysis & Reports dashboard — mid-rebuild, don't "fix" it
-`analysis_dashboard` renders fine, but `analysis_zone` (the AJAX endpoint each zone card calls) currently renders `workshop/templates/workshop/analysis/zones/zone_*.html` — all seven of which are intentional 8-line placeholder stubs, not a bug. The fuller replacement templates already exist at `workshop/templates/workshop/analysis/tabs/{financials,inventory,operations}.html` but aren't wired to any view yet — they're mid-transplant, not dead code to delete. This whole section is a planned ground-up rebuild (see roadmap in `TITAN_MASTER_HANDOVER.md`); don't restore the old zone content or wire up the tabs templates unless the user specifically asks for that work.
+### Owner Analysis & Reports — rebuilt from scratch 2026-07-27
+The old zone/tab placeholder system is **gone** (views, `analysis_zone`, and all
+eleven `zones/`+`tabs/` templates deleted). Two pages now:
+
+- **`/analysis/` — Profit.** The protected page: `Total Turnover − Total Expenses = Profit`
+  for one date window, with the equation shown literally on screen. Owners read it to decide
+  **profit distribution**, so keep it plain — no drill-downs, no cleverness. Filters are
+  This Month / Last Month / This Year / Last Year / All Time / Custom (deliberately *not* the
+  Today/This Week vocabulary the day-to-day list views use — profit isn't a daily number).
+- **`/analysis/insights/` — Deep Analysis.** Everything else (mechanics, spares, vehicles,
+  fleet, shops, operations), one AJAX-loaded section at a time via
+  `/analysis/insights/<section>/`.
+
+**All money math lives in `workshop/analysis_engine.py`, never in the views or templates** —
+pure functions taking a date window, so the arithmetic is testable without a request. Views
+resolve the window, call the engine, and render.
+
+**The double-count rule — the thing most likely to get "fixed" into a bug.** A spare reaches a
+car by one of two routes and is paid for exactly once:
+- `JobCardSpareItem.shop` set → bought from a spare shop for that job → charged as the
+  **Spare Shops** expense (`unit_price × quantity`).
+- `shop` NULL **and** the part name matches an inventory `Item` → taken off warehouse stock →
+  **already paid for** by a Supplies Shop restock bill, so it must **never** be charged again.
+
+Against live data these partition the rows exactly (₹1.49Cr vs ₹97.9L); adding the second one
+would overstate expenses by ~₹9.8M. `DoubleCountRuleTests` in `workshop/tests/test_analysis.py`
+is the regression guard — if it fails, the workshop is being charged twice for one part. Don't
+"fix" it by summing all spare cost. Anything with no shop *and* no stock match is surfaced as
+its own "Other Spare Purchases" line rather than silently dropped.
+
+**Wages come from Salary & Advance, never the Cashbook** (owner's rule: the Cashbook is for
+general expenses). Wage cost for a settled month is `net_amount + advance_used` (an advance is
+cash already out; the settlement pays the remainder), plus loose advances in months not yet
+settled. Cashbook rows *named* like wages are **flagged, not filtered** — free-text categories
+mean a keyword filter would hide real money — so the Profit page shows a "wages may be counted
+twice" warning and lets the owner move the entry.
+
+Other invariants worth keeping: revenue is `total_bill_amount − discount_amount` (a discount is
+money never earned, not an expense — for a settled card this equals `received_amount` exactly);
+every stream is dated by its own natural date so a period never mixes bases; and
+`monthly_series()` must always total to `build_profit_report()` (asserted in `ConsistencyTests`)
+so the chart can never contradict the headline.
 
 ### Signals-driven stock sync
 `inventory/signals.py` has three independent signal groups (8 `@receiver` handlers total) on `pre_save`/`post_save`/`post_delete`:

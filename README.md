@@ -9,7 +9,7 @@ A premium, comprehensive Django-based workshop management system for a single au
 ### Role-Based Access Control (RBAC)
 - **Three-Tier Permissions** — Dedicated access levels for **Owner**, **Office**, and **Floor (Mechanic)** roles.
 - **Secure Admin Hub** — Password-protected Owner login with direct access and real-time security alerts.
-- **Owner Analysis & Reports** — Mobile-first analytics dashboard exclusive to Owners. Hero KPIs are live; the 7 detail zones are currently mid-rebuild (see roadmap).
+- **Owner Analysis & Reports** — Owner-only. A protected **Profit** page (Total Turnover − Total Expenses = Profit, by month/year/custom range) used for profit distribution, plus a separate **Deep Analysis** page covering mechanics, spares, vehicles, fleet accounts, shops and operations.
 - **Role-specific UI** — Dynamic navigation and information visibility based on user groups.
 
 ### Job Card Management
@@ -113,7 +113,8 @@ WorkshopOS (Titan)/
 │   └── settings/           # base.py, development.py, production.py
 ├── workshop/               # Core application — job cards, billing, cashbook, analytics
 │   ├── views/               # Modular views package
-│   ├── analysis_views.py    # Owner Analysis dashboard (mid-rebuild)
+│   ├── analysis_views.py    # Owner Profit + Deep Analysis views
+│   ├── analysis_engine.py   # All Analysis money math (pure, testable)
 │   ├── cashbook_views.py    # Standalone Cashbook ledger
 │   └── templates/
 ├── inventory/               # Inventory, stock & supplier shops app

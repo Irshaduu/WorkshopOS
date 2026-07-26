@@ -1,0 +1,88 @@
+{% load custom_filters %}
+
+<div class="ia-stats">
+  <div class="ia-stat"><div class="k">Parts revenue</div><div class="v">₹{{ totals.revenue|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Parts cost</div><div class="v">₹{{ totals.cost|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Parts profit</div>
+    <div class="v" style="color:var(--color-success);">₹{{ totals.profit|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Margin</div><div class="v">{{ totals.margin|floatformat:1 }}%</div></div>
+  <div class="ia-stat"><div class="k">Labour</div><div class="v">₹{{ labour_total|inr_compact }}</div></div>
+</div>
+
+{% if most_used %}
+<div class="ia-sub">Most Used Parts</div>
+<div class="ia-chart"><canvas id="spareChart"></canvas></div>
+
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr><th>Part</th><th class="num">Times used</th><th class="num">Quantity</th><th class="num">Revenue</th></tr>
+    </thead>
+    <tbody>
+      {% for r in most_used %}
+      <tr>
+        <td class="strong">{{ r.n|default:"—"|title }}</td>
+        <td class="num">{{ r.times }}</td>
+        <td class="num">{{ r.qty|clean_qty }}</td>
+        <td class="num">₹{{ r.revenue|inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="ia-sub">Highest Earning Parts</div>
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr><th>Part</th><th class="num">Revenue</th><th class="num">Cost</th><th class="num">Profit</th><th class="num">Margin</th></tr>
+    </thead>
+    <tbody>
+      {% for r in most_profitable %}
+      <tr>
+        <td class="strong">{{ r.n|default:"—"|title }}</td>
+        <td class="num">₹{{ r.revenue|inr }}</td>
+        <td class="num" style="color:var(--color-text-muted);">₹{{ r.cost|inr }}</td>
+        <td class="num {% if r.profit < 0 %}neg{% else %}pos{% endif %}">₹{{ r.profit|inr }}</td>
+        <td class="num">{{ r.margin|floatformat:1 }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="ia-note">
+  <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+  <span>Cost is the shop price × quantity; revenue is what the customer was charged. This covers
+    <strong>every</strong> part fitted to a car, including stock pulled off the shelf — so it is a
+    parts-trading view, not the same figure as the Profit page's Spare Shops expense.</span>
+</div>
+
+{{ chart_labels|json_script:"spareLabels" }}
+{{ chart_qty|json_script:"spareQty" }}
+<script>
+(function () {
+  const el = document.getElementById('spareChart');
+  if (!el || typeof Chart === 'undefined') return;
+  const read = id => JSON.parse(document.getElementById(id).textContent);
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: read('spareLabels'),
+      datasets: [{ label: 'Times used', data: read('spareQty'),
+                   backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, precision: 0 } },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } },
+      },
+    },
+  });
+})();
+</script>
+{% else %}
+<p class="text-muted mb-0" style="font-size:0.84rem;">No spare parts recorded in this period.</p>
+{% endif %}

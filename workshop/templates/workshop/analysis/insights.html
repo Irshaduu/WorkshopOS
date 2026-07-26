@@ -1,0 +1,213 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% comment %}
+  INSIGHTS — everything that is not the profit figure.
+
+  Sections load one at a time over AJAX. That is not decoration: each section
+  runs its own Top-N aggregates over the full history, and firing all six on
+  page load would make opening this page the slowest thing in the app.
+{% endcomment %}
+
+{% block title %}Deep Analysis — {{ range_label }} — WorkshopOS{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ia-filters {
+    display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px;
+    margin-bottom: 14px; scrollbar-width: none;
+  }
+  .ia-filters::-webkit-scrollbar { display: none; }
+  .ia-pill {
+    border: 1px solid var(--color-border); background: var(--color-card);
+    color: var(--color-text-muted); border-radius: 999px;
+    padding: 7px 15px; font-size: 0.8rem; font-weight: 700;
+    text-decoration: none; white-space: nowrap; flex-shrink: 0;
+  }
+  .ia-pill:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .ia-pill.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
+  /* Section accordion */
+  .ia-sec {
+    background: var(--color-card); border: 1px solid var(--color-border);
+    border-radius: 16px; margin-bottom: 11px; overflow: hidden;
+  }
+  .ia-head {
+    display: flex; align-items: center; gap: 13px; width: 100%;
+    background: none; border: 0; text-align: left; padding: 15px 17px;
+    cursor: pointer; min-height: 44px;
+  }
+  .ia-head:hover { background: var(--color-hover); }
+  .ia-ico {
+    width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+    background: var(--color-primary-light); color: var(--color-primary);
+    display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+  }
+  .ia-t { font-weight: 800; font-size: 0.94rem; line-height: 1.25; }
+  .ia-s { font-size: 0.74rem; color: var(--color-text-muted); }
+  .ia-chev { margin-left: auto; color: var(--color-text-muted); transition: transform 0.2s ease; flex-shrink: 0; }
+  .ia-sec.open .ia-chev { transform: rotate(90deg); }
+  .ia-body { padding: 0 17px 17px; }
+
+  /* Shared building blocks for every section partial */
+  .ia-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 9px; margin-bottom: 14px; }
+  .ia-stat { border: 1px solid var(--color-border); border-radius: 12px; padding: 10px 12px; }
+  .ia-stat .k { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em;
+                color: var(--color-text-muted); font-weight: 700; }
+  .ia-stat .v { font-size: 1.1rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+  .ia-tbl { width: 100%; font-size: 0.83rem; border-collapse: collapse; }
+  .ia-tbl th {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--color-text-muted); font-weight: 700; text-align: left;
+    padding: 7px 8px; border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+  .ia-tbl td { padding: 9px 8px; border-bottom: 1px solid var(--color-border-light); }
+  .ia-tbl tr:last-child td { border-bottom: 0; }
+  .ia-tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ia-tbl .strong { font-weight: 700; }
+  .ia-tbl .pos { color: var(--color-success); font-weight: 700; }
+  .ia-tbl .neg { color: #dc2626; font-weight: 700; }
+  /* Wide tables scroll inside their own box — the page itself must never
+     scroll sideways on a phone. */
+  .ia-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  .ia-chart { position: relative; height: 250px; margin-bottom: 14px; }
+  .ia-sub {
+    font-size: 0.8rem; font-weight: 800; margin: 16px 0 8px;
+    padding-bottom: 6px; border-bottom: 2px solid var(--color-border-light);
+  }
+  .ia-note {
+    font-size: 0.74rem; color: var(--color-text-muted);
+    background: var(--color-hover); border-radius: 10px; padding: 9px 12px;
+    display: flex; gap: 8px; align-items: flex-start; margin-top: 12px;
+  }
+  .ia-spin { padding: 26px; text-align: center; color: var(--color-text-muted); }
+
+  @media (max-width: 575.98px) {
+    .ia-stats { grid-template-columns: repeat(2, 1fr); }
+    .ia-body { padding: 0 12px 14px; }
+    .ia-head { padding: 13px 12px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-3">
+  <a href="{% url 'analysis_dashboard' %}?range={{ range_key }}&start={{ custom_start }}&end={{ custom_end }}"
+     class="text-muted text-decoration-none small">
+    <i class="bi bi-arrow-left me-1"></i>Profit
+  </a>
+</div>
+
+<div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+  <div>
+    <h5 class="fw-bold mb-0" style="font-size: 1.1rem;">
+      <i class="bi bi-compass me-2 text-primary"></i>Deep Analysis
+    </h5>
+    <div class="text-muted" style="font-size: 0.78rem;">
+      {{ start|date:"d M Y" }} — {{ end|date:"d M Y" }}
+    </div>
+  </div>
+</div>
+
+<div class="ia-filters">
+  {% for key, label in period_choices %}
+    {% if key != 'custom' %}
+      <a href="?range={{ key }}" class="ia-pill {% if range_key == key %}active{% endif %}">{{ label }}</a>
+    {% endif %}
+  {% endfor %}
+  <a href="#" class="ia-pill {% if range_key == 'custom' %}active{% endif %}"
+     onclick="document.getElementById('iaCustom').classList.toggle('d-none'); return false;">
+    <i class="bi bi-calendar3 me-1"></i>Custom
+  </a>
+</div>
+
+<form method="get" id="iaCustom" class="ia-sec {% if range_key != 'custom' %}d-none{% endif %}" style="padding: 15px 17px;">
+  <input type="hidden" name="range" value="custom">
+  <div class="row g-2 align-items-end">
+    <div class="col-6 col-md-4">
+      <label class="form-label small text-muted fw-bold mb-1">From</label>
+      <input type="date" name="start" value="{{ custom_start }}" class="form-control form-control-sm" required>
+    </div>
+    <div class="col-6 col-md-4">
+      <label class="form-label small text-muted fw-bold mb-1">To</label>
+      <input type="date" name="end" value="{{ custom_end }}" class="form-control form-control-sm" required>
+    </div>
+    <div class="col-12 col-md-4">
+      <button type="submit" class="btn btn-primary btn-sm fw-bold w-100 rounded-pill">Apply</button>
+    </div>
+  </div>
+</form>
+
+{% for key, label, icon, blurb in sections %}
+<div class="ia-sec" id="sec-{{ key }}" data-section="{{ key }}">
+  <button class="ia-head" type="button" onclick="iaToggle('{{ key }}')" aria-expanded="false"
+          aria-controls="body-{{ key }}">
+    <span class="ia-ico"><i class="bi {{ icon }}"></i></span>
+    <span style="min-width: 0;">
+      <span class="ia-t d-block">{{ label }}</span>
+      <span class="ia-s">{{ blurb }}</span>
+    </span>
+    <i class="bi bi-chevron-right ia-chev"></i>
+  </button>
+  <div class="ia-body d-none" id="body-{{ key }}">
+    <div class="ia-spin">
+      <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+      <div class="mt-2" style="font-size: 0.8rem;">Loading…</div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  const IA_QS = "range={{ range_key }}&start={{ custom_start }}&end={{ custom_end }}";
+  // Built from the URL config rather than hardcoded, so the fetch keeps working
+  // if these routes are ever remounted under a prefix.
+  const IA_URL = "{% url 'analysis_insight_section' '__SECTION__' %}";
+  const iaLoaded = new Set();
+
+  function iaToggle(key) {
+    const sec = document.getElementById('sec-' + key);
+    const body = document.getElementById('body-' + key);
+    const btn = sec.querySelector('.ia-head');
+    const open = !body.classList.contains('d-none');
+
+    body.classList.toggle('d-none', open);
+    sec.classList.toggle('open', !open);
+    btn.setAttribute('aria-expanded', String(!open));
+
+    // Fetch once per section per page load; re-opening reuses the markup.
+    if (!open && !iaLoaded.has(key)) {
+      iaLoaded.add(key);
+      fetch(`${IA_URL.replace('__SECTION__', key)}?${IA_QS}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(html => {
+          body.innerHTML = html;
+          // Section partials ship their own <script> for charts; innerHTML
+          // does not execute those, so re-inject them deliberately.
+          body.querySelectorAll('script').forEach(old => {
+            const s = document.createElement('script');
+            s.textContent = old.textContent;
+            document.body.appendChild(s).remove();
+          });
+        })
+        .catch(() => {
+          iaLoaded.delete(key);
+          body.innerHTML = '<div class="ia-spin text-danger" style="font-size:0.84rem;">'
+                         + 'Could not load this section. Tap the header to retry.</div>';
+        });
+    }
+  }
+
+  // Open the first section straight away — an accordion of six closed rows
+  // gives the owner nothing to look at on arrival.
+  document.addEventListener('DOMContentLoaded', () => iaToggle('mechanics'));
+</script>
+{% endblock %}

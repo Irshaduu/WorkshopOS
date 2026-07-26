@@ -1,0 +1,574 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% comment %}
+  PROFIT — the owner's protected page.
+
+  Turnover − Expenses = Profit, for one date window. The equation is shown
+  literally on screen rather than implied, because this is the page profit
+  distribution is decided from and every figure on it has to be arguable.
+
+  Nothing here drills down or hides state; everything else lives in Insights.
+{% endcomment %}
+
+{% block title %}Profit — {{ range_label }} — WorkshopOS{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ── Filter bar ───────────────────────────────────────────── */
+  .pf-filters {
+    display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px;
+    margin-bottom: 14px; scrollbar-width: none;
+  }
+  .pf-filters::-webkit-scrollbar { display: none; }
+  .pf-pill {
+    border: 1px solid var(--color-border); background: var(--color-card);
+    color: var(--color-text-muted); border-radius: 999px;
+    padding: 7px 15px; font-size: 0.8rem; font-weight: 700;
+    text-decoration: none; white-space: nowrap; flex-shrink: 0;
+    transition: all 0.15s ease;
+  }
+  .pf-pill:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .pf-pill.active {
+    background: var(--color-primary); border-color: var(--color-primary); color: #fff;
+  }
+
+  /* ── Hero ─────────────────────────────────────────────────── */
+  .pf-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #253449 100%);
+    border-radius: 20px; padding: 22px 24px; color: #fff; margin-bottom: 14px;
+    position: relative; overflow: hidden;
+  }
+  .pf-hero::after {
+    content: ''; position: absolute; top: -60%; right: -10%;
+    width: 320px; height: 320px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(34,197,94,0.16), transparent 70%);
+    pointer-events: none;
+  }
+  .pf-hero.loss::after { background: radial-gradient(circle, rgba(239,68,68,0.18), transparent 70%); }
+  .pf-hero-label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em;
+    opacity: 0.65; font-weight: 700;
+  }
+  .pf-hero-value {
+    font-size: 2.6rem; font-weight: 800; line-height: 1.05; margin: 4px 0 2px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  }
+  .pf-hero-value.pos { color: #4ade80; }
+  .pf-hero-value.neg { color: #f87171; }
+  .pf-hero-exact { font-size: 0.82rem; opacity: 0.6; font-variant-numeric: tabular-nums; }
+  .pf-hero-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .pf-chip {
+    background: rgba(255,255,255,0.11); border-radius: 999px;
+    padding: 4px 11px; font-size: 0.73rem; font-weight: 700;
+  }
+  .pf-chip.up { background: rgba(74,222,128,0.18); color: #86efac; }
+  .pf-chip.down { background: rgba(248,113,113,0.18); color: #fca5a5; }
+
+  /* ── The equation ─────────────────────────────────────────── */
+  .pf-eq {
+    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr;
+    align-items: center; gap: 6px;
+    background: var(--color-card); border: 1px solid var(--color-border);
+    border-radius: 16px; padding: 16px 14px; margin-bottom: 14px;
+  }
+  .pf-eq-cell { text-align: center; min-width: 0; }
+  .pf-eq-label {
+    font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--color-text-muted); font-weight: 700; margin-bottom: 3px;
+  }
+  .pf-eq-value {
+    font-size: 1.12rem; font-weight: 800; font-variant-numeric: tabular-nums;
+    line-height: 1.2; word-break: break-word;
+  }
+  .pf-eq-value.turnover { color: var(--color-primary); }
+  .pf-eq-value.expense { color: #dc2626; }
+  .pf-eq-value.profit { color: var(--color-success); }
+  .pf-eq-value.profit.neg { color: #dc2626; }
+  .pf-eq-op { font-size: 1.15rem; font-weight: 800; color: var(--color-text-muted); }
+
+  /* ── Cards / sections ─────────────────────────────────────── */
+  .pf-card {
+    background: var(--color-card); border: 1px solid var(--color-border);
+    border-radius: 16px; padding: 16px 18px; margin-bottom: 14px;
+  }
+  .pf-card-title {
+    font-size: 0.92rem; font-weight: 800; margin: 0 0 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .pf-card-title .sub {
+    font-size: 0.72rem; font-weight: 500; color: var(--color-text-muted);
+    margin-left: auto; text-align: right;
+  }
+
+  /* Ledger rows */
+  .pf-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 9px 0; font-size: 0.86rem;
+    border-bottom: 1px dashed var(--color-border-light);
+  }
+  .pf-row:last-child { border-bottom: 0; }
+  .pf-row .lbl { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .pf-row .lbl i { color: var(--color-text-muted); flex-shrink: 0; }
+  .pf-row .name { font-weight: 600; }
+  .pf-row .hint { font-size: 0.72rem; color: var(--color-text-muted); display: block; font-weight: 400; }
+  .pf-row .amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pf-row .amt.minus { color: #dc2626; }
+  .pf-row.total {
+    border-top: 2px solid var(--color-border); border-bottom: 0;
+    margin-top: 6px; padding-top: 11px; font-size: 0.92rem;
+  }
+  .pf-row.total .name, .pf-row.total .amt { font-weight: 800; }
+
+  /* Expense share bar */
+  .pf-bar { height: 5px; border-radius: 999px; background: var(--color-border-light); margin-top: 6px; }
+  .pf-bar > span { display: block; height: 100%; border-radius: 999px; background: #dc2626; }
+  .pf-share { font-size: 0.7rem; color: var(--color-text-muted); font-weight: 700; margin-left: 7px; }
+
+  /* Charts */
+  .pf-chart-wrap { position: relative; height: 260px; }
+  .pf-chart-wrap.donut { height: 230px; }
+
+  /* Position (as-of-now) grid */
+  .pf-pos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .pf-pos-item {
+    border: 1px solid var(--color-border); border-radius: 12px; padding: 11px 13px;
+  }
+  .pf-pos-item .k {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--color-text-muted); font-weight: 700;
+  }
+  .pf-pos-item .v { font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .pf-pos-item.in { border-left: 3px solid var(--color-success); }
+  .pf-pos-item.out { border-left: 3px solid #dc2626; }
+
+  /* Insights CTA */
+  .pf-cta {
+    display: flex; align-items: center; gap: 14px; text-decoration: none;
+    background: linear-gradient(135deg, #2563eb, #1742c4); color: #fff;
+    border-radius: 16px; padding: 16px 18px; margin-bottom: 16px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .pf-cta:hover { color: #fff; transform: translateY(-1px); box-shadow: 0 8px 20px rgba(37,99,235,0.3); }
+  .pf-cta-ico {
+    width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+    background: rgba(255,255,255,0.16); display: flex; align-items: center;
+    justify-content: center; font-size: 1.2rem;
+  }
+  .pf-cta-t { font-weight: 800; font-size: 0.95rem; }
+  .pf-cta-s { font-size: 0.76rem; opacity: 0.8; }
+
+  .pf-note {
+    font-size: 0.73rem; color: var(--color-text-muted);
+    background: var(--color-hover); border-radius: 10px; padding: 9px 12px;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+
+  /* ── Phones ───────────────────────────────────────────────── */
+  @media (max-width: 575.98px) {
+    .pf-hero { padding: 18px 18px; }
+    .pf-hero-value { font-size: 2.1rem; }
+    /* The equation stacks: three rows, operators between them. Keeping it as
+       a squeezed 5-column grid made every figure wrap mid-number. */
+    .pf-eq { grid-template-columns: 1fr; gap: 2px; padding: 14px; }
+    .pf-eq-op { font-size: 1rem; }
+    .pf-pos { grid-template-columns: 1fr; }
+    .pf-chart-wrap { height: 230px; }
+  }
+  @media (max-width: 991.98px), (pointer: coarse) {
+    .pf-pill { padding: 9px 16px; }   /* 44px-ish touch targets on tablets */
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ───────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+  <div>
+    <h5 class="fw-bold mb-0" style="font-size: 1.1rem;">
+      <i class="bi bi-graph-up-arrow me-2 text-primary"></i>Profit
+    </h5>
+    <div class="text-muted" style="font-size: 0.78rem;">
+      {{ start|date:"d M Y" }} — {{ end|date:"d M Y" }}
+    </div>
+  </div>
+  <a href="{% url 'analysis_insights' %}?range={{ range_key }}&start={{ custom_start }}&end={{ custom_end }}"
+     class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" style="font-size: 0.78rem;">
+    <i class="bi bi-compass me-1"></i>Deep Analysis
+  </a>
+</div>
+
+<!-- ── Date filter ──────────────────────────────────────────── -->
+<div class="pf-filters">
+  {% for key, label in period_choices %}
+    {% if key != 'custom' %}
+      <a href="?range={{ key }}" class="pf-pill {% if range_key == key %}active{% endif %}">{{ label }}</a>
+    {% endif %}
+  {% endfor %}
+  <a href="#" class="pf-pill {% if range_key == 'custom' %}active{% endif %}"
+     onclick="document.getElementById('pfCustom').classList.toggle('d-none'); return false;">
+    <i class="bi bi-calendar3 me-1"></i>Custom
+  </a>
+</div>
+
+<form method="get" id="pfCustom" class="pf-card {% if range_key != 'custom' %}d-none{% endif %}">
+  <input type="hidden" name="range" value="custom">
+  <div class="row g-2 align-items-end">
+    <div class="col-6 col-md-4">
+      <label class="form-label small text-muted fw-bold mb-1">From</label>
+      <input type="date" name="start" value="{{ custom_start }}" class="form-control form-control-sm" required>
+    </div>
+    <div class="col-6 col-md-4">
+      <label class="form-label small text-muted fw-bold mb-1">To</label>
+      <input type="date" name="end" value="{{ custom_end }}" class="form-control form-control-sm" required>
+    </div>
+    <div class="col-12 col-md-4">
+      <button type="submit" class="btn btn-primary btn-sm fw-bold w-100 rounded-pill">Apply</button>
+    </div>
+  </div>
+</form>
+
+{% if not has_data %}
+  <div class="pf-card text-center py-5">
+    <i class="bi bi-graph-up" style="font-size: 2.2rem; color: var(--color-text-muted); opacity: 0.4;"></i>
+    <h6 class="fw-bold mt-3 mb-1">Nothing recorded in {{ range_label }}</h6>
+    <p class="text-muted mb-0" style="font-size: 0.84rem;">
+      No job cards, purchases or expenses fall inside this range. Try a wider one.
+    </p>
+  </div>
+{% else %}
+
+<!-- ── Hero: PROFIT ─────────────────────────────────────────── -->
+<div class="pf-hero {% if report.profit < 0 %}loss{% endif %}">
+  <div class="pf-hero-label">Profit · {{ range_label }}</div>
+  <div class="pf-hero-value {% if report.profit < 0 %}neg{% else %}pos{% endif %}">
+    ₹{{ report.profit|inr_compact }}
+  </div>
+  <div class="pf-hero-exact">₹{{ report.profit|inr }}</div>
+  <div class="pf-hero-meta">
+    <span class="pf-chip">{{ report.margin|floatformat:1 }}% margin</span>
+    {% if delta_profit is not None %}
+      <span class="pf-chip {% if delta_profit >= 0 %}up{% else %}down{% endif %}">
+        <i class="bi bi-arrow-{% if delta_profit >= 0 %}up{% else %}down{% endif %}-right"></i>
+        {{ delta_profit|floatformat:1 }}% vs previous
+      </span>
+    {% endif %}
+    <span class="pf-chip">{{ report.bills.cards }} job card{{ report.bills.cards|pluralize }}</span>
+  </div>
+</div>
+
+<!-- ── The equation, stated literally ───────────────────────── -->
+<div class="pf-eq">
+  <div class="pf-eq-cell">
+    <div class="pf-eq-label">Total Turnover</div>
+    <div class="pf-eq-value turnover">₹{{ report.turnover|inr }}</div>
+  </div>
+  <div class="pf-eq-op">−</div>
+  <div class="pf-eq-cell">
+    <div class="pf-eq-label">Total Expenses</div>
+    <div class="pf-eq-value expense">₹{{ report.expense_total|inr }}</div>
+  </div>
+  <div class="pf-eq-op">=</div>
+  <div class="pf-eq-cell">
+    <div class="pf-eq-label">Profit</div>
+    <div class="pf-eq-value profit {% if report.profit < 0 %}neg{% endif %}">₹{{ report.profit|inr }}</div>
+  </div>
+</div>
+
+<div class="row g-0 g-md-3">
+  <!-- ── Turnover ───────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="pf-card">
+      <div class="pf-card-title">
+        <i class="bi bi-arrow-down-circle-fill text-primary"></i>Turnover
+        <span class="sub">Money earned</span>
+      </div>
+
+      <div class="pf-row">
+        <span class="lbl"><i class="bi bi-receipt"></i>
+          <span><span class="name">Car Bills</span>
+          <span class="hint">{{ report.bills.cards }} job card{{ report.bills.cards|pluralize }}</span></span>
+        </span>
+        <span class="amt">₹{{ report.bills.gross|inr }}</span>
+      </div>
+
+      {% if report.bills.discount %}
+      <div class="pf-row">
+        <span class="lbl"><i class="bi bi-scissors"></i>
+          <span><span class="name">Less: Discounts</span>
+          <span class="hint">Billed but never earned</span></span>
+        </span>
+        <span class="amt minus">− ₹{{ report.bills.discount|inr }}</span>
+      </div>
+      {% endif %}
+
+      <div class="pf-row">
+        <span class="lbl"><i class="bi bi-journal-plus"></i>
+          <span><span class="name">Cashbook Income</span>
+          <span class="hint">Scrap sales, misc</span></span>
+        </span>
+        <span class="amt">₹{{ report.cashbook_income|inr }}</span>
+      </div>
+
+      <div class="pf-row total">
+        <span class="lbl"><span class="name">Total Turnover</span></span>
+        <span class="amt" style="color: var(--color-primary);">₹{{ report.turnover|inr }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Expenses ───────────────────────────────────────────── -->
+  <div class="col-12 col-lg-6">
+    <div class="pf-card">
+      <div class="pf-card-title">
+        <i class="bi bi-arrow-up-circle-fill text-danger"></i>Expenses
+        <span class="sub">Money spent</span>
+      </div>
+
+      {% for line in report.expense_lines %}
+      <div class="pf-row" style="align-items: flex-start;">
+        <span class="lbl" style="flex: 1;">
+          <i class="bi {{ line.icon }}"></i>
+          <span style="flex: 1; min-width: 0;">
+            <span class="name">{{ line.label }}<span class="pf-share">{{ line.share|floatformat:0 }}%</span></span>
+            <span class="hint">{{ line.hint }}</span>
+            <span class="pf-bar"><span style="width: {{ line.share|floatformat:0 }}%;"></span></span>
+          </span>
+        </span>
+        <span class="amt minus">₹{{ line.amount|inr }}</span>
+      </div>
+      {% endfor %}
+
+      <div class="pf-row total">
+        <span class="lbl"><span class="name">Total Expenses</span></span>
+        <span class="amt minus">₹{{ report.expense_total|inr }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Trend ────────────────────────────────────────────────── -->
+{% if multi_month %}
+<div class="pf-card">
+  <div class="pf-card-title">
+    <i class="bi bi-bar-chart-line-fill text-primary"></i>Month by Month
+    <span class="sub">Turnover vs expenses</span>
+  </div>
+  <div class="pf-chart-wrap"><canvas id="pfTrend"></canvas></div>
+</div>
+{% endif %}
+
+<div class="row g-0 g-md-3">
+  <!-- ── Expense split ──────────────────────────────────────── -->
+  <div class="col-12 col-lg-5">
+    <div class="pf-card">
+      <div class="pf-card-title"><i class="bi bi-pie-chart-fill text-danger"></i>Where It Went</div>
+      <div class="pf-chart-wrap donut"><canvas id="pfSplit"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ── Cashbook detail ────────────────────────────────────── -->
+  <div class="col-12 col-lg-7">
+    <div class="pf-card">
+      <div class="pf-card-title">
+        <i class="bi bi-journal-text text-primary"></i>General Cashbook
+        <span class="sub">₹{{ report.cashbook.total|inr }}</span>
+      </div>
+      {% for c in report.cashbook.by_category %}
+        <div class="pf-row">
+          <span class="lbl">
+            <i class="bi {% if c.looks_like_wages %}bi-exclamation-triangle-fill text-warning{% else %}bi-dot{% endif %}"></i>
+            <span><span class="name">{{ c.category }}</span>
+            <span class="hint">{{ c.count }} entr{{ c.count|pluralize:"y,ies" }}</span></span>
+          </span>
+          <span class="amt minus">₹{{ c.total|inr }}</span>
+        </div>
+      {% empty %}
+        <p class="text-muted mb-0" style="font-size: 0.84rem;">No cashbook expenses in this range.</p>
+      {% endfor %}
+
+      {% if report.cashbook.wage_suspects and report.salary.total %}
+      <div class="pf-note mt-3" style="background: #fffbeb; color: #92400e;">
+        <i class="bi bi-exclamation-triangle-fill mt-1" style="color: #d97706;"></i>
+        <span>
+          <strong>Wages may be counted twice.</strong>
+          Wages come from Salary &amp; Advance (₹{{ report.salary.total|inr }} here), but
+          ₹{{ report.cashbook.wage_suspect_total|inr }} of Cashbook expense is also filed under
+          {% for c in report.cashbook.wage_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}.
+          Nothing has been removed automatically — move or rename those Cashbook entries if they
+          are the same money, and this warning will clear.
+        </span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Salary detail ────────────────────────────────────────── -->
+<div class="pf-card">
+  <div class="pf-card-title">
+    <i class="bi bi-cash-coin text-primary"></i>Salary &amp; Advance
+    <span class="sub">{{ report.salary.settled_months }} month{{ report.salary.settled_months|pluralize }} settled</span>
+  </div>
+  <div class="pf-row">
+    <span class="lbl"><i class="bi bi-wallet2"></i>
+      <span><span class="name">Paid at settlement</span>
+      <span class="hint">Net handed over at month end</span></span>
+    </span>
+    <span class="amt">₹{{ report.salary.settled_net|inr }}</span>
+  </div>
+  <div class="pf-row">
+    <span class="lbl"><i class="bi bi-cash"></i>
+      <span><span class="name">Advances within settled months</span>
+      <span class="hint">Already taken during the month</span></span>
+    </span>
+    <span class="amt">₹{{ report.salary.settled_advance|inr }}</span>
+  </div>
+  {% if report.salary.unsettled_advance %}
+  <div class="pf-row">
+    <span class="lbl"><i class="bi bi-hourglass-split"></i>
+      <span><span class="name">Advances in unsettled months</span>
+      <span class="hint">Cash out, month not settled yet</span></span>
+    </span>
+    <span class="amt">₹{{ report.salary.unsettled_advance|inr }}</span>
+  </div>
+  {% endif %}
+  <div class="pf-row total">
+    <span class="lbl"><span class="name">Total Wage Cost</span></span>
+    <span class="amt minus">₹{{ report.salary.total|inr }}</span>
+  </div>
+</div>
+
+<!-- ── Position right now ───────────────────────────────────── -->
+<div class="pf-card">
+  <div class="pf-card-title">
+    <i class="bi bi-bank text-primary"></i>Position Right Now
+    <span class="sub">Not affected by the filter</span>
+  </div>
+  <div class="pf-pos">
+    <div class="pf-pos-item in">
+      <div class="k">Customers owe us</div>
+      <div class="v" style="color: var(--color-success);">₹{{ position.receivable|inr }}</div>
+    </div>
+    <div class="pf-pos-item in">
+      <div class="k">Of that, fleet accounts</div>
+      <div class="v">₹{{ position.fleet_due|inr }}</div>
+    </div>
+    <div class="pf-pos-item out">
+      <div class="k">We owe spare shops</div>
+      <div class="v" style="color: #dc2626;">₹{{ position.payable_spare|inr }}</div>
+    </div>
+    <div class="pf-pos-item out">
+      <div class="k">We owe supplies shops</div>
+      <div class="v" style="color: #dc2626;">₹{{ position.payable_supplier|inr }}</div>
+    </div>
+  </div>
+</div>
+
+{% if report.warehouse_drawn %}
+<div class="pf-card">
+  <div class="pf-note">
+    <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+    <span>
+      <strong>₹{{ report.warehouse_drawn|inr }}</strong> of parts came off warehouse stock in this
+      period. That is deliberately <strong>not</strong> counted as an expense here — it was already
+      paid for when those parts were bought on a Supplies Shop restock bill. Counting it again
+      would charge the workshop twice for one part.
+    </span>
+  </div>
+</div>
+{% endif %}
+
+<a href="{% url 'analysis_insights' %}?range={{ range_key }}&start={{ custom_start }}&end={{ custom_end }}" class="pf-cta">
+  <span class="pf-cta-ico"><i class="bi bi-compass"></i></span>
+  <span style="flex:1; min-width:0;">
+    <span class="pf-cta-t d-block">Deep Analysis</span>
+    <span class="pf-cta-s">Mechanics · Spares · Vehicles · Fleet · Shops · Operations</span>
+  </span>
+  <i class="bi bi-chevron-right"></i>
+</a>
+
+{{ chart_labels|json_script:"pfLabels" }}
+{{ chart_turnover|json_script:"pfTurnover" }}
+{{ chart_expenses|json_script:"pfExpenses" }}
+{{ chart_profit|json_script:"pfProfit" }}
+{{ chart_expense_labels|json_script:"pfSplitLabels" }}
+{{ chart_expense_values|json_script:"pfSplitValues" }}
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if has_data %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const read = id => JSON.parse(document.getElementById(id).textContent);
+  // Compact Indian formatting, mirroring the inr_compact template filter so
+  // axis ticks and tooltips read the same way as the figures above them.
+  const compact = v => {
+    const a = Math.abs(v), s = v < 0 ? '-' : '';
+    if (a >= 1e7) return s + '₹' + (a / 1e7).toFixed(2).replace(/\.?0+$/, '') + 'Cr';
+    if (a >= 1e5) return s + '₹' + (a / 1e5).toFixed(2).replace(/\.?0+$/, '') + 'L';
+    return s + '₹' + Math.round(a).toLocaleString('en-IN');
+  };
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  const trend = document.getElementById('pfTrend');
+  if (trend) {
+    new Chart(trend, {
+      data: {
+        labels: read('pfLabels'),
+        datasets: [
+          { type: 'bar', label: 'Turnover', data: read('pfTurnover'),
+            backgroundColor: 'rgba(37,99,235,0.75)', borderRadius: 4, order: 3 },
+          { type: 'bar', label: 'Expenses', data: read('pfExpenses'),
+            backgroundColor: 'rgba(220,38,38,0.7)', borderRadius: 4, order: 2 },
+          { type: 'line', label: 'Profit', data: read('pfProfit'),
+            borderColor: '#16a34a', backgroundColor: '#16a34a',
+            borderWidth: 2, tension: 0.35, pointRadius: 2, pointHoverRadius: 5, order: 1 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { usePointStyle: true, boxWidth: 8, font: { size: 11 } } },
+          tooltip: { callbacks: { label: c => c.dataset.label + ': ' + compact(c.parsed.y) } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 12 } },
+          y: { grid: { color: css('--color-border-light') },
+               ticks: { font: { size: 10 }, callback: v => compact(v) } },
+        },
+      },
+    });
+  }
+
+  const split = document.getElementById('pfSplit');
+  if (split) {
+    new Chart(split, {
+      type: 'doughnut',
+      data: {
+        labels: read('pfSplitLabels'),
+        datasets: [{
+          data: read('pfSplitValues'),
+          backgroundColor: ['#dc2626', '#f59e0b', '#2563eb', '#7c3aed', '#0891b2'],
+          borderWidth: 0, hoverOffset: 6,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '58%',
+        plugins: {
+          legend: { position: 'bottom',
+                    labels: { usePointStyle: true, boxWidth: 8, padding: 12, font: { size: 11 } } },
+          tooltip: { callbacks: { label: c => c.label + ': ' + compact(c.parsed) } },
+        },
+      },
+    });
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -163,7 +163,8 @@ urlpatterns = [
     # ANALYSIS & REPORTS (Owner Only)
     # ------------------
     path('analysis/', analysis_views.analysis_dashboard, name='analysis_dashboard'),
-    path('analysis/zone/<str:zone_name>/', analysis_views.analysis_zone, name='analysis_zone'),
+    path('analysis/insights/', analysis_views.analysis_insights, name='analysis_insights'),
+    path('analysis/insights/<str:section>/', analysis_views.analysis_insight_section, name='analysis_insight_section'),
 
     # ------------------
     # DATA CLEANUP TOOL

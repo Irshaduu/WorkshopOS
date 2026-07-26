@@ -39,8 +39,14 @@
 ### 4. The Warehouse Pulse (Stock Delta Engine)
 - **Mechanism**: Django Signals (`inventory/signals.py`) orchestrate stock synchronization across **three independent groups (8 handlers)**, all using the same pre_save-snapshot + post_save-delta pattern: Workshop Consumption (3 — replacement, quantity adjustment, deletion), JobCard Soft-Delete Reversal (2 — historically returned a soft-deleted card's spare stock and re-deducted on restore; **now dormant**, since job cards are hard-deleted and the delete guard forbids deleting a card that still holds spares), and Supplier Restocking (3 — creation, edit, deletion).
 
-### 5. Owner Analysis & Reports Dashboard — 🚧 Mid-Rebuild
-- Hero KPIs load synchronously and are functional today. The 7 detail zones (Revenue, Mechanics, Spares, Inventory, Cashbook, Customers, Workshop) are **being rebuilt from the ground up** — their current templates are intentional 8-line placeholders, and the fuller replacement templates (`analysis/tabs/*.html`) exist but aren't wired to a view yet. This is a known, in-progress state, not a bug — see Roadmap §VI. Do not "restore" the old zone content or wire up the tabs templates without it being the explicit task at hand.
+### 5. Owner Analysis & Reports — ✅ Rebuilt from scratch (2026-07-27)
+- The old 7-zone placeholder system was **deleted entirely** and replaced with two pages:
+  - **`/analysis/` — Profit.** `Total Turnover − Total Expenses = Profit` for one date window, with the equation shown literally. This is the page the owners use for **profit distribution**, so it is deliberately kept plain and protected. Filters: This Month / Last Month / This Year / Last Year / All Time / Custom.
+  - **`/analysis/insights/` — Deep Analysis.** Mechanics, Spares, Vehicles, Fleet, Shops, Operations — one AJAX-loaded section at a time.
+- **Turnover** = Car Bills (`total_bill_amount − discount_amount`) + Cashbook Income. A discount is money never earned, so it reduces turnover rather than appearing as an expense; for a settled card the result equals `received_amount` to the rupee.
+- **Expenses** are four non-overlapping money-out streams: Spare Shops (parts bought per job), Supplies Shops (warehouse restock bills), Salary & Advance (wages, advance-aware), General Cashbook (rent/power/etc., broken down by category).
+- **The double-count rule**: a warehouse-drawn spare is *already* paid for by its restock bill, so its cost is never charged again. Counting all job-spare cost on top of restock bills would have overstated expenses by ~₹9.8M against live data. Guarded by `DoubleCountRuleTests`.
+- **Separation of concerns**: all money math lives in `workshop/analysis_engine.py` as pure functions; views only resolve the window and render, so a charting bug can never become a profit bug. `monthly_series()` is asserted to total exactly to `build_profit_report()`.
 - **XSS Prevention**: Strict prohibition of legacy `{{ variable|safe }}`. All JavaScript data injections use Django's `json_script` serialization.
 
 ### 6. Billing Architecture & Bulk Payer / "Fleet Account" Cascade
@@ -97,13 +103,13 @@ In the order set as of 2026-07-23:
 
 1. ✅ **Documentation accuracy pass** — bring CLAUDE.md, MASTER_BLUEPRINT.md, OPERATIONAL_BLUEPRINT.md, README.md, and this handover back in sync with the actual codebase after several undocumented commits. *(This update.)*
 2. ✅ **Staff Registration** (added 2026-07-26) — `Mechanic` model gained a `role` field (Mechanic / Assistant Mechanic / Office Staff / General Helper), giving the workshop one staff roster instead of a mechanics-only list. Lives at `/manage/?section=staff`; only Mechanic/Assistant Mechanic feed the Job Card mechanic picker. See CLAUDE.md's "Deliberate decisions" for why the model keeps the `Mechanic` name.
-3. **Salary Advance** (next) — record staff salary advances taken from the office, against the same staff roster from #2 above, so a person's advance history stays continuous through any future role change.
-4. **Attendance** (later, not yet scheduled) — likely against the same staff roster; deferred until Salary Advance ships.
+3. ✅ **Salary & Advance** (added 2026-07-27) — cash advances recorded the day they happen, plus a month-end settlement that freezes each staff member's salary/leave/advance/net into a `SalaryPaymentLine`. Built against the same staff roster from #2, so a person's history survives a role change. Lives at `/salary-advance/`; a settled month's figures never move afterwards, even if the salary changes later.
+4. **Attendance** (next) — likely against the same staff roster; the leave-days figure currently typed by hand at settlement is the natural thing for it to feed.
 5. **Noted fixes** — already-identified issues to be resolved during hardening:
    - **Supplier-Shop RBAC asymmetry** (flagged 2026-07-23): every Supplier-Shop view in the Inventory app is `@staff_required`, so Floor mechanics can create/delete supplier restock bills and delete supplier payment records — broader than the sibling Spare-Shop module, which restricts destructive actions to Office/Owner. Decide whether Floor should keep full access (small-shop trust) or whether destructive supplier ops should require Office/Owner; if tightening, add tests. See `OPERATIONAL_BLUEPRINT.md` §5B.
    - *(Add further noted issues here as they're identified, so "fix later" items have one durable home.)*
 6. **New OTP system** — a proper OTP-based flow, superseding today's ad hoc SMS+Telegram forgot-password OTP and informing the eventual replacement of the legacy dual-channel login-alert system (§II.2).
-7. **Owner Analysis & Reports — full rebuild** — replace the current placeholder zone templates with real, wired-up analytics (see §II.5).
+7. ~~**Owner Analysis & Reports — full rebuild**~~ — ✅ **done 2026-07-27**: rebuilt from scratch as a protected Profit page plus a separate Deep Analysis page (see §II.5).
 8. **PostgreSQL migration** — cut the live database over from SQLite to PostgreSQL. `settings/production.py` is already fully configured for this; the migration itself hasn't happened yet.
 9. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
 10. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
