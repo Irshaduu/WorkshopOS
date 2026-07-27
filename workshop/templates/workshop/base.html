@@ -17,6 +17,18 @@
     <!-- Custom CSS -->
     {% load static %}
     {% load custom_filters %}
+
+    <!-- PWA: icons + manifest, for "Add to Home Screen" -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/icons/icon-32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'images/icons/icon-16.png' %}">
+    <link rel="shortcut icon" href="{% static 'images/icons/favicon.ico' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'images/icons/icon-180.png' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Formula D">
+
     <link rel="stylesheet" href="{% static 'css/style.css' %}?v=3">
 
     <style>
@@ -508,12 +520,166 @@
             body { padding-bottom: 0; }
             .main-content { margin-top: 0 !important; }
         }
+
+        /* ========================================== */
+        /* PWA — "Add to Home Screen" banner          */
+        /* ========================================== */
+        .pwa-banner {
+            position: fixed;
+            left: 0; right: 0; bottom: 0;
+            z-index: 1025; /* above page content, below Bootstrap's offcanvas/modal (1045+) */
+            display: none;
+            justify-content: center;
+            padding: 12px;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+        }
+        .pwa-banner.show { display: flex; }
+        .pwa-banner-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            max-width: 560px; /* echoes .main-content's 800px column without crowding phones */
+            background: var(--color-card);
+            border: 1px solid var(--color-border);
+            border-radius: 16px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+            padding: 10px 12px;
+        }
+        .pwa-banner-icon {
+            width: 42px; height: 42px; border-radius: 11px;
+            flex-shrink: 0; object-fit: cover;
+            border: 1px solid var(--color-border);
+        }
+        .pwa-banner-text { flex: 1; min-width: 0; }
+        .pwa-banner-title {
+            font-weight: 700; font-size: 0.86rem; color: var(--color-text); line-height: 1.25;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .pwa-banner-sub {
+            font-size: 0.73rem; color: var(--color-text-muted); margin-top: 1px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .pwa-banner-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        .pwa-banner-install {
+            border: 0; border-radius: 999px; padding: 8px 16px;
+            background: var(--color-primary); color: #fff;
+            font-weight: 700; font-size: 0.8rem; white-space: nowrap;
+            min-height: 36px;
+        }
+        .pwa-banner-install:hover { background: #1d4ed8; color: #fff; }
+        .pwa-banner-close {
+            border: 0; background: transparent; color: var(--color-text-muted);
+            width: 34px; height: 34px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.05rem; flex-shrink: 0;
+        }
+        .pwa-banner-close:hover { background: var(--color-hover); }
     </style>
 
     {% block extra_css %}{% endblock %}
 </head>
 
 <body class="{% block body_class %}{% endblock %}">
+
+    <!-- ============================================== -->
+    <!-- PWA — "Add to Home Screen" banner              -->
+    <!-- ============================================== -->
+    <div class="pwa-banner" id="pwaInstallBanner" role="dialog" aria-label="Install this app">
+        <div class="pwa-banner-card">
+            <img src="{% static 'images/icons/icon-192.png' %}" alt="" class="pwa-banner-icon">
+            <div class="pwa-banner-text">
+                <div class="pwa-banner-title" id="pwaBannerTitle">Install Formula D</div>
+                <div class="pwa-banner-sub" id="pwaBannerSub">Add it to your home screen for quick access</div>
+            </div>
+            <div class="pwa-banner-actions">
+                <button type="button" class="pwa-banner-install" id="pwaInstallBtn">Install</button>
+                <button type="button" class="pwa-banner-close" id="pwaBannerClose" aria-label="Dismiss">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function () {
+            // Dismissing is never "never ask again" — it's sessionStorage, not
+            // localStorage, so the banner reappears the next time the app is
+            // opened (new tab / new browser session), exactly once per session
+            // in between so it isn't asked again on every internal page load.
+            var DISMISS_KEY = 'pwaBannerDismissedThisSession';
+            // Once actually installed, stop asking for good — this one IS
+            // permanent, and separate from the dismiss key above.
+            var INSTALLED_KEY = 'pwaInstalled';
+
+            var banner = document.getElementById('pwaInstallBanner');
+            var installBtn = document.getElementById('pwaInstallBtn');
+            var closeBtn = document.getElementById('pwaBannerClose');
+            var titleEl = document.getElementById('pwaBannerTitle');
+            var subEl = document.getElementById('pwaBannerSub');
+            if (!banner) return;
+
+            function isStandalone() {
+                return window.matchMedia('(display-mode: standalone)').matches ||
+                       window.navigator.standalone === true; // iOS, once launched from the home screen
+            }
+            function alreadyHandled() {
+                try {
+                    return isStandalone() ||
+                           localStorage.getItem(INSTALLED_KEY) === '1' ||
+                           sessionStorage.getItem(DISMISS_KEY) === '1';
+                } catch (e) {
+                    return isStandalone(); // storage blocked (private mode etc.) — fall back to the standalone check only
+                }
+            }
+            function showBanner() {
+                if (!alreadyHandled()) banner.classList.add('show');
+            }
+            function hideBanner(rememberDismissal) {
+                banner.classList.remove('show');
+                if (rememberDismissal) {
+                    try { sessionStorage.setItem(DISMISS_KEY, '1'); } catch (e) { /* private mode — nothing to persist, harmless */ }
+                }
+            }
+
+            closeBtn.addEventListener('click', function () { hideBanner(true); });
+
+            // ---- Android / Chrome / Edge: real install prompt ----
+            var deferredPrompt = null;
+            window.addEventListener('beforeinstallprompt', function (e) {
+                e.preventDefault(); // stop the browser's own mini-infobar; we show our own banner instead
+                deferredPrompt = e;
+                installBtn.style.display = '';
+                showBanner();
+            });
+
+            installBtn.addEventListener('click', function () {
+                if (!deferredPrompt) { hideBanner(true); return; }
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.finally(function () {
+                    deferredPrompt = null;
+                    // The OS install dialog already ran and gave its own answer —
+                    // that's not a "dismiss" in our sense, so don't suppress the
+                    // banner for future sessions over it.
+                    hideBanner(false);
+                });
+            });
+
+            window.addEventListener('appinstalled', function () {
+                try { localStorage.setItem(INSTALLED_KEY, '1'); } catch (e) { /* harmless if unavailable */ }
+                hideBanner(false);
+            });
+
+            // ---- iOS: no beforeinstallprompt exists at all — Safari (and,
+            // since iOS 16.4, other iOS browsers) only offer "Add to Home
+            // Screen" via the system Share sheet, so show instructions instead. ----
+            var isIOS = /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream;
+            if (isIOS && !alreadyHandled()) {
+                installBtn.style.display = 'none';
+                subEl.textContent = 'Tap Share, then "Add to Home Screen"';
+                showBanner();
+            }
+        })();
+    </script>
 
 {% with is_owner=request.user|has_group:"Owner" is_office=request.user|has_group:"Office" is_floor=request.user|has_group:"Floor" p=request.path %}
 
