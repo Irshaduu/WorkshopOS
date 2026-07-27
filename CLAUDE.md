@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-WorkshopOS ("Titan") is a Django 5.2 monolith for a single premium automotive workshop: job cards, inventory, spare/supplier shops, bulk payer billing, cashbook, and owner analytics. Two apps: `workshop` (core business logic) and `inventory` (stock + supplier shops). SQLite in dev; `settings/production.py` is fully wired for PostgreSQL but the live deployment has **not migrated yet** — that's a planned, not-yet-done step (see `TITAN_MASTER_HANDOVER.md` roadmap). Don't describe Postgres as "in production" until that migration actually happens.
+WorkshopOS ("Titan") is a Django 5.2 monolith for a single premium automotive workshop: job cards, inventory, spare/supplier shops, bulk payer billing, cashbook, and owner analytics. Two apps: `workshop` (core business logic) and `inventory` (stock + supplier shops). **PostgreSQL** (Neon, Singapore) is the database in both development and production as of 2026-07-27; SQLite survives only for bulk dummy-data seeding and the test suite — see "Which database am I on?" below. The app is still pre-go-live: the Postgres instance holds demo data, not a real workshop's books, so don't describe it as "live production data".
 
 Built for a low-volume, high-value workshop (premium/luxury car servicing, appointment-driven, not a high-throughput chain garage) with a small, flat staff structure — this is why RBAC only needs three tiers and why performance work should be judged against realistic load, not generic "web scale" assumptions.
 
@@ -92,7 +92,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (19 test files across both apps)
+# Run full test suite (20 test files; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -111,10 +111,15 @@ python manage.py setup_groups    # (legacy) creates Owner/Office/Floor auth grou
 python manage.py load_master_data  # brands/models/spare parts — prerequisite for seeding
 
 # Demo/dev data. seed_dummy_data needs load_master_data to have run first.
+# Seed into SQLite (fast), then push the finished result up to Postgres.
 python manage.py seed_dummy_data                                    # default 5-year range
 python manage.py seed_dummy_data --start 2026-01-01 --end 2026-07-25 --cards-per-day 3
 python manage.py purge_business_data        # DRY RUN — prints what it would delete
 python manage.py purge_business_data --yes  # actually delete
+
+# SQLite -> PostgreSQL (see "Which database am I on?" below)
+python manage.py copy_sqlite_to_postgres        # DRY RUN — prints the plan
+python manage.py copy_sqlite_to_postgres --yes  # replace Postgres with the SQLite contents
 ```
 
 `purge_business_data` clears **all** business tables (job cards, shops, fleet
@@ -130,7 +135,42 @@ transaction — a remote Postgres would time out), and restocks monthly *to dema
 rather than a fixed quantity, so warehouse stock hovers around `average_stock`
 instead of compounding upward over a multi-year range.
 
-`DJANGO_ENV=production` switches to PostgreSQL + SSL/HSTS enforcement (`settings/production.py`) — only use this if you actually have Postgres configured; otherwise always `development`.
+### Which database am I on? (changed 2026-07-27 — dev is PostgreSQL now)
+`DJANGO_ENV=development` runs against **PostgreSQL** (the Neon instance in
+`.env`), not SQLite. Development matches what ships, so Postgres-only behaviour
+— stricter GROUP BY, real numeric types, case sensitivity, sequences — surfaces
+while it's cheap to fix rather than on go-live day.
+
+| Situation | Database | How |
+|---|---|---|
+| Normal dev, runserver, one-off commands | **PostgreSQL** | default |
+| Bulk dummy-data seeding | SQLite | `USE_SQLITE=true` |
+| `manage.py test` | SQLite | **automatic**, always |
+| `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
+
+- **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
+  CREATEs and DROPs a whole database — not something to point at hosted
+  Postgres — and 291 tests at ~75 ms per round-trip would take hours. There is
+  deliberately no flag to remember and no way to run the suite against live data
+  by accident (`development.py` keys off `sys.argv[1] == 'test'`).
+- **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
+  the ORM so signals fire; over a network that's tens of thousands of
+  round-trips. Set `USE_SQLITE=true`, seed, unset it, then
+  `copy_sqlite_to_postgres --yes`.
+- `copy_sqlite_to_postgres` **replaces** the target tables. It refuses to run if
+  the two databases are on different migration states, orders tables by a
+  topological sort of their FKs (parents first), inserts with `bulk_create` so
+  signals *don't* re-fire and re-deduct stock, **resets Postgres sequences**
+  afterwards (explicit ids don't advance them — miss this and the next insert
+  collides), and re-counts every table before declaring success. It skips
+  content types, permissions, sessions and admin log — `migrate` owns those on
+  the target and their ids need not match.
+- The `sqlite` alias is always present in `DATABASES` under development, which
+  is how the copy command reads the file while `default` points at Postgres.
+- Expect page loads to feel slow from a dev machine: the database is in
+  Singapore, so a 47-query page costs ~3.5 s of pure latency. That is distance,
+  not the code — colocating app and database removes it. It is still a reason to
+  keep query counts low.
 
 Required `.env` keys (see `settings/base.py`, `auth_views.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_*` (mobile numbers/chat IDs for the two owners), `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM_NUMBER`, `TELEGRAM_BOT_TOKEN`. Production adds `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`.
 
@@ -138,8 +178,8 @@ Required `.env` keys (see `settings/base.py`, `auth_views.py`): `SECRET_KEY`, `D
 
 ### App boundaries
 - **`workshop/`** — job cards, billing, bulk payers, spare shops, cashbook, auth, owner analytics, deletion history, master data (brands/models/spares/concerns).
-  - `views/` is a package (13 modules: `dashboard`, `jobcard`, `completed`, `deletion_history`, `billing`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
-  - `analysis_views.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`.
+  - `views/` is a package (14 modules: `dashboard`, `jobcard`, `completed`, `deletion_history`, `billing`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`, `salary_advance`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
+  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section.
   - `decorators.py` defines the RBAC decorators (`owner_required`, `office_required`, `staff_required`) built on three Django auth Groups: **Owner**, **Office**, **Floor**. Superusers pass every check. Use these decorators on any new view instead of rolling custom permission checks.
   - `middleware.py` (`SessionTrackingMiddleware`) updates `UserSession` (device/IP/last-activity) on every authenticated request, throttled to a 5-minute cooldown per session.
 - **`inventory/`** — stock items/categories and supplier shops (`views.py` for core inventory, `views_suppliers.py` for the supplier-shop module). Stock levels are kept in sync with workshop activity purely via Django signals in `signals.py` — there is no direct view-to-view coupling between the two apps for stock changes.
@@ -150,7 +190,7 @@ Required `.env` keys (see `settings/base.py`, `auth_views.py`): `SECRET_KEY`, `D
   - **Stock History** (`consumption_history` + `inventory_history_mechanic`) is a **live query over `JobCardSpareItem`** (item · qty · mechanic · car · reg, grouped by `admitted_date`, This/Last-Week filter, per-mechanic totals drill-down). It does **not** use the legacy `ConsumptionRecord` model (now dormant), and adds no signals. Both views filter `job_card__is_deleted=False` (dormant flag, still carried for pre-existing rows) and flag entries whose `spare_part_name` matches no `Item` as **"not from stock"** — the deduction signal matches on `Item.name__iexact`, so an unmatched name deducts nothing and must not be displayed as a warehouse draw. The mechanic drill-down groups on `Lower('spare_part_name')` for the same reason. Rows are capped at `HISTORY_ROW_CAP` rather than paginated, so the day-grouped layout is never split.
 
 ### Settings
-Split into `formulad_workshop/settings/{base,development,production}.py`. `__init__.py` picks one via `DJANGO_ENV` — there is no fallback default, so forgetting to set it fails loudly rather than silently using the wrong DB.
+Split into `formulad_workshop/settings/{base,development,production}.py`. `__init__.py` picks one via `DJANGO_ENV` — there is no fallback default, so forgetting to set it fails loudly rather than silently using the wrong DB. The PostgreSQL and SQLite connection dicts are built by `postgres_db()` / `sqlite_db()` in `base.py` and shared by both environments; they used to be duplicated per file, which is how a connection setting gets fixed in one and left broken in the other.
 
 ### Security model ("Steel Gate")
 - `FailedAttempt` tracks login failures **by direct `REMOTE_ADDR` only** (X-Forwarded-For is intentionally ignored for lockout purposes to prevent spoofed-IP bypass) — 5 failures triggers a 15-minute IP lockout. Tests touching this must clear `FailedAttempt.objects.all()` in `setUp` to avoid cross-test contamination.
@@ -232,7 +272,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (16 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`). When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (17 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`) — 20 files, 291 tests. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

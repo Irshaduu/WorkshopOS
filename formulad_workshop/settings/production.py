@@ -3,24 +3,14 @@ Production settings — PostgreSQL, SSL enforced, full security hardening.
 Resolves all 6 Django deploy warnings.
 """
 from .base import *  # noqa: F401,F403
+from .base import postgres_db
 
 DEBUG = False
 
-# Production database (configure in .env)
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='titan_db'),
-        'USER': config('DB_USER', default='titan_user'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
-        'CONN_MAX_AGE': 60,  # AUD-0049: Maintain persistent DB connections
-        'OPTIONS': {
-            'sslmode': config('DB_SSLMODE', default='require'),
-        },
-    }
-}
+# Production database (configure in .env). Built by the shared helper in
+# base.py — the same one development.py uses — so the two environments cannot
+# drift apart on connection settings.
+DATABASES = {'default': postgres_db()}
 
 # SSL & HSTS (Resolves security.W004, W008, W012, W016)
 SECURE_SSL_REDIRECT = True

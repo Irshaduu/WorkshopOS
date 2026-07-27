@@ -1,7 +1,7 @@
 # 🔧 WorkshopOS (Titan) — OPERATIONAL BLUEPRINT
 ## How Every Feature Connects & Works Together
 
-> **Accurate as of**: 2026-07-23, commit `a34537c`
+> **Accurate as of**: 2026-07-27 (v8)
 >
 > This is the **workflow narrative** doc — how features connect for a human reading top to bottom. For exact model/route/template tables see `MASTER_BLUEPRINT.md`; for roadmap and status see `TITAN_MASTER_HANDOVER.md`.
 
@@ -53,6 +53,7 @@ graph TD
  OWNER
    Can do EVERYTHING below + these exclusive actions:
    - Access Owner Analysis & Reports: the **Profit** page (Turnover − Expenses = Profit, filtered by month/year/custom — what profit distribution is decided from) and, from it, the **Deep Analysis** page (mechanics, spares, vehicles, fleet, shops, operations).
+   - Delete a whole month's salary settlement (Office can create and correct one, only an Owner can un-record it)
    - View Paid Bills Dashboard (fully settled jobs and revenue filters)
    - View Financial Audits (High Discounts)
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
@@ -533,6 +534,20 @@ BULK PAYERS ("Fleet Account" in UI)
   Shows: Fleet/repeat customer groups, including any advance credit balance
   Actions: 2-step UI to move bills, process lump-sum payments (cascade + advance pooling, with locking)
   History: Every payment recorded with precise reversal capability
+
+SALARY & ADVANCE (Office and Owner)
+  Shows: every active staff member with their monthly salary and advances taken
+  Give an advance: recorded against a staff member on the day it happens
+  Settle a month: one row per staff — salary, leave days deducted, advances
+    already taken, and the net cash to hand over. Saving freezes those figures.
+  Re-saving a settled month simply recomputes and overwrites it — safe, because
+    nothing else reads these numbers until they are saved.
+  A later pay rise never rewrites a month already settled; the frozen line keeps
+    the salary that was actually in effect.
+  Deleting a whole settlement is Owner-only, goes through a confirmation page,
+    and is written to Deletion History. Advances are NOT affected by it.
+  Feeds: the Salary & Advance expense line on the Owner Profit page — wages come
+    from here, never from the Cashbook.
 
 CASHBOOK
   Shows: Daily income & expense ledger (rent, electricity, scrap sales, etc.)

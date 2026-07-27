@@ -55,7 +55,7 @@ A premium, comprehensive Django-based workshop management system for a single au
 ## Tech Stack
 
 - **Backend**: Python 3.13 / Django 5.2 LTS
-- **Database**: SQLite (development and current production). PostgreSQL is fully configured in `settings/production.py` — migration is planned but not yet performed (see roadmap).
+- **Database**: PostgreSQL (Neon) in both development and production as of 2026-07-27. SQLite is kept only for bulk dummy-data seeding and for running the test suite, which selects it automatically.
 - **Frontend**: Bootstrap 5, vanilla JavaScript, CSS3
 - **Security**: `python-decouple` for environment variables, role-based decorators, IP-based lockout
 - **Static Assets**: WhiteNoise for production static serving
@@ -134,7 +134,7 @@ Exact model/route/template counts live in [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRI
 WorkshopOS is backed by an automated test suite (19 files) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
 
 ## 🛠️ Operational Tooling
-- **Automated SQLite Backups** — `python manage.py backup_db` for secure, rotated archiving (keeps the 7 most recent).
+- **Automated SQLite Backups** — `python manage.py backup_db` for secure, rotated archiving of the local SQLite file (keeps the 7 most recent). Note: this backs up SQLite only; PostgreSQL backups are handled by Neon.
 - **Production Static Serving** — `WhiteNoiseMiddleware` serves static files directly from the application layer.
 
 ## 🔜 Roadmap
@@ -143,6 +143,6 @@ See [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md) § Roadmap for the cu
 
 ---
 
-**Version**: 7.2
+**Version**: 8
 **Last Updated**: 2026-07-23
 **Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT

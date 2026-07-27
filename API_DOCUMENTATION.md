@@ -1,4 +1,4 @@
-# WorkshopOS: API & Core Engineering Patterns (v7.1)
+# WorkshopOS: API & Core Engineering Patterns (v8)
 
 This document outlines the core technical patterns used in WorkshopOS.
 

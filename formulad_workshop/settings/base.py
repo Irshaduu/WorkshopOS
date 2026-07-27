@@ -25,6 +25,41 @@ CSRF_TRUSTED_ORIGINS = config(
     default='http://localhost:8000,http://127.0.0.1:8000'
 ).split(',')
 
+
+# ---------------------------------------------------------------------------
+# DATABASE BUILDERS
+# ---------------------------------------------------------------------------
+# Defined once here and used by BOTH development.py and production.py. They
+# previously each carried their own copy of the Postgres block, which is how a
+# connection setting gets fixed in one environment and quietly left broken in
+# the other.
+
+def postgres_db():
+    """The PostgreSQL connection, read from .env (Neon in this deployment)."""
+    return {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', default='titan_db'),
+        'USER': config('DB_USER', default='titan_user'),
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432'),
+        # Persistent connections matter far more here than on SQLite: the
+        # database is a network hop away, so re-handshaking per request would
+        # dominate page time.
+        'CONN_MAX_AGE': 60,
+        'OPTIONS': {
+            'sslmode': config('DB_SSLMODE', default='require'),
+        },
+    }
+
+
+def sqlite_db():
+    """The local SQLite file — bulk seeding and the test suite."""
+    return {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+
 # Application definition
 
 INSTALLED_APPS = [

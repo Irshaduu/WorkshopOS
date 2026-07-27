@@ -1,9 +1,9 @@
 # 🏗️ WorkshopOS (Titan) — SUPER MASTER BLUEPRINT
 
 > **Project**: WorkshopOS (Titan) · Django project package name `formulad_workshop`
-> **Framework**: Django 5.2 LTS · Python 3.13 · SQLite (dev, current production) · PostgreSQL (production-ready in settings, migration not yet performed)
+> **Framework**: Django 5.2 LTS · Python 3.13 · **PostgreSQL** (Neon — development *and* production since 2026-07-27; SQLite retained only for bulk dummy-data seeding and the test suite)
 > **Apps**: `workshop` (core) + `inventory` (warehouse)
-> **Accurate as of**: 2026-07-23, commit `a34537c`
+> **Accurate as of**: 2026-07-27 (v8)
 >
 > This is the **technical reference** doc — exact model/route/template/admin/test counts and structure. For workflow narrative see `OPERATIONAL_BLUEPRINT.md`; for mission, status, and roadmap see `TITAN_MASTER_HANDOVER.md`; for day-to-day coding conventions see `CLAUDE.md`.
 
@@ -19,21 +19,21 @@ graph TB
     end
 
     subgraph WORKSHOP["Workshop App (Core)"]
-        W_MODELS["models.py — 17 Models"]
-        W_VIEWS["views/ — 13 Module Package"]
+        W_MODELS["models.py — 21 Models"]
+        W_VIEWS["views/ — 14 Module Package"]
         W_ANALYSIS["analysis_views.py + analysis_engine.py — Owner Profit & Insights"]
         W_AUTH["auth_views.py — Auth Views"]
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 94 URL Patterns"]
+        W_URLS["urls.py — 96 URL Patterns"]
         W_FORMS["forms.py — 6 Forms + 3 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session Tracker"]
-        W_TAGS["templatetags — 6 Filters"]
-        W_ADMIN["admin.py — 9 Registered"]
-        W_CMD["Commands — setup_groups, backup_db"]
-        W_TPL["Templates — 70 HTML Files"]
+        W_TAGS["templatetags — 8 Filters"]
+        W_ADMIN["admin.py — 10 Registered"]
+        W_CMD["Commands — 7 management commands"]
+        W_TPL["Templates — 67 HTML Files"]
     end
 
     subgraph INVENTORY["Inventory App (Warehouse + Supplier Shops)"]
@@ -42,7 +42,7 @@ graph TB
         I_URLS["urls.py — 33 URL Patterns"]
         I_SIGNALS["signals.py — 8 Signal Handlers (3 groups)"]
         I_ADMIN["admin.py — 8 Registered"]
-        I_TPL["Templates — 18 HTML Files"]
+        I_TPL["Templates — 20 HTML Files"]
     end
 
     subgraph EXTERNAL["External Services (⚠️ Legacy — replacement planned)"]
@@ -64,7 +64,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (17)
+### Workshop App Models (21)
 
 ```mermaid
 erDiagram
@@ -109,6 +109,11 @@ erDiagram
 | 16 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
 | 17 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
 | 18 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers Job Card, Fleet/Spare-Shop/Supplier payments, Restock Bill, Cashbook Entry and **Inventory Product**. No restore. |
+| 19 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
+| 20 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
+| 21 | **SalaryPaymentLine** | payment (FK), staff (FK→Mechanic), salary_used, leave_days, advance_used, net_amount — unique per (payment, staff) | One staff member's **frozen** figures for that month. Written once and never recalculated, so a later pay rise cannot rewrite a month already paid. |
+
+Salary models added 2026-07-27 (migration `0054_mechanic_current_salary_and_more`, which also added `Mechanic.current_salary`). Wage cost for a settled month is `net_amount + advance_used` — the advance already left the drawer and the settlement pays the remainder.
 
 `advance_balance` (added migration `0047_bulkpayer_advance_balance`) tracks credit carried forward when a lump-sum Fleet Account payment exceeds the total currently owed; `total_balance` can legitimately go negative once this credit exists.
 
@@ -182,9 +187,9 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (127 Total)
+## 4. ALL URL ROUTES — COMPLETE (129 Total)
 
-### Workshop App (94 routes)
+### Workshop App (96 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -272,6 +277,13 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 | **ANALYSIS** | `/analysis/` | `analysis_dashboard` (Profit) | Owner |
 | | `/analysis/insights/` | `analysis_insights` (Deep Analysis shell) | Owner |
 | | `/analysis/insights/<section>/` | `analysis_insight_section` (AJAX partial) | Owner |
+| **SALARY & ADVANCE** | `/salary-advance/` | `salary_advance_home` | Office |
+| | `/salary-advance/add/` | `salary_advance_add` | Office |
+| | `/salary-advance/<id>/delete/` | `salary_advance_delete` | Office |
+| | `/salary-advance/staff/<id>/` | `salary_advance_staff_detail` | Office |
+| | `/salary-advance/staff/<id>/set-salary/` | `salary_set_amount` | Office |
+| | `/salary-advance/payment/<year>/<month>/` | `salary_payment_form` | Office |
+| | `/salary-advance/payment/<id>/delete/` | `salary_payment_delete` | **Owner** |
 | **CLEANUP** | `/manage/cleanup/` | `data_cleanup_view` | Office |
 | | `/manage/cleanup/spare/<id>/delete/` | `cleanup_delete_spare` | Office |
 | | `/manage/cleanup/spare/<id>/rename/` | `cleanup_rename_spare` | Office |
@@ -401,7 +413,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (91 HTML Files)
+## 7. TEMPLATE STRUCTURE (90 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -411,11 +423,12 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 70 files
+### Workshop Templates (`workshop/templates/workshop/`) — 67 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
 | `/` | `base.html`, `home.html` | Base layout with nav + redirector |
+| `/salary_advance/` | `home.html`, `payment_form.html`, `payment_confirm_delete.html`, `partials/staff_advances.html` | Salary & Advance: roster with advances, month-end settlement form, Owner-only delete confirmation |
 | `/analysis/` | `profit.html` | The protected Profit page: Turnover − Expenses = Profit, monthly trend, expense split, position |
 | `/analysis/` | `insights.html` | Deep Analysis shell — six AJAX-loaded accordion sections |
 | `/analysis/sections/` | `mechanics.html`, `spares.html`, `vehicles.html`, `fleet.html`, `shops.html`, `operations.html` (6) | One partial per Insights section, each rendered by `analysis_insight_section` |
@@ -431,7 +444,7 @@ stateDiagram-v2
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html` | 2 cashbook screens (standalone) |
 | `/includes/` | `pagination.html` | Reusable pagination component |
 
-### Inventory Templates (`inventory/templates/inventory/`) — 18 files
+### Inventory Templates (`inventory/templates/inventory/`) — 20 files
 
 | File | Purpose |
 |------|---------|
@@ -552,9 +565,9 @@ graph TB
 
 ---
 
-## 11. DJANGO ADMIN REGISTRATIONS (17 Total)
+## 11. DJANGO ADMIN REGISTRATIONS (18 Total)
 
-### Workshop Admin (9)
+### Workshop Admin (10)
 
 | Model | Admin Features |
 |-------|---------------|
@@ -592,8 +605,10 @@ graph TB
 | File | Environment | Database | SSL |
 |------|-------------|----------|-----|
 | `settings/base.py` | Shared config | — | — |
-| `settings/development.py` | `DJANGO_ENV=development` (default) | SQLite3 | Off |
-| `settings/production.py` | `DJANGO_ENV=production` | PostgreSQL — **fully configured, not yet the live database** | Full HSTS |
+| `settings/development.py` | `DJANGO_ENV=development` | **PostgreSQL** (SQLite if `USE_SQLITE=true`, and always for `manage.py test`) | Off |
+| `settings/production.py` | `DJANGO_ENV=production` | **PostgreSQL** | Full HSTS |
+
+`DJANGO_ENV` has no default — the settings package raises `ImproperlyConfigured` when it is unset, so the wrong database is never selected silently. Both environments build their connection from the shared `postgres_db()` / `sqlite_db()` helpers in `base.py`; those dicts used to be duplicated per environment file.
 
 ### Base Settings
 
@@ -633,9 +648,9 @@ graph TB
 
 ---
 
-## 13. TEST SUITE (19 Test Files)
+## 13. TEST SUITE (20 Files / 291 Tests)
 
-### Workshop Tests — `workshop/tests/` package (16 files)
+### Workshop Tests — `workshop/tests/` package (17 files)
 
 | File | Coverage Area |
 |------|--------------|
@@ -676,13 +691,13 @@ WorkshopOS (Titan)/
 │   ├── settings/
 │   │   ├── __init__.py         ← Auto-selects dev/prod via DJANGO_ENV
 │   │   ├── base.py             ← Shared settings
-│   │   ├── development.py      ← SQLite, DEBUG=True
-│   │   └── production.py       ← PostgreSQL (ready, not yet migrated), SSL, HSTS
+│   │   ├── development.py      ← PostgreSQL (SQLite for seeding/tests), DEBUG=True
+│   │   └── production.py       ← PostgreSQL, SSL, HSTS
 │   ├── urls.py                 ← Root: admin + workshop + inventory
 │   ├── wsgi.py / asgi.py
 │
-├── workshop/                   ← Core App (94 URL routes)
-│   ├── models.py               ← 17 Models
+├── workshop/                   ← Core App (96 URL routes)
+│   ├── models.py               ← 21 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
 │   │   ├── dashboard.py        ← home, live_report
@@ -697,28 +712,34 @@ WorkshopOS (Titan)/
 │   │   ├── audits.py           ← audit_high_discounts, audit_deleted_bulk_payers, restore_bulk_payer
 │   │   ├── car_profiles.py     ← car_profile_list, detail
 │   │   ├── master_lists.py     ← master list views
-│   │   └── autocomplete.py     ← 4 autocomplete API views
+│   │   ├── autocomplete.py     ← 4 autocomplete API views
+│   │   └── salary_advance.py   ← Salary & Advance: advances, month-end settlement
 │   ├── analysis_views.py       ← Owner Profit + Insights views
-│   ├── analysis_engine.py     ← All Analysis money math (pure functions, no HTML)
+│   ├── analysis_engine.py      ← All Analysis money math (pure functions, no HTML)
 │   ├── auth_views.py           ← Auth views + helpers
 │   ├── management_views.py     ← Management views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook views (standalone ledger)
 │   ├── cleanup_views.py        ← 5 Cleanup views
-│   ├── urls.py                 ← 94 URL patterns
+│   ├── urls.py                 ← 96 URL patterns
 │   ├── forms.py                ← 6 Forms + 3 Formsets
 │   ├── decorators.py           ← 3 RBAC decorators
 │   ├── middleware.py           ← Session tracker
-│   ├── admin.py                ← 9 admin registrations
+│   ├── admin.py                ← 10 admin registrations
 │   ├── apps.py                 ← Auto-create groups on migrate
 │   ├── templatetags/
-│   │   └── custom_filters.py   ← 6 template filters
-│   ├── management/commands/
-│   │   ├── setup_groups.py     ← Group setup command (legacy)
-│   │   └── backup_db.py        ← Automated SQLite backup command
-│   ├── templates/workshop/     ← 70 HTML files
+│   │   └── custom_filters.py   ← 8 template filters (incl. inr / inr_compact)
+│   ├── management/commands/    ← 7 commands
+│   │   ├── setup_groups.py     ← Group setup (legacy)
+│   │   ├── backup_db.py        ← Rotated SQLite backup (local file only)
+│   │   ├── load_master_data.py ← Brands/models/spares — prerequisite for seeding
+│   │   ├── seed_dummy_data.py  ← Multi-year demo data (run against SQLite)
+│   │   ├── seed_salary_data.py ← Demo salaries/advances/settlements
+│   │   ├── purge_business_data.py     ← Clears all business tables (dry run by default)
+│   │   └── copy_sqlite_to_postgres.py ← Push a seeded SQLite file up to PostgreSQL
+│   ├── templates/workshop/     ← 67 HTML files
 │   ├── static/css/, static/js/ ← App-specific assets
-│   ├── migrations/             ← 49 migrations
-│   └── tests/                  ← 16 test files (package, not flat files)
+│   ├── migrations/             ← 54 migrations
+│   └── tests/                  ← 17 test files (package, not flat files)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)
@@ -728,8 +749,8 @@ WorkshopOS (Titan)/
 │   ├── signals.py              ← 8 signal handlers, 3 groups (3 consumption + 2 jobcard soft-delete reversal + 3 supplier restock)
 │   ├── admin.py                ← 8 admin registrations
 │   ├── apps.py                 ← Signal registration
-│   ├── templates/inventory/    ← 18 templates (6 core + 12 supplier)
-│   ├── migrations/             ← 5 migrations
+│   ├── templates/inventory/    ← 20 templates
+│   ├── migrations/             ← 7 migrations
 │   └── tests.py, test_signals.py, tests_suppliers.py ← 3 test files
 │
 ├── templates/                  ← Root Templates

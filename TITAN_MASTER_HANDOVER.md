@@ -1,9 +1,9 @@
-# 🏛️ TITAN MASTER HANDOVER: WorkshopOS (v7.2)
+# 🏛️ TITAN MASTER HANDOVER: WorkshopOS (v8)
 
 > [!IMPORTANT]
-> **Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT
-> **Last Updated**: 2026-07-23 (commit `a34537c`)
-> **Version**: 7.2
+> **Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT (pre-go-live)
+> **Last Updated**: 2026-07-27
+> **Version**: 8
 >
 > This is the **mission, status, and roadmap** doc — the single authoritative "Coming Soon" list lives here; other docs link to it instead of keeping their own copy. For exact model/route/template tables see `MASTER_BLUEPRINT.md`; for workflow narrative see `OPERATIONAL_BLUEPRINT.md`; for day-to-day coding conventions see `CLAUDE.md`.
 
@@ -13,7 +13,7 @@
 
 **WorkshopOS** is engineered for a single premium automotive workshop — appointment-driven, high-value vehicles, not high-volume throughput. That distinction matters: the system is built to be fast and correct for a small, hands-on team, not to demonstrate generic "web scale."
 
-- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite spanning **19 test files** covering security, views, signals, financial logic, cashbook operations, spare shop management, and owner analytics.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **20 files / 291 tests** covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, and the owner profit engine.
 
 ---
 
@@ -82,7 +82,7 @@ WorkshopOS uses deliberate, standard performance patterns rather than ad hoc que
   ```bash
   .\venv\Scripts\python.exe manage.py test workshop inventory
   ```
-- **Test Coverage**: 19 test files across workshop (16, in the `workshop/tests/` package) and inventory (3).
+- **Test Coverage**: 20 test files / 291 tests — workshop (17, in the `workshop/tests/` package) and inventory (3).
 
 ---
 
@@ -90,7 +90,7 @@ WorkshopOS uses deliberate, standard performance patterns rather than ad hoc que
 
 - **Core-Only Architecture**: The repository root contains application code, migration files, and documented standards.
 - **Environment Isolation**: All critical credentials (Owner mobile numbers, Telegram Chat IDs, Twilio keys) are strictly segregated into the `.env` file.
-- **Split Settings**: `settings/` package auto-selects development (SQLite) or production (PostgreSQL, configured but not yet the live database) via `DJANGO_ENV`.
+- **Split Settings**: `settings/` package selects development or production via `DJANGO_ENV`, which has no default — an unset value raises `ImproperlyConfigured` rather than silently choosing a database. **Both environments run on PostgreSQL** (Neon); SQLite is used only for bulk dummy-data seeding (`USE_SQLITE=true`) and automatically for `manage.py test`.
 - **Modular Views**: The `workshop` app's views live in a `views/` package (13 focused modules), maintaining full backward compatibility via re-exports in `__init__.py`.
 
 ---
@@ -110,7 +110,7 @@ In the order set as of 2026-07-23:
    - *(Add further noted issues here as they're identified, so "fix later" items have one durable home.)*
 6. **New OTP system** — a proper OTP-based flow, superseding today's ad hoc SMS+Telegram forgot-password OTP and informing the eventual replacement of the legacy dual-channel login-alert system (§II.2).
 7. ~~**Owner Analysis & Reports — full rebuild**~~ — ✅ **done 2026-07-27**: rebuilt from scratch as a protected Profit page plus a separate Deep Analysis page (see §II.5).
-8. **PostgreSQL migration** — cut the live database over from SQLite to PostgreSQL. `settings/production.py` is already fully configured for this; the migration itself hasn't happened yet.
+8. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL (Neon, Singapore). SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
 9. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
 10. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
 11. **Test coverage toward 100%**.

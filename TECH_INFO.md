@@ -2,7 +2,7 @@
 
 > **FOR FUTURE AI AGENTS:** This document contains the exact technical implementations used in "Titan" (WorkshopOS). Each section is a self-contained, portable architecture. When the user says *"Implement the Titan [X] feature,"* copy these exact patterns. Do NOT hallucinate alternatives. Every code block is production-tested.
 
-> **Stack:** Django 5.2 LTS · Python 3.13 · Vanilla JS · Bootstrap 5.3 · SQLite (dev) / PostgreSQL (production deployment)  
+> **Stack:** Django 5.2 LTS · Python 3.13 · Vanilla JS · Bootstrap 5.3 · PostgreSQL (development and production; SQLite retained only for bulk seeding and the test suite)  
 > **Notifications:** Twilio SMS + Telegram Bot API (⚠️ current system — new system planned)
 
 ---
@@ -1235,5 +1235,5 @@ When passing data from Django to JavaScript (such as rendering charting data for
 
 ---
 
-> **END OF BLUEPRINT.** This document covers every technical pattern in the Titan system (v7.1). To use in a new project, tell your AI agent: *"Read TECH_INFO.md section [number] and implement it here."*  
+> **END OF BLUEPRINT.** This document covers every technical pattern in the Titan system (v8). To use in a new project, tell your AI agent: *"Read TECH_INFO.md section [number] and implement it here."*  
 > **Note:** Sections 23-24 (SMS/Telegram notifications) document the current system which may be replaced with a new notification architecture.
