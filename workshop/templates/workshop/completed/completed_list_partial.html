@@ -237,6 +237,10 @@
     }
 </style>
 
+{# Read by the page header's count pill after every AJAX search/filter update — #}
+{# valid even when the list below is empty, since page_obj always carries a paginator. #}
+<span id="completedTotalCount" data-count="{{ completed_jobcards.paginator.count }}" style="display:none"></span>
+
 {% if completed_jobcards %}
 <div class="row g-3">
     {% for jobcard in completed_jobcards %}

@@ -16,6 +16,19 @@
         margin-bottom: 20px;
     }
 
+    /* Phones: "Inventory" on its own row, Search + menu button together
+       below it — three items on one line left the search box too narrow
+       to use comfortably. */
+    @media (max-width: 575.98px) {
+        .top-row {
+            flex-wrap: wrap;
+        }
+        .top-row h2 {
+            flex: 1 1 100%;
+            margin-bottom: 4px;
+        }
+    }
+
     .top-row h2 {
         font-size: 1.25rem;
         font-weight: 700;
@@ -69,7 +82,10 @@
     /* ---------- ITEM CARD ---------- */
     .item-card {
         display: flex;
-        align-items: center;
+        /* flex-start, not center: item-info is two lines (name + Avg) tall,
+           and centering against that made the count box/View button float
+           between the two lines instead of lining up with the item name. */
+        align-items: flex-start;
         gap: 12px;
         padding: 12px 14px;
         margin: 8px 0;
@@ -107,27 +123,17 @@
         word-break: break-word;
     }
 
-    .item-stock {
-        font-size: 0.85rem;
-        margin-top: 6px;
-        display: flex;
-        gap: 6px;
-    }
-
-    .stock-badge {
-        padding: 2px 8px;
-        border-radius: 999px;
-        font-weight: 600;
-    }
-
-    .avg-badge {
-        background: var(--color-primary-light);
-        color: var(--color-primary);
-    }
-
-    .cur-badge {
-        background: var(--color-hover);
-        border: 1px solid var(--color-border);
+    /* Current stock is already shown in the readonly number box next to the
+       card, so this line only needs to carry the average — kept as a small
+       caption under the name rather than a colored pill, matching the
+       .avg style already used on Category Detail / Low Stock. */
+    .item-avg {
+        font-size: 0.72rem;
+        line-height: 1.1;
+        color: var(--color-text-muted);
+        font-weight: 500;
+        margin-top: 1px;
+        padding: 0;
     }
 
     /* ---------- CONTROLS ---------- */
@@ -238,12 +244,7 @@
                     <span class="searchable-text text-dark">{{ item.name }}</span>
                     <span class="searchable-text" style="display:none">{{ category.name }}</span>
                 </div>
-                <div class="item-stock">
-                    <span class="stock-badge avg-badge">Avg {{ item.average_stock|clean_qty }}</span>
-                    <span class="stock-badge cur-badge" style="color:{{ item.stock_status_color }}">
-                        Cur <span style="font-weight: 800;">{{ item.current_stock|clean_qty }}</span>
-                    </span>
-                </div>
+                <div class="item-avg">Avg {{ item.average_stock|clean_qty }}</div>
             </div>
             <div class="controls">
                 <input type="number" value="{{ item.current_stock|clean_qty }}" readonly disabled

@@ -208,7 +208,18 @@
         <div class="del-page-title">
             <i class="bi bi-check-circle-fill title-icon"></i>
             Completed
-            <span class="del-count-pill">Completed</span>
+            <span class="del-count-pill" id="completedCountPill">
+                {% if filter_type == 'today' %}Today
+                {% elif filter_type == 'this_week' %}This Week
+                {% elif filter_type == 'this_month' %}This Month
+                {% elif filter_type == 'this_year' %}This Year
+                {% elif filter_type == 'last_week' %}Last Week
+                {% elif filter_type == 'last_month' %}Last Month
+                {% elif filter_type == 'last_year' %}Last Year
+                {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
+                {% else %}Today{% endif %}
+                {{ page_obj.paginator.count }}
+            </span>
         </div>
     </div>
 
@@ -345,6 +356,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(html => {
                     resultsContainer.innerHTML = html;
                     window.history.pushState({}, '', url);
+                    // The count pill lives in the page header, outside this
+                    // partial, so it's refreshed here from the marker the
+                    // partial carries — keeps "Today 4" in sync with the
+                    // filter AND any active search narrowing the results.
+                    const countEl = document.getElementById('completedTotalCount');
+                    const pill = document.getElementById('completedCountPill');
+                    if (countEl && pill && label) {
+                        pill.textContent = `${label.textContent.trim()} ${countEl.dataset.count}`;
+                    }
                 }).catch(err => console.error('Search error:', err));
         }, delay);
     }

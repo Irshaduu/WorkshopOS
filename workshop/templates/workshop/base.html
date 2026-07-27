@@ -715,11 +715,7 @@
             {% elif is_floor %}
 
                 <div class="drawer-label">Stock</div>
-                <a class="drawer-link accent-blue{% if p == '/inventory/list/' %} active{% endif %}" href="{% url 'inventory_list' %}">
-                    <span class="drawer-ico"><i class="bi bi-box-seam"></i></span>
-                    Inventory
-                    <i class="bi bi-chevron-right drawer-chevron"></i>
-                </a>
+                {# Inventory itself is already the Floor role's top-bar button — no need to duplicate it here. #}
                 <a class="drawer-link accent-red{% if p == '/inventory/low-stock/' %} active{% endif %}" href="{% url 'inventory_low_stock' %}">
                     <span class="drawer-ico"><i class="bi bi-exclamation-triangle"></i></span>
                     Low Stock
