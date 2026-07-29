@@ -81,6 +81,33 @@ about to correct one of these, you are about to break the business:
 - **The reset code is in the email *subject* line on purpose.** iOS and Android both show
   the subject in the notification banner, so the owner reads the code without opening the
   mail app. The trade — briefly visible on a lock screen — is deliberate and worth it.
+- **The reset throttle is now *told to the visitor*, and that is not a regression of the
+  non-disclosure rule.** Changed 2026-07-29 on the owner's instruction after a silent
+  throttle was read as a broken app: an owner who re-requested inside the cooldown was
+  shown "a code has been sent", received nothing, and kept pressing. There are two limits
+  and they are treated differently on purpose. `PasswordResetOTP.throttle_reason` is keyed
+  to the **account** and stays silent — reporting it would answer "does this account exist
+  and can it reset?", which is the entire reason step 1 has one generic reply. The new
+  `_own_request_throttle` is keyed to the **browser session** and is reported in full,
+  because it describes what this visitor just did and is identical for a real account and
+  an invented one. It runs on the same two numbers (60s / 3 per hour) so in the ordinary
+  one-owner-one-phone case the message shown *is* the rule that gets applied; it is not a
+  security control and clearing cookies resets it. Guarded by
+  `test_the_visible_throttle_is_not_an_existence_oracle` — if that fails, the message has
+  started leaking account existence and must go back to being generic.
+  `test_throttled_request_sends_nothing_and_says_so` replaced an older test that asserted
+  the opposite; don't restore it.
+- **A reset code that failed to send is deleted, not retired.** `throttle_reason` counts
+  rows by `created_at` regardless of `used_at`, so a retired-but-present row still spent
+  the hourly budget: three failed sends exhausted it and flipped the honest "could not
+  send" error into the generic "code sent" reply, so the app reported two contradictory
+  things about one outage. An undelivered code is worth nothing — `issue()` has already
+  retired whatever preceded it.
+- **Step 2 echoes the submitted code back into the field; it must keep doing so.** Every
+  rejection there except a spent code is about the *password*, and dropping the six digits
+  with it sent the owner back to the mail app on a phone for a mistake they had already
+  fixed. The code is single-use, expiring, and already in their inbox, so echoing it
+  reveals nothing. The two password fields are deliberately not echoed.
 
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 

@@ -184,6 +184,14 @@ VAPID_ADMIN_EMAIL = config('VAPID_ADMIN_EMAIL', default='')
 # =============================================================================
 # ERROR LOGGING - Save errors to file instead of showing on screen
 # =============================================================================
+# Both handlers, always. The file is the local convenience; **the console is the
+# only one that works on the host.** Render (and any container platform) streams
+# stdout/stderr and nothing else — a rotating file inside the container is
+# unreadable and is thrown away on the next deploy. With `propagate: False` on
+# the app loggers and no console handler, every `logger.error()` in app code was
+# invisible in production: the emailed reset code failing to send wrote its
+# provider error to a file no one could open, leaving only the browser's
+# deliberately vague "Could not send the code right now."
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -202,22 +210,27 @@ LOGGING = {
             'backupCount': 5,
             'formatter': 'verbose',
         },
+        'console': {
+            'level': 'ERROR',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
     },
     'loggers': {
         'django': {
-            'handlers': ['file'],
+            'handlers': ['file', 'console'],
             'level': 'ERROR',
             'propagate': True,
         },
         # App-level loggers (e.g. workshop.auth_views, inventory.*)
         # Without these, logger.error() in app code falls through to stderr, not errors.log
         'workshop': {
-            'handlers': ['file'],
+            'handlers': ['file', 'console'],
             'level': 'ERROR',
             'propagate': False,
         },
         'inventory': {
-            'handlers': ['file'],
+            'handlers': ['file', 'console'],
             'level': 'ERROR',
             'propagate': False,
         },

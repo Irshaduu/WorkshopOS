@@ -18,6 +18,7 @@ The rules these tests exist to hold:
 """
 
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth.models import User, Group
 from django.contrib.sessions.backends.db import SessionStore
@@ -239,13 +240,62 @@ class ResetFlowTests(TestCase):
 
         self.assertEqual(len(mail.outbox), 0)
 
-    def test_throttled_request_sends_nothing_but_looks_the_same(self):
-        first = self._request_code()
+    def test_throttled_request_sends_nothing_and_says_so(self):
+        """
+        A rate limit must be *told*, not performed silently.
+
+        This test previously asserted the opposite — that a throttled request was
+        indistinguishable from a successful one, redirect and all. That silence
+        was the reported defect: an owner who re-requested inside the cooldown
+        was shown "a code has been sent", got no email, and concluded the app was
+        broken. The limit the visitor is now told about is their own browser's
+        submission rate, which discloses nothing about any account; the
+        account-keyed limit in `PasswordResetOTP.throttle_reason` is still silent
+        and still the enforcement.
+        """
+        self._request_code()
         mail.outbox = []
         second = self._request_code()
 
         self.assertEqual(len(mail.outbox), 0)
-        self.assertEqual(first.url, second.url)
+        body = self.client.get(second.url).content.decode()
+        self.assertIn('another in', body)
+
+    def test_the_visible_throttle_is_not_an_existence_oracle(self):
+        """
+        The reason the throttle above can be disclosed at all: it fires on what
+        *this browser* did, so a real account and an invented one are throttled
+        identically. If this ever fails, the message has started leaking whether
+        the account exists and must go back to being generic.
+        """
+        self._request_code('Sahad')
+        real = self._request_code('Sahad')
+        real_body = self.client.get(real.url).content.decode()
+
+        self.client.session.flush()
+        self._request_code('no-such-person')
+        fake = self._request_code('no-such-person')
+        fake_body = self.client.get(fake.url).content.decode()
+
+        self.assertEqual(real.status_code, fake.status_code)
+        self.assertEqual(real.url, fake.url)
+        self.assertIn('another in', real_body)
+        self.assertIn('another in', fake_body)
+
+    def test_failed_delivery_does_not_spend_the_hourly_budget(self):
+        """
+        A code nobody received must not count against the three-an-hour cap.
+
+        It used to: the row was retired but left in place, and `throttle_reason`
+        counts by `created_at`, so three failed sends exhausted the budget and
+        the honest "could not send" error silently became "a code has been sent".
+        The app then reported two contradictory things about the same outage.
+        """
+        with patch('workshop.auth_views.send_reset_code_email', return_value=False):
+            self._request_code()
+
+        self.assertEqual(PasswordResetOTP.objects.filter(user=self.owner).count(), 0)
+        self.assertIsNone(PasswordResetOTP.throttle_reason(self.owner))
 
     # -- step 2 -------------------------------------------------------
     def test_correct_code_sets_the_new_password(self):

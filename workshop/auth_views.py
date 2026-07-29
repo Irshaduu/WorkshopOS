@@ -411,6 +411,73 @@ GENERIC_RESET_REPLY = (
 )
 
 
+# ------------------------------------------------------------------
+# Per-browser request log — what makes the throttle *visible*
+# ------------------------------------------------------------------
+# `PasswordResetOTP.throttle_reason` is the enforcement and stays silent,
+# because it is keyed to the *account*: reporting "wait 45 seconds" would answer
+# "does this account exist and can it reset?" for anyone who asked, which is the
+# whole reason step 1 has a single generic reply.
+#
+# This log answers a different and harmless question — how many times has *this
+# browser* submitted the form — so it can be reported in full. It runs on the
+# same two numbers as the DB throttle, so for the ordinary case (one owner, one
+# phone) the message shown is exactly the rule that will be applied.
+#
+# It is deliberately **not** a security control: clearing cookies resets it, and
+# the account-keyed throttle is still underneath. Its only job is to stop the
+# silence that made a rate limit look like a broken app.
+SESSION_REQUEST_LOG = 'pwd_reset_request_times'
+
+
+def _recent_own_requests(request):
+    """This browser's reset submissions within the last hour, oldest first."""
+    from django.utils.dateparse import parse_datetime
+
+    now = timezone.now()
+    times = []
+    for value in request.session.get(SESSION_REQUEST_LOG, []):
+        parsed = parse_datetime(value) if isinstance(value, str) else None
+        if parsed is not None and (now - parsed).total_seconds() < 3600:
+            times.append(parsed)
+    times.sort()
+    return times
+
+
+def _own_request_throttle(request):
+    """What to tell this browser about its own request rate, or None to proceed."""
+    now = timezone.now()
+    times = _recent_own_requests(request)
+
+    if times:
+        elapsed = (now - times[-1]).total_seconds()
+        if elapsed < PasswordResetOTP.RESEND_COOLDOWN_SECONDS:
+            wait = int(PasswordResetOTP.RESEND_COOLDOWN_SECONDS - elapsed) + 1
+            return (
+                f"A code was requested from this device moments ago. You can request "
+                f"another in {wait} second{'s' if wait != 1 else ''}."
+            )
+
+    if len(times) >= PasswordResetOTP.MAX_REQUESTS_PER_HOUR:
+        ready = timezone.localtime(times[0] + timedelta(hours=1))
+        return (
+            f"That is {PasswordResetOTP.MAX_REQUESTS_PER_HOUR} codes requested from this "
+            f"device within an hour, which is the limit. You can request another at "
+            f"{ready:%I:%M %p}. If none of them arrived, check the spam folder — and if "
+            f"they are not there either, the address on the account may be wrong, which "
+            f"only the other owner can correct."
+        )
+
+    return None
+
+
+def _record_own_request(request):
+    """Append this submission to the browser's log, dropping anything over an hour old."""
+    times = _recent_own_requests(request)
+    times.append(timezone.now())
+    request.session[SESSION_REQUEST_LOG] = [t.isoformat() for t in times]
+
+
 def owner_forgot_password_view(request):
     """
     Step 1 of the emailed-code reset. Owners only — see `can_reset_password`.
@@ -420,7 +487,17 @@ def owner_forgot_password_view(request):
 
     if request.method == 'POST':
         identifier = request.POST.get('username', '').strip()
+
+        # Checked before anything else, and reported plainly. This is the one
+        # limit that can be disclosed without leaking whether the account exists,
+        # because it describes what this browser did, not what the account is.
+        own_limit = _own_request_throttle(request)
+        if own_limit:
+            messages.warning(request, own_limit)
+            return redirect('owner_forgot_password')
+
         user = resolve_user_by_identifier(identifier)
+        _record_own_request(request)
 
         # Marks the flow as started for *every* submission, real or not, so that
         # step 2 renders identically either way. Without a real user id behind it
@@ -433,15 +510,20 @@ def owner_forgot_password_view(request):
             request.session['pwd_reset_user_id'] = user.id
 
             if not send_reset_code_email(user, code):
-                # Delivery genuinely failed. Retire the code rather than leaving a
-                # live one nobody received, and say so — the old behaviour reported
-                # success regardless, so a failed reset looked like a working one.
-                otp.used_at = timezone.now()
-                otp.save(update_fields=['used_at'])
+                # Delivery genuinely failed. Delete the code rather than retiring
+                # it: a retired row still counts toward `throttle_reason`, which
+                # counts by `created_at`, so three failed sends used to spend the
+                # whole hourly budget and turn this honest error into the generic
+                # "code sent" reply — the app then looked broken in two different
+                # ways within a minute. An undelivered code is worth nothing to
+                # anyone; `issue()` has already retired whatever preceded it.
+                otp.delete()
                 request.session.pop('pwd_reset_user_id', None)
                 messages.error(
                     request,
-                    "Could not send the code right now. Please try again in a moment."
+                    "Could not send the code right now — the email did not go out. "
+                    "This is a mail delivery problem, not a wrong username. Please try "
+                    "again in a moment, and tell your developer if it keeps happening."
                 )
                 return redirect('owner_forgot_password')
 
@@ -454,6 +536,22 @@ def owner_forgot_password_view(request):
 # ============================================================
 # Forgot Password — Step 2: verify the code, set the password
 # ============================================================
+def _reset_page(request, submitted_code=''):
+    """
+    Re-render step 2, carrying the typed code back into the field.
+
+    Every rejection on this page except a spent code is about the *password* —
+    too short, mismatched, too common. Dropping the six digits along with it made
+    the owner re-read them from the email for a mistake they had already fixed,
+    on a phone, with the mail app one task-switch away. The code is not a
+    password: it is single-use, expiring, and already in the visitor's inbox, so
+    echoing it back reveals nothing they do not have. The two password fields are
+    deliberately *not* echoed.
+    """
+    return render(request, 'workshop/auth/reset_password.html',
+                  {**AUTH_PAGE, 'submitted_code': submitted_code})
+
+
 def owner_reset_password_view(request):
     """
     Step 2. The account is held in the session, the code lives in the database.
@@ -475,12 +573,12 @@ def owner_reset_password_view(request):
         # with a too-short password must not burn the code — the owner would have
         # to request another one for a typo they can simply fix.
         if len(new_password) < 8:
-            messages.error(request, "Password must be at least 8 characters.")
-            return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
+            messages.error(request, "Password must be at least 8 characters. Your code is still valid.")
+            return _reset_page(request, submitted_code)
 
         if new_password != confirm_password:
-            messages.error(request, "Passwords do not match.")
-            return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
+            messages.error(request, "Passwords do not match. Your code is still valid.")
+            return _reset_page(request, submitted_code)
 
         user_id = request.session.get('pwd_reset_user_id')
         user = User.objects.filter(pk=user_id).first() if user_id else None
@@ -491,8 +589,11 @@ def owner_reset_password_view(request):
             try:
                 validate_password(new_password, user=user)
             except ValidationError as exc:
-                messages.error(request, f"Password not strong enough: {', '.join(exc.messages)}")
-                return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
+                messages.error(
+                    request,
+                    f"Password not strong enough: {' '.join(exc.messages)} Your code is still valid."
+                )
+                return _reset_page(request, submitted_code)
 
         otp = PasswordResetOTP.objects.filter(user=user).first() if user else None
 
@@ -516,7 +617,9 @@ def owner_reset_password_view(request):
                 request,
                 f"Incorrect code. {remaining} attempt{'s' if remaining != 1 else ''} remaining."
             )
-            return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
+            # Echoed back so a single mistyped digit can be corrected in place
+            # rather than re-entered from scratch against a shrinking budget.
+            return _reset_page(request, submitted_code)
 
         # --- Verified. Apply the new password. ---
         user.set_password(new_password)
@@ -538,7 +641,7 @@ def owner_reset_password_view(request):
         messages.success(request, "Password changed. Please sign in with your new password.")
         return redirect('admin_login')
 
-    return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
+    return _reset_page(request)
 
 
 def _terminate_all_sessions(user):
