@@ -41,10 +41,12 @@ class CashbookTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.url.startswith('/admin-login/'))
         
-        # Floor user
+        # Floor user — signed in but wrong role, so 403 rather than a redirect.
+        # This used to bounce to the login form, which looks identical to being
+        # logged out and reads as the app being broken. Changed 2026-07-28.
         self.client.login(username='floor', password='password')
         response = self.client.get(reverse('cashbook'))
-        self.assertEqual(response.status_code, 302) # Redirects to admin-login since decorator requires office/owner
+        self.assertEqual(response.status_code, 403)
         
         # Office user
         self.client.login(username='office', password='password')

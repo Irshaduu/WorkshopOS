@@ -2,10 +2,12 @@ from decimal import Decimal
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.urls import reverse
 from django.utils import timezone
 
 from ..models import JobCard
 from ..decorators import office_required
+from ..notifications import notify
 
 
 @office_required
@@ -102,6 +104,24 @@ def update_bill_status(request, pk):
             jobcard.paid_date = None
 
         jobcard.save()
+
+        # A part-paid bill books its shortfall as a discount (see CLAUDE.md —
+        # that is the business rule, not a bug), which makes an unusually large
+        # discount the signal worth surfacing rather than the payment itself.
+        # Same threshold as `audit_high_discounts`, read from one constant so the
+        # audit page and the alert can never disagree about what "large" means.
+        if jobcard.discount_amount and total_bill > 0:
+            ratio = jobcard.discount_amount / total_bill
+            if ratio > JobCard.HIGH_DISCOUNT_RATIO:
+                notify(
+                    'HIGH_DISCOUNT',
+                    f"{jobcard.registration_number} — ₹{jobcard.discount_amount} off "
+                    f"₹{total_bill} ({ratio:.0%}) on bill {jobcard.bill_number}.",
+                    actor=request.user,
+                    url=reverse('invoice_view', args=[jobcard.pk]),
+                    object_type='JOBCARD',
+                    object_id=jobcard.pk,
+                )
 
         messages.success(request, f"Billing updated for {jobcard.registration_number}")
     

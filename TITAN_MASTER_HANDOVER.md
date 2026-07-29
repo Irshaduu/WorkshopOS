@@ -13,7 +13,7 @@
 
 **WorkshopOS** is engineered for a single premium automotive workshop — appointment-driven, high-value vehicles, not high-volume throughput. That distinction matters: the system is built to be fast and correct for a small, hands-on team, not to demonstrate generic "web scale."
 
-- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **20 files / 291 tests** covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, and the owner profit engine.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **27 files / 457 tests** covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, and the owner profit engine.
 
 ---
 
@@ -22,15 +22,47 @@
 > [!WARNING]
 > *This section documents the mission-critical security and data-integrity logic of WorkshopOS. These systems are foundational and must never be broken or bypassed.*
 
-### 1. IP-Based Security & Lockout (`FailedAttempt`)
-- **Mechanism**: The system captures and tracks login failures strictly by the direct **Network IP** (`REMOTE_ADDR`). `X-Forwarded-For` proxy headers are intentionally ignored to prevent client-side IP spoofing bypasses.
-- **The Rule**: 5 consecutive failed attempts trigger a global 15-minute lockout for that IP address.
-- **Integrity Check**: Verified in `workshop/tests/test_auth.py`.
-  *Note for developers: Tests must call `FailedAttempt.objects.all().delete()` in `setUp` to prevent cross-test contamination.*
+### 1. Sign-in Lockouts — two units (rebuilt 2026-07-28)
+- **Primary — per account (`AccountLockout`)**: 5 consecutive failures lock **that one account** for 15 minutes.
+- **Backstop — per IP (`FailedAttempt`)**: 20 failures lock the network for 15 minutes. Counted strictly by direct `REMOTE_ADDR`; `X-Forwarded-For` is intentionally ignored to prevent spoofed-IP bypass.
+- **Why the split**: the IP threshold used to be 5, and that was the wrong unit for this business. The laptop, the tablet and both owners' phones leave through one connection, so five fumbled attempts on the Floor tablet locked the owners out of their own devices — the attack and the collateral damage were indistinguishable. The account gate is now the precise instrument; the IP gate only catches a spray across many accounts. **Don't lower it back.**
+- **Integrity Check**: `workshop/tests/test_login.py` (24 tests) and `workshop/tests/tests.py`.
+  *Note for developers: tests must call `FailedAttempt.objects.all().delete()` in `setUp` to prevent cross-test contamination.*
 
-### 2. Dual-Channel Notification System (⚠️ Legacy — Replacement Planned, see Roadmap §VI)
-- **Mechanism**: Any successful authentication triggers alert broadcasts to **both** business owners via Telegram Bot API + Twilio SMS, carrying username, device fingerprint, and network IP.
-- This is explicitly legacy — don't invest further in it. Full mechanism details live in `CLAUDE.md` and `MASTER_BLUEPRINT.md` §3.
+### 1b. Login — one engine, two faces (rebuilt 2026-07-28)
+- `/login/` (staff) and `/admin-login/` (owner) are **the same view** with a different heading, accent colour, and Forgot Password link. The separation is presentational; the authentication path, identifier resolver and both lockouts are shared. Two full views had already drifted once.
+- **Either face accepts any role.** The old fake "Invalid credentials" shown to owners on the staff face is gone — the owner door was one button away, so it protected nothing while guaranteeing a confusing support call.
+- **Sign in with username, email, or mobile.** `resolve_user_by_identifier` tries each in order and **fails closed** if more than one account matches.
+- **RBAC now returns 403, not a login redirect, for signed-in users.** Anonymous visitors still get the sign-in page with `?next=` (validated against open redirects by `_safe_next`). A signed-in user lacking the role gets `templates/403.html`. Both cases used to redirect to a login form, so an Office user opening an Owner page saw a sign-in screen while already signed in.
+
+### 1c. Notifications — in-app feed (added 2026-07-29)
+- The nav bell is real: an owner-only feed at `/notifications/` with an unread badge, mark-one-on-open, mark-all-read, and a 90-day sweep of *read* rows (unread are never swept).
+- **Eight events**, all Owner-audience, all declared in one file (`workshop/notifications.py`): `LOGIN`, `ACCOUNT_LOCKED`, `USER_CREATED`, `HIGH_DISCOUNT`, `RECORD_DELETED`, `ACCOUNT_ARCHIVED`, `SALARY_ADVANCE`, `SALARY_SETTLED`.
+- **`RECORD_DELETED` hooks `DeletionLog.record()`** — the single choke point every permanent delete already passes through, so one call covers all nine entity types and anything added later for free.
+- **The actor is excluded from their own events**, which roughly halves volume with two owners, and Floor receives nothing at all. Notification fatigue is the failure mode here: a bell that cries wolf stops being read, and the events that matter (large discount, permanent delete) are exactly the ones that would be missed.
+- `HIGH_DISCOUNT` uses `JobCard.HIGH_DISCOUNT_RATIO`, the same constant as `audit_high_discounts`, so the audit page and the alert cannot disagree about what "large" means.
+- This replaced the SMS/Telegram broadcast described in §2.
+
+### 1d. Web Push — ✅ Added (2026-07-29)
+- **`CRITICAL` events push to subscribed devices; `INFO` events wait in the bell.** Push is a *delivery layer* over `Notification` rows that are already written — if the keys are missing, the service is down, or nobody has subscribed, the feed is completely unaffected. That is why it was built last.
+- **One subscription per device**, enrolled from a button on `/notifications/` (browsers require a real user gesture before they will even ask for permission).
+- **`sw.js` is served from the origin root** by a Django view, never from `/static/` — a service worker's scope is its own directory, so a `/static/sw.js` would only control `/static/` and never receive an app push. Verified live: scope resolves to the site root.
+- **Nothing in the request path waits on the network**: `transaction.on_commit` → background thread, so a rolled-back action never announces itself and saving a payment isn't slowed by two HTTPS round-trips.
+- Dead endpoints (404/410) are deleted on sight; transient failures are counted and dropped after 3.
+- **iOS caveat, unavoidable and by design of Safari**: Web Push only works once the app is added to the Home Screen. In a normal Safari tab the API is absent. The UI detects this and says so in plain language rather than appearing broken.
+- **Optional everywhere.** A deploy without `VAPID_*` keys is valid.
+
+### 2. Twilio & Telegram — ✅ Removed (2026-07-29)
+- Both channels are **gone**: `send_twilio_sms`, `send_telegram_msg`, `send_titan_security_alert`, the `twilio` and `requests` dependencies, the `TWILIO_*` / `TELEGRAM_BOT_TOKEN` / `OWNER_n_CHAT_ID` env keys, and the root-level `verify_twilio.py` / `verify_alerts.py` scripts.
+- Removed **last**, deliberately: the password-reset half went first (§2b, emailed codes), then the in-app feed took over login alerts (§1c) and was verified working, and only then was the channel deleted. A notification channel is never removed before its replacement is proven — otherwise the owners are left with no alert at all in the gap.
+- **The app now makes exactly one kind of outbound network call: SMTP**, for password-reset codes. Don't reintroduce a messaging integration; push notifications (roadmap) are a delivery layer over the existing `Notification` rows, not a parallel system.
+
+### 2b. Password Recovery — ✅ Rebuilt (2026-07-28)
+- **Change Password** (`/change-password/`, Owner-only): a signed-in owner sets a new password with no email involved. This is the **handover path** — an owner gets a temp password verbally, signs in, replaces it. Go-live therefore does not depend on SMTP being configured.
+- **Forgot Password**: a **6-digit code emailed** to the owner's registered address (`User.email`), replacing the old `.env`-driven SMS/Telegram OTP. Identify by username, email, or mobile.
+- **Why a code and not Django's built-in reset link**: on iOS an installed PWA has its own cookie jar, so a link tapped in the mail app completes the reset in a *different* session and leaves the app signed out. A code has no such dependency. Recorded in `CLAUDE.md`'s deliberate decisions — do not "simplify" it back.
+- Every limit (10-min expiry, single use, 5 attempts, 60s resend, 3/hour) is counted **per account in the database**, not in the session, because a session counter is defeated by clearing cookies — which would let someone burn the sending quota. Responses are identical whether or not the account exists.
+- Owner identity now lives in the **database**, not `.env` — so adding a third owner or changing an address needs no code change and no deploy (`sync_owner_identity`, `set_owner_email`).
 
 ### 3. Hardware Fingerprinting & Session Command (`UserSession`)
 - **Device Parsing**: Decodes raw HTTP User-Agent strings into human-readable device names (e.g., *Apple Safari on iPhone*).
@@ -82,14 +114,14 @@ WorkshopOS uses deliberate, standard performance patterns rather than ad hoc que
   ```bash
   .\venv\Scripts\python.exe manage.py test workshop inventory
   ```
-- **Test Coverage**: 20 test files / 291 tests — workshop (17, in the `workshop/tests/` package) and inventory (3).
+- **Test Coverage**: 27 test files / 457 tests — workshop (24, in the `workshop/tests/` package) and inventory (3).
 
 ---
 
 ## 🧹 V. THE PRISTINE WORKSPACE
 
 - **Core-Only Architecture**: The repository root contains application code, migration files, and documented standards.
-- **Environment Isolation**: All critical credentials (Owner mobile numbers, Telegram Chat IDs, Twilio keys) are strictly segregated into the `.env` file.
+- **Environment Isolation**: Secrets live in `.env` — `SECRET_KEY`, the PostgreSQL credentials, and the SMTP sending mailbox (an App Password, not an account password). Owner *identity* deliberately does **not**: usernames, mobiles and email addresses are database rows, so adding an owner or changing an address needs no deploy.
 - **Split Settings**: `settings/` package selects development or production via `DJANGO_ENV`, which has no default — an unset value raises `ImproperlyConfigured` rather than silently choosing a database. **Both environments run on PostgreSQL** (Neon); SQLite is used only for bulk dummy-data seeding (`USE_SQLITE=true`) and automatically for `manage.py test`.
 - **Modular Views**: The `workshop` app's views live in a `views/` package (13 focused modules), maintaining full backward compatibility via re-exports in `__init__.py`.
 
@@ -108,7 +140,16 @@ In the order set as of 2026-07-23:
 5. **Noted fixes** — already-identified issues to be resolved during hardening:
    - **Supplier-Shop RBAC asymmetry** (flagged 2026-07-23): every Supplier-Shop view in the Inventory app is `@staff_required`, so Floor mechanics can create/delete supplier restock bills and delete supplier payment records — broader than the sibling Spare-Shop module, which restricts destructive actions to Office/Owner. Decide whether Floor should keep full access (small-shop trust) or whether destructive supplier ops should require Office/Owner; if tightening, add tests. See `OPERATIONAL_BLUEPRINT.md` §5B.
    - *(Add further noted issues here as they're identified, so "fix later" items have one durable home.)*
-6. **New OTP system** — a proper OTP-based flow, superseding today's ad hoc SMS+Telegram forgot-password OTP and informing the eventual replacement of the legacy dual-channel login-alert system (§II.2).
+6. ~~**Auth & notifications rebuild**~~ — ✅ **complete 2026-07-29**, delivered in six ordered phases so each left a working system:
+   - Owner identity moved from `.env` into the database; the `Owner` group was **empty** and every group-based query silently returned nobody (§II.2b)
+   - **Change Password** for signed-in owners — the handover path, needs no email at all
+   - **Emailed 6-digit reset code**, DB-backed and throttled per account, replacing the SMS/Telegram OTP (§II.2b)
+   - **Login rebuilt**: one engine behind two faces, sign in by username/email/mobile, per-account lockout, 403 instead of a redirect loop (§II.1, §II.1b)
+   - **Control Hub locked to Owners** + one-click unlock for locked staff accounts
+   - **In-app Notification feed** with eight events (§II.1c), and only then —
+   - **Twilio and Telegram deleted** (§II.2). The order was the point: the replacement was proven before the channel was removed.
+   - **Web Push** (§II.1d) — added once the app was hosted on Render (HTTPS is a hard requirement). CRITICAL events only; the in-app feed remains the source of truth.
+   - *Remaining*: enable it on each owner's real device. On iPhone that means **Add to Home Screen first**, then open the installed app and use the button on `/notifications/` — Safari does not expose Web Push to a normal browser tab.
 7. ~~**Owner Analysis & Reports — full rebuild**~~ — ✅ **done 2026-07-27**: rebuilt from scratch as a protected Profit page plus a separate Deep Analysis page (see §II.5).
 8. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL (Neon, Singapore). SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
 9. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.

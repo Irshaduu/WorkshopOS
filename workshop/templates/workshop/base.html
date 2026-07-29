@@ -198,8 +198,24 @@
 
         .nav-btn--menu.is-open i { color: #ffffff; }
 
-        /* Notification bell — placeholder until the feature is built */
-        .nav-btn--bell { color: rgba(255, 255, 255, 0.78); }
+        .nav-btn--bell { color: rgba(255, 255, 255, 0.78); position: relative; }
+        /* Count sits on the bell rather than beside it, so the pill keeps the
+           same footprint whether or not anything is waiting. */
+        .nav-badge {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            min-width: 16px;
+            height: 16px;
+            padding: 0 4px;
+            border-radius: 999px;
+            background: #dc2626;
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 800;
+            line-height: 16px;
+            text-align: center;
+        }
 
         /* Tablet: honour the 44px touch-target minimum, keep the horizontal
            icon+label layout — there's room for it at tablet width. */
@@ -358,6 +374,29 @@
         .drawer-logout-compact i { font-size: 1rem; }
 
         .drawer-logout-compact:hover { background-color: #fef2f2; }
+
+        /* Same shape as the logout row, neutral colour — Logout stays the only
+           red thing in this panel so it never gets tapped by mistake. */
+        .drawer-changepw-compact {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 18px;
+            border: 0;
+            border-bottom: 1px solid var(--color-border);
+            background: transparent;
+            color: var(--color-text);
+            font-size: 0.88rem;
+            font-weight: 700;
+            text-align: left;
+            text-decoration: none;
+            transition: background-color 0.15s ease;
+        }
+
+        .drawer-changepw-compact i { font-size: 1rem; }
+
+        .drawer-changepw-compact:hover { background-color: var(--color-hover); color: var(--color-text); }
 
         /* --- Scrollable body --- */
         .drawer-body {
@@ -728,11 +767,20 @@
             </a>
             {% endif %}
 
-            {% if is_owner or is_office %}
-            <!-- Notifications — placeholder for a future Owner/Office feature -->
-            <a class="nav-btn nav-btn--icon nav-btn--bell js-notif-placeholder"
-               href="#" role="button" aria-label="Notifications" title="Notifications">
-                <i class="bi bi-bell"></i>
+            {% if is_owner %}
+{% comment %}
+Owner-only, because only owners receive notifications — a bell that can never
+fill is a control that never does anything. If Office ever gets its own events,
+widen this and the audience together.
+{% endcomment %}
+            <a class="nav-btn nav-btn--icon nav-btn--bell{% if p|slice:':15' == '/notifications/' %} active{% endif %}"
+               href="{% url 'notification_list' %}"
+               aria-label="Notifications{% if unread_notifications %}, {{ unread_notifications }} unread{% endif %}"
+               title="Notifications">
+                <i class="bi bi-bell{% if unread_notifications %}-fill{% endif %}"></i>
+                {% if unread_notifications %}
+                <span class="nav-badge">{{ unread_notifications }}</span>
+                {% endif %}
             </a>
             {% endif %}
 
@@ -788,6 +836,12 @@
         <!-- Collapsed by default — Logout is a rare action, not a permanent block -->
         <div class="collapse" id="drawerAccountPanel">
             <div class="drawer-account-panel">
+                {% if is_owner %}
+                {# Owner-only: Office/Floor passwords are managed by owners from Control Hub. #}
+                <a href="{% url 'change_password' %}" class="drawer-changepw-compact">
+                    <i class="bi bi-key"></i> Change Password
+                </a>
+                {% endif %}
                 <form method="post" action="{% url 'logout' %}" class="m-0">
                     {% csrf_token %}
                     <button type="submit" class="drawer-logout-compact">
@@ -922,11 +976,8 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
     <script>
-        // Notifications is an intentional placeholder (href="#") — swallow the click
-        // so it never jumps the page or dirties the URL. Remove once it has a target.
-        document.querySelectorAll('.js-notif-placeholder').forEach(function (el) {
-            el.addEventListener('click', function (e) { e.preventDefault(); });
-        });
+        // (The bell used to be an href="#" placeholder whose click had to be
+        // swallowed. It has a real target now, so that handler is gone.)
 
         // Always re-collapse the account/Logout panel when the drawer closes,
         // so reopening it never starts mid-expanded.

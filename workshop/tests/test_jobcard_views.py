@@ -294,12 +294,14 @@ class JobCardViewsTestCase(TestCase):
         self.assertEqual(self.job.customer_name, 'John Edited')
 
     def test_invoice_view_access_control(self):
-        """Floor-only user should be redirected away from invoice view."""
+        """Floor-only user must not reach the invoice view."""
         url = reverse('invoice_view', args=[self.job.pk])
 
-        # Floor user — no office_required permission → redirected to login
+        # Signed in but wrong role → 403. This used to redirect to the login
+        # form, which is indistinguishable from being logged out. Changed
+        # 2026-07-28; anonymous visitors still get the login page.
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 302)  # Any redirect is correct
+        self.assertEqual(response.status_code, 403)
 
         # Add Office group — should now be able to view
         self.user.groups.add(self.office_group)

@@ -15,7 +15,10 @@ def audit_high_discounts(request):
     """
     bills = JobCard.objects.filter(
         payment_status='PAID',
-        discount_amount__gt=ExpressionWrapper(F('total_bill_amount') * 0.3, output_field=DecimalField()),
+        discount_amount__gt=ExpressionWrapper(
+            F('total_bill_amount') * JobCard.HIGH_DISCOUNT_RATIO,
+            output_field=DecimalField(),
+        ),
         is_deleted=False
     ).order_by('-updated_at')
 

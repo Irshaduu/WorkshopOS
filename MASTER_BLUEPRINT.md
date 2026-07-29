@@ -19,21 +19,21 @@ graph TB
     end
 
     subgraph WORKSHOP["Workshop App (Core)"]
-        W_MODELS["models.py — 21 Models"]
-        W_VIEWS["views/ — 14 Module Package"]
+        W_MODELS["models.py — 25 Models"]
+        W_VIEWS["views/ — 16 Module Package"]
         W_ANALYSIS["analysis_views.py + analysis_engine.py — Owner Profit & Insights"]
         W_AUTH["auth_views.py — Auth Views"]
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 96 URL Patterns"]
+        W_URLS["urls.py — 104 URL Patterns"]
         W_FORMS["forms.py — 6 Forms + 3 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session Tracker"]
         W_TAGS["templatetags — 8 Filters"]
         W_ADMIN["admin.py — 10 Registered"]
-        W_CMD["Commands — 7 management commands"]
-        W_TPL["Templates — 67 HTML Files"]
+        W_CMD["Commands — 9 management commands"]
+        W_TPL["Templates — 68 HTML Files"]
     end
 
     subgraph INVENTORY["Inventory App (Warehouse + Supplier Shops)"]
@@ -45,9 +45,8 @@ graph TB
         I_TPL["Templates — 20 HTML Files"]
     end
 
-    subgraph EXTERNAL["External Services (⚠️ Legacy — replacement planned)"]
-        TWILIO["Twilio SMS API"]
-        TELEGRAM["Telegram Bot API"]
+    subgraph EXTERNAL["External Services"]
+        SMTP["SMTP (password-reset codes only)"]
     end
 
     ROOT_URLS -->|"/"|  W_URLS
@@ -56,15 +55,16 @@ graph TB
 
     I_SIGNALS -->|"Auto Stock Sync"| W_MODELS
     W_VIEWS -->|"Autocomplete API"| I_MODELS
-    W_AUTH --> TWILIO
-    W_AUTH --> TELEGRAM
+    W_AUTH --> SMTP
 ```
+
+> Twilio and Telegram were removed on 2026-07-29. SMTP is now the **only** outbound network call the application makes.
 
 ---
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (21)
+### Workshop App Models (25)
 
 ```mermaid
 erDiagram
@@ -91,27 +91,31 @@ erDiagram
 
 | # | Model | Key Fields | Purpose |
 |---|-------|--------|---------|
-| 1 | **UserProfile** | user (1:1→User), mobile_number | Extends Django User with mobile for OTP |
+| 1 | **UserProfile** | user (1:1→User), mobile_number (unique, nullable) | Alternative login identifier. Password-reset codes go to `User.email`, not here |
 | 2 | **FailedAttempt** | ip_address (unique), failures, last_attempt | IP-based brute-force lockout |
 | 3 | **UserSession** | user (FK→User), session_key (unique), ip, user_agent, last_activity | Live device monitoring & remote revoke |
-| 4 | **Mechanic** | name (unique), role (Mechanic/Assistant Mechanic/Office Staff/General Helper, default Mechanic), is_active, created_at | Workshop staff roster ("Staff Registration" in the UI — model/table name kept for continuity, see CLAUDE.md). Only Mechanic/Assistant Mechanic roles are selectable as a Job Card's `lead_mechanic`. |
-| 5 | **CarBrand** | name (unique), logo_image, created_at | Master list for autocomplete |
-| 6 | **CarModel** | brand (FK→CarBrand), name, created_at | Master list, unique_together(brand,name) |
-| 7 | **SparePart** | name (unique), created_at | Master list for autocomplete |
-| 8 | **ConcernSolution** | concern (text), created_at | Knowledge base for autocomplete |
-| 9 | **SpareShop** | name (unique), phone, address, is_trashed | Master list of spare parts suppliers |
-| 10 | **JobCard** | bill_number, dates, vehicle info, customer, financials, status flags | **Core entity** — full lifecycle |
-| 11 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
-| 12 | **JobCardSpareItem** | job_card (FK), part name, qty, prices, shop (FK→SpareShop), order tracking | Per-job spare parts |
-| 13 | **JobCardLabourItem** | job_card (FK), job_description, amount | Per-job labour charges |
-| 14 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), advance_balance, is_trashed | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
-| 15 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
-| 16 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
-| 17 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
-| 18 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers Job Card, Fleet/Spare-Shop/Supplier payments, Restock Bill, Cashbook Entry and **Inventory Product**. No restore. |
-| 19 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
-| 20 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
-| 21 | **SalaryPaymentLine** | payment (FK), staff (FK→Mechanic), salary_used, leave_days, advance_used, net_amount — unique per (payment, staff) | One staff member's **frozen** figures for that month. Written once and never recalculated, so a later pay rise cannot rewrite a month already paid. |
+| 4 | **Notification** | recipient (FK→User), event, severity, title, body, url, actor (FK→User), object_type, object_id, created_at, read_at | In-app feed behind the nav bell. **One row per recipient** (fan-out on write) so the unread count is one indexed query. **Deliberately no FK to its subject** — most events announce a deletion and a FK would cascade the notice away with it; `object_type`/`object_id` are a soft reference and `body` carries a frozen label. Catalogue and the single `notify()` entry point live in `workshop/notifications.py`. Read rows are swept after 90 days; unread are kept forever. |
+| 5 | **PushSubscription** | user (FK→User), endpoint (unique), p256dh, auth, user_agent, created_at, last_success, failure_count | One browser's Web Push permission — **per device, not per user**, so revoking on a phone doesn't silence a laptop. `endpoint` is the push service's URL for that browser; a reinstall or permission reset yields a *new* one, which is why dead rows accumulate and are reaped (404/410 → deleted on sight, other errors after `MAX_FAILURES`). `p256dh`/`auth` are the browser's own public key material, not our secrets. Sending lives in `workshop/push.py`. |
+| 6 | **AccountLockout** | user (1:1→User), failures, last_attempt | Per-account sign-in lockout: 5 failures / 15 min. The primary control; `FailedAttempt` (by IP, limit 20) is only a backstop. Counting solely by IP locked the whole workshop out whenever one person fumbled, since every device shares one connection. |
+| 7 | **PasswordResetOTP** | user (FK→User), code_hash (SHA-256), created_at, expires_at, attempts, used_at, requested_ip | Emailed 6-digit reset code, Owners only. 10-min expiry, single use, 5 attempts, 60s resend cooldown, 3/hour — all counted per account **in the DB**, since a session counter is cleared with the cookies. The code itself is never stored. See CLAUDE.md for why this is a code and not Django's built-in reset link. |
+| 8 | **Mechanic** | name (unique), role (Mechanic/Assistant Mechanic/Office Staff/General Helper, default Mechanic), is_active, created_at | Workshop staff roster ("Staff Registration" in the UI — model/table name kept for continuity, see CLAUDE.md). Only Mechanic/Assistant Mechanic roles are selectable as a Job Card's `lead_mechanic`. |
+| 9 | **CarBrand** | name (unique), logo_image, created_at | Master list for autocomplete |
+| 10 | **CarModel** | brand (FK→CarBrand), name, created_at | Master list, unique_together(brand,name) |
+| 11 | **SparePart** | name (unique), created_at | Master list for autocomplete |
+| 12 | **ConcernSolution** | concern (text), created_at | Knowledge base for autocomplete |
+| 13 | **SpareShop** | name (unique), phone, address, is_trashed | Master list of spare parts suppliers |
+| 14 | **JobCard** | bill_number, dates, vehicle info, customer, financials, status flags | **Core entity** — full lifecycle |
+| 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
+| 16 | **JobCardSpareItem** | job_card (FK), part name, qty, prices, shop (FK→SpareShop), order tracking | Per-job spare parts |
+| 17 | **JobCardLabourItem** | job_card (FK), job_description, amount | Per-job labour charges |
+| 18 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), advance_balance, is_trashed | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
+| 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
+| 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
+| 21 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
+| 22 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers Job Card, Fleet/Spare-Shop/Supplier payments, Restock Bill, Cashbook Entry and **Inventory Product**. No restore. |
+| 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
+| 24 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
+| 25 | **SalaryPaymentLine** | payment (FK), staff (FK→Mechanic), salary_used, leave_days, advance_used, net_amount — unique per (payment, staff) | One staff member's **frozen** figures for that month. Written once and never recalculated, so a later pay rise cannot rewrite a month already paid. |
 
 Salary models added 2026-07-27 (migration `0054_mechanic_current_salary_and_more`, which also added `Mechanic.current_salary`). Wage cost for a settled month is `net_amount + advance_used` — the advance already left the drawer and the settlement pays the remainder.
 
@@ -124,11 +128,11 @@ Salary models added 2026-07-27 (migration `0054_mechanic_current_salary_and_more
 | 1 | **Category** | name | Groups inventory items |
 | 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count | Warehouse part with stock levels |
 | 3 | **ConsumptionRecord** | user (FK→User), item (FK→Item), quantity, date, timestamp | **Dormant** — superseded by Stock History, which reads `JobCardSpareItem` live. Nothing writes this model; kept only to avoid a needless migration |
-| 4 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, is_active | Supplier / Supplies Shop master record |
-| 5 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), is_active, unique_together(shop,item) | Links a supplier to the items they stock; `is_active=False` = deactivated (listed but excluded from restock bills) |
-| 6 | **SupplierRestockBill** | supplier (FK→SupplierShop), bill_date, total_amount, discount_amount, note | Individual restock purchase from a supplier |
-| 7 | **SupplierRestockItem** | bill (FK→SupplierRestockBill), item (FK→Item), quantity, unit_price, total_price | Line item on a restock bill |
-| 8 | **SupplierPayment** | supplier (FK→SupplierShop), amount, payment_method, date, note, is_trashed | Payment record for supplier accounts |
+| 6 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, is_active | Supplier / Supplies Shop master record |
+| 7 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), is_active, unique_together(shop,item) | Links a supplier to the items they stock; `is_active=False` = deactivated (listed but excluded from restock bills) |
+| 8 | **SupplierRestockBill** | supplier (FK→SupplierShop), bill_date, total_amount, discount_amount, note | Individual restock purchase from a supplier |
+| 9 | **SupplierRestockItem** | bill (FK→SupplierRestockBill), item (FK→Item), quantity, unit_price, total_price | Line item on a restock bill |
+| 10 | **SupplierPayment** | supplier (FK→SupplierShop), amount, payment_method, date, note, is_trashed | Payment record for supplier accounts |
 
 ---
 
@@ -163,27 +167,33 @@ Superusers pass every check regardless of group membership. For the human-readab
 
 | Feature | Implementation |
 |---------|---------------|
-| **Staff Login** | `/login/` — Username/Password, blocks Owners |
-| **Owner Login** | `/admin-login/` — Username or Mobile + Password, direct login |
+| **Staff Login** | `/login/` — staff face of the shared `login_view`. Username, email, **or** mobile + password. Accepts **any** role; the old owner-blocking was removed 2026-07-28 |
+| **Owner Login** | `/admin-login/` — owner face of the *same* view. Identical authentication; differs only by heading, accent colour, and the Forgot Password link |
 | **IP Lockout** | 5 failures → 15 min block via `FailedAttempt`, keyed on `REMOTE_ADDR` only |
-| **Security Alerts** | On every login → SMS (Twilio) + Telegram to BOTH owners (⚠️ legacy, replacement planned — see `TITAN_MASTER_HANDOVER.md` roadmap) |
-| **Forgot Password** | `/forgot-password/` → OTP via SMS/Telegram → `/reset-password/` |
+| **Security Alerts** | On every login → a `LOGIN` notification to the *other* owners, read from the nav bell. Replaced the Twilio/Telegram broadcast on 2026-07-29 |
+| **Change Password** | `/change-password/` — signed-in Owner sets a new password. No email. Entry point is the drawer account panel; Office/Floor have no self-service path (owners manage those from Control Hub) |
+| **Forgot Password** | `/forgot-password/` (username, email, or mobile) → 6-digit code **emailed** → `/reset-password/`. Owners only — Office/Floor carry no email and have no self-service path. Replaced the SMS/Telegram OTP on 2026-07-28 |
 | **OTP Authentication** | 6-digit, 5-min expiry, 3 attempts max, 60s cooldown |
 | **Session Tracking** | `SessionTrackingMiddleware` updates `UserSession`, throttled to a 5-minute cooldown per session |
 | **Remote Revoke** | Owners can terminate any session from the management dashboard |
 | **40-day Sessions** | `SESSION_COOKIE_AGE = 3,456,000` seconds |
 
-### 3.3 Notification Channels (⚠️ Legacy — Replacement Planned)
+### 3.3 Notification Channels
 
 ```
-Login Event → send_titan_security_alert()
-                ├─→ Twilio SMS → Owner 1 Mobile
-                ├─→ Twilio SMS → Owner 2 Mobile
-                ├─→ Telegram → Owner 1 Chat ID
-                └─→ Telegram → Owner 2 Chat ID
+Any event → workshop/notifications.py :: notify(event, body, actor=…)
+              ├─→ resolve audience (Owner group, minus the actor)
+              └─→ one Notification row per recipient
+                    └─→ nav bell → /notifications/
 ```
 
-A replacement (OTP-centered) notification system is on the roadmap — see `TITAN_MASTER_HANDOVER.md`. Don't extend this legacy path further.
+The event catalogue is the `EVENTS` dict in `workshop/notifications.py` — eight
+entries, one screen. **Never call `Notification.objects.create()` from a view.**
+
+The Twilio SMS + Telegram broadcast this section used to describe was deleted on
+2026-07-29 (see `TITAN_MASTER_HANDOVER.md` §1c). No outbound messaging
+integration remains; push is a future layer on top of the same rows, not a
+parallel system.
 
 ---
 
@@ -257,18 +267,20 @@ A replacement (OTP-centered) notification system is on the roadmap — see `TITA
 | **CAR PROFILES** | `/car-profiles/` | `car_profile_list` | Office |
 | | `/car-profiles/<reg>/` | `car_profile_detail` | Office |
 | **INVOICE** | `/invoice/<pk>/` | `invoice_view` | Office |
-| **AUTH** | `/login/` | `staff_login_view` | Public |
-| | `/admin-login/` | `admin_login_view` | Public (Owner Login) |
+| **AUTH** | `/login/` | `login_view` (face=staff) | Public |
+| | `/admin-login/` | `login_view` (face=owner) | Public |
+| | `/change-password/` | `change_password_view` | Owner |
 | | `/forgot-password/` | `owner_forgot_password_view` | Public |
 | | `/reset-password/` | `owner_reset_password_view` | Public |
 | | `/logout/` | Django `LogoutView` | Auth'd |
-| **MANAGEMENT** | `/manage/` | `manage_dashboard` | Office |
-| | `/manage/create-user/` | `manage_create_user` | Office |
-| | `/manage/users/<id>/reset-password/` | `manage_reset_password` | Office |
-| | `/manage/users/<id>/delete/` | `manage_delete_user` | Office |
-| | `/manage/mechanics/create/` | `manage_create_mechanic` | Office |
-| | `/manage/mechanics/<id>/toggle/` | `manage_toggle_mechanic` | Office |
-| | `/manage/mechanics/<id>/edit/` | `manage_edit_mechanic` | Office |
+| **MANAGEMENT** | `/manage/` | `manage_dashboard` | Owner |
+| | `/manage/create-user/` | `manage_create_user` | Owner |
+| | `/manage/users/<id>/reset-password/` | `manage_reset_password` | Owner |
+| | `/manage/users/<id>/delete/` | `manage_delete_user` | Owner |
+| | `/manage/users/<id>/unlock/` | `manage_unlock_account` | Owner |
+| | `/manage/mechanics/create/` | `manage_create_mechanic` | Owner |
+| | `/manage/mechanics/<id>/toggle/` | `manage_toggle_mechanic` | Owner |
+| | `/manage/mechanics/<id>/edit/` | `manage_edit_mechanic` | Owner |
 | | `/manage/sessions/<id>/terminate/` | `manage_terminate_session` | Owner |
 | **CASHBOOK** | `/cashbook/` | `cashbook_view` | Office |
 | | `/cashbook/add/` | `add_cashbook_entry` | Office |
@@ -498,7 +510,7 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 | `SessionTrackingMiddleware` | `middleware.py` | Logs every authenticated request to `UserSession` (5-min cooldown) |
 | `create_user_groups` | `apps.py` | Auto-creates Owner/Office/Floor groups on migrate |
 | `inventory.signals` | `signals.py` | Auto stock sync — 8 handlers in 3 groups: 3 for JobCardSpareItem (consumption) + 2 for JobCard (soft-delete stock reversal) + 3 for SupplierRestockItem (restock) |
-| Management Commands | `management/commands/` | `setup_groups` (legacy setup), `backup_db` (automated SQLite backups) |
+| Management Commands | `management/commands/` | `setup_groups` (legacy setup), `backup_db` (automated SQLite backups), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address) |
 | Custom template filters | `templatetags/custom_filters.py` | `has_group`, `is_tomorrow`, `divide`, `multiply`, `clean_qty`, `get_range` |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV`, raises `ImproperlyConfigured` if unset |
 | `WhiteNoiseMiddleware` | `settings/production.py` | Serves static assets directly from the application in production |
@@ -549,9 +561,8 @@ graph TB
     API -->|"spares"| SP["SparePart + Inventory.Item"]
     API -->|"concerns"| CS["ConcernSolution"]
 
-    LOGIN -->|"Success"| ALERTS["Security Alert (⚠️ Legacy System)"]
-    ALERTS --> SMS["Twilio SMS"]
-    ALERTS --> TG["Telegram Bot"]
+    LOGIN -->|"Success"| ALERTS["notify('LOGIN')"]
+    ALERTS --> FEED["Notification feed (nav bell)"]
 
     MANAGE --> USERS["Create/Reset/Delete Login Accounts"]
     MANAGE --> MECHS["Register/Toggle/Edit Staff Roster (4 roles)"]
@@ -633,24 +644,25 @@ graph TB
 | `DEBUG` | Debug mode toggle |
 | `ALLOWED_HOSTS` | Comma-separated allowed hosts |
 | `CSRF_TRUSTED_ORIGINS` | Comma-separated trusted CSRF origins |
-| `OWNER_1_USERNAME` | Owner 1 login name |
-| `OWNER_1_MOBILE` | Owner 1 phone (OTP/alerts) |
-| `OWNER_1_CHAT_ID` | Owner 1 Telegram chat |
-| `OWNER_2_USERNAME` | Owner 2 login name |
-| `OWNER_2_MOBILE` | Owner 2 phone (OTP/alerts) |
-| `OWNER_2_CHAT_ID` | Owner 2 Telegram chat |
-| `TWILIO_ACCOUNT_SID` | SMS service credentials (⚠️ legacy) |
-| `TWILIO_AUTH_TOKEN` | SMS service credentials (⚠️ legacy) |
-| `TWILIO_FROM_NUMBER` | SMS sender number (⚠️ legacy) |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot credentials (⚠️ legacy) |
+| `OWNER_1_USERNAME`, `OWNER_1_MOBILE` | Owner 1. Read **only** by `sync_owner_identity`; the authoritative copy lives in the database (`User`, `UserProfile.mobile_number`) |
+| `OWNER_2_USERNAME`, `OWNER_2_MOBILE` | Owner 2, same |
+| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS` | SMTP transport for password-reset codes |
+| `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | Sending mailbox. The password is a Google **App Password**, not the account password |
+| `DEFAULT_FROM_EMAIL` | Display name + address recipients see |
+| `EMAIL_REAL` | Development only. False (default) prints mail to the console instead of sending |
 | `DJANGO_ENV` | Environment selector (development/production) |
-| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL config (production only, not yet cut over) |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL config |
+
+Owner **email addresses** are deliberately not here — they are per-account
+`User.email` values in the database, changed with `set_owner_email`, which is why
+changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
+`OWNER_n_CHAT_ID` were removed on 2026-07-29 with the channels themselves.
 
 ---
 
-## 13. TEST SUITE (20 Files / 291 Tests)
+## 13. TEST SUITE (27 Files / 457 Tests)
 
-### Workshop Tests — `workshop/tests/` package (17 files)
+### Workshop Tests — `workshop/tests/` package (24 files)
 
 | File | Coverage Area |
 |------|--------------|
@@ -670,6 +682,14 @@ graph TB
 | `test_financial.py` | Financial logic & calculations |
 | `test_spare_shop_views.py` | Spare shop views & operations |
 | `test_analysis.py` | Profit engine arithmetic, the double-count rule, periods, RBAC, Insights sections |
+| `test_render_smoke.py` | Template render smoke tests |
+| `test_owner_identity.py` | Unique mobile constraint; `sync_owner_identity` (.env → DB owner migration) |
+| `test_change_password.py` | Owner-only password change, session survival, other-device sign-out |
+| `test_password_reset.py` | Emailed OTP: hashing, expiry, attempt budget, throttling, identifier resolution, non-disclosure |
+| `test_login.py` | Two faces / one engine, multi-identifier sign-in, per-account + IP lockout, `?next=` open-redirect guard, 403 vs redirect |
+| `test_control_hub.py` | Owner-only gate on every hub section and action; owner unlock of locked staff accounts |
+| `test_notifications.py` | Fan-out, actor exclusion, audience-by-group, retention, feed RBAC, and all 8 event hooks |
+| `test_push.py` | Service-worker root scope, subscribe/unsubscribe RBAC, CRITICAL-only dispatch, dead-endpoint reaping, and the guarantee that a failing push never breaks the feed |
 
 ### Inventory Tests (3 files)
 
@@ -697,7 +717,7 @@ WorkshopOS (Titan)/
 │   ├── wsgi.py / asgi.py
 │
 ├── workshop/                   ← Core App (96 URL routes)
-│   ├── models.py               ← 21 Models
+│   ├── models.py               ← 25 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
 │   │   ├── dashboard.py        ← home, live_report
@@ -728,18 +748,20 @@ WorkshopOS (Titan)/
 │   ├── apps.py                 ← Auto-create groups on migrate
 │   ├── templatetags/
 │   │   └── custom_filters.py   ← 8 template filters (incl. inr / inr_compact)
-│   ├── management/commands/    ← 7 commands
+│   ├── management/commands/    ← 9 commands
 │   │   ├── setup_groups.py     ← Group setup (legacy)
+│   │   ├── sync_owner_identity.py ← Owner group/mobile/admin-access: .env → DB (dry run)
+│   │   ├── set_owner_email.py  ← Set an account's reset-code address (dry run by default)
 │   │   ├── backup_db.py        ← Rotated SQLite backup (local file only)
 │   │   ├── load_master_data.py ← Brands/models/spares — prerequisite for seeding
 │   │   ├── seed_dummy_data.py  ← Multi-year demo data (run against SQLite)
 │   │   ├── seed_salary_data.py ← Demo salaries/advances/settlements
 │   │   ├── purge_business_data.py     ← Clears all business tables (dry run by default)
 │   │   └── copy_sqlite_to_postgres.py ← Push a seeded SQLite file up to PostgreSQL
-│   ├── templates/workshop/     ← 67 HTML files
+│   ├── templates/workshop/     ← 68 HTML files
 │   ├── static/css/, static/js/ ← App-specific assets
-│   ├── migrations/             ← 54 migrations
-│   └── tests/                  ← 17 test files (package, not flat files)
+│   ├── migrations/             ← 59 migrations
+│   └── tests/                  ← 24 test files (package, not flat files)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)
@@ -761,12 +783,10 @@ WorkshopOS (Titan)/
 ├── .env                        ← Secrets & owner config
 ├── .gitignore                  ← Git exclusions
 ├── errors.log                  ← Rotating error log
-├── requirements.txt            ← Django~=5.2.0, Pillow, python-decouple, twilio, requests, psycopg2-binary, whitenoise, coverage
+├── requirements.txt            ← Django~=5.2.0, Pillow, python-decouple, psycopg2-binary, whitenoise, gunicorn, coverage
 ├── manage.py                   ← Django CLI
-├── verify_alerts.py            ← Alert verification script
-└── verify_twilio.py            ← Twilio verification script
 ```
 
 ---
 
-> **Total**: 2 Django Apps · 25 Models · 127 URL Routes · 91 Templates · 3 RBAC Tiers · 2 External APIs (⚠️ legacy) · 8 Signal Handlers (3 groups) · 19 Test Files · 54 Migrations (49 workshop + 5 inventory)
+> **Total**: 2 Django Apps · 33 Models (25 workshop + 8 inventory) · 137 URL Routes (104 + 33) · 88 Templates (68 + 20) · 3 RBAC Tiers · 2 External Services (SMTP, Web Push) · 8 Signal Handlers (3 groups) · 27 Test Files · 66 Migrations (59 workshop + 7 inventory)

@@ -1,23 +1,25 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login as auth_login
+from django.contrib.auth import authenticate, login as auth_login, update_session_auth_hash
+from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib import messages
-from django.utils.crypto import get_random_string
-from decouple import config
-import time
+from .decorators import owner_required
+from django.contrib.auth.models import User
 from datetime import timedelta
 from django.utils import timezone
-from .models import UserSession, FailedAttempt
+from .models import UserSession, FailedAttempt, UserProfile, PasswordResetOTP, AccountLockout
+from .notifications import notify
+from django.urls import reverse
 from django.db.models import F
-from twilio.rest import Client
 import logging
-import requests
 
 logger = logging.getLogger(__name__)
 
 
 # ============================================================
 # Phone Number Normalization (Last 10 Digits Matching)
-# Matches +91, spaces, and different formats in .env vs input.
+# Lets a typed number match a stored one whatever the formatting:
+# "+91 95674 94933", "+919567494933" and "9567494933" all reduce to the same
+# 10 digits. Used by resolve_user_by_identifier.
 # ============================================================
 def normalize_phone(phone_str):
     """
@@ -34,64 +36,21 @@ def normalize_phone(phone_str):
     digits = "".join(filter(str.isdigit, phone_str))
     return digits[-10:] if len(digits) >= 10 else digits
 
-# ============================================================
-# Owner Mobile Number Lookup (from .env — developer-registered)
-# ============================================================
-def get_owner_mobile(identifier):
-    """
-    Retrieves the registered mobile number for an owner.
-    
-    Args:
-        identifier (str): Username or raw mobile number.
-        
-    Returns:
-        str|None: The mobile number from .env if found, else None.
-    """
-    owner_map = {
-        config('OWNER_1_USERNAME', default='').strip(' ='): config('OWNER_1_MOBILE', default='').strip(' ='),
-        config('OWNER_2_USERNAME', default='').strip(' ='): config('OWNER_2_MOBILE', default='').strip(' ='),
-    }
-    
-    # 1. Check if identifier is a registered username
-    if identifier in owner_map:
-        return owner_map[identifier]
-    
-    # 2. Check if identifier is a registered mobile number (using normalization)
-    target = normalize_phone(identifier)
-    for username, mobile in owner_map.items():
-        if target == normalize_phone(mobile) and mobile != '':
-            return mobile
-            
-    return None
-
-def get_owner_username_by_mobile(mobile_number):
-    """Returns the username associated with a mobile number in .env."""
-    target = normalize_phone(mobile_number)
-    owner_map = {
-        config('OWNER_1_USERNAME', default='').strip(' ='): config('OWNER_1_MOBILE', default='').strip(' ='),
-        config('OWNER_2_USERNAME', default='').strip(' ='): config('OWNER_2_MOBILE', default='').strip(' ='),
-    }
-    for username, mobile in owner_map.items():
-        if target == normalize_phone(mobile) and mobile != '':
-            return username
-    return None
-
-
-# ============================================================
-# Phone Masking (Privacy & Feedback)
-# Returns e.g. +91 ******7978
-# ============================================================
-def mask_phone(phone_str):
-    if not phone_str:
-        return "****"
-    # Keep last 4 digits
-    last_four = phone_str[-4:]
-    return f"*******{last_four}"
-
 
 # ============================================================
 # IP-Based Lockout Infrastructure (Steel Gate)
 # ============================================================
+# Raised from 5 to 20 on 2026-07-28. The whole workshop — laptop, tablet, both
+# owners' phones — leaves through one connection, so at 5 a single person
+# fumbling their password on the Floor tablet locked the owners out of their own
+# devices for fifteen minutes. Per-account lockout (`AccountLockout`, 5 failures)
+# is now the precise instrument; this gate stays only as a backstop against
+# someone spraying *many* accounts from one place, which 20 still catches while
+# ordinary shared-connection use never reaches it.
+IP_FAILURE_LIMIT = 20
+IP_LOCKOUT_MINUTES = 15
+
+
 def get_client_ip(request):
     """
     Returns the direct client IP.
@@ -108,13 +67,12 @@ def check_ip_lockout(request):
         request (HttpRequest): Current login attempt request.
         
     Returns:
-        bool: True if IP is blocked (failures >= 5 within 15 min).
+        bool: True if this IP is blocked (failures >= IP_FAILURE_LIMIT in window).
     """
     ip = get_client_ip(request)
     attempt = FailedAttempt.objects.filter(ip_address=ip).first()
-    if attempt and attempt.failures >= 5:
-        # 15 Minute window
-        lockout_expiry = attempt.last_attempt + timedelta(minutes=15)
+    if attempt and attempt.failures >= IP_FAILURE_LIMIT:
+        lockout_expiry = attempt.last_attempt + timedelta(minutes=IP_LOCKOUT_MINUTES)
         if timezone.now() < lockout_expiry:
             return True
         else:
@@ -134,387 +92,382 @@ def reset_login_failures(request):
 
 
 # ============================================================
-# LIVE NOTIFICATION ENGINE (Twilio + Terminal Fallback)
+# Account lookup — username, email, or mobile
 # ============================================================
-def send_twilio_sms(to_mobile, message):
+def resolve_user_by_identifier(identifier):
     """
-    Dispatches a real SMS via Twilio. 
-    Falls back to Mock (terminal) if keys are missing.
+    Find the one account matching a username, email address, or mobile number.
+
+    **Fails closed.** If an identifier somehow matches more than one account the
+    answer is None, never a guess — an ambiguous "who is this?" must not resolve
+    to an arbitrary user. The uniqueness constraint on
+    `UserProfile.mobile_number` and the duplicate check in `set_owner_email`
+    exist to keep that case from arising; this is the backstop if one slips
+    through.
+
+    Tried in order: exact username, then email (case-insensitive), then the last
+    10 digits of a mobile number so stored and typed formats need not agree.
     """
-    sid = config('TWILIO_ACCOUNT_SID', default='your_sid_here').strip()
-    token = config('TWILIO_AUTH_TOKEN', default='your_token_here').strip()
-    from_num = config('TWILIO_FROM_NUMBER', default='your_twilio_number_here').strip()
+    identifier = (identifier or '').strip()
+    if not identifier:
+        return None
 
-    # Safety check: Is the user still using placeholders?
-    if 'your_sid_here' in sid or not sid:
-        print(f"--- [TITAN MOCK MODE] ---")
-        print(f"TO: {to_mobile}\nMESSAGE: {message}")
-        print(f"--------------------------")
-        return False
+    exact = User.objects.filter(username=identifier)
+    if exact.count() == 1:
+        return exact.first()
 
-    try:
-        client = Client(sid, token)
-        client.messages.create(
-            body=message,
-            from_=from_num,
-            to=to_mobile
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Titan SMS Failure: {str(e)}")
-        print(f"!!! SMS FAILED: {str(e)}")
-        return False
+    by_email = User.objects.filter(email__iexact=identifier)
+    if by_email.count() == 1:
+        return by_email.first()
 
-def send_telegram_msg(chat_id, message):
+    digits = normalize_phone(identifier)
+    if len(digits) == 10:
+        profiles = UserProfile.objects.filter(mobile_number__endswith=digits).select_related('user')
+        if profiles.count() == 1:
+            return profiles.first().user
+
+    return None
+
+
+def can_reset_password(user):
     """
-    Dispatches a message via Telegram Bot API natively.
-    """
-    token = config('TELEGRAM_BOT_TOKEN', default='').strip()
-    if not token or 'your_bot_token_here' in token or not chat_id:
-        return False
-        
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        'chat_id': chat_id,
-        'text': message,
-        'parse_mode': 'HTML'
-    }
-    
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        return response.status_code == 200
-    except Exception as e:
-        logger.error(f"Telegram Failure: {str(e)}")
-        return False
+    Only owners with a deliverable address can use the emailed-code flow.
 
-def send_otp_sms(mobile_number, otp):
-    """Sends OTP for Owner password reset via Twilio & Telegram."""
+    Office and Floor accounts deliberately carry no email: owners create those
+    logins and manage their passwords from Control Hub, so there is no
+    self-service path for them to reach.
+    """
+    if user is None or not user.is_active:
+        return False
+    if not (user.email or '').strip():
+        return False
+    return user.is_superuser or user.groups.filter(name='Owner').exists()
+
+
+# ============================================================
+# Reset code delivery
+# ============================================================
+def send_reset_code_email(user, code):
+    """
+    Email a reset code. Returns True only if the provider accepted it.
+
+    The code goes in the **subject line** on purpose: both iOS and Android show
+    the subject in the notification banner, so the owner can read it without
+    opening the mail app at all. That removes the app switch that is otherwise
+    the slowest part of the flow. The trade — the code is briefly visible on a
+    locked screen — is worth it for two owners on personal phones.
+    """
     from django.conf import settings as django_settings
+    from django.core.mail import send_mail
 
-    msg = f"Your WorkshopOS Login Code: <b>{otp}</b>"
-
-    # 1. Twilio SMS
-    success_sms = send_twilio_sms(mobile_number, f"Your WorkshopOS Login Code: {otp}")
-    if success_sms:
-        if django_settings.DEBUG:
-            print(f"[OK] OTP Sent via SMS to {mobile_number}")
-    else:
-        # In development only: fallback so the developer can still test without Twilio
-        if django_settings.DEBUG:
-            print(f"[DEV ONLY] OTP SMS unavailable. Code for {mobile_number}: {otp}")
-        # Note: production failure is handled by the caller (owner_forgot_password_view)
-        # which checks the return value and surfaces a real error to the user.
-
-    # 2. Telegram Broadcast
-    owner1_mobile = normalize_phone(config('OWNER_1_MOBILE', default=''))
-    owner2_mobile = normalize_phone(config('OWNER_2_MOBILE', default=''))
-    norm_target = normalize_phone(mobile_number)
-
-    if norm_target == owner1_mobile:
-        chat_id = config('OWNER_1_CHAT_ID', default='').strip()
-        if send_telegram_msg(chat_id, msg):
-            if django_settings.DEBUG:
-                print(f"[OK] OTP Sent via Telegram to Owner 1")
-    elif norm_target == owner2_mobile:
-        chat_id = config('OWNER_2_CHAT_ID', default='').strip()
-        if send_telegram_msg(chat_id, msg):
-            if django_settings.DEBUG:
-                print(f"[OK] OTP Sent via Telegram to Owner 2")
-
-    return success_sms
-
-
-
-# ============================================================
-# Security Alert — Broadcast to BOTH Owners
-# ============================================================
-def send_titan_security_alert(user, request):
-    """
-    Broadcasts a high-priority security alert to BOTH owners (Sahad & Rijas).
-    Covers all HQ Portal entry points (Owner & Staff logins).
-    """
-    owner1_mobile = config('OWNER_1_MOBILE', default='').strip()
-    owner2_mobile = config('OWNER_2_MOBILE', default='').strip()
-    
-    # Get Device & Network Info
-    ua = request.META.get('HTTP_USER_AGENT', 'Unknown Device')
-    device_name = UserSession.get_device_name(ua)
-    ip = request.META.get('REMOTE_ADDR', 'Unknown IP')
-    
-    # Format exactly as requested by user
-    msg = (
-        f"[SECURITY ALERT]: {user.username} just logged into HQ Portal.\n"
-        f"Device: {device_name}\n"
-        f"IP: {ip}\n"
-        f"If this wasn't expected, REVOKE access now from your dashboard!"
+    subject = f"{code} is your WorkshopOS password reset code"
+    body = (
+        f"Hello {user.username},\n\n"
+        f"Your password reset code is: {code}\n\n"
+        f"Enter it in the app to set a new password. It expires in "
+        f"{PasswordResetOTP.VALIDITY_MINUTES} minutes and can be used once.\n\n"
+        f"If you did not ask for this, you can ignore this email - your password "
+        f"has not changed.\n\n"
+        f"This mailbox is not monitored. Please do not reply."
     )
-    
-    # Broadcast to both owners via Dual-Channel (SMS + Telegram)
-    recipients = [
-        (config('OWNER_1_USERNAME', default='Sahad'), owner1_mobile, config('OWNER_1_CHAT_ID', default='').strip()),
-        (config('OWNER_2_USERNAME', default='Rijas'), owner2_mobile, config('OWNER_2_CHAT_ID', default='').strip()),
-    ]
-    
-    for name, mobile, chat_id in recipients:
-        # Channel 1: Telegram (Primary, Free, Fast)
-        if chat_id:
-            if send_telegram_msg(chat_id, msg):
-                print(f"[OK] Security Broadcast sent via Telegram to {name}")
-                
-        # Channel 2: Twilio SMS (Secondary/Fallback)
-        if mobile:
-            success = send_twilio_sms(mobile, msg)
-            if success:
-                print(f"[OK] Security Broadcast sent via SMS to {name} ({mobile})")
-            else:
-                print(f"[WARN] Security Broadcast MOCK to {name}: {mobile}")
-                print(f"{msg}")
 
+    try:
+        delivered = send_mail(
+            subject,
+            body,
+            django_settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=False,
+        )
+        return delivered > 0
+    except Exception as exc:
+        # Never surface the provider's error to the browser — it can leak the
+        # sending account and its configuration.
+        logger.error(f"Reset code delivery failed for {user.username}: {exc}")
+        return False
 
 
 # ============================================================
-# Staff Login — Floor & Office only
+# Login — one engine, two faces
 # ============================================================
-def staff_login_view(request):
+#
+# `/login/` (staff) and `/admin-login/` (owner) are the same view with a
+# different heading. The separation is presentational: owners think of these as
+# two doors, and the owner face is the only one that offers Forgot Password
+# because only owners carry an email.
+#
+# What is emphatically *not* duplicated is the authentication itself — one
+# identifier resolver, one lockout, one code path. There used to be two full
+# views, and the cost showed: the staff view rejected a valid owner password
+# with a fake "Invalid credentials" (a lie that bought nothing, since the owner
+# door was one link away), and the two drifted on which lockout they applied.
+# Same lesson as the nav rebuild in CLAUDE.md — two copies of one thing diverge.
+#
+# Either face accepts any role. Whoever signs in lands on the dashboard their
+# role renders.
+FACE_TEMPLATES = {
+    'owner': 'workshop/auth/admin_login.html',
+    'staff': 'workshop/auth/login.html',
+}
+
+
+def _safe_next(request):
     """
-    Handles standard password-based login for Floor and Office staff.
-    Does NOT allow owners (redirects them or shows generic error for privacy).
-    
-    Algorithm:
-    1. Check IP lockout status.
-    2. Authenticate username/password.
-    3. Block owners/superusers for security partitioning.
-    4. Trigger collaborative alerts on success.
+    Honour ?next= only when it points back into this site.
+
+    An unchecked next parameter turns the login page into an open redirect: a
+    crafted link signs someone in and then bounces them to an attacker's page,
+    which is a convincing way to harvest a password on the "session expired"
+    screen that follows.
     """
+    from django.utils.http import url_has_allowed_host_and_scheme
+
+    target = request.POST.get('next') or request.GET.get('next') or ''
+    if target and url_has_allowed_host_and_scheme(
+        url=target,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return target
+    return None
+
+
+def login_view(request, face='staff'):
+    """
+    Sign in with a username, email address, or mobile number.
+
+    Failures are counted twice over: against the account (5 tries, the precise
+    instrument) and against the IP (20, a backstop). See `AccountLockout` for
+    why the account is the unit that matters in a workshop behind one connection.
+    """
+    template = FACE_TEMPLATES.get(face, FACE_TEMPLATES['staff'])
+
     if request.user.is_authenticated:
         return redirect('home')
 
-    # 1. IP Lockout Check
     if check_ip_lockout(request):
-        messages.error(request, "[Security Lockout]: Too many failed attempts. Please wait 15 minutes.")
-        return render(request, 'workshop/auth/login.html')
-
-    if request.method == 'POST':
-        u = request.POST.get('username', '').strip()
-        p = request.POST.get('password', '').strip()
-        user = authenticate(request, username=u, password=p)
-
-        if user is not None:
-            # Block owners from staff portal (Generic Error for security)
-            if user.groups.filter(name='Owner').exists() or user.is_superuser:
-                # Do NOT record this as a failure — credentials are valid, wrong portal
-                messages.error(request, "Invalid credentials.")
-                return redirect('login')
-
-            auth_login(request, user)
-            reset_login_failures(request)
-            
-            # --- Titan Security Alert ---
-            send_titan_security_alert(user, request)
-            return redirect('home')
-        else:
-            record_login_failure(request)
-            messages.error(request, "Invalid credentials.")
-
-    return render(request, 'workshop/auth/login.html')
-
-
-# ============================================================
-# Admin Login — Owner 2FA Step 1 (Password)
-# ============================================================
-def admin_login_view(request):
-    """
-    Streamlined HQ Portal Login for Owners (Sahad & Rijas).
-    Direct Access + High-Priority Broadcast Alerts.
-    
-    Algorithm:
-    1. Performs 'Steel Gate' IP audit.
-    2. Normalizes input (Username or Mobile).
-    3. Verifies password against Owner Group membership.
-    4. Logs in user immediately.
-    5. Dispatches TITAN SECURITY BROADCAST to both owners.
-    """
-    if request.user.is_authenticated:
-        return redirect('home')
-
-    # 1. IP Lockout Check (Steel Gate)
-    if check_ip_lockout(request):
-        messages.error(request, "[Security Lockout]: Too many failed attempts. Please wait 15 minutes.")
-        return render(request, 'workshop/auth/admin_login.html')
-
-    if request.method == 'POST':
-        u = request.POST.get('username', '').strip()
-        p = request.POST.get('password', '').strip()
-        
-        login_username = u
-        norm_u = normalize_phone(u)
-        if len(norm_u) == 10:
-            resolved_u = get_owner_username_by_mobile(u)
-            if resolved_u:
-                login_username = resolved_u
-        
-        user = authenticate(request, username=login_username, password=p)
-
-        if user is not None:
-            # Must be an Owner or superuser
-            if not (user.groups.filter(name='Owner').exists() or user.is_superuser):
-                record_login_failure(request)
-                messages.error(request, "Invalid credentials.")
-                return redirect('admin_login')
-
-            # --- DIRECT LOGIN SUCCESS ---
-            auth_login(request, user)
-            reset_login_failures(request)
-            
-            # --- Titan Security Alert (Broadcast to BOTH) ---
-            send_titan_security_alert(user, request)
-            
-            messages.success(request, f"Welcome back, {user.username}!")
-            return redirect('home')
-        else:
-            record_login_failure(request)
-            messages.error(request, "Invalid credentials.")
-            return redirect('admin_login')
-
-    return render(request, 'workshop/auth/admin_login.html')
-
-
-
-
-# ============================================================
-# Forgot Password — Step 1: Enter Username → Send OTP
-# ============================================================
-def owner_forgot_password_view(request):
-    """
-    Owner enters their username.
-    System looks up their mobile from .env and sends a reset OTP.
-    """
-    if request.user.is_authenticated:
-        return redirect('home')
-
-    # Check for active lockout from too many wrong OTP attempts
-    blocked_until = request.session.get('pwd_reset_blocked_until')
-    if blocked_until:
-        remaining_secs = blocked_until - time.time()
-        if remaining_secs > 0:
-            remaining_mins = int(remaining_secs // 60) + 1
-            messages.error(request, f"Too many failed attempts. Please wait {remaining_mins} minute(s) before trying again.")
-            return render(request, 'workshop/auth/forgot_password.html')
-        else:
-            request.session.pop('pwd_reset_blocked_until', None)
+        messages.error(request, "Too many failed attempts from this network. Please wait 15 minutes.")
+        return render(request, template)
 
     if request.method == 'POST':
         identifier = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
 
-        # Identification Logic
-        target_username = identifier
-        norm_id = normalize_phone(identifier)
-        if len(norm_id) == 10:
-            resolved = get_owner_username_by_mobile(identifier)
-            if resolved:
-                target_username = resolved
+        account = resolve_user_by_identifier(identifier)
 
-        # Validate existence in .env — use identical message whether found or not (AUD-0044)
-        mobile = get_owner_mobile(target_username)
-        user_obj = None
-        if mobile:
-            from django.contrib.auth.models import User
-            try:
-                user_obj = User.objects.get(username=target_username)
-            except User.DoesNotExist:
-                user_obj = None
+        if account is not None:
+            locked_for = AccountLockout.minutes_remaining(account)
+            if locked_for:
+                # Naming the lockout does confirm the account exists. That is a
+                # deliberate trade: the usernames here are not secrets, an
+                # attacker must already have burned five failures to see this,
+                # and an owner who cannot get in needs to know *why* — otherwise
+                # the next step is a phone call, or more attempts that extend
+                # the lock.
+                messages.error(
+                    request,
+                    f"This account is locked after too many failed attempts. "
+                    f"Try again in {locked_for} minute{'s' if locked_for != 1 else ''}."
+                )
+                return render(request, template)
 
-        if not mobile or not user_obj:
-            # Identical message regardless of reason — prevents username enumeration
-            messages.success(request, "If that account exists, an OTP has been sent to the registered mobile number.")
-            return redirect('owner_forgot_password')
+        # Authenticate against the resolved username so email and mobile work.
+        # When nothing resolved we still call authenticate() with the raw input:
+        # Django's ModelBackend hashes a dummy password for unknown users, so
+        # the response time does not reveal which identifiers exist.
+        user = authenticate(
+            request,
+            username=account.username if account else identifier,
+            password=password,
+        )
 
-        user = user_obj
+        if user is not None:
+            auth_login(request, user)
+            reset_login_failures(request)
+            AccountLockout.clear(user)
 
-        # 60-Second Cooldown Check (Prevent SMS Spam)
-        last_send = request.session.get('last_otp_send_time')
-        if last_send:
-            elapsed = time.time() - last_send
-            if elapsed < 60:
-                remaining = int(60 - elapsed)
-                messages.warning(request, f"Please wait {remaining} seconds before requesting another SMS reset.")
-                return render(request, 'workshop/auth/forgot_password.html')
+            device = UserSession.get_device_name(request.META.get('HTTP_USER_AGENT', ''))
+            notify(
+                'LOGIN',
+                f"{user.username} signed in — {device} · {get_client_ip(request)}",
+                actor=user,
+                url=reverse('manage_dashboard') + '?section=security',
+            )
 
-        # Generate OTP
-        import hashlib
-        otp = get_random_string(length=6, allowed_chars='0123456789')
-        otp_hash = hashlib.sha256(otp.encode()).hexdigest()
+            return redirect(_safe_next(request) or 'home')
 
-        # Store in session
-        request.session['pwd_reset_user_id'] = user.id
-        request.session['pwd_reset_otp'] = otp_hash
-        request.session['pwd_reset_expire'] = time.time() + 300  # 5 minutes
-        request.session['last_otp_send_time'] = time.time() # Update cooldown
+        record_login_failure(request)
+        if account is not None:
+            failures = AccountLockout.record_failure(account)
+            # Fires on the crossing only. Without the equality check every
+            # further attempt against an already-locked account would raise
+            # another notification — an attacker could fill the owners' feed at
+            # will, which is both noise and a way to bury something real.
+            if failures == AccountLockout.MAX_FAILURES:
+                notify(
+                    'ACCOUNT_LOCKED',
+                    f"{account.username} was locked after {failures} failed sign-in "
+                    f"attempts from {get_client_ip(request)}.",
+                    url=reverse('manage_dashboard') + '?section=accounts',
+                    object_type='USER',
+                    object_id=account.pk,
+                )
+        messages.error(request, "Invalid credentials.")
 
-        # Send OTP — check if delivery actually succeeded
-        sms_delivered = send_otp_sms(mobile, otp)
+    return render(request, template)
 
-        from django.conf import settings as django_settings
-        if sms_delivered or django_settings.DEBUG:
-            messages.success(request, "If that account exists, an OTP has been sent to the registered mobile number.")
-        else:
-            # SMS genuinely failed in production — tell the user instead of lying
-            messages.error(request, "OTP delivery failed. Please try again in a moment or contact support.")
 
+# ============================================================
+# Change Password — signed-in owners, no email involved
+# ============================================================
+def _terminate_other_sessions(request, user):
+    """
+    Sign every *other* device out and clear its tracking row.
+
+    Django already invalidates the other sessions on a password change — it
+    compares each session's stored auth hash against the current password — but
+    the rows survive until the 40-day sweep, so Control Hub's security list
+    would keep advertising devices that are actually dead. Deleting both makes
+    the dashboard tell the truth immediately, and matches what
+    `manage_terminate_session` does for a single device.
+
+    Returns the number of devices signed out.
+    """
+    from django.contrib.sessions.models import Session
+
+    current_key = request.session.session_key
+    stale = UserSession.objects.filter(user=user).exclude(session_key=current_key)
+    stale_keys = list(stale.values_list('session_key', flat=True))
+
+    if stale_keys:
+        Session.objects.filter(session_key__in=stale_keys).delete()
+        stale.delete()
+
+    return len(stale_keys)
+
+
+@owner_required
+def change_password_view(request):
+    """
+    Lets a signed-in owner replace their own password. No email, no OTP.
+
+    This is the handover path: an owner is given a temporary password verbally,
+    signs in, and sets their own here. Keeping it independent of email is the
+    point — go-live does not wait on the mail provider being configured, and the
+    OTP flow stays what it should be, a rarely-used backstop for a genuinely
+    forgotten password.
+
+    Owner-only by design. Office and Floor passwords are managed entirely by
+    owners from Control Hub (/manage/?section=accounts); those roles never
+    change their own credentials, so there is deliberately no self-service path
+    for them.
+    """
+    if request.method == 'POST':
+        form = PasswordChangeForm(user=request.user, data=request.POST)
+        if form.is_valid():
+            user = form.save()
+
+            signed_out = _terminate_other_sessions(request, user)
+
+            # Without this the owner is logged out by their own change: Django
+            # rotates the session auth hash, and the current session would fail
+            # the very next request's check.
+            update_session_auth_hash(request, user)
+
+            if signed_out:
+                messages.success(
+                    request,
+                    f"Password changed. {signed_out} other device"
+                    f"{'s were' if signed_out > 1 else ' was'} signed out."
+                )
+            else:
+                messages.success(request, "Password changed.")
+            return redirect('home')
+    else:
+        form = PasswordChangeForm(user=request.user)
+
+    return render(request, 'workshop/auth/change_password.html', {'form': form})
+
+
+# ============================================================
+# Forgot Password — Step 1: identify the account, email a code
+# ============================================================
+#
+# Every reply on this page is identical whether or not the account exists, is an
+# owner, has an email, or is currently throttled. Differing responses — even a
+# different redirect target — would turn this form into an account-existence
+# oracle. The one message therefore also states the once-a-minute rule, so a real
+# owner who re-requests too quickly understands why no second email arrived
+# instead of assuming the system is broken.
+GENERIC_RESET_REPLY = (
+    "If that account exists, a 6-digit code has been sent to its registered email. "
+    "A new code can be requested once a minute."
+)
+
+
+def owner_forgot_password_view(request):
+    """
+    Step 1 of the emailed-code reset. Owners only — see `can_reset_password`.
+    """
+    if request.user.is_authenticated:
+        return redirect('home')
+
+    if request.method == 'POST':
+        identifier = request.POST.get('username', '').strip()
+        user = resolve_user_by_identifier(identifier)
+
+        # Marks the flow as started for *every* submission, real or not, so that
+        # step 2 renders identically either way. Without a real user id behind it
+        # no submitted code can ever verify.
+        request.session['pwd_reset_pending'] = True
+        request.session.pop('pwd_reset_user_id', None)
+
+        if can_reset_password(user) and PasswordResetOTP.throttle_reason(user) is None:
+            otp, code = PasswordResetOTP.issue(user, ip=get_client_ip(request))
+            request.session['pwd_reset_user_id'] = user.id
+
+            if not send_reset_code_email(user, code):
+                # Delivery genuinely failed. Retire the code rather than leaving a
+                # live one nobody received, and say so — the old behaviour reported
+                # success regardless, so a failed reset looked like a working one.
+                otp.used_at = timezone.now()
+                otp.save(update_fields=['used_at'])
+                request.session.pop('pwd_reset_user_id', None)
+                messages.error(
+                    request,
+                    "Could not send the code right now. Please try again in a moment."
+                )
+                return redirect('owner_forgot_password')
+
+        messages.success(request, GENERIC_RESET_REPLY)
         return redirect('owner_reset_password')
 
     return render(request, 'workshop/auth/forgot_password.html')
 
 
-
 # ============================================================
-# Forgot Password — Step 2: Enter OTP + New Password
+# Forgot Password — Step 2: verify the code, set the password
 # ============================================================
 def owner_reset_password_view(request):
     """
-    Owner enters the OTP and their new password.
+    Step 2. The account is held in the session, the code lives in the database.
+
+    Session-bound on purpose: the reset can only be completed in the browser that
+    asked for it. On an installed PWA that session survives switching to the mail
+    app and back, which is the whole reason this is a code and not a link.
     """
-    user_id = request.session.get('pwd_reset_user_id')
-    stored_otp = request.session.get('pwd_reset_otp')
-    expire_time = request.session.get('pwd_reset_expire')
-
-    if not all([user_id, stored_otp, expire_time]):
-        messages.error(request, "Session expired. Please start again.")
-        return redirect('owner_forgot_password')
-
-    if time.time() > expire_time:
-        messages.error(request, "OTP expired. Please request a new one.")
-        for key in ('pwd_reset_user_id', 'pwd_reset_otp', 'pwd_reset_expire'):
-            request.session.pop(key, None)
+    if not request.session.get('pwd_reset_pending'):
+        messages.error(request, "Please start from the Forgot Password page.")
         return redirect('owner_forgot_password')
 
     if request.method == 'POST':
-        entered_otp = request.POST.get('otp', '').strip()
-        new_password = request.POST.get('new_password', '').strip()
-        confirm_password = request.POST.get('confirm_password', '').strip()
+        submitted_code = request.POST.get('otp', '').strip()
+        new_password = request.POST.get('new_password', '')
+        confirm_password = request.POST.get('confirm_password', '')
 
-        # Track failed OTP attempts
-        attempts = request.session.get('pwd_reset_attempts', 0)
-        
-        import hashlib
-        entered_hash = hashlib.sha256(entered_otp.encode()).hexdigest()
-
-        if entered_hash != stored_otp:
-            attempts += 1
-            request.session['pwd_reset_attempts'] = attempts
-            remaining = 3 - attempts
-
-            if attempts >= 3:
-                # Lockout — wipe reset session but set a 5-minute block
-                for key in ('pwd_reset_user_id', 'pwd_reset_otp', 'pwd_reset_expire', 'pwd_reset_attempts'):
-                    request.session.pop(key, None)
-                request.session['pwd_reset_blocked_until'] = time.time() + 300  # 5-minute block
-                messages.error(request, "Too many wrong attempts. You are blocked for 5 minutes.")
-                return redirect('owner_forgot_password')
-            else:
-                messages.error(request, f"Incorrect OTP. {remaining} attempt(s) remaining.")
-            return render(request, 'workshop/auth/reset_password.html')
-
+        # Password rules are checked BEFORE the code is spent. A valid code paired
+        # with a too-short password must not burn the code — the owner would have
+        # to request another one for a typo they can simply fix.
         if len(new_password) < 8:
             messages.error(request, "Password must be at least 8 characters.")
             return render(request, 'workshop/auth/reset_password.html')
@@ -523,33 +476,78 @@ def owner_reset_password_view(request):
             messages.error(request, "Passwords do not match.")
             return render(request, 'workshop/auth/reset_password.html')
 
-        # Apply full Django password validators (same rules as staff resets)
-        from django.contrib.auth.password_validation import validate_password
-        from django.core.exceptions import ValidationError
-        try:
-            validate_password(new_password)
-        except ValidationError as e:
-            messages.error(request, f"Password not strong enough: {', '.join(e.messages)}")
+        user_id = request.session.get('pwd_reset_user_id')
+        user = User.objects.filter(pk=user_id).first() if user_id else None
+
+        if user is not None:
+            from django.contrib.auth.password_validation import validate_password
+            from django.core.exceptions import ValidationError
+            try:
+                validate_password(new_password, user=user)
+            except ValidationError as exc:
+                messages.error(request, f"Password not strong enough: {', '.join(exc.messages)}")
+                return render(request, 'workshop/auth/reset_password.html')
+
+        otp = PasswordResetOTP.objects.filter(user=user).first() if user else None
+
+        def _dead_end():
+            """Expired, already used, budget spent, or no real account behind the
+            session — one identical outcome for all four, same non-disclosure rule
+            as step 1."""
+            for key in ('pwd_reset_pending', 'pwd_reset_user_id'):
+                request.session.pop(key, None)
+            messages.error(request, "That code is no longer valid. Please request a new one.")
+            return redirect('owner_forgot_password')
+
+        if otp is None or not otp.is_usable:
+            return _dead_end()
+
+        if not otp.verify(submitted_code):
+            remaining = otp.attempts_remaining
+            if remaining == 0:
+                return _dead_end()
+            messages.error(
+                request,
+                f"Incorrect code. {remaining} attempt{'s' if remaining != 1 else ''} remaining."
+            )
             return render(request, 'workshop/auth/reset_password.html')
 
-        # All checks passed — update the password
-        from django.contrib.auth.models import User
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            messages.error(request, "Account not found. Please restart the reset process.")
-            return redirect('owner_forgot_password')
-            
+        # --- Verified. Apply the new password. ---
         user.set_password(new_password)
-        user.save()
+        user.save(update_fields=['password'])
+
+        # Retire anything still outstanding so a second code cannot be replayed.
+        PasswordResetOTP.objects.filter(user=user, used_at__isnull=True).update(
+            used_at=timezone.now()
+        )
+
+        # A reset is how a locked-out owner recovers, so every existing session
+        # has to die — a stolen one must not survive the recovery.
+        _terminate_all_sessions(user)
+
+        for key in ('pwd_reset_pending', 'pwd_reset_user_id'):
+            request.session.pop(key, None)
         request.session.cycle_key()
 
-        # Clean up session
-        for key in ('pwd_reset_user_id', 'pwd_reset_otp', 'pwd_reset_expire', 'pwd_reset_attempts', 'last_otp_send_time'):
-            request.session.pop(key, None)
-
-        messages.success(request, "Password changed successfully! Please log in with your new password.")
+        messages.success(request, "Password changed. Please sign in with your new password.")
         return redirect('admin_login')
 
     return render(request, 'workshop/auth/reset_password.html')
 
+
+def _terminate_all_sessions(user):
+    """
+    Sign a user out everywhere and clear the tracking rows.
+
+    Used after a reset rather than `_terminate_other_sessions`: the person
+    completing the reset is not signed in yet, so there is no current session to
+    preserve, and anyone who *was* signed in as this account should not stay
+    that way.
+    """
+    from django.contrib.sessions.models import Session
+
+    keys = list(UserSession.objects.filter(user=user).values_list('session_key', flat=True))
+    if keys:
+        Session.objects.filter(session_key__in=keys).delete()
+    UserSession.objects.filter(user=user).delete()
+    return len(keys)

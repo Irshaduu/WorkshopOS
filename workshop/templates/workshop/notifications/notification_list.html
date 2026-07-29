@@ -1,0 +1,198 @@
+{% extends 'workshop/base.html' %}
+{% load static %}
+
+{% block title %}Notifications{% endblock %}
+
+{% block content %}
+<style>
+    .nf-wrap { max-width: 720px; margin: 0 auto; }
+
+    .nf-head {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+    }
+    .nf-head h1 {
+        font-size: 1.3rem; font-weight: 800; margin: 0;
+        letter-spacing: -0.01em; color: var(--color-text);
+    }
+    .nf-head p { font-size: 0.82rem; color: var(--color-text-muted); margin: 4px 0 0; }
+
+    .nf-clear {
+        border: 1px solid var(--color-border);
+        background: var(--color-card);
+        color: var(--color-text-muted);
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 0.78rem; font-weight: 700;
+        min-height: 40px;
+        cursor: pointer;
+    }
+    .nf-clear:hover { background: var(--color-hover); color: var(--color-text); }
+
+    .nf-list {
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: 16px;
+        overflow: hidden;
+    }
+
+    /* Whole row is the target — this is read on a phone, so a 44px+ tap area
+       matters more than a tidy inline link. */
+    .nf-row {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--color-border);
+        text-decoration: none;
+        min-height: 64px;
+    }
+    .nf-row:last-child { border-bottom: 0; }
+    .nf-row:hover { background: var(--color-hover); }
+    .nf-row.unread { background: #f8fafc; }
+    .nf-row.unread:hover { background: var(--color-hover); }
+
+    .nf-dot {
+        flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%;
+        margin-top: 7px; background: transparent;
+    }
+    .nf-row.unread .nf-dot { background: #2563eb; }
+    .nf-row.unread.critical .nf-dot { background: #dc2626; }
+
+    .nf-body { flex: 1 1 auto; min-width: 0; }
+    .nf-title {
+        font-size: 0.88rem; font-weight: 700; color: var(--color-text);
+        display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    }
+    .nf-text {
+        font-size: 0.82rem; color: var(--color-text-muted);
+        margin-top: 3px; line-height: 1.5;
+        overflow-wrap: anywhere;
+    }
+    .nf-meta { font-size: 0.72rem; color: var(--color-text-muted); margin-top: 5px; }
+
+    .nf-tag {
+        font-size: 0.6rem; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.04em; padding: 1px 6px; border-radius: 999px;
+        color: #b91c1c; background: #fef2f2; white-space: nowrap;
+    }
+
+    .nf-empty {
+        padding: 48px 20px; text-align: center;
+        color: var(--color-text-muted); font-size: 0.85rem;
+    }
+    .nf-empty i { font-size: 2rem; display: block; margin-bottom: 10px; opacity: 0.45; }
+
+    .push-card {
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: 16px;
+        padding: 16px;
+        margin-bottom: 18px;
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    }
+    .push-copy { flex: 1 1 220px; min-width: 0; }
+    .push-copy h2 {
+        font-size: 0.92rem; font-weight: 800; margin: 0; color: var(--color-text);
+    }
+    .push-status { display: block; font-size: 0.78rem; color: var(--color-text-muted); margin-top: 4px; line-height: 1.5; }
+    .push-status.ok { color: #047857; }
+    .push-status.warn { color: #b45309; }
+    .push-btn {
+        min-height: 44px; padding: 0 16px;
+        border-radius: 999px; border: 1px solid var(--color-border);
+        background: var(--color-bg); color: var(--color-text);
+        font-size: 0.82rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+    }
+    .push-btn:hover:not(:disabled) { background: var(--color-hover); }
+    .push-btn:disabled { opacity: 0.55; cursor: default; }
+
+    .nf-pager { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
+    .nf-pager a, .nf-pager span {
+        min-height: 40px; display: inline-flex; align-items: center;
+        padding: 0 14px; border-radius: 999px;
+        border: 1px solid var(--color-border);
+        font-size: 0.8rem; font-weight: 700; text-decoration: none;
+        color: var(--color-text-muted); background: var(--color-card);
+    }
+</style>
+
+<div class="nf-wrap">
+
+    <div class="nf-head">
+        <div>
+            <h1><i class="bi bi-bell"></i> Notifications</h1>
+            <p>
+                {% if unread_total %}
+                    {{ unread_total }} unread
+                {% else %}
+                    Nothing unread
+                {% endif %}
+            </p>
+        </div>
+        {% if unread_total %}
+        <form method="post" action="{% url 'notification_mark_all_read' %}" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="nf-clear">
+                <i class="bi bi-check2-all"></i> Mark all read
+            </button>
+        </form>
+        {% endif %}
+    </div>
+
+{% comment %}
+Per device, not per account: an owner turns this on separately on their phone
+and their laptop. The button is the gesture browsers require before they will
+even ask for permission.
+{% endcomment %}
+    <div class="push-card" id="push-setup"
+         data-vapid-key="{{ vapid_public_key }}"
+         data-subscribe-url="{% url 'push_subscribe' %}"
+         data-unsubscribe-url="{% url 'push_unsubscribe' %}"
+         data-csrf="{{ csrf_token }}">
+        <span class="push-copy">
+            <h2><i class="bi bi-phone-vibrate"></i> Alerts on this device</h2>
+            <span class="push-status" id="push-status">Checking…</span>
+        </span>
+        <button type="button" class="push-btn" id="push-toggle" disabled>Enable on this device</button>
+    </div>
+
+    <div class="nf-list">
+        {% for note in page_obj %}
+        <a class="nf-row{% if note.is_unread %} unread{% endif %}{% if note.severity == 'CRITICAL' %} critical{% endif %}"
+           href="{% url 'notification_open' note.pk %}">
+            <span class="nf-dot" aria-hidden="true"></span>
+            <span class="nf-body">
+                <span class="nf-title">
+                    {{ note.title }}
+                    {% if note.severity == 'CRITICAL' %}<span class="nf-tag">Important</span>{% endif %}
+                </span>
+                {% if note.body %}<span class="nf-text">{{ note.body }}</span>{% endif %}
+                <span class="nf-meta">
+                    {{ note.created_at|date:"d M Y, g:i a" }}
+                    {% if note.actor %} · by {{ note.actor.username }}{% endif %}
+                </span>
+            </span>
+        </a>
+        {% empty %}
+        <div class="nf-empty">
+            <i class="bi bi-bell-slash"></i>
+            Nothing yet. Sign-ins, large discounts, deletions and salary activity will appear here.
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    <div class="nf-pager">
+        {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}"><i class="bi bi-chevron-left"></i> Newer</a>
+        {% endif %}
+        <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}">Older <i class="bi bi-chevron-right"></i></a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+</div>
+
+<script src="{% static 'js/push.js' %}"></script>
+{% endblock %}

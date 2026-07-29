@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from ..decorators import office_required, owner_required
 from ..models import Mechanic, SalaryAdvance, SalaryPayment, SalaryPaymentLine, DeletionLog
+from ..notifications import notify
 
 # The running month becomes settleable from this day of the month onward.
 # Most workshops finish the previous month's attendance/salary math in the
@@ -178,9 +179,16 @@ def salary_advance_add(request):
         if amount <= 0:
             messages.error(request, "Enter a valid advance amount.")
         else:
-            SalaryAdvance.objects.create(
+            advance = SalaryAdvance.objects.create(
                 staff=staff, amount=amount, date=advance_date,
                 note=note or None, created_by=request.user,
+            )
+            notify(
+                'SALARY_ADVANCE',
+                f"₹{amount:,.0f} advance to {staff.name} on {advance_date:%d %b %Y}.",
+                actor=request.user,
+                url=reverse('salary_advance_staff_detail', args=[staff.pk]),
+                object_type='SALARY_ADVANCE', object_id=advance.pk,
             )
             messages.success(request, f"₹{amount:,.0f} advance recorded for {staff.name}.")
     return redirect('salary_advance_home')
@@ -288,6 +296,18 @@ def salary_payment_form(request, year, month):
                         'net_amount': net_amount,
                     }
                 )
+
+        # Raised after the atomic block, so a rolled-back settlement never
+        # announces itself. `total_amount` is read here rather than accumulated
+        # in the loop so the figure is whatever actually landed in the database.
+        notify(
+            'SALARY_SETTLED',
+            f"{target_month:%B %Y} settled — ₹{payment.total_amount:,.0f} across "
+            f"{payment.lines.count()} staff.",
+            actor=request.user,
+            url=reverse('salary_advance_home'),
+            object_type='SALARY_PAYMENT', object_id=payment.pk,
+        )
 
         messages.success(request, f"{target_month.strftime('%B %Y')} salary settlement saved.")
         return redirect('salary_advance_home')

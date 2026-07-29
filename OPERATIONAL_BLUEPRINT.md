@@ -59,8 +59,9 @@ graph TD
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
    - Monitor all active login sessions
    - Remotely revoke any staff access
-   - Receive security alerts on every login (⚠️ current SMS/Telegram system)
-   - Access Django Admin panel
+   - Receive notifications in-app (nav bell): sign-ins, discounts over 30%, permanent deletions, archives, salary activity
+   - Change their own password, or recover it by emailed 6-digit code
+   - **No** Django Admin access — `is_staff=False` on purpose; see `CLAUDE.md`
 
  OFFICE STAFF
    Everything Floor can do + these actions:
@@ -423,23 +424,21 @@ SOMEONE TRIES TO LOGIN
  (updates on every request via SessionTrackingMiddleware)
         |
         v
- SECURITY ALERT BROADCAST (⚠️ Current system — may change)
- SMS to Owner 1 phone
- SMS to Owner 2 phone
- Telegram to Owner 1 chat
- Telegram to Owner 2 chat
- "[ALERT]: John logged in from Chrome on Samsung Galaxy, IP: 192.168.1.5"
+ notify('LOGIN') -> one Notification row per *other* owner
+ "Sahad signed in - Google Chrome on Samsung Galaxy - 192.168.1.5"
+ Read from the nav bell. The signer-in is not told about their own sign-in.
 ```
 
 ### Forgot Password Flow
 
 ```
-Owner enters username/mobile
-  --> System looks up mobile from .env
-  --> 6-digit OTP sent via SMS + Telegram
-      (60-second cooldown, 5-minute expiry)
-  --> Owner enters OTP + New Password
-      (3 attempts max, then 5-min lockout)
+Owner enters username, email, or mobile
+  --> resolved against the DATABASE (not .env)
+  --> 6-digit code EMAILED to User.email, code in the subject line
+      (10-minute expiry, single use, 60s resend, 3/hour — all per account)
+  --> Owner enters code + New Password
+      (5 attempts, then the code is dead)
+  --> every existing session for that account is terminated
   --> Password updated, redirect to login
 ```
 
@@ -670,7 +669,7 @@ graph TD
 
     subgraph SECURITY ["🛡️ Security & Access Control"]
         STAFF["STAFF<br/>(Login: Owner/Office/Floor · Roster: Mechanic/Asst/Office/Helper — not logins)"]:::security
-        SYS["SECURITY SYSTEM<br/>(IP Lockout, Session Monitor, SMS/Telegram Alerts)"]:::security
+        SYS["SECURITY SYSTEM<br/>(Account + IP Lockout, Session Monitor, In-app Notifications)"]:::security
     end
 
     %% 1. Customer Flow

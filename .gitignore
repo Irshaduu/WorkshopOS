@@ -67,3 +67,7 @@ sqlite_data_dump.json
 
 # Local editing workspace
 Aditing files/
+
+# Claude Code local workspace: session settings, launch config, and git
+# worktrees created for background tasks. Machine-specific, never shared.
+.claude/

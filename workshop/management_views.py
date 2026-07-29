@@ -6,16 +6,23 @@ from django.contrib import messages
 from django.contrib.auth.models import User, Group
 from django.contrib.sessions.models import Session
 from django.db import models
-from .decorators import owner_required, office_required
-from .models import Mechanic, UserSession
+from .decorators import owner_required
+from .models import Mechanic, UserSession, AccountLockout
+from .notifications import notify
 
 
-@office_required
+@owner_required
 def manage_dashboard(request):
     """
     Central hub for the Owner to manage staff accounts, the staff roster, and
     device security. Supports sectioned views: None (Menu), 'accounts',
     'staff', or 'security'.
+
+    Owner-only, and the whole hub rather than just the accounts section. It was
+    `@office_required` while the drawer only ever offered it to owners, so Office
+    users could not see it but could reach it by URL and create logins or reset
+    passwords. Owners hold every login in this workshop; one rule, no exceptions,
+    and the decorator now agrees with the navigation.
     """
     section = request.GET.get('section')
 
@@ -33,8 +40,18 @@ def manage_dashboard(request):
     if section == 'accounts':
         office_group = Group.objects.filter(name='Office').first()
         floor_group = Group.objects.filter(name='Floor').first()
-        context['office_users'] = list(User.objects.filter(groups=office_group)) if office_group else []
-        context['floor_users'] = list(User.objects.filter(groups=floor_group)) if floor_group else []
+        office_users = list(User.objects.filter(groups=office_group)) if office_group else []
+        floor_users = list(User.objects.filter(groups=floor_group)) if floor_group else []
+
+        # Surface any lockout so the owner can lift it rather than the shop
+        # waiting out fifteen minutes because a mechanic mistyped. Reading it
+        # also resets an elapsed count — the same visit-time cleanup this view
+        # already performs on ghost sessions above.
+        for account in office_users + floor_users:
+            account.lock_minutes = AccountLockout.minutes_remaining(account)
+
+        context['office_users'] = office_users
+        context['floor_users'] = floor_users
 
     elif section == 'staff':
         mechanics = list(Mechanic.objects.all().order_by('-is_active', 'name'))
@@ -66,7 +83,7 @@ def manage_dashboard(request):
     return render(request, 'workshop/manage/manage_dashboard.html', context)
 
 
-@office_required
+@owner_required
 def manage_create_user(request):
     """
     Create a new Office or Floor staff account.
@@ -96,13 +113,20 @@ def manage_create_user(request):
         group = Group.objects.get(name=role)
         user.groups.add(group)
         user.save()
+        notify(
+            'USER_CREATED',
+            f"A new {role} login '{username}' was created.",
+            actor=request.user,
+            url=reverse('manage_dashboard') + '?section=accounts',
+            object_type='USER', object_id=user.pk,
+        )
         messages.success(request, f"✅ {role} account '{username}' created successfully!")
 
     
     return redirect(reverse('manage_dashboard') + '?section=accounts')
 
 
-@office_required
+@owner_required
 def manage_reset_password(request, user_id):
     """
     Reset the password for an Office or Floor staff account.
@@ -131,7 +155,7 @@ def manage_reset_password(request, user_id):
     return redirect(reverse('manage_dashboard') + '?section=accounts')
 
 
-@office_required
+@owner_required
 def manage_delete_user(request, user_id):
     """
     Delete an Office or Floor staff account.
@@ -150,7 +174,34 @@ def manage_delete_user(request, user_id):
     return redirect(reverse('manage_dashboard') + '?section=accounts')
 
 
-@office_required
+@owner_required
+def manage_unlock_account(request, user_id):
+    """
+    Clear a staff account's failed-sign-in count straight away.
+
+    Five wrong attempts lock an account for fifteen minutes (`AccountLockout`).
+    That is the right default against guessing, but it is the wrong answer when
+    a mechanic simply fat-fingered their password mid-shift — the job stops for
+    a quarter of an hour. Owners hold every login here, so they are who should
+    be able to lift it.
+
+    Refuses Owner accounts for the same reason reset and delete do: owner
+    credentials are not managed from this panel.
+    """
+    if request.method == 'POST':
+        user = get_object_or_404(User, pk=user_id)
+
+        if user.groups.filter(name='Owner').exists() or user.is_superuser:
+            messages.error(request, "Cannot modify Owner accounts from this panel.")
+            return redirect(reverse('manage_dashboard') + '?section=accounts')
+
+        AccountLockout.clear(user)
+        messages.success(request, f"✅ '{user.username}' unlocked — they can sign in again now.")
+
+    return redirect(reverse('manage_dashboard') + '?section=accounts')
+
+
+@owner_required
 def manage_create_mechanic(request):
     """
     Register a new staff member (Mechanic, Assistant Mechanic, Office Staff,
@@ -180,7 +231,7 @@ def manage_create_mechanic(request):
     return redirect(reverse('manage_dashboard') + '?section=staff')
 
 
-@office_required
+@owner_required
 def manage_toggle_mechanic(request, mechanic_id):
     """
     Toggle a staff member's active/retired status. Deactivate only — there is
@@ -191,12 +242,22 @@ def manage_toggle_mechanic(request, mechanic_id):
         mechanic.is_active = not mechanic.is_active
         mechanic.save()
         status = "activated" if mechanic.is_active else "deactivated"
+        if not mechanic.is_active:
+            # Only the deactivation direction: someone leaving the roster is the
+            # event worth knowing about; bringing them back is routine.
+            notify(
+                'ACCOUNT_ARCHIVED',
+                f"Staff member '{mechanic.name}' was deactivated.",
+                actor=request.user,
+                url=reverse('manage_dashboard') + '?section=staff',
+                object_type='MECHANIC', object_id=mechanic.pk,
+            )
         messages.success(request, f"✅ '{mechanic.name}' has been {status}.")
 
     return redirect(reverse('manage_dashboard') + '?section=staff')
 
 
-@office_required
+@owner_required
 def manage_edit_mechanic(request, mechanic_id):
     """
     Rename a staff member and/or change their role. Changing role never

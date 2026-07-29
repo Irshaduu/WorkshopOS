@@ -9,9 +9,11 @@ from django.db.models import Sum, Count, Max, F, Value, ExpressionWrapper, Decim
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.core.paginator import Paginator
+from django.urls import reverse
 
 from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
 from ..decorators import office_required, owner_required
+from ..notifications import notify
 
 
 @office_required
@@ -332,6 +334,13 @@ def spare_shop_delete(request, pk):
         shop = get_object_or_404(SpareShop, pk=pk, is_trashed=False)
         shop.is_trashed = True
         shop.save(update_fields=['is_trashed'])
+        notify(
+            'ACCOUNT_ARCHIVED',
+            f"Spare Shop '{shop.name}' was archived.",
+            actor=request.user,
+            url=reverse('spare_shop_archived'),
+            object_type='SPARE_SHOP', object_id=shop.pk,
+        )
         messages.success(request, f"Shop '{shop.name}' deactivated (archived).")
     return redirect('spare_shop_list')
 

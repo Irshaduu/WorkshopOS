@@ -521,9 +521,10 @@ class InventoryRBACTests(TestCase):
             self.client.get(reverse('inventory_list')),
             reverse('inventory_item_suppliers', args=[item.id]))
         self.assertNotIn(reverse('supplier_shop_list'), html)
-        # ...and the view itself still refuses Floor.
+        # ...and the view itself still refuses Floor — 403 since 2026-07-28,
+        # because they are signed in and simply lack the role.
         self.assertEqual(
-            self.client.get(reverse('inventory_item_suppliers', args=[item.id])).status_code, 302)
+            self.client.get(reverse('inventory_item_suppliers', args=[item.id])).status_code, 403)
 
     def test_office_still_gets_the_supplier_links(self):
         item = Item.objects.create(category=self.category, name='Oil B',

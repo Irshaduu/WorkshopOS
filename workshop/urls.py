@@ -122,11 +122,29 @@ urlpatterns = [
     # ------------------
     # AUTH: LOGIN/LOGOUT
     # ------------------
-    path('login/', auth_views.staff_login_view, name='login'),
-    path('admin-login/', auth_views.admin_login_view, name='admin_login'),
+    # Two faces, one engine. Both URL names are kept so bookmarks, the
+    # decorators' login_url values, and every reverse() call keep working —
+    # only the heading and the Forgot Password link differ between them.
+    path('login/', auth_views.login_view, {'face': 'staff'}, name='login'),
+    path('admin-login/', auth_views.login_view, {'face': 'owner'}, name='admin_login'),
+    path('change-password/', auth_views.change_password_view, name='change_password'),
     path('forgot-password/', auth_views.owner_forgot_password_view, name='owner_forgot_password'),
     path('reset-password/', auth_views.owner_reset_password_view, name='owner_reset_password'),
     path('logout/', django_auth_views.LogoutView.as_view(next_page='home'), name='logout'),
+
+    # ------------------
+    # NOTIFICATIONS (Owner only — see workshop/notifications.py for the catalogue)
+    # ------------------
+    path('notifications/', views.notification_list, name='notification_list'),
+    path('notifications/<int:pk>/open/', views.notification_open, name='notification_open'),
+    path('notifications/read-all/', views.notification_mark_all_read, name='notification_mark_all_read'),
+
+    # Web Push. `sw.js` MUST stay at the origin root — a service worker can only
+    # control pages at or below its own path, so serving it under /static/ would
+    # limit its scope to /static/ and it would never receive a push for the app.
+    path('sw.js', views.service_worker, name='service_worker'),
+    path('push/subscribe/', views.push_subscribe, name='push_subscribe'),
+    path('push/unsubscribe/', views.push_unsubscribe, name='push_unsubscribe'),
 
     # ------------------
     # MANAGEMENT & SECURITY (Owner/Office)
@@ -135,6 +153,7 @@ urlpatterns = [
     path('manage/create-user/', management_views.manage_create_user, name='manage_create_user'),
     path('manage/users/<int:user_id>/reset-password/', management_views.manage_reset_password, name='manage_reset_password'),
     path('manage/users/<int:user_id>/delete/', management_views.manage_delete_user, name='manage_delete_user'),
+    path('manage/users/<int:user_id>/unlock/', management_views.manage_unlock_account, name='manage_unlock_account'),
     path('manage/mechanics/create/', management_views.manage_create_mechanic, name='manage_create_mechanic'),
     path('manage/mechanics/<int:mechanic_id>/toggle/', management_views.manage_toggle_mechanic, name='manage_toggle_mechanic'),
     path('manage/mechanics/<int:mechanic_id>/edit/', management_views.manage_edit_mechanic, name='manage_edit_mechanic'),

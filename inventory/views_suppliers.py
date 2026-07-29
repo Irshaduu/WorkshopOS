@@ -8,6 +8,8 @@ from datetime import timedelta, date
 from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill, SupplierRestockItem, SupplierPayment
 from workshop.decorators import office_required
 from workshop.models import DeletionLog
+from workshop.notifications import notify
+from django.urls import reverse
 from workshop.templatetags.custom_filters import clean_qty
 from django.db import transaction, IntegrityError
 
@@ -217,6 +219,13 @@ def deactivate_supplier_shop(request, shop_id):
         shop = get_object_or_404(SupplierShop, pk=shop_id)
         shop.is_active = False
         shop.save()
+        notify(
+            'ACCOUNT_ARCHIVED',
+            f"Supplies Shop '{shop.name}' was archived.",
+            actor=request.user,
+            url=reverse('supplier_shop_list'),
+            object_type='SUPPLIER_SHOP', object_id=shop.pk,
+        )
         messages.success(request, f"Shop '{shop.name}' deactivated.")
     return redirect('supplier_shop_list')
 

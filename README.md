@@ -59,7 +59,7 @@ A premium, comprehensive Django-based workshop management system for a single au
 - **Frontend**: Bootstrap 5, vanilla JavaScript, CSS3
 - **Security**: `python-decouple` for environment variables, role-based decorators, IP-based lockout
 - **Static Assets**: WhiteNoise for production static serving
-- **Notifications**: Twilio SMS + Telegram Bot API — legacy system, replacement planned (see roadmap)
+- **Notifications**: in-app feed behind the nav bell, owner-only (login, large discounts, permanent deletions, salary activity, archives). Twilio/Telegram were removed 2026-07-29; SMTP for password-reset codes is the only outbound integration.
 
 ## Installation
 
@@ -87,7 +87,7 @@ A premium, comprehensive Django-based workshop management system for a single au
    ```
 
 4. **Configure environment**
-   - Create a `.env` file with the required variables — see `CLAUDE.md` for the full list (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_*`, Twilio/Telegram credentials, and production-only DB settings).
+   - Create a `.env` file with the required variables — see `CLAUDE.md` for the full list (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_*`, the `EMAIL_*` block for password-reset codes, and the PostgreSQL settings).
    - Set `DJANGO_ENV=development` in your shell/session (required — there is no default; see `CLAUDE.md`).
 
 5. **Run migrations**

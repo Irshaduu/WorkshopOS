@@ -559,7 +559,7 @@
                                 <i class="bi bi-eye"></i> View Details
                             </a>
                         </li>
-                        {% if user.is_staff %}
+                        {% if request.user|has_group:"Office" or request.user|has_group:"Owner" %}
                         <li>
                             <a class="dropdown-item text-info" href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}">
                                 <i class="bi bi-receipt"></i> View Invoice

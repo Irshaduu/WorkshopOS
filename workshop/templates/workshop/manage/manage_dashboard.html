@@ -91,6 +91,8 @@
     .roster-name { font-weight: 700; font-size: 0.88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
     .roster-name.retired { color: var(--color-text-muted); text-decoration: line-through; font-weight: 600; }
     .retired-tag { font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #b45309; background: #fffbeb; padding: 1px 6px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+    /* Red, because a locked account means someone is currently unable to work. */
+    .lock-badge { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.04em; color: #b91c1c; background: #fef2f2; padding: 1px 6px; border-radius: 999px; margin-left: 6px; vertical-align: middle; white-space: nowrap; }
 
     .roster-empty { padding: 26px 16px; text-align: center; color: var(--color-text-muted); font-size: 0.8rem; }
 
@@ -106,6 +108,8 @@
     .icon-btn:hover { background: var(--color-hover); color: var(--color-text); }
     .icon-btn.danger:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
     .icon-btn.go:hover { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+    .icon-btn.unlock { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+    .icon-btn.unlock:hover { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
 
     .row-icons { display: none; align-items: center; gap: 4px; }
     .roster-actions.is-open .row-icons { display: flex; }
@@ -210,10 +214,24 @@
                 <div class="roster-who">
                     <span class="roster-avatar" style="background:#eff6ff; color:#2563eb;">{{ u.username|slice:":1"|upper }}</span>
                     <span class="roster-name">{{ u.username }}</span>
+                    {% if u.lock_minutes %}
+                    <span class="lock-badge" title="Locked after 5 failed sign-in attempts">
+                        <i class="bi bi-lock-fill"></i> {{ u.lock_minutes }}m
+                    </span>
+                    {% endif %}
                 </div>
                 <div class="roster-actions">
                     <button type="button" class="icon-btn row-toggle" aria-label="More actions for {{ u.username }}" title="More actions"><i class="bi bi-three-dots-vertical"></i></button>
                     <div class="row-icons">
+                        {% if u.lock_minutes %}
+{% comment %}
+Only offered while actually locked — a permanent button would invite clicking
+it as a fix for an unrelated problem.
+{% endcomment %}
+                        <form method="post" action="{% url 'manage_unlock_account' u.id %}">
+                            {% csrf_token %}<button type="submit" class="icon-btn unlock" aria-label="Unlock {{ u.username }}" title="Unlock now"><i class="bi bi-unlock"></i></button>
+                        </form>
+                        {% endif %}
                         <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}" aria-label="Reset password" title="Reset password"><i class="bi bi-key"></i></button>
                         <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
                             {% csrf_token %}<button type="submit" class="icon-btn danger" aria-label="Delete account" title="Delete account"><i class="bi bi-trash"></i></button>
@@ -239,10 +257,24 @@
                 <div class="roster-who">
                     <span class="roster-avatar" style="background:#fffbeb; color:#b45309;">{{ u.username|slice:":1"|upper }}</span>
                     <span class="roster-name">{{ u.username }}</span>
+                    {% if u.lock_minutes %}
+                    <span class="lock-badge" title="Locked after 5 failed sign-in attempts">
+                        <i class="bi bi-lock-fill"></i> {{ u.lock_minutes }}m
+                    </span>
+                    {% endif %}
                 </div>
                 <div class="roster-actions">
                     <button type="button" class="icon-btn row-toggle" aria-label="More actions for {{ u.username }}" title="More actions"><i class="bi bi-three-dots-vertical"></i></button>
                     <div class="row-icons">
+                        {% if u.lock_minutes %}
+{% comment %}
+Only offered while actually locked — a permanent button would invite clicking
+it as a fix for an unrelated problem.
+{% endcomment %}
+                        <form method="post" action="{% url 'manage_unlock_account' u.id %}">
+                            {% csrf_token %}<button type="submit" class="icon-btn unlock" aria-label="Unlock {{ u.username }}" title="Unlock now"><i class="bi bi-unlock"></i></button>
+                        </form>
+                        {% endif %}
                         <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}" aria-label="Reset password" title="Reset password"><i class="bi bi-key"></i></button>
                         <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
                             {% csrf_token %}<button type="submit" class="icon-btn danger" aria-label="Delete account" title="Delete account"><i class="bi bi-trash"></i></button>

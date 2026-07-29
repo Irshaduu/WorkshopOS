@@ -11,12 +11,14 @@ from django.db.models import (
 from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.core.paginator import Paginator
+from django.urls import reverse
 
 from ..models import (
     JobCard, JobCardSpareItem, JobCardLabourItem,
     BulkPayer, BulkPaymentHistory, DeletionLog,
 )
 from ..decorators import office_required, owner_required
+from ..notifications import notify
 
 
 @office_required
@@ -409,6 +411,13 @@ def bulk_payer_delete(request, pk):
         bulk_payer = get_object_or_404(BulkPayer, pk=pk)
         bulk_payer.is_trashed = True
         bulk_payer.save(update_fields=['is_trashed'])
+        notify(
+            'ACCOUNT_ARCHIVED',
+            f"Fleet Account '{bulk_payer.customer_name}' was archived.",
+            actor=request.user,
+            url=reverse('bulk_payer_archived'),
+            object_type='BULK_PAYER', object_id=bulk_payer.pk,
+        )
         messages.success(request, f"Fleet Account '{bulk_payer.customer_name}' deactivated (archived).")
     return redirect('pending_payments_list')
 

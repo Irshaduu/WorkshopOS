@@ -3,36 +3,26 @@ from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
-from workshop.models import FailedAttempt
-import time
-from unittest.mock import patch
-from decouple import config as real_config
+from workshop.models import FailedAttempt, UserProfile
+from workshop.auth_views import IP_FAILURE_LIMIT, IP_LOCKOUT_MINUTES
 
-def mocked_config(key, default=''):
-    if key == 'OWNER_1_USERNAME': return 'Sahad'
-    if key == 'OWNER_2_USERNAME': return 'Rijas'
-    if key == 'OWNER_1_MOBILE': return '+15005550001'
-    if key == 'OWNER_2_MOBILE': return '+15005550002'
-    if key == 'TWILIO_ACCOUNT_SID': return ''  # Trigger terminal fallback
-    return real_config(key, default=default)
 
 class AuthFlowTests(TestCase):
     """
-    Exhaustive testing for the Authentication Fortress.
-    Covers 100% of Staff, Admin 2FA, and Password recovery.
+    Sign-in gates: the IP backstop and identifier resolution.
+
+    This file used to patch `workshop.auth_views.config` to blank the Twilio SID
+    and force the SMS sender into terminal mock mode. Both the sender and that
+    `config` import were deleted on 2026-07-29 — nothing here reaches the network
+    any more, so there is nothing left to stub.
     """
 
     def setUp(self):
-        patcher = patch('workshop.auth_views.config', side_effect=mocked_config)
-        self.mock_config = patcher.start()
-        self.addCleanup(patcher.stop)
-        
         FailedAttempt.objects.all().delete()
         # Groups
         self.owner_group, _ = Group.objects.get_or_create(name='Owner')
         self.office_group, _ = Group.objects.get_or_create(name='Office')
-        
-        # User matching .env OWNER_1_USERNAME=Sahad
+
         self.owner = User.objects.create_user(username='Sahad', password='ownerpassword')
         self.owner.groups.add(self.owner_group)
         
@@ -42,74 +32,81 @@ class AuthFlowTests(TestCase):
         self.client = Client()
         self.test_ip = '192.168.1.50'
 
-    def test_staff_login_view_complete(self):
+    def test_ip_lockout_gate(self):
+        """
+        The IP gate is a *backstop* now, not the primary control.
+
+        It used to fire at 5 failures, which was the wrong unit: the whole
+        workshop leaves through one connection, so one person fumbling on the
+        Floor tablet locked the owners out of their own phones. Per-account
+        lockout took over that job (`AccountLockout`, covered in
+        `test_login.py`); this threshold was raised so ordinary shared use never
+        reaches it, and only a spray across many accounts does.
+        """
         url = reverse('login')
-        
-        # 1. Already Authenticated Redirect
+
+        # Already signed in — straight home, no form.
         self.client.login(username='office_test', password='staffpassword')
-        response = self.client.get(url)
-        self.assertRedirects(response, reverse('home'))
+        self.assertRedirects(self.client.get(url), reverse('home'))
         self.client.logout()
 
-        # 2. Lockout Check
-        FailedAttempt.objects.create(ip_address=self.test_ip, failures=5)
+        FailedAttempt.objects.create(ip_address=self.test_ip, failures=IP_FAILURE_LIMIT)
         response = self.client.get(url, REMOTE_ADDR=self.test_ip)
-        self.assertContains(response, "Security Lockout")
-        
-        # Manually expire lockout to test reset
+        self.assertContains(response, "this network")
+
+        # Window elapsed — the gate reopens and the count resets.
         FailedAttempt.objects.filter(ip_address=self.test_ip).update(
-            last_attempt = timezone.now() - timedelta(minutes=16)
+            last_attempt=timezone.now() - timedelta(minutes=IP_LOCKOUT_MINUTES + 1)
         )
         response = self.client.get(url, REMOTE_ADDR=self.test_ip)
-        self.assertNotContains(response, "Security Lockout")
+        self.assertNotContains(response, "this network")
 
-        # 3. Invalid Credentials
-        response = self.client.post(url, {'username': 'office_test', 'password': 'wrong'}, follow=True)
+        response = self.client.post(
+            url, {'username': 'office_test', 'password': 'wrong'}, follow=True,
+        )
         self.assertContains(response, "Invalid credentials")
 
-        # 4. Block Owner
-        response = self.client.post(url, {'username': 'Sahad', 'password': 'ownerpassword'}, follow=True)
-        self.assertContains(response, "Invalid credentials")
+    # The old step 4 of this test asserted that a *valid* owner password was
+    # rejected on the staff face with a fake "Invalid credentials". That was
+    # removed on 2026-07-28: the owner door sat one link below the form, so the
+    # lie protected nothing while guaranteeing a baffling support call the first
+    # time an owner typed correct details on the wrong page. Either face now
+    # accepts any role — see `test_login.LoginFacesTests`.
 
-    def test_admin_login_comprehensive(self):
-        url_step1 = reverse('admin_login')
-        
-        # 1. Admin Login: Mobile Resolution (Direct Login in Titan Architecture)
-        # Sahad's mobile is +15005550001 in mock config
-        # The test client uses the database user, mobile resolution is handled in the view
-        response = self.client.post(url_step1, {'username': '15005550001', 'password': 'ownerpassword'}, follow=True)
-        self.assertContains(response, "Welcome back")
-        self.assertRedirects(response, reverse('home'))
+    # The SMS/Telegram broadcast test was removed on 2026-07-29 along with the
+    # channel itself. A successful sign-in still alerts the owners — it just does
+    # it through the in-app feed now, covered by
+    # `test_notifications.EventHookTests.test_successful_login_notifies_the_other_owner`.
 
-    def test_password_reset_flow_edge_cases(self):
-        url_forgot = reverse('owner_forgot_password')
-        url_reset = reverse('owner_reset_password')
-        
-        # 1. Non-existent User — message is now neutral to prevent username enumeration (AUD-0044)
-        response = self.client.post(url_forgot, {'username': 'ghost_user'}, follow=True)
-        self.assertContains(response, "If that account exists")
-        
-        # 2. Cooldown check
-        self.client.post(url_forgot, {'username': 'Sahad'})
-        response = self.client.post(url_forgot, {'username': 'Sahad'}, follow=True)
-        self.assertContains(response, "Please wait")
+    def test_sign_in_by_mobile_reads_the_database(self):
+        """
+        Mobile resolution moved from .env (`OWNER_n_MOBILE`) to
+        `UserProfile.mobile_number` — identity lives in the database now, so a
+        third owner needs no redeploy.
+        """
+        UserProfile.objects.create(user=self.owner, mobile_number='+919567494933')
 
-        # 3. Reset View: Password Match & Length
-        import hashlib
-        session = self.client.session
-        session['pwd_reset_user_id'] = self.owner.id
-        session['pwd_reset_otp'] = hashlib.sha256('123456'.encode()).hexdigest()
-        session['pwd_reset_expire'] = time.time() + 300
-        session.save()
-        
-        # Short Password
-        response = self.client.post(url_reset, {'otp': '123456', 'new_password': '123', 'confirm_password': '123'}, follow=True)
-        self.assertContains(response, "at least 8 characters")
-        
-        # Mismatch
-        response = self.client.post(url_reset, {'otp': '123456', 'new_password': 'password123', 'confirm_password': 'mismatch'}, follow=True)
-        self.assertContains(response, "do not match")
-        
-        # Success — use a password that passes Django's validators (AUD-0019 now enforces this for Owner)
-        response = self.client.post(url_reset, {'otp': '123456', 'new_password': 'TitanHQ!2024', 'confirm_password': 'TitanHQ!2024'})
-        self.assertRedirects(response, reverse('admin_login'))
+        self.client.post(
+            reverse('admin_login'),
+            {'username': '9567494933', 'password': 'ownerpassword'},
+        )
+
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.owner.pk))
+
+    # Password-reset coverage moved to `test_password_reset.py` on 2026-07-28.
+    #
+    # The old `test_password_reset_flow_edge_cases` was deleted rather than
+    # updated: it drove a mechanism that no longer exists (the OTP hash and its
+    # expiry stored in `request.session`, delivery over SMS/Telegram) and it
+    # asserted a behaviour that was removed *on purpose* — a distinct
+    # "Please wait ..." reply on the cooldown path. That reply only appeared for
+    # accounts that actually exist, which made the forgot-password form an
+    # account-existence oracle. The cooldown is now folded into the one generic
+    # response, and the limits are counted per account in the database.
+    #
+    # Every case it covered has a successor, with the new semantics:
+    #   non-existent user  -> ResetFlowTests.test_unknown_account_is_indistinguishable
+    #   cooldown           -> ResetFlowTests.test_throttled_request_sends_nothing_but_looks_the_same
+    #   short password     -> ResetFlowTests.test_weak_password_does_not_spend_the_code
+    #   mismatch           -> ResetFlowTests.test_mismatched_confirmation_does_not_spend_the_code
+    #   success + redirect -> ResetFlowTests.test_correct_code_sets_the_new_password

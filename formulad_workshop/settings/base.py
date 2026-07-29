@@ -110,6 +110,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'workshop.context_processors.notifications',
             ],
         },
     },
@@ -150,6 +151,35 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Authentication settings
 LOGIN_REDIRECT_URL = 'home'
 LOGIN_URL = 'login'
+
+# ---------------------------------------------------------------------------
+# EMAIL — password-reset codes only
+# ---------------------------------------------------------------------------
+# One sending identity (a workshop-owned mailbox, App Password in .env); the
+# recipients are per-account `User.email` values in the database, never here.
+# Development overrides EMAIL_BACKEND to the console unless EMAIL_REAL=True —
+# see development.py — so day-to-day work never sends real mail.
+#
+# EMAIL_TIMEOUT is not optional: smtplib blocks indefinitely by default, so a
+# hung SMTP connection would hold the request thread until the browser gave up.
+EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='WorkshopOS <noreply@localhost>')
+EMAIL_TIMEOUT = 10
+
+# ---------------------------------------------------------------------------
+# WEB PUSH (VAPID)
+# ---------------------------------------------------------------------------
+# Optional by design. With no keys configured, `workshop/push.py` skips sending
+# and the in-app notification feed carries on unaffected — push is a delivery
+# layer over rows that already exist, never the source of truth. That means a
+# deploy missing these keys degrades quietly instead of erroring on every event.
+VAPID_PUBLIC_KEY = config('VAPID_PUBLIC_KEY', default='')
+VAPID_PRIVATE_KEY = config('VAPID_PRIVATE_KEY', default='')
+VAPID_ADMIN_EMAIL = config('VAPID_ADMIN_EMAIL', default='')
 
 # =============================================================================
 # ERROR LOGGING - Save errors to file instead of showing on screen

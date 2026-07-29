@@ -3,20 +3,10 @@ from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
-from workshop.models import UserSession, FailedAttempt, JobCard, CarBrand, CarModel, SpareShop, SpareShopPayment, JobCardSpareItem
-from workshop.auth_views import (
-    normalize_phone, mask_phone, get_client_ip, 
-    get_owner_mobile, get_owner_username_by_mobile
-)
+from workshop.models import UserSession, FailedAttempt, AccountLockout, JobCard, CarBrand, CarModel, SpareShop, SpareShopPayment, JobCardSpareItem
+from workshop.auth_views import normalize_phone, get_client_ip
 import time
-from unittest.mock import patch
-from decouple import config as real_config
 
-def mocked_config(key, default=''):
-    if key == 'OWNER_1_MOBILE': return '+15005550001'
-    if key == 'OWNER_2_MOBILE': return '+15005550002'
-    if key == 'TWILIO_ACCOUNT_SID': return ''  # Trigger terminal fallback
-    return real_config(key, default=default)
 
 class SecurityHardeningTests(TestCase):
     """
@@ -26,9 +16,6 @@ class SecurityHardeningTests(TestCase):
     """
 
     def setUp(self):
-        patcher = patch('workshop.auth_views.config', side_effect=mocked_config)
-        self.mock_config = patcher.start()
-        self.addCleanup(patcher.stop)
 
         FailedAttempt.objects.all().delete()
         # 1. Create a baseline 'Owner' user for 2FA tests
@@ -40,33 +27,57 @@ class SecurityHardeningTests(TestCase):
         self.factory = RequestFactory()
         self.test_ip = '192.168.1.100'
 
-    def test_ip_lockout_trigger(self):
+    def test_five_failures_still_stops_the_sixth_attempt(self):
         """
-        Verify that 5 failed login attempts from a single IP 
-        trigger a 'Steel Gate' lockout for 15 minutes.
+        The protection is unchanged; the unit it counts in is not.
+
+        This used to be the IP gate firing at 5. That was the wrong unit — the
+        laptop, the tablet and both owners' phones share one connection, so five
+        fumbled attempts on the Floor tablet locked out people who had done
+        nothing. `AccountLockout` now locks the account actually being guessed
+        at, at the same threshold, while the IP gate stays as a backstop against
+        a spray across many accounts (`IP_FAILURE_LIMIT`, covered in
+        `test_login.IPLockoutTests`).
+
+        So: still five strikes, still blocked on the sixth even with the right
+        password — and now without the collateral damage.
         """
+        # The original version of this test posted 'sahad_test', a username that
+        # does not exist in setUp — so it only ever exercised the IP counter.
+        # Account lockout needs a real target, so it uses the account setUp made.
         url = reverse('admin_login')
-        
-        # 1. Simulate 5 failed attempts
-        for i in range(5):
-            response = self.client.post(url, {
-                'username': 'sahad_test',
-                'password': 'wrongpassword'
-            }, REMOTE_ADDR=self.test_ip)
-        
-        # 2. Verify record in database
-        attempt = FailedAttempt.objects.get(ip_address=self.test_ip)
-        self.assertEqual(attempt.failures, 5)
-        
-        # 3. Verify the 6th attempt is blocked at the view level
-        response = self.client.post(url, {
-            'username': 'sahad_test',
-            'password': 'testpassword123' # Correct password now
-        }, REMOTE_ADDR=self.test_ip)
-        
-        # Check for lockout message
+        target = self.user
+
+        for _ in range(AccountLockout.MAX_FAILURES):
+            self.client.post(
+                url,
+                {'username': target.username, 'password': 'wrongpassword'},
+                REMOTE_ADDR=self.test_ip,
+            )
+
+        # Both counters saw the attempts.
+        self.assertEqual(
+            FailedAttempt.objects.get(ip_address=self.test_ip).failures,
+            AccountLockout.MAX_FAILURES,
+        )
+        self.assertEqual(
+            AccountLockout.objects.get(user=target).failures,
+            AccountLockout.MAX_FAILURES,
+        )
+
+        # The sixth is refused even though the password is now correct.
+        response = self.client.post(
+            url,
+            {'username': target.username, 'password': 'ownerpassword'},
+            REMOTE_ADDR=self.test_ip,
+        )
+
+        self.assertNotIn('_auth_user_id', self.client.session)
         messages = [m.message for m in list(response.context['messages'])]
-        self.assertTrue(any("Security Lockout" in m for m in messages))
+        self.assertTrue(
+            any("locked" in m for m in messages),
+            f"expected a lockout message, got {messages}",
+        )
 
     def test_ip_lockout_success_reset(self):
         """
@@ -195,9 +206,12 @@ class AuthHelperTests(TestCase):
         self.assertEqual(normalize_phone(""), "")
         self.assertEqual(normalize_phone(None), "")
 
-    def test_mask_phone(self):
-        self.assertEqual(mask_phone("9876543210"), "*******3210")
-        self.assertEqual(mask_phone(""), "****")
+    # `mask_phone` and its test were removed on 2026-07-28 along with
+    # `get_owner_mobile` / `get_owner_username_by_mobile`. All three existed to
+    # read owner identity out of .env; identity now lives in the database and
+    # `resolve_user_by_identifier` reads it from there, so nothing masked or
+    # looked up a number from config any more. `normalize_phone` survives —
+    # the resolver still uses it to match a typed mobile against a stored one.
 
     def test_get_client_ip(self):
         factory = RequestFactory()

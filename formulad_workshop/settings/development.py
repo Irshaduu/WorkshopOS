@@ -54,3 +54,12 @@ DATABASES['sqlite'] = sqlite_db()
 SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
+
+# Mail prints to the runserver console instead of being sent, so the whole reset
+# flow is testable with no SMTP account and no risk of mailing a real owner
+# while poking at the form. Set EMAIL_REAL=true in .env for a genuine
+# delivery test against the configured mailbox.
+# (`manage.py test` ignores both: Django swaps in the locmem backend itself.)
+EMAIL_REAL = config('EMAIL_REAL', default=False, cast=bool)
+if not EMAIL_REAL:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

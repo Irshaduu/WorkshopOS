@@ -47,6 +47,41 @@ about to correct one of these, you are about to break the business:
   deactivate (`is_active`) — matches the archived-not-deleted pattern for
   Spare Shops/Fleet Accounts/Supplier Shops above.
 
+- **Owner accounts are `is_superuser=True` but `is_staff=False` — that pairing is
+  deliberate, not an inconsistency to tidy up.** `is_superuser` is what every RBAC
+  decorator and the `has_group` template filter check, so owners keep full authority
+  everywhere inside the app. `is_staff` gates **only** the Django admin site, and
+  `/admin/` bypasses the protections the app is built around: a delete there writes no
+  `DeletionLog`, the Financial Lock doesn't apply, and archive-don't-delete isn't
+  honoured. Clearing `is_staff` closes that door while removing nothing an owner can
+  actually do. `sync_owner_identity` re-asserts this on every run. If you genuinely need
+  admin, `createsuperuser` a separate account and delete it after — it won't be an
+  `OWNER_n` entry, so the command leaves it alone. Consequence worth knowing: with no
+  `is_staff` accounts, `/admin/` is unenterable by anyone, which is intended.
+- **Never use `is_staff` as a workshop role check.** It means "can log into Django
+  admin", nothing more. It was previously used to gate the Invoice link in
+  `dashboard_home.html` and `car_profile_detail.html`, which hid billing from the Office
+  role whose job it is — while `invoice_view` itself is `@office_required`. Template
+  gates must mirror their view's decorator: `{% if request.user|has_group:"Office" or
+  request.user|has_group:"Owner" %}`. Guarded by `InvoiceLinkVisibilityTests`.
+
+- **Password reset is a hand-built 6-digit emailed code, not Django's built-in
+  `PasswordResetView` link — and that extra ~150 lines is the point, not an oversight.**
+  Django's link flow is less code and better tested, and it was the original plan. It was
+  rejected for one reason: **on iOS an installed PWA has its own cookie jar, separate from
+  the browser.** A link tapped in the mail app opens in Safari/Chrome and completes the
+  reset *there*, so the owner returns to the installed app still signed out and has to type
+  the new password anyway. Android is better but not guaranteed either — whether a WebAPK
+  captures the link depends on digital asset links and how it was installed. A 6-digit code
+  is plain text with no such dependency: the reset finishes in the same session that
+  requested it, on every OS, installed or not. The owners read this on iPhones, so the code
+  wins. See `PasswordResetOTP` and `workshop/tests/test_password_reset.py`. If you are about
+  to "simplify" this into `PasswordResetView`, you are about to break the flow on the exact
+  device it was built for.
+- **The reset code is in the email *subject* line on purpose.** iOS and Android both show
+  the subject in the notification banner, so the owner reads the code without opening the
+  mail app. The trade — briefly visible on a lock screen — is deliberate and worth it.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 
 ### Devices the UI must work on
@@ -58,6 +93,14 @@ desktop-only table or a layout that overflows horizontally on a phone is a defec
 a cosmetic issue. `base.html` defines the light-mode CSS variables (`--color-*`) and
 renders Django messages **once** for all pages — never re-render `{% if messages %}` in
 a child template (it double-prints and loses the error/success styling).
+
+**Django's `{# … #}` comment is single-line only.** Spread one across two lines and it
+stops being a comment — the text renders on the page. Ten of these shipped on
+2026-07-29 and put paragraphs of developer commentary inside the nav bar and the login
+forms, with every functional test still green, because tests assert on specific strings
+and status codes and nothing was reading what the page actually said. Use
+`{% comment %} … {% endcomment %}` for anything spanning lines.
+`workshop/tests/test_template_comments.py` statically scans every template for this.
 
 ### Navigation — one bar, one drawer (rebuilt 2026-07-25)
 There is exactly **one** nav: a fixed top bar in `base.html` that renders identically on
@@ -92,7 +135,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (20 test files; always uses SQLite, see below)
+# Run full test suite (27 test files; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -108,6 +151,10 @@ python manage.py migrate
 # One-off management commands
 python manage.py backup_db       # rotated SQLite backup, keeps last 7 in /backups
 python manage.py setup_groups    # (legacy) creates Owner/Office/Floor auth groups
+python manage.py sync_owner_identity        # DRY RUN — owner group/mobile/admin-access: .env -> DB
+python manage.py sync_owner_identity --yes  # apply
+python manage.py set_owner_email Sahad a@b.com        # DRY RUN — preview the change
+python manage.py set_owner_email Sahad a@b.com --yes  # apply
 python manage.py load_master_data  # brands/models/spare parts — prerequisite for seeding
 
 # Demo/dev data. seed_dummy_data needs load_master_data to have run first.
@@ -150,7 +197,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 291 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 457 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -172,7 +219,11 @@ while it's cheap to fix rather than on go-live day.
   not the code — colocating app and database removes it. It is still a reason to
   keep query counts low.
 
-Required `.env` keys (see `settings/base.py`, `auth_views.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_*` (mobile numbers/chat IDs for the two owners), `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM_NUMBER`, `TELEGRAM_BOT_TOKEN`. Production adds `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`.
+Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_1_USERNAME`/`OWNER_1_MOBILE` and the `OWNER_2_*` pair (read only by `sync_owner_identity`; the authoritative copy lives in the database). Production adds `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`.
+
+**Web Push** (optional): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL`. Generated once — **regenerating them invalidates every existing subscription**, so treat them as permanent. The public key ships to the browser and is not a secret; the private key is. They must also be set in the host's environment (Render) or push is skipped there while the in-app feed keeps working.
+
+**Email** (password-reset codes): `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, plus `EMAIL_REAL` (development only). One workshop-owned sending mailbox — `EMAIL_HOST_PASSWORD` is a Google **App Password**, not the account password, and needs 2-Step Verification enabled on that account. Recipients are per-account `User.email` values in the database, never in `.env`; change one with `set_owner_email`, which is why it needs no deploy. Development uses the console backend unless `EMAIL_REAL=true`, so ordinary work never sends real mail; `manage.py test` uses Django's locmem backend regardless.
 
 ## Architecture
 
@@ -192,9 +243,31 @@ Required `.env` keys (see `settings/base.py`, `auth_views.py`): `SECRET_KEY`, `D
 ### Settings
 Split into `formulad_workshop/settings/{base,development,production}.py`. `__init__.py` picks one via `DJANGO_ENV` — there is no fallback default, so forgetting to set it fails loudly rather than silently using the wrong DB. The PostgreSQL and SQLite connection dicts are built by `postgres_db()` / `sqlite_db()` in `base.py` and shared by both environments; they used to be duplicated per file, which is how a connection setting gets fixed in one and left broken in the other.
 
+### Notifications — one catalogue, one entry point
+The whole event list lives in **`workshop/notifications.py`**. Add an event to `EVENTS`, then call `notify()` from the single place it happens — **never** `Notification.objects.create()` in a view. With a dozen call sites across fourteen view modules, that file is the only way to answer "what does this thing notify about?" without grepping.
+- **Fanned out per recipient**, so the unread count is one indexed query. **No FK to the subject** — most events announce a *deletion*, and a FK would cascade the notification away with the thing it was about; `object_type`/`object_id` plus a frozen label in `body` is the same discipline as `DeletionLog.snapshot`.
+- **`DeletionLog.record()` is the deletion hook.** Every permanent delete already funnels through it, so one call covers all nine entity types and any added later. Don't scatter equivalent `notify()` calls into individual delete views.
+- **Owners only, and the actor never hears about their own action.** Floor gets nothing — a notification a mechanic can't act on trains everyone to ignore the bell. The bell in `base.html` is Owner-gated to match; widen the gate and the audience together or you get a bell that can never fill.
+- Audience is resolved by **group membership**, not `is_superuser` — see the Owner-group note under Security below for why that distinction is load-bearing.
+- `notify()` swallows its own errors so a malformed body can't fail a payment. That promise stops at database errors inside an atomic block: the surrounding transaction is already doomed and shouldn't be rescued.
+- Severity is a tier, not decoration: **`CRITICAL` events send a Web Push, `INFO` events only land in the feed.** Keep the critical list short — a phone that buzzes for routine activity stops being read for the things that matter.
+
+### Web Push — a delivery layer, never a source of truth
+`workshop/push.py` sends; `workshop/views/push.py` is the HTTP surface; `PushSubscription` is one row per **device**, not per user.
+- **`sw.js` is served from the origin root by a Django view, not from `/static/`.** This is load-bearing, not a preference: a service worker can only control pages at or below its own path, so WhiteNoise serving it at `/static/sw.js` would silently limit its scope to `/static/` and it would never receive a push for the app. The view also sends `Service-Worker-Allowed: /` and `Cache-Control: no-store` (a cached worker means a fix ships and nobody gets it).
+- **Nothing waits on the network.** `queue_push()` hands off to a background thread via `transaction.on_commit` — so a rolled-back action never announces itself, and saving a payment doesn't pay for two ~200 ms HTTPS calls. The thread opens and closes its own DB connection; it doesn't inherit the request's.
+- **Push failing must never affect the feed.** Missing VAPID keys, a dead push service, zero subscribers — all no-ops. `notify()` guards the push call separately from the row write so a push problem can't even change its *return value*.
+- **404/410 from the push service means that endpoint is permanently gone** — the row is deleted, not retried. Other errors are counted and dropped after `MAX_FAILURES`.
+- **iOS only delivers push to an app added to the Home Screen.** In a plain Safari tab `PushManager` is simply absent. `static/js/push.js` detects this and says so explicitly; without that the button just looks broken on the exact device the owners use.
+- Push is **optional in every environment**. A deploy with no VAPID keys is valid and degrades quietly.
+
 ### Security model ("Steel Gate")
-- `FailedAttempt` tracks login failures **by direct `REMOTE_ADDR` only** (X-Forwarded-For is intentionally ignored for lockout purposes to prevent spoofed-IP bypass) — 5 failures triggers a 15-minute IP lockout. Tests touching this must clear `FailedAttempt.objects.all()` in `setUp` to avoid cross-test contamination.
-- Every successful login fires a dual-channel alert (Telegram Bot API + Twilio SMS) to both owners with username, device fingerprint, and IP. This notification system is flagged in the codebase as a legacy component slated for replacement — don't extend it further; ask before investing in it.
+- **Two lockouts, different units.** `AccountLockout` is the primary: **5 failures locks that one account** for 15 minutes. `FailedAttempt` is a backstop counting by direct `REMOTE_ADDR` (X-Forwarded-For is intentionally ignored to prevent spoofed-IP bypass), at **`IP_FAILURE_LIMIT = 20`**. The IP threshold was raised from 5 on 2026-07-28 because the unit was wrong for this business: the laptop, the tablet and both owners' phones leave through one connection, so five fumbled attempts on the Floor tablet locked the owners out of their own devices. Don't lower it back — per-account lockout is what actually stops a guessing attack, and the IP gate now only catches a spray across many accounts. Tests touching either must clear `FailedAttempt.objects.all()` in `setUp` to avoid cross-test contamination.
+- **Login is one view behind two faces.** `/login/` (staff) and `/admin-login/` (owner) both route to `auth_views.login_view` with a `face` kwarg; only the heading, the accent colour, and the Forgot Password link differ. **Either face accepts any role** — there is no per-face gate, and the old fake "Invalid credentials" shown to owners on the staff face is gone (it protected nothing, since the owner door is a button away, and guaranteed a baffling support call). Both URL names are load-bearing: the decorators' `login_url` values and every `reverse()` point at them. Sign in with **username, email, or mobile** — `resolve_user_by_identifier` tries each in that order and **fails closed** if more than one account matches.
+- **The whole Control Hub (`/manage/`) is Owner-only** — accounts, staff roster, and security alike. It was `@office_required` while the drawer only ever offered it to owners, so Office could not see it but could reach it by URL and create logins or reset passwords. One rule, no exceptions. Owner accounts are never managed *from* this panel: reset, delete and unlock each refuse them, because owner credentials are changed at `/change-password/` or recovered by emailed code.
+- **`manage_unlock_account` lets an owner lift a lockout immediately.** Five wrong attempts lock a staff account for 15 minutes, which is right against guessing and wrong when a mechanic fat-fingers their password mid-shift. The unlock button only renders while an account is actually locked.
+- **RBAC decorators return 403, not a login redirect, for signed-in users.** Anonymous visitors still get the sign-in page (with `?next=`, validated by `_safe_next` against open redirects). A signed-in user who simply lacks the role gets `PermissionDenied` → `templates/403.html`. Previously both cases redirected to a login form, so an Office user opening an Owner page saw a sign-in screen *while already signed in* — indistinguishable from being logged out. If you add a test asserting 302 for an authenticated wrong-role user, it's asserting the old bug.
+- Every successful login raises a `LOGIN` notification to the other owners (username, device, IP). **Twilio and Telegram are gone** — removed 2026-07-29 once the in-app feed had replaced them. There is no outbound SMS or chat integration left anywhere in this codebase, and no third-party messaging dependency; don't reintroduce one. The app now makes exactly **one** kind of outbound network call: SMTP, for password-reset codes.
 - `UserSession` + `management_views.manage_terminate_session` give owners a kill switch over any active Django session from the dashboard.
 
 ### Financial/data integrity rules (enforced across the codebase, follow them in new code)
@@ -272,12 +345,12 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (17 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`) — 20 files, 291 tests. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (24 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`) — 27 files, 457 tests. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.
 - `AUDIT_LOG.md` and `Aditing files/` were **removed on 2026-07-25**. Every finding was re-verified against the code; the ones still open were consolidated into `TECH_DEBT.md` (local, not in git), the deliberate ones into "Deliberate decisions" above, and the rest were confirmed fixed. Don't recreate them — that split was what caused the drift.
-- The SMS/Telegram notification system is explicitly called out in the docs as legacy and due for replacement — don't treat it as the long-term design.
+- The SMS/Telegram notification system was **deleted on 2026-07-29**, along with `verify_twilio.py`, `verify_alerts.py`, the `twilio` and `requests` dependencies, and its `.env` keys. Owner alerts are the in-app feed now (see "Notifications" above). If you find a doc still describing a dual-channel broadcast, that doc is stale.
 
 ## Doc ownership map (avoid re-introducing drift)
 As of 2026-07-23 the root docs were restructured so each fact has exactly one home; update the owning doc, don't restate its content elsewhere:

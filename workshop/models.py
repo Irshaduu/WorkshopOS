@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import models
@@ -17,13 +18,22 @@ class UserProfile(models.Model):
     
     Attributes:
         user (OneToOneField): Link to standard Django User.
-        mobile_number (CharField): Verified mobile used for:
-          1. Alternative login identifier (last-10-digit normalised match)
-          2. OTP delivery target (forgot-password flow)
-          3. Security alert recipient (Twilio SMS on every login)
+        mobile_number (CharField): Alternative login identifier, matched on the
+          last 10 digits so stored/typed formats need not agree. Unique, because
+          login resolves an identifier to exactly one account — two profiles
+          sharing a number would make that resolution ambiguous.
+
+    Store an absent number as NULL, never as "". `unique=True` permits any number
+    of NULLs but only one empty string, so a blank-string default would collide
+    on the second account that has no mobile.
+
+    Password-reset codes go to `User.email`, not here — see the OTP flow.
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    mobile_number = models.CharField(max_length=20, blank=True, null=True, help_text="Used for Owner OTP login")
+    mobile_number = models.CharField(
+        max_length=20, blank=True, null=True, unique=True,
+        help_text="Optional alternative login identifier. Leave empty for Office/Floor accounts.",
+    )
 
     def __str__(self):
         return f"{self.user.username}'s Profile"
@@ -49,6 +59,202 @@ class FailedAttempt(models.Model):
 
     def __str__(self):
         return f"IP {self.ip_address}: {self.failures} failures"
+
+class Notification(models.Model):
+    """
+    One row per recipient per event — the in-app feed behind the nav bell.
+
+    **Fanned out on write, deliberately.** A single row plus read-receipts would
+    normalise better, but this workshop has two owners: writing N rows makes the
+    unread count one indexed query and mark-as-read a single update, instead of
+    an anti-join on every page load.
+
+    **No ForeignKey to the thing it is about.** Most of these announce a
+    *deletion*, and a FK would cascade the notification away with its subject —
+    the record of "job card #412 was deleted" would vanish exactly when it
+    mattered. `object_type` / `object_id` are a soft reference, and `body`
+    carries a frozen human-readable label, the same discipline
+    `DeletionLog.snapshot` uses.
+
+    Created inside the caller's transaction (same database, cheap); anything
+    external — push, email — belongs on `transaction.on_commit`, never inline.
+    """
+    SEVERITY_CRITICAL = 'CRITICAL'
+    SEVERITY_INFO = 'INFO'
+    SEVERITY_CHOICES = [
+        (SEVERITY_CRITICAL, 'Critical'),
+        (SEVERITY_INFO, 'Info'),
+    ]
+
+    RETENTION_DAYS = 90
+
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    event = models.CharField(max_length=32, db_index=True)
+    severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES, default=SEVERITY_INFO)
+    title = models.CharField(max_length=120)
+    body = models.CharField(max_length=255, blank=True)
+    url = models.CharField(max_length=200, blank=True, help_text="Deep link to the thing this is about")
+    actor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='notifications_caused', help_text="Who did it, if anyone",
+    )
+    object_type = models.CharField(max_length=40, blank=True)
+    object_id = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', 'read_at']),
+            models.Index(fields=['recipient', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.title} -> {self.recipient.username}"
+
+    @property
+    def is_unread(self):
+        return self.read_at is None
+
+    @classmethod
+    def unread_count(cls, user):
+        if not getattr(user, 'is_authenticated', False):
+            return 0
+        return cls.objects.filter(recipient=user, read_at__isnull=True).count()
+
+    @classmethod
+    def mark_all_read(cls, user):
+        return cls.objects.filter(recipient=user, read_at__isnull=True).update(
+            read_at=timezone.now()
+        )
+
+    @classmethod
+    def purge_old(cls):
+        """
+        Drop read notifications past the retention window.
+
+        Unread ones are never swept, however old — an owner who has not looked
+        in three months should still find what they missed. Run from the feed
+        view on visit, the same cheap pattern `manage_dashboard` uses for ghost
+        sessions.
+        """
+        cutoff = timezone.now() - timedelta(days=cls.RETENTION_DAYS)
+        deleted, _ = cls.objects.filter(
+            read_at__isnull=False, created_at__lt=cutoff
+        ).delete()
+        return deleted
+
+
+class PushSubscription(models.Model):
+    """
+    One browser's permission to receive Web Push, per device.
+
+    **Per device, not per user.** An owner with a phone and a laptop has two
+    rows; revoking notifications on one must not silence the other. `endpoint`
+    is the push service's own URL for that browser instance and is what makes it
+    unique — a reinstall or a permission reset produces a *new* endpoint rather
+    than reusing the old one, which is why dead rows accumulate and have to be
+    reaped (see `failure_count`).
+
+    Nothing here is a secret of ours: `p256dh` and `auth` are the browser's own
+    public key material, used to encrypt payloads *to* that browser.
+
+    Push is strictly a delivery layer over `Notification` rows. If every
+    subscription here is dead, the feed is unaffected.
+    """
+    MAX_FAILURES = 3
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.URLField(max_length=500, unique=True)
+    p256dh = models.CharField(max_length=200, help_text="Browser's public key")
+    auth = models.CharField(max_length=100, help_text="Browser's auth secret")
+    user_agent = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_success = models.DateTimeField(null=True, blank=True)
+    failure_count = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user'])]
+        verbose_name = "Push Subscription"
+
+    def __str__(self):
+        return f"{self.user.username} — {UserSession.get_device_name(self.user_agent)}"
+
+    @property
+    def device_name(self):
+        return UserSession.get_device_name(self.user_agent)
+
+    def as_dict(self):
+        """The shape pywebpush expects."""
+        return {
+            'endpoint': self.endpoint,
+            'keys': {'p256dh': self.p256dh, 'auth': self.auth},
+        }
+
+
+class AccountLockout(models.Model):
+    """
+    Failed sign-in attempts counted **per account**.
+
+    `FailedAttempt` counts by IP, which is the wrong unit for this workshop: the
+    laptop, the tablet and both owners' phones all leave through one connection.
+    Five fumbled attempts on the Floor tablet therefore locked the owners out of
+    their own phones for fifteen minutes — the attack and the collateral damage
+    were indistinguishable. Counting per account locks only the account being
+    guessed at and leaves everyone else working.
+
+    The IP gate is kept as a backstop against someone spraying *many* accounts
+    from one place, but at a much higher threshold (`IP_FAILURE_LIMIT` in
+    `auth_views`) so ordinary shared-connection use never trips it.
+    """
+    MAX_FAILURES = 5
+    LOCKOUT_MINUTES = 15
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='lockout')
+    failures = models.PositiveIntegerField(default=0)
+    last_attempt = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Account Lockout"
+
+    def __str__(self):
+        return f"{self.user.username}: {self.failures} failed attempt(s)"
+
+    @property
+    def locked_until(self):
+        return self.last_attempt + timedelta(minutes=self.LOCKOUT_MINUTES)
+
+    @classmethod
+    def minutes_remaining(cls, user):
+        """Minutes this account stays locked, or 0 if it is not locked."""
+        row = cls.objects.filter(user=user).first()
+        if row is None or row.failures < cls.MAX_FAILURES:
+            return 0
+
+        remaining = (row.locked_until - timezone.now()).total_seconds()
+        if remaining <= 0:
+            # Window elapsed — the count resets rather than lingering, so an old
+            # bad day never shortens the budget on a good one.
+            row.failures = 0
+            row.save(update_fields=['failures'])
+            return 0
+        return int(remaining // 60) + 1
+
+    @classmethod
+    def record_failure(cls, user):
+        row, _ = cls.objects.get_or_create(user=user)
+        # F() would avoid a read, but auto_now on last_attempt needs a save()
+        # anyway and this table sees a handful of rows.
+        row.failures += 1
+        row.save(update_fields=['failures', 'last_attempt'])
+        return row.failures
+
+    @classmethod
+    def clear(cls, user):
+        cls.objects.filter(user=user).update(failures=0)
+
 
 class UserSession(models.Model):
     """
@@ -122,6 +328,133 @@ class UserSession(models.Model):
     def device_info(self):
         """Returns the specific device string for the dashboard."""
         return self.get_device_name(self.user_agent)
+
+
+class PasswordResetOTP(models.Model):
+    """
+    A single-use 6-digit code emailed to an owner who has forgotten their password.
+
+    **Why a code and not a reset link.** On iOS an installed PWA has its own
+    cookie jar, separate from the browser — so a link tapped in the mail app
+    opens in Safari/Chrome and completes the reset in a *different* session,
+    leaving the app itself still signed out. A code has no such dependency: it is
+    plain text, so the reset finishes in the same session that requested it, on
+    any OS, installed or not. That is worth the extra code in this file.
+
+    **Why the DB and not the session.** The throttle is the reason. Session-held
+    counters are defeated by clearing cookies, which would let someone hammer the
+    mail provider until the sending quota burns and the domain gets flagged.
+    Every limit below is therefore counted per *account*, in the database.
+
+    The code itself is never stored — only its SHA-256 hash, compared in constant
+    time. A database dump does not hand over a live reset.
+    """
+    CODE_LENGTH = 6
+    VALIDITY_MINUTES = 10
+    MAX_ATTEMPTS = 5
+    RESEND_COOLDOWN_SECONDS = 60
+    MAX_REQUESTS_PER_HOUR = 3
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reset_codes')
+    code_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    used_at = models.DateTimeField(null=True, blank=True)
+    requested_ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user', '-created_at'])]
+        verbose_name = "Password Reset Code"
+
+    def __str__(self):
+        return f"Reset code for {self.user.username} ({self.created_at:%d %b %Y %H:%M})"
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _hash(code):
+        import hashlib
+        return hashlib.sha256(str(code).encode()).hexdigest()
+
+    @property
+    def is_usable(self):
+        """Unused, unexpired, and not yet burned through its attempt budget."""
+        return (
+            self.used_at is None
+            and self.attempts < self.MAX_ATTEMPTS
+            and timezone.now() < self.expires_at
+        )
+
+    # ------------------------------------------------------------------
+    @classmethod
+    def throttle_reason(cls, user):
+        """
+        Why this account may not request a code right now, or None if it may.
+
+        Counted per account rather than per session or per IP: a session counter
+        is cleared with the cookies, and both owners may sit behind the workshop's
+        single IP.
+        """
+        now = timezone.now()
+
+        latest = cls.objects.filter(user=user).first()  # Meta.ordering = -created_at
+        if latest:
+            elapsed = (now - latest.created_at).total_seconds()
+            if elapsed < cls.RESEND_COOLDOWN_SECONDS:
+                wait = int(cls.RESEND_COOLDOWN_SECONDS - elapsed) + 1
+                return f"Please wait {wait} more second{'s' if wait != 1 else ''} before requesting another code."
+
+        recent = cls.objects.filter(user=user, created_at__gte=now - timedelta(hours=1)).count()
+        if recent >= cls.MAX_REQUESTS_PER_HOUR:
+            return "Too many reset codes requested in the last hour. Please try again later."
+
+        return None
+
+    @classmethod
+    def issue(cls, user, ip=None):
+        """
+        Create a fresh code, retiring any still outstanding.
+
+        Returns (instance, plain_code). The plain code is returned once, for the
+        email, and never persisted.
+        """
+        from django.utils.crypto import get_random_string
+
+        cls.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
+
+        code = get_random_string(length=cls.CODE_LENGTH, allowed_chars='0123456789')
+        instance = cls.objects.create(
+            user=user,
+            code_hash=cls._hash(code),
+            expires_at=timezone.now() + timedelta(minutes=cls.VALIDITY_MINUTES),
+            requested_ip=ip,
+        )
+        return instance, code
+
+    def verify(self, submitted_code):
+        """
+        Check a submitted code, spending one attempt.
+
+        Always records the attempt before comparing, so a wrong guess costs
+        something even if the response is discarded. Uses a constant-time
+        comparison — a timing signal on a 6-digit space is worth closing.
+        """
+        import hmac
+
+        if not self.is_usable:
+            return False
+
+        self.attempts += 1
+        matched = hmac.compare_digest(self.code_hash, self._hash(submitted_code))
+        if matched:
+            self.used_at = timezone.now()
+        self.save(update_fields=['attempts', 'used_at'])
+        return matched
+
+    @property
+    def attempts_remaining(self):
+        return max(0, self.MAX_ATTEMPTS - self.attempts)
 # -----------------------------------------------------------------------------
 # 1. STUDY SECTION MODELS
 # These models act as the "Master Lists" for autocomplete suggestions.
@@ -363,6 +696,11 @@ class SpareShop(models.Model):
 # -----------------------------------------------------------------------------
 
 class JobCard(models.Model):
+    # What counts as a discount worth an owner's attention. Shared by
+    # `audit_high_discounts` and the HIGH_DISCOUNT notification so the audit
+    # page and the alert can never disagree about where the line is.
+    HIGH_DISCOUNT_RATIO = Decimal('0.30')
+
     """
     The Industrial Heart of WorkshopOS. Manages the end-to-end lifecycle 
     of a vehicle service, from admission to billing.
@@ -992,9 +1330,15 @@ class DeletionLog(models.Model):
         """
         Write one deletion-history row. Call this immediately BEFORE the hard delete,
         inside the same atomic block, so the snapshot is captured even if the delete
-        cascades children. Central single entry point (also the future Notifications hook).
+        cascades children.
+
+        This is also where every deletion notification originates. Because every
+        permanent delete in the codebase already funnels through here, one call
+        covers all nine entity types — and any type added later is covered for
+        free. Do not scatter equivalent `notify()` calls into the individual
+        delete views; this choke point is the reason they stay correct.
         """
-        return cls.objects.create(
+        entry = cls.objects.create(
             entity_type=entity_type,
             entity_label=(label or str(instance))[:255],
             amount=amount,
@@ -1002,6 +1346,22 @@ class DeletionLog(models.Model):
             reason=(reason or "")[:255],
             deleted_by=user if (user is not None and getattr(user, 'is_authenticated', False)) else None,
         )
+
+        # Imported here, not at module scope: `notifications` imports this module,
+        # so a top-level import would be circular.
+        from .notifications import notify
+
+        amount_text = f" (₹{amount})" if amount is not None else ""
+        notify(
+            'RECORD_DELETED',
+            f"{entry.get_entity_type_display()} deleted: {entry.entity_label}{amount_text}",
+            actor=entry.deleted_by,
+            url=f"/deletion-history/{entry.pk}/",
+            object_type=entity_type,
+            object_id=entry.pk,
+        )
+
+        return entry
 
 
 @receiver(user_logged_out)
