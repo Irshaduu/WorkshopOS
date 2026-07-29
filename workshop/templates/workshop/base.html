@@ -199,6 +199,145 @@
         .nav-btn--menu.is-open i { color: #ffffff; }
 
         .nav-btn--bell { color: rgba(255, 255, 255, 0.78); position: relative; }
+
+        /* ---------- Floating notification panel ---------- */
+        .notif-anchor { position: relative; display: inline-flex; }
+
+        .notif-panel {
+            position: absolute;
+            top: calc(100% + 10px);
+            right: 0;
+            width: 380px;
+            max-height: min(70vh, 520px);
+            background: var(--color-card);
+            border: 1px solid var(--color-border);
+            border-radius: 16px;
+            box-shadow: 0 18px 48px rgba(15, 22, 34, 0.22), 0 2px 8px rgba(15, 22, 34, 0.12);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 1080;
+        }
+        .notif-panel.is-open { display: flex; }
+
+        .notif-panel-head {
+            display: flex; align-items: center; gap: 8px;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--color-border);
+            flex: 0 0 auto;
+        }
+        .notif-panel-title {
+            font-size: 0.86rem; font-weight: 800; color: var(--color-text);
+            margin-right: auto;
+        }
+        .notif-icon-btn {
+            width: 34px; height: 34px; flex: 0 0 34px;
+            display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 10px;
+            border: 1px solid var(--color-border);
+            background: var(--color-card);
+            color: var(--color-text-muted);
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+        }
+        .notif-icon-btn:hover:not(:disabled) { background: var(--color-hover); color: var(--color-text); }
+        .notif-icon-btn:disabled { opacity: 0.4; cursor: default; }
+        /* Push enabled: the bell is filled and coloured. Silent: struck through
+           and muted. One control, two unmistakable states. */
+        .notif-icon-btn.is-on { color: #2563eb; border-color: #bfdbfe; background: #eff6ff; }
+
+        .notif-panel-body { overflow-y: auto; flex: 1 1 auto; -webkit-overflow-scrolling: touch; }
+
+        .notif-panel-foot {
+            display: block; text-align: center;
+            padding: 12px; flex: 0 0 auto;
+            border-top: 1px solid var(--color-border);
+            font-size: 0.8rem; font-weight: 700;
+            color: var(--color-text-muted); text-decoration: none;
+        }
+        .notif-panel-foot:hover { background: var(--color-hover); color: var(--color-text); }
+
+        .notif-loading { padding: 34px 16px; text-align: center; color: var(--color-text-muted); font-size: 0.82rem; }
+
+        /* Backdrop only exists on phones, where the panel becomes a sheet. */
+        .notif-backdrop {
+            position: fixed; inset: 0;
+            background: rgba(15, 22, 34, 0.4);
+            display: none; z-index: 1070;
+        }
+        .notif-backdrop.is-open { display: block; }
+
+        @media (max-width: 560px) {
+            /* Anchoring a 380px dropdown to a button near the screen edge puts it
+               half off-screen. On a phone it becomes a sheet instead. */
+            .notif-panel {
+                position: fixed;
+                top: calc(var(--nav-h) + 8px);
+                left: 10px; right: 10px;
+                width: auto;
+                max-height: calc(100vh - var(--nav-h) - 24px);
+            }
+        }
+
+        /* ---------- Notification rows (shared: panel + full feed) ---------- */
+        .nf-row {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 13px 14px 13px 0;
+            border-bottom: 1px solid var(--color-border);
+            text-decoration: none;
+            position: relative;
+            min-height: 62px;
+            transition: background 0.13s ease;
+        }
+        .nf-row:last-child { border-bottom: 0; }
+        .nf-row:hover { background: var(--color-hover); }
+
+        .nf-rail { flex: 0 0 3px; align-self: stretch; border-radius: 0 3px 3px 0; background: transparent; }
+
+        .nf-row.is-unread { background: #f7faff; }
+        .nf-row.is-unread:hover { background: #eef4ff; }
+        .nf-row.is-unread .nf-rail { background: #2563eb; }
+        .nf-row.is-unread.is-critical { background: #fff8f8; }
+        .nf-row.is-unread.is-critical:hover { background: #fff1f1; }
+        .nf-row.is-unread.is-critical .nf-rail { background: #dc2626; }
+        .nf-row.is-unread .nf-title { font-weight: 800; color: var(--color-text); }
+
+        /* Read rows recede: no rail, plain background, lighter title. */
+        .nf-row.is-read { background: transparent; }
+        .nf-row.is-read .nf-title { font-weight: 600; color: var(--color-text-muted); }
+        .nf-row.is-read .nf-text { color: var(--color-text-muted); opacity: 0.8; }
+
+        .nf-main { flex: 1 1 auto; min-width: 0; padding-left: 11px; }
+        .nf-title {
+            display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+            font-size: 0.85rem; line-height: 1.35;
+        }
+        .nf-text {
+            display: block; font-size: 0.8rem; color: var(--color-text-muted);
+            margin-top: 3px; line-height: 1.45; overflow-wrap: anywhere;
+        }
+        .nf-meta { display: block; font-size: 0.71rem; color: var(--color-text-muted); margin-top: 5px; opacity: 0.85; }
+
+        .nf-tag {
+            font-size: 0.58rem; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 0.05em; padding: 1px 6px; border-radius: 999px;
+            color: #b91c1c; background: #fef2f2; white-space: nowrap;
+        }
+
+        .nf-state { flex: 0 0 16px; display: flex; justify-content: center; padding-top: 4px; }
+        .nf-dot { width: 8px; height: 8px; border-radius: 50%; background: #2563eb; }
+        .nf-row.is-critical .nf-dot { background: #dc2626; }
+        .nf-state .bi { font-size: 0.85rem; color: var(--color-text-muted); opacity: 0.45; }
+
+        .nf-empty {
+            padding: 44px 20px; text-align: center;
+            color: var(--color-text-muted); font-size: 0.84rem;
+        }
+        .nf-empty i { font-size: 1.9rem; display: block; margin-bottom: 10px; opacity: 0.4; }
+        .nf-empty--panel { padding: 34px 18px; }
+        .nf-empty--panel span { display: block; font-weight: 700; color: var(--color-text); margin-bottom: 4px; }
+        .nf-empty--panel small { display: block; font-size: 0.75rem; line-height: 1.5; }
         /* Count sits on the bell rather than beside it, so the pill keeps the
            same footprint whether or not anything is waiting. */
         .nav-badge {
@@ -375,28 +514,6 @@
 
         .drawer-logout-compact:hover { background-color: #fef2f2; }
 
-        /* Same shape as the logout row, neutral colour — Logout stays the only
-           red thing in this panel so it never gets tapped by mistake. */
-        .drawer-changepw-compact {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 18px;
-            border: 0;
-            border-bottom: 1px solid var(--color-border);
-            background: transparent;
-            color: var(--color-text);
-            font-size: 0.88rem;
-            font-weight: 700;
-            text-align: left;
-            text-decoration: none;
-            transition: background-color 0.15s ease;
-        }
-
-        .drawer-changepw-compact i { font-size: 1rem; }
-
-        .drawer-changepw-compact:hover { background-color: var(--color-hover); color: var(--color-text); }
 
         /* --- Scrollable body --- */
         .drawer-body {
@@ -624,6 +741,12 @@
     <!-- ============================================== -->
     <!-- PWA — "Add to Home Screen" banner              -->
     <!-- ============================================== -->
+    {% comment %}
+    Not on the signed-out pages. Asking someone to install the app before they
+    have proved they can even get into it is premature, and the prompt competes
+    with the one thing those screens exist for. It appears once they are in.
+    {% endcomment %}
+    {% if not hide_chrome %}
     <div class="pwa-banner" id="pwaInstallBanner" role="dialog" aria-label="Install this app">
         <div class="pwa-banner-card">
             <img src="{% static 'images/icons/icon-192.png' %}" alt="" class="pwa-banner-icon">
@@ -719,6 +842,7 @@
             }
         })();
     </script>
+    {% endif %}
 
 {% with is_owner=request.user|has_group:"Owner" is_office=request.user|has_group:"Office" is_floor=request.user|has_group:"Floor" p=request.path %}
 
@@ -728,6 +852,13 @@
     <!-- `fixed-top` is required, not decorative: Bootstrap's scrollbar helper only
          pads elements matching `.fixed-top` when the drawer locks body scroll.
          Without it the bar jumps sideways by the scrollbar width on open. -->
+    {% comment %}
+    Signed-out pages set hide_chrome and own the whole viewport. A nav offering
+    "Floor" and "Login" above a login form is noise on a page whose only purpose
+    is signing in — and it made the premium auth screens look like a fragment of
+    the app rather than the front door.
+    {% endcomment %}
+    {% if not hide_chrome %}
     <nav class="navbar-top fixed-top" aria-label="Main navigation">
 
         <div class="navbar-container">
@@ -773,15 +904,44 @@ Owner-only, because only owners receive notifications — a bell that can never
 fill is a control that never does anything. If Office ever gets its own events,
 widen this and the audience together.
 {% endcomment %}
-            <a class="nav-btn nav-btn--icon nav-btn--bell{% if p|slice:':15' == '/notifications/' %} active{% endif %}"
-               href="{% url 'notification_list' %}"
-               aria-label="Notifications{% if unread_notifications %}, {{ unread_notifications }} unread{% endif %}"
-               title="Notifications">
-                <i class="bi bi-bell{% if unread_notifications %}-fill{% endif %}"></i>
-                {% if unread_notifications %}
-                <span class="nav-badge">{{ unread_notifications }}</span>
-                {% endif %}
-            </a>
+            <span class="notif-anchor">
+                <a class="nav-btn nav-btn--icon nav-btn--bell{% if p|slice:':15' == '/notifications/' %} active{% endif %}"
+                   href="{% url 'notification_list' %}"
+                   id="notifBell"
+                   aria-label="Notifications{% if unread_notifications %}, {{ unread_notifications }} unread{% endif %}"
+                   aria-expanded="false"
+                   title="Notifications">
+                    <i class="bi bi-bell{% if unread_notifications %}-fill{% endif %}" id="notifBellIcon"></i>
+                    {% comment %}
+                    Capped at 99+. Past that the exact number tells an owner
+                    nothing they would act on differently, and a four-digit badge
+                    breaks the pill.
+                    {% endcomment %}
+                    <span class="nav-badge" id="notifBadge"{% if not unread_notifications %} hidden{% endif %}>{% if unread_notifications > 99 %}99+{% else %}{{ unread_notifications }}{% endif %}</span>
+                </a>
+
+                <div class="notif-panel" id="notifPanel" role="dialog" aria-label="Notifications">
+                    <div class="notif-panel-head">
+                        <span class="notif-panel-title">Notifications</span>
+                        <button type="button" class="notif-icon-btn" id="pushToggle"
+                                data-vapid-key="{{ vapid_public_key|default:'' }}"
+                                data-subscribe-url="{% url 'push_subscribe' %}"
+                                data-unsubscribe-url="{% url 'push_unsubscribe' %}"
+                                aria-label="Device alerts" title="Checking…" disabled>
+                            <i class="bi bi-bell" id="pushToggleIcon"></i>
+                        </button>
+                        <button type="button" class="notif-icon-btn" id="notifMarkAll"
+                                aria-label="Mark all as read" title="Mark all as read">
+                            <i class="bi bi-check2-all"></i>
+                        </button>
+                    </div>
+                    <div class="notif-panel-body" id="notifPanelBody">
+                        <div class="notif-loading">Loading…</div>
+                    </div>
+                    <a class="notif-panel-foot" href="{% url 'notification_list' %}">View all notifications</a>
+                </div>
+            </span>
+            <div class="notif-backdrop" id="notifBackdrop"></div>
             {% endif %}
 
             <!-- Manage / Menu — opens the drawer -->
@@ -802,6 +962,7 @@ widen this and the audience together.
 
         </div>
     </nav>
+    {% endif %}
 
     <!-- ============================================== -->
     <!-- MANAGE DRAWER — every "everything else" link   -->
@@ -836,12 +997,13 @@ widen this and the audience together.
         <!-- Collapsed by default — Logout is a rare action, not a permanent block -->
         <div class="collapse" id="drawerAccountPanel">
             <div class="drawer-account-panel">
-                {% if is_owner %}
-                {# Owner-only: Office/Floor passwords are managed by owners from Control Hub. #}
-                <a href="{% url 'change_password' %}" class="drawer-changepw-compact">
-                    <i class="bi bi-key"></i> Change Password
-                </a>
-                {% endif %}
+                {% comment %}
+                No Change Password entry by owner request (2026-07-29): owners
+                sign out and use Forgot Password instead. The route still exists
+                at /change-password/ and is still tested — it is the one way to
+                set a password without email working, which matters on handover
+                day if SMTP is not configured yet.
+                {% endcomment %}
                 <form method="post" action="{% url 'logout' %}" class="m-0">
                     {% csrf_token %}
                     <button type="submit" class="drawer-logout-compact">
@@ -975,6 +1137,17 @@ widen this and the audience together.
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{% static 'js/script.js' %}"></script>
+    {% comment %}
+    Panel + device on/silent toggle. Owner-only, like the bell itself.
+
+    Uses the filter rather than `is_owner`: that variable comes from the
+    {% templatetag openblock %} with {% templatetag closeblock %} higher up, whose scope ends before the scripts —
+    so `{% templatetag openblock %} if is_owner {% templatetag closeblock %}` here silently evaluated false and the panel
+    never got its JavaScript.
+    {% endcomment %}
+    {% if request.user|has_group:"Owner" %}
+    <script src="{% static 'js/notifications.js' %}"></script>
+    {% endif %}
     <script>
         // (The bell used to be an href="#" placeholder whose click had to be
         // swallowed. It has a real target now, so that handler is gone.)

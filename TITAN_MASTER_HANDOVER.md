@@ -13,7 +13,7 @@
 
 **WorkshopOS** is engineered for a single premium automotive workshop — appointment-driven, high-value vehicles, not high-volume throughput. That distinction matters: the system is built to be fast and correct for a small, hands-on team, not to demonstrate generic "web scale."
 
-- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **27 files / 457 tests** covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, and the owner profit engine.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **28 files / 470 tests** covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, and the owner profit engine.
 
 ---
 
@@ -36,7 +36,7 @@
 - **RBAC now returns 403, not a login redirect, for signed-in users.** Anonymous visitors still get the sign-in page with `?next=` (validated against open redirects by `_safe_next`). A signed-in user lacking the role gets `templates/403.html`. Both cases used to redirect to a login form, so an Office user opening an Owner page saw a sign-in screen while already signed in.
 
 ### 1c. Notifications — in-app feed (added 2026-07-29)
-- The nav bell is real: an owner-only feed at `/notifications/` with an unread badge, mark-one-on-open, mark-all-read, and a 90-day sweep of *read* rows (unread are never swept).
+- The nav bell is real: an owner-only feed at `/notifications/` with an unread badge, mark-one-on-open, mark-all-read, and a 14-day sweep of *read* rows (unread are never swept).
 - **Eight events**, all Owner-audience, all declared in one file (`workshop/notifications.py`): `LOGIN`, `ACCOUNT_LOCKED`, `USER_CREATED`, `HIGH_DISCOUNT`, `RECORD_DELETED`, `ACCOUNT_ARCHIVED`, `SALARY_ADVANCE`, `SALARY_SETTLED`.
 - **`RECORD_DELETED` hooks `DeletionLog.record()`** — the single choke point every permanent delete already passes through, so one call covers all nine entity types and anything added later for free.
 - **The actor is excluded from their own events**, which roughly halves volume with two owners, and Floor receives nothing at all. Notification fatigue is the failure mode here: a bell that cries wolf stops being read, and the events that matter (large discount, permanent delete) are exactly the ones that would be missed.
@@ -45,7 +45,7 @@
 
 ### 1d. Web Push — ✅ Added (2026-07-29)
 - **`CRITICAL` events push to subscribed devices; `INFO` events wait in the bell.** Push is a *delivery layer* over `Notification` rows that are already written — if the keys are missing, the service is down, or nobody has subscribed, the feed is completely unaffected. That is why it was built last.
-- **One subscription per device**, enrolled from a button on `/notifications/` (browsers require a real user gesture before they will even ask for permission).
+- **One subscription per device**, toggled by the small bell in the notification panel header — on (filled, blue) or silent (struck through). Browsers require a real user gesture before they will even ask for permission, which is why it is a button and not automatic.
 - **`sw.js` is served from the origin root** by a Django view, never from `/static/` — a service worker's scope is its own directory, so a `/static/sw.js` would only control `/static/` and never receive an app push. Verified live: scope resolves to the site root.
 - **Nothing in the request path waits on the network**: `transaction.on_commit` → background thread, so a rolled-back action never announces itself and saving a payment isn't slowed by two HTTPS round-trips.
 - Dead endpoints (404/410) are deleted on sight; transient failures are counted and dropped after 3.
@@ -59,6 +59,7 @@
 
 ### 2b. Password Recovery — ✅ Rebuilt (2026-07-28)
 - **Change Password** (`/change-password/`, Owner-only): a signed-in owner sets a new password with no email involved. This is the **handover path** — an owner gets a temp password verbally, signs in, replaces it. Go-live therefore does not depend on SMTP being configured.
+  - **No link to it anywhere in the UI** (owner request, 2026-07-29): owners sign out and use Forgot Password instead. The route is kept precisely because it is the no-email path — **don't delete it as dead code**; the consequence would be that handover requires working email on the day. Reachable directly at `/change-password/`, and `test_change_password.py` asserts both the absent link and the live route.
 - **Forgot Password**: a **6-digit code emailed** to the owner's registered address (`User.email`), replacing the old `.env`-driven SMS/Telegram OTP. Identify by username, email, or mobile.
 - **Why a code and not Django's built-in reset link**: on iOS an installed PWA has its own cookie jar, so a link tapped in the mail app completes the reset in a *different* session and leaves the app signed out. A code has no such dependency. Recorded in `CLAUDE.md`'s deliberate decisions — do not "simplify" it back.
 - Every limit (10-min expiry, single use, 5 attempts, 60s resend, 3/hour) is counted **per account in the database**, not in the session, because a session counter is defeated by clearing cookies — which would let someone burn the sending quota. Responses are identical whether or not the account exists.
@@ -114,7 +115,7 @@ WorkshopOS uses deliberate, standard performance patterns rather than ad hoc que
   ```bash
   .\venv\Scripts\python.exe manage.py test workshop inventory
   ```
-- **Test Coverage**: 27 test files / 457 tests — workshop (24, in the `workshop/tests/` package) and inventory (3).
+- **Test Coverage**: 28 test files / 470 tests — workshop (25, in the `workshop/tests/` package) and inventory (3).
 
 ---
 

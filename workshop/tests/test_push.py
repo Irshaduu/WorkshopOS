@@ -325,22 +325,44 @@ class DeadSubscriptionTests(TestCase):
 
 
 class PushSetupUITests(TestCase):
+    """
+    The on/silent control is the small bell in the notification panel header, so
+    it rides on `base.html` and is present on every owner page — not just the
+    feed. It replaced a three-line "Alerts on this device" card that spent a
+    paragraph explaining a binary.
+    """
+
     def setUp(self):
-        Group.objects.get_or_create(name='Owner')
+        for name in ('Owner', 'Office'):
+            Group.objects.get_or_create(name=name)
         self.owner = User.objects.create_user(username='Sahad', password=PASSWORD)
         self.owner.groups.add(Group.objects.get(name='Owner'))
+        self.office = User.objects.create_user(username='officestaff', password=PASSWORD)
+        self.office.groups.add(Group.objects.get(name='Office'))
         self.client.login(username='Sahad', password=PASSWORD)
 
     @CONFIGURED
-    def test_feed_ships_the_public_key_only(self):
-        response = self.client.get(reverse('notification_list'))
+    def test_public_key_ships_but_the_private_key_never_does(self):
+        response = self.client.get(reverse('home'))
 
         self.assertContains(response, FAKE_PUBLIC)
         self.assertNotContains(response, FAKE_PRIVATE)
 
     @CONFIGURED
-    def test_feed_offers_the_enable_button(self):
-        response = self.client.get(reverse('notification_list'))
+    def test_toggle_is_available_on_any_owner_page(self):
+        for page in ('home', 'notification_list'):
+            with self.subTest(page=page):
+                response = self.client.get(reverse(page))
+                self.assertContains(response, 'pushToggle')
+                self.assertContains(response, reverse('push_subscribe'))
 
-        self.assertContains(response, 'push-toggle')
-        self.assertContains(response, reverse('push_subscribe'))
+    @CONFIGURED
+    def test_office_gets_neither_toggle_nor_key(self):
+        """Office receives no notifications, so a device toggle would do nothing."""
+        self.client.logout()
+        self.client.login(username='officestaff', password=PASSWORD)
+
+        response = self.client.get(reverse('home'))
+
+        self.assertNotContains(response, 'pushToggle')
+        self.assertNotContains(response, FAKE_PUBLIC)

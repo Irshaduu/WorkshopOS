@@ -135,7 +135,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (27 test files; always uses SQLite, see below)
+# Run full test suite (28 test files; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -197,7 +197,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 457 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 470 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -251,6 +251,11 @@ The whole event list lives in **`workshop/notifications.py`**. Add an event to `
 - Audience is resolved by **group membership**, not `is_superuser` — see the Owner-group note under Security below for why that distinction is load-bearing.
 - `notify()` swallows its own errors so a malformed body can't fail a payment. That promise stops at database errors inside an atomic block: the surrounding transaction is already doomed and shouldn't be rescued.
 - Severity is a tier, not decoration: **`CRITICAL` events send a Web Push, `INFO` events only land in the feed.** Keep the critical list short — a phone that buzzes for routine activity stops being read for the things that matter.
+- **Read rows are swept after `RETENTION_DAYS` (14); unread are kept forever.** This table is a feed, not an archive — the permanent record lives in `DeletionLog`, the audit pages and the ledgers.
+- **The bell opens a floating panel, fetched lazily** from `/notifications/panel/`. The bell is on every owner page, so baking ten rows plus their actors into every response would cost a join on pages that have nothing to do with notifications; only the unread *count* rides in the context processor. The panel caps at `PANEL_SIZE`, and the badge caps at `99+` — past that the exact number changes nothing an owner would do.
+- **Row markup lives in one partial** (`notifications/_row.html`), shared by the panel and the full feed, so "read" cannot come to look like two different things. Read state is carried by four signals — accent rail, background, title weight, trailing icon — not a dot alone, which is easy to miss on a phone.
+- **Push on/silent is the small bell in the panel header**, not a card. `notifications.js` owns both the panel and that toggle.
+- Anything owner-gated that lives *after* `{% endwith %}` in `base.html` must use `request.user|has_group:"Owner"`, not `is_owner` — that variable's scope ends there, and a stale `{% if is_owner %}` silently evaluated false, which is how the panel's JavaScript went missing once.
 
 ### Web Push — a delivery layer, never a source of truth
 `workshop/push.py` sends; `workshop/views/push.py` is the HTTP surface; `PushSubscription` is one row per **device**, not per user.
@@ -260,6 +265,11 @@ The whole event list lives in **`workshop/notifications.py`**. Add an event to `
 - **404/410 from the push service means that endpoint is permanently gone** — the row is deleted, not retried. Other errors are counted and dropped after `MAX_FAILURES`.
 - **iOS only delivers push to an app added to the Home Screen.** In a plain Safari tab `PushManager` is simply absent. `static/js/push.js` detects this and says so explicitly; without that the button just looks broken on the exact device the owners use.
 - Push is **optional in every environment**. A deploy with no VAPID keys is valid and degrades quietly.
+
+### Signed-out pages — one shell, two faces
+Both login faces and both password-recovery steps extend `workshop/auth/base_auth.html`. A face overrides only its accent colour and its copy; the layout, the input styling and the submit guard are shared. **Light theme, no imagery** — the wordmark and a 3px accent hairline carry the brand; blue (`#2563eb`) is the Staff face, red (`#dc2626`) the Admin face. That mirrors `login_view` being one engine behind two faces, and it is why the two doors cannot drift apart visually the way the two *views* once did.
+- The views pass `AUTH_PAGE` (`hide_chrome=True`), which suppresses the nav bar **and** the PWA install banner. A signed-out page owns the whole viewport; a bar offering "Floor" and "Login" above a login form is noise, and prompting someone to install the app before they have proved they can get into it is premature.
+- **Every auth form must keep `js-auth-form` / `js-auth-submit`.** The guard in `base_auth.html` blocks a second submit while one is in flight — the staff form previously had none, so the button could be pressed repeatedly, each press another POST and each wrong one spending part of the account's five-attempt lockout budget. The `dataset.submitting` flag does the work, not `disabled`: a button disabled inside its own submit handler still lets a queued Enter keypress through in some browsers.
 
 ### Security model ("Steel Gate")
 - **Two lockouts, different units.** `AccountLockout` is the primary: **5 failures locks that one account** for 15 minutes. `FailedAttempt` is a backstop counting by direct `REMOTE_ADDR` (X-Forwarded-For is intentionally ignored to prevent spoofed-IP bypass), at **`IP_FAILURE_LIMIT = 20`**. The IP threshold was raised from 5 on 2026-07-28 because the unit was wrong for this business: the laptop, the tablet and both owners' phones leave through one connection, so five fumbled attempts on the Floor tablet locked the owners out of their own devices. Don't lower it back — per-account lockout is what actually stops a guessing attack, and the IP gate now only catches a spray across many accounts. Tests touching either must clear `FailedAttempt.objects.all()` in `setUp` to avoid cross-test contamination.
@@ -345,7 +355,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (24 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`) — 27 files, 457 tests. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (25 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`) — 28 files, 470 tests. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

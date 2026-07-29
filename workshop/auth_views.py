@@ -51,6 +51,12 @@ IP_FAILURE_LIMIT = 20
 IP_LOCKOUT_MINUTES = 15
 
 
+# Signed-out pages own the whole viewport: `base.html` skips the nav bar when
+# this is set. A bar offering "Floor" and "Login" above a login form is noise on
+# a page whose only job is signing in.
+AUTH_PAGE = {'hide_chrome': True}
+
+
 def get_client_ip(request):
     """
     Returns the direct client IP.
@@ -247,7 +253,7 @@ def login_view(request, face='staff'):
 
     if check_ip_lockout(request):
         messages.error(request, "Too many failed attempts from this network. Please wait 15 minutes.")
-        return render(request, template)
+        return render(request, template, AUTH_PAGE)
 
     if request.method == 'POST':
         identifier = request.POST.get('username', '').strip()
@@ -269,7 +275,7 @@ def login_view(request, face='staff'):
                     f"This account is locked after too many failed attempts. "
                     f"Try again in {locked_for} minute{'s' if locked_for != 1 else ''}."
                 )
-                return render(request, template)
+                return render(request, template, AUTH_PAGE)
 
         # Authenticate against the resolved username so email and mobile work.
         # When nothing resolved we still call authenticate() with the raw input:
@@ -314,7 +320,7 @@ def login_view(request, face='staff'):
                 )
         messages.error(request, "Invalid credentials.")
 
-    return render(request, template)
+    return render(request, template, AUTH_PAGE)
 
 
 # ============================================================
@@ -442,7 +448,7 @@ def owner_forgot_password_view(request):
         messages.success(request, GENERIC_RESET_REPLY)
         return redirect('owner_reset_password')
 
-    return render(request, 'workshop/auth/forgot_password.html')
+    return render(request, 'workshop/auth/forgot_password.html', AUTH_PAGE)
 
 
 # ============================================================
@@ -470,11 +476,11 @@ def owner_reset_password_view(request):
         # to request another one for a typo they can simply fix.
         if len(new_password) < 8:
             messages.error(request, "Password must be at least 8 characters.")
-            return render(request, 'workshop/auth/reset_password.html')
+            return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
 
         if new_password != confirm_password:
             messages.error(request, "Passwords do not match.")
-            return render(request, 'workshop/auth/reset_password.html')
+            return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
 
         user_id = request.session.get('pwd_reset_user_id')
         user = User.objects.filter(pk=user_id).first() if user_id else None
@@ -486,7 +492,7 @@ def owner_reset_password_view(request):
                 validate_password(new_password, user=user)
             except ValidationError as exc:
                 messages.error(request, f"Password not strong enough: {', '.join(exc.messages)}")
-                return render(request, 'workshop/auth/reset_password.html')
+                return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
 
         otp = PasswordResetOTP.objects.filter(user=user).first() if user else None
 
@@ -510,7 +516,7 @@ def owner_reset_password_view(request):
                 request,
                 f"Incorrect code. {remaining} attempt{'s' if remaining != 1 else ''} remaining."
             )
-            return render(request, 'workshop/auth/reset_password.html')
+            return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
 
         # --- Verified. Apply the new password. ---
         user.set_password(new_password)
@@ -532,7 +538,7 @@ def owner_reset_password_view(request):
         messages.success(request, "Password changed. Please sign in with your new password.")
         return redirect('admin_login')
 
-    return render(request, 'workshop/auth/reset_password.html')
+    return render(request, 'workshop/auth/reset_password.html', AUTH_PAGE)
 
 
 def _terminate_all_sessions(user):

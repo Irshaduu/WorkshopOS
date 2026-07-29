@@ -51,6 +51,7 @@ from .salary_advance import (
     salary_payment_form, salary_payment_delete,
 )
 from .notifications import (
-    notification_list, notification_open, notification_mark_all_read,
+    notification_list, notification_panel, notification_open,
+    notification_mark_read, notification_mark_all_read,
 )
 from .push import service_worker, push_subscribe, push_unsubscribe

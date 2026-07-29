@@ -6,6 +6,8 @@ database is a network hop away (Singapore, ~75 ms a query — see CLAUDE.md), so
 anything added here is paid for on every page load by every user.
 """
 
+from django.conf import settings
+
 from .models import Notification
 
 
@@ -30,4 +32,10 @@ def notifications(request):
     if not is_owner:
         return {}
 
-    return {'unread_notifications': Notification.unread_count(user)}
+    return {
+        'unread_notifications': Notification.unread_count(user),
+        # The push on/silent toggle lives in the nav panel, so its public key has
+        # to travel with the bell rather than with one view. Reading a setting is
+        # free — no query, unlike the count above.
+        'vapid_public_key': settings.VAPID_PUBLIC_KEY,
+    }

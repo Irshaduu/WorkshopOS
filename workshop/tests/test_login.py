@@ -65,6 +65,40 @@ class LoginFacesTests(TestCase):
         self.assertEqual(self.client.get(self.staff_url).status_code, 200)
         self.assertEqual(self.client.get(self.owner_url).status_code, 200)
 
+    def test_signed_out_pages_carry_no_app_chrome(self):
+        """
+        The auth screens own the whole viewport. A nav bar offering "Floor" and
+        "Login" above a login form, plus an "install this app" prompt aimed at
+        someone who has not proved they can get in yet, made the front door look
+        like a fragment of the app.
+        """
+        for url in (self.staff_url, self.owner_url, reverse('owner_forgot_password')):
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertNotIn('<nav ', html)
+                self.assertNotIn('pwaInstallBanner', html)
+
+    def test_signed_in_pages_still_have_the_nav(self):
+        """The suppression is scoped to auth pages, not switched on globally."""
+        self.client.login(username='Sahad', password=PASSWORD)
+
+        html = self.client.get(reverse('home')).content.decode()
+
+        self.assertIn('<nav ', html)
+
+    def test_submit_button_is_guarded_against_double_posts(self):
+        """
+        The staff form had no guard, so the button could be pressed repeatedly
+        while a sign-in was in flight — each press another POST, each wrong one
+        spending part of the account's five-attempt lockout budget.
+        """
+        for url in (self.staff_url, self.owner_url):
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertIn('js-auth-form', html)
+                self.assertIn('js-auth-submit', html)
+                self.assertIn("dataset.submitting", html)
+
     def test_each_face_offers_the_other(self):
         self.assertContains(self.client.get(self.staff_url), self.owner_url)
         self.assertContains(self.client.get(self.owner_url), self.staff_url)

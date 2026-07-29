@@ -9,10 +9,11 @@ The event catalogue and the `notify()` entry point live in `workshop/notificatio
 that is testable without a request, views that only fetch and render.
 """
 
-from django.conf import settings
 from django.contrib import messages
 from django.core.paginator import Paginator
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 from django.urls import reverse
 from django.utils import timezone
 
@@ -20,6 +21,11 @@ from ..decorators import owner_required
 from ..models import Notification
 
 PAGE_SIZE = 45
+
+# How many the floating panel shows. Small on purpose: the panel is a glance,
+# not a workspace, and it must stay instant with thousands of rows behind it —
+# "View all" is one tap away for the rest.
+PANEL_SIZE = 10
 
 
 @owner_required
@@ -42,10 +48,50 @@ def notification_list(request):
     return render(request, 'workshop/notifications/notification_list.html', {
         'page_obj': page,
         'unread_total': Notification.unread_count(request.user),
-        # Public half of the VAPID pair — safe to ship to the browser, and
-        # required by PushManager.subscribe(). Empty when push is unconfigured,
-        # which the page reports rather than failing.
-        'vapid_public_key': settings.VAPID_PUBLIC_KEY,
+        'retention_days': Notification.RETENTION_DAYS,
+    })
+
+
+@owner_required
+def notification_panel(request):
+    """
+    The floating panel's contents, fetched on open rather than rendered into
+    every page.
+
+    That laziness is the point: the bell appears on every screen in the app, and
+    baking ten rows plus their actors into every response would cost a join on
+    pages that have nothing to do with notifications. The unread *count* is
+    cheap enough to carry in the context processor; the list is not.
+    """
+    notes = list(
+        Notification.objects
+        .filter(recipient=request.user)
+        .select_related('actor')[:PANEL_SIZE]
+    )
+
+    return render(request, 'workshop/notifications/_panel_items.html', {
+        'notes': notes,
+        'unread_total': Notification.unread_count(request.user),
+    })
+
+
+@owner_required
+@require_POST
+def notification_mark_read(request, pk):
+    """
+    Mark one read without navigating — used by the panel, which stays open.
+
+    Separate from `notification_open` because that one redirects; an AJAX caller
+    following a 302 into a full HTML page would be wasteful and confusing.
+    """
+    updated = Notification.objects.filter(
+        pk=pk, recipient=request.user, read_at__isnull=True,
+    ).update(read_at=timezone.now())
+
+    return JsonResponse({
+        'ok': True,
+        'changed': bool(updated),
+        'unread': Notification.unread_count(request.user),
     })
 
 
@@ -71,9 +117,16 @@ def notification_open(request, pk):
 @owner_required
 def notification_mark_all_read(request):
     """Clear the badge in one action. POST-only — it changes state."""
-    if request.method == 'POST':
-        cleared = Notification.mark_all_read(request.user)
-        if cleared:
-            messages.success(request, f"Marked {cleared} notification{'s' if cleared != 1 else ''} as read.")
+    if request.method != 'POST':
+        return redirect('notification_list')
 
+    cleared = Notification.mark_all_read(request.user)
+
+    # The panel clears in place rather than navigating; only the full page needs
+    # a flash message and a redirect.
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'ok': True, 'cleared': cleared, 'unread': 0})
+
+    if cleared:
+        messages.success(request, f"Marked {cleared} notification{'s' if cleared != 1 else ''} as read.")
     return redirect('notification_list')

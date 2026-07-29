@@ -269,6 +269,82 @@ class NotificationFeedTests(TestCase):
         self.assertNotContains(response, 'bi-bell-fill')
         self.assertEqual(response.context['unread_notifications'], 0)
 
+    # -- floating panel -------------------------------------------------
+    def test_panel_returns_only_the_recent_slice(self):
+        """
+        The panel is a glance, not a workspace. It must stay instant with
+        thousands of rows behind it, so it never renders the whole feed.
+        """
+        from workshop.views.notifications import PANEL_SIZE
+
+        for i in range(PANEL_SIZE + 15):
+            Notification.objects.create(
+                recipient=self.owner, event='LOGIN', title='t', body=f'note {i}',
+            )
+
+        response = self.client.get(reverse('notification_panel'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content.decode().count('nf-row'), PANEL_SIZE)
+
+    def test_panel_shows_only_this_owner(self):
+        Notification.objects.create(
+            recipient=self.other_owner, event='LOGIN', title='t', body='private to Rijas',
+        )
+
+        response = self.client.get(reverse('notification_panel'))
+
+        self.assertNotContains(response, 'private to Rijas')
+
+    def test_office_cannot_open_the_panel(self):
+        self.client.logout()
+        self.client.login(username='officestaff', password=PASSWORD)
+
+        self.assertEqual(self.client.get(reverse('notification_panel')).status_code, 403)
+
+    def test_mark_read_without_navigating(self):
+        note = Notification.objects.create(
+            recipient=self.owner, event='LOGIN', title='t', body='b',
+        )
+
+        response = self.client.post(reverse('notification_mark_read', args=[note.pk]))
+
+        note.refresh_from_db()
+        self.assertIsNotNone(note.read_at)
+        self.assertEqual(response.json()['unread'], 0)
+
+    def test_mark_read_cannot_touch_another_owners_copy(self):
+        theirs = Notification.objects.create(
+            recipient=self.other_owner, event='LOGIN', title='t', body='b',
+        )
+
+        self.client.post(reverse('notification_mark_read', args=[theirs.pk]))
+
+        theirs.refresh_from_db()
+        self.assertIsNone(theirs.read_at)
+
+    def test_mark_all_read_answers_json_for_the_panel(self):
+        notify('LOGIN', 'one')
+
+        response = self.client.post(
+            reverse('notification_mark_all_read'), HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.json()['unread'], 0)
+        self.assertEqual(Notification.unread_count(self.owner), 0)
+
+    def test_badge_caps_at_99_plus(self):
+        """A four-digit count breaks the pill and tells an owner nothing extra."""
+        Notification.objects.bulk_create([
+            Notification(recipient=self.owner, event='LOGIN', title='t', body='b')
+            for _ in range(105)
+        ])
+
+        response = self.client.get(reverse('home'))
+
+        self.assertContains(response, '99+')
+        self.assertNotContains(response, '>105<')
+
     def test_office_is_not_charged_for_the_count(self):
         """The bell is owner-only, so Office must not pay for a query it never sees."""
         self.client.logout()

@@ -141,15 +141,17 @@ class ChangePasswordTests(TestCase):
         self.assertEqual(response.status_code, 302)
 
     # -- entry point --------------------------------------------------
-    def test_drawer_shows_the_link_to_owners_only(self):
+    def test_no_drawer_entry_but_the_route_still_works(self):
+        """
+        The drawer link was removed on owner request (2026-07-29): owners sign
+        out and use Forgot Password instead.
+
+        The route is deliberately kept. It is the only way to set a password
+        with no email involved, which is what makes handover possible on a day
+        when SMTP is not configured yet — so it must not rot just because
+        nothing links to it.
+        """
         self._login_owner()
-        owner_view = self.client.get(reverse('home'))
-        self.assertContains(owner_view, self.url)
 
-        self.client.logout()
-        office = User.objects.create_user(username='officestaff2', password=CURRENT)
-        office.groups.add(Group.objects.get(name='Office'))
-        self.client.login(username='officestaff2', password=CURRENT)
-
-        office_view = self.client.get(reverse('home'))
-        self.assertNotContains(office_view, self.url)
+        self.assertNotContains(self.client.get(reverse('home')), self.url)
+        self.assertEqual(self.client.get(self.url).status_code, 200)

@@ -86,7 +86,11 @@ class Notification(models.Model):
         (SEVERITY_INFO, 'Info'),
     ]
 
-    RETENTION_DAYS = 90
+    # Read notifications are cleared after a fortnight. They have already been
+    # seen, and the permanent record of anything that mattered lives in
+    # DeletionLog, the audit pages or the ledgers — this table is a feed, not an
+    # archive, and keeping it short is what stops it becoming one.
+    RETENTION_DAYS = 14
 
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     event = models.CharField(max_length=32, db_index=True)
@@ -1349,6 +1353,7 @@ class DeletionLog(models.Model):
 
         # Imported here, not at module scope: `notifications` imports this module,
         # so a top-level import would be circular.
+        from django.urls import reverse
         from .notifications import notify
 
         amount_text = f" (₹{amount})" if amount is not None else ""
@@ -1356,7 +1361,10 @@ class DeletionLog(models.Model):
             'RECORD_DELETED',
             f"{entry.get_entity_type_display()} deleted: {entry.entity_label}{amount_text}",
             actor=entry.deleted_by,
-            url=f"/deletion-history/{entry.pk}/",
+            # reverse(), not an f-string path. A notification's whole value is
+            # that tapping it lands on the record; a hardcoded URL survives a
+            # route change silently and starts sending owners to a 404.
+            url=reverse('deletion_history_detail', args=[entry.pk]),
             object_type=entity_type,
             object_id=entry.pk,
         )

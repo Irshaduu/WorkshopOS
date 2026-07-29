@@ -1,0 +1,39 @@
+{% comment %}
+One notification row, shared by the floating panel and the full feed so read and
+unread can never come to mean different things in the two places.
+
+Read state is carried by four signals, not a dot alone: the accent rail down the
+left edge, the background, the weight of the title, and the trailing icon. A dot
+is easy to miss at a glance on a phone, which is where these are read.
+{% endcomment %}
+<a class="nf-row{% if note.is_unread %} is-unread{% else %} is-read{% endif %}{% if note.severity == 'CRITICAL' %} is-critical{% endif %}"
+   href="{% url 'notification_open' note.pk %}"
+   data-note-id="{{ note.pk }}">
+
+    <span class="nf-rail" aria-hidden="true"></span>
+
+    <span class="nf-main">
+        <span class="nf-title">
+            {{ note.title }}
+            {% if note.severity == 'CRITICAL' and note.is_unread %}
+            <span class="nf-tag">Important</span>
+            {% endif %}
+        </span>
+
+        {% if note.body %}<span class="nf-text">{{ note.body }}</span>{% endif %}
+
+        <span class="nf-meta">
+            {{ note.created_at|date:"d M, g:i a" }}{% if note.actor %} · {{ note.actor.username }}{% endif %}
+        </span>
+    </span>
+
+    <span class="nf-state" aria-hidden="true">
+        {% if note.is_unread %}
+        <span class="nf-dot"></span>
+        {% else %}
+        <i class="bi bi-check2"></i>
+        {% endif %}
+    </span>
+
+    <span class="visually-hidden">{% if note.is_unread %}Unread{% else %}Read{% endif %}</span>
+</a>

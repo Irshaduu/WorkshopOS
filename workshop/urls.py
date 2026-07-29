@@ -136,7 +136,9 @@ urlpatterns = [
     # NOTIFICATIONS (Owner only — see workshop/notifications.py for the catalogue)
     # ------------------
     path('notifications/', views.notification_list, name='notification_list'),
+    path('notifications/panel/', views.notification_panel, name='notification_panel'),
     path('notifications/<int:pk>/open/', views.notification_open, name='notification_open'),
+    path('notifications/<int:pk>/read/', views.notification_mark_read, name='notification_mark_read'),
     path('notifications/read-all/', views.notification_mark_all_read, name='notification_mark_all_read'),
 
     # Web Push. `sw.js` MUST stay at the origin root — a service worker can only

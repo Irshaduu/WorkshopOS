@@ -1,54 +1,40 @@
-{% extends 'workshop/base.html' %}
+{% extends 'workshop/auth/base_auth.html' %}
 
-{% block title %}Login{% endblock %}
-
-{% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6 col-lg-4">
-
-        <div class="card shadow-sm border-0 mt-5">
-            <div class="card-body p-4">
-                <h4 class="text-center mb-4">🔧 Staff Login</h4>
-
-                {# Messages are rendered once by base.html — see CLAUDE.md. #}
-
-                <form method="post" action="{% url 'login' %}">
-                    {% csrf_token %}
 {% comment %}
-Set when a decorator bounced an anonymous visitor off a protected page — sends
-them back there after signing in. Validated server-side in _safe_next().
+Staff face. Same view, same authentication, same lockouts as the owner face —
+only the accent and the copy differ, and Forgot Password is absent because
+Office and Floor accounts carry no email.
 {% endcomment %}
-                    <input type="hidden" name="next" value="{{ request.GET.next|default:'' }}">
 
-                    <div class="mb-3">
-                        <label for="id_username" class="form-label">Username</label>
-                        <input type="text" name="username" class="form-control" id="id_username"
-                               autocomplete="username" required autofocus>
-                    </div>
+{% block title %}Staff Login{% endblock %}
 
-                    <div class="mb-4">
-                        <label for="id_password" class="form-label">Password</label>
-                        <input type="password" name="password" class="form-control" id="id_password"
-                               autocomplete="current-password" required>
-                    </div>
+{% block auth_accent %}#2563eb{% endblock %}
+{% block auth_heading %}Staff Sign In{% endblock %}
+{% block auth_subtitle %}{% endblock %}
+{% block auth_action %}{% url 'login' %}{% endblock %}
+{% block auth_button %}Sign In{% endblock %}
 
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg">Login</button>
-                    </div>
-                </form>
-
-            </div>
+{% block auth_fields %}
+    <div class="auth-field">
+        <div class="auth-field-head">
+            <label class="auth-label" for="id_username">Username</label>
         </div>
-
-        <!-- Switch to the owner face. Deliberately a real, readable control:
-             the previous version was an opacity-50 "HQ" link that owners had to
-             know was there. -->
-        <div class="text-center mt-4">
-            <a href="{% url 'admin_login' %}" class="btn btn-outline-secondary btn-sm px-3 py-2">
-                <i class="bi bi-shield-lock"></i> Admin login
-            </a>
-        </div>
-
+        <input type="text" id="id_username" name="username" class="auth-input"
+               placeholder="Your username" autocomplete="username"
+               autocapitalize="none" spellcheck="false" required autofocus>
     </div>
-</div>
+
+    <div class="auth-field">
+        <div class="auth-field-head">
+            <label class="auth-label" for="id_password">Password</label>
+        </div>
+        <input type="password" id="id_password" name="password" class="auth-input"
+               placeholder="••••••••" autocomplete="current-password" required>
+    </div>
+{% endblock %}
+
+{% block auth_switch %}
+    <a href="{% url 'admin_login' %}" class="auth-switch">
+        <i class="bi bi-shield-lock"></i> Admin sign in
+    </a>
 {% endblock %}

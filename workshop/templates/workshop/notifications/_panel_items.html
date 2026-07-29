@@ -1,0 +1,13 @@
+{% comment %}
+Panel body only — fetched on open. Deliberately not a full page: the bell is on
+every screen, so this must stay cheap to produce and cheap to inject.
+{% endcomment %}
+{% for note in notes %}
+    {% include 'workshop/notifications/_row.html' with note=note %}
+{% empty %}
+<div class="nf-empty nf-empty--panel">
+    <i class="bi bi-bell-slash"></i>
+    <span>Nothing yet</span>
+    <small>Sign-ins, large discounts, deletions and salary activity land here.</small>
+</div>
+{% endfor %}

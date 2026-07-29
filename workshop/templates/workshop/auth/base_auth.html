@@ -1,0 +1,261 @@
+{% extends 'workshop/base.html' %}
+
+{% comment %}
+Shared shell for every signed-out page — both login faces, and the two
+password-recovery steps.
+
+One structure, one stylesheet, one submit guard; a face overrides only its
+accent colour and its copy. That mirrors `login_view`, which is likewise one
+engine behind two faces — and it is why the two doors cannot drift apart
+visually the way the two *views* once did.
+
+Light theme, no imagery: the wordmark and the accent hairline carry the brand.
+{% endcomment %}
+
+{% block body_class %}auth-page{% endblock %}
+
+{% block content %}
+<style>
+    /* The signed-out pages own the whole viewport: no app chrome, no column
+       constraint. `hide_chrome` in the view suppresses the nav bar and the PWA
+       install prompt. */
+    body.auth-page {
+        background:
+            radial-gradient(900px 480px at 50% -8%, #ffffff 0%, transparent 62%),
+            linear-gradient(180deg, #f7f8fa 0%, #eef1f5 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+    }
+    body.auth-page .main-content {
+        margin: 0 auto !important;
+        max-width: none;
+        padding: 0;
+    }
+
+    .auth-shell {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 20px 40px;
+        gap: 20px;
+    }
+
+    /* ---- Wordmark ---- */
+    .auth-brand-name {
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        color: #97a1af;
+    }
+
+    /* ---- Card ---- */
+    .auth-card {
+        width: 100%;
+        max-width: 420px;
+        background: #ffffff;
+        border: 1px solid #e6e9ee;
+        border-radius: 20px;
+        padding: 36px 32px 30px;
+        box-shadow:
+            0 1px 2px rgba(16, 24, 40, 0.04),
+            0 12px 32px rgba(16, 24, 40, 0.08);
+        position: relative;
+        overflow: hidden;
+    }
+    /* The accent hairline is the only ornament, and the only thing that tells
+       the two faces apart at a glance — no second visual language, no imagery. */
+    .auth-card::before {
+        content: '';
+        position: absolute; inset: 0 0 auto 0; height: 3px;
+        background: var(--auth-accent);
+    }
+
+    .auth-head { text-align: center; margin-bottom: 26px; }
+    .auth-head h1 {
+        font-size: 1.42rem;
+        font-weight: 800;
+        margin: 0;
+        color: #101828;
+        letter-spacing: -0.015em;
+    }
+    .auth-head p {
+        font-size: 0.84rem;
+        margin: 8px 0 0;
+        color: #667085;
+        line-height: 1.5;
+    }
+    /* Collapse the gap when a face supplies no subtitle. */
+    .auth-head p:empty { display: none; }
+
+    /* ---- Fields ---- */
+    .auth-field { margin-bottom: 18px; }
+    .auth-field-head {
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: 10px; margin-bottom: 7px;
+    }
+    .auth-label {
+        font-size: 0.68rem; font-weight: 800;
+        letter-spacing: 0.11em; text-transform: uppercase;
+        color: #667085;
+    }
+    .auth-link {
+        font-size: 0.75rem; font-weight: 700;
+        color: var(--auth-accent); text-decoration: none;
+    }
+    .auth-link:hover { color: var(--auth-accent); text-decoration: underline; }
+
+    /* 52px: comfortably past the 44px touch minimum — the Floor tablet and the
+       owners' phones both sign in here. */
+    .auth-input {
+        width: 100%;
+        min-height: 52px;
+        padding: 14px 16px;
+        font-size: 0.95rem;
+        color: #101828;
+        background: #ffffff;
+        border: 1px solid #d5dae2;
+        border-radius: 12px;
+        transition: border-color 0.16s ease, box-shadow 0.16s ease;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    .auth-input::placeholder { color: #a9b2c0; }
+    .auth-input:hover { border-color: #c2c9d4; }
+    .auth-input:focus {
+        outline: none;
+        border-color: var(--auth-accent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--auth-accent) 14%, transparent);
+    }
+
+    .auth-hint {
+        font-size: 0.75rem; color: #98a2b3;
+        margin: 8px 2px 0; line-height: 1.55;
+    }
+
+    /* ---- Submit ---- */
+    .auth-submit {
+        width: 100%;
+        min-height: 52px;
+        margin-top: 6px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--auth-accent);
+        color: #fff;
+        font-size: 0.88rem; font-weight: 800;
+        letter-spacing: 0.05em; text-transform: uppercase;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 10px;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+        transition: filter 0.16s ease, transform 0.08s ease;
+    }
+    .auth-submit:hover:not(:disabled) { filter: brightness(0.94); }
+    .auth-submit:active:not(:disabled) { transform: translateY(1px); }
+    .auth-submit:disabled { opacity: 0.7; cursor: default; }
+    .auth-spinner {
+        width: 16px; height: 16px; border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #fff;
+        animation: auth-spin 0.65s linear infinite;
+        display: none;
+    }
+    .auth-submit.is-busy .auth-spinner { display: block; }
+    @keyframes auth-spin { to { transform: rotate(360deg); } }
+
+    /* ---- Face switch ---- */
+    .auth-switch {
+        display: inline-flex; align-items: center; gap: 8px;
+        min-height: 44px; padding: 0 18px;
+        border-radius: 999px;
+        border: 1px solid #dfe3ea;
+        background: #ffffff;
+        color: #475467;
+        font-size: 0.79rem; font-weight: 700;
+        text-decoration: none;
+        transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+    }
+    .auth-switch:hover {
+        background: #f7f8fa;
+        color: #101828;
+        border-color: #c8cfd9;
+    }
+
+    .auth-foot {
+        font-size: 0.7rem; color: #a9b2c0;
+        letter-spacing: 0.05em;
+    }
+
+    /* base.html renders Django messages inside .main-content; here they need to
+       sit with the card rather than stretched across a full-bleed page. */
+    body.auth-page .main-content .alert {
+        max-width: 420px;
+        margin-left: auto; margin-right: auto;
+        border-radius: 12px;
+        font-size: 0.84rem;
+    }
+
+    @media (max-width: 420px) {
+        .auth-card { padding: 30px 22px 26px; border-radius: 18px; }
+        .auth-shell { padding: 24px 16px 32px; }
+    }
+</style>
+
+<div class="auth-shell">
+
+    <span class="auth-brand-name">{% block auth_brand %}Formula D{% endblock %}</span>
+
+    <div class="auth-card" style="--auth-accent: {% block auth_accent %}#2563eb{% endblock %};">
+        <div class="auth-head">
+            <h1>{% block auth_heading %}Sign in{% endblock %}</h1>
+            <p>{% block auth_subtitle %}{% endblock %}</p>
+        </div>
+
+        <form method="post" action="{% block auth_action %}{% endblock %}" class="js-auth-form" novalidate>
+            {% csrf_token %}
+            {% comment %}Set when a decorator bounced an anonymous visitor off a protected page. Validated server-side by _safe_next().{% endcomment %}
+            <input type="hidden" name="next" value="{{ request.GET.next|default:'' }}">
+
+            {% block auth_fields %}{% endblock %}
+
+            <button type="submit" class="auth-submit js-auth-submit">
+                <span class="auth-spinner" aria-hidden="true"></span>
+                <span class="js-auth-label">{% block auth_button %}Sign in{% endblock %}</span>
+            </button>
+        </form>
+    </div>
+
+    {% block auth_switch %}{% endblock %}
+
+    <span class="auth-foot">{% block auth_foot %}Authorised access only{% endblock %}</span>
+</div>
+
+<script>
+    // Guards against a double submit. The staff form had no guard at all, so the
+    // button could be pressed repeatedly while a sign-in was still in flight —
+    // each press firing another POST, each wrong one spending part of the
+    // account's five-attempt lockout budget.
+    //
+    // The flag, not the disabled attribute, is what actually prevents the second
+    // submit: a button disabled inside its own submit handler still lets an
+    // already-queued Enter keypress through in some browsers.
+    document.querySelectorAll('.js-auth-form').forEach(function (form) {
+        form.addEventListener('submit', function (event) {
+            if (form.dataset.submitting === '1') {
+                event.preventDefault();
+                return;
+            }
+            form.dataset.submitting = '1';
+
+            var button = form.querySelector('.js-auth-submit');
+            if (button) {
+                button.classList.add('is-busy');
+                button.disabled = true;
+                var label = button.querySelector('.js-auth-label');
+                if (label) { label.textContent = 'Signing in…'; }
+            }
+        });
+    });
+</script>
+{% endblock %}
