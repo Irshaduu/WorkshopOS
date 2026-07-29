@@ -649,6 +649,7 @@ graph TB
 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS` | SMTP transport for password-reset codes |
 | `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | Sending mailbox. The password is a Google **App Password**, not the account password |
 | `DEFAULT_FROM_EMAIL` | Display name + address recipients see |
+| `BUSINESS_NAME` | The name owners know the workshop by (default `Formula D`). Used in the reset email's subject and body — **not** "WorkshopOS", which is the project's internal name and appears nowhere in the UI. A setting rather than a literal so the codebase can serve another workshop without a hunt |
 | `EMAIL_REAL` | Development only. False (default) prints mail to the console instead of sending |
 | `DJANGO_ENV` | Environment selector (development/production) |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL config |

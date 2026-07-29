@@ -37,6 +37,13 @@ INFO = Notification.SEVERITY_INFO
 EVENTS = {
     'LOGIN':            ("Someone signed in",        INFO,     AUDIENCE_OWNERS),
     'ACCOUNT_LOCKED':   ("Account locked",           CRITICAL, AUDIENCE_OWNERS),
+    # The system announced every routine sign-in and stayed silent for the one
+    # event that means an account changed hands. A reset also terminates every
+    # session, so without this the real owner is signed out on all their devices
+    # with no message and no reason — which reads as "the app logged me out
+    # again", the easiest thing in the world to shrug off. CRITICAL so it
+    # reaches the other owner's phone, not just the bell.
+    'PASSWORD_RESET':   ("Password was reset",       CRITICAL, AUDIENCE_OWNERS),
     'USER_CREATED':     ("New login created",        CRITICAL, AUDIENCE_OWNERS),
     'HIGH_DISCOUNT':    ("Large discount given",     CRITICAL, AUDIENCE_OWNERS),
     'RECORD_DELETED':   ("Record permanently deleted", CRITICAL, AUDIENCE_OWNERS),

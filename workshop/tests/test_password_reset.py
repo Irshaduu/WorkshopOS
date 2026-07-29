@@ -20,6 +20,7 @@ The rules these tests exist to hold:
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth.models import User, Group
 from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.sessions.models import Session
@@ -309,6 +310,44 @@ class ResetFlowTests(TestCase):
         self.owner.refresh_from_db()
         self.assertTrue(self.owner.check_password(NEW_PASSWORD))
         self.assertRedirects(response, reverse('admin_login'), fetch_redirect_response=False)
+
+    def test_a_completed_reset_alerts_the_other_owner(self):
+        """
+        The takeover alarm. A reset also terminates every session, so without
+        this the real owner is signed out everywhere with no message and no
+        reason — indistinguishable from the app misbehaving. The person who
+        performed the reset is excluded (`actor`), which is right in both
+        readings: a genuine owner needs no telling, and an intruder should not
+        be handed the warning about themselves.
+        """
+        from workshop.models import Notification
+
+        other = User.objects.create_user(username='Rijas', password=OLD_PASSWORD,
+                                         email='rijas@example.com')
+        other.groups.add(Group.objects.get(name='Owner'))
+
+        self._request_code()
+        self.client.post(self.reset_url, {
+            'otp': self._latest_code(),
+            'new_password': NEW_PASSWORD, 'confirm_password': NEW_PASSWORD,
+        })
+
+        alerts = Notification.objects.filter(event='PASSWORD_RESET')
+        self.assertEqual(list(alerts.values_list('recipient__username', flat=True)), ['Rijas'])
+        self.assertEqual(alerts.first().severity, Notification.SEVERITY_CRITICAL)
+        self.assertIn('Sahad', alerts.first().body)
+
+    def test_the_reset_email_uses_the_business_name_not_the_project_name(self):
+        """
+        The sender reads "Formula D Workshop" and the subject used to say
+        "WorkshopOS" — two names in one message, which is what a phishing filter
+        and a cautious owner both flag. "WorkshopOS" appears nowhere in the UI.
+        """
+        self._request_code()
+
+        self.assertNotIn('WorkshopOS', mail.outbox[0].subject)
+        self.assertNotIn('WorkshopOS', mail.outbox[0].body)
+        self.assertIn(settings.BUSINESS_NAME, mail.outbox[0].subject)
 
     def test_wrong_code_spends_an_attempt_and_keeps_the_password(self):
         self._request_code()

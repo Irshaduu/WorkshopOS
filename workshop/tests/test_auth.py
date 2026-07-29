@@ -106,7 +106,48 @@ class AuthFlowTests(TestCase):
     #
     # Every case it covered has a successor, with the new semantics:
     #   non-existent user  -> ResetFlowTests.test_unknown_account_is_indistinguishable
-    #   cooldown           -> ResetFlowTests.test_throttled_request_sends_nothing_but_looks_the_same
+    #   cooldown           -> ResetFlowTests.test_throttled_request_sends_nothing_and_says_so
     #   short password     -> ResetFlowTests.test_weak_password_does_not_spend_the_code
     #   mismatch           -> ResetFlowTests.test_mismatched_confirmation_does_not_spend_the_code
     #   success + redirect -> ResetFlowTests.test_correct_code_sets_the_new_password
+    #
+    # The cooldown case changed again on 2026-07-29: the throttle *is* now
+    # reported, but only the per-browser one, which is not an existence oracle.
+    # See test_the_visible_throttle_is_not_an_existence_oracle.
+
+
+class LogoutConfirmationTests(TestCase):
+    """
+    Signing out must take two deliberate actions.
+
+    The drawer's Logout button used to be a bare submit: one tap on a phone or
+    the Floor tablet ended the session, and a mechanic mid-job card then needed
+    an owner to type the password back in.
+    """
+
+    def setUp(self):
+        Group.objects.get_or_create(name='Floor')
+        self.user = User.objects.create_user(username='floorhand', password='pw-long-enough')
+        self.user.groups.add(Group.objects.get(name='Floor'))
+        self.client.login(username='floorhand', password='pw-long-enough')
+
+    def test_the_drawer_button_opens_a_confirmation_instead_of_signing_out(self):
+        body = self.client.get(reverse('home')).content.decode()
+
+        self.assertIn('logoutConfirmModal', body)
+        self.assertIn('data-bs-target="#logoutConfirmModal"', body)
+
+    def test_there_is_exactly_one_way_to_sign_out_and_it_is_a_post(self):
+        """
+        A second, unguarded logout control anywhere would quietly reinstate the
+        one-tap sign-out this modal exists to prevent.
+        """
+        body = self.client.get(reverse('home')).content.decode()
+
+        self.assertEqual(body.count(f'action="{reverse("logout")}"'), 1)
+        self.assertIn('method="post"', body)
+
+    def test_logout_still_works_when_confirmed(self):
+        self.client.post(reverse('logout'))
+
+        self.assertNotIn('_auth_user_id', self.client.session)

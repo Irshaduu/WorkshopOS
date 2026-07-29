@@ -150,6 +150,13 @@ destination goes in the drawer, in the section it belongs to.
   carries an `aria-label`. Keep that pairing when adding a pill.
 - Drawer items are role-filtered in the template to match each view's decorator. If you
   change a view's RBAC decorator, update its drawer entry in the same edit.
+- **Logout is confirmed, and there is exactly one logout control in the whole app.** The
+  drawer button is a `data-bs-toggle="modal"` trigger; the POST form lives in
+  `#logoutConfirmModal`, which sits **outside** the off-canvas — a modal nested inside one
+  inherits its stacking context and opens behind the backdrop. Verified layering: modal
+  1055 > modal-backdrop 1050 > offcanvas 1045 > offcanvas-backdrop 1040. A second logout
+  control anywhere would reinstate the one-tap sign-out this prevents, which is why
+  `LogoutConfirmationTests` asserts the page contains exactly one `action="/logout/"`.
 
 ## Commands
 
@@ -278,6 +285,8 @@ The whole event list lives in **`workshop/notifications.py`**. Add an event to `
 - Audience is resolved by **group membership**, not `is_superuser` — see the Owner-group note under Security below for why that distinction is load-bearing.
 - `notify()` swallows its own errors so a malformed body can't fail a payment. That promise stops at database errors inside an atomic block: the surrounding transaction is already doomed and shouldn't be rescued.
 - Severity is a tier, not decoration: **`CRITICAL` events send a Web Push, `INFO` events only land in the feed.** Keep the critical list short — a phone that buzzes for routine activity stops being read for the things that matter.
+- **A notification's `url` must land somewhere that can act on its subject — check the destination actually *contains* it.** `ACCOUNT_LOCKED` pointed every lockout at Control Hub → Accounts, which lists Office and Floor only, and `manage_unlock_account` refuses owner accounts by design. So a locked *owner* opened a page that did not contain the account, did not mention a lockout, and offered nothing to press. It is now routed by role (owner → Security, staff → Accounts) with the remedy stated in the body. When adding an event, ask what the reader will do next and whether that page can do it; an empty `url` falling back to the feed is better than a confident link to the wrong place.
+- **A password reset raises `PASSWORD_RESET` (CRITICAL) to the *other* owner.** Every routine sign-in was announced while the one event meaning an account changed hands was silent — and since a reset also terminates every session, the real owner was signed out everywhere with no message, which reads as the app misbehaving. `actor=user` excludes whoever performed it: a genuine owner needs no telling, and an intruder should not receive the warning about themselves. The victim's own signal is the reset email, which now says to raise it with the other owner.
 - **Read rows are swept after `RETENTION_DAYS` (14); unread are kept forever.** This table is a feed, not an archive — the permanent record lives in `DeletionLog`, the audit pages and the ledgers.
 - **The bell opens a floating panel, fetched lazily** from `/notifications/panel/`. The bell is on every owner page, so baking ten rows plus their actors into every response would cost a join on pages that have nothing to do with notifications; only the unread *count* rides in the context processor. The panel caps at `PANEL_SIZE`, and the badge caps at `99+` — past that the exact number changes nothing an owner would do.
 - **Row markup lives in one partial** (`notifications/_row.html`), shared by the panel and the full feed, so "read" cannot come to look like two different things. Read state is carried by four signals — accent rail, background, title weight, trailing icon — not a dot alone, which is easy to miss on a phone.

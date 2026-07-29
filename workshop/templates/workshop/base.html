@@ -1004,12 +1004,17 @@ widen this and the audience together.
                 set a password without email working, which matters on handover
                 day if SMTP is not configured yet.
                 {% endcomment %}
-                <form method="post" action="{% url 'logout' %}" class="m-0">
-                    {% csrf_token %}
-                    <button type="submit" class="drawer-logout-compact">
-                        <i class="bi bi-box-arrow-right"></i> Logout
-                    </button>
-                </form>
+                {% comment %}
+                Opens the confirmation instead of signing out on the first tap.
+                The button sits inside a drawer that is opened by the same thumb
+                that reaches the top-right of a phone, and signing out costs the
+                Floor tablet a re-entered password mid-job. The POST form lives
+                in the modal (below, outside the drawer) — this is only a trigger.
+                {% endcomment %}
+                <button type="button" class="drawer-logout-compact"
+                        data-bs-toggle="modal" data-bs-target="#logoutConfirmModal">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </button>
             </div>
         </div>
 
@@ -1117,6 +1122,101 @@ widen this and the audience together.
     {% endif %}
 
 {% endwith %}
+
+{% if user.is_authenticated %}
+{% comment %}
+Logout confirmation. Deliberately OUTSIDE the off-canvas drawer: a modal nested
+inside one inherits the drawer's stacking context and opens behind its backdrop.
+Bootstrap's own z-indexes already layer this correctly as siblings (offcanvas
+1045, modal 1055).
+
+Owner-agnostic on purpose — every role signs out, and the Floor tablet is where
+an accidental sign-out costs the most: a mechanic mid-job card has to find an
+owner to type the password back in.
+{% endcomment %}
+<div class="modal fade" id="logoutConfirmModal" tabindex="-1"
+     aria-labelledby="logoutConfirmTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered logout-modal-dialog">
+        <div class="modal-content logout-modal">
+            <div class="logout-modal-icon" aria-hidden="true">
+                <i class="bi bi-box-arrow-right"></i>
+            </div>
+
+            <h2 class="logout-modal-title" id="logoutConfirmTitle">Sign out?</h2>
+            <p class="logout-modal-text">
+                You'll need your username and password to get back in.
+            </p>
+
+            <div class="logout-modal-actions">
+                <button type="button" class="logout-btn logout-btn--stay"
+                        data-bs-dismiss="modal">Stay signed in</button>
+                <form method="post" action="{% url 'logout' %}" class="m-0 logout-modal-form">
+                    {% csrf_token %}
+                    <button type="submit" class="logout-btn logout-btn--go">Sign out</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .logout-modal-dialog { max-width: 380px; }
+    .logout-modal {
+        border: 1px solid var(--color-border);
+        border-radius: 18px;
+        padding: 26px 24px 22px;
+        text-align: center;
+        box-shadow: 0 18px 44px rgba(16, 24, 40, 0.18);
+    }
+    .logout-modal-icon {
+        width: 52px; height: 52px;
+        margin: 0 auto 14px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: #fef2f2;
+        color: #dc2626;
+        font-size: 1.35rem;
+    }
+    .logout-modal-title {
+        font-size: 1.12rem; font-weight: 800;
+        color: var(--color-text); margin: 0;
+    }
+    .logout-modal-text {
+        font-size: 0.86rem; color: var(--color-text-muted);
+        margin: 8px 0 20px; line-height: 1.5;
+    }
+    /* Sign out sits on the right on a wide screen and on top when stacked —
+       either way it is never where a thumb lands by reflex after the drawer's
+       own Logout button. */
+    .logout-modal-actions { display: flex; gap: 10px; }
+    .logout-modal-form { flex: 1; }
+    .logout-btn {
+        width: 100%;
+        min-height: 46px; /* past the 44px touch minimum — this is tapped on the Floor tablet */
+        border-radius: 11px;
+        font-size: 0.87rem; font-weight: 700;
+        cursor: pointer;
+        transition: filter 0.16s ease, background-color 0.16s ease;
+    }
+    .logout-btn--stay {
+        flex: 1;
+        border: 1px solid var(--color-border);
+        background: #fff;
+        color: var(--color-text);
+    }
+    .logout-btn--stay:hover { background: #f7f8fa; }
+    .logout-btn--go {
+        border: 0;
+        background: #dc2626;
+        color: #fff;
+    }
+    .logout-btn--go:hover { filter: brightness(0.94); }
+
+    @media (max-width: 380px) {
+        .logout-modal-actions { flex-direction: column-reverse; }
+    }
+</style>
+{% endif %}
 
     <!-- CONTENT -->
     <main class="main-content">

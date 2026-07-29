@@ -445,6 +445,32 @@ class EventHookTests(TestCase):
         self.assertEqual(self._events().count('ACCOUNT_LOCKED'), 1)
         self.assertEqual(self._events(self.owner).count('ACCOUNT_LOCKED'), 1)
 
+    def test_lockout_of_staff_links_where_it_can_be_unlocked(self):
+        for _ in range(AccountLockout.MAX_FAILURES):
+            self.client.post(reverse('admin_login'),
+                             {'username': 'officestaff', 'password': 'wrong'})
+
+        note = Notification.objects.filter(event='ACCOUNT_LOCKED').first()
+        self.assertIn('section=accounts', note.url)
+
+    def test_lockout_of_an_owner_does_not_link_to_a_page_without_it(self):
+        """
+        Control Hub → Accounts lists Office and Floor only, and unlock refuses
+        owner accounts by design. A locked owner sent there opened a page that
+        did not contain the account, did not mention the lockout, and offered
+        nothing to press — reported as "this notification leads to the wrong
+        page". Anything but the Accounts section is an improvement; Security is
+        the section that answers what an owner lockout actually raises.
+        """
+        for _ in range(AccountLockout.MAX_FAILURES):
+            self.client.post(reverse('admin_login'),
+                             {'username': 'Sahad', 'password': 'wrong'})
+
+        note = Notification.objects.filter(event='ACCOUNT_LOCKED').first()
+        self.assertNotIn('section=accounts', note.url)
+        self.assertIn('section=security', note.url)
+        self.assertIn('cannot be unlocked', note.body)
+
     def test_successful_login_notifies_the_other_owner(self):
         self.client.post(reverse('admin_login'), {'username': 'Sahad', 'password': PASSWORD})
 

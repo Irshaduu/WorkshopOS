@@ -162,6 +162,15 @@ LOGIN_URL = 'login'
 #
 # EMAIL_TIMEOUT is not optional: smtplib blocks indefinitely by default, so a
 # hung SMTP connection would hold the request thread until the browser gave up.
+# The name the *owners* know this workshop by, used in anything they read —
+# currently only the reset email. Deliberately not "WorkshopOS", which is the
+# project's internal name and appears nowhere in the UI: a reset code whose
+# sender says "Formula D Workshop" and whose subject said "WorkshopOS" reads as
+# a phishing attempt to exactly the cautious person it should reassure. A
+# setting rather than a literal because this codebase is intended to serve other
+# workshops later; one env var beats hunting for the hardcoded name.
+BUSINESS_NAME = config('BUSINESS_NAME', default='Formula D')
+
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)

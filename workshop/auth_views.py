@@ -166,15 +166,27 @@ def send_reset_code_email(user, code):
     from django.conf import settings as django_settings
     from django.core.mail import send_mail
 
-    subject = f"{code} is your WorkshopOS password reset code"
+    brand = getattr(django_settings, 'BUSINESS_NAME', 'Formula D')
+
+    subject = f"{code} is your {brand} password reset code"
+    # Two clauses in the fourth paragraph are load-bearing, not padding.
+    # "your password has not changed" is the reassurance: most of these arrive
+    # because the other owner was testing or someone mistyped, and a mail that
+    # only says "someone may be attempting to access your account" reads as
+    # "you are already compromised". "Tell the other owner" is the action —
+    # without it the reader is warned and given nothing to do, and that
+    # escalation is the detection path for the one attack this flow cannot stop
+    # by itself (an intruder who already has the owner's mailbox).
     body = (
         f"Hello {user.username},\n\n"
         f"Your password reset code is: {code}\n\n"
-        f"Enter it in the app to set a new password. It expires in "
-        f"{PasswordResetOTP.VALIDITY_MINUTES} minutes and can be used once.\n\n"
-        f"If you did not ask for this, you can ignore this email - your password "
-        f"has not changed.\n\n"
-        f"This mailbox is not monitored. Please do not reply."
+        f"It expires in {PasswordResetOTP.VALIDITY_MINUTES} minutes and works once. "
+        f"Enter it on the same device and browser where you requested it — it will "
+        f"fail if opened elsewhere.\n\n"
+        f"If you didn't request this, you can ignore it; your password has not "
+        f"changed. If these keep arriving, tell the other owner — someone may be "
+        f"attempting to access your account.\n\n"
+        f"This mailbox is unmonitored. Please do not reply."
     )
 
     try:
@@ -310,11 +322,32 @@ def login_view(request, face='staff'):
             # another notification — an attacker could fill the owners' feed at
             # will, which is both noise and a way to bury something real.
             if failures == AccountLockout.MAX_FAILURES:
+                # Route by whether the locked account can actually be acted on
+                # where we are sending them. Control Hub → Accounts lists Office
+                # and Floor only, and `manage_unlock_account` refuses owners by
+                # design — so a locked *owner* used to open a page that did not
+                # contain the account, did not mention a lockout, and offered
+                # nothing to press. Security at least answers the question an
+                # owner lockout actually raises: whose devices are signed in?
+                locked_owner = (
+                    account.is_superuser
+                    or account.groups.filter(name='Owner').exists()
+                )
+                if locked_owner:
+                    target = reverse('manage_dashboard') + '?section=security'
+                    remedy = (
+                        f"It clears itself in {AccountLockout.LOCKOUT_MINUTES} minutes; "
+                        f"owner accounts cannot be unlocked from Control Hub."
+                    )
+                else:
+                    target = reverse('manage_dashboard') + '?section=accounts'
+                    remedy = "Unlock it from Control Hub → Accounts if this was a mistake."
+
                 notify(
                     'ACCOUNT_LOCKED',
                     f"{account.username} was locked after {failures} failed sign-in "
-                    f"attempts from {get_client_ip(request)}.",
-                    url=reverse('manage_dashboard') + '?section=accounts',
+                    f"attempts from {get_client_ip(request)}. {remedy}",
+                    url=target,
                     object_type='USER',
                     object_id=account.pk,
                 )
@@ -633,6 +666,22 @@ def owner_reset_password_view(request):
         # A reset is how a locked-out owner recovers, so every existing session
         # has to die — a stolen one must not survive the recovery.
         _terminate_all_sessions(user)
+
+        # Tell the *other* owner. `actor=user` excludes the person who just did
+        # it, which is the right audience in both readings: if this was the real
+        # owner they need no telling, and if it was not, the account they just
+        # took over is the last place a warning should land. The victim's own
+        # signal is the reset email itself, which says to raise it here.
+        notify(
+            'PASSWORD_RESET',
+            f"{user.username}'s password was reset with an emailed code — "
+            f"{UserSession.get_device_name(request.META.get('HTTP_USER_AGENT', ''))} "
+            f"· {get_client_ip(request)}. Every device was signed out.",
+            actor=user,
+            url=reverse('manage_dashboard') + '?section=security',
+            object_type='USER',
+            object_id=user.pk,
+        )
 
         for key in ('pwd_reset_pending', 'pwd_reset_user_id'):
             request.session.pop(key, None)
