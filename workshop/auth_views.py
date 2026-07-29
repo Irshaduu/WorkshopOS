@@ -168,7 +168,7 @@ def send_reset_code_email(user, code):
 
     brand = getattr(django_settings, 'BUSINESS_NAME', 'Formula D')
 
-    subject = f"Password Reset Code for your {brand} Account"
+    subject = f"{code} is your {brand} password reset code"
     # Two clauses in the fourth paragraph are load-bearing, not padding.
     # "your password has not changed" is the reassurance: most of these arrive
     # because the other owner was testing or someone mistyped, and a mail that
@@ -181,7 +181,7 @@ def send_reset_code_email(user, code):
         f"Hello {user.username},\n\n"
         f"Your password reset code is: {code}\n\n"
         f"It expires in {PasswordResetOTP.VALIDITY_MINUTES} minutes and works once on the requested device/browser.\n\n"
-        f"⚠️ SECURITY ALERT: If you did NOT request this code, someone may be attempting to access your account. "
+        f"⚠️ If you did NOT request this code, someone may be attempting to access your account. "
         f"Your password has not changed, but please make sure your current password is strong.\n\n"
         f"This mailbox is unmonitored. Please do not reply."
     )
