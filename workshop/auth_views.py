@@ -168,7 +168,7 @@ def send_reset_code_email(user, code):
 
     brand = getattr(django_settings, 'BUSINESS_NAME', 'Formula D')
 
-    subject = f"{code} is your {brand} password reset code"
+    subject = f"Password Reset Code for your {brand} Account"
     # Two clauses in the fourth paragraph are load-bearing, not padding.
     # "your password has not changed" is the reassurance: most of these arrive
     # because the other owner was testing or someone mistyped, and a mail that
@@ -180,12 +180,9 @@ def send_reset_code_email(user, code):
     body = (
         f"Hello {user.username},\n\n"
         f"Your password reset code is: {code}\n\n"
-        f"It expires in {PasswordResetOTP.VALIDITY_MINUTES} minutes and works once. "
-        f"Enter it on the same device and browser where you requested it — it will "
-        f"fail if opened elsewhere.\n\n"
-        f"If you didn't request this, you can ignore it; your password has not "
-        f"changed. If these keep arriving, tell the other owner — someone may be "
-        f"attempting to access your account.\n\n"
+        f"It expires in {PasswordResetOTP.VALIDITY_MINUTES} minutes and works once on the requested device/browser.\n\n"
+        f"⚠️ SECURITY ALERT: If you did NOT request this code, someone may be attempting to access your account. "
+        f"Your password has not changed, but please make sure your current password is strong.\n\n"
         f"This mailbox is unmonitored. Please do not reply."
     )
 
@@ -497,8 +494,8 @@ def _own_request_throttle(request):
             f"That is {PasswordResetOTP.MAX_REQUESTS_PER_HOUR} codes requested from this "
             f"device within an hour, which is the limit. You can request another at "
             f"{ready:%I:%M %p}. If none of them arrived, check the spam folder — and if "
-            f"they are not there either, the address on the account may be wrong, which "
-            f"only the other owner can correct."
+            f"they are not there either, the address on the account may be wrong. "
+            f"Please enter the registered Identifier."
         )
 
     return None
