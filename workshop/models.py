@@ -1109,11 +1109,25 @@ class JobCardSpareItem(models.Model):
         if self.customer_rate is not None and self.quantity is not None:
             self.total_price = (self.customer_rate * self.quantity).quantize(Decimal('0.01'))
 
+        # Which shop this row was billed to BEFORE this save. Moving a spare from
+        # one shop to another has to refresh both ledgers: only refreshing the new
+        # one left the old shop's cached total still counting a row it no longer
+        # owns, so ₹1,000 spent showed as ₹1,000 owed to A *and* ₹1,000 owed to B.
+        # It never self-corrected, and clearing the dropdown stranded the debt on a
+        # shop with no matching row at all.
+        previous_shop_id = None
+        if self.pk:
+            previous_shop_id = (JobCardSpareItem.objects
+                                .filter(pk=self.pk)
+                                .values_list('shop_id', flat=True).first())
+
         super().save(*args, **kwargs)
         if self.job_card:
             self.job_card.update_totals()
-        if self.shop:
-            self.shop.update_totals()
+
+        for shop in SpareShop.objects.filter(
+                pk__in={previous_shop_id, self.shop_id} - {None}):
+            shop.update_totals()
 
     def delete(self, *args, **kwargs):
         job_card = self.job_card

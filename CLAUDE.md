@@ -107,6 +107,29 @@ about to correct one of these, you are about to break the business:
   first and rejected: with two suppliers keyed in one sitting, whichever bill went
   in first froze every draw before the second was known.
 
+- **A spare's shop can change, so BOTH ledgers must be refreshed.** Fixed 2026-07-31
+  (AUD-0080). `JobCardSpareItem.save()` only ever called `self.shop.update_totals()`
+  — the new shop — so moving a spare from A to B left A's cached
+  `total_purchased_amount` still counting a row it no longer owned: one ₹1,000
+  purchase showed as ₹1,000 owed to A *and* ₹1,000 owed to B, permanently, and
+  clearing the dropdown stranded the debt entirely. `save()` now snapshots the
+  previous `shop_id` and refreshes both. The two job-card views need the same guard
+  separately, because they resolve the shop with `.update()` (which skips `save()`)
+  — they add the pre-edit `spare.shop_id` to `shops_to_update`, which is a set of
+  **ids**, not objects. Guarded by `MovingASpareBetweenShopsTests`.
+
+- **Floor may not set prices, and that is enforced on the SERVER.** Fixed 2026-07-31
+  (AUD-0081). The template hides prices from Floor but still renders the inputs
+  inside a `d-none` cell — it has to, or a mechanic saving the card would blank what
+  Office entered. That left the rule as UI-only: a Floor login POSTing
+  `total_price=1` turned a ₹5,000 bill into ₹1. `_price_locked_data()` in
+  `workshop/views/jobcard.py` rewrites every posted `unit_price` / `total_price` /
+  `customer_rate` with the value already stored (blank for a new row) before the
+  formsets are bound, so a crafted POST is inert. Do not "simplify" it by deleting
+  the keys instead — an absent field saves as empty and wipes the price, which is
+  the exact failure the rendered-but-hidden inputs exist to prevent. `JobCardForm`
+  itself carries no money fields, so the parts formsets are the whole surface.
+
 - **A Supplies Shop bill's DISCOUNT is part of what the stock cost, and its DATE
   changes the average.** Added 2026-07-30 after an audit found four cost-attribution
   defects, all fixed together. (a) The discount is apportioned pro-rata across the
@@ -320,7 +343,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (31 test files, 547 tests, ~15-30 min; always uses SQLite, see below)
+# Run full test suite (32 test files, 555 tests, ~15-30 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -382,7 +405,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 547 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 555 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -566,7 +589,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (25 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 31 files, 547 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (25 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 32 files, 555 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

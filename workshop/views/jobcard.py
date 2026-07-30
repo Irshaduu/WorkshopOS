@@ -15,7 +15,50 @@ from ..forms import (
     JobCardForm, JobCardConcernFormSet, JobCardSpareFormSet,
     JobCardInventoryFormSet, JobCardLabourFormSet
 )
-from ..decorators import staff_required, office_required
+from ..decorators import staff_required, office_required, is_office_or_owner
+
+
+# Fields on a job-card part that only Office/Owner may set.
+PRICE_FIELDS = ('unit_price', 'total_price', 'customer_rate')
+
+
+def _price_locked_data(request, jobcard=None):
+    """
+    POST data with every price field forced back to whatever is already stored.
+
+    Prices are hidden from Floor in the template, but the inputs are still
+    rendered — inside a `d-none` cell — because leaving them out would make the
+    formset save blanks over what Office entered. That left the rule enforced in
+    the UI only: a Floor login POSTing `total_price=1` turned a ₹5,000 bill into
+    ₹1, and the same hole existed in the Spare Parts section long before the
+    Inventory one was added.
+
+    Dropping the fields is not an option (it wipes them), so each is overwritten
+    with the value on the existing row: a crafted POST simply has no effect. Rows
+    with no stored counterpart get blank, since a Floor user has no prices to
+    preserve on a part they are adding.
+
+    Office and Owner get `request.POST` untouched.
+    """
+    if is_office_or_owner(request.user):
+        return request.POST
+
+    data = request.POST.copy()
+    stored = {str(s.pk): s for s in jobcard.spares.all()} if jobcard is not None else {}
+
+    for prefix in ('spares', 'inventory'):
+        try:
+            total = int(data.get(f'{prefix}-TOTAL_FORMS') or 0)
+        except (TypeError, ValueError):
+            continue
+        for i in range(total):
+            row = stored.get((data.get(f'{prefix}-{i}-id') or '').strip())
+            for field in PRICE_FIELDS:
+                key = f'{prefix}-{i}-{field}'
+                if key in data:
+                    value = getattr(row, field, None) if row else None
+                    data[key] = '' if value is None else str(value)
+    return data
 
 
 @staff_required
@@ -28,6 +71,7 @@ def jobcard_create(request):
     """
     if request.method == 'POST':
         form = JobCardForm(request.POST)
+        parts_data = _price_locked_data(request)
 
         if form.is_valid():
             jobcard = form.save(commit=False)
@@ -48,8 +92,8 @@ def jobcard_create(request):
                 )
 
                 concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
-                spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
-                inventory_formset = JobCardInventoryFormSet(request.POST, prefix='inventory')
+                spare_formset = JobCardSpareFormSet(parts_data, prefix='spares')
+                inventory_formset = JobCardInventoryFormSet(parts_data, prefix='inventory')
                 labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
 
                 return render(request, 'workshop/jobcard/jobcard_form.html', {
@@ -63,8 +107,8 @@ def jobcard_create(request):
 
             # Formsets initialization for standard save
             concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
-            spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
-            inventory_formset = JobCardInventoryFormSet(request.POST, prefix='inventory')
+            spare_formset = JobCardSpareFormSet(parts_data, prefix='spares')
+            inventory_formset = JobCardInventoryFormSet(parts_data, prefix='inventory')
             labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
 
             if (concern_formset.is_valid() and spare_formset.is_valid()
@@ -116,6 +160,14 @@ def jobcard_create(request):
 
                     shops_to_update = set()
                     for spare in all_spares:
+                        # The formset does not touch the `shop` FK (it only carries `shop_name`),
+                        # so this still holds the shop the row was billed to BEFORE this edit.
+                        # It must be refreshed too: updating only the new shop left the old one
+                        # still counting a row it no longer owns, showing one Rs1,000 purchase
+                        # as Rs1,000 owed to each of two shops, permanently. This path uses
+                        # .update(), so the same guard in JobCardSpareItem.save() never runs here.
+                        if spare.shop_id:
+                            shops_to_update.add(spare.shop_id)
                         # spare_formset.save() just saved the posted PK into spare.shop_name
                         raw_pk = spare.shop_name.strip() if spare.shop_name else ''
                         shop_obj = None
@@ -131,19 +183,19 @@ def jobcard_create(request):
                             shop_name=shop_name_val,
                         )
                         if shop_obj:
-                            shops_to_update.add(shop_obj)
+                            shops_to_update.add(shop_obj.pk)
 
                     # Delete imported unassigned spares to prevent duplicates
                     imported_ids = request.POST.getlist('imported_unassigned_ids')
                     if imported_ids:
                         old_items = JobCardSpareItem.objects.filter(pk__in=imported_ids, job_card__isnull=True)
                         for old_item in old_items.select_related('shop'):
-                            if old_item.shop:
-                                shops_to_update.add(old_item.shop)
+                            if old_item.shop_id:
+                                shops_to_update.add(old_item.shop_id)
                         old_items.delete()
 
-                    # Update totals for all affected shops
-                    for shop in shops_to_update:
+                    # Update totals for every affected shop, old and new alike.
+                    for shop in SpareShop.objects.filter(pk__in=shops_to_update):
                         shop.update_totals()
 
                 messages.success(request, f'Job card for {jobcard.registration_number} created successfully!')
@@ -151,8 +203,8 @@ def jobcard_create(request):
         else:
             # If form is invalid, we still need to initialize formsets for the context
             concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
-            spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
-            inventory_formset = JobCardInventoryFormSet(request.POST, prefix='inventory')
+            spare_formset = JobCardSpareFormSet(parts_data, prefix='spares')
+            inventory_formset = JobCardInventoryFormSet(parts_data, prefix='inventory')
             labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
     else:
         # Pre-fill admitted_date with today's date
@@ -264,9 +316,10 @@ def jobcard_edit(request, pk):
             return redirect('jobcard_edit', pk=pk)
 
         form = JobCardForm(request.POST, instance=jobcard)
+        parts_data = _price_locked_data(request, jobcard)
         concern_formset = JobCardConcernFormSet(request.POST, instance=jobcard, prefix='concerns')
-        spare_formset = JobCardSpareFormSet(request.POST, instance=jobcard, prefix='spares')
-        inventory_formset = JobCardInventoryFormSet(request.POST, instance=jobcard, prefix='inventory')
+        spare_formset = JobCardSpareFormSet(parts_data, instance=jobcard, prefix='spares')
+        inventory_formset = JobCardInventoryFormSet(parts_data, instance=jobcard, prefix='inventory')
         labour_formset = JobCardLabourFormSet(request.POST, instance=jobcard, prefix='labours')
 
         if (form.is_valid() and concern_formset.is_valid() and spare_formset.is_valid()
@@ -333,6 +386,14 @@ def jobcard_edit(request, pk):
 
                 shops_to_update = set()
                 for spare in all_spares:
+                    # The formset does not touch the `shop` FK (it only carries `shop_name`),
+                    # so this still holds the shop the row was billed to BEFORE this edit.
+                    # It must be refreshed too: updating only the new shop left the old one
+                    # still counting a row it no longer owns, showing one Rs1,000 purchase
+                    # as Rs1,000 owed to each of two shops, permanently. This path uses
+                    # .update(), so the same guard in JobCardSpareItem.save() never runs here.
+                    if spare.shop_id:
+                        shops_to_update.add(spare.shop_id)
                     # spare_formset.save() just saved the posted PK into spare.shop_name
                     raw_pk = spare.shop_name.strip() if spare.shop_name else ''
                     shop_obj = None
@@ -348,19 +409,19 @@ def jobcard_edit(request, pk):
                         shop_name=shop_name_val,
                     )
                     if shop_obj:
-                        shops_to_update.add(shop_obj)
+                        shops_to_update.add(shop_obj.pk)
 
                 # Delete imported unassigned spares to prevent duplicates
                 imported_ids = request.POST.getlist('imported_unassigned_ids')
                 if imported_ids:
                     old_items = JobCardSpareItem.objects.filter(pk__in=imported_ids, job_card__isnull=True)
                     for old_item in old_items.select_related('shop'):
-                        if old_item.shop:
-                            shops_to_update.add(old_item.shop)
+                        if old_item.shop_id:
+                            shops_to_update.add(old_item.shop_id)
                     old_items.delete()
 
-                # Update totals for all affected shops
-                for shop in shops_to_update:
+                # Update totals for every affected shop, old and new alike.
+                for shop in SpareShop.objects.filter(pk__in=shops_to_update):
                     shop.update_totals()
 
             messages.success(request, f'Job card for {jobcard.registration_number} updated successfully!')
