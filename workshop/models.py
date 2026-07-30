@@ -1366,6 +1366,7 @@ class DeletionLog(models.Model):
     ENTITY_INVENTORY_ITEM = 'INVENTORY_ITEM'
     ENTITY_SALARY_ADVANCE = 'SALARY_ADVANCE'
     ENTITY_SALARY_PAYMENT = 'SALARY_PAYMENT'
+    ENTITY_UNASSIGNED_SPARE = 'UNASSIGNED_SPARE'
     ENTITY_CHOICES = [
         (ENTITY_JOBCARD, 'Job Card'),
         (ENTITY_BULK_PAYMENT, 'Fleet Account Payment'),
@@ -1376,6 +1377,7 @@ class DeletionLog(models.Model):
         (ENTITY_INVENTORY_ITEM, 'Inventory Product'),
         (ENTITY_SALARY_ADVANCE, 'Salary Advance'),
         (ENTITY_SALARY_PAYMENT, 'Salary Payment'),
+        (ENTITY_UNASSIGNED_SPARE, 'Unassigned Spare'),
     ]
 
     entity_type = models.CharField(max_length=20, choices=ENTITY_CHOICES, db_index=True)

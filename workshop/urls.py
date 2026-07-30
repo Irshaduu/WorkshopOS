@@ -55,6 +55,7 @@ urlpatterns = [
     path('spare-shops/', views.spare_shop_list, name='spare_shop_list'),
     path('spare-shops/create/', views.spare_shop_create, name='spare_shop_create'),
     path('spare-shops/unassigned/', views.unassigned_spares_hub, name='unassigned_spares_hub'),
+    path('spare-shops/unassigned/add/', views.unassigned_spare_add, name='unassigned_spare_add'),
     path('spare-shops/<int:pk>/', views.spare_shop_detail, name='spare_shop_detail'),
     path('spare-shops/<int:pk>/edit/', views.spare_shop_edit, name='spare_shop_edit'),
     path('spare-shops/<int:pk>/pay/', views.spare_shop_pay, name='spare_shop_pay'),
@@ -66,6 +67,7 @@ urlpatterns = [
     path('spare-shops/<int:pk>/add-unassigned/', views.spare_shop_add_unassigned, name='spare_shop_add_unassigned'),
     path('spare-shops/items/<int:item_pk>/unassign/', views.spare_shop_unassign_item, name='spare_shop_unassign_item'),
     path('spare-shops/items/<int:item_pk>/update-price/', views.spare_shop_update_item_price, name='spare_shop_update_item_price'),
+    path('spare-shops/items/<int:item_pk>/delete/', views.spare_shop_delete_unassigned, name='spare_shop_delete_unassigned'),
     
     path('jobcards/<int:pk>/complete/', views.mark_completed, name='mark_completed'),
     path('jobcards/<int:pk>/undo-complete/', views.undo_completed, name='undo_completed'),

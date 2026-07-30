@@ -1,5 +1,5 @@
 import json
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import date, datetime, timedelta
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -504,36 +504,86 @@ def spare_shop_print(request, pk):
 # Unassigned Spares / Legacy Balances
 # -----------------------------------------------------------------------------
 
+# Bounds come from the columns these values land in:
+#   JobCardSpareItem.unit_price  max_digits=10, decimal_places=2
+#   JobCardSpareItem.quantity    max_digits=8,  decimal_places=2
+# A value past either does not fail cleanly — it is written, and then every later
+# read of that shop's ledger raises InvalidOperation while aggregating it. One
+# oversized typo made a shop's page permanently un-openable.
+MAX_UNIT_PRICE = Decimal('99999999.99')
+MAX_QUANTITY = Decimal('999999.99')
+
+
+def _build_unassigned_spare(shop, name, raw_price, raw_qty):
+    """
+    Validate and create one unassigned spare on a shop's ledger.
+
+    Returns `(item, error_message)` — exactly one of the two is set.
+
+    Single entry point on purpose. This row is money owed to a supplier, and it
+    used to be created by a view that accepted a NEGATIVE price (making the shop
+    appear to owe the workshop), a negative or zero quantity, and an oversized
+    price that corrupted the ledger. Any second screen that offered "add" would
+    have inherited all of it, so the rules live here rather than in a view.
+    """
+    if shop is None:
+        return None, "Choose which shop this was bought from."
+    if shop.is_trashed:
+        return None, f"'{shop.name}' is archived. Restore it before adding purchases."
+
+    name = (name or '').strip()
+    if not name:
+        return None, "Item name cannot be empty."
+    name = name[:100]          # matches the column; silently truncating beats a 500
+
+    try:
+        price = Decimal(str(raw_price).strip()) if str(raw_price).strip() else Decimal('0')
+        qty = Decimal(str(raw_qty).strip()) if str(raw_qty).strip() else Decimal('1')
+    except (InvalidOperation, ValueError, TypeError):
+        return None, "Price and quantity must be numbers."
+
+    if price < 0:
+        return None, "Price cannot be negative — that would show the shop owing the workshop."
+    if qty <= 0:
+        return None, "Quantity must be more than zero."
+    if price > MAX_UNIT_PRICE:
+        return None, f"Price is too large (limit ₹{MAX_UNIT_PRICE:,})."
+    if qty > MAX_QUANTITY:
+        return None, f"Quantity is too large (limit {MAX_QUANTITY:,})."
+
+    item = JobCardSpareItem.objects.create(
+        job_card=None,
+        shop=shop,
+        source=JobCardSpareItem.SOURCE_SHOP,
+        spare_part_name=name,
+        unit_price=price.quantize(Decimal('0.01')),
+        quantity=qty.quantize(Decimal('0.01')),
+        status='RECEIVED',
+        ordered_date=timezone.localdate(),
+        received_date=timezone.localdate(),
+    )
+    return item, None
+
 @office_required
 def spare_shop_add_unassigned(request, pk):
     """POST: Add a legacy balance or stock item directly to a shop (job_card=None)."""
-    shop = get_object_or_404(SpareShop, pk=pk)
+    # `is_trashed=False`, matching spare_shop_pay: an archived shop takes no new
+    # activity. The detail page this redirects back to refuses archived shops too,
+    # so accepting the POST here would only redirect the user into a 404.
+    # `_build_unassigned_spare` re-checks, for any caller that resolves the shop
+    # from form input rather than the URL.
+    shop = get_object_or_404(SpareShop, pk=pk, is_trashed=False)
     if request.method == 'POST':
-        spare_part_name = request.POST.get('spare_part_name', '').strip()
-        unit_price = request.POST.get('unit_price', '0')
-        quantity = request.POST.get('quantity', '1')
-        
-        if spare_part_name:
-            try:
-                from decimal import Decimal, InvalidOperation
-                safe_price = Decimal(unit_price) if unit_price else Decimal('0')
-                safe_qty = Decimal(quantity) if quantity else Decimal('1')
-                
-                JobCardSpareItem.objects.create(
-                    job_card=None,
-                    shop=shop,
-                    spare_part_name=spare_part_name,
-                    unit_price=safe_price,
-                    quantity=safe_qty,
-                    status='RECEIVED',
-                    ordered_date=timezone.localdate(),
-                    received_date=timezone.localdate()
-                )
-                messages.success(request, f"Added '{spare_part_name}' to shop ledger.")
-            except (InvalidOperation, ValueError, TypeError):
-                messages.error(request, "Invalid number format for price or quantity.")
+        item, error = _build_unassigned_spare(
+            shop,
+            request.POST.get('spare_part_name'),
+            request.POST.get('unit_price', '0'),
+            request.POST.get('quantity', '1'),
+        )
+        if error:
+            messages.error(request, error)
         else:
-            messages.error(request, "Item name cannot be empty.")
+            messages.success(request, f"Added '{item.spare_part_name}' to shop ledger.")
     return redirect('spare_shop_detail', pk=pk)
 
 
@@ -607,17 +657,99 @@ def spare_shop_update_item_price(request, item_pk):
 
 
 @office_required
+@transaction.atomic
+def spare_shop_delete_unassigned(request, item_pk):
+    """
+    POST: Permanently delete an UNASSIGNED spare from a shop's ledger.
+
+    Scoped to rows with no job card on purpose. A spare already fitted to a car is
+    removed from that car's Spare Parts section instead, so every row has exactly
+    one screen that owns deleting it.
+
+    Until 2026-07-31 there was no way to delete one at all — no route, no button,
+    and `/admin/` unreachable by design. A mistyped entry on a shop ledger
+    therefore inflated what the workshop owed that shop permanently, with nothing
+    anywhere able to remove it. Logged to Deletion History like every other
+    permanent delete of a financial record, and there is no restore.
+    """
+    item = get_object_or_404(
+        JobCardSpareItem.objects.select_related('shop'),
+        pk=item_pk, job_card__isnull=True,
+    )
+    if request.method != 'POST':
+        return redirect('unassigned_spares_hub')
+
+    shop = item.shop
+    name = item.spare_part_name or 'Unnamed spare'
+    cost = (item.unit_price or Decimal('0')) * (item.quantity or Decimal('1'))
+
+    DeletionLog.record(
+        DeletionLog.ENTITY_UNASSIGNED_SPARE, item,
+        user=request.user,
+        reason=request.POST.get('reason', '').strip(),
+        amount=cost,
+        label=f"{name} × {item.quantity or 1} · {shop.name if shop else 'no shop'}",
+    )
+    item.delete()   # JobCardSpareItem.delete() recomputes the shop's totals
+    messages.success(
+        request,
+        f"'{name}' removed from the ledger (logged to Deletion History)."
+    )
+    return redirect('unassigned_spares_hub')
+
+
+@office_required
+def unassigned_spare_add(request):
+    """
+    POST from the Unassigned Hub: record a shop purchase without opening that
+    shop's page first.
+
+    Same row as `spare_shop_add_unassigned` creates — the shop simply arrives as
+    a form field instead of a URL segment — and it goes through the same
+    `_build_unassigned_spare` rules, so this door cannot drift from that one.
+
+    The shop is REQUIRED. A row with no job card *and* no shop would be filtered
+    out of this Hub (which lists `shop__isnull=False`), absent from every shop
+    ledger, and unreachable by the only delete there is — invisible money.
+    """
+    if request.method != 'POST':
+        return redirect('unassigned_spares_hub')
+
+    raw_shop = (request.POST.get('shop') or '').strip()
+    shop = None
+    if raw_shop.isdigit():
+        shop = SpareShop.objects.filter(pk=int(raw_shop), is_trashed=False).first()
+
+    item, error = _build_unassigned_spare(
+        shop,
+        request.POST.get('spare_part_name'),
+        request.POST.get('unit_price', '0'),
+        request.POST.get('quantity', '1'),
+    )
+    if error:
+        messages.error(request, error)
+    else:
+        messages.success(request, f"Added '{item.spare_part_name}' to {shop.name}'s ledger.")
+    return redirect('unassigned_spares_hub')
+
+
+@office_required
 def unassigned_spares_hub(request):
     """
     Dedicated hub for viewing and managing all Unassigned Spares.
     """
-    unassigned_items = JobCardSpareItem.objects.filter(job_card__isnull=True, shop__isnull=False).select_related('shop').order_by('shop__name', '-ordered_date')
-    
-    from ..models import JobCard
-    active_jobcards = JobCard.objects.filter(is_deleted=False).order_by('-pk')[:200]
-    
-    context = {
+    unassigned_items = (
+        JobCardSpareItem.objects
+        .filter(job_card__isnull=True, shop__isnull=False)
+        .select_related('shop')
+        .order_by('shop__name', '-ordered_date')
+    )
+    # No job-card list here: a spare is put ON a car from the car's own Spare
+    # Parts section ("Import from Unassigned"), which is the one place that also
+    # sets the price and quantity the customer is billed. This page previously
+    # queried 200 job cards for a picker the template never rendered.
+    return render(request, 'workshop/spare_shops/unassigned_hub.html', {
         'unassigned_items': unassigned_items,
-        'active_jobcards': active_jobcards,
-    }
-    return render(request, 'workshop/spare_shops/unassigned_hub.html', context)
+        # Active shops only: a purchase cannot be booked against an archived shop.
+        'shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
+    })

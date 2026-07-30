@@ -28,8 +28,8 @@ from .spare_shop import (
     spare_shop_pay, spare_shop_payment_reverse,
     spare_shop_delete, spare_shop_archived, spare_shop_restore,
     spare_shop_print,
-    spare_shop_add_unassigned, spare_shop_unassign_item, spare_shop_update_item_price,
-    unassigned_spares_hub,
+    spare_shop_add_unassigned, spare_shop_unassign_item, spare_shop_update_item_price, spare_shop_delete_unassigned,
+    unassigned_spares_hub, unassigned_spare_add,
 )
 from .pending import pending_payments_list
 from .paid import paid_bills_list

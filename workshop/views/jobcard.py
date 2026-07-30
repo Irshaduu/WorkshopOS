@@ -18,6 +18,44 @@ from ..forms import (
 from ..decorators import staff_required, office_required, is_office_or_owner
 
 
+
+
+def _shop_options(jobcard=None):
+    """
+    Shops offered in a spare row's dropdown: active ones, plus any archived shop
+    this card's spares already point at.
+
+    Including the archived one is not cosmetic. If it is absent from the options
+    the `<select>` has nothing to mark selected, so the browser falls back to the
+    blank first option and posts an EMPTY value — and the resolution pass then
+    clears the FK and wipes that purchase off the shop's ledger. Fixing only the
+    server-side lookup would leave this half of the same bug in place.
+    """
+    linked = set()
+    if jobcard is not None and jobcard.pk:
+        linked = {sp.shop_id for sp in jobcard.spares.all() if sp.shop_id}
+    return SpareShop.objects.filter(Q(is_trashed=False) | Q(pk__in=linked)).order_by('name')
+
+def _resolvable_shops(spares):
+    """
+    Shops the job-card form may resolve a spare to: every ACTIVE shop, plus any
+    archived shop these rows are already linked to.
+
+    That second half is load-bearing. The resolution pass rebuilds each spare's
+    shop FK from the posted pk, and it used to look only at `is_trashed=False`
+    shops — so once a shop was archived, saving ANY job card holding one of its
+    spares (even just to fix a customer name) failed to find it, set `shop=None`,
+    and silently erased that purchase from the shop's ledger. The debt simply
+    disappeared. Archiving is meant to hide a shop from new work, not to rewrite
+    what was already bought from it.
+
+    Archived shops still never appear in the dropdown for a NEW selection; they
+    are only resolvable where a row already points at them.
+    """
+    linked_ids = {sp.shop_id for sp in spares if sp.shop_id}
+    qs = SpareShop.objects.filter(Q(is_trashed=False) | Q(pk__in=linked_ids))
+    return {shop.pk: shop for shop in qs}
+
 # Fields on a job-card part that only Office/Owner may set.
 PRICE_FIELDS = ('unit_price', 'total_price', 'customer_rate')
 
@@ -155,8 +193,8 @@ def jobcard_create(request):
                     # ID-based lookup — no case-folding or name-parsing needed.
                     all_spares = list(jobcard.spares.filter(source=JobCardSpareItem.SOURCE_SHOP))
 
-                    # Pre-build a PK→ShopObject map (single query for all shops)
-                    shops_by_pk = {s.pk: s for s in SpareShop.objects.filter(is_trashed=False)}
+                    # Active shops, plus any archived one these rows already use.
+                    shops_by_pk = _resolvable_shops(all_spares)
 
                     shops_to_update = set()
                     for spare in all_spares:
@@ -229,7 +267,7 @@ def jobcard_create(request):
         'inventory_formset': inventory_formset,
         'labour_formset': labour_formset,
         'is_edit': False,
-        'spare_shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
+        'spare_shops': _shop_options(),
         'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
     }
     return render(request, 'workshop/jobcard/jobcard_form.html', context)
@@ -347,7 +385,7 @@ def jobcard_edit(request, pk):
                     'jobcard': jobcard,
                     'is_edit': True,
                     'next_url': request.GET.get('next'),
-                    'spare_shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
+                    'spare_shops': _shop_options(jobcard),
                     'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
                 })
 
@@ -381,8 +419,8 @@ def jobcard_edit(request, pk):
                 # AUD-0023: Resolve spare → shop FK using the posted PK, not free-text name.
                 all_spares = list(jobcard.spares.filter(source=JobCardSpareItem.SOURCE_SHOP))
 
-                # Pre-build a PK→ShopObject map (single query for all shops)
-                shops_by_pk = {s.pk: s for s in SpareShop.objects.filter(is_trashed=False)}
+                # Active shops, plus any archived one these rows already use.
+                shops_by_pk = _resolvable_shops(all_spares)
 
                 shops_to_update = set()
                 for spare in all_spares:
@@ -448,7 +486,7 @@ def jobcard_edit(request, pk):
         'jobcard': jobcard,
         'is_edit': True,
         'next_url': request.GET.get('next'),
-        'spare_shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
+        'spare_shops': _shop_options(jobcard),
         'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
     }
     return render(request, 'workshop/jobcard/jobcard_form.html', context)

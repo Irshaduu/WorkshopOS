@@ -37,6 +37,60 @@
   </div>
 </div>
 
+{% comment %}
+Add a purchase without opening the shop's own page first. Same row the shop page
+creates and the same server-side rules — the shop just arrives as a field here
+instead of a URL segment.
+
+The shop select is REQUIRED. A row with no job card AND no shop is filtered out
+of this Hub, missing from every shop ledger, and unreachable by the only delete
+there is, so it would be money nobody could see or remove.
+{% endcomment %}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+    <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-plus-circle me-2"></i>Add a Purchase</h6>
+    <small class="text-muted" style="font-size: 0.72rem;">Not yet fitted to any car</small>
+  </div>
+  <div class="card-body">
+    {% if shops %}
+    <form method="post" action="{% url 'unassigned_spare_add' %}" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-muted mb-1" for="ua-shop">Shop</label>
+        <select name="shop" id="ua-shop" class="form-select form-select-sm" required>
+          <option value="">-- Choose shop --</option>
+          {% for shop in shops %}
+          <option value="{{ shop.pk }}">{{ shop.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label small text-muted mb-1" for="ua-name">Item</label>
+        <input type="text" name="spare_part_name" id="ua-name" class="form-control form-control-sm"
+               maxlength="100" placeholder="Part name" autocomplete="off" required>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1" for="ua-qty">Qty</label>
+        <input type="number" name="quantity" id="ua-qty" class="form-control form-control-sm"
+               step="0.01" min="0.01" value="1" required>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label small text-muted mb-1" for="ua-price">Shop Price (₹)</label>
+        <input type="number" name="unit_price" id="ua-price" class="form-control form-control-sm"
+               step="0.01" min="0" placeholder="0">
+      </div>
+      <div class="col-12 col-md-1 d-grid">
+        <button type="submit" class="btn btn-sm btn-primary">Add</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="text-muted small mb-0">
+      No active spare shops yet — <a href="{% url 'spare_shop_list' %}">create one</a> first.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
 {% regroup unassigned_items by shop as grouped_spares %}
 
 {% if not grouped_spares %}
@@ -65,7 +119,8 @@
               <th class="ps-4">Part Name</th>
               <th class="text-end">Qty</th>
               <th class="text-end">Shop Price</th>
-              <th class="pe-4 text-center">Date</th>
+              <th class="text-center">Date</th>
+              <th class="pe-4 text-end" style="width: 60px;"><span class="visually-hidden">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -81,8 +136,28 @@
               <td class="text-end fw-bold text-dark">
                 {% if item.unit_price %}₹{{ item.unit_price|floatformat:0 }}{% else %}<span class="text-muted">—</span>{% endif %}
               </td>
-              <td class="pe-4 text-center text-muted" style="font-size: 0.85rem;">
+              <td class="text-center text-muted" style="font-size: 0.85rem;">
                 {{ item.ordered_date|date:"d/m/Y"|default:item.received_date|date:"d/m/Y"|default:"—" }}
+              </td>
+              {% comment %}
+              The only place an unassigned spare can be removed. Until 2026-07-31
+              there was none at all, so a mistyped ledger entry inflated what the
+              workshop owed that shop for ever. Deleting is permanent and logged
+              to Deletion History, like every other financial delete.
+              {% endcomment %}
+              <td class="pe-4 text-end">
+                <form method="post" action="{% url 'spare_shop_delete_unassigned' item.pk %}"
+                      onsubmit="return confirm('Permanently delete '{{ item.spare_part_name|escapejs }}' from {{ item.shop.name|escapejs }}'s ledger?
+
+This is logged to Deletion History and cannot be undone.');">
+                  {% csrf_token %}
+                  <input type="hidden" name="reason" value="Removed from Unassigned Spares">
+                  <button type="submit" class="btn btn-sm btn-outline-danger"
+                          style="font-size: 0.72rem; padding: 2px 10px;"
+                          aria-label="Delete {{ item.spare_part_name|default:'this spare' }}">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
               </td>
             </tr>
             {% endfor %}

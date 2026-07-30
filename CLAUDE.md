@@ -107,6 +107,46 @@ about to correct one of these, you are about to break the business:
   first and rejected: with two suppliers keyed in one sitting, whichever bill went
   in first froze every draw before the second was known.
 
+- **An ARCHIVED spare shop must stay attached to what was already bought from
+  it.** Fixed 2026-07-31. The job-card resolution pass rebuilds each spare's
+  `shop` FK from the posted pk and looked only at `is_trashed=False` shops, and
+  the dropdown offered only those too. So once a shop was archived, opening any
+  job card holding one of its spares rendered a select with nothing marked —
+  the browser then posted a blank value, the FK was cleared, and that purchase
+  silently disappeared from the shop's ledger. An unrelated edit (fixing a
+  customer's name) was enough to erase ₹2,000 of debt. Both halves are fixed:
+  `_resolvable_shops()` resolves active shops **plus any archived one these rows
+  already point at**, and `_shop_options()` puts that archived shop back in the
+  dropdown so it round-trips. Archiving still hides a shop from cards that never
+  used it. Guarded by `ArchivedShopKeepsItsDebtTests`.
+
+- **Every unassigned spare is created through `_build_unassigned_spare()`, which
+  validates.** Added 2026-07-31. The old inline create accepted a **negative
+  price** (making the shop appear to owe the workshop), a negative or zero
+  quantity, and an oversized price that did not fail cleanly — it was written, and
+  every later read of that shop's ledger then raised `InvalidOperation` while
+  aggregating it, leaving the shop's page permanently un-openable. Bounds come
+  from the columns (`unit_price` max_digits=10, `quantity` max_digits=8), the name
+  is truncated to the column width rather than crashing, and an archived shop is
+  refused. The rules live in one helper rather than a view precisely so a second
+  "add" screen cannot inherit the holes by copy-paste — and there now is one:
+  the Unassigned Hub's own Add a Purchase form (`unassigned_spare_add`) records a
+  purchase without opening the shop's page, passing the shop as a field instead of
+  a URL segment and going through the same helper. Its shop select is **required**,
+  because a row with no job card *and* no shop is filtered out of the Hub, missing
+  from every ledger, and unreachable by the only delete there is. Guarded by
+  `AddUnassignedValidationTests` and `AddingFromTheHubTests`.
+
+- **An unassigned spare can be deleted, and only from the Unassigned Hub.**
+  Added 2026-07-31. There was previously no way to delete one at all — no route,
+  no button, and `/admin/` unreachable by design — so a mistyped ledger entry
+  inflated what the workshop owed that shop permanently. `spare_shop_delete_unassigned`
+  is scoped to `job_card__isnull=True`: a spare already fitted to a car is removed
+  from that car's own Spare Parts section instead, so every row has exactly one
+  screen that owns deleting it. Permanent and written to `DeletionLog` under the
+  new `ENTITY_UNASSIGNED_SPARE`, like every other financial delete. The Hub also
+  stopped querying 200 job cards for a picker its template never rendered.
+
 - **A spare's shop can change, so BOTH ledgers must be refreshed.** Fixed 2026-07-31
   (AUD-0080). `JobCardSpareItem.save()` only ever called `self.shop.update_totals()`
   — the new shop — so moving a spare from A to B left A's cached
