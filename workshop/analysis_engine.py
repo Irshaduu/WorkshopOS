@@ -26,7 +26,7 @@ TURNOVER
 EXPENSES — four real, non-overlapping money-out streams
   1. Spare Shops ....... Parts bought from a spare shop *for a specific job*:
                          unit_price × quantity on JobCardSpareItem rows that
-                         carry a shop link.
+                         have source=SHOP and a shop recorded.
   2. Supplies Shops .... Warehouse restocking: SupplierRestockBill effective
      (Inventory)         amount (total − discount).
   3. Salary ............ From the Salary & Advance section — never from the
@@ -42,27 +42,32 @@ EXPENSES — four real, non-overlapping money-out streams
 THE DOUBLE-COUNT RULE — the single most important thing in this file
 --------------------------------------------------------------------------
 A spare fitted to a car reaches the workshop by one of two routes, and each
-route is paid for exactly once:
+route is paid for exactly once. Which route it took is **stored**, in
+`JobCardSpareItem.source`, and is never inferred:
 
-  route A — ordered from a spare shop for that job
-            → JobCardSpareItem.shop is set
+  SHOP      — ordered from a spare shop for that job
             → the money leaves via the SPARE SHOP stream (stream 1)
 
-  route B — taken off the warehouse shelf
-            → JobCardSpareItem.shop is NULL and the part name matches an
-              inventory Item (that is precisely what the stock-deduction
-              signal in inventory/signals.py keys on)
+  INVENTORY — taken off the warehouse shelf
             → the money already left earlier, when the shelf was filled by a
               supplier restock bill (stream 2)
 
-So route-B spare cost must NEVER be added as an expense: it would charge the
-workshop twice for one part. Against live data the two routes partition the
-spare rows exactly — ₹14,881,597 route A vs ₹9,785,190 route B — and adding
-route B on top would have overstated expenses by ~₹9.8M.
+So INVENTORY spare cost must NEVER be added as an expense: it would charge the
+workshop twice for one part. The two routes partition the spare rows exactly,
+and adding the warehouse side on top would overstate expenses by roughly the
+entire value of stock consumed in the period.
 
-Anything left over (no shop link *and* no inventory match) is genuinely
-unaccounted, so it is surfaced separately instead of being silently dropped —
-that is what unattributed_spare_expense() is for.
+Until 2026-07-30 there was no `source` column and this module GUESSED the route:
+a NULL shop plus a case-insensitive match of `spare_part_name` against
+`Item.name`. The stock signals guessed by a *different* rule, so the two could
+disagree — a shop-bought part whose name happened to equal a stock product was
+billed to the shop here *and* deducted from the shelf there, one part paid for
+once but counted twice, with the shelf drifting down until a restock bill
+covered it. Do not reintroduce name matching in either place.
+
+A SHOP row with no shop recorded is real money with no payee. It gets its own
+line rather than being silently dropped — that is what
+unattributed_spare_expense() is for.
 
 --------------------------------------------------------------------------
 DATING RULE
@@ -89,7 +94,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from django.db.models import Sum, Count, Q, F, Value, DecimalField
-from django.db.models.functions import Coalesce, Lower, TruncMonth
+from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
 from .models import (
@@ -252,74 +257,75 @@ def cashbook_income(start, end):
 # EXPENSES
 # =============================================================================
 
-def _inventory_item_names():
-    """
-    Lowercased inventory product names, used to tell a warehouse-drawn spare
-    from a shop-bought one.
-
-    Small by design — one product per category+name for a single workshop — so
-    pulling the list and using it in a SQL IN() is cheaper than a join, and it
-    matches how the stock-deduction signal itself resolves names.
-    """
-    from inventory.models import Item
-    return [n.lower() for n in Item.objects.values_list('name', flat=True) if n]
+def _live_spares(start, end):
+    """Spare rows on real job cards admitted in this window — the common filter
+    the three classifiers below each narrow by `source`."""
+    return JobCardSpareItem.objects.filter(
+        job_card__isnull=False,
+        job_card__is_deleted=False,
+        job_card__admitted_date__range=(start, end),
+    )
 
 
 def spare_shop_expense(start, end):
     """
     Stream 1 — parts bought from a spare shop for a specific job.
 
-    Only rows carrying a shop link. Rows without one came off the warehouse
-    shelf and were already paid for through a restock bill; charging them here
-    is the double count this module exists to prevent.
+    `source=SHOP` **and** a shop actually named. A shop row with no shop link is
+    money that left the workshop with nothing to attribute it to, so it falls to
+    unattributed_spare_expense() rather than being quietly counted here.
     """
-    qs = JobCardSpareItem.objects.filter(
-        shop__isnull=False,
-        job_card__isnull=False,
-        job_card__is_deleted=False,
-        job_card__admitted_date__range=(start, end),
-    )
+    qs = _live_spares(start, end).filter(
+        source=JobCardSpareItem.SOURCE_SHOP, shop__isnull=False)
     return _sum(qs, SPARE_COST)
 
 
-def unattributed_spare_expense(start, end, names=None):
+def unattributed_spare_expense(start, end):
     """
     Transparency line — normally ₹0.
 
-    A spare with no shop link AND no matching inventory product came from
-    nowhere the system can account for. Rather than silently dropping that
-    money (understating expenses) or lumping it into Spare Shops (misfiling
-    it), it gets its own line that only appears when it is non-zero.
+    A shop purchase where nobody recorded which shop. Real money with no payee,
+    so it gets its own line rather than being dropped (understating expenses) or
+    folded into Spare Shops (misfiling it).
     """
-    qs = JobCardSpareItem.objects.filter(
-        shop__isnull=True,
-        job_card__isnull=False,
-        job_card__is_deleted=False,
-        job_card__admitted_date__range=(start, end),
-    )
-    names = _inventory_item_names() if names is None else names
-    if names:
-        qs = qs.annotate(_lname=Lower('spare_part_name')).exclude(_lname__in=names)
+    qs = _live_spares(start, end).filter(
+        source=JobCardSpareItem.SOURCE_SHOP, shop__isnull=True)
     return _sum(qs, SPARE_COST)
 
 
-def warehouse_drawn_spare_cost(start, end, names=None):
+def warehouse_drawn_spare_cost(start, end):
     """
     Value of stock pulled off the shelf onto job cards in this window.
 
     NOT an expense — it was paid for by a restock bill. Reported only so the
     Profit page can show *why* it is excluded instead of appearing to lose it.
+
+    Costed from each row's own `unit_price`, which is the weighted-average
+    warehouse cost frozen onto the line the moment the part was drawn.
     """
-    names = _inventory_item_names() if names is None else names
-    if not names:
-        return ZERO
-    qs = JobCardSpareItem.objects.filter(
-        shop__isnull=True,
-        job_card__isnull=False,
-        job_card__is_deleted=False,
-        job_card__admitted_date__range=(start, end),
-    ).annotate(_lname=Lower('spare_part_name')).filter(_lname__in=names)
+    qs = _live_spares(start, end).filter(source=JobCardSpareItem.SOURCE_INVENTORY)
     return _sum(qs, SPARE_COST)
+
+
+def uncosted_draw_count(start, end):
+    """
+    Warehouse draws whose cost is genuinely UNKNOWN — `unit_price` is NULL.
+
+    Two ways to get here, both honest rather than broken:
+      • opening stock counted onto the shelf before any supplier bill exists
+        (the go-live case), so nothing ever established what it cost;
+      • a product whose only restock bill was later deleted, taking the cost
+        basis with it.
+
+    Reported as a count rather than folded into a rupee figure, because the
+    correct value is "we don't know". These lines contribute ₹0 to
+    warehouse_drawn_spare_cost, so surfacing the count is what stops that ₹0
+    being read as "these parts were free" — and it is exactly the queue of
+    products someone needs to put an opening cost against.
+    """
+    return _live_spares(start, end).filter(
+        source=JobCardSpareItem.SOURCE_INVENTORY, unit_price__isnull=True
+    ).count()
 
 
 def inventory_expense(start, end):
@@ -423,7 +429,6 @@ def build_profit_report(start, end):
     aggregate queries, and an owner checking profit should get the whole
     picture in one load rather than watching cards populate.
     """
-    names = _inventory_item_names()
     bills = car_bill_turnover(start, end)
     cb_income = cashbook_income(start, end)
     turnover = bills['net'] + cb_income
@@ -432,7 +437,7 @@ def build_profit_report(start, end):
     inventory = inventory_expense(start, end)
     salary = salary_expense(start, end)
     cashbook = cashbook_expense(start, end)
-    other_spares = unattributed_spare_expense(start, end, names=names)
+    other_spares = unattributed_spare_expense(start, end)
 
     expense_total = spares + inventory + salary['total'] + cashbook['total'] + other_spares
     profit = turnover - expense_total
@@ -469,7 +474,8 @@ def build_profit_report(start, end):
         'expense_lines': expense_lines,
         'salary': salary,
         'cashbook': cashbook,
-        'warehouse_drawn': warehouse_drawn_spare_cost(start, end, names=names),
+        'warehouse_drawn': warehouse_drawn_spare_cost(start, end),
+        'uncosted_draws': uncosted_draw_count(start, end),
         'profit': profit,
         'margin': margin,
     }
@@ -499,9 +505,8 @@ def monthly_series(start, end):
                   'admitted_date', F('total_bill_amount') - F('discount_amount'))
     inc = grouped(CashbookEntry.objects.filter(entry_type='INCOME', date__range=(start, end)),
                   'date', F('amount'))
-    sp = grouped(JobCardSpareItem.objects.filter(
-                     shop__isnull=False, job_card__isnull=False, job_card__is_deleted=False,
-                     job_card__admitted_date__range=(start, end)),
+    sp = grouped(_live_spares(start, end).filter(
+                     source=JobCardSpareItem.SOURCE_SHOP, shop__isnull=False),
                  'job_card__admitted_date', SPARE_COST)
     inv = grouped(SupplierRestockBill.objects.filter(bill_date__range=(start, end)),
                   'bill_date', F('total_amount') - F('discount_amount'))
@@ -520,12 +525,8 @@ def monthly_series(start, end):
         loose_qs = loose_qs.annotate(_m=TruncMonth('date')).exclude(_m__in=settled)
     adv = grouped(loose_qs, 'date', F('amount'))
 
-    other_qs = JobCardSpareItem.objects.filter(
-        shop__isnull=True, job_card__isnull=False, job_card__is_deleted=False,
-        job_card__admitted_date__range=(start, end))
-    names = _inventory_item_names()
-    if names:
-        other_qs = other_qs.annotate(_lname=Lower('spare_part_name')).exclude(_lname__in=names)
+    other_qs = _live_spares(start, end).filter(
+        source=JobCardSpareItem.SOURCE_SHOP, shop__isnull=True)
     oth = grouped(other_qs, 'job_card__admitted_date', SPARE_COST)
 
     keys = sorted(set(rev) | set(inc) | set(sp) | set(inv) | set(cb) | set(sal) | set(adv) | set(oth))

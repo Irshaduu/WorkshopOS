@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date
 from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill, SupplierRestockItem, SupplierPayment
 from workshop.decorators import office_required
-from workshop.models import DeletionLog
+from workshop.models import DeletionLog, JobCardSpareItem
 from workshop.notifications import notify
 from django.urls import reverse
 from workshop.templatetags.custom_filters import clean_qty
@@ -321,14 +321,16 @@ def remove_shop_catalog_item(request, shop_id, catalog_item_id):
     Two safety guards, both of which DEACTIVATE instead of removing:
       1. Purchase history — this shop has restock bills for the product, so
          unlinking it would alter historical bill records.
-      2. Stock on hand — the product still holds warehouse stock. Stock can only
-         be changed by signals (there is no manual editing), so deleting the Item
-         here would silently destroy a real, countable quantity.
+      2. Stock on hand — the product still holds warehouse stock (in either
+         direction; a negative balance is an overdraw awaiting a supplier bill,
+         not an empty shelf). Stock can only be changed by signals, so deleting
+         the Item here would silently destroy a real, countable quantity.
 
     Only when neither applies is the catalog link removed. If that leaves the Item
-    orphaned (no shop carries it, no bill history anywhere) the Item itself is
-    permanently deleted — and, like every other permanent delete in the system, a
-    snapshot is written to the Owner-only Deletion History first.
+    orphaned — no shop carries it, no bill history, and no job card records having
+    used it — the Item itself is permanently deleted, and like every other
+    permanent delete a snapshot is written to the Owner-only Deletion History
+    first.
     """
     if request.method == 'POST':
         catalog_item = get_object_or_404(ShopCatalogItem, pk=catalog_item_id, shop_id=shop_id)
@@ -356,7 +358,14 @@ def remove_shop_catalog_item(request, shop_id, catalog_item_id):
 
         shop_name = catalog_item.shop.name
         catalog_item.delete()
-        if not ShopCatalogItem.objects.filter(item=item).exists() and \
+        # A product named on a job card must outlive its catalog links. The
+        # `JobCardSpareItem.item` FK is PROTECT, so deleting the Item here would
+        # raise ProtectedError — and that history is the whole reason the FK is
+        # PROTECT. The stock guard above catches most of this (a drawn product is
+        # rarely at exactly zero), but not all of it: edit a draw's quantity back
+        # down to zero and the stock returns to 0 while the row still points here.
+        if not JobCardSpareItem.objects.filter(item=item).exists() and \
+           not ShopCatalogItem.objects.filter(item=item).exists() and \
            not SupplierRestockItem.objects.filter(item=item).exists():
             DeletionLog.record(
                 DeletionLog.ENTITY_INVENTORY_ITEM, item,
@@ -511,6 +520,33 @@ def shop_restock_select(request, shop_id):
         
     return render(request, 'inventory/suppliers/restock_select.html', {'shop': shop, 'catalog': catalog})
 
+def _reject_impossible_discount(request, bill):
+    """A discount larger than the bill it sits on is always a typo.
+
+    Left alone it produced a NEGATIVE bill: the supplier appeared to owe the
+    workshop money, and the Supplies Shops expense went negative, *raising*
+    reported profit. One mistyped extra zero was enough. The discount is dropped
+    rather than clamped, and said out loud, so nobody has to guess which number
+    the system decided to keep. Returns True if it rejected something.
+
+    Runs only after `bill.update_totals()` — at creation the bill exists before
+    its lines do, so there is no total to compare against until then.
+    """
+    if bill.discount_amount > bill.total_amount:
+        attempted = bill.discount_amount
+        bill.discount_amount = Decimal('0')
+        bill.save(update_fields=['discount_amount'])
+        bill.supplier.update_totals()
+        messages.error(
+            request,
+            f"Discount ₹{attempted:,.2f} is more than the bill total "
+            f"₹{bill.total_amount:,.2f}, so it was NOT applied. "
+            f"Edit the bill and enter the correct discount."
+        )
+        return True
+    return False
+
+
 @office_required
 @transaction.atomic
 def shop_restock_bill(request, shop_id):
@@ -561,7 +597,9 @@ def shop_restock_bill(request, shop_id):
                     
             # Update bill totals which will trigger shop total update
             bill.update_totals()
-            
+            bill.refresh_from_db()
+            _reject_impossible_discount(request, bill)
+
             # Clear session
             if 'restock_items' in request.session:
                 del request.session['restock_items']
@@ -629,6 +667,9 @@ def edit_restock_bill(request, shop_id, bill_id):
 
             # Trigger total update
             bill.update_totals()
+            bill.refresh_from_db()
+            if _reject_impossible_discount(request, bill):
+                return redirect('edit_restock_bill', shop_id=shop.id, bill_id=bill.id)
             messages.success(request, f"Bill #{bill.id} updated successfully.")
             return redirect('supplier_shop_detail', shop_id=shop.id)
         except ValueError:

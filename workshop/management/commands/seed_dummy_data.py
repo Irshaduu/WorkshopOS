@@ -240,6 +240,14 @@ class Command(BaseCommand):
             fleet_accounts = self._create_fleet_accounts()
             self._seed_concern_pool()
 
+        # name -> Item. A warehouse draw points at its product by FK now, so the
+        # seeder has to resolve the real row rather than just naming it and
+        # trusting the old name-match to find it.
+        warehouse_items = {
+            item.name: item
+            for items in shop_items.values() for item in items
+        }
+
         # --- Main loop, committed one month at a time ---
         vehicles = {}          # reg -> dict(brand, model, customer, contact, last_visit)
         used_regs = set()
@@ -264,7 +272,7 @@ class Command(BaseCommand):
                 for _ in range(per_day):
                     self._create_one_job_card(
                         current, vehicles, used_regs, brand_model_pool, mechanics,
-                        spare_shops, warehouse_names, external_spares, fleet_accounts,
+                        spare_shops, warehouse_items, external_spares, fleet_accounts,
                     )
                     created += 1
 
@@ -497,7 +505,7 @@ class Command(BaseCommand):
         return reg, vehicles[reg]
 
     def _create_one_job_card(self, admitted_date, vehicles, used_regs, brand_model_pool,
-                             mechanics, spare_shops, warehouse_names, external_spares,
+                             mechanics, spare_shops, warehouse_items, external_spares,
                              fleet_accounts):
         reg, v = self._pick_vehicle(admitted_date, vehicles, used_regs, brand_model_pool)
 
@@ -519,13 +527,23 @@ class Command(BaseCommand):
         for _ in range(random.randint(0, 3)):
             qty = Decimal(random.choice([1, 1, 1, 2]))
             if random.random() < 0.55:
-                name = random.choice(warehouse_names)
-                cost, price = WAREHOUSE_ITEM_PRICES[name]
+                # Warehouse draw. No shop, no ordering workflow, and no typed cost:
+                # the model snapshots Item.avg_cost, which the monthly restock bills
+                # have already established by the time any draw happens.
+                name = random.choice(list(warehouse_items))
+                item = warehouse_items[name]
+                _cost, price = WAREHOUSE_ITEM_PRICES[name]
+                fields = {}
+                if random.random() < 0.3:
+                    # Office sometimes enters a per-unit customer rate; more often
+                    # they skip it and type the total straight in.
+                    fields['customer_rate'] = Decimal(price)
+                else:
+                    fields['total_price'] = (Decimal(price) * qty).quantize(Decimal("0.01"))
                 JobCardSpareItem.objects.create(
-                    job_card=jobcard, spare_part_name=name, quantity=qty,
-                    unit_price=Decimal(cost),
-                    total_price=(Decimal(price) * qty).quantize(Decimal("0.01")),
-                    status="RECEIVED", ordered_date=admitted_date, received_date=admitted_date,
+                    job_card=jobcard,
+                    source=JobCardSpareItem.SOURCE_INVENTORY,
+                    item=item, spare_part_name=name, quantity=qty, **fields,
                 )
             else:
                 name = random.choice(external_spares)
@@ -533,7 +551,9 @@ class Command(BaseCommand):
                 price = int(cost * random.uniform(1.25, 1.5))
                 shop = random.choice(spare_shops)
                 JobCardSpareItem.objects.create(
-                    job_card=jobcard, spare_part_name=name, quantity=qty,
+                    job_card=jobcard,
+                    source=JobCardSpareItem.SOURCE_SHOP,
+                    spare_part_name=name, quantity=qty,
                     unit_price=Decimal(cost),
                     total_price=(Decimal(price) * qty).quantize(Decimal("0.01")),
                     status="RECEIVED", shop=shop, shop_name=shop.name,

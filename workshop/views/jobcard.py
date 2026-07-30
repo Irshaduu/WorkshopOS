@@ -12,7 +12,8 @@ from ..models import (
     SpareShop, DeletionLog,
 )
 from ..forms import (
-    JobCardForm, JobCardConcernFormSet, JobCardSpareFormSet, JobCardLabourFormSet
+    JobCardForm, JobCardConcernFormSet, JobCardSpareFormSet,
+    JobCardInventoryFormSet, JobCardLabourFormSet
 )
 from ..decorators import staff_required, office_required
 
@@ -48,12 +49,14 @@ def jobcard_create(request):
 
                 concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
                 spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
+                inventory_formset = JobCardInventoryFormSet(request.POST, prefix='inventory')
                 labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
 
                 return render(request, 'workshop/jobcard/jobcard_form.html', {
                     'form': form,
                     'concern_formset': concern_formset,
                     'spare_formset': spare_formset,
+                    'inventory_formset': inventory_formset,
                     'labour_formset': labour_formset,
                     'is_edit': False,
                 })
@@ -61,9 +64,11 @@ def jobcard_create(request):
             # Formsets initialization for standard save
             concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
             spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
+            inventory_formset = JobCardInventoryFormSet(request.POST, prefix='inventory')
             labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
 
-            if concern_formset.is_valid() and spare_formset.is_valid() and labour_formset.is_valid():
+            if (concern_formset.is_valid() and spare_formset.is_valid()
+                    and inventory_formset.is_valid() and labour_formset.is_valid()):
                 # AUD-0014: Wrap all formset saves in a single atomic transaction.
                 # Without this, a partial failure (e.g. a spare save fails after the
                 # JobCard itself is committed) would leave an orphaned record.
@@ -73,10 +78,12 @@ def jobcard_create(request):
                     # Associate instances with jobcard before saving
                     concern_formset.instance = jobcard
                     spare_formset.instance = jobcard
+                    inventory_formset.instance = jobcard
                     labour_formset.instance = jobcard
 
                     saved_concerns = concern_formset.save()
                     saved_spares = spare_formset.save()
+                    inventory_formset.save()
                     labour_formset.save()
                     
                     # AUD-0052: Auto-learn — use case-insensitive lookup to prevent
@@ -102,7 +109,7 @@ def jobcard_create(request):
                     # AUD-0023: Resolve spare → shop FK using the posted PK, not free-text name.
                     # The template submits shop.pk as the option value, so we can do a direct
                     # ID-based lookup — no case-folding or name-parsing needed.
-                    all_spares = list(jobcard.spares.all())
+                    all_spares = list(jobcard.spares.filter(source=JobCardSpareItem.SOURCE_SHOP))
 
                     # Pre-build a PK→ShopObject map (single query for all shops)
                     shops_by_pk = {s.pk: s for s in SpareShop.objects.filter(is_trashed=False)}
@@ -145,6 +152,7 @@ def jobcard_create(request):
             # If form is invalid, we still need to initialize formsets for the context
             concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
             spare_formset = JobCardSpareFormSet(request.POST, prefix='spares')
+            inventory_formset = JobCardInventoryFormSet(request.POST, prefix='inventory')
             labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
     else:
         # Pre-fill admitted_date with today's date
@@ -159,12 +167,14 @@ def jobcard_create(request):
         form = JobCardForm(initial=initial_data)
         concern_formset = JobCardConcernFormSet(prefix='concerns')
         spare_formset = JobCardSpareFormSet(prefix='spares')
+        inventory_formset = JobCardInventoryFormSet(prefix='inventory')
         labour_formset = JobCardLabourFormSet(prefix='labours')
 
     context = {
         'form': form,
         'concern_formset': concern_formset,
         'spare_formset': spare_formset,
+        'inventory_formset': inventory_formset,
         'labour_formset': labour_formset,
         'is_edit': False,
         'spare_shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
@@ -218,8 +228,17 @@ def jobcard_detail(request, pk):
         pk=pk
     )
 
+    # Split the one relation for display, mirroring the two sections on the edit
+    # form. Partitioned in Python off the existing prefetch rather than with two
+    # queries, so this stays one round trip.
+    all_spares = list(jobcard.spares.all())
+
     return render(request, 'workshop/jobcard/jobcard_detail.html', {
         'jobcard': jobcard,
+        'inventory_draws': [s for s in all_spares
+                            if s.source == JobCardSpareItem.SOURCE_INVENTORY],
+        'shop_spares': [s for s in all_spares
+                        if s.source == JobCardSpareItem.SOURCE_SHOP],
     })
 
 
@@ -247,9 +266,11 @@ def jobcard_edit(request, pk):
         form = JobCardForm(request.POST, instance=jobcard)
         concern_formset = JobCardConcernFormSet(request.POST, instance=jobcard, prefix='concerns')
         spare_formset = JobCardSpareFormSet(request.POST, instance=jobcard, prefix='spares')
+        inventory_formset = JobCardInventoryFormSet(request.POST, instance=jobcard, prefix='inventory')
         labour_formset = JobCardLabourFormSet(request.POST, instance=jobcard, prefix='labours')
 
-        if form.is_valid() and concern_formset.is_valid() and spare_formset.is_valid() and labour_formset.is_valid():
+        if (form.is_valid() and concern_formset.is_valid() and spare_formset.is_valid()
+                and inventory_formset.is_valid() and labour_formset.is_valid()):
             # Hard block: editing this job card's registration number must not collide
             # with a different job card that's already active for that vehicle. Excludes
             # this job card's own pk, so leaving the registration number unchanged never
@@ -268,6 +289,7 @@ def jobcard_edit(request, pk):
                     'form': form,
                     'concern_formset': concern_formset,
                     'spare_formset': spare_formset,
+                    'inventory_formset': inventory_formset,
                     'labour_formset': labour_formset,
                     'jobcard': jobcard,
                     'is_edit': True,
@@ -281,6 +303,7 @@ def jobcard_edit(request, pk):
                 form.save()
                 saved_concerns = concern_formset.save()
                 saved_spares = spare_formset.save()
+                inventory_formset.save()
                 labour_formset.save()
                 
                 # AUD-0052: Auto-learn — case-insensitive duplicate check.
@@ -303,7 +326,7 @@ def jobcard_edit(request, pk):
                     SparePart.objects.bulk_create(new_spare_parts, ignore_conflicts=True)
 
                 # AUD-0023: Resolve spare → shop FK using the posted PK, not free-text name.
-                all_spares = list(jobcard.spares.all())
+                all_spares = list(jobcard.spares.filter(source=JobCardSpareItem.SOURCE_SHOP))
 
                 # Pre-build a PK→ShopObject map (single query for all shops)
                 shops_by_pk = {s.pk: s for s in SpareShop.objects.filter(is_trashed=False)}
@@ -352,12 +375,14 @@ def jobcard_edit(request, pk):
         form = JobCardForm(instance=jobcard)
         concern_formset = JobCardConcernFormSet(instance=jobcard, prefix='concerns')
         spare_formset = JobCardSpareFormSet(instance=jobcard, prefix='spares')
+        inventory_formset = JobCardInventoryFormSet(instance=jobcard, prefix='inventory')
         labour_formset = JobCardLabourFormSet(instance=jobcard, prefix='labours')
 
     context = {
         'form': form,
         'concern_formset': concern_formset,
         'spare_formset': spare_formset,
+        'inventory_formset': inventory_formset,
         'labour_formset': labour_formset,
         'jobcard': jobcard,
         'is_edit': True,
@@ -374,17 +399,19 @@ def jobcard_delete(request, pk):
     Permanently delete a job card (Owner + Office). Logged to the Owner-only
     Deletion History; there is no restore.
 
-    GUARD: a job card carrying financial/work data cannot be deleted. Its spares
-    must first be removed or moved to Unassigned, and its labour cleared. This
-    makes deletion a deliberate act and prevents accidental loss of a car's
-    financial history. Because a deletable card holds no spares, no warehouse
-    stock is affected by the delete.
+    GUARD: a job card carrying financial/work data cannot be deleted. Its parts —
+    from either section — must first be removed (shop spares can also be moved to
+    Unassigned), and its labour cleared. This makes deletion a deliberate act and
+    prevents accidental loss of a car's financial history. Because a deletable card
+    holds no parts at all, no warehouse stock is affected by the delete.
     """
     jobcard = get_object_or_404(JobCard, pk=pk)
 
     # Anything that makes this card financially/operationally "heavy" blocks delete.
     blockers = []
-    if jobcard.spares.exists():
+    if jobcard.spares.filter(source=JobCardSpareItem.SOURCE_INVENTORY).exists():
+        blockers.append("inventory items")
+    if jobcard.spares.filter(source=JobCardSpareItem.SOURCE_SHOP).exists():
         blockers.append("spare parts")
     if jobcard.labours.exists():
         blockers.append("labour charges")
@@ -401,7 +428,8 @@ def jobcard_delete(request, pk):
         messages.error(
             request,
             f"Can't delete {jobcard.registration_number}: it still has {', '.join(blockers)}. "
-            "Remove its spares (or move them to Unassigned) and clear labour first."
+            "Clear both parts sections (shop spares can be moved to Unassigned instead) "
+            "and remove the labour first."
         )
         return redirect('jobcard_detail', pk=pk)
 

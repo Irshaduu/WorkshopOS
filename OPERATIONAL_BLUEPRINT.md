@@ -214,19 +214,62 @@ Payment history is recorded; Owner can reverse any payment.
 
 ## 5. INVENTORY <-> JOB CARD AUTO-SYNC
 
+### Two sections, because a part arrives by one of two routes
+A Job Card records parts in **two separate sections** (rebuilt 2026-07-30):
+
+| | **Inventory Items** | **Spare Parts** |
+|---|---|---|
+| Where it came from | the workshop's own shelf | ordered from a spare shop for this job |
+| Columns | Item, Qty, Unit Price, Customer Price | Part Name, Qty, Status, Ordered, Received, Shop, Shop Price, Customer Price |
+| How the part is chosen | **picked** from stock (search, then select) | typed freely |
+| Moves warehouse stock? | **yes** | never |
+| Who already paid for it | a Supplies Shop restock bill, earlier | the spare shop, per this job |
+
+They were one section until 2026-07-30, which meant five of the eight columns were
+permanently blank for a warehouse draw and staff were invited to fill boxes that
+meant nothing. Worse, the system had to *guess* which route a row took, and guessed
+differently in two places — so a shop-bought part that happened to share a name with
+a stock product was deducted from the shelf *and* billed to the shop. Both sections
+still write one table (`JobCardSpareItem`), told apart by a stored `source`.
+
+**Prices are Office/Owner only in both sections.** Floor sees name and quantity.
+
+**On an Inventory row, "Unit Price" is what the CUSTOMER pays per unit** — enter it
+and Customer Price fills in (× qty); or skip it, as staff usually do, and type the
+total straight in. What the part *cost* the workshop is never typed: it is taken from
+stock automatically (a weighted average of what was actually paid for it) and frozen
+onto the line, so a later price change cannot rewrite an old job's margin.
+
+### Taking more than the shelf says you have
+This is **allowed**, and the count may go **negative**. A job card records a part the
+mechanic has *already physically taken* — refusing the record would not put the part
+back, it would only stop a mechanic mid-shift and leave the system disagreeing with
+reality. A negative figure is the signal that a Supplies Shop bill has not been
+entered yet, and it heals itself when that bill arrives (−3, then a +10 receipt,
+lands on 7). **Negative is not the same as Low Stock**: low means order more,
+negative means a bill is missing.
+
+The **Low Stock** screen keeps the two apart. Negatives appear in their own amber
+"stock discrepancy" banner — naming the products, saying a Supplies Shop bill has
+probably not been entered, and telling you *not* to reorder them — while the
+"running low" and "out of stock" counts below cover only products at or above zero.
+Everyone sees this, Floor included, so a mechanic who notices a negative can say so.
+Individual rows carry a **CHECK BILL** chip rather than the ordinary red **OUT** one.
+
 ```
 JOB CARD ACTION                      WAREHOUSE EFFECT
 ----------------------------------------------
-Add "Oil Filter" x 2           -->   Oil Filter: 10 to 8  (auto -2)
+Inventory: add "Oil Filter" x2  -->   Oil Filter: 10 to 8  (auto -2)
 Change qty to 5                -->   Oil Filter: 8 to 5   (auto -3 delta)
 Change to "Air Filter"         -->   Oil Filter: 5 to 10  (auto +5 restore)
                                -->   Air Filter: 7 to 2   (auto -5 deduct)
-Delete spare line              -->   Air Filter: 2 to 7   (auto +5 restore)
+Delete the row                 -->   Air Filter: 2 to 7   (auto +5 restore)
+Spare Parts: add anything      -->   (no effect, ever — it never left the shelf)
 Delete a job card              -->   (guarded: a card holding spares can't be deleted —
                                       clear/unassign its spares first, so no stock moves)
 ```
 
-Stock sync runs on **three signal groups** (8 handlers): per-spare consumption (above), a whole-job-card soft-delete/restore reversal that is **now dormant** (job cards are hard-deleted and a card holding spares can't be deleted), and supplier restock (§5B). All stock changes are signal-driven, never mutated directly in views — and there is **no manual stock-number editing anywhere** (Low Stock is read-only).
+Stock sync runs on **three signal groups** (8 handlers): warehouse draws (above — Inventory-section rows only), a whole-job-card soft-delete/restore reversal that is **now dormant** (job cards are hard-deleted and a card holding spares can't be deleted), and supplier restock (§5B). All stock changes are signal-driven, never mutated directly in views — and there is **no manual stock-number editing anywhere** (Low Stock is read-only).
 
 ### Where inventory items come from
 Items are created **only** via **Supplier → Add Product** (which requires an Average Stock — see below); there is no separate "add item" screen, and "Manage Database" is a read-only Category browser (add/list/edit/delete Category; drill in to see products + their shops). Category names can't be duplicated in any casing, and a category can only be deleted while it is **empty** — Delete simply isn't offered once it holds products. Product name and Average Stock are edited on the supplier catalog, where a product can also be **deactivated** (kept and listed, but excluded from restock bills — enforced when the bill is saved, not merely hidden from the picker).

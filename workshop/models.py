@@ -1005,8 +1005,23 @@ class JobCardConcern(models.Model):
 
 class JobCardSpareItem(models.Model):
     """
-    Spare parts used in the job.
-    Tracks ordering workflow with shop and dates.
+    A part fitted to a car — reaching it by one of exactly two routes, recorded
+    in `source`:
+
+      SHOP      ordered from a SpareShop for this job. The ordering workflow
+                (status / ordered_date / received_date / shop) applies, and the
+                money leaves via the spare-shop ledger.
+      INVENTORY taken off the warehouse shelf. `item` points at the stock
+                product, the ordering fields are meaningless, and the money
+                already left earlier via a supplier restock bill.
+
+    Before 2026-07-30 there was no `source`: the route was *guessed* — from a
+    NULL shop plus a case-insensitive match of `spare_part_name` against
+    `Item.name` — and the guess was made differently in the stock signals than
+    in the analysis engine. A shop-bought part that happened to share a name
+    with a stock product was wrongly deducted from the warehouse by one rule
+    while correctly billed as a shop purchase by the other. `source` is the
+    single answer both now read; do not reintroduce name matching.
     """
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
@@ -1014,15 +1029,40 @@ class JobCardSpareItem(models.Model):
         ('RECEIVED', 'Received'),
     ]
 
+    SOURCE_SHOP = 'SHOP'
+    SOURCE_INVENTORY = 'INVENTORY'
+    SOURCE_CHOICES = [
+        (SOURCE_SHOP, 'Spare Shop'),
+        (SOURCE_INVENTORY, 'Inventory'),
+    ]
+
     job_card = models.ForeignKey(JobCard, on_delete=models.CASCADE, related_name='spares', null=True, blank=True)
     spare_part_name = models.CharField(max_length=100, blank=True, null=True)
+    source = models.CharField(
+        max_length=10, choices=SOURCE_CHOICES, default=SOURCE_SHOP, db_index=True,
+        help_text="Which route this part reached the car by — never inferred, always stored"
+    )
+    item = models.ForeignKey(
+        'inventory.Item', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='job_card_uses',
+        help_text="The stock product drawn (INVENTORY rows only). PROTECT: a product "
+                  "used on a job card must not be deletable out from under that history."
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     quantity = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
-    
-    # Pricing (unit_price = shop cost, total_price = customer price with markup)
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Shop price (cost)")
-    total_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Customer price (with markup)")
-    
+
+    # Pricing. `unit_price` is COST PER UNIT on both routes — typed by Office for
+    # a shop purchase, snapshotted from Item.avg_cost for a warehouse draw. Every
+    # money formula in analysis_engine.py (SPARE_COST) and SpareShop.update_totals()
+    # multiplies it by quantity, so its meaning must stay uniform across routes.
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Cost per unit (shop price, or warehouse average cost)")
+    total_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Customer price — the figure that bills, shown in the UI as 'Customer Price'")
+    # The optional "Unit Price" box on an INVENTORY row: what the customer is
+    # charged per unit. INPUT ONLY — never back-filled from total_price ÷ quantity,
+    # so a null here honestly means "nobody entered a rate" and the two figures
+    # can never quietly disagree. Staff usually skip it and type the total.
+    customer_rate = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Customer price per unit (optional; drives total_price when set)")
+
     # Order tracking
     shop_name = models.CharField(max_length=100, blank=True, null=True, help_text="Shop where part was ordered (text copy for display)")
     shop = models.ForeignKey('SpareShop', on_delete=models.SET_NULL, null=True, blank=True, related_name='spare_items', help_text="Linked SpareShop profile")
@@ -1033,6 +1073,42 @@ class JobCardSpareItem(models.Model):
     def save(self, *args, **kwargs):
         if self.spare_part_name:
             self.spare_part_name = self.spare_part_name.strip()
+
+        if self.source == self.SOURCE_INVENTORY and self.item_id:
+            # Read the product straight from the database rather than through
+            # `self.item`. `recompute_average_cost` writes avg_cost with
+            # .update(), which leaves any Item instance a caller happens to be
+            # holding stale — and snapshotting a stale cost would silently
+            # misprice the draw.
+            from inventory.models import Item
+            product = Item.objects.filter(pk=self.item_id).values('name', 'avg_cost').first()
+            if product:
+                # Keep the display name aligned with the product actually drawn, so
+                # renaming a stock product can never leave a job card describing a
+                # part by a name the warehouse no longer knows.
+                if not self.spare_part_name:
+                    self.spare_part_name = product['name']
+                # Snapshot the warehouse cost once, at draw time. Never recomputed:
+                # a price change next month must not rewrite last month's margin.
+                #
+                # A zero average means the cost is genuinely UNKNOWN, not free —
+                # opening stock counted onto the shelf before any supplier bill
+                # exists, or a product whose only restock bill was deleted. Storing
+                # 0 there would report those parts as pure profit; leaving
+                # `unit_price` NULL keeps "nobody knows" distinguishable from
+                # "it cost nothing", and analysis_engine counts such draws so they
+                # can be seen instead of silently understating cost.
+                if self.pk is None and self.unit_price is None:
+                    avg = product['avg_cost']
+                    if avg and avg > 0:
+                        self.unit_price = avg
+
+        # A rate that was deliberately entered is authoritative over the typed
+        # total, so editing 7 L down to 4 L recomputes the bill instead of
+        # leaving a stale one.
+        if self.customer_rate is not None and self.quantity is not None:
+            self.total_price = (self.customer_rate * self.quantity).quantize(Decimal('0.01'))
+
         super().save(*args, **kwargs)
         if self.job_card:
             self.job_card.update_totals()

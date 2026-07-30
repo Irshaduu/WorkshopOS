@@ -85,6 +85,11 @@ class WorkshopViewTests(TestCase):
             'spares-0-status': 'PENDING',
             'spares-0-shop_name': 'Auto Shop',
             # Labour Formset
+            'inventory-TOTAL_FORMS': '0',
+            'inventory-INITIAL_FORMS': '0',
+            'inventory-MIN_NUM_FORMS': '0',
+            'inventory-MAX_NUM_FORMS': '1000',
+
             'labours-TOTAL_FORMS': '1',
             'labours-INITIAL_FORMS': '0',
             'labours-0-job_description': 'Oil Change',
@@ -120,6 +125,11 @@ class WorkshopViewTests(TestCase):
             'spares-0-quantity': '1',
             'spares-0-unit_price': '100',
             'spares-0-DELETE': 'on', # TRIGGER DELETION
+            'inventory-TOTAL_FORMS': '0',
+            'inventory-INITIAL_FORMS': '0',
+            'inventory-MIN_NUM_FORMS': '0',
+            'inventory-MAX_NUM_FORMS': '1000',
+
             'labours-TOTAL_FORMS': '0',
             'labours-INITIAL_FORMS': '0',
         }

@@ -466,6 +466,27 @@
   </div>
 </div>
 
+{% if report.uncosted_draws %}
+{% comment %}
+Draws whose cost is unknown, not zero. They contribute nothing to the figure in
+the note below, so without this they would quietly read as free parts. Normally
+this only appears right after go-live, while opening stock has no supplier bill
+behind it yet.
+{% endcomment %}
+<div class="pf-card">
+  <div class="pf-note">
+    <i class="bi bi-question-circle-fill text-warning mt-1"></i>
+    <span>
+      <strong>{{ report.uncosted_draws }}</strong> warehouse draw{{ report.uncosted_draws|pluralize }} in
+      this period {{ report.uncosted_draws|pluralize:"has,have" }} <strong>no cost recorded</strong> —
+      the stock was on the shelf before any Supplies Shop bill existed for it, so nothing
+      established what it cost. Those parts count as ₹0 below, which understates cost and
+      overstates their margin. Enter a restock bill for the product to fix it going forward.
+    </span>
+  </div>
+</div>
+{% endif %}
+
 {% if report.warehouse_drawn %}
 <div class="pf-card">
   <div class="pf-note">

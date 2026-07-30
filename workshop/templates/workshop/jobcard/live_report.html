@@ -192,18 +192,28 @@
                 {% endfor %}
             </div>
 
-            <!-- SPARE PARTS -->
+            {% comment %}
+            Both routes share this list — the floor wants one glance at every part
+            on the job, not two columns. Only the badge differs: PENDING/ORDERED/
+            RECEIVED is an ordering status that a warehouse draw does not have, so
+            showing one there read as "still waiting on this part" when the part
+            was already fitted off the shelf.
+            {% endcomment %}
             <div>
-                <div class="section-title">Spare Parts</div>
+                <div class="section-title">Parts</div>
                 {% for spare in job.spares.all %}
                 <div class="item-row">
                     <span class="item-text">{{ spare.spare_part_name }}{% if spare.quantity %} ({{ spare.quantity|clean_qty }}){% endif %}</span>
-                    <span class="status-badge 
+                    {% if spare.source == 'INVENTORY' %}
+                    <span class="status-badge status-received">Stock</span>
+                    {% else %}
+                    <span class="status-badge
                         {% if spare.status == 'PENDING' %}status-pending
                         {% elif spare.status == 'ORDERED' %}status-ordered
                         {% else %}status-received{% endif %}">
                         {{ spare.get_status_display }}
                     </span>
+                    {% endif %}
                 </div>
                 {% empty %}
                 <div class="text-muted small">No parts listed</div>

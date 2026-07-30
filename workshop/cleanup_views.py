@@ -14,11 +14,15 @@ def data_cleanup_view(request):
     """
     # Build usage lookup in a single aggregated query 
     # Using Trim() + Lower() ensures "ABS " and "abs" are counted together
+    # SHOP rows only: this list drives the free-text shop-purchase autocomplete,
+    # so counting warehouse draws here would credit a stock product's usage to a
+    # master-list entry that has nothing to do with it.
     spare_usage = {
         item['spare_part_name_clean']: item['count']
-        for item in JobCardSpareItem.objects.annotate(
-            spare_part_name_clean=Lower(Trim('spare_part_name'))
-        ).values('spare_part_name_clean').annotate(count=Count('id'))
+        for item in JobCardSpareItem.objects
+            .filter(source=JobCardSpareItem.SOURCE_SHOP)
+            .annotate(spare_part_name_clean=Lower(Trim('spare_part_name')))
+            .values('spare_part_name_clean').annotate(count=Count('id'))
     }
     # Build concern usage lookup
     concern_usage = {
@@ -71,11 +75,22 @@ def cleanup_rename_spare(request, spare_id):
         # Check if target name already exists (merge scenario)
         existing = SparePart.objects.filter(name__iexact=new_name).exclude(pk=spare_id).first()
 
-        # Update all job card items that used the old name
+        # Update the job card lines that used the old name — SHOP rows only.
+        #
+        # This is the Spare Parts master list, which only feeds the free-text
+        # shop-purchase autocomplete. An inventory draw takes its name from the
+        # `Item` it points at, so renaming it from here would put a job card's
+        # displayed name out of step with the product it is actually linked to.
+        # Rename a stock product on its supplier catalog instead.
+        #
+        # `.update()` deliberately bypasses signals, which is safe *because* this
+        # is scoped to shop rows: they move no stock. It would not be safe on an
+        # inventory draw.
         old_name = spare.name
-        JobCardSpareItem.objects.filter(spare_part_name__iexact=old_name).update(
-            spare_part_name=new_name
-        )
+        JobCardSpareItem.objects.filter(
+            source=JobCardSpareItem.SOURCE_SHOP,
+            spare_part_name__iexact=old_name,
+        ).update(spare_part_name=new_name)
 
         if existing:
             # Merge: delete the typo entry, keep the correct one

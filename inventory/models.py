@@ -42,6 +42,10 @@ class Item(models.Model):
     average_stock = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Ideal stock level for calculation")
     current_stock = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     usage_count = models.PositiveIntegerField(default=0, help_text="Cached popularity score (frequency of use)")
+    # Weighted-average purchase cost per unit. Maintained ONLY by restock
+    # receipts (issuing stock at the average leaves the average unchanged), and
+    # always by full replay — see inventory/costing.py. Never edited by hand.
+    avg_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Weighted-average purchase cost per unit, derived from restock bills")
 
     class Meta:
         constraints = [
@@ -164,7 +168,16 @@ class SupplierRestockBill(models.Model):
 
     @property
     def get_effective_amount(self):
-        return self.total_amount - self.discount_amount
+        """What this bill actually costs after its discount.
+
+        Floored at zero. A discount larger than the bill is always a typo, and
+        letting it through produced a NEGATIVE expense that *increased* reported
+        profit — a mistyped extra zero silently made the workshop look richer.
+        The views reject that input outright; this floor is the second line of
+        defence, so any row that already carries it cannot corrupt the Profit page.
+        """
+        effective = self.total_amount - self.discount_amount
+        return effective if effective > Decimal('0') else Decimal('0')
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -184,6 +197,17 @@ class SupplierRestockBill(models.Model):
             SupplierRestockBill.objects.filter(pk=self.pk).update(total_amount=new_total)
             self.supplier.update_totals()
 
+            # The bill total is the denominator when a discount is shared out across
+            # lines, so changing it changes every line's real unit cost. This has to
+            # be triggered here rather than by a signal: the total is written with
+            # `.update()` (no signal), and it is only known AFTER the lines have
+            # saved — so a line's own post_save runs while the total is still stale
+            # or zero, and would apportion against the wrong denominator.
+            if self.discount_amount and self.discount_amount > Decimal('0'):
+                from .costing import recompute_average_cost
+                for item in Item.objects.filter(restock_items__bill=self).distinct():
+                    recompute_average_cost(item)
+
 
 class SupplierRestockItem(models.Model):
     bill = models.ForeignKey(SupplierRestockBill, on_delete=models.CASCADE, related_name='items')
@@ -197,9 +221,37 @@ class SupplierRestockItem(models.Model):
 
     @property
     def per_unit_price(self):
+        """Gross price per unit, as written on the supplier's bill. Display only —
+        costing uses `effective_unit_price` below."""
         if self.quantity and self.quantity > 0:
             return (self.total_price / self.quantity).quantize(Decimal('0.01'))
         return Decimal('0')
+
+    @property
+    def effective_unit_price(self):
+        """
+        What this line ACTUALLY cost per unit, after its share of the bill's
+        discount. This is the figure warehouse costing must use.
+
+        A bill-level discount is apportioned pro-rata across its lines by value,
+        so a ₹2,000 discount on a ₹12,000 bill makes every line 1/6 cheaper.
+        Without this, `avg_cost` was computed from gross prices while the Profit
+        page expensed the discounted amount — the same purchase carried two
+        different costs, and every discounted item looked less profitable than it
+        really was.
+
+        Falls back to the gross price when the bill total is zero (nothing to
+        apportion against).
+        """
+        gross = self.per_unit_price
+        if not self.bill_id:
+            return gross
+        total = self.bill.total_amount or Decimal('0')
+        if total <= Decimal('0'):
+            return gross
+        # Full precision: the costing replay rounds once, at the end.
+        return (self.total_price / self.quantity) * (self.bill.get_effective_amount / total) \
+            if self.quantity and self.quantity > 0 else Decimal('0')
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

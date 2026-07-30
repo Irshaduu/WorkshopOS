@@ -29,6 +29,157 @@ about to correct one of these, you are about to break the business:
   autocomplete. This is a deliberate trade for data-entry speed on the shop floor, not an
   oversight. The mitigation is normalisation on save (already done for
   `registration_number` and `brand_name`), not converting them to ForeignKeys.
+  **One deliberate exception, added 2026-07-30: a warehouse draw
+  (`JobCardSpareItem.source == 'INVENTORY'`) is FK-backed by `item`.** Inventory
+  products are a closed set by construction — they exist only because someone created
+  them through Supplier → Add Product — so there is no data-entry speed to protect by
+  keeping them free text, and a great deal of correctness to gain. Spare-shop rows stay
+  free text.
+
+- **A job-card spare's route is stored in `source`, never inferred. Do not reintroduce
+  name matching.** Added 2026-07-30. A part reaches a car either from a spare shop
+  (`source='SHOP'`, the ordering workflow and shop ledger apply) or off the warehouse
+  shelf (`source='INVENTORY'`, `item` FK set, ordering fields meaningless). Before this
+  there was no such column: the route was guessed from a NULL `shop` plus a
+  case-insensitive match of `spare_part_name` against `Item.name` — and the guess was
+  made *differently* in `inventory/signals.py` than in `analysis_engine.py`. A part
+  bought from a shop whose name happened to equal a stock product was deducted from the
+  warehouse by one rule while correctly billed as a shop purchase by the other, so the
+  shelf count drifted down until a restock bill papered over it. Proven by
+  `ShopPurchaseNeverMovesStockTests` in `inventory/test_signals.py`.
+  **Every consumer now reads `source`** — the stock signals, `analysis_engine.py`,
+  Stock History and the master-list rename. `_inventory_item_names()` and
+  `_warehouse_names()` are deleted. The conversion was verified by computing both
+  rules over 8,295 live rows: shop ₹15,039,196 vs warehouse ₹9,504,030 all-time,
+  **identical to the rupee** under the old inference and the new column, and
+  `DoubleCountRuleTests` keeps its original assertions untouched — only its fixtures
+  now declare their route instead of implying it by name.
+
+- **Warehouse stock is allowed to go NEGATIVE. The old `Greatest(…, ZERO)` clamp is gone
+  and must not come back.** Added 2026-07-30, on the owner's reasoning: a job card
+  records a part the mechanic has *already physically taken*, so refusing or truncating
+  that record does not put the part back on the shelf — it only stops a mechanic
+  mid-shift and makes the system disagree with reality. The clamp never prevented an
+  overdraw, it destroyed the evidence of one: drawing 5 from a shelf of 2 stored 0
+  instead of −3, so when the missing supplier bill arrived (+10) the count landed on 10
+  instead of 7 and three units were invented, permanently and silently. A negative
+  balance is self-healing (−3 + 10 = 7) and is the signal that a Supplies Shop bill is
+  missing or a count is wrong. Guarded by `NegativeStockTests`. Consequence: **negative
+  is not "Low Stock"** — low means buy more, negative means a bill is missing, and
+  showing them alike would have someone reordering a part sitting on the shelf. The
+  Low Stock page therefore reports negatives as a separate amber **"stock
+  discrepancy"** banner ("a Supplies Shop bill has not been entered yet — don't
+  reorder these"), and `out_of_stock` counts `== 0` rather than `<= 0` so the two
+  counts are disjoint; one overdrawn product used to be reported as two problems.
+
+- **Warehouse cost is a weighted average, not FIFO — and it is always a full replay.**
+  Added 2026-07-30, `inventory/costing.py`. FIFO was the owner's first instinct and was
+  costed out: on the reference case (2 L @ ₹1200 then 5 L @ ₹1000, draw 4 L) it differs
+  by ₹171 on ₹4,400, and both routes total the same ₹7,400 over the stock's life — they
+  disagree only about which month the cost lands in. The average won because stock may
+  go negative (FIFO has no layer to draw from and would need retro-costed allocations)
+  and because restock bills are editable (FIFO re-costs every consumption that drew from
+  the changed layer). Per-batch cost is still recorded forever on `SupplierRestockItem`,
+  so real FIFO can be reconstructed later — this choice forecloses nothing. There is
+  deliberately **no incremental update path**: a moving average is path-dependent and
+  cannot be un-averaged, so keeping both a fast and a correcting implementation would be
+  two versions of one number free to disagree. Receipts move the average; draws do not.
+
+- **`JobCardSpareItem.unit_price` means COST PER UNIT on both routes** — typed by Office
+  for a shop purchase, snapshotted from `Item.avg_cost` at draw time for a warehouse
+  one. `SPARE_COST` in `analysis_engine.py` and `SpareShop.update_totals()` both
+  multiply it by quantity, so its meaning must stay uniform across routes; putting a
+  customer price in it for inventory rows would make the margin report compute
+  revenue − revenue = zero.
+  **Revised 2026-07-31 — an inventory row's cost is DERIVED, not frozen.** The rule
+  was "snapshot at draw time and never recompute", to stop next month's price rise
+  rewriting last month's margin. That defended against something which cannot
+  happen: the replay in `inventory/costing.py` is **date-ordered**, so a draw is
+  priced by the receipts preceding *its own date* and a later-dated bill cannot
+  reach back (`test_a_later_dated_bill_never_disturbs_an_earlier_draw`). Meanwhile
+  freezing broke the workshop's actual rhythm — a Supplies Shop delivers, keeps its
+  own book, and the bill is only keyed when the collector comes at month end, so a
+  month of draws recorded no cost at all and ₹36,000 of consumed oil read as free.
+  `recompute_average_cost` now rewrites any draw whose stored cost disagrees with
+  the replay. Only two things move a past draw, and both should: a bill **backdated
+  to before it**, or an existing bill **corrected**. Nothing customer-facing moves —
+  that is `total_price`, never touched here. A fill-only-if-NULL variant was tried
+  first and rejected: with two suppliers keyed in one sitting, whichever bill went
+  in first froze every draw before the second was known.
+
+- **A Supplies Shop bill's DISCOUNT is part of what the stock cost, and its DATE
+  changes the average.** Added 2026-07-30 after an audit found four cost-attribution
+  defects, all fixed together. (a) The discount is apportioned pro-rata across the
+  bill's lines by value — `SupplierRestockItem.effective_unit_price`, which costing
+  uses; `per_unit_price` stays gross for display. Without it, `avg_cost` came from
+  gross prices while the Profit page expensed the discounted amount, so one purchase
+  carried two costs. (b) A discount above its bill total is **dropped and reported**,
+  never applied: it made the bill negative, so the supplier appeared to owe the
+  workshop and the Supplies Shops expense went negative, *raising* profit from a
+  mistyped zero. `get_effective_amount` is floored at zero as a second line of
+  defence. (c) `update_totals()` re-costs the bill's items itself when a discount
+  exists — the total is the apportionment denominator, is written with `.update()`
+  (no signal), and is only known *after* the lines save, so a line's own post_save
+  would divide by a stale or zero total. (d) A `SupplierRestockBill` pre/post_save
+  pair re-costs when `bill_date` or `discount_amount` changes, since neither lives on
+  a line: backdating a bill across an existing draw left the average stale by ₹818.18.
+  Guarded by `inventory/test_supplier_costing.py`.
+
+- **A warehouse draw with no cost basis stores NULL, never 0.** Added 2026-07-30.
+  `Item.avg_cost == 0` means the cost is *unknown* — opening stock counted onto the
+  shelf before any supplier bill exists, or a product whose only restock bill was
+  deleted — not that the part was free. Storing 0 reported those parts as pure profit.
+  `JobCardSpareItem.save()` therefore leaves `unit_price` NULL, and
+  `analysis_engine.uncosted_draw_count()` counts such draws so the Profit page can say
+  so out loud instead of quietly understating cost. Expect this on go-live day until
+  the first restock bill for each product is entered.
+
+- **The Job Card edits the two routes as two sections over ONE formset model.**
+  Added 2026-07-30. `JobCardSpareFormSet` and `JobCardInventoryFormSet` are both
+  inline formsets on `JobCardSpareItem`, with prefixes `spares` and `inventory`;
+  each scopes itself to its own `source` in `get_queryset()` and stamps `source` in
+  `save_new()` (`SourceScopedSpareFormSet`). `source` is deliberately **not** an
+  editable field — moving a row between routes would have to move warehouse stock
+  and a shop-ledger balance at the same time. Two consequences worth knowing:
+  every job-card POST must now carry the `inventory-*` management form (the
+  template always renders it, so a payload without it is malformed, not a
+  regression — that is what broke six existing tests), and the shop-resolution
+  pass in `jobcard_create`/`jobcard_edit` filters to `SOURCE_SHOP`, because it
+  reads `shop_name` as a posted pk and a draw has none.
+  **The Inventory product is picked, never typed** — the visible search box has no
+  `name` attribute and posts nothing; the hidden `item` field carries the choice.
+  Guarded by `workshop/tests/test_jobcard_inventory_section.py`.
+
+- **Three traps in `script.js`'s formset-row cloning, all of which fail silently.**
+  Learned the hard way on 2026-07-30 while wiring the Inventory picker; the symptom
+  in every case was a control that simply did nothing, with a clean console.
+  1. **Never track "already wired" in a `data-*` attribute.** It is serialized into
+     the HTML, and the hidden `#empty-*-form` templates are themselves in the
+     document — so the initial `initializeAutocompleteInContainer(document)` sweep
+     marks the *template's* input as wired and every cloned row inherits the mark.
+     Use a `WeakSet` keyed on the element, which a clone cannot inherit.
+  2. **Declare those `WeakSet`s at the very top of the `DOMContentLoaded`
+     callback.** `const` is not hoisted the way `function` is, so declaring them
+     next to the functions that use them left them in the temporal dead zone when
+     the initial sweep ran. The `ReferenceError` fired inside a `forEach` callback
+     and aborted the rest of the handler — taking unrelated features with it, and
+     surfacing in no error log.
+  3. **`container.querySelectorAll()` searches DESCENDANTS only.** On the add-a-row
+     path the container passed to `initializeAutocompleteInContainer` *is* the new
+     `<tr>`, so a selector matching the row itself finds nothing. See
+     `inventoryRowsWithin()`.
+  Also note the Financial Lock needs no per-section work: it disables via a generic
+  `form.querySelectorAll('input:not([type="hidden"]), select, textarea, button…')`,
+  so a new section is covered automatically. Hidden FK fields stay enabled on
+  purpose — disabling them would drop them from the POST.
+
+- **`JobCardSpareItem.customer_rate` is INPUT ONLY.** It backs the optional "Unit Price"
+  box on an inventory row (customer price per unit) and is never back-filled from
+  `total_price ÷ quantity`, so a null honestly means "nobody entered a rate" and the two
+  figures can never quietly disagree. When it *is* set, `total_price = customer_rate ×
+  quantity` is enforced on save, so editing 7 L down to 4 L recomputes the bill instead
+  of leaving a stale one. Staff usually skip the box and type the total, so it must never
+  be required. "Customer Price" is the UI label for `total_price`, not a third field.
 - **The `Mechanic` model is the whole staff roster, not just mechanics — the name is kept
   for continuity, don't rename it.** Added 2026-07-26: `Mechanic.role` (Mechanic / Assistant
   Mechanic / Office Staff / General Helper, default `Mechanic`) turned this from a
@@ -169,7 +320,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (28 test files; always uses SQLite, see below)
+# Run full test suite (31 test files, 547 tests, ~15-30 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -231,7 +382,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 470 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 547 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -246,6 +397,30 @@ while it's cheap to fix rather than on go-live day.
   collides), and re-counts every table before declaring success. It skips
   content types, permissions, sessions and admin log — `migrate` owns those on
   the target and their ids need not match.
+- **`copy_sqlite_to_postgres` also replaces `auth.User`, `auth.Group`,
+  `auth.User_groups` and `UserProfile` — so it can silently break access and
+  recovery. Always do these three checks around it.** Learned the hard way on
+  2026-07-30:
+  1. **Emails.** Reset codes go to `User.email`. The seed file carried
+     placeholder `@formulad.in` addresses that would have replaced the owners'
+     real ones, pointing password recovery at undeliverable mailboxes. Copy the
+     live emails into the SQLite users *before* the copy, or repair with
+     `set_owner_email` straight after.
+  2. **Run `sync_owner_identity --yes` afterwards, always.** The copy left both
+     owners with `is_staff=True` (opening `/admin/`, which bypasses
+     `DeletionLog`, the Financial Lock and archive-don't-delete) **and stripped
+     their `Owner` group membership** — and since notification audience resolves
+     by group, not `is_superuser`, they would have silently stopped receiving
+     alerts while RBAC still let them in. This command re-asserts both.
+  3. **Extra accounts get copied in.** Any login present only in the seed file
+     is created on the target, group memberships included. Check the account
+     lists match first; a stray Owner-group test account is a real privilege
+     grant.
+  Also expect these to be emptied, since nothing seeds them: `Notification`,
+  `PushSubscription`, `AccountLockout`, `PasswordResetOTP`, `DeletionLog` and
+  all three Salary tables. `PushSubscription` is the one with a human cost —
+  every device has to re-enable push by hand, and wages read ₹0 on the Profit
+  page until salary months are re-entered.
 - The `sqlite` alias is always present in `DATABASES` under development, which
   is how the copy command reads the file while `default` points at Postgres.
 - Expect page loads to feel slow from a dev machine: the database is in
@@ -385,13 +560,13 @@ so the chart can never contradict the headline.
 
 ### Signals-driven stock sync
 `inventory/signals.py` has three independent signal groups (8 `@receiver` handlers total) on `pre_save`/`post_save`/`post_delete`:
-1. Workshop consumption (`JobCardSpareItem`, 3 handlers) — deducts stock (handles rename/quantity-change/deletion via delta calculated from a `pre_save` snapshot).
+1. Workshop consumption (`JobCardSpareItem`, 3 handlers) — deducts stock for **`source='INVENTORY'` rows only**, resolved through the `item` FK. Rewritten 2026-07-30: it used to match `spare_part_name` against `Item.name`, which silently deducted the warehouse for shop-bought parts that shared a name (see the `source` entry under "Deliberate decisions"). Quantity edits and product corrections are handled by a `pre_save` snapshot of `(source, item_id, quantity)`, netted per product so the common case is one query. **Nothing is clamped at zero** — negative stock is intended, see the same section.
 2. JobCard soft-delete reversal (`JobCard`, 2 handlers) — historically returned spare stock to the warehouse when a job card was soft-deleted (and re-deducted on restore), via a `pre_save` `_old_is_deleted` snapshot that only acts when the flag flips. **Now dormant:** job cards are hard-deleted (never soft-deleted), and the delete guard forbids deleting a card that still holds spares — so `is_deleted` never flips and these handlers no longer fire. Kept for safety; don't rely on them for new stock logic.
-3. Supplier restocking (`SupplierRestockItem`, 3 handlers) — increases stock using the same snapshot+delta pattern.
+3. Supplier restocking (`SupplierRestockItem`, 3 handlers) — increases stock using the same snapshot+delta pattern, and is the **only** thing that moves `Item.avg_cost` (via `recompute_average_cost`, a full replay — see `inventory/costing.py`).
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (25 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`) — 28 files, 470 tests. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (25 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 31 files, 547 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

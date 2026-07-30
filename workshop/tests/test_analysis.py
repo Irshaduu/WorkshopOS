@@ -217,11 +217,19 @@ class DoubleCountRuleTests(AnalysisBase):
     """
     A part is paid for exactly once, by exactly one route:
 
-      shop-linked spare      → charged as a Spare Shops expense
-      warehouse-drawn spare  → already paid via a restock bill, so NOT charged
+      source=SHOP + a shop     → charged as a Spare Shops expense
+      source=SHOP, no shop     → real money with no payee, its own line
+      source=INVENTORY         → already paid via a restock bill, so NOT charged
 
     If this class starts failing, the Profit page has begun charging the
     workshop twice for the same part. Do not "fix" it by counting both.
+
+    The fixtures below declare their route explicitly (2026-07-30). They used to
+    imply it — a NULL shop plus a name matching an inventory product — back when
+    the engine inferred the route instead of reading `source`. **Every assertion
+    is unchanged from that version**, which is the point: classifying by the
+    stored column produces the identical figures, it just cannot disagree with
+    the stock signals any more.
     """
 
     def setUp(self):
@@ -238,10 +246,10 @@ class DoubleCountRuleTests(AnalysisBase):
         self.assertEqual(engine.spare_shop_expense(s, e), D('1000'))   # 500 x 2
 
     def test_warehouse_drawn_spare_is_never_an_expense(self):
-        """No shop link + name matches an inventory Item ⇒ paid for by a restock bill."""
+        """source=INVENTORY ⇒ already paid for by a restock bill."""
         JobCardSpareItem.objects.create(
-            job_card=self.card, spare_part_name='engine oil 5w30',   # case-insensitive match
-            shop=None, quantity=D('3'), unit_price=D('400'), total_price=D('1800'))
+            job_card=self.card, source=JobCardSpareItem.SOURCE_INVENTORY, item=self.item,
+            quantity=D('3'), unit_price=D('400'), total_price=D('1800'))
         s, e, _k, _l = engine.resolve_period('this_month')
         self.assertEqual(engine.spare_shop_expense(s, e), D('0'))
         self.assertEqual(engine.unattributed_spare_expense(s, e), D('0'))
@@ -250,7 +258,7 @@ class DoubleCountRuleTests(AnalysisBase):
         self.assertEqual(engine.build_profit_report(s, e)['expense_total'], D('0'))
 
     def test_orphan_spare_is_surfaced_not_swallowed(self):
-        """No shop AND no inventory match — real money, so it gets its own line."""
+        """A shop purchase with no shop recorded — real money, so it gets its own line."""
         JobCardSpareItem.objects.create(
             job_card=self.card, spare_part_name='Mystery Widget',
             shop=None, quantity=D('1'), unit_price=D('750'), total_price=D('900'))
@@ -265,8 +273,9 @@ class DoubleCountRuleTests(AnalysisBase):
         JobCardSpareItem.objects.create(job_card=self.card, spare_part_name='Brake Pad',
                                         shop=self.shop, quantity=D('2'), unit_price=D('500'),
                                         total_price=D('1400'))
-        JobCardSpareItem.objects.create(job_card=self.card, spare_part_name='Engine Oil 5W30',
-                                        shop=None, quantity=D('3'), unit_price=D('400'),
+        JobCardSpareItem.objects.create(job_card=self.card,
+                                        source=JobCardSpareItem.SOURCE_INVENTORY,
+                                        item=self.item, quantity=D('3'), unit_price=D('400'),
                                         total_price=D('1800'))
         JobCardSpareItem.objects.create(job_card=self.card, spare_part_name='Mystery Widget',
                                         shop=None, quantity=D('1'), unit_price=D('750'),

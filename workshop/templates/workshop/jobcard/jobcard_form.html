@@ -510,12 +510,100 @@
                 </div>
             </div>
 
+            {% comment %}
+            SECTION 5: INVENTORY ITEMS — parts taken off the workshop's own shelf.
+
+            Separate from Spare Parts because the two routes share almost nothing on
+            screen. A warehouse draw has no shop to order from, no price to negotiate
+            and no PENDING/ORDERED/RECEIVED workflow, so five of Spare Parts' eight
+            columns were permanently blank here and invited staff to fill boxes that
+            meant nothing. Three columns instead of eight also matters on the tablet,
+            which is the device the mechanics actually use.
+
+            The product is picked, never typed: the visible box below is a search
+            control with no name attribute, so it posts nothing. What posts is the
+            hidden `item` field beside it, holding the product's id. That is what
+            makes a draw survive a product being renamed.
+            {% endcomment %}
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0 text-primary fw-bold">Inventory Items</h6>
+                        <small class="text-muted" style="font-size: 0.72rem;">Taken from workshop stock</small>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'inventory_list' %}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size: 0.75rem;" title="Open Inventory">
+                            <i class="bi bi-box-seam"></i> Stock
+                        </a>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="add-inventory-btn">
+                            + Add Item
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="table-responsive pb-2">
+                        {{ inventory_formset.management_form }}
+                        <table class="table table-borderless align-middle mb-0" style="min-height: 80px;">
+                            <thead class="table-premium-header text-muted small text-uppercase">
+                                <tr class="border-bottom">
+                                    <th class="ps-3" style="min-width: 240px;">Item</th>
+                                    <th class="text-center {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}" style="min-width: 90px;">Qty</th>
+                                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                                    <th class="text-nowrap" style="min-width: 130px;">Unit Price (₹)</th>
+                                    <th class="pe-4 text-nowrap" style="min-width: 150px;">Customer Price (₹)</th>
+                                    {% endif %}
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-list">
+                                {% for i_form in inventory_formset %}
+                                <tr class="inventory-row border-bottom">
+                                    <td class="ps-3">
+                                        {{ i_form.id }}
+                                        <div class="d-none">{{ i_form.DELETE }}</div>
+                                        {{ i_form.item }}
+                                        <input type="text" class="form-control inventory-item-search"
+                                               autocomplete="off" placeholder="Search stock..."
+                                               value="{{ i_form.instance.spare_part_name|default:'' }}">
+                                        <div class="list-group autocomplete-suggestions"></div>
+                                        <div class="inventory-stock-hint text-muted" style="font-size: 0.72rem;"></div>
+                                        {% if i_form.item.errors %}<div class="text-danger" style="font-size: 0.72rem;">{{ i_form.item.errors.0 }}</div>{% endif %}
+                                        {% if i_form.non_field_errors %}<div class="text-danger" style="font-size: 0.72rem;">{{ i_form.non_field_errors.0 }}</div>{% endif %}
+                                    </td>
+                                    <td class="text-center {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
+                                        {{ i_form.quantity }}
+                                        {% if i_form.quantity.errors %}<div class="text-danger" style="font-size: 0.72rem;">{{ i_form.quantity.errors.0 }}</div>{% endif %}
+                                    </td>
+                                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                                    <td>{{ i_form.customer_rate }}</td>
+                                    <td class="pe-4">{{ i_form.total_price }}</td>
+                                    {% else %}
+                                    {% comment %}
+                                    Floor sees no prices, but the values must still post or
+                                    a mechanic saving the card would wipe the bill Office set.
+                                    {% endcomment %}
+                                    <td class="d-none">
+                                        {{ i_form.customer_rate }}
+                                        {{ i_form.total_price }}
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- ========================================== -->
-            <!-- SECTION 5: SPARE PARTS (Swipeable) -->
+            <!-- SECTION 6: SPARE PARTS (from a spare shop) -->
             <!-- ========================================== -->
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 text-primary fw-bold">Spare Parts</h6>
+                    <div>
+                        <h6 class="mb-0 text-primary fw-bold">Spare Parts</h6>
+                        <small class="text-muted" style="font-size: 0.72rem;">Ordered from a spare shop</small>
+                    </div>
                     <div class="d-flex gap-2">
                         <a href="{% url 'spare_shop_list' %}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size: 0.75rem;" title="Manage Spare Shops">
                             <i class="bi bi-tools"></i> Shops
@@ -668,6 +756,36 @@
 
 <div class="d-none">
     <table>
+        <tbody id="empty-inventory-form">
+            <tr class="inventory-row border-bottom">
+                <td class="ps-3">
+                    {{ inventory_formset.empty_form.id }}
+                    <div class="d-none">{{ inventory_formset.empty_form.DELETE }}</div>
+                    {{ inventory_formset.empty_form.item }}
+                    <input type="text" class="form-control inventory-item-search"
+                           autocomplete="off" placeholder="Search stock...">
+                    <div class="list-group autocomplete-suggestions"></div>
+                    <div class="inventory-stock-hint text-muted" style="font-size: 0.72rem;"></div>
+                </td>
+                <td class="text-center {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
+                    {{ inventory_formset.empty_form.quantity }}
+                </td>
+                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                <td>{{ inventory_formset.empty_form.customer_rate }}</td>
+                <td class="pe-4">{{ inventory_formset.empty_form.total_price }}</td>
+                {% else %}
+                <td class="d-none">
+                    {{ inventory_formset.empty_form.customer_rate }}
+                    {{ inventory_formset.empty_form.total_price }}
+                </td>
+                {% endif %}
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="d-none">
+    <table>
         <tbody id="empty-spare-form">
             <tr class="spare-row border-bottom" data-original-status="PENDING">
                 <td class="ps-3 col-part">
@@ -796,6 +914,20 @@
                     const partInput = row.querySelector('input[name$="-spare_part_name"]');
                     const deleteCheckbox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
                     if (partInput && deleteCheckbox && !partInput.value.trim()) {
+                        deleteCheckbox.checked = true;
+                    }
+                });
+
+                {% comment %}
+                Mark empty inventory rows for deletion. Keyed on the hidden item id,
+                not the visible search box: a row where someone typed a few letters
+                and never picked a product has text but no product, and must be
+                dropped rather than rejected as a validation error.
+                {% endcomment %}
+                document.querySelectorAll('#inventory-list .inventory-row').forEach(row => {
+                    const itemId = row.querySelector('.inventory-item-id');
+                    const deleteCheckbox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+                    if (itemId && deleteCheckbox && !itemId.value.trim()) {
                         deleteCheckbox.checked = true;
                     }
                 });
@@ -993,7 +1125,7 @@
 
 <!-- Spare Parts Auto-Fill Logic -->
 {% load static %}
-<script src="{% static 'js/spare_autofill.js' %}"></script>
+<script src="{% static 'js/spare_autofill.js' %}?v=4"></script>
 
 <!-- UNASSIGN CONFIRMATION MODAL -->
 <div class="modal fade" id="unassignConfirmModal" tabindex="-1" aria-hidden="true">

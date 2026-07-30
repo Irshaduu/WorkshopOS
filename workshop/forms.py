@@ -1,5 +1,5 @@
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import inlineformset_factory, BaseInlineFormSet
 
 from .models import (
     CarBrand,
@@ -237,9 +237,111 @@ JobCardConcernFormSet = inlineformset_factory(
     }
 )
 
+# -----------------------------------------------------------------------------
+# The two spare routes — one model, one relation, two formsets
+# -----------------------------------------------------------------------------
+# `JobCardSpareItem` holds both a shop purchase and a warehouse draw, told apart
+# by `source`. The Job Card edits them as two separate sections because they have
+# almost nothing in common on screen: a draw has no shop, no price to negotiate
+# and no ordering workflow, so eight columns of ordering fields sat empty and
+# invited staff to fill boxes that meant nothing.
+#
+# They stay ONE model on purpose — roughly twenty places read `jobcard.spares`
+# (the bill total, the invoice, the shop ledger, Stock History, the analysis
+# engine, the delete guard). A second model would need every one of them taught
+# to union two relations, and a single miss would short a customer's bill.
+#
+# Each formset therefore scopes itself to its own `source`, both when reading
+# existing rows and when stamping new ones.
+
+class SourceScopedSpareFormSet(BaseInlineFormSet):
+    """Shows only its own route's rows, and stamps `source` onto anything new."""
+
+    spare_source = None
+
+    def get_queryset(self):
+        return super().get_queryset().filter(source=self.spare_source)
+
+    def save_new(self, form, commit=True):
+        # `source` is deliberately not an editable field — a row cannot be moved
+        # between routes from the UI, because that would have to move warehouse
+        # stock and a shop ledger balance at the same time.
+        obj = super().save_new(form, commit=False)
+        obj.source = self.spare_source
+        if commit:
+            obj.save()
+        return obj
+
+
+class ShopSpareFormSet(SourceScopedSpareFormSet):
+    spare_source = JobCardSpareItem.SOURCE_SHOP
+
+
+class InventoryDrawFormSet(SourceScopedSpareFormSet):
+    spare_source = JobCardSpareItem.SOURCE_INVENTORY
+
+
+class InventoryDrawForm(forms.ModelForm):
+    """
+    One warehouse draw. The product is chosen from the existing stock list and
+    never typed freely — unlike a shop spare, whose name is deliberately free
+    text for shop-floor speed. Inventory products are a closed set (they exist
+    only because someone created them through Supplier → Add Product), so there
+    is no entry speed to protect and a real link to gain.
+    """
+
+    class Meta:
+        model = JobCardSpareItem
+        fields = ['item', 'quantity', 'customer_rate', 'total_price']
+        widgets = {
+            # The visible control is a search box in the template; this carries
+            # the actual choice. A ModelChoiceField validates the pk for us, so
+            # a hand-typed or stale id cannot get through.
+            'item': forms.HiddenInput(attrs={'class': 'inventory-item-id'}),
+            'quantity': forms.TextInput(attrs={
+                'class': 'form-control text-center',
+                'placeholder': 'Qty',
+            }),
+            'customer_rate': forms.TextInput(attrs={
+                'class': 'form-control text-end inventory-rate',
+                'placeholder': 'Unit Price (₹)',
+            }),
+            'total_price': forms.TextInput(attrs={
+                'class': 'form-control text-end fw-bold inventory-total',
+                'placeholder': 'Customer Price (₹)',
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Every stock product is drawable. Deliberately NOT filtered by
+        # ShopCatalogItem.is_active: that flag governs which supplier restock
+        # bills may list a product, not whether something already on the shelf
+        # can be fitted to a car.
+        from inventory.models import Item
+        self.fields['item'].queryset = Item.objects.select_related('category')
+
+    def clean(self):
+        cleaned = super().clean()
+        item = cleaned.get('item')
+        money_or_qty = [cleaned.get(f) for f in ('quantity', 'customer_rate', 'total_price')]
+        row_has_content = any(v not in (None, '') for v in money_or_qty)
+
+        # A row someone started filling but never picked a product for would
+        # otherwise save as a nameless, stockless line on the customer's bill.
+        if row_has_content and not item:
+            raise forms.ValidationError(
+                "Choose the product from the suggestions — inventory items can't be typed in freely."
+            )
+        if item and cleaned.get('quantity') in (None, ''):
+            self.add_error('quantity', "Enter how many were taken.")
+        return cleaned
+
+
 JobCardSpareFormSet = inlineformset_factory(
     JobCard,
     JobCardSpareItem,
+    formset=ShopSpareFormSet,
     fields=['spare_part_name', 'quantity', 'shop_name', 'status', 'unit_price', 'total_price', 'ordered_date', 'received_date'],
     extra=0,
     can_delete=True,
@@ -279,6 +381,17 @@ JobCardSpareFormSet = inlineformset_factory(
             'class': 'form-control received-date'
         }),
     }
+)
+
+JobCardInventoryFormSet = inlineformset_factory(
+    JobCard,
+    JobCardSpareItem,
+    form=InventoryDrawForm,
+    formset=InventoryDrawFormSet,
+    fields=['item', 'quantity', 'customer_rate', 'total_price'],
+    extra=0,
+    can_delete=True,
+    validate_min=False,
 )
 
 JobCardLabourFormSet = inlineformset_factory(

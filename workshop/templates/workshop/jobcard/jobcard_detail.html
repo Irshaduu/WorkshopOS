@@ -246,12 +246,66 @@ View Job Card - {{ jobcard.registration_number }}
         <!-- ========================================== -->
         <!-- SECTION 5: SPARE PARTS -->
         <!-- ========================================== -->
+        {% comment %}
+        Warehouse draws get their own card, matching the two sections on the edit
+        form. Sharing one table meant every inventory row displayed a PENDING
+        badge and dashes under Status, Dates and Shop — ordering-workflow columns
+        that mean nothing for a part already on the shelf.
+        {% endcomment %}
         <div class="card shadow-sm mb-4 border-0">
             <div class="card-header bg-white py-3">
-                <h6 class="mb-0 text-primary fw-bold">Spare Parts Used ({{ jobcard.spares.count }})</h6>
+                <h6 class="mb-0 text-primary fw-bold">Inventory Items Used ({{ inventory_draws|length }})</h6>
+                <small class="text-muted" style="font-size: 0.72rem;">Taken from workshop stock</small>
             </div>
             <div class="card-body p-0">
-                {% if jobcard.spares.all %}
+                {% if inventory_draws %}
+                    <div class="table-responsive">
+                        <table class="table table-borderless align-middle mb-0">
+                            <thead class="text-muted small text-uppercase border-bottom">
+                                <tr>
+                                    <th class="ps-4">Item</th>
+                                    <th class="text-center">Qty</th>
+                                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                                    <th class="text-end">Unit Price</th>
+                                    <th class="text-end pe-4">Customer Price</th>
+                                    {% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for draw in inventory_draws %}
+                                <tr class="border-bottom">
+                                    <td class="ps-4">
+                                        <span class="view-list-text">{{ draw.spare_part_name }}</span>
+                                    </td>
+                                    <td class="text-center font-monospace fw-bold">
+                                        {{ draw.quantity|clean_qty|default:"-" }}
+                                    </td>
+                                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                                    <td class="text-end font-monospace">
+                                        {% if draw.customer_rate %}₹{{ draw.customer_rate }}{% else %}<span class="text-muted">—</span>{% endif %}
+                                    </td>
+                                    <td class="text-end pe-4 font-monospace fw-bold">
+                                        ₹{{ draw.total_price|default:"0.00" }}
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="view-empty">No inventory items used</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 text-primary fw-bold">Spare Parts Used ({{ shop_spares|length }})</h6>
+                <small class="text-muted" style="font-size: 0.72rem;">Ordered from a spare shop</small>
+            </div>
+            <div class="card-body p-0">
+                {% if shop_spares %}
                     <div class="table-responsive">
                         <table class="table table-borderless align-middle mb-0">
                             <thead class="text-muted small text-uppercase border-bottom">
@@ -267,7 +321,7 @@ View Job Card - {{ jobcard.registration_number }}
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for spare in jobcard.spares.all %}
+                                {% for spare in shop_spares %}
                                 <tr class="border-bottom">
                                     <td class="ps-4">
                                         <span class="view-list-text">{{ spare.spare_part_name }}</span>
@@ -308,7 +362,7 @@ View Job Card - {{ jobcard.registration_number }}
                         </table>
                     </div>
                 {% else %}
-                    <div class="view-empty">No spare parts recorded</div>
+                    <div class="view-empty">No shop-ordered spare parts</div>
                 {% endif %}
             </div>
         </div>

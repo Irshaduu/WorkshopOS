@@ -61,6 +61,11 @@ class JobCardViewsTestCase(TestCase):
             'spares-0-ordered_date': '',
             'spares-0-received_date': '',
 
+            'inventory-TOTAL_FORMS': '0',
+            'inventory-INITIAL_FORMS': '0',
+            'inventory-MIN_NUM_FORMS': '0',
+            'inventory-MAX_NUM_FORMS': '1000',
+
             'labours-TOTAL_FORMS': '1',
             'labours-INITIAL_FORMS': '0',
             'labours-MIN_NUM_FORMS': '0',
@@ -172,6 +177,11 @@ class JobCardViewsTestCase(TestCase):
             'spares-MIN_NUM_FORMS': '0',
             'spares-MAX_NUM_FORMS': '1000',
 
+            'inventory-TOTAL_FORMS': '0',
+            'inventory-INITIAL_FORMS': '0',
+            'inventory-MIN_NUM_FORMS': '0',
+            'inventory-MAX_NUM_FORMS': '1000',
+
             'labours-TOTAL_FORMS': '0',
             'labours-INITIAL_FORMS': '0',
             'labours-MIN_NUM_FORMS': '0',
@@ -280,6 +290,11 @@ class JobCardViewsTestCase(TestCase):
             'spares-INITIAL_FORMS': '0',
             'spares-MIN_NUM_FORMS': '0',
             'spares-MAX_NUM_FORMS': '1000',
+
+            'inventory-TOTAL_FORMS': '0',
+            'inventory-INITIAL_FORMS': '0',
+            'inventory-MIN_NUM_FORMS': '0',
+            'inventory-MAX_NUM_FORMS': '1000',
 
             'labours-TOTAL_FORMS': '0',
             'labours-INITIAL_FORMS': '0',

@@ -80,28 +80,29 @@ class APIViewsTestCase(TestCase):
     # ------------------------------------------------------------------
     # autocomplete_spares  →  returns list of dicts {"name":…,"source":…}
     # ------------------------------------------------------------------
-    def test_autocomplete_spares_returns_inventory_item(self):
-        """Inventory items have source='inventory'."""
+    def test_autocomplete_spares_no_longer_mixes_in_stock_products(self):
+        """
+        Changed 2026-07-30. This endpoint used to return inventory products too,
+        tagged source='inventory' and highlighted yellow — the only hint that
+        picking that name would silently deduct warehouse stock. Warehouse draws
+        have their own section and their own endpoint now, so mixing the two lists
+        would reintroduce exactly the ambiguity the split removed.
+        """
         url = reverse('autocomplete_spares')
-        response = self.client.get(url, {'q': 'Brake'})
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        # data is a list of dicts
+        data = self.client.get(url, {'q': 'Brake'}).json()
         names = [d['name'] for d in data]
-        sources = {d['name']: d['source'] for d in data}
-        self.assertIn('Brake Pad', names)          # from inventory
-        self.assertEqual(sources['Brake Pad'], 'inventory')
-        self.assertIn('Brake Filter', names)       # from master list
-        self.assertEqual(sources['Brake Filter'], 'master')
 
-    def test_autocomplete_spares_no_duplicate(self):
-        """If an inventory item shares a name with master list, it shouldn't appear twice."""
-        SparePart.objects.create(name='Brake Pad')  # same name as inv_item
-        url = reverse('autocomplete_spares')
-        response = self.client.get(url, {'q': 'Brake'})
-        data = response.json()
-        names = [d['name'] for d in data]
-        self.assertEqual(names.count('Brake Pad'), 1)
+        self.assertIn('Brake Filter', names)          # master list, still offered
+        self.assertNotIn('Brake Pad', names)          # inventory product, not here
+        self.assertEqual({d['source'] for d in data}, {'master'})
+
+    def test_the_inventory_picker_offers_stock_products_with_their_ids(self):
+        """The other half of the split: a product is chosen by id, not by name."""
+        data = self.client.get(reverse('autocomplete_inventory_items'), {'q': 'Brake'}).json()
+        names = {d['name']: d for d in data}
+        self.assertIn('Brake Pad', names)
+        self.assertEqual(names['Brake Pad']['id'], self.inv_item.pk)
+        self.assertNotIn('Brake Filter', names)       # master-list spare, not stock
 
     def test_autocomplete_spares_empty_query(self):
         """Empty q should return [] (min length guard)."""

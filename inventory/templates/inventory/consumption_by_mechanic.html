@@ -37,13 +37,6 @@
                     <tr>
                         <td class="ps-4 fw-bold">
                             {{ row.name }}
-                            {% if not row.in_warehouse %}
-                            <span class="badge bg-secondary-subtle text-secondary border ms-1" data-unmatched="1"
-                                  style="font-size:0.62rem; vertical-align:middle;"
-                                  title="No warehouse product matches this name, so no stock was deducted.">
-                                not from stock
-                            </span>
-                            {% endif %}
                         </td>
                         <td class="text-end pe-4 fw-bold">{{ row.total|clean_qty }}</td>
                     </tr>

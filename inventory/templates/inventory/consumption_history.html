@@ -125,9 +125,8 @@
             <div class="use-row">
                 <div class="u-part">
                     {{ r.spare_part_name }}
-                    {% if not r.in_warehouse %}<span class="tag-off" data-unmatched="1">not from stock</span>{% endif %}
                 </div>
-                <div class="u-qty {% if not r.in_warehouse %}muted{% endif %}">{{ r.quantity|clean_qty }}</div>
+                <div class="u-qty">{{ r.quantity|clean_qty }}</div>
                 <div class="u-meta">
                     <div class="u-mech">
                         {% if r.job_card.lead_mechanic %}

@@ -161,13 +161,30 @@ def inventory_low_stock(request):
     page_obj = paginator.get_page(page_number)
 
     # Out-of-stock is the urgent subset; surfaced as a count so Floor can triage.
-    out_of_stock = sum(1 for i in page_obj if i.current_stock <= 0)
+    # Exactly zero, not `<= 0`: a negative balance is counted as a discrepancy
+    # below instead. Letting it fall in both buckets reported one overdrawn product
+    # as two separate problems — "1 out of stock" (reorder it) alongside "1 stock
+    # discrepancy" (don't) — which is the confusion this split exists to end.
+    out_of_stock = sum(1 for i in page_obj if i.current_stock == 0)
+
+    # A NEGATIVE balance is not a low-stock problem and must not be triaged as
+    # one. Low means "order more"; negative means more was drawn than the shelf
+    # was recorded as holding — a Supplies Shop bill has not been entered yet, or
+    # a count is wrong. Ordering against it would buy a part that is physically
+    # sitting on the shelf. Counted separately, over the whole filtered set rather
+    # than one page, because it is a books problem the owner needs the true size of.
+    discrepancies = low_stock_query.filter(current_stock__lt=0)
+    disc_shown = list(discrepancies.order_by('current_stock')[:10])
+    disc_count = discrepancies.count()
 
     return render(request, 'inventory/low_stock.html', {
         'items': page_obj,
         'page_obj': page_obj,
         'q': q,
         'out_of_stock': out_of_stock,
+        'discrepancy_count': disc_count,
+        'discrepancy_items': disc_shown,
+        'discrepancy_more': max(disc_count - len(disc_shown), 0),
     })
 
 def _week_range(which):
@@ -185,30 +202,19 @@ def _week_range(which):
 HISTORY_ROW_CAP = 500
 
 
-def _warehouse_names(spare_names):
-    """Lowercased names of the warehouse Items that these spare names actually match.
-
-    Stock deduction matches `spare_part_name` to `Item.name` case-insensitively; a
-    spare with no matching Item deducts nothing. Stock History has to show that,
-    otherwise a hand-typed part reads as a warehouse draw that never happened.
-    """
-    wanted = {n.strip().lower() for n in spare_names if n}
-    if not wanted:
-        return set()
-    return set(
-        Item.objects
-        .annotate(lname=Lower('name'))
-        .filter(lname__in=wanted)
-        .values_list('lname', flat=True)
-    )
-
-
 @staff_required
 def consumption_history(request):
     """
     Stock History = the real consumption log, read live from job cards:
-    every spare used on a car shown as item | qty | mechanic | car | reg,
+    every warehouse item used on a car shown as item | qty | mechanic | car | reg,
     grouped by date. Filter: This Week (default) / Last Week.
+
+    Scoped to `source=INVENTORY` since 2026-07-30 — these are draws off the shelf,
+    and a spare bought from a shop for one job never touched the warehouse. This
+    page used to list every spare and flag the ones whose name matched no product
+    as "not from stock", because the route had to be guessed from the name. With
+    the route stored, an unmatched row cannot exist: rows here moved stock by
+    definition.
     """
     which = request.GET.get('range', 'this')
     if which not in ('this', 'last'):
@@ -217,7 +223,8 @@ def consumption_history(request):
 
     rows = list(
         JobCardSpareItem.objects
-        .filter(job_card__isnull=False,
+        .filter(source=JobCardSpareItem.SOURCE_INVENTORY,
+                job_card__isnull=False,
                 job_card__is_deleted=False,
                 job_card__admitted_date__range=(start, end))
         .exclude(spare_part_name__isnull=True).exclude(spare_part_name='')
@@ -226,10 +233,6 @@ def consumption_history(request):
     )
     truncated = len(rows) > HISTORY_ROW_CAP
     rows = rows[:HISTORY_ROW_CAP]
-
-    known = _warehouse_names(r.spare_part_name for r in rows)
-    for r in rows:
-        r.in_warehouse = r.spare_part_name.strip().lower() in known
 
     grouped = [(day, list(items)) for day, items in
                groupby(rows, key=lambda r: r.job_card.admitted_date)]
@@ -254,12 +257,13 @@ def inventory_history_mechanic(request, mechanic_id):
         which = 'this'
     start, end = _week_range(which)
 
-    # Group case-insensitively: stock deduction matches Item names with __iexact,
-    # so "Castrol 5W40" and "Castrol 5w40" are one product to the warehouse and
-    # must be one row here too. `name` is a representative spelling for display.
+    # Grouped by name for display only. Rows are already one product each via the
+    # `item` FK; the grouping just merges spellings that differ in case, which old
+    # rows can still carry.
     totals = list(
         JobCardSpareItem.objects
-        .filter(job_card__lead_mechanic=mechanic,
+        .filter(source=JobCardSpareItem.SOURCE_INVENTORY,
+                job_card__lead_mechanic=mechanic,
                 job_card__is_deleted=False,
                 job_card__admitted_date__range=(start, end))
         .exclude(spare_part_name__isnull=True).exclude(spare_part_name='')
@@ -268,10 +272,6 @@ def inventory_history_mechanic(request, mechanic_id):
         .annotate(total=Sum('quantity'), name=Min('spare_part_name'))
         .order_by('-total', 'lname')
     )
-
-    known = _warehouse_names(row['lname'] for row in totals)
-    for row in totals:
-        row['in_warehouse'] = row['lname'] in known
 
     return render(request, 'inventory/consumption_by_mechanic.html', {
         'mechanic': mechanic,

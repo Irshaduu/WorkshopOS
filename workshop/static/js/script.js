@@ -1,6 +1,21 @@
 document.addEventListener('DOMContentLoaded', function () {
     console.log("Workshop Script Loaded");
 
+    // Which inventory rows have already been wired, tracked by element identity
+    // rather than a data-* attribute. A data attribute is serialized into the
+    // HTML, and the hidden #empty-inventory-form template is itself in the
+    // document — so the first sweep marked the template's input as wired, every
+    // cloned row inherited the mark, and no added row ever got a listener.
+    //
+    // Declared HERE, at the very top of the closure, and not beside the functions
+    // that use them: `const` is not hoisted like `function` is, so a declaration
+    // further down left these in the temporal dead zone when the initial
+    // initializeAutocompleteInContainer(document) call ran. That threw a
+    // ReferenceError which aborted the rest of this handler — silently, because it
+    // surfaced inside a forEach callback.
+    const wiredPickers = new WeakSet();
+    const wiredPricing = new WeakSet();
+
     // ==========================================
     // 1. DYNAMIC FORMSETS
     // ==========================================
@@ -17,6 +32,13 @@ document.addEventListener('DOMContentLoaded', function () {
     if (addSpareBtn) {
         addSpareBtn.addEventListener('click', () => {
             addFormRow('spares', 'spare-list', 'empty-spare-form');
+        });
+    }
+
+    const addInventoryBtn = document.getElementById('add-inventory-btn');
+    if (addInventoryBtn) {
+        addInventoryBtn.addEventListener('click', () => {
+            addFormRow('inventory', 'inventory-list', 'empty-inventory-form');
         });
     }
 
@@ -72,6 +94,138 @@ document.addEventListener('DOMContentLoaded', function () {
         models.forEach(input => setupAutocomplete(input, 'models'));
         spares.forEach(input => setupAutocomplete(input, 'spares'));
         concerns.forEach(input => setupAutocomplete(input, 'concerns'));
+
+        container.querySelectorAll('.inventory-item-search').forEach(setupInventoryPicker);
+        // querySelectorAll only looks at DESCENDANTS. On the add-a-row path the
+        // container passed in IS the new <tr class="inventory-row">, so searching
+        // inside it finds nothing and the row's pricing would never be wired.
+        inventoryRowsWithin(container).forEach(setupInventoryPricing);
+    }
+
+    // ==========================================
+    // INVENTORY PICKER — a choice, not a name
+    // ==========================================
+    // The other autocompletes just write text into the field they are attached to.
+    // This one is different on purpose: the draw is linked to the stock product by
+    // FK, so the search box is only a way of choosing, and the id it selects is
+    // what actually posts. A product can then be renamed without detaching it from
+    // the job cards that used it.
+    // `document` has no .matches, hence the guard.
+    function inventoryRowsWithin(container) {
+        const found = [...container.querySelectorAll('.inventory-row')];
+        if (container.matches && container.matches('.inventory-row')) found.push(container);
+        return found;
+    }
+
+    function setupInventoryPicker(input) {
+        if (wiredPickers.has(input)) return;
+
+        const row = input.closest('.inventory-row');
+        const suggestionsBox = input.parentElement.querySelector('.autocomplete-suggestions');
+        const hiddenId = row ? row.querySelector('.inventory-item-id') : null;
+        const stockHint = row ? row.querySelector('.inventory-stock-hint') : null;
+        // Marked only after the guard: a flag set before it would claim a row was
+        // wired when setup had in fact bailed out.
+        if (!suggestionsBox || !hiddenId) return;
+        wiredPickers.add(input);
+
+        let timeout = null;
+
+        input.addEventListener('input', function () {
+            // Typing after a pick invalidates that pick. Clearing the id is what
+            // makes a half-edited name fail validation instead of silently keeping
+            // the previously chosen product and drawing the wrong stock.
+            hiddenId.value = '';
+            if (stockHint) stockHint.textContent = '';
+
+            const query = this.value;
+            if (timeout) clearTimeout(timeout);
+            if (query.length < 1) {
+                suggestionsBox.innerHTML = '';
+                return;
+            }
+            timeout = setTimeout(() => fetchInventory(query), 300);
+        });
+
+        document.addEventListener('click', function (e) {
+            if (e.target !== input && e.target !== suggestionsBox) {
+                suggestionsBox.innerHTML = '';
+            }
+        });
+
+        function fetchInventory(query) {
+            fetch(`/api/autocomplete/inventory-items/?q=${encodeURIComponent(query)}`)
+                .then(r => r.json())
+                .then(data => {
+                    suggestionsBox.innerHTML = '';
+                    data.forEach(item => {
+                        const opt = document.createElement('a');
+                        opt.classList.add('list-group-item', 'list-group-item-action', 'py-2');
+                        opt.style.cursor = 'pointer';
+
+                        // Stock can be zero or negative — an overdraw waiting on its
+                        // supplier bill. Show it plainly rather than hiding the
+                        // product: the part may well be physically on the shelf.
+                        const stock = parseFloat(item.stock);
+                        const tone = stock <= 0 ? 'text-danger' : 'text-muted';
+                        opt.innerHTML =
+                            `<i class="bi bi-box-seam me-2"></i><span class="fw-semibold">${item.name}</span>` +
+                            `<span class="${tone} ms-2" style="font-size:0.75rem;">${item.stock} in stock</span>` +
+                            `<div class="text-muted" style="font-size:0.7rem;">${item.category}</div>`;
+
+                        opt.addEventListener('click', function (e) {
+                            e.preventDefault();
+                            input.value = item.name;
+                            hiddenId.value = item.id;
+                            if (stockHint) {
+                                stockHint.textContent = `${item.stock} in stock`;
+                                stockHint.classList.toggle('text-danger', stock <= 0);
+                            }
+                            suggestionsBox.innerHTML = '';
+                            recalcRow(row);
+                        });
+                        suggestionsBox.appendChild(opt);
+                    });
+                })
+                .catch(err => console.error('Inventory picker error:', err));
+        }
+    }
+
+    // Unit Price x Qty -> Customer Price.
+    //
+    // The rate box is a convenience that staff usually skip, typing the total
+    // straight in. So it is an INPUT only: typing directly into Customer Price
+    // clears the rate, which keeps the server-side rule (total = rate x qty when a
+    // rate exists) from overriding a figure someone entered by hand. The two can
+    // never end up disagreeing about one line.
+    function setupInventoryPricing(row) {
+        if (wiredPricing.has(row)) return;
+
+        const rate = row.querySelector('.inventory-rate');
+        const total = row.querySelector('.inventory-total');
+        const qty = row.querySelector('input[name$="-quantity"]');
+        if (!rate || !total) return;
+        wiredPricing.add(row);
+
+        rate.addEventListener('input', () => recalcRow(row));
+        if (qty) qty.addEventListener('input', () => recalcRow(row));
+        total.addEventListener('input', function () {
+            if (document.activeElement === total) rate.value = '';
+        });
+    }
+
+    function recalcRow(row) {
+        if (!row) return;
+        const rate = row.querySelector('.inventory-rate');
+        const total = row.querySelector('.inventory-total');
+        const qty = row.querySelector('input[name$="-quantity"]');
+        if (!rate || !total) return;
+
+        const r = parseFloat(rate.value);
+        const q = parseFloat(qty ? qty.value : '');
+        if (!isNaN(r) && !isNaN(q)) {
+            total.value = (r * q).toFixed(2).replace(/\.00$/, '');
+        }
     }
 
     function setupAutocomplete(input, type) {

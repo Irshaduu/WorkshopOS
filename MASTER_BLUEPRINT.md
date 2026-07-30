@@ -3,7 +3,7 @@
 > **Project**: WorkshopOS (Titan) · Django project package name `formulad_workshop`
 > **Framework**: Django 5.2 LTS · Python 3.13 · **PostgreSQL** (Neon — development *and* production since 2026-07-27; SQLite retained only for bulk dummy-data seeding and the test suite)
 > **Apps**: `workshop` (core) + `inventory` (warehouse)
-> **Accurate as of**: 2026-07-27 (v8)
+> **Accurate as of**: 2026-07-30 (v9)
 >
 > This is the **technical reference** doc — exact model/route/template/admin/test counts and structure. For workflow narrative see `OPERATIONAL_BLUEPRINT.md`; for mission, status, and roadmap see `TITAN_MASTER_HANDOVER.md`; for day-to-day coding conventions see `CLAUDE.md`.
 
@@ -26,8 +26,8 @@ graph TB
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 106 URL Patterns"]
-        W_FORMS["forms.py — 6 Forms + 3 Formsets"]
+        W_URLS["urls.py — 107 URL Patterns"]
+        W_FORMS["forms.py — 7 Forms + 4 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session Tracker"]
         W_TAGS["templatetags — 8 Filters"]
@@ -78,7 +78,8 @@ erDiagram
     JobCard }o--|| Mechanic : "assigned to"
     JobCard }o--o{ BulkPayer : "M2M via bulk_payers"
 
-    JobCardSpareItem }o--o| SpareShop : "linked shop"
+    JobCardSpareItem }o--o| SpareShop : "linked shop (SHOP rows)"
+    JobCardSpareItem }o--o| Item : "stock product drawn (INVENTORY rows)"
 
     CarBrand ||--o{ CarModel : "has models"
 
@@ -106,7 +107,7 @@ erDiagram
 | 13 | **SpareShop** | name (unique), phone, address, is_trashed | Master list of spare parts suppliers |
 | 14 | **JobCard** | bill_number, dates, vehicle info, customer, financials, status flags | **Core entity** — full lifecycle |
 | 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
-| 16 | **JobCardSpareItem** | job_card (FK), part name, qty, prices, shop (FK→SpareShop), order tracking | Per-job spare parts |
+| 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking | Per-job parts, both routes. `source` records which route and is **never inferred** — added 2026-07-30 with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only |
 | 17 | **JobCardLabourItem** | job_card (FK), job_description, amount | Per-job labour charges |
 | 18 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), advance_balance, is_trashed | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
 | 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
@@ -126,12 +127,12 @@ Salary models added 2026-07-27 (migration `0054_mechanic_current_salary_and_more
 | # | Model | Key Fields | Purpose |
 |---|-------|--------|---------|
 | 1 | **Category** | name | Groups inventory items |
-| 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count | Warehouse part with stock levels |
+| 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count, **avg_cost** | Warehouse part with stock levels. `current_stock` may be **negative** (an overdraw awaiting its supplier bill — deliberate, see CLAUDE.md). `avg_cost` is the weighted-average purchase cost per unit, added 2026-07-30 (migration `inventory/0008_item_avg_cost`), maintained only by restock receipts via a full replay in `inventory/costing.py` |
 | 3 | **ConsumptionRecord** | user (FK→User), item (FK→Item), quantity, date, timestamp | **Dormant** — superseded by Stock History, which reads `JobCardSpareItem` live. Nothing writes this model; kept only to avoid a needless migration |
 | 6 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, is_active | Supplier / Supplies Shop master record |
 | 7 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), is_active, unique_together(shop,item) | Links a supplier to the items they stock; `is_active=False` = deactivated (listed but excluded from restock bills) |
 | 8 | **SupplierRestockBill** | supplier (FK→SupplierShop), bill_date, total_amount, discount_amount, note | Individual restock purchase from a supplier |
-| 9 | **SupplierRestockItem** | bill (FK→SupplierRestockBill), item (FK→Item), quantity, unit_price, total_price | Line item on a restock bill |
+| 9 | **SupplierRestockItem** | bill (FK→SupplierRestockBill), item (FK→Item), quantity, total_price (+ `per_unit_price` property) | Line item on a restock bill. There is no `unit_price` **column** — per-unit cost is derived as `total_price / quantity`. This is the per-batch cost record that makes a future FIFO reconstruction possible |
 | 10 | **SupplierPayment** | supplier (FK→SupplierShop), amount, payment_method, date, note, is_trashed | Payment record for supplier accounts |
 
 ---
@@ -264,6 +265,7 @@ parallel system.
 | | `/api/autocomplete/models/` | `autocomplete_models` | Staff |
 | | `/api/autocomplete/spares/` | `autocomplete_spares` | Staff |
 | | `/api/autocomplete/concerns/` | `autocomplete_concerns` | Staff |
+| | `/api/autocomplete/inventory-items/` | `autocomplete_inventory_items` | Staff |
 | **CAR PROFILES** | `/car-profiles/` | `car_profile_list` | Office |
 | | `/car-profiles/<reg>/` | `car_profile_detail` | Office |
 | **INVOICE** | `/invoice/<pk>/` | `invoice_view` | Office |
@@ -380,10 +382,17 @@ graph LR
 Stock is synced by **8 signal handlers in 3 groups** (`inventory/signals.py`):
 
 **Group 1 — Workshop Consumption (`JobCardSpareItem`, 3 handlers):**
-1. **New spare added** → Deduct full qty from warehouse
-2. **Qty changed (same part)** → Deduct only the delta
-3. **Part name changed** → Restore old part stock, deduct new part stock
-4. **Spare deleted** → Restore full qty to warehouse
+Applies to **`source='INVENTORY'` rows only**, resolved by the `item` FK. A `source='SHOP'`
+row never moves warehouse stock, whatever it is named. Rewritten 2026-07-30 — it previously
+keyed on a `spare_part_name` ↔ `Item.name` match, which deducted the warehouse for
+shop-bought parts that shared a name with a stock product.
+1. **New draw added** → Deduct full qty from warehouse
+2. **Qty changed** → Deduct only the delta
+3. **Product corrected** → Return the old product's stock, take the new product's
+4. **Draw deleted** → Return full qty to warehouse
+
+None of these clamp at zero: stock may go negative, and that is the intended record of an
+overdraw (see CLAUDE.md → Deliberate decisions).
 
 **Group 2 — JobCard Soft-Delete Reversal (`JobCard`, 2 handlers):**
 5. **Job card soft-deleted** → Return all its spares' stock to the warehouse *(dormant — job cards are hard-deleted now, so `is_deleted` never flips; kept for safety)*
@@ -496,7 +505,8 @@ stateDiagram-v2
 | Formset | Parent→Child | Fields | Features |
 |---------|-------------|--------|----------|
 | `JobCardConcernFormSet` | JobCard→Concern | concern_text, status | Autocomplete, can_delete |
-| `JobCardSpareFormSet` | JobCard→Spare | 8 fields (name, qty, prices, shop, status, dates) | Autocomplete, can_delete |
+| `JobCardSpareFormSet` | JobCard→Spare (`source=SHOP`) | 8 fields (name, qty, prices, shop, status, dates) | Autocomplete, can_delete. Prefix `spares` |
+| `JobCardInventoryFormSet` | JobCard→Spare (`source=INVENTORY`) | 4 fields (item FK, qty, customer_rate, total_price) | Prefix `inventory`. Product **picked**, not typed — hidden `item` field carries the choice; `InventoryDrawForm.clean()` rejects a started row with no product. Added 2026-07-30 |
 | `JobCardLabourFormSet` | JobCard→Labour | job_description, amount | can_delete |
 
 All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
@@ -509,7 +519,8 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 |-----------|------|---------|
 | `SessionTrackingMiddleware` | `middleware.py` | Logs every authenticated request to `UserSession` (5-min cooldown) |
 | `create_user_groups` | `apps.py` | Auto-creates Owner/Office/Floor groups on migrate |
-| `inventory.signals` | `signals.py` | Auto stock sync — 8 handlers in 3 groups: 3 for JobCardSpareItem (consumption) + 2 for JobCard (soft-delete stock reversal) + 3 for SupplierRestockItem (restock) |
+| `inventory.signals` | `signals.py` | Auto stock sync — 8 handlers in 3 groups: 3 for JobCardSpareItem (consumption, `source='INVENTORY'` only) + 2 for JobCard (soft-delete stock reversal, dormant) + 3 for SupplierRestockItem (restock). Never clamps stock at zero |
+| `inventory.costing` | `costing.py` | Weighted-average warehouse cost. Pure functions over a date-ordered replay of receipts and draws; holds no view logic and never touches `current_stock`. Receipts move the average, draws do not |
 | Management Commands | `management/commands/` | `setup_groups` (legacy setup), `backup_db` (automated SQLite backups), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address) |
 | Custom template filters | `templatetags/custom_filters.py` | `has_group`, `is_tomorrow`, `divide`, `multiply`, `clean_qty`, `get_range` |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV`, raises `ImproperlyConfigured` if unset |
@@ -550,7 +561,7 @@ graph TB
     RBAC -->|Owner| REVERSE["Payment Reversal"]
     RBAC -->|Owner| ANALYSIS["Owner Analysis (Profit + Deep Analysis)"]
 
-    JC_CREATE --> FORMSETS["3 Formsets (Concerns + Spares + Labour)"]
+    JC_CREATE --> FORMSETS["4 Formsets (Concerns + Inventory + Spares + Labour)"]
     JC_EDIT --> FORMSETS
     FORMSETS -->|"Auto-Learn"| MASTER
     FORMSETS -->|"save()"| SIGNALS["Inventory Signals"]

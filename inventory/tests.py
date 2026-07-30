@@ -10,6 +10,11 @@ from .models import Category, Item
 class InventorySignalTests(TestCase):
     """
     Automated Testing Suite for Inventory Stock Deltas.
+
+    Draws are declared explicitly (`source=INVENTORY` + the `item` FK) since
+    2026-07-30 — stock no longer moves on a `spare_part_name` match. The wider
+    contract, including shop purchases and negative stock, lives in
+    inventory/test_signals.py.
     """
     def setUp(self):
         self.user = User.objects.create_user(username='staff_test_signal', password='password123')
@@ -31,7 +36,8 @@ class InventorySignalTests(TestCase):
     def test_stock_deduction_on_create(self):
         JobCardSpareItem.objects.create(
             job_card=self.jobcard,
-            spare_part_name='Engine Oil 5W30',
+            source=JobCardSpareItem.SOURCE_INVENTORY,
+            item=self.item,
             quantity=5,
             unit_price=800
         )
@@ -41,7 +47,8 @@ class InventorySignalTests(TestCase):
     def test_stock_correction_on_update(self):
         spare = JobCardSpareItem.objects.create(
             job_card=self.jobcard,
-            spare_part_name='Engine Oil 5W30',
+            source=JobCardSpareItem.SOURCE_INVENTORY,
+            item=self.item,
             quantity=5,
             unit_price=800
         )
@@ -53,7 +60,8 @@ class InventorySignalTests(TestCase):
     def test_stock_restoration_on_delete(self):
         spare = JobCardSpareItem.objects.create(
             job_card=self.jobcard,
-            spare_part_name='Engine Oil 5W30',
+            source=JobCardSpareItem.SOURCE_INVENTORY,
+            item=self.item,
             quantity=5,
             unit_price=800
         )
@@ -159,6 +167,26 @@ class InventoryWorkflowTests(TestCase):
         self.client.post(reverse('remove_shop_catalog_item', args=[self.shop.id, ci.id]))
         self.assertFalse(Item.objects.filter(id=item_id).exists())
 
+    def test_remove_keeps_a_product_a_job_card_has_used(self):
+        """`JobCardSpareItem.item` is PROTECT — deleting the Item here would 500.
+
+        Reachable at exactly zero stock with no bill history: draw the product,
+        then edit the draw's quantity back down to zero.
+        """
+        ci = self._catalog()
+        item_id = ci.item_id
+        job = JobCard.objects.create(admitted_date=timezone.now().date(),
+                                     registration_number='KL01PR0001')
+        JobCardSpareItem.objects.create(
+            job_card=job, source=JobCardSpareItem.SOURCE_INVENTORY,
+            item=ci.item, quantity=Decimal('0'))
+
+        resp = self.client.post(reverse('remove_shop_catalog_item', args=[self.shop.id, ci.id]))
+
+        self.assertEqual(resp.status_code, 302, "must redirect, not raise ProtectedError")
+        self.assertTrue(Item.objects.filter(id=item_id).exists(),
+                        "a product recorded on a job card must outlive its catalog link")
+
     def test_remove_with_bill_history_deactivates(self):
         from .models import SupplierRestockBill, SupplierRestockItem
         ci = self._catalog()
@@ -175,8 +203,15 @@ class InventoryWorkflowTests(TestCase):
         jc = JobCard.objects.create(registration_number='KL01AA0001', brand_name='BMW',
                                     model_name='320d', admitted_date=timezone.localdate(),
                                     lead_mechanic=mech)
-        JobCardSpareItem.objects.create(job_card=jc, spare_part_name='Castrol 5w40',
-                                        quantity=Decimal('3'), unit_price=Decimal('500'), total_price=Decimal('1500'))
+        # A real warehouse draw: Stock History lists `source=INVENTORY` rows only,
+        # so a spare that merely *looks* like a stock product no longer qualifies.
+        item = Item.objects.create(category=Category.objects.create(name='Lubricants'),
+                                   name='Castrol 5w40', average_stock=Decimal('10'),
+                                   current_stock=Decimal('10'))
+        JobCardSpareItem.objects.create(job_card=jc,
+                                        source=JobCardSpareItem.SOURCE_INVENTORY, item=item,
+                                        quantity=Decimal('3'), unit_price=Decimal('500'),
+                                        total_price=Decimal('1500'))
         resp = self.client.get(reverse('inventory_history'))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Castrol 5w40')
@@ -434,7 +469,25 @@ class AddProductExistingItemTests(TestCase):
 
 
 class StockHistoryAccuracyTests(TestCase):
-    """Stock History must reflect what actually moved in the warehouse."""
+    """
+    Stock History must reflect what actually moved in the warehouse.
+
+    Rewritten 2026-07-30. It previously listed *every* spare and flagged the ones
+    whose name matched no product as "not from stock", because the route a part
+    took had to be guessed from its name. The route is stored now, so the page
+    simply shows `source=INVENTORY` rows and that flag no longer has a meaning to
+    express — which is why the two tests asserting it are gone rather than fixed.
+    """
+
+    def _draw(self, card, item, qty):
+        """A warehouse draw: declared by source + FK, not implied by its name."""
+        return JobCardSpareItem.objects.create(
+            job_card=card, source=JobCardSpareItem.SOURCE_INVENTORY,
+            item=item, quantity=Decimal(str(qty)))
+
+    def _item(self, name='Castrol 5W40'):
+        return Item.objects.create(category=self.category, name=name,
+                                   average_stock=Decimal('10'), current_stock=Decimal('10'))
     def setUp(self):
         from workshop.models import Mechanic
         floor, _ = Group.objects.get_or_create(name='Floor')
@@ -452,40 +505,49 @@ class StockHistoryAccuracyTests(TestCase):
 
     def test_soft_deleted_job_cards_are_excluded(self):
         card = self._card(is_deleted=True)
-        JobCardSpareItem.objects.create(job_card=card, spare_part_name='Ghost Filter',
-                                        quantity=Decimal('2'))
+        self._draw(card, self._item('Ghost Filter'), 2)
         self.assertNotContains(self.client.get(reverse('inventory_history')), 'Ghost Filter')
         self.assertNotContains(
             self.client.get(reverse('inventory_history_mechanic', args=[self.mechanic.id])),
             'Ghost Filter')
 
-    def test_part_with_no_matching_item_is_marked_not_from_stock(self):
+    def test_a_warehouse_draw_is_listed(self):
         card = self._card()
-        JobCardSpareItem.objects.create(job_card=card, spare_part_name='Bought Outside',
-                                        quantity=Decimal('1'))
-        resp = self.client.get(reverse('inventory_history'))
-        self.assertContains(resp, 'Bought Outside')
-        self.assertContains(resp, 'data-unmatched="1"')     # the row badge, not the legend
+        self._draw(card, self._item('Castrol 5W40'), 1)
+        self.assertContains(self.client.get(reverse('inventory_history')), 'Castrol 5W40')
 
-    def test_part_matching_a_warehouse_item_is_not_marked(self):
-        """Case-insensitive, matching how the stock signal resolves Item names."""
-        Item.objects.create(category=self.category, name='Castrol 5W40',
-                            average_stock=Decimal('10'), current_stock=Decimal('10'))
+    def test_a_shop_bought_spare_never_appears(self):
+        """It never touched the warehouse, so it is not stock history."""
+        from workshop.models import SpareShop
         card = self._card()
-        JobCardSpareItem.objects.create(job_card=card, spare_part_name='castrol 5w40',
-                                        quantity=Decimal('1'))
-        self.assertNotContains(self.client.get(reverse('inventory_history')),
-                               'data-unmatched="1"')
+        JobCardSpareItem.objects.create(
+            job_card=card, source=JobCardSpareItem.SOURCE_SHOP,
+            shop=SpareShop.objects.create(name='Ajmal Auto Parts'),
+            spare_part_name='Bought Outside', quantity=Decimal('1'))
+
+        self.assertNotContains(self.client.get(reverse('inventory_history')), 'Bought Outside')
+        self.assertNotContains(
+            self.client.get(reverse('inventory_history_mechanic', args=[self.mechanic.id])),
+            'Bought Outside')
+
+    def test_a_shop_spare_sharing_a_stock_products_name_still_never_appears(self):
+        """The old name-match rule would have listed this as a warehouse draw."""
+        from workshop.models import SpareShop
+        self._item('Castrol 5W40')
+        card = self._card()
+        JobCardSpareItem.objects.create(
+            job_card=card, source=JobCardSpareItem.SOURCE_SHOP,
+            shop=SpareShop.objects.create(name='Malabar Spares'),
+            spare_part_name='castrol 5w40', quantity=Decimal('1'))
+        resp = self.client.get(reverse('inventory_history'))
+        self.assertNotContains(resp, 'castrol 5w40')
 
     def test_mechanic_totals_group_case_insensitively(self):
-        Item.objects.create(category=self.category, name='Castrol 5W40',
-                            average_stock=Decimal('10'), current_stock=Decimal('10'))
+        item = self._item('Castrol 5W40')
         card_a = self._card('KL01ZZ0002')
         card_b = self._card('KL01ZZ0003')
-        JobCardSpareItem.objects.create(job_card=card_a, spare_part_name='Castrol 5W40',
-                                        quantity=Decimal('2'))
-        JobCardSpareItem.objects.create(job_card=card_b, spare_part_name='castrol 5w40',
-                                        quantity=Decimal('3'))
+        self._draw(card_a, item, 2)
+        self._draw(card_b, item, 3)
         resp = self.client.get(reverse('inventory_history_mechanic', args=[self.mechanic.id]))
         totals = resp.context['totals']
         self.assertEqual(len(totals), 1)
@@ -582,4 +644,4 @@ class JobCardNormalizationTests(TestCase):
         )
         jc.clean()
         # .strip().upper() — only leading/trailing stripped, internal preserved
-        self.assertEqual(jc.registration_number, 'KL 01 AB 1234')
+        self.assertEqual(jc.registration_number, 'KL 01 AB 1234')

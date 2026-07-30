@@ -33,25 +33,60 @@ def autocomplete_models(request):
 
 @staff_required
 def autocomplete_spares(request):
-    """Returns list of spare names matching query 'q', combining Master List and Inventory."""
+    """
+    Spare-part names for the Spare Parts (shop) section only.
+
+    Inventory products are deliberately NOT mixed in here any more. They used to
+    be, flagged with `source: "inventory"` and highlighted yellow, because the one
+    section handled both routes and the highlight was the only hint that picking
+    that name would quietly deduct warehouse stock. Warehouse draws now have their
+    own section and their own endpoint below, where the product is a real choice
+    rather than a name that happens to match.
+    """
     q = request.GET.get('q', '')
     if len(q) < 1:
         return JsonResponse([], safe=False)
-        
-    results = []
-    
-    # 1. Search Inventory Items (Highest priority, styled in yellow on frontend)
+
+    names = SparePart.objects.filter(name__icontains=q).values_list('name', flat=True)[:10]
+    return JsonResponse([{"name": n, "source": "master"} for n in names], safe=False)
+
+
+@staff_required
+def autocomplete_inventory_items(request):
+    """
+    Stock products for the Job Card's Inventory section.
+
+    Returns the `id` as well as the name, because the picker writes it into a
+    hidden field: the draw is linked by FK, so a product can be renamed without
+    detaching it from the job cards that used it. Stock and cost ride along so the
+    mechanic can see what is on the shelf while choosing.
+
+    Stock may legitimately be zero or negative — an overdraw awaiting its supplier
+    bill — and such products are still offered. Hiding them would block recording
+    a part that has physically already been taken, which is the whole reason
+    negative stock is allowed.
+    """
     from inventory.models import Item
-    inventory_items = Item.objects.filter(name__icontains=q).values_list('name', flat=True)[:5]
-    for name in inventory_items:
-        results.append({"name": name, "source": "inventory"})
-        
-    # 2. Search Master List Spares
-    master_spares = SparePart.objects.filter(name__icontains=q).exclude(name__in=inventory_items).values_list('name', flat=True)[:10]
-    for name in master_spares:
-        results.append({"name": name, "source": "master"})
-        
-    return JsonResponse(results, safe=False)
+
+    q = request.GET.get('q', '')
+    if len(q) < 1:
+        return JsonResponse([], safe=False)
+
+    items = (
+        Item.objects.filter(name__icontains=q)
+        .select_related('category')
+        .order_by('-usage_count', 'name')[:10]
+    )
+    return JsonResponse([
+        {
+            "id": it.pk,
+            "name": it.name,
+            "category": it.category.name,
+            "stock": str(it.current_stock),
+            "cost": str(it.avg_cost),
+        }
+        for it in items
+    ], safe=False)
 
 
 @staff_required

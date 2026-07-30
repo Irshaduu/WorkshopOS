@@ -107,6 +107,7 @@ urlpatterns = [
     path('api/autocomplete/models/', views.autocomplete_models, name='autocomplete_models'),
     path('api/autocomplete/spares/', views.autocomplete_spares, name='autocomplete_spares'),
     path('api/autocomplete/concerns/', views.autocomplete_concerns, name='autocomplete_concerns'),
+    path('api/autocomplete/inventory-items/', views.autocomplete_inventory_items, name='autocomplete_inventory_items'),
 
     # ------------------
     # CAR PROFILES
