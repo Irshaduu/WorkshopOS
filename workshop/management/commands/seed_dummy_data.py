@@ -43,12 +43,13 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
-from django.db.models import F, ExpressionWrapper, DecimalField
+from django.db.models import F, ExpressionWrapper, DecimalField, Sum
 
 from workshop.models import (
     Mechanic, SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
     CarBrand, CarModel, SparePart, ConcernSolution, CashbookEntry,
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
+    SalaryAdvance, SalaryPayment, SalaryPaymentLine,
 )
 from inventory.models import (
     Category, Item, SupplierShop, ShopCatalogItem,
@@ -98,13 +99,14 @@ FLEET_ACCOUNTS = ["Kerala Green Cabs", "Spice Coast Corporate Fleet"]
 # Staff created only when the roster is empty (a fresh database).
 # Amlah is seeded retired on purpose: it exercises the deactivated-staff path
 # (excluded from the job-card picker, sorted below active staff).
+# name, role, is_active, monthly salary
 DEFAULT_STAFF = [
-    ("Mohammed", Mechanic.ROLE_MECHANIC, True),
-    ("Hijaz", Mechanic.ROLE_MECHANIC, True),
-    ("Amlah", Mechanic.ROLE_MECHANIC, False),
-    ("Soo", Mechanic.ROLE_ASSISTANT_MECHANIC, True),
-    ("Irshu", Mechanic.ROLE_OFFICE_STAFF, True),
-    ("Kaka", Mechanic.ROLE_GENERAL_HELPER, True),
+    ("Mohammed", Mechanic.ROLE_MECHANIC, True, 32000),
+    ("Hijaz", Mechanic.ROLE_MECHANIC, True, 28000),
+    ("Amlah", Mechanic.ROLE_MECHANIC, False, 26000),
+    ("Soo", Mechanic.ROLE_ASSISTANT_MECHANIC, True, 19000),
+    ("Irshu", Mechanic.ROLE_OFFICE_STAFF, True, 24000),
+    ("Kaka", Mechanic.ROLE_GENERAL_HELPER, True, 15000),
 ]
 
 BRAND_WEIGHT = {
@@ -146,9 +148,12 @@ LABOUR_POOL = [
     ("Electrical Fault Finding", 500, 1400),
 ]
 
+# Deliberately NO salary line here. Wages are seeded through Salary & Advance
+# (see _seed_salary), which is where the Profit page reads them from. A cashbook
+# entry named like wages is exactly what that page warns about as a possible
+# double count, so seeding one would leave the demo permanently flagged.
 CASHBOOK_MONTHLY = [
     ("EXPENSE", "Workshop Rent", 45000, 45000),
-    ("EXPENSE", "Staff Salaries", 120000, 165000),
     ("EXPENSE", "Electricity Bill", 8000, 16000),
     ("EXPENSE", "Water & Utilities", 1500, 3500),
     ("EXPENSE", "Workshop Consumables", 4000, 12000),
@@ -248,6 +253,10 @@ class Command(BaseCommand):
             for items in shop_items.values() for item in items
         }
 
+        # The last month is deliberately left unsettled (see _seed_salary), so
+        # the range end has to be known inside the per-month close.
+        self._range_end = end
+
         # --- Main loop, committed one month at a time ---
         vehicles = {}          # reg -> dict(brand, model, customer, contact, last_visit)
         used_regs = set()
@@ -306,8 +315,9 @@ class Command(BaseCommand):
 
     def _ensure_staff(self):
         if not Mechanic.objects.exists():
-            for name, role, is_active in DEFAULT_STAFF:
-                Mechanic.objects.create(name=name, role=role, is_active=is_active)
+            for name, role, is_active, salary in DEFAULT_STAFF:
+                Mechanic.objects.create(name=name, role=role, is_active=is_active,
+                                        current_salary=Decimal(salary))
             self.stdout.write(f"Staff roster created: {len(DEFAULT_STAFF)}")
 
         mechanics = list(Mechanic.objects.filter(
@@ -409,6 +419,58 @@ class Command(BaseCommand):
                     )
                 bill.update_totals()
 
+
+    def _seed_salary(self, month_start, month_end):
+        """
+        Advances handed out through the month, then the month-end settlement.
+
+        The most recent month is deliberately left UNSETTLED. That is the normal
+        state of a live workshop mid-month, and it exercises the branch in
+        `analysis_engine.salary_expense` that counts loose advances in months with
+        no settlement yet — cash already out of the drawer that a settled month
+        would otherwise account for.
+
+        Net pay is computed by importing the app's own `_compute_net` rather than
+        restating salary − leave − advance here. Two copies of one formula would
+        be free to drift, and seeded data that disagreed with the settlement screen
+        would be worse than no seeded data at all.
+        """
+        from workshop.views.salary_advance import _compute_net
+
+        staff = list(Mechanic.objects.filter(is_active=True)
+                     .exclude(current_salary__isnull=True))
+        if not staff:
+            return
+
+        span = max((month_end - month_start).days, 0)
+        for person in staff:
+            if random.random() < 0.45:
+                SalaryAdvance.objects.create(
+                    staff=person,
+                    amount=Decimal(random.choice([1000, 2000, 2500, 3000, 5000])),
+                    date=month_start + timedelta(days=random.randint(0, span)),
+                    note="Advance",
+                )
+
+        if month_end >= self._range_end:
+            return
+
+        payment, _ = SalaryPayment.objects.get_or_create(month=month_start.replace(day=1))
+        for person in staff:
+            leave = Decimal(random.choice(["0", "0", "0", "0.5", "1", "2"]))
+            advance_used = SalaryAdvance.objects.filter(
+                staff=person, date__gte=month_start, date__lte=month_end
+            ).aggregate(t=Sum("amount"))["t"] or Decimal("0")
+            SalaryPaymentLine.objects.update_or_create(
+                payment=payment, staff=person,
+                defaults={
+                    "salary_used": person.current_salary,
+                    "leave_days": leave,
+                    "advance_used": advance_used,
+                    "net_amount": _compute_net(person.current_salary, leave, advance_used),
+                },
+            )
+
     def _close_month(self, month_start, month_end, supplier_shops, shop_items,
                      spare_shops, fleet_accounts):
         """End-of-month settlements: supplier and spare-shop payments, cashbook
@@ -441,6 +503,7 @@ class Command(BaseCommand):
                         )
 
             self._create_cashbook_entries(month_start, month_end)
+            self._seed_salary(month_start, month_end)
 
         # Fleet settlement once a quarter, through the real cascade.
         if month_end.month % 3 == 0:

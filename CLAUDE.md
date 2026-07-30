@@ -390,6 +390,17 @@ transaction — a remote Postgres would time out), and restocks monthly *to dema
 rather than a fixed quantity, so warehouse stock hovers around `average_stock`
 instead of compounding upward over a multi-year range.
 
+It also seeds **Salary & Advance** (added 2026-07-31): staff carry a
+`current_salary`, advances are handed out through each month, and every month is
+settled — except the **last**, left open on purpose because that is a live
+workshop's normal mid-month state and it exercises `salary_expense`'s
+loose-advances branch. Net pay imports the app's own `_compute_net` rather than
+restating salary − leave − advance, so seeded figures can never drift from what
+the settlement screen would produce. The Cashbook seeder deliberately has **no**
+"Staff Salaries" line: wages belong to Salary & Advance, and a cashbook row named
+like wages is exactly what the Profit page flags as a possible double count, so
+seeding one left the demo permanently warned.
+
 ### Which database am I on? (changed 2026-07-27 — dev is PostgreSQL now)
 `DJANGO_ENV=development` runs against **PostgreSQL** (the Neon instance in
 `.env`), not SQLite. Development matches what ships, so Postgres-only behaviour
