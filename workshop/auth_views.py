@@ -181,8 +181,7 @@ def send_reset_code_email(user, code):
         f"Hello {user.username},\n\n"
         f"Your password reset code is: {code}\n\n"
         f"It expires in {PasswordResetOTP.VALIDITY_MINUTES} minutes and works once on the requested device/browser.\n\n"
-        f"⚠️ If you did NOT request this code, someone may be attempting to access your account. "
-        f"Your password has not changed, but please make sure your current password is strong.\n\n"
+        f"Please make sure to choose a strong password.\n\n"
         f"This mailbox is unmonitored. Please do not reply."
     )
 
