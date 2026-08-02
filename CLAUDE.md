@@ -137,6 +137,89 @@ about to correct one of these, you are about to break the business:
   from every ledger, and unreachable by the only delete there is. Guarded by
   `AddUnassignedValidationTests` and `AddingFromTheHubTests`.
 
+- **Master data dedupes on `__iexact`, and there is exactly ONE rename
+  implementation — `workshop/master_data.py`.** Added 2026-08-02. Two things
+  were wrong. (a) The models' `unique=True` is *case-sensitive*, so "Toyota"
+  and "toyota", "Oil Filter" and "oil filter" were both insertable, and
+  `ConcernSolution` had no uniqueness at all — the same concern could be added
+  any number of times. Every duplicate then showed twice in autocomplete and
+  staff picked whichever came first. The job-card auto-learn path had always
+  deduped with `__iexact`; the four Master Lists *forms* were the manual entry
+  points that did not, and they now carry the check (excluding the row being
+  edited, so re-saving an unchanged name is never blocked). (b) A spare or
+  concern could be renamed from **two** screens — Master Lists and Data Cleanup
+  — and they were two implementations of one rule: Data Cleanup merged
+  case-variant duplicates and rewrote the job-card lines carrying the old name,
+  Master Lists' plain `form.save()` did neither, so the same edit meant
+  different things depending on which page you opened and left history stranded
+  on the old spelling. Both now call `rename_spare()` / `rename_concern()`.
+  Three properties of a merge worth knowing: **the surviving entry's spelling
+  wins** (so list and history can never disagree), it is scoped to
+  `source=SHOP` because the rename uses `.update()` and firing no signals is
+  only safe for rows that move no stock — relabelling a warehouse draw would
+  desync it from the `Item` it is FK'd to — and it is **not cleanly undoable**,
+  since renaming back relabels every row now carrying the surviving name.
+  Guarded by `RenamingAMasterEntryMeansTheSameThingFromBothScreensTests` and
+  `MergingAMasterEntryNeverMovesMoneyOrStockTests`.
+
+- **Deleting a master-list entry cannot touch history — and that is worth a
+  test, not an assumption.** Added 2026-08-02. Brand / model / spare / concern
+  names live on job cards as free text, never as a FK (the deliberate decision
+  above), so removing one changes no bill, no ledger and no report, and
+  auto-learn re-creates the name the next time someone types it.
+  `MasterDataDeleteTouchesNoHistoryTests` pins that down so the day someone
+  converts one of these to a ForeignKey it fails loudly instead of a delete
+  quietly cascading a car's history away. What the delete *did* lack was any
+  trace at all: one POST, no confirmation, no log. It now shows a confirmation
+  carrying the usage count and writes `DeletionLog.ENTITY_MASTER_DATA`. When
+  the entry is still in use the page steers towards **merging instead**, which
+  is the right tool for two wordings of one part — merge relabels the old job
+  cards onto the wording you keep; delete just drops the suggestion and leaves
+  both spellings in the history.
+
+- **A month cannot be SETTLED while someone handed an advance would get no
+  settlement line.** Added 2026-08-02. `salary_payment_form` writes a line only
+  for staff who are active *and* have `current_salary` set, and
+  `salary_expense()` stops counting a month's advances as "loose" the moment
+  the month is settled — so an advance belonging to anyone else was counted in
+  **neither** place and settling the month dropped that cash off the Profit
+  page permanently (measured: ₹3,000 for a staff member with no salary yet,
+  ₹4,000 for one who had left). Neither state is exotic; the home page has a
+  whole "needs a salary" list, and staff leave. `_unsettleable_staff()` now
+  blocks the settlement and names them, the same block-and-name shape as the
+  Fleet archive guard. It fires **only** on staff who actually received money
+  that month, so a salary-less staff member with no advances never blocks
+  anything.
+
+- **A settled month announces when it has gone stale, and staleness is
+  DERIVED, never stored.** Added 2026-08-02. A settlement freezes
+  `advance_used` and `net_amount`; an advance recorded or deleted for that month
+  afterwards makes both wrong — the office would hand over the stale net (proven:
+  ₹18,000 paid where ₹13,000 was due) — and nothing said so.
+  `_stale_settled_months()` compares the saved lines against the live advance
+  totals in two grouped queries, so there is no flag that can itself drift out
+  of date and months settled before the check existed are covered for free.
+  Re-saving the month recomputes and clears it. `SalaryAdvance`'s docstring
+  always promised advances are "summed fresh … so re-settling a month just
+  recomputes cleanly" — this is what makes anyone realise they need to.
+
+- **Salary inputs are bounded, and access changes are announced.** Added
+  2026-08-02. `leave_days` was unvalidated: `-10` produced a net of ₹26,666.67
+  on a ₹20,000 salary (a negative deduction pays *more* than the salary) and
+  `400` produced −₹246,666.67 — now rejected outright rather than clamped,
+  because a clamp saves a number nobody typed. The settlement month came
+  straight off the URL, so `/salary-advance/payment/2099/12/` created a Dec 2099
+  settlement that then counted as a settled month forever. A retired staff
+  member could still be given a new advance, which the guard above would then
+  block the whole month over. `salary_set_amount`'s `next` went straight to
+  `redirect()` — an open redirect — and now goes through `auth_views._safe_next`
+  like the login form's. In Control Hub, **deleting a login and changing a
+  staff password now notify the other owner** (creating one always did; the two
+  actions that actually revoke or hand over access were silent), and usernames
+  dedupe with `__iexact` — Django's is case-sensitive, so "Office" and "office"
+  were two logins, and sign-in matches exactly, so whoever typed the wrong case
+  just got "invalid credentials".
+
 - **A Fleet Account holding unsettled job cards cannot be ARCHIVED, and an
   archived one takes no new cards, no new payments and no reversals.** Added
   2026-08-02. Archiving used to be unguarded, and it hid the account from every
@@ -583,7 +666,7 @@ Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_H
 ### App boundaries
 - **`workshop/`** — job cards, billing, bulk payers, spare shops, cashbook, auth, owner analytics, deletion history, master data (brands/models/spares/concerns).
   - `views/` is a package (14 modules: `dashboard`, `jobcard`, `completed`, `deletion_history`, `billing`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`, `salary_advance`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
-  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section.
+  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section, and `master_data.py` likewise holds no views: it is the one implementation of the master-list rename/merge rule, shared by `views/master_lists.py` and `cleanup_views.py` (see "Deliberate decisions" for why that sharing is load-bearing).
   - `decorators.py` defines the RBAC decorators (`owner_required`, `office_required`, `staff_required`) built on three Django auth Groups: **Owner**, **Office**, **Floor**. Superusers pass every check. Use these decorators on any new view instead of rolling custom permission checks.
   - `middleware.py` (`SessionTrackingMiddleware`) updates `UserSession` (device/IP/last-activity) on every authenticated request, throttled to a 5-minute cooldown per session.
 - **`inventory/`** — stock items/categories and supplier shops (`views.py` for core inventory, `views_suppliers.py` for the supplier-shop module). Stock levels are kept in sync with workshop activity purely via Django signals in `signals.py` — there is no direct view-to-view coupling between the two apps for stock changes.
@@ -721,7 +804,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (26 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 33 files, 617 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (27 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 34 files, 653 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

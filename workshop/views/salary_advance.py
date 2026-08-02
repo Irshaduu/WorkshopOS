@@ -42,6 +42,87 @@ def _prev_month(d):
     return (d.replace(day=1) - timedelta(days=1)).replace(day=1)
 
 
+def _days_in_month(year, month):
+    start, end = _month_bounds(year, month)
+    return (end - start).days
+
+
+def _unsettleable_staff(month_start, month_end):
+    """
+    Staff who were handed an advance in this month but would get NO settlement
+    line — because they have no salary recorded, or have been deactivated.
+
+    `salary_payment_form` only writes a line for active staff with a salary, and
+    `salary_expense()` stops counting a month's advances as "loose" the moment
+    the month is settled. So an advance belonging to one of these people used to
+    be counted in neither place: settling August dropped their cash out of the
+    wage bill entirely, silently and permanently. Both are ordinary states —
+    the home page has a whole "needs a salary" list, and staff do leave — so
+    this is not an edge case, it is the second month of use.
+
+    Returns a list of (staff, advance_total, reason).
+    """
+    rows = []
+    with_advances = Mechanic.objects.filter(
+        salary_advances__date__gte=month_start, salary_advances__date__lt=month_end,
+    ).annotate(
+        advanced=Coalesce(Sum('salary_advances__amount', filter=Q(
+            salary_advances__date__gte=month_start,
+            salary_advances__date__lt=month_end,
+        )), Decimal('0'), output_field=DecimalField()),
+    ).distinct().order_by('name')
+
+    for staff in with_advances:
+        if staff.current_salary is None:
+            rows.append((staff, staff.advanced, "no salary recorded"))
+        elif not staff.is_active:
+            rows.append((staff, staff.advanced, "retired — reactivate to settle"))
+    return rows
+
+
+def _stale_settled_months():
+    """
+    Settled months whose saved lines no longer match the advances on record.
+
+    A settlement freezes `advance_used` and `net_amount`. If an advance for that
+    month is recorded (or deleted) afterwards, the frozen figures are simply
+    wrong — the office would hand over the stale net, and nothing anywhere said
+    so. Detected rather than stored: two grouped queries compare every line
+    against the live advance totals, so there is no extra column that can itself
+    drift out of date, and months settled before this check existed are covered
+    for free.
+
+    Returns a set of month dates (the 1st) that need re-saving.
+    """
+    from django.db.models.functions import TruncMonth
+
+    actual = {
+        (r['staff_id'], r['m']): r['t']
+        for r in SalaryAdvance.objects.annotate(m=TruncMonth('date'))
+                                      .values('staff_id', 'm')
+                                      .annotate(t=Sum('amount'))
+        if r['m']
+    }
+    stale = set()
+    seen = set()
+    for line in SalaryPaymentLine.objects.values(
+            'staff_id', 'advance_used', 'payment__month'):
+        month = line['payment__month']
+        key = (line['staff_id'], month)
+        seen.add(key)
+        if actual.get(key, Decimal('0')) != line['advance_used']:
+            stale.add(month)
+
+    # An advance whose staff has no line at all in a month that IS settled —
+    # the same hole _unsettleable_staff guards going forward, flagged here for
+    # anything already in the database.
+    settled = set(SalaryPayment.objects.values_list('month', flat=True))
+    for (staff_id, month), total in actual.items():
+        if month in settled and (staff_id, month) not in seen and total:
+            stale.add(month)
+    return stale
+
+
 @office_required
 def salary_advance_home(request):
     """
@@ -89,6 +170,10 @@ def salary_advance_home(request):
 
     span = (month_start.year - system_start.year) * 12 + (month_start.month - system_start.month) + 1
 
+    # Settled months whose frozen figures no longer match the advances on
+    # record — see _stale_settled_months(). Computed once for the whole page.
+    stale_months = _stale_settled_months()
+
     all_months = []  # newest first — every month this section has existed for
     cursor = month_start
     for _ in range(max(1, min(span, 240))):
@@ -97,6 +182,7 @@ def salary_advance_home(request):
         payment = settled_map.get(cursor)
         if payment:
             all_months.append({'month': cursor, 'payment': payment, 'due': False, 'overdue': False,
+                               'stale': cursor in stale_months,
                                'is_current': cursor == month_start})
         elif cursor == month_start:
             # The running month becomes settleable from SETTLE_FROM_DAY —
@@ -155,6 +241,9 @@ def salary_advance_home(request):
         'pending_extra': pending_extra,
         'year_blocks': year_blocks,
         'current_year': today.year,
+        # Newest first, so the banner names the month someone is most likely
+        # still able to remember.
+        'stale_months': sorted(stale_months, reverse=True),
     })
 
 
@@ -163,6 +252,17 @@ def salary_advance_add(request):
     """POST: record a cash advance given to a staff member."""
     if request.method == 'POST':
         staff = get_object_or_404(Mechanic, pk=request.POST.get('staff_id'))
+        # A retired staff member takes no new advances. They are absent from
+        # every picker on this page, but the id is posted in a hidden field, and
+        # an advance recorded against them would have been dropped from the wage
+        # bill the moment the month was settled.
+        if not staff.is_active:
+            messages.error(
+                request,
+                f"{staff.name} is retired and can't be given a new advance. "
+                f"Reactivate them from Control Hub first if they're back."
+            )
+            return redirect('salary_advance_home')
         try:
             amount = Decimal(str(request.POST.get('amount', '0')).strip())
         except Exception:
@@ -237,8 +337,13 @@ def salary_set_amount(request, staff_id):
             staff.current_salary = amount
             staff.save(update_fields=['current_salary'])
             messages.success(request, f"{staff.name}'s salary set to ₹{amount:,.0f}.")
-    next_url = request.POST.get('next') or reverse('salary_advance_home')
-    return redirect(next_url)
+    # `next` is attacker-controllable, so it is validated the same way the login
+    # form's is (auth_views._safe_next). Unchecked, a POST carrying
+    # next=https://evil.example.com/… bounced an authenticated Office user
+    # straight off-site — a convincing place to put a fake "session expired"
+    # sign-in page.
+    from ..auth_views import _safe_next
+    return redirect(_safe_next(request) or reverse('salary_advance_home'))
 
 
 @office_required
@@ -258,6 +363,15 @@ def salary_payment_form(request, year, month):
         messages.error(request, "Invalid month.")
         return redirect('salary_advance_home')
 
+    # A month that has not started cannot be settled. The home page only ever
+    # offers months it has listed, but this URL takes the year and month
+    # directly, so /salary-advance/payment/2099/12/ created a Dec 2099
+    # settlement — which then sat in the year list forever and counted as a
+    # settled month in salary_expense().
+    if target_month > timezone.localdate().replace(day=1):
+        messages.error(request, f"{target_month:%B %Y} hasn't started yet — nothing to settle.")
+        return redirect('salary_advance_home')
+
     month_start, month_end = _month_bounds(year, month)
     payment = SalaryPayment.objects.filter(month=target_month).first()
     existing_lines = {}
@@ -265,6 +379,51 @@ def salary_payment_form(request, year, month):
         existing_lines = {line.staff_id: line for line in payment.lines.select_related('staff').all()}
 
     if request.method == 'POST':
+        # GUARD: every rupee handed out this month must land on a line.
+        blocked = _unsettleable_staff(month_start, month_end)
+        if blocked:
+            detail = "; ".join(
+                f"{s.name} (₹{amt:,.0f}, {why})" for s, amt, why in blocked)
+            messages.error(
+                request,
+                f"Can't settle {target_month:%B %Y} yet — {detail}. "
+                f"Their advances are already out of the drawer, and settling now "
+                f"would drop that cash off the Profit page. Set a salary or "
+                f"reactivate them, then settle."
+            )
+            return redirect('salary_payment_form', year=year, month=month)
+
+        # GUARD: leave days must be a real number of days in this month.
+        # Unvalidated, -10 produced a net of ₹26,666 on a ₹20,000 salary (a
+        # negative deduction pays MORE than the salary), and 400 produced
+        # -₹246,666. Rejected outright rather than clamped: a clamp would save
+        # a number nobody typed.
+        max_days = _days_in_month(year, month)
+        bad_leave = []
+        parsed_leave = {}
+        for staff in Mechanic.objects.filter(is_active=True):
+            leave_key = f'leave_days_{staff.pk}'
+            if leave_key not in request.POST:
+                continue
+            raw = (request.POST.get(leave_key, '0') or '0').strip()
+            try:
+                value = Decimal(raw)
+            except Exception:
+                bad_leave.append(f"{staff.name} ({raw!r})")
+                continue
+            if value < 0 or value > max_days:
+                bad_leave.append(f"{staff.name} ({value})")
+                continue
+            parsed_leave[staff.pk] = value
+
+        if bad_leave:
+            messages.error(
+                request,
+                f"Leave days must be between 0 and {max_days} for "
+                f"{target_month:%B %Y}. Check: {', '.join(bad_leave)}."
+            )
+            return redirect('salary_payment_form', year=year, month=month)
+
         with transaction.atomic():
             if not payment:
                 payment = SalaryPayment.objects.create(month=target_month, created_by=request.user)
@@ -274,10 +433,7 @@ def salary_payment_form(request, year, month):
                 if leave_key not in request.POST or staff.current_salary is None:
                     continue
 
-                try:
-                    leave_days = Decimal(str(request.POST.get(leave_key, '0') or '0'))
-                except Exception:
-                    leave_days = Decimal('0')
+                leave_days = parsed_leave.get(staff.pk, Decimal('0'))
 
                 advance_used = SalaryAdvance.objects.filter(
                     staff=staff, date__gte=month_start, date__lt=month_end

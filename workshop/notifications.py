@@ -45,6 +45,14 @@ EVENTS = {
     # reaches the other owner's phone, not just the bell.
     'PASSWORD_RESET':   ("Password was reset",       CRITICAL, AUDIENCE_OWNERS),
     'USER_CREATED':     ("New login created",        CRITICAL, AUDIENCE_OWNERS),
+    # Creating a login was announced while deleting one and changing its
+    # password were silent — the two actions in Control Hub that actually hand
+    # over or revoke access. An owner could remove the Office account overnight
+    # and the other owner's only clue would be the staff member failing to sign
+    # in. CRITICAL for the same reason PASSWORD_RESET is: it means access
+    # changed hands.
+    'USER_DELETED':     ("Login deleted",            CRITICAL, AUDIENCE_OWNERS),
+    'STAFF_PASSWORD_SET': ("Staff password changed", CRITICAL, AUDIENCE_OWNERS),
     'HIGH_DISCOUNT':    ("Large discount given",     CRITICAL, AUDIENCE_OWNERS),
     'RECORD_DELETED':   ("Record permanently deleted", CRITICAL, AUDIENCE_OWNERS),
     'ACCOUNT_ARCHIVED': ("Account archived",         INFO,     AUDIENCE_OWNERS),

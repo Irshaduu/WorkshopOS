@@ -1,9 +1,11 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 from django.db.models import Q
 from django.core.paginator import Paginator
 
 from ..models import CarBrand, CarModel, SparePart, ConcernSolution
 from ..forms import CarBrandForm, CarModelForm, SparePartForm, ConcernSolutionForm
+from ..master_data import rename_spare, rename_concern
 from ..decorators import staff_required, office_required
 
 
@@ -144,11 +146,30 @@ def spare_create(request):
 
 @office_required
 def spare_edit(request, pk):
+    """
+    Rename a master spare — through the SAME helper Data Cleanup's rename uses.
+
+    This used to be a plain `form.save()`, so the identical edit meant two
+    different things depending on which screen it was made from: Data Cleanup
+    merged case-variant duplicates and rewrote the job-card lines carrying the
+    old name, this one did neither. `rename_spare` is now the only
+    implementation of that rule.
+    """
     spare = get_object_or_404(SparePart, pk=pk)
     form = SparePartForm(request.POST or None, instance=spare)
-    if form.is_valid():
-        form.save()
-        return redirect('spare_list')
+
+    if request.method == 'POST':
+        new_name = (request.POST.get('name') or '').strip()
+        if new_name:
+            old_name = spare.name
+            final_name, merged = rename_spare(spare, new_name, user=request.user)
+            if merged:
+                messages.success(request, f"Merged '{old_name}' into '{final_name}'. All job cards updated.")
+            else:
+                messages.success(request, f"Renamed to '{final_name}'. All job cards updated.")
+            return redirect('spare_list')
+        form.add_error('name', 'Name cannot be empty.')
+
     return render(request, 'workshop/master_lists/spare_form.html', {'form': form, 'title': 'Edit Spare'})
 
 
@@ -187,11 +208,26 @@ def concern_create(request):
     return render(request, 'workshop/master_lists/concern_form.html', {'form': form, 'title': 'Add Concern'})
 
 
-@staff_required
+# @office_required, not @staff_required. This was the only view in the section
+# Floor could reach: they got 200 here and successfully rewrote master concerns,
+# while concern_list next door returned 403 — so the section's own list was
+# forbidden but editing its contents was not. A view's decorator and its
+# neighbours have to agree, or the drawer gate is meaningless.
+@office_required
 def concern_edit(request, pk):
+    """Rename a master concern — through the same helper Data Cleanup uses."""
     concern = get_object_or_404(ConcernSolution, pk=pk)
     form = ConcernSolutionForm(request.POST or None, instance=concern)
-    if form.is_valid():
-        form.save()
-        return redirect('concern_list')
+
+    if request.method == 'POST':
+        new_text = (request.POST.get('concern') or '').strip()
+        if new_text:
+            _final, merged = rename_concern(concern, new_text, user=request.user)
+            messages.success(
+                request,
+                "Merged into the existing concern. All job cards updated." if merged
+                else "Concern renamed. All job cards updated.")
+            return redirect('concern_list')
+        form.add_error('concern', 'Concern text cannot be empty.')
+
     return render(request, 'workshop/master_lists/concern_form.html', {'form': form, 'title': 'Edit Concern'})

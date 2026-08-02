@@ -1367,6 +1367,14 @@ class DeletionLog(models.Model):
     ENTITY_SALARY_ADVANCE = 'SALARY_ADVANCE'
     ENTITY_SALARY_PAYMENT = 'SALARY_PAYMENT'
     ENTITY_UNASSIGNED_SPARE = 'UNASSIGNED_SPARE'
+    # Master-list rows (spare-part names, concerns). Not financial — job cards
+    # store these as free text, so removing one cannot alter a bill, a ledger or
+    # a report (proven; see MasterDataDeleteTouchesNoHistoryTests). Logged
+    # anyway, because it was the one permanent delete in the system that left no
+    # trace at all: an entry someone removed by accident simply stopped existing,
+    # with nothing to say it ever had. The snapshot carries the exact wording, so
+    # a mistake is retypeable straight from Deletion History.
+    ENTITY_MASTER_DATA = 'MASTER_DATA'
     ENTITY_CHOICES = [
         (ENTITY_JOBCARD, 'Job Card'),
         (ENTITY_BULK_PAYMENT, 'Fleet Account Payment'),
@@ -1378,6 +1386,7 @@ class DeletionLog(models.Model):
         (ENTITY_SALARY_ADVANCE, 'Salary Advance'),
         (ENTITY_SALARY_PAYMENT, 'Salary Payment'),
         (ENTITY_UNASSIGNED_SPARE, 'Unassigned Spare'),
+        (ENTITY_MASTER_DATA, 'Master List Entry'),
     ]
 
     entity_type = models.CharField(max_length=20, choices=ENTITY_CHOICES, db_index=True)

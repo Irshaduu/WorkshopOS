@@ -270,6 +270,18 @@ class CompletedDateFilterTests(TestCase):
     TEST-2: Verify completed_list date filter logic.
     """
 
+    # How many days before today each fixture was completed. One list, used by
+    # setUp and by every expectation below, so a fixture can never be added
+    # without the assertions seeing it.
+    #
+    # 400 earns its place: it is the only offset guaranteed to fall in a
+    # PREVIOUS calendar year on every possible run date, which is what stops
+    # test_completed_year_filter passing vacuously. Without it, all fixtures sit
+    # inside the current year for most of the year, so the year filter returning
+    # everything — including a filter that silently never applied — looked
+    # correct.
+    COMPLETED_OFFSETS = [0, 3, 15, 60, 200, 400]
+
     def setUp(self):
         FailedAttempt.objects.all().delete()
         self.office_group, _ = Group.objects.get_or_create(name='Office')
@@ -283,7 +295,7 @@ class CompletedDateFilterTests(TestCase):
 
         # Create completed job cards with various dates
         today = date.today()
-        for i, days_ago in enumerate([0, 3, 15, 60, 200]):
+        for i, days_ago in enumerate(self.COMPLETED_OFFSETS):
             jc = JobCard.objects.create(
                 registration_number=f'KL01DD{i:04d}',
                 brand_name='Test',
@@ -308,35 +320,62 @@ class CompletedDateFilterTests(TestCase):
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)
-        # Dynamically compute how many of the setUp dates fall in the current calendar week
-        # (the view uses Monday-aligned weeks, not a rolling 7-day window)
+        # Computed, not hardcoded: the view uses Monday-aligned weeks, not a
+        # rolling 7-day window, so the right answer depends on today's date.
         today = date.today()
         week_start = today - timedelta(days=today.weekday())  # Monday of this week
-        expected = sum(
-            1 for days_ago in [0, 3, 15, 60, 200]
-            if today - timedelta(days=days_ago) >= week_start
+        self.assertEqual(
+            {jc.registration_number for jc in resp.context['page_obj']},
+            self._expected_regs(week_start),
         )
-        self.assertEqual(resp.context['page_obj'].paginator.count, expected)
+
+    def _expected_regs(self, since):
+        """The setUp fixtures whose completed_date falls on or after `since`.
+
+        Computed rather than hardcoded, because the view's filters are
+        CALENDAR-aligned (from the 1st, from January) and the fixtures are
+        placed at rolling offsets — so the right answer depends on today's
+        date. The count was hardcoded here until 2026-08-02, which made this
+        class fail on the first half of every month.
+        """
+        today = date.today()
+        return {
+            f'KL01DD{i:04d}'
+            for i, days_ago in enumerate(self.COMPLETED_OFFSETS)
+            if today - timedelta(days=days_ago) >= since
+        }
 
     def test_completed_month_filter(self):
-        """Month filter should show jobs completed in last 30 days."""
+        """Month filter shows jobs completed since the 1st of this calendar
+        month — not a rolling 30-day window."""
         resp = self.client.get(
             reverse('completed_list') + '?filter=this_month',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)
-        # Jobs at 0, 3, and 15 days ago = 3
-        self.assertEqual(resp.context['page_obj'].paginator.count, 3)
+        # Compared as a SET of registrations, not a count: a count alone passes
+        # whenever the expected number happens to equal the fixture total, which
+        # is exactly what a filter that silently failed to apply would return.
+        self.assertEqual(
+            {jc.registration_number for jc in resp.context['page_obj']},
+            self._expected_regs(date.today().replace(day=1)),
+        )
 
     def test_completed_year_filter(self):
-        """Year filter should show jobs completed in last 365 days."""
+        """Year filter shows jobs completed since 1 January — not a rolling
+        365-day window."""
+        # `?filter=year` used to be sent here, which matches no branch in
+        # completed_list, so the queryset came back UNFILTERED and the test
+        # asserted nothing. The view's key is `this_year`.
         resp = self.client.get(
-            reverse('completed_list') + '?filter=year',
+            reverse('completed_list') + '?filter=this_year',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)
-        # All 5 jobs within a year
-        self.assertEqual(resp.context['page_obj'].paginator.count, 5)
+        self.assertEqual(
+            {jc.registration_number for jc in resp.context['page_obj']},
+            self._expected_regs(date.today().replace(month=1, day=1)),
+        )
 
     def test_completed_custom_filter(self):
         """Custom date range filter should return correct subset."""
@@ -354,8 +393,10 @@ class CompletedDateFilterTests(TestCase):
 
     def test_completed_search_with_filter(self):
         """Search combined with filter should narrow results further."""
+        # `this_year`, not the dead `year` key — see test_completed_year_filter.
+        # KL01DD0000 is completed today, so it is in range on every run date.
         resp = self.client.get(
-            reverse('completed_list') + '?filter=year&q=KL01DD0000',
+            reverse('completed_list') + '?filter=this_year&q=KL01DD0000',
             HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(resp.status_code, 200)

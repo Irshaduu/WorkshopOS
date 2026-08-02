@@ -51,6 +51,35 @@ class BootstrapFormMixin:
 # STUDY FORMS
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# MASTER DATA
+#
+# All four of these dedupe on `__iexact`, never on the model's plain `unique=True`.
+# That constraint is case-sensitive, so "Toyota" and "toyota" were both
+# insertable, as were "Oil Filter" and "oil filter" — and ConcernSolution had no
+# uniqueness at all, so the same concern could be added any number of times. The
+# result was a polluted autocomplete where the same thing appeared twice and
+# staff picked whichever came first, which is precisely what the taxonomy rule in
+# CLAUDE.md exists to prevent. The auto-learn path in the job-card views has
+# always deduped this way; these forms are the manual entry points that did not.
+#
+# The check excludes the row being edited, so re-saving a form without touching
+# the name is never blocked by the name it already has.
+# ---------------------------------------------------------------------------
+
+def _reject_case_variant(model, field_name, value, instance, label):
+    """Raise if another row already holds this value, ignoring case."""
+    qs = model.objects.filter(**{f'{field_name}__iexact': value})
+    if instance is not None and instance.pk:
+        qs = qs.exclude(pk=instance.pk)
+    clash = qs.first()
+    if clash:
+        raise forms.ValidationError(
+            f"'{getattr(clash, field_name)}' is already in the {label} list."
+        )
+    return value
+
+
 class CarBrandForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = CarBrand
@@ -59,6 +88,10 @@ class CarBrandForm(BootstrapFormMixin, forms.ModelForm):
             'name': 'Brand Name',
             'logo_image': 'Brand Logo',
         }
+
+    def clean_name(self):
+        name = ' '.join((self.cleaned_data.get('name') or '').split())
+        return _reject_case_variant(CarBrand, 'name', name, self.instance, 'brand')
 
 
 class CarModelForm(BootstrapFormMixin, forms.ModelForm):
@@ -69,11 +102,32 @@ class CarModelForm(BootstrapFormMixin, forms.ModelForm):
             'brand': forms.Select(attrs={'class': 'form-select'}),
         }
 
+    def clean(self):
+        cleaned = super().clean()
+        brand, name = cleaned.get('brand'), cleaned.get('name')
+        # Scoped to the brand: "Corolla" under Toyota and under some other make
+        # are different cars, and unique_together already says so.
+        if brand and name:
+            name = ' '.join(name.split())
+            qs = CarModel.objects.filter(brand=brand, name__iexact=name)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            clash = qs.first()
+            if clash:
+                self.add_error('name', f"'{clash.name}' is already listed under {brand.name}.")
+            else:
+                cleaned['name'] = name
+        return cleaned
+
 
 class SparePartForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = SparePart
         fields = ['name']
+
+    def clean_name(self):
+        name = ' '.join((self.cleaned_data.get('name') or '').split())
+        return _reject_case_variant(SparePart, 'name', name, self.instance, 'spare parts')
 
 
 class ConcernSolutionForm(BootstrapFormMixin, forms.ModelForm):
@@ -83,6 +137,10 @@ class ConcernSolutionForm(BootstrapFormMixin, forms.ModelForm):
         widgets = {
             'concern': forms.Textarea(attrs={'rows': 2}),
         }
+
+    def clean_concern(self):
+        text = ' '.join((self.cleaned_data.get('concern') or '').split())
+        return _reject_case_variant(ConcernSolution, 'concern', text, self.instance, 'concerns')
 
 
 class SpareShopForm(BootstrapFormMixin, forms.ModelForm):

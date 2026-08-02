@@ -11,6 +11,13 @@ from .models import Mechanic, UserSession, AccountLockout
 from .notifications import notify
 
 
+def _role_of(user):
+    """'Office' / 'Floor' / 'staff' — for notification copy, so an owner reading
+    the alert on a phone knows what was taken away without opening the panel."""
+    name = user.groups.values_list('name', flat=True).first()
+    return name or 'staff'
+
+
 @owner_required
 def manage_dashboard(request):
     """
@@ -98,7 +105,13 @@ def manage_create_user(request):
             messages.error(request, "All fields are required. Role must be Office or Floor.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
-        if User.objects.filter(username=username).exists():
+        # `__iexact`, not an exact match. Django's username uniqueness is
+        # case-sensitive, so "Office" and "office" were two separate logins —
+        # indistinguishable on a staff-room whiteboard, and sign-in resolves the
+        # username exactly, so whoever typed the wrong case just got "invalid
+        # credentials" with no way to tell why. Matches how Mechanic names have
+        # always deduped.
+        if User.objects.filter(username__iexact=username).exists():
             messages.error(request, f"Username '{username}' is already taken. Choose another.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
@@ -149,6 +162,13 @@ def manage_reset_password(request, user_id):
 
         user.set_password(new_password)
         user.save()
+        notify(
+            'STAFF_PASSWORD_SET',
+            f"The password for {_role_of(user)} login '{user.username}' was changed from Control Hub.",
+            actor=request.user,
+            url=reverse('manage_dashboard') + '?section=accounts',
+            object_type='USER', object_id=user.pk,
+        )
         messages.success(request, f"✅ Password for '{user.username}' has been reset.")
 
     
@@ -168,7 +188,15 @@ def manage_delete_user(request, user_id):
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
         username = user.username
+        role = _role_of(user)
         user.delete()
+        notify(
+            'USER_DELETED',
+            f"The {role} login '{username}' was deleted. That person can no longer sign in.",
+            actor=request.user,
+            url=reverse('manage_dashboard') + '?section=accounts',
+            object_type='USER',
+        )
         messages.success(request, f"✅ Account '{username}' has been deleted.")
     
     return redirect(reverse('manage_dashboard') + '?section=accounts')

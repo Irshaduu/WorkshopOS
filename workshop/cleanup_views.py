@@ -1,9 +1,16 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.functions import Lower, Trim
+from django.urls import reverse
 from .decorators import office_required
-from .models import SparePart, ConcernSolution, JobCardSpareItem, JobCardConcern
+from .master_data import (
+    rename_spare, rename_concern, spare_usage_count, concern_usage_count,
+)
+from .models import (
+    SparePart, ConcernSolution, JobCardSpareItem, JobCardConcern, DeletionLog,
+)
 
 
 @office_required
@@ -49,12 +56,40 @@ def data_cleanup_view(request):
 
 @office_required
 def cleanup_delete_spare(request, spare_id):
-    """Delete a spare part from the master list."""
-    if request.method == 'POST':
-        spare = get_object_or_404(SparePart, pk=spare_id)
-        name = spare.name
+    """
+    Remove a spare-part name from the master list.
+
+    Safe by construction: job cards store `spare_part_name` as free text, so
+    deleting the master row changes no bill, no shop ledger and no report — and
+    auto-learn puts the name back the next time someone types it. What it used
+    to be was *untraceable*: one POST, no confirmation and no DeletionLog, so an
+    entry removed by accident simply stopped existing.
+
+    GET now shows a confirmation carrying the usage count, so nobody deletes a
+    name that is on 300 job cards without seeing that first — and, when it is in
+    use, the page points at renaming-to-merge instead, which keeps both wordings'
+    history. POST logs a snapshot and deletes.
+    """
+    spare = get_object_or_404(SparePart, pk=spare_id)
+    usage = spare_usage_count(spare.name)
+
+    if request.method != 'POST':
+        return render(request, 'workshop/manage/master_confirm_delete.html', {
+            'kind': 'Spare Part', 'label': spare.name, 'usage': usage,
+            'action': reverse('cleanup_delete_spare', args=[spare.pk]),
+            'rename_hint': 'rename it to the entry you want to keep from Data Cleanup',
+        })
+
+    name = spare.name
+    with transaction.atomic():
+        DeletionLog.record(
+            DeletionLog.ENTITY_MASTER_DATA, spare,
+            user=request.user, reason=request.POST.get('reason', '').strip(),
+            label=f"Spare part '{name}'",
+            extra={'job_card_lines_using_it': usage},
+        )
         spare.delete()
-        messages.success(request, f"✅ Spare part '{name}' removed from master list.")
+    messages.success(request, f"✅ Spare part '{name}' removed from master list (logged to Deletion History).")
     return redirect('data_cleanup')
 
 
@@ -66,53 +101,47 @@ def cleanup_rename_spare(request, spare_id):
     """
     if request.method == 'POST':
         spare = get_object_or_404(SparePart, pk=spare_id)
-        new_name = request.POST.get('new_name', '').strip().title()
+        new_name = request.POST.get('new_name', '').strip()
 
         if not new_name:
             messages.error(request, "New name cannot be empty.")
             return redirect('data_cleanup')
 
-        # Check if target name already exists (merge scenario)
-        existing = SparePart.objects.filter(name__iexact=new_name).exclude(pk=spare_id).first()
-
-        # Update the job card lines that used the old name — SHOP rows only.
-        #
-        # This is the Spare Parts master list, which only feeds the free-text
-        # shop-purchase autocomplete. An inventory draw takes its name from the
-        # `Item` it points at, so renaming it from here would put a job card's
-        # displayed name out of step with the product it is actually linked to.
-        # Rename a stock product on its supplier catalog instead.
-        #
-        # `.update()` deliberately bypasses signals, which is safe *because* this
-        # is scoped to shop rows: they move no stock. It would not be safe on an
-        # inventory draw.
+        # One implementation, shared with Master Lists' spare edit — see
+        # workshop/master_data.py for why that matters.
         old_name = spare.name
-        JobCardSpareItem.objects.filter(
-            source=JobCardSpareItem.SOURCE_SHOP,
-            spare_part_name__iexact=old_name,
-        ).update(spare_part_name=new_name)
-
-        if existing:
-            # Merge: delete the typo entry, keep the correct one
-            spare.delete()
-            messages.success(request, f"✅ Merged '{old_name}' → '{new_name}'. All job cards updated.")
+        final_name, merged = rename_spare(spare, new_name, user=request.user)
+        if merged:
+            messages.success(request, f"✅ Merged '{old_name}' → '{final_name}'. All job cards updated.")
         else:
-            # Simple rename
-            spare.name = new_name
-            spare.save()
-            messages.success(request, f"✅ Renamed '{old_name}' → '{new_name}'. All job cards updated.")
+            messages.success(request, f"✅ Renamed '{old_name}' → '{final_name}'. All job cards updated.")
 
     return redirect('data_cleanup')
 
 
 @office_required
 def cleanup_delete_concern(request, concern_id):
-    """Delete a concern from the master list."""
-    if request.method == 'POST':
-        concern = get_object_or_404(ConcernSolution, pk=concern_id)
-        name = concern.concern[:40]
+    """Remove a concern from the master list. Same rules as cleanup_delete_spare."""
+    concern = get_object_or_404(ConcernSolution, pk=concern_id)
+    usage = concern_usage_count(concern.concern)
+
+    if request.method != 'POST':
+        return render(request, 'workshop/manage/master_confirm_delete.html', {
+            'kind': 'Concern', 'label': concern.concern, 'usage': usage,
+            'action': reverse('cleanup_delete_concern', args=[concern.pk]),
+            'rename_hint': 'rename it to the entry you want to keep from Data Cleanup',
+        })
+
+    text = concern.concern
+    with transaction.atomic():
+        DeletionLog.record(
+            DeletionLog.ENTITY_MASTER_DATA, concern,
+            user=request.user, reason=request.POST.get('reason', '').strip(),
+            label=f"Concern '{text[:80]}'",
+            extra={'job_card_lines_using_it': usage},
+        )
         concern.delete()
-        messages.success(request, f"✅ Concern '{name}...' removed from master list.")
+    messages.success(request, f"✅ Concern '{text[:40]}…' removed from master list (logged to Deletion History).")
     return redirect('data_cleanup')
 
 
@@ -129,24 +158,11 @@ def cleanup_rename_concern(request, concern_id):
             messages.error(request, "New concern text cannot be empty.")
             return redirect('data_cleanup')
 
-        old_text = concern.concern
-
-        # Update all job card concerns that used the old text
-        JobCardConcern.objects.filter(concern_text__iexact=old_text).update(
-            concern_text=new_text
-        )
-
-        # Check for merge (same concern already exists)
-        existing = ConcernSolution.objects.filter(
-            concern__iexact=new_text
-        ).exclude(pk=concern_id).first()
-
-        if existing:
-            concern.delete()
-            messages.success(request, f"✅ Merged concern into existing entry. All job cards updated.")
+        # Shared with Master Lists' concern edit — see workshop/master_data.py.
+        _final, merged = rename_concern(concern, new_text, user=request.user)
+        if merged:
+            messages.success(request, "✅ Merged concern into existing entry. All job cards updated.")
         else:
-            concern.concern = new_text
-            concern.save()
-            messages.success(request, f"✅ Concern renamed. All job cards updated.")
+            messages.success(request, "✅ Concern renamed. All job cards updated.")
 
     return redirect('data_cleanup')
