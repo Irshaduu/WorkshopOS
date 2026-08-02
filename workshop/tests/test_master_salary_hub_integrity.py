@@ -181,6 +181,120 @@ class RenamingAMasterEntryMeansTheSameThingFromBothScreensTests(WorkshopTestCase
         self.assertEqual(log.snapshot.get('job_card_lines_relabelled'), 1)
 
 
+class RenamingABrandOrModelReachesTheJobCardsTests(WorkshopTestCase):
+    """
+    Reports group by `JobCard.brand_name` / `model_name` (free text on the card,
+    by deliberate design). Renaming a spare or a concern has always reached that
+    history; renaming a BRAND or MODEL did not — so a brand recorded as "Toyta"
+    on one card stayed a second brand in Deep Analysis forever, and correcting
+    the master list changed nothing, which is the least useful place for a fix
+    to fail.
+    """
+
+    def _card(self, reg, brand, model):
+        jc = JobCard.objects.create(
+            registration_number=reg, brand_name=brand, model_name=model,
+            admitted_date=date.today(), lead_mechanic=self.mechanic)
+        JobCardLabourItem.objects.create(job_card=jc, job_description='Service',
+                                         amount=Decimal('1000'))
+        return jc
+
+    def test_renaming_a_brand_relabels_its_job_cards(self):
+        from workshop.analysis_views import _insight_vehicles
+
+        brand = CarBrand.objects.create(name='Toyta')
+        self._card('KL01AA0001', 'Toyta', 'Corolla')
+        self._card('KL02BB0002', 'Toyota', 'Corolla')
+        self.assertEqual(len(_insight_vehicles(date.today(), date.today())['brands']), 2)
+
+        self.client.post(reverse('brand_edit', args=[brand.pk]), {'name': 'Toyota'})
+
+        self.assertEqual(
+            set(JobCard.objects.values_list('brand_name', flat=True)), {'Toyota'})
+        rows = _insight_vehicles(date.today(), date.today())['brands']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['jobs'], 2)
+
+    def test_renaming_a_brand_onto_an_existing_one_merges_and_moves_its_models(self):
+        typo = CarBrand.objects.create(name='Toyta')
+        keeper = CarBrand.objects.create(name='Toyota')
+        CarModel.objects.create(brand=typo, name='Innova')     # unique to the typo
+        CarModel.objects.create(brand=typo, name='Corolla')    # duplicate
+        CarModel.objects.create(brand=keeper, name='Corolla')
+        self._card('KL01AA0001', 'Toyta', 'Innova')
+
+        self.client.post(reverse('brand_edit', args=[typo.pk]), {'name': 'Toyota'})
+
+        self.assertEqual(CarBrand.objects.count(), 1)
+        self.assertEqual(
+            sorted(keeper.models.values_list('name', flat=True)), ['Corolla', 'Innova'],
+            "the unique model moves across; the duplicate is dropped, because "
+            "CarModel is unique_together(brand, name)")
+        self.assertEqual(JobCard.objects.get().brand_name, 'Toyota')
+
+    def test_renaming_a_model_relabels_only_that_brands_job_cards(self):
+        toyota = CarBrand.objects.create(name='Toyota')
+        honda = CarBrand.objects.create(name='Honda')
+        model = CarModel.objects.create(brand=toyota, name='Corola')
+        CarModel.objects.create(brand=honda, name='Corola')
+        self._card('KL01AA0001', 'Toyota', 'Corola')
+        self._card('KL02BB0002', 'Honda', 'Corola')
+
+        self.client.post(reverse('model_edit', args=[model.pk]),
+                         {'brand': toyota.pk, 'name': 'Corolla'})
+
+        self.assertEqual(
+            JobCard.objects.get(registration_number='KL01AA0001').model_name, 'Corolla')
+        self.assertEqual(
+            JobCard.objects.get(registration_number='KL02BB0002').model_name, 'Corola',
+            "a same-named model under another make is a different car")
+
+    def test_a_brand_rename_is_logged_when_it_merges(self):
+        typo = CarBrand.objects.create(name='Toyta')
+        CarBrand.objects.create(name='Toyota')
+        self.client.post(reverse('brand_edit', args=[typo.pk]), {'name': 'Toyota'})
+        log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_MASTER_DATA)
+        self.assertIn('Toyta', log.entity_label)
+
+
+class TheMasterListDecidesHowItsOwnEntriesAreSpelledTests(WorkshopTestCase):
+    """
+    `model_name` is free text on the job card and reports group by it, so
+    'corolla' and 'COROLLA' were two different models everywhere they were
+    counted. It is deliberately NOT title-cased the way `brand_name` is —
+    that would turn 'i20' into 'I20' and 'CR-V' into 'Cr-V'. Instead a card
+    snaps to the master list's own spelling when that brand already has the
+    model recorded; a genuinely new model stays exactly as typed.
+    """
+
+    def test_a_known_model_snaps_to_the_master_spelling(self):
+        brand = CarBrand.objects.create(name='Toyota')
+        CarModel.objects.create(brand=brand, name='Corolla')
+        for reg, typed in (('KL01AA0001', 'corolla'), ('KL02BB0002', 'COROLLA')):
+            JobCard.objects.create(
+                registration_number=reg, brand_name='toyota', model_name=typed,
+                admitted_date=date.today(), lead_mechanic=self.mechanic)
+        self.assertEqual(
+            set(JobCard.objects.values_list('model_name', flat=True)), {'Corolla'})
+
+    def test_an_unknown_model_keeps_the_typed_capitalisation(self):
+        CarBrand.objects.create(name='Hyundai')
+        jc = JobCard.objects.create(
+            registration_number='KL03CC0003', brand_name='Hyundai', model_name='i20 Asta',
+            admitted_date=date.today(), lead_mechanic=self.mechanic)
+        jc.refresh_from_db()
+        self.assertEqual(jc.model_name, 'i20 Asta',
+                         "title-casing would have produced 'I20 Asta'")
+
+    def test_surrounding_whitespace_is_collapsed(self):
+        jc = JobCard.objects.create(
+            registration_number='KL04DD0004', brand_name='Toyota',
+            model_name='  Corolla   Altis ',
+            admitted_date=date.today(), lead_mechanic=self.mechanic)
+        jc.refresh_from_db()
+        self.assertEqual(jc.model_name, 'Corolla Altis')
+
+
 class MergingAMasterEntryNeverMovesMoneyOrStockTests(WorkshopTestCase):
     """
     A merge relabels job-card text. It must not touch a bill, a shop ledger, a
@@ -448,6 +562,111 @@ class EveryAdvanceLandsOnASettlementLineTests(WorkshopTestCase):
         self.assertTrue(SalaryPayment.objects.filter(month=m).exists())
 
 
+class TheSettlementFormWarnsBeforeTheButtonTests(WorkshopTestCase):
+    """
+    The POST guard refuses a settlement that would strand someone's advances —
+    but a page that only reveals that on submit makes the office fill in a whole
+    month's leave days first. Retired staff block too and are absent from the
+    rows entirely, so the banner is the only place they are visible at all.
+
+    The old copy said such staff "will be left out of this settlement", which
+    stopped being true the moment the guard existed.
+    """
+
+    def test_the_form_names_who_is_blocking_it(self):
+        m = timezone.localdate().replace(day=1)
+        Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        bilal = Mechanic.objects.create(name='Bilal')
+        SalaryAdvance.objects.create(staff=bilal, amount=Decimal('3000'), date=m)
+
+        resp = self.client.get(reverse('salary_payment_form', args=[m.year, m.month]))
+
+        # No apostrophe in the needle. This banner is literal template text, so
+        # it is NOT autoescaped (only variables are) — unlike the messages
+        # framework copy, which is. Sidestep the difference entirely.
+        self.assertContains(resp, "be saved yet")
+        self.assertContains(resp, 'Bilal')
+        self.assertContains(resp, 'no salary recorded')
+
+    def test_a_retired_blocker_is_visible_even_though_it_has_no_row(self):
+        m = timezone.localdate().replace(day=1)
+        Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        bilal = Mechanic.objects.create(name='Bilal', current_salary=Decimal('18000'),
+                                        is_active=False)
+        SalaryAdvance.objects.create(staff=bilal, amount=Decimal('4000'), date=m)
+
+        resp = self.client.get(reverse('salary_payment_form', args=[m.year, m.month]))
+
+        self.assertContains(resp, 'Bilal')
+        self.assertNotIn(bilal.pk, [r['staff'].pk for r in resp.context['rows']])
+
+    def test_someone_with_no_salary_and_no_advance_is_only_a_soft_note(self):
+        m = timezone.localdate().replace(day=1)
+        Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        Mechanic.objects.create(name='Bilal')
+
+        resp = self.client.get(reverse('salary_payment_form', args=[m.year, m.month]))
+
+        self.assertEqual(resp.context['blockers'], [])
+        self.assertContains(resp, 'no salary set')
+        self.assertContains(resp, 'nothing is lost')
+
+    def test_a_blocker_is_not_also_listed_as_merely_left_out(self):
+        """One person, one consequence."""
+        m = timezone.localdate().replace(day=1)
+        bilal = Mechanic.objects.create(name='Bilal')
+        SalaryAdvance.objects.create(staff=bilal, amount=Decimal('3000'), date=m)
+        resp = self.client.get(reverse('salary_payment_form', args=[m.year, m.month]))
+        self.assertEqual([b['staff'].pk for b in resp.context['blockers']], [bilal.pk])
+        # `self.mechanic` from the base fixture also has no salary, and it
+        # legitimately belongs in the soft list — assert on Bilal specifically
+        # rather than on the list being empty.
+        self.assertNotIn(bilal.pk, [s.pk for s in resp.context['missing_salary']])
+
+
+class DataCleanupShowsUsageBeforeDeletingTests(WorkshopTestCase):
+    """
+    The usage count has to be in the MODAL, because that is the only delete path
+    a real user takes — Data Cleanup posts straight to the delete view, so the
+    view's GET confirmation page is a safety net for a URL typed directly and is
+    never reached by the UI. Checking only the server side would have missed
+    this entirely.
+    """
+
+    def _spare_used_by(self, name, times):
+        spare = SparePart.objects.create(name=name)
+        jc = JobCard.objects.create(
+            registration_number='KL01AA0001', brand_name='Toyota', model_name='Corolla',
+            admitted_date=date.today(), lead_mechanic=self.mechanic)
+        for _ in range(times):
+            JobCardSpareItem.objects.create(
+                job_card=jc, spare_part_name=name, quantity=Decimal('1'),
+                total_price=Decimal('100'), source=JobCardSpareItem.SOURCE_SHOP)
+        return spare
+
+    def test_the_delete_modal_shows_the_usage_count_and_steers_to_merge(self):
+        self._spare_used_by('Oil Filter', 3)
+        page = self.client.get(reverse('data_cleanup')).content.decode()
+        self.assertIn('Used on <strong>3 job cards</strong>', page)
+        self.assertIn('to merge it into', page)
+
+    def test_the_delete_modal_posts_a_reason(self):
+        spare = self._spare_used_by('Oil Filter', 1)
+        page = self.client.get(reverse('data_cleanup')).content.decode()
+        self.assertIn('name="reason"', page)
+
+        self.client.post(reverse('cleanup_delete_spare', args=[spare.pk]),
+                         {'reason': 'duplicate'})
+        self.assertEqual(
+            DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_MASTER_DATA).reason,
+            'duplicate')
+
+    def test_an_unused_entry_shows_no_warning(self):
+        SparePart.objects.create(name='Oil Filter')
+        page = self.client.get(reverse('data_cleanup')).content.decode()
+        self.assertNotIn('to merge it into', page)
+
+
 class ASettledMonthSaysWhenItHasGoneStaleTests(WorkshopTestCase):
     """
     A settlement freezes `advance_used` and `net_amount`. An advance recorded (or
@@ -610,6 +829,175 @@ class ControlHubAnnouncesAccessChangesTests(WorkshopTestCase):
             self.client_for('owner').post(reverse(route, args=[self.second_owner.pk]),
                                           {'new_password': 'somethinglong1'})
         self.assertTrue(User.objects.filter(pk=self.second_owner.pk).exists())
+
+
+class RetiringStaffWarnsAboutTheirUnsettledAdvancesTests(WorkshopTestCase):
+    """
+    Control Hub retires someone; Salary & Advance is where it bites.
+
+    Retiring a staff member who still holds advances in an unsettled month is
+    legitimate, but the settle-guard will then refuse that month until they are
+    reactivated. Without a word at the moment of the click, the owner got a tick
+    and Office hit a wall days later in a different section with nothing
+    connecting the two.
+    """
+
+    def test_retiring_someone_with_unsettled_advances_says_so(self):
+        m = timezone.localdate().replace(day=1)
+        bilal = Mechanic.objects.create(name='Bilal', current_salary=Decimal('18000'))
+        SalaryAdvance.objects.create(staff=bilal, amount=Decimal('4000'), date=m)
+
+        resp = self.client_for('owner').post(
+            reverse('manage_toggle_mechanic', args=[bilal.pk]), follow=True)
+
+        self.assertContains(resp, 'advances in a month')
+        bilal.refresh_from_db()
+        self.assertFalse(bilal.is_active, "the warning must not block the action")
+
+    def test_retiring_someone_with_nothing_outstanding_is_quiet(self):
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        resp = self.client_for('owner').post(
+            reverse('manage_toggle_mechanic', args=[anil.pk]), follow=True)
+        self.assertNotContains(resp, 'advances in a month')
+
+    def test_an_advance_inside_a_settled_month_raises_no_warning(self):
+        """It is already on a payment line, so retiring them changes nothing."""
+        m = timezone.localdate().replace(day=1)
+        bilal = Mechanic.objects.create(name='Bilal', current_salary=Decimal('18000'))
+        SalaryAdvance.objects.create(staff=bilal, amount=Decimal('4000'), date=m)
+        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+                         {f'leave_days_{bilal.pk}': '0'})
+
+        resp = self.client_for('owner').post(
+            reverse('manage_toggle_mechanic', args=[bilal.pk]), follow=True)
+        self.assertNotContains(resp, 'advances in a month')
+
+
+class DeletingASettlementReturnsItsAdvancesToTheBooksTests(WorkshopTestCase):
+    """Un-recording a month must put its advances back as loose cash — that
+    money left the drawer whether or not the month is settled."""
+
+    def test_the_wage_cost_falls_back_to_the_advances_alone(self):
+        m = timezone.localdate().replace(day=1)
+        end = (m.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        SalaryAdvance.objects.create(staff=anil, amount=Decimal('2000'), date=m)
+        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+        self.assertEqual(ae.salary_expense(m, end)['total'], Decimal('20000.00'))
+
+        payment = SalaryPayment.objects.get()
+        self.client_for('owner').post(reverse('salary_payment_delete', args=[payment.pk]),
+                                      {'reason': 'settled by mistake'})
+
+        self.assertEqual(ae.salary_expense(m, end)['total'], Decimal('2000.00'))
+        self.assertTrue(
+            DeletionLog.objects.filter(entity_type=DeletionLog.ENTITY_SALARY_PAYMENT).exists())
+
+
+class SalaryAmountsAreBoundedByTheirColumnTests(WorkshopTestCase):
+    """
+    A rupee figure too large for its column behaved differently on each
+    database: SQLite stored it (silently violating the declared precision) while
+    PostgreSQL — what actually ships — raises `numeric field overflow` and 500s.
+    Neither is an answer to a typo. Bounds are read from `max_digits` /
+    `decimal_places` so they cannot drift from the schema.
+    """
+
+    def test_an_oversized_advance_is_refused(self):
+        staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_advance_add'),
+                         {'staff_id': staff.pk, 'amount': '999999999999'})
+        self.assertEqual(SalaryAdvance.objects.count(), 0)
+
+    def test_an_oversized_salary_is_refused(self):
+        staff = Mechanic.objects.create(name='Anil')
+        self.client.post(reverse('salary_set_amount', args=[staff.pk]),
+                         {'amount': '999999999999'})
+        staff.refresh_from_db()
+        self.assertIsNone(staff.current_salary)
+
+    def test_nan_and_infinity_are_refused(self):
+        staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        for bad in ('NaN', 'Infinity', '-Infinity'):
+            self.client.post(reverse('salary_advance_add'),
+                             {'staff_id': staff.pk, 'amount': bad})
+        self.assertEqual(SalaryAdvance.objects.count(), 0,
+                         "'NaN' parses as a Decimal and would poison every SUM")
+
+    def test_an_ordinary_amount_still_works(self):
+        staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_advance_add'),
+                         {'staff_id': staff.pk, 'amount': '2500.50'})
+        self.assertEqual(SalaryAdvance.objects.get().amount, Decimal('2500.50'))
+
+    def test_a_future_dated_advance_is_refused(self):
+        staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_advance_add'), {
+            'staff_id': staff.pk, 'amount': '1000',
+            'date': str(timezone.localdate() + timedelta(days=400))})
+        self.assertEqual(SalaryAdvance.objects.count(), 0,
+                         "cash cannot have been handed over on a day that hasn't come")
+
+
+class BrandAndModelDeletesAreDisclosedAndLoggedTests(WorkshopTestCase):
+    """
+    Deleting a brand takes every model under it by CASCADE — the largest
+    permanent delete in the app, and it left no record of what went. The confirm
+    page said only "this will also delete all car models", never how many or
+    which.
+    """
+
+    def test_the_confirm_page_names_the_models_that_will_go(self):
+        brand = CarBrand.objects.create(name='Toyota')
+        for n in ('Corolla', 'Camry'):
+            CarModel.objects.create(brand=brand, name=n)
+        resp = self.client.get(reverse('brand_delete', args=[brand.pk]))
+        self.assertContains(resp, 'Corolla')
+        self.assertContains(resp, 'Camry')
+        self.assertContains(resp, '2 car models')
+        self.assertEqual(CarModel.objects.count(), 2, "GET must delete nothing")
+
+    def test_deleting_a_brand_is_logged_with_its_models(self):
+        brand = CarBrand.objects.create(name='Toyota')
+        CarModel.objects.create(brand=brand, name='Corolla')
+        self.client.post(reverse('brand_delete', args=[brand.pk]), {'reason': 'never serviced'})
+        log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_MASTER_DATA)
+        self.assertIn('Toyota', log.entity_label)
+        self.assertEqual(log.snapshot.get('models_deleted'), ['Corolla'])
+        self.assertEqual(log.reason, 'never serviced')
+
+    def test_deleting_a_single_model_is_logged(self):
+        brand = CarBrand.objects.create(name='Toyota')
+        model = CarModel.objects.create(brand=brand, name='Corolla')
+        self.client.post(reverse('model_delete', args=[model.pk]))
+        self.assertTrue(
+            DeletionLog.objects.filter(entity_type=DeletionLog.ENTITY_MASTER_DATA).exists())
+
+
+class CreatingALoginIsAllOrNothingTests(WorkshopTestCase):
+    """
+    `create_user()` ran before `Group.objects.get(name=role)`, so a missing group
+    row 500'd the panel having already created the account. That login had no
+    group at all: invisible in this hub (which lists strictly by group), able to
+    sign in, and then 403'd by every RBAC decorator — a ghost nobody could see
+    to delete.
+    """
+
+    def test_a_missing_role_creates_no_account_and_does_not_crash(self):
+        Group.objects.filter(name='Floor').delete()
+        resp = self.client_for('owner').post(
+            reverse('manage_create_user'),
+            {'username': 'newfloor', 'password': 'password123', 'role': 'Floor'}, follow=True)
+        self.assertFalse(User.objects.filter(username='newfloor').exists())
+        self.assertContains(resp, 'missing from this database')
+
+    def test_every_created_account_has_its_group(self):
+        self.client_for('owner').post(
+            reverse('manage_create_user'),
+            {'username': 'reception', 'password': 'password123', 'role': 'Office'})
+        user = User.objects.get(username='reception')
+        self.assertEqual(list(user.groups.values_list('name', flat=True)), ['Office'])
 
 
 class LoginNamesDedupeCaseInsensitivelyTests(WorkshopTestCase):

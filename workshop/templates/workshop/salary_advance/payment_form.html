@@ -120,13 +120,43 @@
   {% endif %}
 </div>
 
+{% comment %}
+Two different consequences, so two different banners.
+
+`blockers` are people who were handed cash this month but would get no
+settlement line — no salary recorded, or retired. Saving is refused for them,
+because their advance would otherwise be counted neither on a line nor as loose
+cash and would drop straight off the Profit page. Retired staff do not appear in
+the rows below at all, so this banner is the only place they are visible.
+
+`missing_salary` is the mild case: no salary, but no advances either. Nothing is
+lost by leaving them out, so it stays the softer note it always was.
+{% endcomment %}
+{% if blockers %}
+<div class="alert alert-danger border-0 d-flex align-items-start gap-2" style="border-radius:12px; font-size:0.84rem;">
+  <i class="bi bi-exclamation-octagon-fill mt-1"></i>
+  <div>
+    <strong>This month can't be saved yet.</strong>
+    {{ blockers|length }} staff member{{ blockers|length|pluralize }} took an advance but
+    would get no line here, and that cash would disappear from the accounts:
+    <ul class="mb-1 mt-1 ps-3">
+      {% for b in blockers %}
+      <li>{{ b.staff.name }} — ₹{{ b.amount|floatformat:0|intcomma }} ({{ b.reason }})</li>
+      {% endfor %}
+    </ul>
+    Set a salary below, or reactivate them from Control Hub, then save.
+  </div>
+</div>
+{% endif %}
+
 {% if missing_salary %}
 <div class="alert alert-warning border-0 d-flex align-items-start gap-2" style="border-radius:12px; font-size:0.84rem;">
   <i class="bi bi-exclamation-triangle-fill mt-1"></i>
   <div>
     <strong>{{ missing_salary|length }} staff member{{ missing_salary|length|pluralize }} ha{{ missing_salary|length|pluralize:"s,ve" }} no salary set</strong>
     ({% for s in missing_salary %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}).
-    They will be left out of this settlement. Set a salary below to include them.
+    They took no advance this month, so nothing is lost by leaving them out.
+    Set a salary below to include them.
   </div>
 </div>
 {% endif %}

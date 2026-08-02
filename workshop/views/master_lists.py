@@ -1,11 +1,12 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.db import transaction
 from django.db.models import Q
 from django.core.paginator import Paginator
 
-from ..models import CarBrand, CarModel, SparePart, ConcernSolution
+from ..models import CarBrand, CarModel, SparePart, ConcernSolution, DeletionLog
 from ..forms import CarBrandForm, CarModelForm, SparePartForm, ConcernSolutionForm
-from ..master_data import rename_spare, rename_concern
+from ..master_data import rename_spare, rename_concern, rename_brand, rename_model
 from ..decorators import staff_required, office_required
 
 
@@ -44,21 +45,79 @@ def brand_create(request):
 
 @office_required
 def brand_edit(request, pk):
+    """
+    Rename a brand — and carry the change onto the job cards that used it.
+
+    Renaming a spare or a concern has always reached the job-card history;
+    renaming a brand did not, and reports group by `JobCard.brand_name`, so a
+    misspelled brand stayed a second brand in Deep Analysis no matter how many
+    times the master list was corrected.
+    """
     brand = get_object_or_404(CarBrand, pk=pk)
+    # Captured BEFORE the form is validated. `is_valid()` runs `_post_clean()`,
+    # which calls `construct_instance()` and writes the posted values straight
+    # onto the bound instance — so by the time validation returns, `brand.name`
+    # is already the NEW name and the old one is unrecoverable in memory.
+    old_name = brand.name
     form = CarBrandForm(request.POST or None, request.FILES or None, instance=brand)
-    if form.is_valid():
-        form.save()
-        return redirect('brand_list')
+
+    if request.method == 'POST':
+        new_name = (request.POST.get('name') or '').strip()
+        if not new_name:
+            form.add_error('name', 'Brand name cannot be empty.')
+        elif form.is_valid():
+            # The form still validates and saves the LOGO (an ImageField whose
+            # checks are worth keeping) but must not write the name: renaming
+            # the row first would leave rename_brand searching for job cards
+            # carrying a name that no longer exists — the master list moves and
+            # the history stays behind, the exact bug being fixed here.
+            obj = form.save(commit=False)
+            obj.name = old_name
+            obj.save()
+
+            brand.refresh_from_db()
+            final_name, merged = rename_brand(brand, new_name, user=request.user)
+            messages.success(
+                request,
+                f"Merged '{old_name}' into '{final_name}'. Job cards updated." if merged
+                else f"Renamed to '{final_name}'. Job cards updated.")
+            return redirect('brand_list')
+
     return render(request, 'workshop/master_lists/brand_form.html', {'form': form, 'title': 'Edit Brand'})
 
 
 @office_required
 def brand_delete(request, pk):
+    """
+    Delete a brand and, by CASCADE, every model under it.
+
+    Job cards are untouched — `JobCard.brand_name` is free text — so this cannot
+    alter a bill or a report. Logged like the spare/concern deletes, because
+    this one takes the models down with it and was the largest permanent delete
+    in the app that left no record of what had been removed.
+    """
     brand = get_object_or_404(CarBrand, pk=pk)
+    model_names = list(brand.models.order_by('name').values_list('name', flat=True))
+
     if request.method == 'POST':
-        brand.delete()
+        with transaction.atomic():
+            DeletionLog.record(
+                DeletionLog.ENTITY_MASTER_DATA, brand,
+                user=request.user, reason=request.POST.get('reason', '').strip(),
+                label=f"Brand '{brand.name}' and {len(model_names)} model(s)",
+                extra={'models_deleted': model_names},
+            )
+            brand.delete()
+        messages.success(
+            request,
+            f"Brand '{brand.name}' and {len(model_names)} model(s) deleted "
+            f"(logged to Deletion History)."
+        )
         return redirect('brand_list')
-    return render(request, 'workshop/master_lists/brand_confirm_delete.html', {'brand': brand})
+
+    return render(request, 'workshop/master_lists/brand_confirm_delete.html', {
+        'brand': brand, 'model_names': model_names,
+    })
 
 
 @office_required
@@ -94,11 +153,22 @@ def model_create(request, brand_id=None):
 
 @office_required
 def model_edit(request, pk):
+    """Rename a model — and carry the change onto that brand's job cards."""
     model = get_object_or_404(CarModel, pk=pk)
     form = CarModelForm(request.POST or None, request.FILES or None, instance=model)
-    if form.is_valid():
-        form.save()
-        return redirect('brand_model_list', brand_id=model.brand.id)
+
+    if request.method == 'POST':
+        new_name = (request.POST.get('name') or '').strip()
+        if new_name:
+            brand_id = model.brand_id
+            final_name, merged = rename_model(model, new_name, user=request.user)
+            messages.success(
+                request,
+                f"Merged into '{final_name}'. Job cards updated." if merged
+                else f"Renamed to '{final_name}'. Job cards updated.")
+            return redirect('brand_model_list', brand_id=brand_id)
+        form.add_error('name', 'Model name cannot be empty.')
+
     return render(request, 'workshop/master_lists/model_form.html', {'form': form, 'title': 'Edit Model'})
 
 
@@ -107,7 +177,14 @@ def model_delete(request, pk):
     model = get_object_or_404(CarModel, pk=pk)
     brand_id = model.brand.id
     if request.method == 'POST':
-        model.delete()
+        with transaction.atomic():
+            DeletionLog.record(
+                DeletionLog.ENTITY_MASTER_DATA, model,
+                user=request.user, reason=request.POST.get('reason', '').strip(),
+                label=f"Model '{model.brand.name} {model.name}'",
+            )
+            model.delete()
+        messages.success(request, "Model deleted (logged to Deletion History).")
         return redirect('brand_model_list', brand_id=brand_id)
     return render(request, 'workshop/master_lists/model_confirm_delete.html', {'model': model})
 

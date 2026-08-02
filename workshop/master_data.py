@@ -104,6 +104,100 @@ def rename_spare(spare, new_name, user=None):
 
 
 @transaction.atomic
+def rename_brand(brand, new_name, user=None):
+    """
+    Rename a car brand, updating every job card that carries the old name.
+    Returns (final_name, merged).
+
+    Brands were the asymmetry: renaming a spare or a concern reached the job
+    cards, renaming a brand did not. Reports group by `JobCard.brand_name`
+    (`_insight_vehicles`), so a brand typed "Toyta" on one card stayed a
+    permanent second brand in Deep Analysis — and correcting the master list
+    changed nothing, which is the least useful place for a fix to fail.
+
+    A merge also has to take the dying brand's MODELS with it, and
+    `CarModel` is `unique_together('brand', 'name')` — so a model whose name
+    already exists under the surviving brand is dropped rather than moved,
+    which would violate the constraint.
+    """
+    from .models import JobCard, CarBrand, CarModel
+
+    field = CarBrand._meta.get_field('name')
+    new_name = _collapse(new_name)[:field.max_length]
+    old_name = brand.name
+
+    existing = CarBrand.objects.filter(name__iexact=new_name).exclude(pk=brand.pk).first()
+    final_name = existing.name if existing else new_name
+
+    moved = JobCard.objects.filter(brand_name__iexact=old_name).update(brand_name=final_name)
+
+    if existing:
+        kept = {n.lower() for n in existing.models.values_list('name', flat=True)}
+        absorbed, dropped = [], []
+        for model in brand.models.all():
+            if model.name.lower() in kept:
+                dropped.append(model.name)
+                model.delete()
+            else:
+                absorbed.append(model.name)
+                model.brand = existing
+                model.save(update_fields=['brand'])
+        DeletionLog.record(
+            DeletionLog.ENTITY_MASTER_DATA, brand, user=user,
+            reason=f"Merged into '{final_name}'",
+            label=f"Brand '{old_name}' merged into '{final_name}'",
+            extra={'merged_into': final_name, 'job_cards_relabelled': moved,
+                   'models_moved': absorbed, 'models_dropped_as_duplicates': dropped},
+        )
+        brand.delete()
+        return final_name, True
+
+    brand.name = final_name
+    brand.save(update_fields=['name'])
+    return final_name, False
+
+
+@transaction.atomic
+def rename_model(model, new_name, user=None):
+    """
+    Rename a car model, updating the job cards of that BRAND which carry the old
+    model name. Returns (final_name, merged).
+
+    Scoped to the brand on purpose: "Corolla" under Toyota and a same-named
+    model under another make are different cars, which is exactly what
+    `unique_together('brand', 'name')` already says.
+    """
+    from .models import JobCard, CarModel
+
+    field = CarModel._meta.get_field('name')
+    new_name = _collapse(new_name)[:field.max_length]
+    old_name = model.name
+    brand_name = model.brand.name
+
+    existing = CarModel.objects.filter(
+        brand=model.brand, name__iexact=new_name).exclude(pk=model.pk).first()
+    final_name = existing.name if existing else new_name
+
+    moved = JobCard.objects.filter(
+        brand_name__iexact=brand_name, model_name__iexact=old_name,
+    ).update(model_name=final_name)
+
+    if existing:
+        DeletionLog.record(
+            DeletionLog.ENTITY_MASTER_DATA, model, user=user,
+            reason=f"Merged into '{final_name}'",
+            label=f"Model '{brand_name} {old_name}' merged into '{final_name}'",
+            extra={'merged_into': final_name, 'job_cards_relabelled': moved},
+        )
+        model.delete()
+        return final_name, True
+
+    model.name = final_name
+    model.save(update_fields=['name'])
+    return final_name, False
+
+
+@transaction.atomic
 def rename_concern(concern, new_text, user=None):
     """
     Rename one master concern. Returns (final_text, merged). Same rules as

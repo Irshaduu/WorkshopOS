@@ -47,6 +47,31 @@ def _days_in_month(year, month):
     return (end - start).days
 
 
+def _parse_money(raw, model, field_name):
+    """
+    Parse a posted rupee amount, or return None if it is unusable.
+
+    Bounds come from the column itself (`max_digits`/`decimal_places`), so this
+    cannot drift from the schema. Without the range check, a fat-fingered
+    999999999999 behaved differently on each database: SQLite stored it, which
+    silently violates the declared precision, while PostgreSQL — what actually
+    ships — raises `numeric field overflow` and 500s the page. Neither is an
+    acceptable answer to a typo, and "refuse it with a message" is the same one
+    on both.
+    """
+    try:
+        value = Decimal(str(raw).strip())
+    except Exception:
+        return None
+    if not value.is_finite():
+        return None            # 'NaN' and 'Infinity' both parse as Decimals
+    field = model._meta.get_field(field_name)
+    limit = Decimal(10) ** (field.max_digits - field.decimal_places)
+    if value <= 0 or value >= limit:
+        return None
+    return value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
 def _unsettleable_staff(month_start, month_end):
     """
     Staff who were handed an advance in this month but would get NO settlement
@@ -263,10 +288,7 @@ def salary_advance_add(request):
                 f"Reactivate them from Control Hub first if they're back."
             )
             return redirect('salary_advance_home')
-        try:
-            amount = Decimal(str(request.POST.get('amount', '0')).strip())
-        except Exception:
-            amount = Decimal('0')
+        amount = _parse_money(request.POST.get('amount', '0'), SalaryAdvance, 'amount')
         note = request.POST.get('note', '').strip()
         date_str = request.POST.get('date', '').strip()
         advance_date = timezone.localdate()
@@ -276,8 +298,13 @@ def salary_advance_add(request):
             except ValueError:
                 pass
 
-        if amount <= 0:
+        if amount is None:
             messages.error(request, "Enter a valid advance amount.")
+        elif advance_date > timezone.localdate():
+            # Cash cannot have been handed over on a day that has not arrived,
+            # and a forward-dated advance lands in a month the settlement screen
+            # will not reach for weeks.
+            messages.error(request, "An advance can't be dated in the future.")
         else:
             advance = SalaryAdvance.objects.create(
                 staff=staff, amount=amount, date=advance_date,
@@ -327,11 +354,8 @@ def salary_set_amount(request, staff_id):
     """POST: set/update a staff member's current monthly salary."""
     if request.method == 'POST':
         staff = get_object_or_404(Mechanic, pk=staff_id)
-        try:
-            amount = Decimal(str(request.POST.get('amount', '0')).strip())
-        except Exception:
-            amount = Decimal('-1')
-        if amount <= 0:
+        amount = _parse_money(request.POST.get('amount', '0'), Mechanic, 'current_salary')
+        if amount is None:
             messages.error(request, "Enter a valid salary amount.")
         else:
             staff.current_salary = amount
@@ -468,6 +492,14 @@ def salary_payment_form(request, year, month):
         messages.success(request, f"{target_month.strftime('%B %Y')} salary settlement saved.")
         return redirect('salary_advance_home')
 
+    # Say it BEFORE the button, not after. The POST guard refuses a settlement
+    # that would strand someone's advances, but a page that only reveals that on
+    # submit makes the office fill in a whole month's leave days first. Retired
+    # staff with advances block too and are absent from `rows` entirely, so
+    # without this they were invisible until the error fired.
+    blockers = _unsettleable_staff(month_start, month_end)
+    blocker_ids = {s.pk for s, _amt, _why in blockers}
+
     rows, missing_salary = [], []
     for staff in Mechanic.objects.filter(is_active=True).order_by('name'):
         advance_used = SalaryAdvance.objects.filter(
@@ -477,7 +509,11 @@ def salary_payment_form(request, year, month):
         )['total']
         existing = existing_lines.get(staff.pk)
         leave_days = existing.leave_days if existing else Decimal('0')
-        if staff.current_salary is None:
+        # Only the ones who are merely left out. Anyone in `blockers` stops the
+        # settlement outright and is reported by the stronger banner instead —
+        # listing them twice, under two different consequences, would be worse
+        # than listing them once.
+        if staff.current_salary is None and staff.pk not in blocker_ids:
             missing_salary.append(staff)
         rows.append({
             'staff': staff,
@@ -494,6 +530,7 @@ def salary_payment_form(request, year, month):
         'rows': rows,
         'payment': payment,
         'missing_salary': missing_salary,
+        'blockers': [{'staff': s, 'amount': amt, 'reason': why} for s, amt, why in blockers],
         'payable_count': sum(1 for r in rows if r['net_amount'] is not None),
     })
 

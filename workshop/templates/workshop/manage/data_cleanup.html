@@ -129,8 +129,30 @@
                                         <div class="alert alert-info py-2 small mb-3 text-start">
                                             <i class="bi bi-info-circle-fill"></i> This only removes it from the <strong>master list</strong>. Existing job cards keep this data.
                                         </div>
+                                        {% comment %}
+                                        The usage count and the merge steer belong HERE, in the
+                                        modal, because this is the only delete path a real user
+                                        takes — the view's GET confirmation page is a safety net
+                                        for a URL typed directly, never something the UI reaches.
+                                        Deleting an entry that is still in use is nearly always
+                                        the wrong tool: renaming it onto the entry you keep merges
+                                        the two and relabels those job cards, where deleting just
+                                        drops the suggestion and leaves both spellings behind.
+                                        {% endcomment %}
+                                        {% if spare.usage_count %}
+                                        <div class="alert alert-warning py-2 small mb-3 text-start">
+                                            <i class="bi bi-clock-history"></i>
+                                            Used on <strong>{{ spare.usage_count }} job card{{ spare.usage_count|pluralize }}</strong>.
+                                            If this is a duplicate, use <strong>Rename</strong> to merge it into
+                                            the entry you want to keep — that relabels those job cards instead of
+                                            leaving two spellings in the history.
+                                        </div>
+                                        {% endif %}
                                         <form method="post" action="{% url 'cleanup_delete_spare' spare.id %}">
                                             {% csrf_token %}
+                                            <input type="text" name="reason" class="form-control form-control-sm mb-2"
+                                                   maxlength="255" placeholder="Reason (optional)"
+                                                   aria-label="Reason for deleting this spare part">
                                             <button type="submit" class="btn btn-danger w-100 fw-bold">Permanently Delete</button>
                                         </form>
                                     </div>
@@ -229,8 +251,20 @@
                                         <div class="alert alert-info py-2 small mb-3 text-start">
                                             <i class="bi bi-info-circle-fill"></i> This only removes it from the <strong>master list</strong>. Existing records stay.
                                         </div>
+                                        {% if concern.usage_count %}
+                                        <div class="alert alert-warning py-2 small mb-3 text-start">
+                                            <i class="bi bi-clock-history"></i>
+                                            Used on <strong>{{ concern.usage_count }} job card{{ concern.usage_count|pluralize }}</strong>.
+                                            If this is a duplicate, use <strong>Rename</strong> to merge it into
+                                            the entry you want to keep — that relabels those job cards instead of
+                                            leaving two wordings in the history.
+                                        </div>
+                                        {% endif %}
                                         <form method="post" action="{% url 'cleanup_delete_concern' concern.id %}">
                                             {% csrf_token %}
+                                            <input type="text" name="reason" class="form-control form-control-sm mb-2"
+                                                   maxlength="255" placeholder="Reason (optional)"
+                                                   aria-label="Reason for deleting this concern">
                                             <button type="submit" class="btn btn-danger w-100 fw-bold">Permanently Delete</button>
                                         </form>
                                     </div>

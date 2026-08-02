@@ -162,6 +162,33 @@ about to correct one of these, you are about to break the business:
   Guarded by `RenamingAMasterEntryMeansTheSameThingFromBothScreensTests` and
   `MergingAMasterEntryNeverMovesMoneyOrStockTests`.
 
+- **Renaming a BRAND or MODEL reaches the job cards too, and the master list
+  decides how its own entries are spelled.** Added 2026-08-02. Reports group by
+  `JobCard.brand_name` / `model_name` — free text on the card, by the deliberate
+  decision above — so a brand recorded as "Toyta" on one card was a permanent
+  second brand in `_insight_vehicles`, and correcting the master list changed
+  nothing. Spares and concerns had propagated since day one; brands and models
+  never did. `rename_brand()` / `rename_model()` now close that, and a brand
+  merge carries the dying brand's **models** across, dropping any whose name
+  already exists under the survivor — `CarModel` is
+  `unique_together('brand','name')` and moving it would violate that. A model
+  rename is **scoped to its brand**: Toyota's "Corola" and another make's are
+  different cars. Separately, `model_name` had no normalisation at all while
+  `brand_name` and `registration_number` did, so 'corolla' and 'COROLLA' were
+  two models everywhere they were counted. It is deliberately **not**
+  title-cased the way `brand_name` is — that turns 'i20' into 'I20' and 'CR-V'
+  into 'Cr-V'. `JobCard.clean()` collapses whitespace and then snaps to the
+  master list's own spelling when that brand already has the model recorded;
+  anything genuinely new stays exactly as typed. Three traps were hit building
+  this and are worth not rediscovering: **`form.is_valid()` mutates the bound
+  instance** in `_post_clean()`, so an "old name" read after validation is
+  already the new one; **the model's `unique=True` fires before the view runs**,
+  rejecting the very rename that merges a duplicate (`CarBrandForm.validate_unique`
+  now skips `name` on edit only); and the `__iexact` form dedupe has to be
+  **create-only**, or it blocks every merge. Guarded by
+  `RenamingABrandOrModelReachesTheJobCardsTests` and
+  `TheMasterListDecidesHowItsOwnEntriesAreSpelledTests`.
+
 - **Deleting a master-list entry cannot touch history — and that is worth a
   test, not an assumption.** Added 2026-08-02. Brand / model / spare / concern
   names live on job cards as free text, never as a FK (the deliberate decision
@@ -202,6 +229,45 @@ about to correct one of these, you are about to break the business:
   Re-saving the month recomputes and clears it. `SalaryAdvance`'s docstring
   always promised advances are "summed fresh … so re-settling a month just
   recomputes cleanly" — this is what makes anyone realise they need to.
+
+- **Retiring a staff member warns about their unsettled advances, at the moment
+  it happens.** Added 2026-08-02. Retiring someone who still holds advances in
+  an unsettled month is legitimate, but the settle-guard above then refuses that
+  month until they are reactivated. Control Hub is where the click happens and
+  Salary & Advance is where it bites, so without a word at the click the owner
+  got a green tick and Office hit a wall days later in a different section with
+  nothing connecting the two. `_unsettled_advance_total()` counts only months
+  with no `SalaryPayment` — an advance already sitting on a payment line changes
+  nothing when its owner retires, so warning about it would be noise. **The
+  warning never blocks**; retiring is still one click.
+
+- **Creating a login is all-or-nothing.** Added 2026-08-02. `create_user()` ran
+  *before* `Group.objects.get(name=role)`, so a missing group row (a database
+  where `setup_groups` never ran, or a group deleted by hand) raised
+  `DoesNotExist` and 500'd the panel **having already created the account**.
+  That login had no group at all: invisible in Control Hub, which lists strictly
+  by group; able to sign in; then 403'd by every RBAC decorator — a ghost nobody
+  could see in order to delete it. The group is now resolved first and the
+  create runs inside `transaction.atomic()`.
+
+- **Every rupee field is bounded by its own column, and the bound is READ from
+  the schema.** Added 2026-08-02, `_parse_money()` in `views/salary_advance.py`.
+  An amount too large for `max_digits` behaved differently on each database:
+  SQLite stored it, silently violating the declared precision, while PostgreSQL
+  — what actually ships — raises `numeric field overflow` and 500s the page.
+  Neither is an acceptable answer to a fat-fingered `999999999999`. The limit is
+  derived from `max_digits`/`decimal_places` so it cannot drift from the column.
+  It also rejects `NaN` and `Infinity`, which **parse as valid Decimals** and
+  would otherwise poison every `SUM` they touch. An advance dated in the future
+  is refused too: cash cannot have been handed over on a day that has not come.
+
+- **Brand and model deletes are disclosed and logged.** Added 2026-08-02.
+  Deleting a brand CASCADEs every model under it — the largest permanent delete
+  in the app — and the confirm page said only "this will also delete all car
+  models", never how many or which, while nothing was written to
+  `DeletionLog`. The page now lists them and the delete is logged with the model
+  names in its snapshot. Job cards are unaffected either way (`brand_name` and
+  `model_name` are free text on the card).
 
 - **Salary inputs are bounded, and access changes are announced.** Added
   2026-08-02. `leave_days` was unvalidated: `-10` produced a net of ₹26,666.67
@@ -804,7 +870,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (27 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 34 files, 653 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (27 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 34 files, 681 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

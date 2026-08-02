@@ -820,6 +820,29 @@ class JobCard(models.Model):
         if self.brand_name:
             # Strip and title-case: 'toyota  ' → 'Toyota'
             self.brand_name = ' '.join(self.brand_name.split()).title()
+        if self.model_name:
+            # Whitespace only — deliberately NOT .title() like brand_name.
+            # Model names are alphanumeric in ways title-casing destroys:
+            # 'i20' → 'I20', 'CR-V' → 'Cr-V', 'GLE 350d' → 'Gle 350D'.
+            self.model_name = ' '.join(self.model_name.split())
+
+        # Snap the model to the master list's spelling when that brand already
+        # has this model recorded, case-insensitively. Reports group by
+        # `model_name` (it is free text on the card, by deliberate design), so
+        # 'corolla' and 'COROLLA' were two different models everywhere they were
+        # counted. Rather than invent a capitalisation rule that would mangle
+        # 'i20', let the curated list be the authority on how its own entries
+        # are spelled; a model that is genuinely new stays exactly as typed.
+        # One indexed lookup, and only when both fields are present.
+        if self.model_name and self.brand_name:
+            canonical = (
+                CarModel.objects
+                .filter(brand__name__iexact=self.brand_name, name__iexact=self.model_name)
+                .values_list('name', flat=True)
+                .first()
+            )
+            if canonical:
+                self.model_name = canonical
 
     def save(self, *args, **kwargs):
         """

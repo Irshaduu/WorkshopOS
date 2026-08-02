@@ -68,11 +68,18 @@ class BootstrapFormMixin:
 # ---------------------------------------------------------------------------
 
 def _reject_case_variant(model, field_name, value, instance, label):
-    """Raise if another row already holds this value, ignoring case."""
-    qs = model.objects.filter(**{f'{field_name}__iexact': value})
+    """
+    Raise if another row already holds this value, ignoring case.
+
+    CREATE only. On an edit, naming a row after one that already exists is a
+    deliberate MERGE — the edit views route it through workshop/master_data.py,
+    which folds the two together and relabels the job cards that used the old
+    wording. Rejecting it here would take away the only tool for cleaning up a
+    duplicate that already exists.
+    """
     if instance is not None and instance.pk:
-        qs = qs.exclude(pk=instance.pk)
-    clash = qs.first()
+        return value
+    clash = model.objects.filter(**{f'{field_name}__iexact': value}).first()
     if clash:
         raise forms.ValidationError(
             f"'{getattr(clash, field_name)}' is already in the {label} list."
@@ -93,6 +100,25 @@ class CarBrandForm(BootstrapFormMixin, forms.ModelForm):
         name = ' '.join((self.cleaned_data.get('name') or '').split())
         return _reject_case_variant(CarBrand, 'name', name, self.instance, 'brand')
 
+    def validate_unique(self):
+        """
+        Skip the model's `unique=True` check on `name` when EDITING.
+
+        Django runs it during `_post_clean()`, so renaming "Toyta" onto an
+        existing "Toyota" was rejected as a duplicate before the view ever got
+        to `master_data.rename_brand()` — which is precisely the call that
+        merges the two and relabels the job cards. The check still applies on
+        create, where a duplicate really is an error.
+        """
+        if not self.instance.pk:
+            return super().validate_unique()
+        exclude = self._get_validation_exclusions()
+        exclude.add('name')
+        try:
+            self.instance.validate_unique(exclude=exclude)
+        except forms.ValidationError as e:
+            self._update_errors(e)
+
 
 class CarModelForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
@@ -109,14 +135,13 @@ class CarModelForm(BootstrapFormMixin, forms.ModelForm):
         # are different cars, and unique_together already says so.
         if brand and name:
             name = ' '.join(name.split())
-            qs = CarModel.objects.filter(brand=brand, name__iexact=name)
-            if self.instance.pk:
-                qs = qs.exclude(pk=self.instance.pk)
-            clash = qs.first()
-            if clash:
-                self.add_error('name', f"'{clash.name}' is already listed under {brand.name}.")
-            else:
-                cleaned['name'] = name
+            cleaned['name'] = name
+            # Create only — an edit onto an existing name is a merge, handled by
+            # master_data.rename_model. See _reject_case_variant.
+            if not self.instance.pk:
+                clash = CarModel.objects.filter(brand=brand, name__iexact=name).first()
+                if clash:
+                    self.add_error('name', f"'{clash.name}' is already listed under {brand.name}.")
         return cleaned
 
 

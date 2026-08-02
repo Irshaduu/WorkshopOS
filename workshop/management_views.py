@@ -5,10 +5,31 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth.models import User, Group
 from django.contrib.sessions.models import Session
-from django.db import models
+from django.db import models, transaction
 from .decorators import owner_required
 from .models import Mechanic, UserSession, AccountLockout
 from .notifications import notify
+
+
+def _unsettled_advance_total(mechanic):
+    """
+    Advances this staff member holds in months that have NOT been settled.
+
+    Only unsettled months matter: an advance inside a settled month is already
+    on a payment line, so retiring them changes nothing there.
+    """
+    from decimal import Decimal
+    from django.db.models.functions import TruncMonth
+    from .models import SalaryPayment
+
+    settled = set(SalaryPayment.objects.values_list('month', flat=True))
+    total = Decimal('0')
+    for row in (mechanic.salary_advances.annotate(m=TruncMonth('date'))
+                                        .values('m')
+                                        .annotate(t=models.Sum('amount'))):
+        if row['m'] and row['m'] not in settled:
+            total += row['t']
+    return total
 
 
 def _role_of(user):
@@ -122,10 +143,26 @@ def manage_create_user(request):
             messages.error(request, "Password must be at least 8 characters.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
 
-        user = User.objects.create_user(username=username, password=password)
-        group = Group.objects.get(name=role)
-        user.groups.add(group)
-        user.save()
+        # One transaction, and the group is resolved BEFORE the account exists.
+        # Previously create_user() ran first and `Group.objects.get(name=role)`
+        # raised DoesNotExist if the row was missing (a database that never had
+        # setup_groups run, or a group deleted by hand) — the panel 500'd having
+        # already created the login. That account had no group at all, so it was
+        # invisible in this hub (which lists strictly by group), could sign in,
+        # and was then 403'd by every RBAC decorator: an unusable ghost nobody
+        # could see to delete.
+        group = Group.objects.filter(name=role).first()
+        if group is None:
+            messages.error(
+                request,
+                f"The '{role}' role is missing from this database — no account was created. "
+                f"Run `manage.py setup_groups` to restore the Owner/Office/Floor roles."
+            )
+            return redirect(reverse('manage_dashboard') + '?section=accounts')
+
+        with transaction.atomic():
+            user = User.objects.create_user(username=username, password=password)
+            user.groups.add(group)
         notify(
             'USER_CREATED',
             f"A new {role} login '{username}' was created.",
@@ -271,6 +308,21 @@ def manage_toggle_mechanic(request, mechanic_id):
         mechanic.save()
         status = "activated" if mechanic.is_active else "deactivated"
         if not mechanic.is_active:
+            # Say it HERE, not two screens away. Retiring someone who still has
+            # advances in an unsettled month is legitimate, but Salary & Advance
+            # will then refuse to settle that month until they are reactivated
+            # (their cash has to land on a settlement line or it drops off the
+            # Profit page). Without this the owner retires a mechanic, gets a
+            # tick, and Office hits a wall days later in a different section
+            # with no idea what caused it.
+            owed = _unsettled_advance_total(mechanic)
+            if owed:
+                messages.warning(
+                    request,
+                    f"Heads up — {mechanic.name} has ₹{owed:,.0f} of advances in a month "
+                    f"that hasn't been settled yet. That month can't be settled until "
+                    f"they're reactivated, so settle it first or switch them back on."
+                )
             # Only the deactivation direction: someone leaving the roster is the
             # event worth knowing about; bringing them back is routine.
             notify(

@@ -9,13 +9,38 @@
             <div class="card-body p-4 text-center">
                 <i class="bi bi-exclamation-triangle-fill text-danger display-1 mb-4"></i>
                 <h4 class="mb-3">Delete Brand?</h4>
-                <p class="text-muted mb-4">
-                    Are you sure you want to delete <strong>"{{ brand.name }}"</strong>?<br>
-                    <span class="text-danger small fw-bold">Warning: This will also delete all car models associated with this brand.</span>
+                <p class="text-muted mb-3">
+                    Are you sure you want to delete <strong>"{{ brand.name }}"</strong>?
                 </p>
+
+                {% comment %}
+                The warning used to say only "this will also delete all car
+                models" — true, but it never said how many or which, so the
+                person clicking had no idea whether that meant one stale entry
+                or thirty years of the model list. Job cards are unaffected
+                either way: brand_name and model_name are free text on them.
+                {% endcomment %}
+                {% if model_names %}
+                <div class="alert alert-danger small text-start">
+                    <div class="fw-bold mb-1">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        This also deletes {{ model_names|length }} car model{{ model_names|pluralize }}:
+                    </div>
+                    <div style="max-height:9rem; overflow-y:auto;">{{ model_names|join:" · " }}</div>
+                    <hr class="my-2">
+                    Job cards already recorded against this brand keep their brand and
+                    model names — those are stored on the card itself.
+                </div>
+                {% else %}
+                <div class="alert alert-secondary small">
+                    <i class="bi bi-check-circle me-1"></i> No car models under this brand.
+                </div>
+                {% endif %}
 
                 <form method="post">
                     {% csrf_token %}
+                    <input type="text" name="reason" class="form-control mb-3" maxlength="255"
+                           placeholder="Reason (optional)" aria-label="Reason for deleting this brand">
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-danger btn-lg fw-bold">Yes, Delete Brand</button>
                         <a href="{% url 'brand_list' %}" class="btn btn-outline-secondary">Cancel</a>
