@@ -931,6 +931,39 @@ class SalaryAmountsAreBoundedByTheirColumnTests(WorkshopTestCase):
                          {'staff_id': staff.pk, 'amount': '2500.50'})
         self.assertEqual(SalaryAdvance.objects.get().amount, Decimal('2500.50'))
 
+    def test_an_overlong_note_is_trimmed_not_crashed(self):
+        """400 chars into max_length=255: stored by SQLite, rejected by
+        Postgres with 'value too long'. Trimmed, like an oversized spare name."""
+        staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_advance_add'),
+                         {'staff_id': staff.pk, 'amount': '500', 'note': 'x' * 400})
+        self.assertEqual(len(SalaryAdvance.objects.get().note), 255)
+
+    def test_a_garbled_staff_id_is_a_404_not_a_500(self):
+        """get_object_or_404(pk='abc') raises ValueError, not Http404."""
+        resp = self.client.post(reverse('salary_advance_add'),
+                                {'staff_id': 'abc', 'amount': '500'})
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(SalaryAdvance.objects.count(), 0)
+
+    def test_settling_the_same_month_twice_writes_one_settlement(self):
+        """SalaryPayment.month is unique — a double-click must not 500."""
+        m = timezone.localdate().replace(day=1)
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        url = reverse('salary_payment_form', args=[m.year, m.month])
+        self.client.post(url, {f'leave_days_{anil.pk}': '2'})
+        self.client.post(url, {f'leave_days_{anil.pk}': '2'})
+        self.assertEqual(SalaryPayment.objects.count(), 1)
+        self.assertEqual(SalaryPaymentLine.objects.count(), 1)
+
+    def test_a_retired_staff_member_can_still_be_given_a_salary(self):
+        """Not a loophole — it is the documented way out of a blocked month.
+        The settle-guard tells the owner to 'set a salary or reactivate them'."""
+        staff = Mechanic.objects.create(name='Anil', is_active=False)
+        self.client.post(reverse('salary_set_amount', args=[staff.pk]), {'amount': '20000'})
+        staff.refresh_from_db()
+        self.assertEqual(staff.current_salary, Decimal('20000.00'))
+
     def test_a_future_dated_advance_is_refused(self):
         staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
         self.client.post(reverse('salary_advance_add'), {

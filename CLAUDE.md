@@ -342,6 +342,46 @@ about to correct one of these, you are about to break the business:
   cases** — that is an overpayment, not a shortfall, and inventing a refund
   would be guessing. Guarded by `EditingASettledBillKeepsThePaymentHonestTests`.
 
+- **Every typed rupee amount goes through `workshop/money.py`, and the bound is
+  READ from the column.** Added 2026-08-02, after the identical hole was found
+  independently in Salary & Advance and the Cashbook. Three failures, one rule:
+  a figure too large for `max_digits` was **stored by SQLite** (silently
+  violating the declared precision) and **rejected by PostgreSQL** — what
+  actually ships — with `numeric field overflow`, i.e. a 500 from a fat finger;
+  `Infinity` and `NaN` both parse as **valid Decimals**, and since `NaN`
+  compares False against everything while `Infinity` is genuinely `> 0`, a bare
+  `amount > 0` guard let one through in each direction, making every aggregate
+  that touched them meaningless; and unparseable input each view handled its
+  own way. `fit_text()` is the same story for strings — a 400-character note
+  into `max_length=255` is another SQLite-accepts / Postgres-500s split, and is
+  trimmed rather than crashed, matching `_build_unassigned_spare`.
+
+- **A Cashbook category snaps to the spelling already in use.** Added
+  2026-08-02. The Profit page breaks General Cashbook down with
+  `values('category')` and the category is free text with no picker, so
+  "Electricity", "electricity" and "ELECTRICITY" were three lines for one real
+  cost — the total stayed right, the breakdown an owner reads to see *where*
+  money went did not. There is no master list for these, so the entries already
+  recorded **are** the list: first spelling wins, exactly as a job card snaps to
+  the master list's spelling of a car model. The row being edited is excluded
+  from the check, so deliberately re-casing the only entry of its kind still
+  works. Wage-looking categories are still **flagged, never filtered** — that
+  rule is unchanged.
+
+- **A capped Cashbook list says so.** Added 2026-08-02. The lists are sliced at
+  `LIST_CAP` for performance while the totals above them are computed from the
+  full queryset, so any period holding more rows than the cap showed a total
+  that plainly did not add up from what was on screen, with nothing to explain
+  the gap. Both the full page and the AJAX partial now state the real count.
+
+- **Income mis-keyed as an expense can be corrected in place.** Added
+  2026-08-02. It lands on the *wrong side* of the Profit equation — a
+  double-sized error — and the only way back was deleting the row and re-adding
+  it. `entry_type` is honoured on edit **only when a valid one is posted**, so a
+  payload without it keeps what the entry already has rather than silently
+  flipping it, and the control is rendered in the edit modal: a server-side fix
+  with nothing posting to it would have been unreachable.
+
 - **A Cashbook entry is dated by the day the money moved, and that date is
   editable.** Added 2026-08-02. `CashbookEntry.date` has always existed, been
   indexed, driven the page's Today/Last Week/Last Month filters and been what
@@ -870,7 +910,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (27 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 34 files, 681 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (27 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 34 files, 700 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

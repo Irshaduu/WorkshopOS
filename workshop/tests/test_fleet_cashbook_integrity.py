@@ -448,6 +448,221 @@ class CashbookEntriesAreDatedByTheDayTheMoneyMovedTests(TestCase):
                              f"date={payload_date!r} should fall back to today")
 
 
+class CashbookAmountsAreBoundedByTheirColumnTests(TestCase):
+    """
+    `Decimal(amount) > 0` was the only guard, and it let two things through.
+
+    'Infinity' parses as a perfectly valid Decimal and IS greater than zero, so
+    it went straight into a money column and made every aggregate touching it
+    meaningless. And a 12-digit figure in a `numeric(10,2)` column split by
+    database: SQLite stored it, silently violating the declared precision,
+    while PostgreSQL — what ships — raises `numeric field overflow` and 500s.
+    Bounds now come from the column itself (workshop/money.py).
+    """
+
+    def setUp(self):
+        FailedAttempt.objects.all().delete()
+        group, _ = Group.objects.get_or_create(name='Office')
+        user = User.objects.create_user(username='office', password='pass')
+        user.groups.add(group)
+        self.client = Client()
+        self.client.login(username='office', password='pass')
+
+    def _add(self, **over):
+        data = {'entry_type': 'EXPENSE', 'category': 'Electricity',
+                'amount': '500', 'payment_method': 'CASH'}
+        data.update(over)
+        return self.client.post(reverse('manage_add_cashbook_entry'), data)
+
+    def test_an_oversized_amount_is_refused(self):
+        self._add(amount='999999999999')
+        self.assertEqual(CashbookEntry.objects.count(), 0)
+
+    def test_infinity_and_nan_are_refused(self):
+        for bad in ('Infinity', '-Infinity', 'NaN'):
+            self._add(amount=bad)
+        self.assertEqual(CashbookEntry.objects.count(), 0)
+
+    def test_an_edit_cannot_smuggle_an_oversized_amount_in(self):
+        self._add(amount='500')
+        entry = CashbookEntry.objects.get()
+        self.client.post(reverse('manage_edit_cashbook_entry', args=[entry.pk]),
+                         {'category': 'Electricity', 'amount': '999999999999',
+                          'payment_method': 'CASH', 'date': str(entry.date)})
+        entry.refresh_from_db()
+        self.assertEqual(entry.amount, Decimal('500.00'))
+
+    def test_an_ordinary_amount_still_works(self):
+        self._add(amount='1234.56')
+        self.assertEqual(CashbookEntry.objects.get().amount, Decimal('1234.56'))
+
+    def test_a_future_dated_entry_is_refused(self):
+        self._add(date=str(timezone.localdate() + timedelta(days=400)))
+        self.assertEqual(CashbookEntry.objects.count(), 0,
+                         "money cannot have moved on a day that hasn't come")
+
+
+class AMiskeyedIncomeOrExpenseCanBeCorrectedTests(TestCase):
+    """
+    Income keyed as an expense lands on the WRONG SIDE of the Profit equation —
+    a double-sized error — and the only way back was deleting the row and
+    re-adding it. The edit modal renders the control, because a server-side fix
+    with nothing posting to it would have been unreachable.
+    """
+
+    def setUp(self):
+        FailedAttempt.objects.all().delete()
+        group, _ = Group.objects.get_or_create(name='Office')
+        user = User.objects.create_user(username='office', password='pass')
+        user.groups.add(group)
+        self.client = Client()
+        self.client.login(username='office', password='pass')
+
+    def test_the_edit_modal_offers_the_type(self):
+        CashbookEntry.objects.create(
+            entry_type='INCOME', category='Scrap Sell', amount=Decimal('1000'),
+            payment_method='CASH', date=timezone.localdate())
+        page = self.client.get(reverse('cashbook')).content.decode()
+        self.assertIn('name="entry_type"', page)
+
+    def test_an_entry_type_can_be_flipped(self):
+        entry = CashbookEntry.objects.create(
+            entry_type='INCOME', category='Scrap Sell', amount=Decimal('1000'),
+            payment_method='CASH', date=timezone.localdate())
+        self.client.post(reverse('manage_edit_cashbook_entry', args=[entry.pk]),
+                         {'category': 'Scrap Sell', 'amount': '1000',
+                          'payment_method': 'CASH', 'entry_type': 'EXPENSE',
+                          'date': str(entry.date)})
+        entry.refresh_from_db()
+        self.assertEqual(entry.entry_type, 'EXPENSE')
+
+    def test_a_payload_without_a_type_keeps_the_one_it_has(self):
+        """Never silently flip a row because a field was absent."""
+        entry = CashbookEntry.objects.create(
+            entry_type='INCOME', category='Scrap Sell', amount=Decimal('1000'),
+            payment_method='CASH', date=timezone.localdate())
+        self.client.post(reverse('manage_edit_cashbook_entry', args=[entry.pk]),
+                         {'category': 'Scrap Sell', 'amount': '1000',
+                          'payment_method': 'CASH', 'date': str(entry.date)})
+        entry.refresh_from_db()
+        self.assertEqual(entry.entry_type, 'INCOME')
+
+
+class CashbookCategoriesDoNotSplitTheProfitPageTests(TestCase):
+    """
+    The Profit page breaks General Cashbook down with `values('category')`, and
+    the category is free text with no picker — so "Electricity", "electricity"
+    and "ELECTRICITY" were three separate lines for one real cost. The rupee
+    total stayed right, but the breakdown an owner reads to see *where* money
+    goes was split three ways.
+
+    There is no master list for these, so the entries already recorded are the
+    list: whichever spelling got there first wins, the same way a job card
+    snaps to the master list's spelling of a car model.
+    """
+
+    def setUp(self):
+        FailedAttempt.objects.all().delete()
+        group, _ = Group.objects.get_or_create(name='Office')
+        user = User.objects.create_user(username='office', password='pass')
+        user.groups.add(group)
+        self.client = Client()
+        self.client.login(username='office', password='pass')
+
+    def _add(self, category, amount='1000'):
+        return self.client.post(reverse('manage_add_cashbook_entry'), {
+            'entry_type': 'EXPENSE', 'category': category, 'amount': amount,
+            'payment_method': 'CASH', 'date': str(timezone.localdate())})
+
+    def test_case_variants_collapse_onto_the_first_spelling(self):
+        for cat in ('Electricity', 'electricity', 'ELECTRICITY', '  Electricity  '):
+            self._add(cat)
+        today = timezone.localdate()
+        report = ae.cashbook_expense(today, today)
+        self.assertEqual(len(report['by_category']), 1)
+        self.assertEqual(report['by_category'][0]['category'], 'Electricity')
+        self.assertEqual(report['by_category'][0]['count'], 4)
+        self.assertEqual(report['total'], Decimal('4000.00'))
+
+    def test_a_genuinely_new_category_keeps_what_was_typed(self):
+        self._add('Electricity')
+        self._add('UPI charges')
+        self.assertIn('UPI charges',
+                      CashbookEntry.objects.values_list('category', flat=True))
+
+    def test_editing_the_only_entry_of_its_kind_can_recase_it(self):
+        self._add('electricity')
+        entry = CashbookEntry.objects.get()
+        self.client.post(reverse('manage_edit_cashbook_entry', args=[entry.pk]), {
+            'category': 'Electricity', 'amount': '1000',
+            'payment_method': 'CASH', 'date': str(entry.date)})
+        entry.refresh_from_db()
+        self.assertEqual(entry.category, 'Electricity',
+                         "the row being edited is excluded from the snap, so a "
+                         "deliberate correction is not undone")
+
+    def test_wage_looking_categories_are_still_flagged_not_filtered(self):
+        for cat in ('Staff Salaries', 'Wages', 'Electricity'):
+            self._add(cat, '500')
+        today = timezone.localdate()
+        report = ae.cashbook_expense(today, today)
+        self.assertEqual(
+            sorted(r['category'] for r in report['wage_suspects']),
+            ['Staff Salaries', 'Wages'])
+        self.assertEqual(report['total'], Decimal('1500.00'),
+                         "flagged, never filtered — the money stays counted")
+
+
+class ACappedCashbookListSaysSoTests(TestCase):
+    """
+    The lists are capped for performance while the totals above them come from
+    the full queryset. A period holding more than the cap therefore showed a
+    total that plainly did not add up from the rows on screen, with nothing to
+    explain the gap.
+    """
+
+    def setUp(self):
+        FailedAttempt.objects.all().delete()
+        group, _ = Group.objects.get_or_create(name='Office')
+        user = User.objects.create_user(username='office', password='pass')
+        user.groups.add(group)
+        self.client = Client()
+        self.client.login(username='office', password='pass')
+
+    def test_a_truncated_list_states_the_real_count(self):
+        today = timezone.localdate()
+        CashbookEntry.objects.bulk_create([
+            CashbookEntry(entry_type='EXPENSE', category=f'Item {i}',
+                          amount=Decimal('10'), payment_method='CASH', date=today)
+            for i in range(320)
+        ])
+        resp = self.client.get(reverse('cashbook') + '?filter=today')
+        self.assertEqual(resp.context['expense_count'], 320)
+        self.assertEqual(resp.context['expense_hidden'], 20)
+        self.assertContains(resp, 'Showing the 300 most recent of 320')
+        self.assertEqual(resp.context['cashbook_totals']['expense'], Decimal('3200'))
+
+    def test_the_ajax_partial_says_it_too(self):
+        """The filter buttons swap in the partial, not the full page."""
+        today = timezone.localdate()
+        CashbookEntry.objects.bulk_create([
+            CashbookEntry(entry_type='INCOME', category=f'Sale {i}',
+                          amount=Decimal('10'), payment_method='CASH', date=today)
+            for i in range(310)
+        ])
+        resp = self.client.get(reverse('cashbook') + '?filter=today',
+                               HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertContains(resp, 'Showing the 300 most recent of 310')
+
+    def test_a_short_list_says_nothing(self):
+        CashbookEntry.objects.create(
+            entry_type='EXPENSE', category='Rent', amount=Decimal('9000'),
+            payment_method='CASH', date=timezone.localdate())
+        resp = self.client.get(reverse('cashbook') + '?filter=today')
+        self.assertEqual(resp.context['expense_hidden'], 0)
+        self.assertNotContains(resp, 'most recent of')
+
+
 class DeleteFormsPostTheReasonTheirViewsRecordTests(TestCase):
     """
     Both of these views read `reason` and DeletionLog stores it, but neither

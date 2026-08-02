@@ -6,6 +6,7 @@ from django.db import models, transaction
 from decimal import Decimal, InvalidOperation
 from .decorators import office_required
 from .models import CashbookEntry, DeletionLog
+from .money import parse_money, fit_text
 
 
 @office_required
@@ -70,8 +71,11 @@ def cashbook_view(request):
         'net':     income - expense,
     }
 
-    expenses = qs.filter(entry_type='EXPENSE').order_by('-date', '-created_at')[:300]
-    incomes  = qs.filter(entry_type='INCOME').order_by('-date', '-created_at')[:300]
+    expense_qs = qs.filter(entry_type='EXPENSE').order_by('-date', '-created_at')
+    income_qs  = qs.filter(entry_type='INCOME').order_by('-date', '-created_at')
+    expense_count, income_count = expense_qs.count(), income_qs.count()
+    expenses = expense_qs[:LIST_CAP]
+    incomes  = income_qs[:LIST_CAP]
 
     template = 'workshop/cashbook/cashbook_partial.html' if is_ajax else 'workshop/cashbook/cashbook.html'
     return render(request, template, {
@@ -84,7 +88,44 @@ def cashbook_view(request):
         # Pre-fills the add forms' date input. localdate(), never date.today():
         # the server may run in UTC while the workshop runs on IST.
         'today_iso':       today.isoformat(),
+        # How many rows the totals above are actually made of. The lists are
+        # capped, so without these a period holding more than LIST_CAP entries
+        # showed a total that visibly did not add up from what was on screen.
+        'expense_count':   expense_count,
+        'income_count':    income_count,
+        'expense_hidden':  max(0, expense_count - LIST_CAP),
+        'income_hidden':   max(0, income_count - LIST_CAP),
     })
+
+
+# The Cashbook list shows at most this many rows per side. The TOTALS above it
+# are always computed from the full queryset, so a truncated list and a correct
+# total would disagree with no explanation — hence the notice in the template.
+LIST_CAP = 300
+
+
+def _canonical_category(name, exclude_pk=None):
+    """
+    Snap a typed category to the spelling already in use, ignoring case.
+
+    The Profit page breaks General Cashbook down with `values('category')`, and
+    the category is free text with no picker — so "Electricity", "electricity"
+    and "ELECTRICITY" were three separate lines for one real cost. The rupee
+    total stayed right, but the breakdown an owner reads to see where money
+    goes was split three ways.
+
+    There is no master list for these, so the entries already recorded ARE the
+    list: whichever spelling got there first wins, exactly as a job card snaps
+    to the master list's spelling of a car model. The row being edited is
+    excluded, so deliberately re-casing the only entry of its kind still works.
+    """
+    name = ' '.join((name or '').split())
+    if not name:
+        return name
+    qs = CashbookEntry.objects.filter(category__iexact=name)
+    if exclude_pk:
+        qs = qs.exclude(pk=exclude_pk)
+    return qs.values_list('category', flat=True).first() or name
 
 
 def _entry_date(raw):
@@ -121,27 +162,34 @@ def add_cashbook_entry(request):
         payment_method = request.POST.get('payment_method', 'CASH')
         description    = request.POST.get('description', '').strip()
 
-        if category and amount:
-            try:
-                # AUD-0022: Use Decimal — float() introduces rounding errors for money.
-                decimal_amount = Decimal(amount)
-                if decimal_amount > 0:
-                    CashbookEntry.objects.create(
-                        entry_type=entry_type,
-                        category=category,
-                        amount=decimal_amount,
-                        payment_method=payment_method,
-                        description=description,
-                        date=_entry_date(request.POST.get('date')),
-                        created_by=request.user,
-                    )
-                    messages.success(request, f"Successfully added {entry_type.lower()} entry.")
-                else:
-                    messages.error(request, "Amount must be greater than zero.")
-            except (ValueError, InvalidOperation):
-                messages.error(request, "Invalid amount provided.")
-        else:
+        if not (category and amount):
             messages.error(request, "Name and Amount are required.")
+            return redirect('cashbook')
+
+        # One shared rule — see workshop/money.py. The old `Decimal(amount) > 0`
+        # let 'Infinity' straight through (it is a valid Decimal, and it IS
+        # greater than zero) and stored a 12-digit figure in a numeric(10,2)
+        # column, which SQLite accepts and Postgres rejects with a 500.
+        decimal_amount = parse_money(amount, CashbookEntry, 'amount')
+        if decimal_amount is None:
+            messages.error(request, "Enter a valid amount.")
+            return redirect('cashbook')
+
+        entry_date = _entry_date(request.POST.get('date'))
+        if entry_date > timezone.localdate():
+            messages.error(request, "A cashbook entry can't be dated in the future.")
+            return redirect('cashbook')
+
+        CashbookEntry.objects.create(
+            entry_type=entry_type,
+            category=fit_text(_canonical_category(category), CashbookEntry, 'category'),
+            amount=decimal_amount,
+            payment_method=payment_method,
+            description=description,
+            date=entry_date,
+            created_by=request.user,
+        )
+        messages.success(request, f"Successfully added {entry_type.lower()} entry.")
     return redirect('cashbook')
 
 
@@ -173,24 +221,36 @@ def edit_cashbook_entry(request, pk):
         amount         = request.POST.get('amount', '').strip()
         payment_method = request.POST.get('payment_method', 'CASH')
 
-        if category and amount:
-            try:
-                # AUD-0022: Use Decimal — float() introduces rounding errors for money.
-                decimal_amount = Decimal(amount)
-                if decimal_amount > 0:
-                    entry.category       = category
-                    entry.amount         = decimal_amount
-                    entry.payment_method = payment_method
-                    # Editable too: without this, an entry keyed on the wrong
-                    # day was stuck in the wrong month on the Profit page for
-                    # good — there was no other way to move it.
-                    entry.date           = _entry_date(request.POST.get('date'))
-                    entry.save()
-                    messages.success(request, "Entry updated.")
-                else:
-                    messages.error(request, "Amount must be greater than zero.")
-            except (ValueError, InvalidOperation):
-                messages.error(request, "Invalid amount provided.")
-        else:
+        if not (category and amount):
             messages.error(request, "Name and Amount are required.")
+            return redirect('cashbook')
+
+        decimal_amount = parse_money(amount, CashbookEntry, 'amount')
+        if decimal_amount is None:
+            messages.error(request, "Enter a valid amount.")
+            return redirect('cashbook')
+
+        entry_date = _entry_date(request.POST.get('date'))
+        if entry_date > timezone.localdate():
+            messages.error(request, "A cashbook entry can't be dated in the future.")
+            return redirect('cashbook')
+
+        entry.category       = fit_text(
+            _canonical_category(category, exclude_pk=entry.pk), CashbookEntry, 'category')
+        entry.amount         = decimal_amount
+        entry.payment_method = payment_method
+        # Editable too: without this, an entry keyed on the wrong day was stuck
+        # in the wrong month on the Profit page for good — there was no other
+        # way to move it.
+        entry.date           = entry_date
+        # Income mis-keyed as an expense is a double-sized error on the Profit
+        # page (it lands on the wrong side of the equation), and the only fix
+        # used to be deleting the row and re-adding it. Only honoured when the
+        # form actually posts a valid type, so a payload without it keeps what
+        # the entry already has rather than silently flipping it.
+        posted_type = request.POST.get('entry_type', '').upper()
+        if posted_type in ('INCOME', 'EXPENSE'):
+            entry.entry_type = posted_type
+        entry.save()
+        messages.success(request, "Entry updated.")
     return redirect('cashbook')

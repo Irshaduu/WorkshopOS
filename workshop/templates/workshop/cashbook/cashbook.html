@@ -234,7 +234,7 @@
                         <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
                         <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
                             <li><a class="dropdown-item" href="#"
-                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}'); return false;">
+                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.entry_type }}'); return false;">
                                 <i class="bi bi-pencil text-primary"></i> Edit
                             </a></li>
                             <li><a class="dropdown-item del-item" href="#"
@@ -247,6 +247,17 @@
             </div>
             {% endfor %}
             {% if not expenses %}<div class="cb-empty-row">No expenses recorded for this period.</div>{% endif %}
+            {% comment %}
+            The total above is computed from every matching row; this list is
+            capped. Without saying so, a long period showed a total that plainly
+            did not add up from what was on screen.
+            {% endcomment %}
+            {% if expense_hidden %}
+            <div class="cb-empty-row" style="border-top:1px solid var(--color-border-light);">
+                Showing the {{ expenses|length }} most recent of {{ expense_count }}.
+                The total above includes all {{ expense_count }} — narrow the date range to see the rest.
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -294,7 +305,7 @@
                         <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
                         <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
                             <li><a class="dropdown-item" href="#"
-                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}'); return false;">
+                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.entry_type }}'); return false;">
                                 <i class="bi bi-pencil text-primary"></i> Edit
                             </a></li>
                             <li><a class="dropdown-item del-item" href="#"
@@ -307,6 +318,12 @@
             </div>
             {% endfor %}
             {% if not incomes %}<div class="cb-empty-row">No income recorded for this period.</div>{% endif %}
+            {% if income_hidden %}
+            <div class="cb-empty-row" style="border-top:1px solid var(--color-border-light);">
+                Showing the {{ incomes|length }} most recent of {{ income_count }}.
+                The total above includes all {{ income_count }} — narrow the date range to see the rest.
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -361,6 +378,18 @@
                 <input type="text"   id="editName"   name="category" class="cb-modal-input" placeholder="Name" required>
                 <input type="number" id="editAmount" name="amount"   class="cb-modal-input" placeholder="Amount" step="0.01" min="0.01" required>
                 <input type="date"   id="editDate"   name="date"     class="cb-modal-input" aria-label="Date the money moved" required>
+                {% comment %}
+                Income keyed as an expense lands on the wrong side of the Profit
+                page equation — a double-sized error — and the only way back
+                used to be deleting the row and re-adding it. Rendered here
+                because the server-side fix is unreachable otherwise: this modal
+                is the only edit path there is.
+                {% endcomment %}
+                <select id="editType" name="entry_type" class="cb-modal-input" required style="cursor:pointer;"
+                        aria-label="Income or expense">
+                    <option value="EXPENSE">Expense (Cash Out)</option>
+                    <option value="INCOME">Income (Cash In)</option>
+                </select>
                 <select id="editMethod" name="payment_method" class="cb-modal-input" required style="cursor:pointer;">
                     <option value="CASH">Cash</option>
                     <option value="UPI">UPI</option>
@@ -429,10 +458,11 @@
         document.getElementById('delConfirmModal').classList.add('show');
     }
 
-    function cbOpenEdit(id, name, amount, method, entryDate) {
+    function cbOpenEdit(id, name, amount, method, entryDate, entryType) {
         document.getElementById('editName').value   = name;
         document.getElementById('editAmount').value = amount;
         document.getElementById('editMethod').value = method;
+        document.getElementById('editType').value   = entryType;
         // Without this the date input opens blank; `required` would then block
         // the save, and dropping `required` would silently reset the entry to
         // today — which is the bug this field exists to fix.

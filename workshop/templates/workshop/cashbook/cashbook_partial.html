@@ -22,7 +22,7 @@
                 <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
                 <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
                     <li><a class="dropdown-item" href="#"
-                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}'); return false;">
+                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.entry_type }}'); return false;">
                         <i class="bi bi-pencil text-primary"></i> Edit
                     </a></li>
                     <li><a class="dropdown-item del-item" href="#"
@@ -35,6 +35,13 @@
     </div>
     {% endfor %}
     {% if not expenses %}<div class="cb-empty-row">No expenses recorded for this period.</div>{% endif %}
+    {% comment %}Mirrors cashbook.html — this partial is what the filter buttons swap in.{% endcomment %}
+    {% if expense_hidden %}
+    <div class="cb-empty-row" style="border-top:1px solid var(--color-border-light);">
+        Showing the {{ expenses|length }} most recent of {{ expense_count }}.
+        The total above includes all {{ expense_count }} — narrow the date range to see the rest.
+    </div>
+    {% endif %}
 </div>
 
 <!-- INCOME STATS -->
@@ -61,7 +68,7 @@
                 <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
                 <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
                     <li><a class="dropdown-item" href="#"
-                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}'); return false;">
+                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.entry_type }}'); return false;">
                         <i class="bi bi-pencil text-primary"></i> Edit
                     </a></li>
                     <li><a class="dropdown-item del-item" href="#"
@@ -74,4 +81,10 @@
     </div>
     {% endfor %}
     {% if not incomes %}<div class="cb-empty-row">No income recorded for this period.</div>{% endif %}
+    {% if income_hidden %}
+    <div class="cb-empty-row" style="border-top:1px solid var(--color-border-light);">
+        Showing the {{ incomes|length }} most recent of {{ income_count }}.
+        The total above includes all {{ income_count }} — narrow the date range to see the rest.
+    </div>
+    {% endif %}
 </div>

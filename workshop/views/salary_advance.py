@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from ..decorators import office_required, owner_required
 from ..models import Mechanic, SalaryAdvance, SalaryPayment, SalaryPaymentLine, DeletionLog
+from ..money import parse_money, fit_text
 from ..notifications import notify
 
 # The running month becomes settleable from this day of the month onward.
@@ -47,29 +48,9 @@ def _days_in_month(year, month):
     return (end - start).days
 
 
-def _parse_money(raw, model, field_name):
-    """
-    Parse a posted rupee amount, or return None if it is unusable.
-
-    Bounds come from the column itself (`max_digits`/`decimal_places`), so this
-    cannot drift from the schema. Without the range check, a fat-fingered
-    999999999999 behaved differently on each database: SQLite stored it, which
-    silently violates the declared precision, while PostgreSQL — what actually
-    ships — raises `numeric field overflow` and 500s the page. Neither is an
-    acceptable answer to a typo, and "refuse it with a message" is the same one
-    on both.
-    """
-    try:
-        value = Decimal(str(raw).strip())
-    except Exception:
-        return None
-    if not value.is_finite():
-        return None            # 'NaN' and 'Infinity' both parse as Decimals
-    field = model._meta.get_field(field_name)
-    limit = Decimal(10) ** (field.max_digits - field.decimal_places)
-    if value <= 0 or value >= limit:
-        return None
-    return value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+# Shared with the Cashbook — see workshop/money.py for why this is one
+# implementation rather than a check per view.
+_parse_money = parse_money
 
 
 def _unsettleable_staff(month_start, month_end):
@@ -276,7 +257,13 @@ def salary_advance_home(request):
 def salary_advance_add(request):
     """POST: record a cash advance given to a staff member."""
     if request.method == 'POST':
-        staff = get_object_or_404(Mechanic, pk=request.POST.get('staff_id'))
+        # int() first: get_object_or_404(pk='abc') raises ValueError, not
+        # Http404, so a garbled hidden field was a 500 rather than a 404.
+        try:
+            staff_id = int(request.POST.get('staff_id') or 0)
+        except (TypeError, ValueError):
+            staff_id = 0
+        staff = get_object_or_404(Mechanic, pk=staff_id)
         # A retired staff member takes no new advances. They are absent from
         # every picker on this page, but the id is posted in a hidden field, and
         # an advance recorded against them would have been dropped from the wage
@@ -289,7 +276,9 @@ def salary_advance_add(request):
             )
             return redirect('salary_advance_home')
         amount = _parse_money(request.POST.get('amount', '0'), SalaryAdvance, 'amount')
-        note = request.POST.get('note', '').strip()
+        # Trimmed to the column: a 400-char note into max_length=255 is stored
+        # by SQLite and rejected by Postgres with "value too long".
+        note = fit_text(request.POST.get('note', '').strip(), SalaryAdvance, 'note')
         date_str = request.POST.get('date', '').strip()
         advance_date = timezone.localdate()
         if date_str:
