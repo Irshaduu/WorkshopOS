@@ -81,7 +81,29 @@ def cashbook_view(request):
         'filter_type':     filter_type,
         'start_date':      start_date_str,
         'end_date':        end_date_str,
+        # Pre-fills the add forms' date input. localdate(), never date.today():
+        # the server may run in UTC while the workshop runs on IST.
+        'today_iso':       today.isoformat(),
     })
+
+
+def _entry_date(raw):
+    """
+    'YYYY-MM-DD' from the form → date, falling back to today.
+
+    The date is what the Profit page files this money under, so it has to be the
+    day the money moved, not the day someone got round to typing it. Bad input
+    falls back to today rather than 400ing — the field is `required` and
+    `type=date` in the template, so anything unparseable arriving here is a
+    crafted POST, and today is the same answer the field used to hardcode.
+    """
+    parsed = None
+    if raw:
+        try:
+            parsed = date.fromisoformat(raw.strip())
+        except (ValueError, AttributeError):
+            parsed = None
+    return parsed or timezone.localdate()
 
 
 
@@ -110,6 +132,7 @@ def add_cashbook_entry(request):
                         amount=decimal_amount,
                         payment_method=payment_method,
                         description=description,
+                        date=_entry_date(request.POST.get('date')),
                         created_by=request.user,
                     )
                     messages.success(request, f"Successfully added {entry_type.lower()} entry.")
@@ -158,6 +181,10 @@ def edit_cashbook_entry(request, pk):
                     entry.category       = category
                     entry.amount         = decimal_amount
                     entry.payment_method = payment_method
+                    # Editable too: without this, an entry keyed on the wrong
+                    # day was stuck in the wrong month on the Profit page for
+                    # good — there was no other way to move it.
+                    entry.date           = _entry_date(request.POST.get('date'))
                     entry.save()
                     messages.success(request, "Entry updated.")
                 else:

@@ -562,7 +562,16 @@ def financial_position():
                        .exclude(payment_status='BULK_PAID'),
         F('total_bill_amount') - F('discount_amount') - F('received_amount'),
     )
-    fleet_due = _sum(BulkPayer.objects.filter(is_trashed=False),
+    # Deliberately NOT filtered by is_trashed. The Profit page labels this line
+    # "Of that, fleet accounts" — it claims to be the fleet slice of
+    # `receivable` directly above it, and `receivable` has no such filter. An
+    # archived account with an unpaid card therefore made the page contradict
+    # itself: "Customers owe us ₹1,000 / of that, fleet accounts ₹0".
+    # bulk_payer_delete now refuses to archive an account holding unsettled
+    # cards, so this should never diverge in new data — but accounts archived
+    # before that guard existed still can, and a balance must not depend on
+    # whether someone tidied the list.
+    fleet_due = _sum(BulkPayer.objects.all(),
                      F('total_billed_amount') - F('total_paid_amount'))
     spare_due = _sum(SpareShop.objects.filter(is_trashed=False),
                      F('total_purchased_amount') - F('total_paid_amount'))

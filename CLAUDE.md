@@ -137,6 +137,76 @@ about to correct one of these, you are about to break the business:
   from every ledger, and unreachable by the only delete there is. Guarded by
   `AddUnassignedValidationTests` and `AddingFromTheHubTests`.
 
+- **A Fleet Account holding unsettled job cards cannot be ARCHIVED, and an
+  archived one takes no new cards, no new payments and no reversals.** Added
+  2026-08-02. Archiving used to be unguarded, and it hid the account from every
+  screen at once: `bulk_payer_detail` 404s on an archived payer, the picker in
+  `bulk_payer_list` drops it, `pending_payments_list` already excludes *any*
+  card carrying a `bulk_payer` (they belong on the fleet page), and
+  `update_bill_status` refuses a fleet card with "settle it from that account's
+  page" — a page that no longer opened. So one click made real debt unreachable
+  by every route, while the Archived list went on printing the balance beside a
+  lone Reactivate button. A `PARTIAL` card was the worst case: it could not even
+  be detached, because the received-money guard in `bulk_payer_remove_card`
+  (correctly) blocks that. `bulk_payer_delete` now refuses while any
+  PENDING/PARTIAL card is attached and names them; `move_jobcard_to_bulk`,
+  `bulk_payer_pay` and `bulk_payment_history_delete` all require an active
+  account. Blocking rather than opening a back door keeps one rule: **money owed
+  is always reachable from exactly one screen.** Guarded by
+  `ArchivingAFleetAccountCannotStrandItsDebtTests`.
+
+- **A Fleet payment may only be reversed while its effects are still intact —
+  newest first.** Added 2026-08-02. `bulk_payment_history_delete` restored job
+  balances and advance credit through two `max(0, …)` clamps, which silently
+  absorbed the difference whenever a *later* payment had already spent this
+  one's leftover credit. Overpay ₹1,500 on a ₹1,000 bill (₹500 credit), let a
+  following ₹300 payment spend that credit on a second car, then reverse the
+  first: the clamp wrote 0 instead of −500 and the second car stayed `BULK_PAID`
+  on ₹800 the fleet never handed over. The account's two balance figures then
+  disagreed by exactly that ₹500. The view now pre-flights both clamp conditions
+  under the same locks and refuses, naming which payment to reverse first —
+  the same **block rather than guess at a reversal** choice `bulk_payer_remove_card`
+  makes. The invariant it protects, worth asserting in any new fleet test:
+  **`Σ(card.received_amount) + advance_balance == Σ(history.amount)`.** Verified
+  to hold across all live data. Guarded by
+  `ReversingAFleetPaymentOutOfOrderIsRefusedTests`.
+
+- **An unlocked edit that moves a SETTLED card's bill must fix the payment
+  state — and the two routes are fixed differently.** Added 2026-08-02,
+  `_reconcile_settled_bill()` in `workshop/views/jobcard.py`. The Financial Lock
+  exists because editing a settled card is a real need, but nothing followed the
+  money afterwards. A `PAID` walk-in kept its old `discount_amount`, so the
+  Profit page read revenue as `bill − discount` off the **new** total while
+  `received_amount` never moved — adding a ₹500 part to a ₹1,000 card settled at
+  ₹800 turned ₹800 of turnover into ₹1,300, breaking the identity CLAUDE.md
+  relies on (`bill − discount == received` for a settled card). A walk-in has
+  exactly one payment event, so the shortfall **is** the discount; recomputing
+  it is that deliberate rule applied to the new total, and a large jump trips
+  the existing HIGH_DISCOUNT alert and `audit_high_discounts`, which is
+  precisely the compensating control for it. A `BULK_PAID` fleet card is the
+  opposite case — a fleet genuinely does pay later, so the extra is owed, not
+  discounted — but `bulk_payer_pay` only cascades over PENDING/PARTIAL cards, so
+  the difference was uncollectable forever: the fleet page showed "₹0
+  outstanding across 0 cards" while `get_pending_balance` said ₹500, and a
+  further ₹500 payment parked itself as advance credit. It now drops back to
+  PARTIAL. **A bill that shrank below what was received is left alone in both
+  cases** — that is an overpayment, not a shortfall, and inventing a refund
+  would be guessing. Guarded by `EditingASettledBillKeepsThePaymentHonestTests`.
+
+- **A Cashbook entry is dated by the day the money moved, and that date is
+  editable.** Added 2026-08-02. `CashbookEntry.date` has always existed, been
+  indexed, driven the page's Today/Last Week/Last Month filters and been what
+  `analysis_engine` files the whole stream under — but **no form rendered a date
+  input and neither view read one**, so every entry was stamped with the day it
+  was typed and a crafted POST carrying a date was ignored. A month-end expense
+  keyed the following week landed in the wrong month on the Profit page
+  permanently, because the edit form could not move it either. Both views now
+  take `date` through `_entry_date()`, which falls back to today on anything
+  unparseable. *Checked while fixing, worth not re-deriving:* `default=timezone.now`
+  on a `DateField` **is** safe here — `DateField.to_python` converts the aware
+  datetime to `TIME_ZONE` before taking `.date()`, so it lands on the correct
+  IST calendar day. Guarded by `CashbookEntriesAreDatedByTheDayTheMoneyMovedTests`.
+
 - **An unassigned spare can be deleted, and only from the Unassigned Hub.**
   Added 2026-07-31. There was previously no way to delete one at all — no route,
   no button, and `/admin/` unreachable by design — so a mistyped ledger entry
@@ -626,6 +696,17 @@ settled. Cashbook rows *named* like wages are **flagged, not filtered** — free
 mean a keyword filter would hide real money — so the Profit page shows a "wages may be counted
 twice" warning and lets the owner move the entry.
 
+**`financial_position()` is deliberately NOT filtered by archive flags on the fleet side.**
+The Profit page labels `fleet_due` "Of that, fleet accounts", directly under `receivable` —
+it claims to be a *slice* of the figure above it, so the two must be drawn from the same
+population. `fleet_due` used to filter `is_trashed=False` while `receivable` did not, so an
+archived account with an unpaid card made the page contradict itself ("Customers owe us
+₹1,000 / of that, fleet accounts ₹0"). The archive guard above means new data can't reach
+that state, but accounts archived before it existed still can, and a balance must not
+depend on whether someone tidied a list. **`payable_spare` and `payable_supplier` still
+carry the equivalent filter and are still wrong** — logged as AUD-0082 in `TECH_DEBT.md`,
+and worse than the fleet version was, because a vanishing *payable* raises reported profit.
+
 Other invariants worth keeping: revenue is `total_bill_amount − discount_amount` (a discount is
 money never earned, not an expense — for a settled card this equals `received_amount` exactly);
 every stream is dated by its own natural date so a period never mixes bases; and
@@ -640,7 +721,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (25 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 32 files, 555 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (26 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 33 files, 617 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

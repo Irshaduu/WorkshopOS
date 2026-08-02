@@ -22,7 +22,7 @@
                 <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
                 <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
                     <li><a class="dropdown-item" href="#"
-                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}'); return false;">
+                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}'); return false;">
                         <i class="bi bi-pencil text-primary"></i> Edit
                     </a></li>
                     <li><a class="dropdown-item del-item" href="#"
@@ -61,7 +61,7 @@
                 <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
                 <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
                     <li><a class="dropdown-item" href="#"
-                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}'); return false;">
+                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}'); return false;">
                         <i class="bi bi-pencil text-primary"></i> Edit
                     </a></li>
                     <li><a class="dropdown-item del-item" href="#"

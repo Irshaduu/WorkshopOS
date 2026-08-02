@@ -234,8 +234,25 @@ def move_jobcard_to_bulk(request):
             
         try:
             job_card = JobCard.objects.get(pk=int(job_card_id))
+            # An ARCHIVED account must not take new work. Its detail page is
+            # gone (404), it is absent from every picker, and update_bill_status
+            # refuses any card carrying a bulk_payer — so a card attached here
+            # would be billed to a screen nobody can open and settleable by no
+            # route at all. The picker only ever renders active accounts, but
+            # the account can be archived between render and submit, and this is
+            # the only server-side gate.
             bulk_payer = BulkPayer.objects.get(pk=int(bulk_payer_id))
-            
+            if bulk_payer.is_trashed:
+                # Named explicitly rather than falling through to the generic
+                # "Invalid ... selected" below: the account exists and was
+                # chosen on purpose, so "invalid" reads like a system fault.
+                messages.error(
+                    request,
+                    f"'{bulk_payer.customer_name}' is archived and can't take new job cards. "
+                    f"Reactivate it from Archived Fleet Accounts first."
+                )
+                return redirect('pending_payments_list')
+
             # Prevent moving already fully paid cards or cards already assigned
             if job_card.payment_status not in ['PENDING', 'PARTIAL'] or job_card.bulk_payer:
                 messages.error(request, "This job card cannot be assigned to a bulk payer.")
@@ -301,8 +318,11 @@ def bulk_payer_pay(request, pk):
     """
     if request.method != 'POST':
         return redirect('bulk_payer_detail', pk=pk)
-    
-    bulk_payer = get_object_or_404(BulkPayer, pk=pk)
+
+    # `is_trashed=False`, matching spare_shop_pay: an archived account takes no
+    # new payments. Its page is unreachable, so money sent here would land as
+    # advance credit on an account nobody can open.
+    bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=False)
     lump_sum_raw = request.POST.get('lump_sum', '0')
     payment_method = request.POST.get('payment_method', 'CASH')
     
@@ -406,9 +426,46 @@ def bulk_payer_delete(request, pk):
     linked job card and all payment history intact. A Fleet Account is NEVER
     hard-deleted — that would CASCADE-destroy its payment ledger. Reactivate it
     any time from the Archived list.
+
+    GUARD: an account still holding unsettled job cards cannot be archived.
+    Archiving hides it from every screen at once — the detail page 404s, the
+    picker drops it, Pending Bills already excludes any card with a bulk_payer,
+    and update_bill_status refuses to settle one — so its unpaid cards had no
+    remaining route to a payment. A PARTIAL card could not even be detached,
+    because the received-money guard in bulk_payer_remove_card (correctly)
+    blocks that. Blocking here rather than opening a back door keeps one rule:
+    money owed is always reachable from exactly one screen.
     """
     if request.method == 'POST':
         bulk_payer = get_object_or_404(BulkPayer, pk=pk)
+
+        unsettled = bulk_payer.job_cards.filter(payment_status__in=['PENDING', 'PARTIAL'])
+        # One aggregate for the count and the total, one narrow query for the
+        # names to show. Only ever runs on the archive attempt itself.
+        totals = unsettled.aggregate(
+            n=Count('pk'),
+            owed=Coalesce(
+                Sum(F('total_bill_amount') - F('received_amount'), output_field=DecimalField()),
+                Value(Decimal('0'), output_field=DecimalField()),
+                output_field=DecimalField(),
+            ),
+        )
+        if totals['n']:
+            n, outstanding = totals['n'], totals['owed']
+            shown = list(
+                unsettled.order_by('admitted_date', 'pk')
+                         .values_list('registration_number', flat=True)[:6]
+            )
+            names = ", ".join(shown)
+            more = f" and {n - len(shown)} more" if n > len(shown) else ""
+            messages.error(
+                request,
+                f"Can't archive '{bulk_payer.customer_name}' — {n} job card(s) are still "
+                f"unsettled (₹{outstanding:,.0f} outstanding): {names}{more}. "
+                f"Settle them from this page, or remove them from the account first."
+            )
+            return redirect('bulk_payer_detail', pk=pk)
+
         bulk_payer.is_trashed = True
         bulk_payer.save(update_fields=['is_trashed'])
         notify(
@@ -452,11 +509,17 @@ def bulk_payment_history_delete(request, pk, history_pk):
     Reversal restores the affected job cards' balances and the payer's advance
     credit, so running totals stay correct. There is no restore: the record is
     gone and its financial effect is undone in one atomic step. Owner + Office.
+
+    GUARD: a payment whose effects a *later* payment has already consumed is
+    refused, not part-reversed — see the PRE-FLIGHT block below.
     """
     if request.method != 'POST':
         return redirect('bulk_payer_detail', pk=pk)
 
-    bulk_payer = get_object_or_404(BulkPayer, pk=pk)
+    # An archived account holds only settled cards (bulk_payer_delete enforces
+    # that). Reversing here would un-settle them on an account whose page no
+    # longer opens, recreating exactly the stranding that guard prevents.
+    bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=False)
     history = get_object_or_404(BulkPaymentHistory, pk=history_pk, bulk_payer=bulk_payer)
     reason = request.POST.get('reason', '').strip()
 
@@ -481,31 +544,71 @@ def bulk_payment_history_delete(request, pk, history_pk):
             advance_stored = Decimal(str(raw.get('advance_stored', '0')))
             advance_used = Decimal(str(raw.get('advance_used', '0')))
 
+        # PRE-FLIGHT. Reversal is exact only while this payment's effects are
+        # still intact. Both max(0, …) clamps below silently absorb the
+        # difference when they are not — and a clamped reversal breaks the one
+        # invariant this ledger has:
+        #
+        #     Σ(card.received_amount) + advance_balance == Σ(history.amount)
+        #
+        # Overpay ₹1,500 on a ₹1,000 bill (₹500 stored as credit), let a later
+        # ₹300 payment spend that credit on a second car, then reverse the
+        # first payment: the credit is no longer there to take back, the clamp
+        # writes 0 instead of −500, and the second car stays BULK_PAID on ₹800
+        # the fleet never handed over. Refuse instead, and say which payment to
+        # reverse first — the same "block rather than guess at a reversal"
+        # choice bulk_payer_remove_card makes for the same reason.
+        blockers = []
+        jobs_to_reverse = []
         for entry in job_entries:
             try:
                 job = JobCard.objects.select_for_update().get(pk=entry['job_id'])
                 reversed_amount = Decimal(str(entry['paid']))
-                job.received_amount = max(Decimal('0'), job.received_amount - reversed_amount)
-
-                # Recalculate status — reversal always lands on PENDING or
-                # PARTIAL, neither of which is a "paid" state, so clear
-                # paid_date too (it was only ever set on the BULK_PAID branch).
-                if job.received_amount <= 0:
-                    job.payment_status = 'PENDING'
-                else:
-                    job.payment_status = 'PARTIAL'
-                job.paid_date = None
-
-                job.save()
             except (JobCard.DoesNotExist, KeyError, InvalidOperation):
                 # Only skip the entries we can legitimately expect to be bad
                 # (missing job, malformed snapshot key, unparseable amount).
                 # Any other error propagates and rolls back the whole reversal
                 # so we never commit a half-reversed payment.
                 continue
+            if job.received_amount < reversed_amount:
+                blockers.append(
+                    f"{job.registration_number} has only ₹{job.received_amount:,.0f} "
+                    f"left of the ₹{reversed_amount:,.0f} this payment put on it"
+                )
+            jobs_to_reverse.append((job, reversed_amount))
+
+        if bulk_payer.advance_balance + advance_used < advance_stored:
+            blockers.append(
+                f"₹{advance_stored:,.0f} of the credit this payment left over has "
+                f"since been spent on later bills"
+            )
+
+        if blockers:
+            messages.error(
+                request,
+                f"Can't reverse this ₹{history.amount:,.0f} payment — a later payment has "
+                f"already used part of it ({'; '.join(blockers)}). Reverse the newer "
+                f"payment(s) first, newest to oldest."
+            )
+            return redirect('bulk_payer_detail', pk=pk)
+
+        for job, reversed_amount in jobs_to_reverse:
+            job.received_amount = job.received_amount - reversed_amount
+
+            # Recalculate status — reversal always lands on PENDING or
+            # PARTIAL, neither of which is a "paid" state, so clear
+            # paid_date too (it was only ever set on the BULK_PAID branch).
+            if job.received_amount <= 0:
+                job.payment_status = 'PENDING'
+            else:
+                job.payment_status = 'PARTIAL'
+            job.paid_date = None
+
+            job.save()
 
         # Reverse advance balance changes from this payment:
-        # remove what this payment stored as advance, restore what it consumed
+        # remove what this payment stored as advance, restore what it consumed.
+        # The pre-flight above guarantees this cannot go negative.
         new_advance = max(Decimal('0'), bulk_payer.advance_balance - advance_stored + advance_used)
         bulk_payer.advance_balance = new_advance
         bulk_payer.save(update_fields=['advance_balance'])

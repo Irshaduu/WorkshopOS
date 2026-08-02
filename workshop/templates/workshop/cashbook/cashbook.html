@@ -58,12 +58,16 @@
         .cb-section-hd h6 { font-size:0.9rem; font-weight:700; margin:0; }
 
         .cb-add-form { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
-        .cb-add-form input[type="text"], .cb-add-form input[type="number"], .cb-add-form select {
+        .cb-add-form input[type="text"], .cb-add-form input[type="number"],
+        .cb-add-form input[type="date"], .cb-add-form select {
             border:1px solid var(--color-border); border-radius:8px; padding:8px 12px;
             font-size:0.875rem; color:var(--color-text); background:var(--color-card); outline:none; transition:border-color 0.2s;
         }
         .cb-add-form input[type="text"] { flex:1; }
         .cb-add-form input[type="number"] { width:130px; flex-shrink:0; }
+        /* Wider than the number box: iOS and Android render dd/mm/yyyy plus a
+           picker glyph inside the field, and a 130px box clips it. */
+        .cb-add-form input[type="date"] { width:150px; flex-shrink:0; cursor:pointer; }
         .cb-add-form select { width:120px; flex-shrink:0; cursor:pointer; }
         .cb-add-form input:focus, .cb-add-form select:focus { border-color:#94a3b8; box-shadow:none; }
         .cb-add-form input::placeholder { color:var(--color-text-muted); font-size:0.83rem; }
@@ -116,7 +120,11 @@
         @media (max-width: 600px) {
             .cb-add-form { flex-wrap:wrap; }
             .cb-add-form input[type="text"] { flex:0 0 100%; }
-            .cb-add-form input[type="number"], .cb-add-form select { flex:1; width:auto; }
+            .cb-add-form input[type="number"], .cb-add-form input[type="date"],
+            .cb-add-form select { flex:1; width:auto; }
+            /* The date needs the full width on a phone — sharing a row with the
+               amount and the method squeezes all three below a tappable size. */
+            .cb-add-form input[type="date"] { flex:0 0 100%; min-height:44px; }
             .cb-add-form .cb-add-btn { flex:0 0 100%; display:flex; justify-content:center; align-items:center; }
             .col-amt { width:80px; }
         }
@@ -199,6 +207,7 @@
             <input type="hidden" name="entry_type" value="EXPENSE">
             <input type="text"   id="expName"   name="category" placeholder="Expense name — Electricity, Rent, Courier…" required>
             <input type="number" id="expAmount" name="amount"   placeholder="₹ Amount" step="0.01" min="0.01" required>
+            <input type="date"   id="expDate"   name="date" value="{{ today_iso }}" title="Date the money moved" aria-label="Expense date" required>
             <select id="expMethod" name="payment_method" required>
                 <option value="CASH" selected>Cash</option>
                 <option value="UPI">UPI</option>
@@ -225,7 +234,7 @@
                         <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
                         <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
                             <li><a class="dropdown-item" href="#"
-                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}'); return false;">
+                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}'); return false;">
                                 <i class="bi bi-pencil text-primary"></i> Edit
                             </a></li>
                             <li><a class="dropdown-item del-item" href="#"
@@ -258,6 +267,7 @@
             <input type="hidden" name="entry_type" value="INCOME">
             <input type="text"   id="incName"   name="category" placeholder="Income name — Scrap Sell, Black Oil Sell…" required>
             <input type="number" id="incAmount" name="amount"   placeholder="₹ Amount" step="0.01" min="0.01" required>
+            <input type="date"   id="incDate"   name="date" value="{{ today_iso }}" title="Date the money moved" aria-label="Income date" required>
             <select id="incMethod" name="payment_method" required>
                 <option value="CASH" selected>Cash</option>
                 <option value="UPI">UPI</option>
@@ -284,7 +294,7 @@
                         <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
                         <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
                             <li><a class="dropdown-item" href="#"
-                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}'); return false;">
+                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}'); return false;">
                                 <i class="bi bi-pencil text-primary"></i> Edit
                             </a></li>
                             <li><a class="dropdown-item del-item" href="#"
@@ -327,6 +337,14 @@
                 <button class="cb-modal-cancel" onclick="cbCloseModal('delConfirmModal')">Cancel</button>
                 <form id="delForm" method="post" style="display:inline;">
                     {% csrf_token %}
+                    {% comment %}
+                    delete_cashbook_entry reads `reason` and DeletionLog stores
+                    it, but nothing ever posted one — so every cashbook row in
+                    the Owner's Deletion History had a blank reason. Optional,
+                    like the job-card delete form's.
+                    {% endcomment %}
+                    <input type="text" name="reason" class="cb-modal-input" maxlength="255"
+                           placeholder="Reason (optional)" aria-label="Reason for deleting this entry">
                     <button type="submit" class="cb-modal-confirm danger">Yes, Delete</button>
                 </form>
             </div>
@@ -342,6 +360,7 @@
                 {% csrf_token %}
                 <input type="text"   id="editName"   name="category" class="cb-modal-input" placeholder="Name" required>
                 <input type="number" id="editAmount" name="amount"   class="cb-modal-input" placeholder="Amount" step="0.01" min="0.01" required>
+                <input type="date"   id="editDate"   name="date"     class="cb-modal-input" aria-label="Date the money moved" required>
                 <select id="editMethod" name="payment_method" class="cb-modal-input" required style="cursor:pointer;">
                     <option value="CASH">Cash</option>
                     <option value="UPI">UPI</option>
@@ -410,10 +429,14 @@
         document.getElementById('delConfirmModal').classList.add('show');
     }
 
-    function cbOpenEdit(id, name, amount, method) {
+    function cbOpenEdit(id, name, amount, method, entryDate) {
         document.getElementById('editName').value   = name;
         document.getElementById('editAmount').value = amount;
         document.getElementById('editMethod').value = method;
+        // Without this the date input opens blank; `required` would then block
+        // the save, and dropping `required` would silently reset the entry to
+        // today — which is the bug this field exists to fix.
+        document.getElementById('editDate').value   = entryDate;
         document.getElementById('editForm').action  = `/cashbook/${id}/edit/`;
         document.getElementById('editModal').classList.add('show');
     }

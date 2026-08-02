@@ -1109,6 +1109,15 @@
             <button type="button" class="bd-confirm-cancel" onclick="hideHistoryDeleteConfirm()">Cancel</button>
             <form method="POST" id="historyDeleteForm" action="">
                 {% csrf_token %}
+                {% comment %}
+                bulk_payment_history_delete reads `reason` and DeletionLog
+                stores it, but nothing ever posted one — so every reversed Fleet
+                payment reached the Owner's Deletion History with a blank
+                reason, which is the one field explaining why the money moved
+                back. Optional, matching the job-card delete form.
+                {% endcomment %}
+                <input type="text" name="reason" maxlength="255" class="form-control form-control-sm mb-2"
+                       placeholder="Reason (optional)" aria-label="Reason for reversing this payment">
                 <button type="submit" class="bd-confirm-remove">Delete Permanently</button>
             </form>
         </div>

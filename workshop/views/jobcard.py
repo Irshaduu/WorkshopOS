@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.utils import timezone
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -58,6 +60,60 @@ def _resolvable_shops(spares):
 
 # Fields on a job-card part that only Office/Owner may set.
 PRICE_FIELDS = ('unit_price', 'total_price', 'customer_rate')
+
+
+def _reconcile_settled_bill(jobcard):
+    """
+    Make the payment state honest again after an unlocked edit moved the bill on
+    an already-settled card.
+
+    The Financial Lock exists because editing a settled card is a real need, not
+    an accident — but nothing used to follow the money afterwards, and the two
+    settlement routes fail in opposite directions:
+
+      PAID (walk-in) — `discount_amount` stayed at whatever the original
+        settlement computed, so the Profit page kept reading revenue as
+        `bill − discount` off the NEW bill while `received_amount` never moved.
+        Adding a ₹500 part to a ₹1,000 card settled at ₹800 turned ₹800 of
+        turnover into ₹1,300, ₹500 of it never earned by anyone. A walk-in has
+        exactly one payment event (see CLAUDE.md), so the shortfall *is* the
+        discount — recomputing it is that rule applied to the new total, and it
+        restores `bill − discount == received`. A large jump trips the existing
+        HIGH_DISCOUNT alert and shows up in `audit_high_discounts`, which is
+        precisely the compensating control for it.
+
+      BULK_PAID (fleet) — a fleet genuinely does pay later, so the extra is not
+        a discount, it is owed. But `bulk_payer_pay` only cascades over
+        PENDING/PARTIAL cards, so a BULK_PAID card whose bill grew was skipped
+        forever: the fleet page showed "₹0 outstanding across 0 cards" while
+        `get_pending_balance` said ₹500, and paying another ₹500 parked it as
+        advance credit instead of clearing the card. Dropping it back to
+        PARTIAL puts it in front of the cascade again.
+
+    A bill that shrank below what was received is left alone in both cases —
+    that is an overpayment, not a shortfall, and inventing a refund here would
+    be guessing.
+    """
+    if jobcard.payment_status == 'PAID':
+        new_discount = max(
+            Decimal('0'),
+            (jobcard.total_bill_amount or Decimal('0')) - (jobcard.received_amount or Decimal('0')),
+        )
+        if new_discount != jobcard.discount_amount:
+            jobcard.discount_amount = new_discount
+            jobcard.save(update_fields=['discount_amount'])
+            return True
+
+    elif jobcard.payment_status == 'BULK_PAID':
+        received = jobcard.received_amount or Decimal('0')
+        if received < (jobcard.total_bill_amount or Decimal('0')):
+            jobcard.payment_status = 'PARTIAL' if received > 0 else 'PENDING'
+            jobcard.discount_amount = Decimal('0')
+            jobcard.paid_date = None
+            jobcard.save(update_fields=['payment_status', 'discount_amount', 'paid_date'])
+            return True
+
+    return False
 
 
 def _price_locked_data(request, jobcard=None):
@@ -462,7 +518,29 @@ def jobcard_edit(request, pk):
                 for shop in SpareShop.objects.filter(pk__in=shops_to_update):
                     shop.update_totals()
 
+                # The parts/labour saves above have already rewritten
+                # total_bill_amount via JobCard.update_totals(), so re-read it
+                # before deciding whether a settled bill still adds up.
+                jobcard.refresh_from_db()
+                reopened = _reconcile_settled_bill(jobcard)
+
             messages.success(request, f'Job card for {jobcard.registration_number} updated successfully!')
+            if reopened:
+                if jobcard.payment_status in ('PARTIAL', 'PENDING'):
+                    messages.warning(
+                        request,
+                        f"The bill changed after this card was settled by "
+                        f"{jobcard.bulk_payer.customer_name if jobcard.bulk_payer_id else 'the Fleet Account'} — "
+                        f"₹{jobcard.get_balance_amount:,.0f} is now outstanding again and will be "
+                        f"picked up by that account's next payment."
+                    )
+                else:
+                    messages.warning(
+                        request,
+                        f"The bill changed after this card was paid. The unpaid "
+                        f"₹{jobcard.discount_amount:,.0f} is now booked as a discount — "
+                        f"collect it and re-enter the payment if that is wrong."
+                    )
             
             # Smart Redirect based on original context
             next_url = request.GET.get('next')
