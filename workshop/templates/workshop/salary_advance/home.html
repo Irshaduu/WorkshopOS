@@ -230,25 +230,12 @@
   {% endif %}
 
   {% comment %}
-  A settled month whose advances changed afterwards. The saved net is what the
-  office would hand over, so a stale one overpays or underpays by exactly the
-  advance that moved — and until this banner existed nothing said so. Re-saving
-  the month recomputes it; no data is lost either way.
+  There is deliberately no "needs re-settling" banner here any more. An advance
+  can no longer be recorded into a month that is already settled — the state it
+  used to detect cannot arise — and a banner inviting people back into a closed
+  month was encouraging exactly the habit worth discouraging. See
+  _settled_month_for() in views/salary_advance.py.
   {% endcomment %}
-  {% for m in stale_months %}
-  <div class="ms-action late">
-    <span class="ms-action-text">
-      <i class="bi bi-arrow-repeat me-1"></i>
-      {{ m|date:"F Y" }} needs re-settling
-      <span class="ms-action-note">
-        An advance for this month was added or removed after it was settled, so
-        the saved net pay is out of date. Open and save it again to recalculate.
-      </span>
-    </span>
-    <a href="{% url 'salary_payment_form' m.year m.month %}"
-       class="settle-link late">Re-settle {{ m|date:"M Y" }} →</a>
-  </div>
-  {% endfor %}
 </div>
 
 <!-- ── Staff ── -->

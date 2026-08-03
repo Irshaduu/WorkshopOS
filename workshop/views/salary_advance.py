@@ -29,13 +29,14 @@ def _month_bounds(year, month):
     return start, end
 
 
-def _compute_net(salary, leave_days, advance):
-    """Net = salary - (salary/30 * leave_days) - advance, rounded to paise."""
+def _compute_net(salary, leave_days, advance, overtime=None):
+    """Net = salary - (salary/30 * leave_days) + overtime - advance, to paise."""
     salary = salary or Decimal('0')
     leave_days = leave_days or Decimal('0')
     advance = advance or Decimal('0')
+    overtime = overtime or Decimal('0')
     leave_deduction = (salary / Decimal('30') * leave_days).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    return salary - leave_deduction - advance
+    return salary - leave_deduction + overtime - advance
 
 
 def _prev_month(d):
@@ -46,11 +47,6 @@ def _prev_month(d):
 def _days_in_month(year, month):
     start, end = _month_bounds(year, month)
     return (end - start).days
-
-
-# Shared with the Cashbook — see workshop/money.py for why this is one
-# implementation rather than a check per view.
-_parse_money = parse_money
 
 
 def _unsettleable_staff(month_start, month_end):
@@ -86,47 +82,60 @@ def _unsettleable_staff(month_start, month_end):
     return rows
 
 
-def _stale_settled_months():
+def _latest_settlement():
+    """The most recently settled month, or None."""
+    return SalaryPayment.objects.order_by('-month').first()
+
+
+def _is_closed(payment):
     """
-    Settled months whose saved lines no longer match the advances on record.
+    True once a LATER month has been settled. A one-way door.
 
-    A settlement freezes `advance_used` and `net_amount`. If an advance for that
-    month is recorded (or deleted) afterwards, the frozen figures are simply
-    wrong — the office would hand over the stale net, and nothing anywhere said
-    so. Detected rather than stored: two grouped queries compare every line
-    against the live advance totals, so there is no extra column that can itself
-    drift out of date, and months settled before this check existed are covered
-    for free.
+    Salary is worked out within a week of a month ending and the cash handed
+    over immediately, so by the time the next month has been settled the
+    previous one is history and must not be one unlock away from changing.
 
-    Returns a set of month dates (the 1st) that need re-saving.
+    Read from a stored flag rather than computed as "is this the latest?", and
+    that distinction is the whole point. The computed version reopened the
+    previous month whenever the newest settlement was deleted — which sounds
+    like a tidy reversal and is actually a ratchet that turns both ways: delete
+    the newest, the one before becomes editable, delete that, and you can walk
+    backwards through the entire history one delete at a time. Observed doing
+    exactly that on live data (13 settled months down to 10). `superseded` is
+    set when a later month is settled and is never cleared, so stepping back
+    over a closed month is impossible however many settlements are removed.
+
+    Keyed to being superseded rather than to a date on the calendar,
+    deliberately: a rule like "July closes once August opens for settling"
+    closes a month the instant it is settled whenever settlement runs late,
+    punishing exactly the month that was hardest to get right.
     """
-    from django.db.models.functions import TruncMonth
+    return bool(payment and payment.superseded)
 
-    actual = {
-        (r['staff_id'], r['m']): r['t']
-        for r in SalaryAdvance.objects.annotate(m=TruncMonth('date'))
-                                      .values('staff_id', 'm')
-                                      .annotate(t=Sum('amount'))
-        if r['m']
-    }
-    stale = set()
-    seen = set()
-    for line in SalaryPaymentLine.objects.values(
-            'staff_id', 'advance_used', 'payment__month'):
-        month = line['payment__month']
-        key = (line['staff_id'], month)
-        seen.add(key)
-        if actual.get(key, Decimal('0')) != line['advance_used']:
-            stale.add(month)
 
-    # An advance whose staff has no line at all in a month that IS settled —
-    # the same hole _unsettleable_staff guards going forward, flagged here for
-    # anything already in the database.
-    settled = set(SalaryPayment.objects.values_list('month', flat=True))
-    for (staff_id, month), total in actual.items():
-        if month in settled and (staff_id, month) not in seen and total:
-            stale.add(month)
-    return stale
+def _close_earlier_months(month):
+    """Mark every settled month before `month` as closed. Called on settle."""
+    return SalaryPayment.objects.filter(
+        month__lt=month, superseded=False).update(superseded=True)
+
+
+def _settled_month_for(advance_date):
+    """
+    The SalaryPayment covering this date, if that month is already settled.
+
+    An advance cannot be recorded into a month whose salary has been worked out
+    and paid: the saved net would silently stop matching the advances on record,
+    and the office would hand over a figure that is no longer right.
+
+    Blocking it beats detecting it afterwards. A detector has to nag from
+    another screen days later, and by existing it invites people back into
+    reopening a closed month — which is exactly the habit worth discouraging.
+    Refusing it here lets the message say what to do at the moment of the
+    mistake.
+    """
+    if not advance_date:
+        return None
+    return SalaryPayment.objects.filter(month=advance_date.replace(day=1)).first()
 
 
 @office_required
@@ -176,10 +185,6 @@ def salary_advance_home(request):
 
     span = (month_start.year - system_start.year) * 12 + (month_start.month - system_start.month) + 1
 
-    # Settled months whose frozen figures no longer match the advances on
-    # record — see _stale_settled_months(). Computed once for the whole page.
-    stale_months = _stale_settled_months()
-
     all_months = []  # newest first — every month this section has existed for
     cursor = month_start
     for _ in range(max(1, min(span, 240))):
@@ -188,7 +193,6 @@ def salary_advance_home(request):
         payment = settled_map.get(cursor)
         if payment:
             all_months.append({'month': cursor, 'payment': payment, 'due': False, 'overdue': False,
-                               'stale': cursor in stale_months,
                                'is_current': cursor == month_start})
         elif cursor == month_start:
             # The running month becomes settleable from SETTLE_FROM_DAY —
@@ -247,9 +251,6 @@ def salary_advance_home(request):
         'pending_extra': pending_extra,
         'year_blocks': year_blocks,
         'current_year': today.year,
-        # Newest first, so the banner names the month someone is most likely
-        # still able to remember.
-        'stale_months': sorted(stale_months, reverse=True),
     })
 
 
@@ -264,36 +265,63 @@ def salary_advance_add(request):
         except (TypeError, ValueError):
             staff_id = 0
         staff = get_object_or_404(Mechanic, pk=staff_id)
-        # A retired staff member takes no new advances. They are absent from
-        # every picker on this page, but the id is posted in a hidden field, and
-        # an advance recorded against them would have been dropped from the wage
-        # bill the moment the month was settled.
-        if not staff.is_active:
-            messages.error(
-                request,
-                f"{staff.name} is retired and can't be given a new advance. "
-                f"Reactivate them from Control Hub first if they're back."
-            )
-            return redirect('salary_advance_home')
-        amount = _parse_money(request.POST.get('amount', '0'), SalaryAdvance, 'amount')
+        amount = parse_money(request.POST.get('amount', '0'), SalaryAdvance, 'amount')
         # Trimmed to the column: a 400-char note into max_length=255 is stored
         # by SQLite and rejected by Postgres with "value too long".
         note = fit_text(request.POST.get('note', '').strip(), SalaryAdvance, 'note')
+        today = timezone.localdate()
         date_str = request.POST.get('date', '').strip()
-        advance_date = timezone.localdate()
+        advance_date = today
         if date_str:
             try:
                 advance_date = date.fromisoformat(date_str)
             except ValueError:
                 pass
 
+        settled = _settled_month_for(advance_date)
+
         if amount is None:
             messages.error(request, "Enter a valid advance amount.")
-        elif advance_date > timezone.localdate():
+        elif advance_date > today:
             # Cash cannot have been handed over on a day that has not arrived,
             # and a forward-dated advance lands in a month the settlement screen
             # will not reach for weeks.
             messages.error(request, "An advance can't be dated in the future.")
+        elif settled:
+            # The month is closed. Two honest ways forward, and which one to
+            # offer depends on who is asking: deleting a settlement is
+            # Owner-only, so telling Office to "delete it first" would send them
+            # at a button they cannot see.
+            is_owner = request.user.is_superuser or request.user.groups.filter(name='Owner').exists()
+            if is_owner:
+                messages.error(
+                    request,
+                    f"{settled.month:%B %Y} is already settled. Delete that settlement "
+                    f"first, then record this advance and settle the month again — "
+                    f"or record it in {today:%B} with a note saying it was from "
+                    f"{settled.month:%B}."
+                )
+            else:
+                messages.error(
+                    request,
+                    f"{settled.month:%B %Y} is already settled. Ask an owner to delete "
+                    f"that settlement so it can be added — or record it in "
+                    f"{today:%B} with a note saying it was from {settled.month:%B}."
+                )
+        elif not staff.is_active and advance_date >= today:
+            # A retired staff member takes no NEW cash — but a BACKDATED entry
+            # is a correction, not a handout, and refusing it was the wrong
+            # call: the workshop settles a month in the first days of the next
+            # one, so "we forgot an advance from last month" is a routine
+            # discovery, and the person it belongs to may well have left since.
+            # Blocking that left the books permanently wrong about money that
+            # really did leave the drawer. Only today's date is refused.
+            messages.error(
+                request,
+                f"{staff.name} is retired, so a new advance dated today can't be recorded. "
+                f"If this is one you forgot from while they were still here, date it to "
+                f"the day it actually happened."
+            )
         else:
             advance = SalaryAdvance.objects.create(
                 staff=staff, amount=amount, date=advance_date,
@@ -343,7 +371,7 @@ def salary_set_amount(request, staff_id):
     """POST: set/update a staff member's current monthly salary."""
     if request.method == 'POST':
         staff = get_object_or_404(Mechanic, pk=staff_id)
-        amount = _parse_money(request.POST.get('amount', '0'), Mechanic, 'current_salary')
+        amount = parse_money(request.POST.get('amount', '0'), Mechanic, 'current_salary')
         if amount is None:
             messages.error(request, "Enter a valid salary amount.")
         else:
@@ -392,6 +420,35 @@ def salary_payment_form(request, year, month):
         existing_lines = {line.staff_id: line for line in payment.lines.select_related('staff').all()}
 
     if request.method == 'POST':
+        # SETTLEMENT LOCK. A month that is already settled opens read-only and
+        # must be unlocked before it can be overwritten — the same rule the Job
+        # Card applies to a PAID bill, and enforced the same way: the template
+        # locks the fields, and this rejects the POST regardless, because a
+        # client-side lock alone is bypassed by a raw request.
+        #
+        # These figures have already been paid out, and this screen is opened to
+        # READ a past month as often as to correct one.
+        # CLOSED: a month older than the most recent settlement cannot be
+        # changed at all — not by unlocking, not by anyone. Refused here and not
+        # merely hidden, because the menu that offers it is client-side.
+        if _is_closed(payment):
+            latest = _latest_settlement()
+            messages.error(
+                request,
+                f"{target_month:%B %Y} is closed — only the most recent settlement "
+                f"({latest.month:%B %Y}) can be changed. Record any correction in "
+                f"{timezone.localdate():%B} with a note saying what it was for."
+            )
+            return redirect('salary_advance_home')
+
+        if payment and request.POST.get('settlement_unlock') != 'true':
+            messages.error(
+                request,
+                f"{target_month:%B %Y} is already settled and locked. Use "
+                f"\"Edit this settlement\" on that page before saving changes."
+            )
+            return redirect('salary_payment_form', year=year, month=month)
+
         # GUARD: every rupee handed out this month must land on a line.
         blocked = _unsettleable_staff(month_start, month_end)
         if blocked:
@@ -441,6 +498,9 @@ def salary_payment_form(request, year, month):
             if not payment:
                 payment = SalaryPayment.objects.create(month=target_month, created_by=request.user)
 
+            # Settling a month closes every earlier one, for good.
+            _close_earlier_months(target_month)
+
             for staff in Mechanic.objects.filter(is_active=True):
                 leave_key = f'leave_days_{staff.pk}'
                 if leave_key not in request.POST or staff.current_salary is None:
@@ -448,19 +508,37 @@ def salary_payment_form(request, year, month):
 
                 leave_days = parsed_leave.get(staff.pk, Decimal('0'))
 
+                # A month keeps the salary it was FIRST settled at. Only a new
+                # settlement reads the staff member's current salary.
+                #
+                # This is what makes "settle the finished month, then apply the
+                # raise" safe as a working rule, and it needs no interface: a
+                # month re-saved later — to correct leave days, say — can never
+                # be silently repriced by a raise entered since. To settle a
+                # month at a different salary, delete the settlement and settle
+                # again, which is deliberate, Owner-only and logged.
+                existing_line = existing_lines.get(staff.pk)
+                salary_used = existing_line.salary_used if existing_line else staff.current_salary
+
+                overtime = parse_money(
+                    request.POST.get(f'overtime_{staff.pk}'), SalaryPaymentLine,
+                    'overtime_amount', allow_zero=True,
+                ) or Decimal('0')
+
                 advance_used = SalaryAdvance.objects.filter(
                     staff=staff, date__gte=month_start, date__lt=month_end
                 ).aggregate(
                     total=Coalesce(Sum('amount'), Decimal('0'), output_field=DecimalField())
                 )['total']
 
-                net_amount = _compute_net(staff.current_salary, leave_days, advance_used)
+                net_amount = _compute_net(salary_used, leave_days, advance_used, overtime)
 
                 SalaryPaymentLine.objects.update_or_create(
                     payment=payment, staff=staff,
                     defaults={
-                        'salary_used': staff.current_salary,
+                        'salary_used': salary_used,
                         'leave_days': leave_days,
+                        'overtime_amount': overtime,
                         'advance_used': advance_used,
                         'net_amount': net_amount,
                     }
@@ -498,6 +576,11 @@ def salary_payment_form(request, year, month):
         )['total']
         existing = existing_lines.get(staff.pk)
         leave_days = existing.leave_days if existing else Decimal('0')
+        # Re-opening a settled month must offer the salary it was SETTLED at,
+        # not today's — otherwise a raise since then would silently re-price it
+        # the moment anyone saved the month again for an unrelated reason.
+        salary_used = existing.salary_used if existing else staff.current_salary
+        overtime_amount = existing.overtime_amount if existing else Decimal('0')
         # Only the ones who are merely left out. Anyone in `blockers` stops the
         # settlement outright and is reported by the stronger banner instead —
         # listing them twice, under two different consequences, would be worse
@@ -508,9 +591,11 @@ def salary_payment_form(request, year, month):
             'staff': staff,
             'advance_used': advance_used,
             'leave_days': leave_days,
+            'salary_used': salary_used,
+            'overtime_amount': overtime_amount,
             'net_amount': (
-                _compute_net(staff.current_salary, leave_days, advance_used)
-                if staff.current_salary is not None else None
+                _compute_net(salary_used, leave_days, advance_used, overtime_amount)
+                if salary_used is not None else None
             ),
         })
 
@@ -521,6 +606,8 @@ def salary_payment_form(request, year, month):
         'missing_salary': missing_salary,
         'blockers': [{'staff': s, 'amount': amt, 'reason': why} for s, amt, why in blockers],
         'payable_count': sum(1 for r in rows if r['net_amount'] is not None),
+        'is_closed': _is_closed(payment),
+        'latest_settlement': _latest_settlement(),
     })
 
 
@@ -539,6 +626,20 @@ def salary_payment_delete(request, pk):
     bar than Office's day-to-day settling.
     """
     payment = get_object_or_404(SalaryPayment, pk=pk)
+
+    # Only the most recent settlement can be removed. Anything older has been
+    # paid and moved on from, and this is checked on the GET as well so the
+    # confirmation page for a closed month never even renders.
+    if _is_closed(payment):
+        latest = _latest_settlement()
+        messages.error(
+            request,
+            f"{payment.month:%B %Y} is closed and can't be deleted — only the most "
+            f"recent settlement ({latest.month:%B %Y}) can be changed. Record any "
+            f"correction in {timezone.localdate():%B} instead."
+        )
+        return redirect('salary_advance_home')
+
     lines = payment.lines.select_related('staff').all()
 
     if request.method != 'POST':

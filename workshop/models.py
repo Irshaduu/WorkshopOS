@@ -533,6 +533,13 @@ class SalaryPayment(models.Model):
     means the month is settled; no row means it's still outstanding.
     """
     month = models.DateField(unique=True, db_index=True, help_text="Always the 1st of the month it represents")
+    superseded = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Set once a LATER month has been settled. Never unset — a "
+                  "closed month stays closed even if that later settlement is "
+                  "deleted, so nobody can walk backwards through history one "
+                  "delete at a time.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
@@ -564,6 +571,12 @@ class SalaryPaymentLine(models.Model):
     staff = models.ForeignKey(Mechanic, on_delete=models.CASCADE, related_name='salary_payment_lines')
     salary_used = models.DecimalField(max_digits=10, decimal_places=2)
     leave_days = models.DecimalField(max_digits=5, decimal_places=1, default=Decimal('0'))
+    overtime_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        help_text="Overtime earned this month, as a single amount. Added to the "
+                  "net, so the wage cost the Profit page reads (net + advance) "
+                  "includes it without any further arithmetic.",
+    )
     advance_used = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0'))
     net_amount = models.DecimalField(max_digits=10, decimal_places=2)
 

@@ -35,6 +35,9 @@
   .calc-line .lbl { color: var(--color-text-muted); display: flex; align-items: center; gap: 7px; }
   .calc-line .amt { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
   .calc-line .amt.minus { color: #dc2626; }
+  /* OT is the one line that ADDS to the pay, so it reads green rather than
+     red — the sign should be obvious without reading the label. */
+  .calc-line .amt.plus { color: #059669; }
 
   .leave-input {
     width: 62px; padding: 3px 8px; border-radius: 8px;
@@ -48,6 +51,15 @@
   .leave-input::-webkit-inner-spin-button,
   .leave-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .leave-input:focus { border-color: #ef4444; outline: none; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15); }
+
+  /* OT is entered far less often than leave days, so it stays visually
+     quieter — a blank box most months, not a second red field competing for
+     attention on every card. */
+  .ot-input {
+    border-color: var(--color-border); background: var(--color-card);
+    color: var(--color-text); width: 84px;
+  }
+  .ot-input:focus { border-color: #059669; box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15); }
 
   /* Touch devices (Floor tablets, Owner phones) need the 44px minimum target */
   @media (max-width: 991.98px), (pointer: coarse) {
@@ -93,30 +105,66 @@
   <div>
     <h5><i class="bi bi-calendar-check me-2 text-primary"></i>{{ target_month|date:"F Y" }} Salary</h5>
     <div class="sub">
-      {% if payment %}
-        Already settled &mdash; you can correct it and save again.
+      {% if is_closed %}
+        <i class="bi bi-lock-fill me-1"></i>Closed &mdash; this month was paid and settled before
+        {{ latest_settlement.month|date:"F Y" }}.
+      {% elif payment %}
+        <span id="lockedSub"><i class="bi bi-lock-fill me-1"></i>Settled and locked &mdash; unlock from the menu to correct it.</span>
+        <span id="unlockedSub" hidden><i class="bi bi-unlock-fill me-1 text-warning"></i>Unlocked for editing &mdash; save to overwrite this settlement.</span>
       {% else %}
         Enter each person's leave days. Advances are filled in automatically.
       {% endif %}
     </div>
   </div>
-  {% if payment %}
-    {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+  {% comment %}
+  A settled month opens LOCKED — the same rule the Job Card already applies to a
+  PAID bill. Payroll that has been worked out and paid should not be one stray
+  keystroke away from changing, and this screen is opened for ordinary reading
+  as well as for corrections.
+
+  Both halves are real: the fields go readonly here, and salary_payment_form
+  rejects a POST against an already-settled month unless `settlement_unlock` is
+  set. readonly, never disabled — a disabled input is not submitted at all, and
+  the settlement loop skips any staff member whose leave_days field is missing
+  from the POST, so disabling would silently write no line for anyone.
+  {% endcomment %}
+  {% comment %}
+  A CLOSED month gets no menu at all — no unlock, no delete, for anyone
+  including owners. Salary is paid within a week of a month ending, so once the
+  next month has been settled this one is history. Both views refuse it
+  server-side as well; hiding the menu is only the courtesy half.
+  {% endcomment %}
+  {% if payment and not is_closed %}
     <div class="dropdown flex-shrink-0">
       <button class="btn btn-sm btn-light rounded-circle" type="button" data-bs-toggle="dropdown"
               aria-expanded="false" aria-label="More options"
               style="width:36px; height:36px; padding:0; display:flex; align-items:center; justify-content:center;">
         <i class="bi bi-three-dots-vertical"></i>
       </button>
-      <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius:12px; font-size:0.85rem; min-width:200px;">
+      <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius:12px; font-size:0.85rem; min-width:220px;">
         <li>
-          <a class="dropdown-item py-2 text-danger fw-bold" href="{% url 'salary_payment_delete' payment.pk %}">
+          <a class="dropdown-item py-2 fw-bold" href="#" id="unlockMenuItem"
+             onclick="openUnlockGuide(); return false;">
+            <i class="bi bi-unlock me-2 text-primary"></i>Edit this settlement
+          </a>
+        </li>
+        {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <a class="dropdown-item py-2 text-danger fw-bold disabled" id="deleteMenuItem"
+             aria-disabled="true" tabindex="-1"
+             href="{% url 'salary_payment_delete' payment.pk %}">
             <i class="bi bi-trash3 me-2"></i>Delete Settlement
           </a>
         </li>
+        <li>
+          <span class="dropdown-item-text small text-muted" id="deleteHint" style="font-size:0.72rem;">
+            Unlock first to enable deleting.
+          </span>
+        </li>
+        {% endif %}
       </ul>
     </div>
-    {% endif %}
   {% endif %}
 </div>
 
@@ -175,23 +223,65 @@ lost by leaving them out, so it stays the softer note it always was.
     </div>
 
     {% if row.staff.current_salary %}
+      {% comment %}
+      The salary is TEXT, and there is deliberately no way to edit it here.
+
+      It briefly was an editable field, to cover a raise entered before the
+      previous month was settled. That solved by interface what the workshop's
+      own order of work already solves: settle the finished month first, then
+      apply the hike. The salary is frozen onto the line at that moment, so the
+      settled month keeps what was actually earned and later months use the new
+      figure. If the order does go wrong, the remedy is to delete the settlement
+      and settle again — an Owner action, deliberate and logged.
+
+      Re-saving a settled month never re-reads the current salary either (see
+      salary_payment_form), so a month cannot be repriced by a later raise.
+      {% endcomment %}
       <div class="calc-line">
         <span class="lbl"><i class="bi bi-wallet2"></i> Monthly salary</span>
-        <span class="amt">₹{{ row.staff.current_salary|floatformat:0|intcomma }}</span>
+        <span class="amt">₹{{ row.salary_used|floatformat:0|intcomma }}</span>
       </div>
 
       <div class="calc-line">
         <span class="lbl">
           <i class="bi bi-calendar-x"></i> Leave days
+          {% comment %}
+          readonly, NOT disabled: a disabled input is never submitted, and the
+          settlement loop skips any staff member whose leave_days key is absent
+          from the POST — so disabling would quietly write no line for anybody.
+          {% endcomment %}
           <input type="number" class="leave-input leave-days-input" step="0.5" min="0" max="31"
                  name="leave_days_{{ row.staff.id }}"
-                 data-salary="{{ row.staff.current_salary }}"
+                 data-salary="{{ row.salary_used }}"
                  data-advance="{{ row.advance_used }}"
                  data-staff-id="{{ row.staff.id }}"
                  value="{{ row.leave_days|floatformat:'-1' }}"
+                 {% if payment %}readonly{% endif %}
                  oninput="recalcRow({{ row.staff.id }})">
         </span>
         <span class="amt minus" id="leavecut-{{ row.staff.id }}">− ₹0</span>
+      </div>
+
+      {% comment %}
+      Overtime — one amount for the whole month, not an hours-and-rate
+      calculation. Only a few staff have any in a given month, so it stays
+      blank for most people and adds nothing to read when it is zero.
+      Added to the net, which means the wage cost the Profit page reads
+      (net + advance) already includes it with no further arithmetic.
+      {% endcomment %}
+      <div class="calc-line">
+        <span class="lbl">
+          <i class="bi bi-clock-history"></i> OT amount
+          <input type="number" class="leave-input ot-input" step="1" min="0"
+                 name="overtime_{{ row.staff.id }}"
+                 data-staff-id="{{ row.staff.id }}"
+                 value="{{ row.overtime_amount|floatformat:'-2' }}"
+                 placeholder="0"
+                 {% if payment %}readonly{% endif %}
+                 aria-label="Overtime amount for {{ row.staff.name }}"
+                 oninput="recalcRow({{ row.staff.id }})">
+        </span>
+        <span class="amt plus" id="otshown-{{ row.staff.id }}">₹0</span>
       </div>
 
       <div class="calc-line">
@@ -231,11 +321,88 @@ lost by leaving them out, so it stays the softer note it always was.
         <div style="font-weight:700;">{{ payable_count }}</div>
       </div>
     </div>
-    <button type="submit" class="settle-btn">
+    {% comment %}
+    The unlock flag the server checks. Absent or not "true" on a month that is
+    already settled and salary_payment_form refuses the POST outright, so a
+    crafted request cannot rewrite payroll by skipping the UI.
+    {% endcomment %}
+    <input type="hidden" name="settlement_unlock" id="settlementUnlock" value="false">
+
+    {% if is_closed %}
+    <div class="alert alert-secondary d-flex align-items-start gap-2 mb-0"
+         style="border-radius:12px; font-size:0.84rem;">
+      <i class="bi bi-lock-fill mt-1"></i>
+      <span>
+        This month is <strong>closed</strong> &mdash; it was settled and paid before
+        {{ latest_settlement.month|date:"F Y" }}, so it can no longer be changed or deleted.
+        If something was missed, record it in the current month with a note saying what it was for.
+      </span>
+    </div>
+    {% elif payment %}
+    <div id="lockedNotice" class="alert alert-secondary d-flex align-items-center gap-2 mb-0"
+         style="border-radius:12px; font-size:0.84rem;">
+      <i class="bi bi-lock-fill"></i>
+      <span>This month is settled. Use <strong>Edit this settlement</strong> in the menu above to make changes.</span>
+    </div>
+    {% endif %}
+
+    {% comment %}
+    Not rendered at all on a closed month — there is no unlock to reveal it, so
+    a permanently hidden button is just markup that can never do anything.
+    {% endcomment %}
+    {% if not is_closed %}
+    <button type="submit" class="settle-btn" id="settleBtn" {% if payment %}hidden{% endif %}>
       <i class="bi bi-check-circle-fill me-1"></i>{% if payment %}Update Settlement{% else %}Save Settlement{% endif %}
     </button>
+    {% endif %}
   </div>
 </form>
+
+{% comment %}
+Unlocking a settled month. The guidance matters more than the click: this
+screen is opened to READ a past month as often as to correct one, and the
+figures on it have already been paid out.
+{% endcomment %}
+{% if payment and not is_closed %}
+<div class="modal fade" id="unlockModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:20px;">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold">
+          <i class="bi bi-unlock me-2 text-warning"></i>Edit {{ target_month|date:"F Y" }}'s settlement?
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning py-2 small mb-3" style="border-radius:12px;">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          This month has already been settled and paid. Saving again
+          <strong>overwrites</strong> what was recorded.
+        </div>
+
+        <div class="small text-muted mb-2"><strong>Unlock this if you need to:</strong></div>
+        <ul class="small text-muted ps-3 mb-3">
+          <li>Record an advance you forgot, then bring the net pay up to date</li>
+          <li>Correct someone's leave days</li>
+          <li>Fix the salary used for this month after a raise</li>
+        </ul>
+
+        <div class="small text-muted mb-0">
+          <strong>You don't need to unlock</strong> just to look at the figures, or to
+          give a permanent raise &mdash; a raise is set on the staff member and
+          leaves past months alone.
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning fw-bold rounded-pill px-4" id="confirmUnlockBtn">
+          <i class="bi bi-unlock-fill me-1"></i>Unlock for editing
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Inline Set Salary (for a staff row missing one) -->
 <div class="modal fade" id="inlineSetSalaryModal" tabindex="-1" aria-hidden="true">
@@ -266,11 +433,17 @@ lost by leaving them out, so it stays the softer note it always was.
   const RUPEE = n => '₹' + Math.round(n).toLocaleString('en-IN');
 
   function rowFigures(input) {
+    // `input` is always the leave-days input: recalcRow looks it up by staff id
+    // and recalcGrandTotal iterates over that class, so both are safe reads.
+    const staffId = input.dataset.staffId;
     const salary = parseFloat(input.dataset.salary) || 0;
     const leave = parseFloat(input.value) || 0;
     const advance = parseFloat(input.dataset.advance) || 0;
+    const otInput = document.querySelector(`.ot-input[data-staff-id="${staffId}"]`);
+    const overtime = parseFloat(otInput ? otInput.value : 0) || 0;
     const leaveCut = (salary / 30) * leave;
-    return { salary, leave, advance, leaveCut, net: salary - leaveCut - advance };
+    return { salary, leave, advance, overtime, leaveCut,
+             net: salary - leaveCut + overtime - advance };
   }
 
   function recalcRow(staffId) {
@@ -280,6 +453,9 @@ lost by leaving them out, so it stays the softer note it always was.
 
     const cut = document.getElementById(`leavecut-${staffId}`);
     if (cut) cut.textContent = '− ' + RUPEE(f.leaveCut);
+
+    const ot = document.getElementById(`otshown-${staffId}`);
+    if (ot) ot.textContent = (f.overtime ? '+ ' : '') + RUPEE(f.overtime);
 
     const netEl = document.getElementById(`net-${staffId}`);
     if (netEl) {
@@ -298,6 +474,62 @@ lost by leaving them out, so it stays the softer note it always was.
       total += rowFigures(input).net;
     });
     document.getElementById('grandTotal').textContent = RUPEE(total);
+  }
+
+  // --- Lock / unlock a settled month --------------------------------------
+  function openUnlockGuide() {
+    new bootstrap.Modal(document.getElementById('unlockModal')).show();
+  }
+
+  const confirmUnlockBtn = document.getElementById('confirmUnlockBtn');
+  if (confirmUnlockBtn) {
+    confirmUnlockBtn.addEventListener('click', function () {
+      // readonly, not disabled — see the note on the leave input.
+      document.querySelectorAll('.leave-days-input, .ot-input').forEach(el => { el.readOnly = false; });
+
+      document.getElementById('settlementUnlock').value = 'true';
+      const settleBtn = document.getElementById('settleBtn');
+      if (settleBtn) settleBtn.hidden = false;
+
+      // Every lookup guarded. These elements only exist on a settled, still-open
+      // month, and an unguarded miss would throw inside the handler and abort
+      // the rest of it — leaving the form half-unlocked with no error anywhere.
+      const notice = document.getElementById('lockedNotice');
+      if (notice) notice.hidden = true;
+      const lockedSub = document.getElementById('lockedSub');
+      if (lockedSub) lockedSub.hidden = true;
+      const unlockedSub = document.getElementById('unlockedSub');
+      if (unlockedSub) unlockedSub.hidden = false;
+
+      // Deleting a settled month is Owner-only and has its own confirmation
+      // page; unlocking is simply the first of the two deliberate steps.
+      const del = document.getElementById('deleteMenuItem');
+      if (del) {
+        del.classList.remove('disabled');
+        del.removeAttribute('aria-disabled');
+        del.removeAttribute('tabindex');
+      }
+      const hint = document.getElementById('deleteHint');
+      if (hint) hint.hidden = true;
+
+      const unlockItem = document.getElementById('unlockMenuItem');
+      if (unlockItem) unlockItem.hidden = true;
+
+      bootstrap.Modal.getInstance(document.getElementById('unlockModal')).hide();
+    });
+  }
+
+  // Overwriting an already-settled month is confirmed; a first save is not —
+  // there is nothing yet to overwrite.
+  const paymentForm = document.getElementById('paymentForm');
+  if (paymentForm && {% if payment and not is_closed %}true{% else %}false{% endif %}) {
+    paymentForm.addEventListener('submit', function (e) {
+      if (!confirm(
+          "Overwrite {{ target_month|date:'F Y' }}'s settlement with these figures?\n\n"
+          + "The amounts recorded for this month will be replaced.")) {
+        e.preventDefault();
+      }
+    });
   }
 
   function openInlineSetSalary(staffId, staffName) {

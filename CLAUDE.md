@@ -218,17 +218,73 @@ about to correct one of these, you are about to break the business:
   that month, so a salary-less staff member with no advances never blocks
   anything.
 
-- **A settled month announces when it has gone stale, and staleness is
-  DERIVED, never stored.** Added 2026-08-02. A settlement freezes
-  `advance_used` and `net_amount`; an advance recorded or deleted for that month
-  afterwards makes both wrong — the office would hand over the stale net (proven:
-  ₹18,000 paid where ₹13,000 was due) — and nothing said so.
-  `_stale_settled_months()` compares the saved lines against the live advance
-  totals in two grouped queries, so there is no flag that can itself drift out
-  of date and months settled before the check existed are covered for free.
-  Re-saving the month recomputes and clears it. `SalaryAdvance`'s docstring
-  always promised advances are "summed fresh … so re-settling a month just
-  recomputes cleanly" — this is what makes anyone realise they need to.
+- **Salary months have THREE states, and the rules follow the workshop's own
+  rhythm.** Rewritten 2026-08-03 after the owner pushed back on a first attempt
+  that was more complicated than the business. A month is settled in the first
+  days of the *next* one, and the cash is handed over immediately, so:
+  **open** (not yet settled) → **locked** (settled, still the most recent;
+  correctable via "Edit this settlement" in the ⋮ menu) → **closed** (a newer
+  month has since been settled; no edit, no delete, for anyone including
+  owners). Both the lock and the closure are enforced in the view, not just by
+  the template — `salary_payment_form` refuses a POST without
+  `settlement_unlock`, and refuses a closed month outright;
+  `salary_payment_delete` refuses a closed month on the GET as well, so its
+  confirmation page never renders. The locked fields use **`readonly`, never
+  `disabled`**: a disabled input is not submitted, and the settlement loop
+  skips any staff member whose `leave_days` key is absent, so disabling would
+  silently write no line for anybody — the same trap the job-card price fields
+  document.
+  **Closure is a STORED one-way flag (`SalaryPayment.superseded`), never a
+  computed "is this the latest?" — and that distinction is the whole point.**
+  The computed version was shipped first and looked tidy: deleting the newest
+  settlement handed the frontier back to the month before it. It is a ratchet
+  that turns both ways. Delete the newest, the previous becomes editable,
+  delete that, and the entire history can be walked backwards one delete at a
+  time — observed doing exactly that on live data, 13 settled months down to
+  10, which is how it was caught. `superseded` is set on every earlier month
+  when a month is settled and is never cleared, so removing a later settlement
+  reopens nothing. Two tests asserted the reversal as a feature and passed 729
+  times before that; both are now inverted, and
+  `test_the_history_cannot_be_walked_backwards_by_deleting` is the guard.
+  Closure is keyed to being superseded rather than to a date, deliberately: a
+  rule like "July closes once August opens for settling" closes a month the
+  instant it is settled whenever settlement runs late, punishing exactly the
+  month that was hardest to get right. Guarded by `ASettledMonthIsLockedTests`
+  and `OnlyTheMostRecentSettlementCanBeChangedTests`.
+
+- **A month keeps the salary it was FIRST settled at, and there is no way to
+  edit it.** Added 2026-08-03. Salaries are revised at the same month boundary
+  the previous month is settled on, so whichever was done first used to decide
+  the answer: enter a raise, then settle July, and July was paid *and reported*
+  at August's salary. The first fix was an editable salary field on the
+  settlement screen — which the owner correctly rejected as solving by
+  interface what the order of work already solves. The rule is: **settle the
+  finished month, then apply the raise.** `salary_used` is frozen at the first
+  settlement and every later save reuses it, so re-saving a month to fix leave
+  days can never reprice it. To settle a month at a different figure, delete
+  the settlement and settle again — deliberate, Owner-only, logged. A crafted
+  `salary_<pk>` POST field is ignored. Guarded by
+  `AMonthKeepsTheSalaryItWasSettledAtTests`.
+
+- **An advance cannot be recorded into a settled month — blocked, not
+  detected.** Rewritten 2026-08-03. A `_stale_settled_months()` detector used to
+  catch this afterwards and flag the month for re-settling, but it nagged from
+  another screen days later and, by existing, invited people back into
+  reopening a closed month. Refusing it puts the guidance at the moment of the
+  mistake, and the message is **role-aware** because deleting a settlement is
+  Owner-only: Office is told to *ask an owner*, an owner is told to delete it
+  themselves. Both are offered the second route — record it in the current
+  month with a note — which is how a genuinely late discovery is handled, and
+  the only route once the month is closed. Guarded by
+  `AnAdvanceCannotEnterASettledMonthTests`.
+
+- **Overtime is one amount per person per month, added to the net.** Added
+  2026-08-03. Only a few staff have any in a given month, so it is a single
+  figure entered at settlement rather than an hours-and-rate calculation.
+  Stored on `SalaryPaymentLine.overtime_amount` and folded into `net_amount`,
+  which means the wage cost the Profit page reads (`net + advance`) includes it
+  with no change to `salary_expense()` at all. Junk input falls back to zero
+  rather than corrupting a settlement. Guarded by `OvertimeIsAddedToThePayTests`.
 
 - **Retiring a staff member warns about their unsettled advances, at the moment
   it happens.** Added 2026-08-02. Retiring someone who still holds advances in
@@ -910,7 +966,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (27 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 34 files, 700 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (27 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 34 files, 730 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

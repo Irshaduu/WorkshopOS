@@ -667,59 +667,487 @@ class DataCleanupShowsUsageBeforeDeletingTests(WorkshopTestCase):
         self.assertNotIn('to merge it into', page)
 
 
-class ASettledMonthSaysWhenItHasGoneStaleTests(WorkshopTestCase):
+class AMonthKeepsTheSalaryItWasSettledAtTests(WorkshopTestCase):
     """
-    A settlement freezes `advance_used` and `net_amount`. An advance recorded (or
-    deleted) for that month afterwards makes both wrong — the office would hand
-    over the stale net — and nothing said so. Detected by comparing the saved
-    lines against the live advance totals, so no stored flag can itself drift,
-    and months settled before this existed are covered too.
+    This workshop settles a month in the first days of the NEXT one, and
+    salaries are revised at that same boundary. The working rule is: settle the
+    finished month, THEN apply the raise. `salary_used` is frozen onto the line
+    at settle time, so July keeps July's salary and August gets the new one.
+
+    What this pins down is the other half — a month already settled must never
+    be repriced by a raise entered afterwards, even when it is re-saved for an
+    unrelated reason. There is deliberately no salary field on the settlement
+    screen: to settle a month at a different figure, delete the settlement and
+    settle again.
     """
 
-    def test_a_late_advance_marks_the_month_for_re_settlement(self):
-        m = timezone.localdate().replace(day=1)
+    def _last_month(self):
+        return (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    def _month_end(self, m):
+        return (m.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+    def test_settle_then_raise_keeps_the_month_correct(self):
+        """The everyday order of work."""
+        last = self._last_month()
         anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
-        SalaryAdvance.objects.create(staff=anil, amount=Decimal('2000'), date=m)
-        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+        SalaryAdvance.objects.create(staff=anil, amount=Decimal('3000'), date=last)
+
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
                          {f'leave_days_{anil.pk}': '0'})
-
-        clean = self.client.get(reverse('salary_advance_home'))
-        self.assertEqual(list(clean.context['stale_months']), [])
-
-        self.client.post(reverse('salary_advance_add'),
-                         {'staff_id': anil.pk, 'amount': '5000', 'date': str(m)})
-
-        stale = self.client.get(reverse('salary_advance_home'))
-        self.assertEqual(list(stale.context['stale_months']), [m])
-        self.assertContains(stale, 'needs re-settling')
-
-    def test_re_saving_the_month_clears_the_flag_and_corrects_the_net(self):
-        m = timezone.localdate().replace(day=1)
-        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
-        SalaryAdvance.objects.create(staff=anil, amount=Decimal('2000'), date=m)
-        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
-                         {f'leave_days_{anil.pk}': '0'})
-        self.client.post(reverse('salary_advance_add'),
-                         {'staff_id': anil.pk, 'amount': '5000', 'date': str(m)})
-
-        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
-                         {f'leave_days_{anil.pk}': '0'})
+        self.client.post(reverse('salary_set_amount', args=[anil.pk]), {'amount': '25000'})
 
         line = SalaryPaymentLine.objects.get()
-        self.assertEqual(line.advance_used, Decimal('7000.00'))
-        self.assertEqual(line.net_amount, Decimal('13000.00'))
+        self.assertEqual(line.salary_used, Decimal('20000.00'))
+        self.assertEqual(line.net_amount, Decimal('17000.00'))
         self.assertEqual(
-            list(self.client.get(reverse('salary_advance_home')).context['stale_months']), [])
+            ae.salary_expense(last, self._month_end(last))['total'], Decimal('20000.00'))
 
-    def test_deleting_an_advance_from_a_settled_month_also_flags_it(self):
-        m = timezone.localdate().replace(day=1)
+    def test_re_saving_after_a_raise_does_not_reprice_the_month(self):
+        """The trap: correcting leave days later must not pull in a salary the
+        person was not on at the time."""
+        last = self._last_month()
         anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
-        advance = SalaryAdvance.objects.create(staff=anil, amount=Decimal('2000'), date=m)
-        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
                          {f'leave_days_{anil.pk}': '0'})
-        self.client.post(reverse('salary_advance_delete', args=[advance.pk]))
+        self.client.post(reverse('salary_set_amount', args=[anil.pk]), {'amount': '25000'})
+
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '2', 'settlement_unlock': 'true'})
+
+        line = SalaryPaymentLine.objects.get()
+        self.assertEqual(line.salary_used, Decimal('20000.00'))
+        self.assertEqual(line.leave_days, Decimal('2.0'))
+
+    def test_there_is_no_salary_field_to_edit(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        resp = self.client.get(reverse('salary_payment_form', args=[last.year, last.month]))
+        self.assertNotContains(resp, f'name="salary_{anil.pk}"')
+        self.assertEqual(resp.context['rows'][0]['salary_used'], Decimal('20000.00'))
+
+    def test_a_posted_salary_field_is_ignored(self):
+        """Even a crafted payload cannot set a month's salary."""
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0', f'salary_{anil.pk}': '99000'})
+        self.assertEqual(SalaryPaymentLine.objects.get().salary_used, Decimal('20000.00'))
+
+    def test_deleting_and_re_settling_picks_up_the_new_salary(self):
+        """The documented way to settle a month at a different figure."""
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+        self.client.post(reverse('salary_set_amount', args=[anil.pk]), {'amount': '25000'})
+
+        payment = SalaryPayment.objects.get()
+        self.client_for('owner').post(reverse('salary_payment_delete', args=[payment.pk]),
+                                      {'reason': 'wrong salary'})
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+
+        self.assertEqual(SalaryPaymentLine.objects.get().salary_used, Decimal('25000.00'))
+
+
+class ASettledMonthIsLockedTests(WorkshopTestCase):
+    """
+    A settled month opens read-only — the same rule the Job Card applies to a
+    PAID bill, and enforced the same way. The client-side lock is not the
+    guarantee: the view refuses the POST outright, because a lock that only
+    disables inputs is bypassed by a raw request.
+    """
+
+    def _last_month(self):
+        return (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    def test_saving_a_settled_month_without_unlocking_is_refused(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+
+        resp = self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                                {f'leave_days_{anil.pk}': '5'}, follow=True)
+
+        self.assertEqual(SalaryPaymentLine.objects.get().leave_days, Decimal('0.0'))
+        self.assertContains(resp, 'locked')
+
+    def test_unlocking_lets_the_correction_through(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('30000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '3', 'settlement_unlock': 'true'})
+
+        line = SalaryPaymentLine.objects.get()
+        self.assertEqual(line.leave_days, Decimal('3.0'))
+        self.assertEqual(line.net_amount, Decimal('27000.00'))
+
+    def test_a_first_settlement_needs_no_unlock(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+        self.assertEqual(SalaryPaymentLine.objects.count(), 1)
+
+    def test_the_locked_page_uses_readonly_so_the_fields_still_post(self):
+        """A disabled input is never submitted, and the settlement loop skips
+        any staff member whose leave_days key is missing — disabling would
+        silently write no line for anyone."""
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+
+        page = self.client.get(
+            reverse('salary_payment_form', args=[last.year, last.month])).content.decode()
+        self.assertIn('readonly', page)
+        self.assertIn(f'name="leave_days_{anil.pk}"', page)
+
+
+class OnlyTheMostRecentSettlementCanBeChangedTests(WorkshopTestCase):
+    """
+    Salary is worked out within a week of a month ending and the cash is handed
+    over immediately, so once the NEXT month has been settled the previous one
+    is history — it must not be one unlock away from changing, for anyone.
+
+    Closure is a stored one-way flag, not a computed "is this the latest?".
+    The computed version reopened the previous month whenever the newest
+    settlement was deleted, which let the whole history be walked backwards one
+    delete at a time — see test_the_history_cannot_be_walked_backwards_by_deleting.
+
+    It is keyed to being superseded rather than to a date, deliberately: a rule
+    like "July closes once August opens for settling" would close a month the
+    instant it was settled whenever settlement ran late, punishing exactly the
+    month that was hardest to get right.
+    """
+
+    def _month(self, back):
+        m = timezone.localdate().replace(day=1)
+        for _ in range(back):
+            m = (m - timedelta(days=1)).replace(day=1)
+        return m
+
+    def _settle(self, month, staff, **extra):
+        data = {f'leave_days_{staff.pk}': '0'}
+        data.update(extra)
+        return self.client.post(
+            reverse('salary_payment_form', args=[month.year, month.month]), data)
+
+    def setUp(self):
+        super().setUp()
+        self.anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.older = self._month(2)
+        self.newer = self._month(1)
+        self._settle(self.older, self.anil)
+        self._settle(self.newer, self.anil)
+
+    def test_the_older_month_cannot_be_edited(self):
+        resp = self.client.post(
+            reverse('salary_payment_form', args=[self.older.year, self.older.month]),
+            {f'leave_days_{self.anil.pk}': '9', 'settlement_unlock': 'true'}, follow=True)
+
+        line = SalaryPaymentLine.objects.get(payment__month=self.older)
+        self.assertEqual(line.leave_days, Decimal('0.0'))
+        self.assertContains(resp, 'closed')
+
+    def test_the_older_month_cannot_be_deleted(self):
+        payment = SalaryPayment.objects.get(month=self.older)
+        self.client_for('owner').post(
+            reverse('salary_payment_delete', args=[payment.pk]), {'reason': 'nope'})
+        self.assertTrue(SalaryPayment.objects.filter(pk=payment.pk).exists())
+
+    def test_even_the_confirmation_page_will_not_render_for_a_closed_month(self):
+        payment = SalaryPayment.objects.get(month=self.older)
+        resp = self.client_for('owner').get(
+            reverse('salary_payment_delete', args=[payment.pk]))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_an_owner_gets_no_exception(self):
+        """Fully closed means closed for everyone."""
+        resp = self.client_for('owner').post(
+            reverse('salary_payment_form', args=[self.older.year, self.older.month]),
+            {f'leave_days_{self.anil.pk}': '9', 'settlement_unlock': 'true'}, follow=True)
         self.assertEqual(
-            list(self.client.get(reverse('salary_advance_home')).context['stale_months']), [m])
+            SalaryPaymentLine.objects.get(payment__month=self.older).leave_days,
+            Decimal('0.0'))
+
+    def test_the_latest_month_is_still_editable(self):
+        self.client.post(
+            reverse('salary_payment_form', args=[self.newer.year, self.newer.month]),
+            {f'leave_days_{self.anil.pk}': '3', 'settlement_unlock': 'true'})
+        self.assertEqual(
+            SalaryPaymentLine.objects.get(payment__month=self.newer).leave_days,
+            Decimal('3.0'))
+
+    def test_the_latest_month_is_still_deletable(self):
+        payment = SalaryPayment.objects.get(month=self.newer)
+        self.client_for('owner').post(
+            reverse('salary_payment_delete', args=[payment.pk]), {'reason': 'mistake'})
+        self.assertFalse(SalaryPayment.objects.filter(pk=payment.pk).exists())
+
+    def test_deleting_the_newest_does_NOT_reopen_the_one_before_it(self):
+        """
+        Closure is a one-way door.
+
+        This test originally asserted the opposite — that deleting the newest
+        settlement handed the frontier back to the month before it, which read
+        like a tidy reversal. On live data it turned out to be a ratchet that
+        turns both ways: delete the newest, the previous becomes editable,
+        delete that, and you can walk backwards through the whole history one
+        delete at a time. Thirteen settled months went to ten that way.
+        """
+        payment = SalaryPayment.objects.get(month=self.newer)
+        self.client_for('owner').post(
+            reverse('salary_payment_delete', args=[payment.pk]), {'reason': 'mistake'})
+
+        self.client.post(
+            reverse('salary_payment_form', args=[self.older.year, self.older.month]),
+            {f'leave_days_{self.anil.pk}': '4', 'settlement_unlock': 'true'})
+
+        self.assertEqual(
+            SalaryPaymentLine.objects.get(payment__month=self.older).leave_days,
+            Decimal('0.0'), "a closed month must stay closed")
+
+    def test_the_history_cannot_be_walked_backwards_by_deleting(self):
+        """The whole point: repeated deletes must not unlock month after month."""
+        third = self._month(3)
+        SalaryPayment.objects.all().delete()
+        for m in (third, self.older, self.newer):
+            self._settle(m, self.anil)
+
+        owner = self.client_for('owner')
+        for m in (self.newer, self.older):
+            payment = SalaryPayment.objects.filter(month=m).first()
+            if payment:
+                owner.post(reverse('salary_payment_delete', args=[payment.pk]),
+                           {'reason': 'walking back'})
+
+        # `third` was superseded the moment a later month was settled and must
+        # still be refused, however many newer settlements have been removed.
+        self.assertTrue(SalaryPayment.objects.get(month=third).superseded)
+        self.client.post(
+            reverse('salary_payment_form', args=[third.year, third.month]),
+            {f'leave_days_{self.anil.pk}': '7', 'settlement_unlock': 'true'})
+        self.assertEqual(
+            SalaryPaymentLine.objects.get(payment__month=third).leave_days,
+            Decimal('0.0'))
+
+        payment = SalaryPayment.objects.get(month=third)
+        owner.post(reverse('salary_payment_delete', args=[payment.pk]), {'reason': 'nope'})
+        self.assertTrue(SalaryPayment.objects.filter(pk=payment.pk).exists(),
+                        "a closed month cannot be deleted either")
+
+    def test_a_month_never_superseded_is_not_closed(self):
+        """
+        The only settlement ever made stays open.
+
+        This used to delete the newer settlement and expect the older one to
+        reopen — which is precisely the ratchet the one-way door removes. What
+        it was really checking is that closure requires a LATER month to have
+        been settled at some point, so it now starts from a clean slate.
+        """
+        SalaryPayment.objects.all().delete()
+        self._settle(self.older, self.anil)
+        resp = self.client.get(
+            reverse('salary_payment_form', args=[self.older.year, self.older.month]))
+        self.assertFalse(resp.context['is_closed'])
+        self.assertContains(resp, 'Edit this settlement')
+
+    def test_a_closed_month_offers_no_menu(self):
+        resp = self.client_for('owner').get(
+            reverse('salary_payment_form', args=[self.older.year, self.older.month]))
+        self.assertTrue(resp.context['is_closed'])
+        self.assertNotContains(resp, 'Edit this settlement')
+        self.assertNotContains(resp, 'Delete Settlement')
+
+    def test_the_open_month_still_offers_its_menu(self):
+        resp = self.client_for('owner').get(
+            reverse('salary_payment_form', args=[self.newer.year, self.newer.month]))
+        self.assertFalse(resp.context['is_closed'])
+        self.assertContains(resp, 'Edit this settlement')
+        self.assertContains(resp, 'Delete Settlement')
+
+    def test_settling_a_newer_month_closes_the_previous_one(self):
+        """Nothing closes until you actually move on."""
+        SalaryPayment.objects.all().delete()
+        self._settle(self.older, self.anil)
+        resp = self.client.get(
+            reverse('salary_payment_form', args=[self.older.year, self.older.month]))
+        self.assertFalse(resp.context['is_closed'])
+
+        self._settle(self.newer, self.anil)
+        resp = self.client.get(
+            reverse('salary_payment_form', args=[self.older.year, self.older.month]))
+        self.assertTrue(resp.context['is_closed'])
+
+
+class AnAdvanceCannotEnterASettledMonthTests(WorkshopTestCase):
+    """
+    Once a month is settled the money has been worked out and paid, so an
+    advance dated inside it would leave the saved net silently wrong.
+
+    Blocked rather than detected. A "needs re-settling" flag used to catch this
+    afterwards, but it nagged from another screen days later and, by existing,
+    invited people back into reopening a closed month. Refusing it puts the
+    guidance at the moment of the mistake — and the guidance differs by ROLE,
+    because deleting a settlement is Owner-only and telling Office to do it
+    would point them at a button they cannot see.
+    """
+
+    def _last_month(self):
+        return (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    def _settle(self, month, staff):
+        self.client.post(reverse('salary_payment_form', args=[month.year, month.month]),
+                         {f'leave_days_{staff.pk}': '0'})
+
+    def test_an_advance_into_a_settled_month_is_refused(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle(last, anil)
+
+        self.client.post(reverse('salary_advance_add'), {
+            'staff_id': anil.pk, 'amount': '5000',
+            'date': str(last + timedelta(days=10))})
+
+        self.assertEqual(SalaryAdvance.objects.count(), 0)
+
+    def test_office_is_told_to_ask_an_owner(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle(last, anil)
+
+        resp = self.client.post(reverse('salary_advance_add'), {
+            'staff_id': anil.pk, 'amount': '5000',
+            'date': str(last + timedelta(days=10))}, follow=True)
+
+        self.assertContains(resp, 'Ask an owner')
+
+    def test_an_owner_is_told_to_delete_it_themselves(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle(last, anil)
+
+        resp = self.client_for('owner').post(reverse('salary_advance_add'), {
+            'staff_id': anil.pk, 'amount': '5000',
+            'date': str(last + timedelta(days=10))}, follow=True)
+
+        self.assertContains(resp, 'Delete that settlement')
+
+    def test_an_advance_into_an_unsettled_month_is_still_fine(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_advance_add'), {
+            'staff_id': anil.pk, 'amount': '5000',
+            'date': str(last + timedelta(days=10))})
+        self.assertEqual(SalaryAdvance.objects.count(), 1)
+
+    def test_the_documented_route_works_end_to_end(self):
+        """Delete the settlement, record the advance, settle again."""
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle(last, anil)
+
+        payment = SalaryPayment.objects.get()
+        self.client_for('owner').post(reverse('salary_payment_delete', args=[payment.pk]),
+                                      {'reason': 'forgotten advance'})
+        self.client.post(reverse('salary_advance_add'), {
+            'staff_id': anil.pk, 'amount': '5000',
+            'date': str(last + timedelta(days=10)), 'note': 'forgotten'})
+        self._settle(last, anil)
+
+        line = SalaryPaymentLine.objects.get()
+        self.assertEqual(line.advance_used, Decimal('5000.00'))
+        self.assertEqual(line.net_amount, Decimal('15000.00'))
+
+    def test_a_late_discovery_can_go_in_the_current_month(self):
+        """The other route the message offers: keep the closed month closed."""
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle(last, anil)
+
+        self.client.post(reverse('salary_advance_add'), {
+            'staff_id': anil.pk, 'amount': '5000',
+            'date': str(timezone.localdate()), 'note': 'was from last month'})
+
+        advance = SalaryAdvance.objects.get()
+        self.assertEqual(advance.date, timezone.localdate())
+        self.assertEqual(SalaryPaymentLine.objects.get().advance_used, Decimal('0'))
+
+
+class OvertimeIsAddedToThePayTests(WorkshopTestCase):
+    """
+    A few staff have overtime in a given month, entered as one amount at
+    settlement. It is added to the net, so the wage cost the Profit page reads
+    (net + advance) includes it with no further arithmetic.
+    """
+
+    def _last_month(self):
+        return (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    def _month_end(self, m):
+        return (m.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+    def test_overtime_increases_the_net(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0', f'overtime_{anil.pk}': '2500'})
+
+        line = SalaryPaymentLine.objects.get()
+        self.assertEqual(line.overtime_amount, Decimal('2500.00'))
+        self.assertEqual(line.net_amount, Decimal('22500.00'))
+
+    def test_overtime_reaches_the_profit_page(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        SalaryAdvance.objects.create(staff=anil, amount=Decimal('3000'), date=last)
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0', f'overtime_{anil.pk}': '2500'})
+
+        self.assertEqual(
+            ae.salary_expense(last, self._month_end(last))['total'], Decimal('22500.00'),
+            "salary + overtime, with the advance counted exactly once")
+
+    def test_overtime_combines_with_leave_and_advance(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('30000'))
+        SalaryAdvance.objects.create(staff=anil, amount=Decimal('4000'), date=last)
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '2', f'overtime_{anil.pk}': '1500'})
+
+        # 30000 - (30000/30 * 2) + 1500 - 4000
+        self.assertEqual(SalaryPaymentLine.objects.get().net_amount, Decimal('25500.00'))
+
+    def test_no_overtime_is_the_normal_case(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+        line = SalaryPaymentLine.objects.get()
+        self.assertEqual(line.overtime_amount, Decimal('0'))
+        self.assertEqual(line.net_amount, Decimal('20000.00'))
+
+    def test_a_junk_overtime_value_is_treated_as_none(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        for bad in ('abc', '-500', 'Infinity', '999999999999'):
+            SalaryPayment.objects.all().delete()
+            self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                             {f'leave_days_{anil.pk}': '0', f'overtime_{anil.pk}': bad})
+            self.assertEqual(SalaryPaymentLine.objects.get().overtime_amount, Decimal('0'),
+                             f"overtime={bad!r}")
+
+    def test_the_form_offers_an_overtime_box(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        resp = self.client.get(reverse('salary_payment_form', args=[last.year, last.month]))
+        self.assertContains(resp, f'name="overtime_{anil.pk}"')
 
 
 class SalarySettlementInputsAreBoundedTests(WorkshopTestCase):
