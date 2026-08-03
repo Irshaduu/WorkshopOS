@@ -466,6 +466,23 @@
             <!-- ========================================== -->
             <!-- SECTION 4: JOBS / LABOUR (Swipeable) -->
             <!-- ========================================== -->
+            {% comment %}
+            The jobs are a LIST OF WORK, priced once at the bottom.
+
+            There is no Amount box per row, because the workshop has never priced
+            work that way — a job is quoted whole and the customer is told one
+            figure. Office types that figure into the Subtotal below; the rows
+            above it just say what was done, which is also exactly how the
+            printed invoice reads (descriptions, then one SUBTOTAL).
+
+            The Subtotal is Office/Owner only, and unlike the parts prices it is
+            NOT rendered hidden for Floor. It can be left out entirely because it
+            lives on the job card, not in a formset: an absent formset field
+            saves as blank and wipes the row, which is why the spare prices have
+            to be rendered inside a `d-none` cell, but an absent form field on a
+            ModelForm simply leaves the stored value alone. `_price_locked_data`
+            pins it server-side regardless — the template is not the guard.
+            {% endcomment %}
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 text-primary fw-bold">Jobs (Labour)</h6>
@@ -479,9 +496,6 @@
                         <!-- HEADER -->
                         <div class="swipe-row swipe-header">
                             <div class="swipe-cell col-job">Job Performed</div>
-                            {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-                            <div class="swipe-cell col-price text-end">Amount</div>
-                            {% endif %}
                         </div>
 
                         <!-- LIST -->
@@ -494,20 +508,34 @@
                                 <div class="swipe-cell col-job">
                                     {{ l_form.job_description }}
                                 </div>
-                                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-                                <div class="swipe-cell col-price">
-                                    {{ l_form.amount }}
-                                </div>
-                                {% else %}
-                                <div class="d-none">
-                                    {{ l_form.amount }}
-                                </div>
-                                {% endif %}
                             </div>
                             {% endfor %}
                         </div>
                     </div>
                 </div>
+
+                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                <div class="card-footer bg-light border-top py-3">
+                    <div class="d-flex align-items-center justify-content-end gap-3 flex-wrap">
+                        <label for="{{ form.labour_amount.id_for_label }}"
+                               class="mb-0 fw-bold text-secondary text-uppercase"
+                               style="font-size: .75rem; letter-spacing: .04em;">
+                            Labour Subtotal (₹)
+                        </label>
+                        <div style="max-width: 180px; min-width: 140px;">
+                            {{ form.labour_amount }}
+                        </div>
+                    </div>
+                    <div class="text-end text-muted mt-2" style="font-size: .72rem;">
+                        One charge for all the jobs above — this is the JOB PERFORMED subtotal on the invoice.
+                    </div>
+                    {% if form.labour_amount.errors %}
+                    <div class="text-danger text-end mt-2" style="font-size: .78rem;">
+                        {{ form.labour_amount.errors|striptags }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
 
             {% comment %}
@@ -860,15 +888,6 @@
         <div class="swipe-cell col-job">
             {{ labour_formset.empty_form.job_description }}
         </div>
-        {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-        <div class="swipe-cell col-price">
-            {{ labour_formset.empty_form.amount }}
-        </div>
-        {% else %}
-        <div class="d-none">
-            {{ labour_formset.empty_form.amount }}
-        </div>
-        {% endif %}
     </div>
 </div>
 

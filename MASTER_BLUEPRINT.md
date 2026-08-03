@@ -108,7 +108,7 @@ erDiagram
 | 14 | **JobCard** | bill_number, dates, vehicle info, customer, financials, status flags | **Core entity** — full lifecycle |
 | 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
 | 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking | Per-job parts, both routes. `source` records which route and is **never inferred** — added 2026-07-30 with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only |
-| 17 | **JobCardLabourItem** | job_card (FK), job_description, amount | Per-job labour charges |
+| 17 | **JobCardLabourItem** | job_card (FK), job_description, ~~amount~~ | What was done. A DESCRIPTION, not a price — the charge for all the work is `JobCard.labour_amount`. `amount` is dormant (pre-2026-08-04 per-line column, summed into the card by migration 0066, no longer written or read). |
 | 18 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), advance_balance, is_trashed | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
 | 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
 | 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
@@ -414,7 +414,7 @@ stateDiagram-v2
     OnHold --> Active: Toggle Hold
     Active --> Completed: Mark Completed
     Completed --> Active: Undo Completion
-    Active --> [*]: Delete — guarded (blocked if spares/labour/payment), logged, permanent
+    Active --> [*]: Delete — guarded (blocked if spares/jobs/labour charge/payment), logged, permanent
     Completed --> [*]: Delete — guarded, logged to Deletion History, permanent
 
     state Active {
@@ -428,7 +428,7 @@ stateDiagram-v2
 ```
 
 **Bill Number**: Auto-generated `JB-{YY}-{NNN}` (thread-safe with `select_for_update`)
-**Financials**: Denormalized `total_bill_amount` updated via `update_totals()` on every spare/labour save
+**Financials**: Denormalized `total_bill_amount` = spares + `labour_amount`, refreshed by `update_totals()` on every spare save and explicitly by the job-card views after the labour figure is written (saving a job LINE no longer moves money)
 **Payment Methods**: CASH, UPI, CARD, TRANSFER
 **Dates**: All "today"/date-range logic uses `timezone.localdate()` (IST-correct), not `date.today()`.
 
@@ -459,7 +459,7 @@ stateDiagram-v2
 | `/completed/` | `completed_list.html`, `completed_list_partial.html` | 2 completed-jobs screens |
 | `/master_lists/` | 13 files across brands/models/spares/concerns (list/form/confirm_delete each) | Master list CRUD screens |
 | `/car_profiles/` | `car_profile_list.html`, `car_profile_detail.html`, `car_list_partial.html` | 3 car profile screens |
-| `/invoice/` | `invoice_template.html` | Professional invoice |
+| `/invoice/` | `invoice_template.html` | The printed bill. Standalone (does **not** extend `base.html`) and fully self-contained — no Bootstrap, no icon font, no CDN of any kind, so nothing external can move a column on a customer's invoice. Screen controls live outside the `.sheet` element entirely, not merely behind `display:none`. |
 | `/spare_shops/` | `shop_list.html`, `shop_detail.html`, `shop_print.html`, `unassigned_hub.html` | 4 spare shop screens |
 | `/manage/` | `manage_dashboard.html`, `data_cleanup.html` | 2 admin screens |
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
@@ -507,7 +507,7 @@ stateDiagram-v2
 | `JobCardConcernFormSet` | JobCard→Concern | concern_text, status | Autocomplete, can_delete |
 | `JobCardSpareFormSet` | JobCard→Spare (`source=SHOP`) | 8 fields (name, qty, prices, shop, status, dates) | Autocomplete, can_delete. Prefix `spares` |
 | `JobCardInventoryFormSet` | JobCard→Spare (`source=INVENTORY`) | 4 fields (item FK, qty, customer_rate, total_price) | Prefix `inventory`. Product **picked**, not typed — hidden `item` field carries the choice; `InventoryDrawForm.clean()` rejects a started row with no product. Added 2026-07-30 |
-| `JobCardLabourFormSet` | JobCard→Labour | job_description, amount | can_delete |
+| `JobCardLabourFormSet` | JobCard→Labour | job_description | can_delete. No `amount` field — deliberately: the charge lives on `JobCard.labour_amount`, and a field that does not exist cannot be posted by a Floor login. |
 
 All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 
@@ -522,7 +522,7 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 | `inventory.signals` | `signals.py` | Auto stock sync — 8 handlers in 3 groups: 3 for JobCardSpareItem (consumption, `source='INVENTORY'` only) + 2 for JobCard (soft-delete stock reversal, dormant) + 3 for SupplierRestockItem (restock). Never clamps stock at zero |
 | `inventory.costing` | `costing.py` | Weighted-average warehouse cost. Pure functions over a date-ordered replay of receipts and draws; holds no view logic and never touches `current_stock`. Receipts move the average, draws do not |
 | Management Commands | `management/commands/` | `setup_groups` (legacy setup), `backup_db` (automated SQLite backups), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address) |
-| Custom template filters | `templatetags/custom_filters.py` | `has_group`, `is_tomorrow`, `divide`, `multiply`, `clean_qty`, `get_range` |
+| Custom template filters | `templatetags/custom_filters.py` | `has_group`, `is_tomorrow`, `divide`, `multiply`, `clean_qty`/`qty`, `get_range`, `abs_value`, and the four rupee formatters — `inr` (whole rupees, Indian grouping), `inr_amount` (paise only when there are any), `inr_exact` (paise always, for the printed invoice's money columns), `inr_compact` (`45.2L` / `4.57Cr`, for hero figures on a phone) |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV`, raises `ImproperlyConfigured` if unset |
 | `WhiteNoiseMiddleware` | `settings/production.py` | Serves static assets directly from the application in production |
 
@@ -748,6 +748,7 @@ WorkshopOS (Titan)/
 │   │   └── salary_advance.py   ← Salary & Advance: advances, month-end settlement
 │   ├── analysis_views.py       ← Owner Profit + Insights views
 │   ├── analysis_engine.py      ← All Analysis money math (pure functions, no HTML)
+│   ├── invoice.py              ← What the printed bill shows (pure functions, no views)
 │   ├── auth_views.py           ← Auth views + helpers
 │   ├── management_views.py     ← Management views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook views (standalone ledger)
@@ -759,7 +760,7 @@ WorkshopOS (Titan)/
 │   ├── admin.py                ← 10 admin registrations
 │   ├── apps.py                 ← Auto-create groups on migrate
 │   ├── templatetags/
-│   │   └── custom_filters.py   ← 8 template filters (incl. inr / inr_compact)
+│   │   └── custom_filters.py   ← 12 template filters (incl. inr / inr_exact / inr_compact)
 │   ├── management/commands/    ← 9 commands
 │   │   ├── setup_groups.py     ← Group setup (legacy)
 │   │   ├── sync_owner_identity.py ← Owner group/mobile/admin-access: .env → DB (dry run)

@@ -55,8 +55,10 @@ class FleetLedgerTestCase(TestCase):
             admitted_date=date.today() - timedelta(days=days_ago),
             lead_mechanic=self.mechanic,
         )
-        JobCardLabourItem.objects.create(
-            job_card=jc, job_description='Service', amount=Decimal(amount))
+        JobCardLabourItem.objects.create(job_card=jc, job_description='Service')
+        jc.labour_amount = Decimal(amount)
+        jc.save()
+        jc.update_totals()
         jc.refresh_from_db()
         return jc
 
@@ -284,12 +286,21 @@ class EditingASettledBillKeepsThePaymentHonestTests(FleetLedgerTestCase):
     """
 
     def _edit_payload(self, jc, extra_labour):
+        """
+        An unlocked edit that grows the bill by `extra_labour`.
+
+        The extra work is added as a second job LINE plus a raised
+        `labour_amount` — the card carries one charge for all the work now, so
+        the money arrives on the main form, not on the line. Job lines
+        themselves no longer accept an amount at all.
+        """
         return {
             'registration_number': jc.registration_number,
             'admitted_date': str(jc.admitted_date),
             'customer_name': 'Alice', 'customer_contact': '9876543210',
             'brand_name': 'Toyota', 'model_name': 'Corolla',
             'lead_mechanic': self.mechanic.id, 'car_color': 'Black',
+            'labour_amount': str(Decimal('1000') + Decimal(extra_labour)),
             'financial_unlock': 'true',
             'concerns-TOTAL_FORMS': '0', 'concerns-INITIAL_FORMS': '0',
             'concerns-MIN_NUM_FORMS': '0', 'concerns-MAX_NUM_FORMS': '1000',
@@ -302,9 +313,7 @@ class EditingASettledBillKeepsThePaymentHonestTests(FleetLedgerTestCase):
             'labours-0-id': str(jc.labours.first().pk),
             'labours-0-job_card': str(jc.pk),
             'labours-0-job_description': 'Service',
-            'labours-0-amount': '1000',
             'labours-1-job_description': 'Extra part fitted',
-            'labours-1-amount': str(extra_labour),
         }
 
     def test_a_walkin_bill_that_grows_after_payment_books_the_shortfall_as_discount(self):
@@ -718,8 +727,10 @@ class DeleteFormsPostTheReasonTheirViewsRecordTests(TestCase):
             registration_number='KL01AA0001', brand_name='Toyota',
             model_name='Corolla', admitted_date=date.today(),
             lead_mechanic=mechanic, bulk_payer=payer)
-        JobCardLabourItem.objects.create(
-            job_card=jc, job_description='Service', amount=Decimal('1000'))
+        JobCardLabourItem.objects.create(job_card=jc, job_description='Service')
+        jc.labour_amount = Decimal('1000')
+        jc.save()
+        jc.update_totals()
         self.client.post(reverse('bulk_payer_pay', args=[payer.pk]),
                          {'lump_sum': '1000', 'payment_method': 'CASH'})
 

@@ -42,7 +42,9 @@ A premium, comprehensive Django-based workshop management system for a single au
 - **Skeleton Loading** — Shimmer animations for a smooth loading experience.
 
 ### Invoice & Billing
-- **Professional Invoices** — Auto-generated, itemized invoices.
+- **Print-ready invoices** — One A4 sheet matching the workshop's own letterhead, rendered the same on screen as on paper (narrow screens scale the page rather than rearranging it). Fully self-contained: no CDN, so a bill never prints unstyled on a bad connection.
+- **One parts list** — Spare-shop purchases and warehouse draws merged into a single "PART NAME" section. A warehouse draw is billed under its category ("Engine Oil"), never the branded product it was bought as, and the unit price shown is always derived from the customer total — the workshop's own cost never reaches the bill.
+- **Clean print view** — Every control lives outside the printable sheet, not merely hidden by CSS. Long bills paginate with repeating column headings and no split rows.
 - **Cost Analytics** — Automatic calculations for parts and labour.
 - **Sequential Billing** — Thread-safe billing numbers (e.g., `JB-26-001`).
 

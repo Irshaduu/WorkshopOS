@@ -155,10 +155,10 @@ class FinancialIntegrationTests(TestCase):
             unit_price=Decimal('500'), quantity=Decimal('2'),
             total_price=Decimal('1000'),  # Customer price (used for billing)
         )
-        JobCardLabourItem.objects.create(
-            job_card=jc1, job_description='Oil Change',
-            amount=Decimal('500'),
-        )
+        JobCardLabourItem.objects.create(job_card=jc1, job_description='Oil Change')
+        jc1.labour_amount = Decimal('500')
+        jc1.save()
+        jc1.update_totals()
 
         # Job 2: total_price=800, labour=200 → total=1000, received=0 → balance=1000
         JobCardSpareItem.objects.create(
@@ -166,10 +166,10 @@ class FinancialIntegrationTests(TestCase):
             unit_price=Decimal('400'), quantity=Decimal('2'),
             total_price=Decimal('800'),  # Customer price
         )
-        JobCardLabourItem.objects.create(
-            job_card=jc2, job_description='Filter Replace',
-            amount=Decimal('200'),
-        )
+        JobCardLabourItem.objects.create(job_card=jc2, job_description='Filter Replace')
+        jc2.labour_amount = Decimal('200')
+        jc2.save()
+        jc2.update_totals()
 
         # Create bulk payer and add both jobs
         bp = BulkPayer.objects.create(customer_name='Fleet Customer')
@@ -205,12 +205,18 @@ class FinancialIntegrationTests(TestCase):
             job_card=jc1, spare_part_name='Engine Oil',
             unit_price=Decimal('500'), quantity=Decimal('2'), total_price=Decimal('1000'),
         )
-        JobCardLabourItem.objects.create(job_card=jc1, job_description='Svc', amount=Decimal('500'))
+        JobCardLabourItem.objects.create(job_card=jc1, job_description='Svc')
+        jc1.labour_amount = Decimal('500')
+        jc1.save()
+        jc1.update_totals()
         JobCardSpareItem.objects.create(
             job_card=jc2, spare_part_name='Air Filter',
             unit_price=Decimal('400'), quantity=Decimal('2'), total_price=Decimal('800'),
         )
-        JobCardLabourItem.objects.create(job_card=jc2, job_description='Filt', amount=Decimal('200'))
+        JobCardLabourItem.objects.create(job_card=jc2, job_description='Filt')
+        jc2.labour_amount = Decimal('200')
+        jc2.save()
+        jc2.update_totals()
 
         bp = BulkPayer.objects.create(customer_name='Reversal Fleet')
         bp.job_cards.add(jc1, jc2)
@@ -254,10 +260,10 @@ class FinancialIntegrationTests(TestCase):
             unit_price=Decimal('2000'), quantity=Decimal('2'),
             total_price=Decimal('5000'),  # Customer price (with markup)
         )
-        JobCardLabourItem.objects.create(
-            job_card=jc, job_description='Brake Work',
-            amount=Decimal('1500'),
-        )
+        JobCardLabourItem.objects.create(job_card=jc, job_description='Brake Work')
+        jc.labour_amount = Decimal('1500')
+        jc.save()
+        jc.update_totals()
 
         resp = self.client.get(reverse('invoice_view', args=[jc.pk]))
         self.assertEqual(resp.status_code, 200)

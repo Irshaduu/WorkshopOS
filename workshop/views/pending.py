@@ -8,7 +8,7 @@ from django.db.models import (
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
 
-from ..models import JobCard, JobCardSpareItem, JobCardLabourItem
+from ..models import JobCard, JobCardSpareItem
 from ..decorators import office_required
 
 

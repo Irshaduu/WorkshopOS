@@ -118,7 +118,7 @@ def _reconcile_settled_bill(jobcard):
 
 def _price_locked_data(request, jobcard=None):
     """
-    POST data with every price field forced back to whatever is already stored.
+    POST data with every price forced back to whatever is already stored.
 
     Prices are hidden from Floor in the template, but the inputs are still
     rendered — inside a `d-none` cell — because leaving them out would make the
@@ -131,6 +131,12 @@ def _price_locked_data(request, jobcard=None):
     with the value on the existing row: a crafted POST simply has no effect. Rows
     with no stored counterpart get blank, since a Floor user has no prices to
     preserve on a part they are adding.
+
+    Covers THREE surfaces, and the third is not a formset: `labour_amount` is the
+    whole labour charge and lives on the job card itself, so the returned data
+    must be what binds `JobCardForm` too — not only the parts formsets. A price
+    that Floor cannot see on any screen must be a price Floor cannot post from
+    any screen.
 
     Office and Owner get `request.POST` untouched.
     """
@@ -152,6 +158,11 @@ def _price_locked_data(request, jobcard=None):
                 if key in data:
                     value = getattr(row, field, None) if row else None
                     data[key] = '' if value is None else str(value)
+
+    # The card's own labour charge. On a NEW card there is nothing stored yet, so
+    # it is pinned at zero — a Floor user opening a job records what was done and
+    # Office prices it afterwards.
+    data['labour_amount'] = str(jobcard.labour_amount if jobcard is not None else Decimal('0'))
     return data
 
 
@@ -164,8 +175,11 @@ def jobcard_create(request):
     Prevents duplicate job cards with 3-attempt confirmation.
     """
     if request.method == 'POST':
-        form = JobCardForm(request.POST)
+        # One locked copy of the POST binds BOTH the card and its parts — the
+        # labour charge is a field on the card, so binding the form from raw
+        # request.POST would leave that one price unprotected.
         parts_data = _price_locked_data(request)
+        form = JobCardForm(parts_data)
 
         if form.is_valid():
             jobcard = form.save(commit=False)
@@ -292,6 +306,11 @@ def jobcard_create(request):
                     for shop in SpareShop.objects.filter(pk__in=shops_to_update):
                         shop.update_totals()
 
+                    # See jobcard_edit: the labour charge lives on the card, so
+                    # nothing recomputes the bill for a card created with labour
+                    # and no parts. No-ops when the total already agrees.
+                    jobcard.update_totals()
+
                 messages.success(request, f'Job card for {jobcard.registration_number} created successfully!')
                 return redirect('jobcard_edit', pk=jobcard.pk)
         else:
@@ -409,8 +428,10 @@ def jobcard_edit(request, pk):
             )
             return redirect('jobcard_edit', pk=pk)
 
-        form = JobCardForm(request.POST, instance=jobcard)
+        # See jobcard_create: one locked copy binds the card and its parts alike,
+        # because `labour_amount` is a price that sits on the card.
         parts_data = _price_locked_data(request, jobcard)
+        form = JobCardForm(parts_data, instance=jobcard)
         concern_formset = JobCardConcernFormSet(request.POST, instance=jobcard, prefix='concerns')
         spare_formset = JobCardSpareFormSet(parts_data, instance=jobcard, prefix='spares')
         inventory_formset = JobCardInventoryFormSet(parts_data, instance=jobcard, prefix='inventory')
@@ -518,9 +539,17 @@ def jobcard_edit(request, pk):
                 for shop in SpareShop.objects.filter(pk__in=shops_to_update):
                     shop.update_totals()
 
-                # The parts/labour saves above have already rewritten
-                # total_bill_amount via JobCard.update_totals(), so re-read it
-                # before deciding whether a settled bill still adds up.
+                # Recompute the bill explicitly.
+                #
+                # A spare save still triggers JobCard.update_totals() through the
+                # model, but the labour charge no longer does — it is a field on
+                # the card now, written by form.save(), and a card whose ONLY
+                # change was its labour figure would otherwise keep the old
+                # total_bill_amount forever. update_totals() no-ops when nothing
+                # moved, so calling it here costs one aggregate and closes that.
+                jobcard.update_totals()
+
+                # Re-read before deciding whether a settled bill still adds up.
                 jobcard.refresh_from_db()
                 reopened = _reconcile_settled_bill(jobcard)
 
@@ -591,7 +620,12 @@ def jobcard_delete(request, pk):
     if jobcard.spares.filter(source=JobCardSpareItem.SOURCE_SHOP).exists():
         blockers.append("spare parts")
     if jobcard.labours.exists():
-        blockers.append("labour charges")
+        blockers.append("jobs performed")
+    # The charge itself, which now lives on the card rather than on the lines.
+    # Without this a card whose job lines were cleared but whose labour figure
+    # was left standing would delete with real money still on it.
+    if (jobcard.labour_amount or 0) > 0:
+        blockers.append("a labour charge")
     if (jobcard.received_amount or 0) > 0:
         blockers.append("a received payment")
 

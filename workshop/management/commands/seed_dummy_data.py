@@ -623,10 +623,20 @@ class Command(BaseCommand):
                     ordered_date=admitted_date, received_date=admitted_date,
                 )
 
+        # Jobs are descriptions; the charge is ONE figure on the card. The pool
+        # still carries a per-job range because that is how a realistic total is
+        # built up — it is summed here rather than stored per line.
+        labour_total = Decimal("0")
         for desc, lo, hi in random.sample(LABOUR_POOL, random.randint(1, 2)):
-            JobCardLabourItem.objects.create(
-                job_card=jobcard, job_description=desc, amount=Decimal(random.randint(lo, hi))
-            )
+            JobCardLabourItem.objects.create(job_card=jobcard, job_description=desc)
+            labour_total += Decimal(random.randint(lo, hi))
+        jobcard.labour_amount = labour_total
+        # Fold it into the bill BEFORE the payment logic below reads
+        # total_bill_amount. The spare saves recomputed that total while the
+        # labour charge was still zero, and nothing recomputes it for a card
+        # whose labour is set in memory — so without this every seeded card
+        # would be "paid in full" at the parts-only figure.
+        jobcard.update_totals()
 
         jobcard.completed = True
         jobcard.completed_date = admitted_date + timedelta(days=random.randint(1, 4))

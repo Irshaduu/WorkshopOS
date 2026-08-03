@@ -54,8 +54,11 @@ class RenderSmokeTests(TestCase):
             quantity=Decimal('1.50'), unit_price=Decimal('300'), total_price=Decimal('450'),
         )
         JobCardLabourItem.objects.create(
-            job_card=self.heavy_job, job_description='Service', amount=Decimal('800'),
+            job_card=self.heavy_job, job_description='Service',
         )
+        self.heavy_job.labour_amount = Decimal('800')
+        self.heavy_job.save()
+        self.heavy_job.update_totals()
 
         # --- Financial records ---
         self.shop_payment = SpareShopPayment.objects.create(

@@ -1,464 +1,1035 @@
-{% load static custom_filters %}
-<!DOCTYPE html>
+{% load custom_filters %}<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice {{ jobcard.bill_number }}</title>
+    <title>Invoice {{ jobcard.bill_number|default:"" }} — Formula D</title>
+
+    {% comment %}
+    ============================================================================
+    THE PRINTED BILL. Read this before changing anything below.
+    ============================================================================
+    This page is deliberately SELF-CONTAINED: no Bootstrap, no icon font, no CDN
+    of any kind. It used to pull three external files, which bought one modal and
+    cost the thing that actually matters here — control over what lands on paper.
+    A framework reset that ships tomorrow must not be able to move a column on a
+    customer's invoice, and a workshop printing a bill on a dropped connection
+    must not get an unstyled page. Everything this document needs is in this file.
+
+    There are two layers, and the boundary is absolute:
+
+      .no-print   the workshop's controls — toolbar, buttons, messages, the
+                  settle dialog. Screen only. None of it exists on paper.
+      .sheet      the bill. Reproduces the reference invoice; nothing in here is
+                  conditional on who is looking at it or what they may do.
+
+    Money and naming decisions are NOT here — they are in `workshop/invoice.py`,
+    which is why this template contains no arithmetic. If a figure looks wrong,
+    that module is where it is decided.
+    {% endcomment %}
+
     <style>
+        /* ==================================================================
+           PAGE
+           ================================================================== */
+        {% comment %}
+        NO `size:` declaration here, deliberately — the paper chosen in the print
+        dialog wins.
+
+        This said `size: A4` once and it was measurably wrong. A4 is TALLER than
+        US Letter (297mm vs 279mm), so printing an A4-sized page onto Letter made
+        Chrome shrink the whole document by 279/297 = 0.939 to fit, then centre
+        it. The declared 14mm margin came out as 9.5 + (14 x 0.939) = 22.6mm, and
+        every figure on the bill printed 6% small. Leaving `size` alone means the
+        page box IS the paper: 100% scale, and the margin below is the margin
+        that prints, on A4 and Letter alike.
+
+        The margin stays on `@page` rather than becoming padding on the sheet,
+        because @page applies to EVERY page. An element's padding does not — it
+        pads the top of page 1 and the bottom of the last page, so a two-page
+        invoice would start page 2 hard against the paper edge, inside the area
+        most printers physically cannot reach.
+        {% endcomment %}
+        @page {
+            margin: 12mm;
+        }
+
         * {
-            margin: 0;
-            padding: 0;
             box-sizing: border-box;
         }
 
+        html,
         body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-            background: white;
+            margin: 0;
+            padding: 0;
         }
 
-        .invoice-container {
-            max-width: 800px;
+        body {
+            background: #f1f3f6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            color: #1e293b;
+        }
+
+        /* ==================================================================
+           SCREEN-ONLY CHROME
+           ================================================================== */
+        .bar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, .92);
+            backdrop-filter: blur(6px);
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .bar-spacer {
+            flex: 1 1 auto;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            /* 44px — these are tapped on a tablet and a phone, not only clicked. */
+            min-height: 44px;
+            padding: 0 16px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            font: 600 14px/1 inherit;
+            font-family: inherit;
+            text-decoration: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn svg {
+            width: 17px;
+            height: 17px;
+            flex: none;
+        }
+
+        .btn-ghost {
+            background: #fff;
+            border-color: #cbd5e1;
+            color: #334155;
+        }
+
+        .btn-ghost:hover {
+            background: #f8fafc;
+        }
+
+        .btn-primary {
+            background: #1f4e79;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #17395a;
+        }
+
+        .btn-money {
+            background: #f59e0b;
+            color: #422006;
+        }
+
+        .btn-money:hover {
+            background: #d97706;
+        }
+
+        .btn-edit {
+            background: #059669;
+            color: #fff;
+        }
+
+        .btn-edit:hover {
+            background: #047857;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            font-size: 12.5px;
+            font-weight: 700;
+            letter-spacing: .02em;
+        }
+
+        .chip-paid {
+            background: #dcfce7;
+            color: #14532d;
+        }
+
+        .chip-due {
+            background: #fee2e2;
+            color: #7f1d1d;
+        }
+
+        .chip-fleet {
+            background: #ede9fe;
+            color: #4c1d95;
+        }
+
+        .notices {
+            max-width: 210mm;
+            margin: 14px auto 0;
+            padding: 0 12px;
+        }
+
+        .notice {
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            border: 1px solid;
+        }
+
+        .notice-success {
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+            color: #065f46;
+        }
+
+        .notice-error {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+
+        .notice-warning {
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+
+        .notice-info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1e40af;
+        }
+
+        .notice a {
+            color: inherit;
+            font-weight: 700;
+        }
+
+        /* ==================================================================
+           THE SHEET
+           ==================================================================
+           210mm wide on screen as well as on paper, so what an owner reviews on
+           a phone is the document, not an approximation of it. Narrow screens
+           scale the whole sheet down (see fitSheet() at the foot of this file)
+           rather than reflowing it — a bill that rearranged itself to fit a
+           phone would not be the bill that prints.
+           ================================================================== */
+        .sheet-wrap {
+            padding: 18px 12px 40px;
+            overflow: hidden;
+        }
+
+        .sheet {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 14mm;
             margin: 0 auto;
-            background: white;
-            border: 2px solid #000;
-            padding: 20px;
+            background: #fff;
+            box-shadow: 0 4px 24px rgba(15, 23, 42, .16);
+            transform-origin: top left;
+
+            /* Calibri is what the reference invoice is set in and is present on
+               every Windows machine in the workshop; the rest are fallbacks with
+               comparable metrics so a bill opened on a phone keeps its line
+               breaks. */
+            font-family: Calibri, "Segoe UI", Candara, "Trebuchet MS", Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.15;
+            color: #000;
         }
 
-        /* Header */
-        .header {
+        /* ---- Letterhead ---- */
+        .inv-head {
             display: flex;
-            justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 3px solid #000;
+            justify-content: space-between;
+            gap: 8mm;
         }
 
-        .logo-section {
-            flex: 1;
-        }
-
-        .logo {
-            font-size: 32px;
-            font-weight: bold;
+        .brand-mark {
+            font-family: "Arial Black", "Arial Bold", Arial, sans-serif;
             font-style: italic;
-            margin-bottom: 2px;
+            font-weight: 900;
+            font-size: 23pt;
+            letter-spacing: -.01em;
+            line-height: 1;
+            white-space: nowrap;
         }
 
-        .formula {
-            color: #000;
+        .brand-mark .d {
+            color: #e8112d;
         }
 
-        .d {
-            color: #e74c3c;
+        .brand-rule {
+            height: 1mm;
+            background: #e8112d;
+            margin: 1.1mm 0 .6mm;
+            /* Sized to the wordmark rather than the column, as on the letterhead. */
+            width: 56mm;
         }
 
-        .tagline {
-            font-size: 11px;
-            color: #000;
-            margin-bottom: 10px;
+        .brand-tag {
+            font-family: "Arial Black", Arial, sans-serif;
             font-style: italic;
+            font-weight: 900;
+            font-size: 8pt;
+            line-height: 1;
         }
 
-        .company-info {
-            font-size: 11px;
-            line-height: 1.5;
+        .brand-addr {
+            margin-top: 5mm;
+            font-size: 10pt;
+            line-height: 4.05mm;
         }
 
-        .invoice-section {
-            text-align: right;
-        }
-
-        .invoice-title {
-            font-size: 36px;
-            font-weight: bold;
-            margin-bottom: 15px;
-        }
-
-        .invoice-meta {
-            font-size: 12px;
-            line-height: 1.6;
-        }
-
-        /* Info Sections */
-        .info-row {
+        .inv-doc {
             display: flex;
-            gap: 0;
-            margin-bottom: 15px;
-            border: 2px solid #000;
+            flex-direction: column;
+            align-items: flex-end;
+            padding-right: 14mm;
         }
 
-        .info-box {
-            flex: 1;
+        {% comment %}
+        Sized off the reference rather than picked: the word sets about as wide
+        as the DATE line beneath it and ends level with it, ~16.8% of the
+        content width. 30pt overshot that by half again.
+        {% endcomment %}
+        .inv-title {
+            font-family: Arial, Helvetica, sans-serif;
+            font-weight: 700;
+            font-size: 21.5pt;
+            line-height: 1;
+            letter-spacing: -.01em;
         }
 
-        .info-box:first-child {
-            border-right: 2px solid #000;
+        .inv-meta {
+            display: flex;
+            align-items: baseline;
+            gap: 7mm;
+            margin-top: 20mm;
+            font-weight: 700;
+            font-size: 11pt;
+            white-space: nowrap;
         }
 
-        .info-header {
-            background: #2c5282;
-            color: white;
-            padding: 6px 12px;
-            font-weight: bold;
-            font-size: 12px;
-            text-align: center;
-        }
-
-        .info-content {
-            background: white;
-            padding: 10px 12px;
-            min-height: 70px;
-            font-size: 11px;
-        }
-
-        .info-line {
-            margin-bottom: 4px;
-        }
-
-        /* Tables */
-        table {
+        /* ---- Shared table shell ----
+           Both money tables run on ONE column grid so the QTY / UNIT PRICE /
+           AMOUNT boundaries line up between them, exactly as they do on the
+           reference. Change a width here and both tables move together. */
+        .inv-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 0;
-            border: 2px solid #000;
+            table-layout: fixed;
         }
 
-        .table-header {
-            background: #2c5282;
-            color: white;
-            padding: 6px 12px;
-            font-weight: bold;
-            font-size: 12px;
+        .inv-table td,
+        .inv-table th {
+            /* Gridlines are WHITE: the banding is what separates the rows, and a
+               grey rule over a blue band reads as a smudge at print size. */
+            border: 1px solid #fff;
+            padding: 0 2mm;
+            font-weight: 400;
+            font-size: 10pt;
+            vertical-align: middle;
+            overflow-wrap: break-word;
         }
 
-        th {
-            background: #2c5282;
-            color: white;
-            padding: 6px 8px;
-            text-align: left;
-            font-size: 11px;
-            font-weight: bold;
-            border: 1px solid #000;
-        }
-
-        td {
-            padding: 6px 8px;
-            font-size: 11px;
-            border: 1px solid #000;
-        }
-
-        tr:nth-child(even) {
-            background: #e8f0f8;
-        }
-
-        tr:nth-child(odd) {
-            background: white;
-        }
-
-        .text-right {
-            text-align: right;
-        }
-
-        .subtotal-row {
-            background: #e8f0f8 !important;
-            font-weight: bold;
-        }
-
-        .total-row {
-            background: #d0e4f8 !important;
-            font-weight: bold;
-            font-size: 12px;
-        }
-
-        .parts-table {
-            margin-top: 15px;
-        }
-
-        /* Footer */
-        .footer {
-            margin-top: 30px;
+        /* The navy header is one unbroken bar — its internal borders are the bar. */
+        .inv-table thead th {
+            background: #1f4e79;
+            border-color: #1f4e79;
+            color: #fff;
+            font-weight: 700;
+            height: 5.5mm;
             text-align: center;
         }
 
-        .thank-you {
-            color: #2c5282;
+        .inv-table thead th.h-left {
+            text-align: left;
+        }
+
+        {% comment %}
+        Every cell modifier below is qualified with `.inv-table` on purpose.
+        `.inv-table td` is specificity (0,1,1); a bare `.thanks` or `.grand-label`
+        is (0,1,0) and LOSES to it. That is not theoretical — it shipped once and
+        silently flattened SUBTOTAL, TOTAL and the thank-you line to 10pt
+        regular, while their colours and fills (which nothing else set) came
+        through fine, so the page looked almost right. Qualifying makes each one
+        (0,2,0) and beats the base rule.
+        {% endcomment %}
+        .inv-table .c {
+            text-align: center;
+        }
+
+        .inv-table .r {
+            text-align: right;
+        }
+
+        /* An accounting cell: the ₹ sits against the left edge, the figure
+           against the right, the way every amount on the reference is set.
+           A flex row rather than a float — a float inside a cell anchors to the
+           top of the box, so the rupee sign drifted off the baseline of the
+           figure it belongs to on every row with a set height. */
+        .money .acct {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 2mm;
+        }
+
+        /* Cells outside the shaded totals block carry no fill and no rule. */
+        .inv-table .void {
+            background: #fff;
+            border-color: #fff;
+        }
+
+        .inv-table .sub-cell {
+            background: #dce6f1;
+        }
+
+        .inv-table .sub-label {
+            background: #dce6f1;
+            font-weight: 700;
+        }
+
+        /* ---- Bill to / vehicle ---- */
+        .inv-parties {
+            margin-top: 2.7mm;
+        }
+
+        .inv-parties .band th {
+            background: #1f4e79;
+            border-color: #1f4e79;
+            color: #fff;
+            font-weight: 700;
+            height: 4.4mm;
+            font-size: 10pt;
+            padding: 0 2mm;
+            border-width: 1px;
+            border-style: solid;
+        }
+
+        .inv-parties .band .p-left {
+            text-align: left;
+            padding-left: 3.5mm;
+        }
+
+        .inv-parties .band .p-right {
+            text-align: center;
+        }
+
+        .inv-parties td {
+            background: #dce6f1;
+            border: 1px solid #dce6f1;
+            vertical-align: top;
+            padding: 0 2mm;
+            line-height: 4.98mm;
+            font-size: 10pt;
+        }
+
+        /* ---- Job performed ---- */
+        .inv-jobs {
+            margin-top: 1.4mm;
+        }
+
+        .inv-jobs tbody td {
+            height: 5.25mm;
+        }
+
+        /* Banding starts on the SECOND row here and on the FIRST row in the
+           parts table — that is how the reference is set, not an oversight. */
+        .inv-jobs tbody.rows tr:nth-child(even) td {
+            background: #dce6f1;
+        }
+
+        /* ---- Parts ---- */
+        .inv-parts {
+            margin-top: 5.6mm;
+        }
+
+        .inv-parts tbody td {
+            height: 6.94mm;
+        }
+
+        .inv-parts tbody.rows tr:nth-child(odd) td {
+            background: #dce6f1;
+        }
+
+        .inv-parts .grand td {
+            height: 6.8mm;
+            /* A little air above the closing line, as on the reference. */
+            border-top-width: 2px;
+        }
+
+        .inv-table .grand-cell {
+            background: #bdd7ee;
+        }
+
+        .inv-table .grand-label,
+        .inv-table .grand-amount {
+            background: #bdd7ee;
+            font-weight: 700;
+            font-size: 15pt;
+            color: #1f4e79;
+        }
+
+        .inv-table .thanks {
+            background: #fff;
+            border-color: #fff;
+            text-align: center;
             font-style: italic;
-            font-size: 14px;
-            margin-bottom: 15px;
+            font-weight: 700;
+            font-size: 13pt;
+            color: #2e74b5;
         }
 
-        .contact-info {
-            font-size: 10px;
-            color: #000;
-            line-height: 1.6;
+        /* ---- Foot ---- */
+        .inv-foot {
+            margin-top: 8.1mm;
+            text-align: center;
+            font-size: 10.5pt;
+            line-height: 4.6mm;
         }
 
-        /* Print styles */
+        /* ==================================================================
+           PRINT
+           ==================================================================
+           Everything the workshop uses to drive this page disappears; the sheet
+           becomes the page itself. Pagination rules are the second half — see
+           the comment on each.
+           ================================================================== */
         @media print {
-            body {
-                padding: 0;
-            }
-
-            .invoice-container {
-                border: 2px solid #000;
-            }
-
             .no-print {
-                display: none;
+                display: none !important;
             }
 
-            /* Force colors to print */
+            html,
+            body {
+                background: #fff;
+            }
+
+            .sheet-wrap {
+                padding: 0;
+                overflow: visible;
+                height: auto !important;
+            }
+
+            .sheet {
+                width: auto;
+                min-height: 0;
+                margin: 0;
+                padding: 0;
+                box-shadow: none;
+                /* The screen's fit-to-width scaling must never reach paper. */
+                transform: none !important;
+            }
+
+            /* Bands and banding ARE the design — without this the bill prints as
+               an unreadable grid of empty boxes on a default browser setup. */
             * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
 
-            .info-header,
-            .table-header,
-            th {
-                background: #2c5282 !important;
-                color: white !important;
+            /* --- Pagination ---
+               The column headings repeat at the top of every page they carry
+               rows onto, so page 3 of a parts list is still labelled
+               PART NAME / QTY / UNIT PRICE / AMOUNT. */
+            thead {
+                display: table-header-group;
             }
 
-            tr:nth-child(even) {
-                background: #e8f0f8 !important;
+            /* ...and never strand a heading at the foot of a page with its rows
+               overleaf. */
+            thead tr {
+                break-after: avoid;
+                page-break-after: avoid;
             }
 
-            .subtotal-row {
-                background: #e8f0f8 !important;
+            .inv-table {
+                /* The table itself MUST be breakable — it is the only thing long
+                   enough to need more than one page. */
+                break-inside: auto;
+                page-break-inside: auto;
             }
 
-            .total-row {
-                background: #d0e4f8 !important;
+            /* A row is atomic. Half a part name at the foot of a page and its
+               price at the top of the next is the failure this prevents. */
+            tr {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            /* SUBTOTAL and TOTAL are one thought and travel together. They sit in
+               their own <tbody> for exactly this — a <tfoot> would have repeated
+               them at the bottom of every page. */
+            .totals {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            /* The letterhead and the vehicle block belong to page 1, whole, with
+               the table that follows them started rather than orphaned. */
+            .inv-head,
+            .inv-parties {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .inv-parties {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            /* One footer, on the last page, entire — and not stranded on a page
+               of its own when the totals happen to end on a page boundary. */
+            .inv-foot {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-before: avoid;
+                page-break-before: avoid;
+            }
+        }
+
+        /* ==================================================================
+           SETTLE DIALOG (screen only)
+           ================================================================== */
+        dialog.pay {
+            width: min(420px, calc(100vw - 32px));
+            padding: 0;
+            border: none;
+            border-radius: 14px;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, .3);
+        }
+
+        dialog.pay::backdrop {
+            background: rgba(15, 23, 42, .5);
+        }
+
+        .pay-head {
+            background: #1f4e79;
+            color: #fff;
+            padding: 16px 20px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .pay-body {
+            padding: 20px;
+        }
+
+        .pay-body label {
+            display: block;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #475569;
+            margin-bottom: 6px;
+        }
+
+        .pay-total {
+            font-size: 26px;
+            font-weight: 800;
+            margin: 0 0 18px;
+        }
+
+        .pay-body input,
+        .pay-body select {
+            width: 100%;
+            min-height: 46px;
+            padding: 0 12px;
+            font-size: 16px;
+            font-family: inherit;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: #fff;
+            color: #0f172a;
+            margin-bottom: 16px;
+        }
+
+        .pay-body input:focus,
+        .pay-body select:focus {
+            outline: 2px solid #1f4e79;
+            outline-offset: 1px;
+        }
+
+        .pay-foot {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 20px;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        @media (max-width: 640px) {
+            .bar {
+                gap: 6px;
+                padding: 8px 10px;
+            }
+
+            .btn {
+                padding: 0 12px;
+                font-size: 13px;
             }
         }
     </style>
 </head>
 
 <body>
-    {% with back_url=request.GET.back %}
-    {% if back_url %}
-    <div class="no-print mb-4 d-flex justify-content-center pt-3" style="position: sticky; top: 0; z-index: 1000; background: rgba(255,255,255,0.9); backdrop-filter: blur(5px); padding-bottom: 10px;">
-        <a href="{{ back_url }}" class="btn btn-dark shadow-sm px-4 rounded-pill d-flex align-items-center gap-2" style="font-size: 0.9rem; font-weight: 600;">
-            <i class="bi bi-arrow-left"></i> Back to Workshop list
+
+    {% comment %}
+    ========================================================================
+    SCREEN ONLY — nothing from here to the sheet reaches paper.
+    ========================================================================
+    {% endcomment %}
+    <div class="bar no-print">
+        {% if back_url %}
+        <a href="{{ back_url }}" class="btn btn-ghost">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+            Back
+        </a>
+        {% endif %}
+
+        {% if jobcard.bulk_payer %}
+        <span class="chip chip-fleet">Fleet · {{ jobcard.bulk_payer.customer_name }}</span>
+        {% elif jobcard.payment_status == 'PAID' %}
+        <span class="chip chip-paid">{{ jobcard.get_payment_status_display }}</span>
+        {% else %}
+        <span class="chip chip-due">{{ jobcard.get_payment_status_display }}</span>
+        {% endif %}
+
+        <span class="bar-spacer"></span>
+
+        <button type="button" class="btn btn-primary" onclick="window.print()">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
+            Print / Save PDF
+        </button>
+
+        {% if jobcard.bulk_payer %}
+        <a href="{% url 'bulk_payer_detail' jobcard.bulk_payer.pk %}" class="btn btn-ghost">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 1h8v14H8v-3H4v3H2V1zm2 2v2h2V3H4zm4 0v2h2V3H8zM4 6v2h2V6H4zm4 0v2h2V6H8zm3-1h3v10h-3V5z"/></svg>
+            Settle on Fleet Account
+        </a>
+        {% elif request.user|has_group:"Office" or request.user|has_group:"Owner" %}
+        <button type="button" class="btn btn-money" onclick="document.getElementById('payDialog').showModal()">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v1.4H9.3c.5.4.9.9 1.1 1.6H12v1.4h-1.5c-.2 1.7-1.6 2.9-3.5 3l3.9 4.2V15H9.1L4.7 10v-1.6h1.7c1.4 0 2.3-.5 2.5-1.6H4V5.4h4.8C8.5 4.6 7.7 4.2 6.4 4.2H4V2z"/></svg>
+            Settle Bill
+        </button>
+        {% endif %}
+
+        <a href="{% url 'jobcard_edit' jobcard.pk %}" class="btn btn-edit">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.1 1.3a1.1 1.1 0 0 1 1.6 0l1 1a1.1 1.1 0 0 1 0 1.6l-.9.9-2.6-2.6.9-.9zM10.5 2.9l2.6 2.6-7.3 7.3-3.3.7.7-3.3 7.3-7.3z"/></svg>
+            Edit Job
         </a>
     </div>
-    {% endif %}
-    {% endwith %}
 
-    {% if jobcard.bulk_payer %}
-    <div class="no-print" style="max-width: 800px; margin: 0 auto 12px;">
-        <a href="{% url 'bulk_payer_detail' jobcard.bulk_payer.pk %}"
-            style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 10px; color: #5b21b6; text-decoration: none; font-size: 14px; font-weight: 600;">
-            <i class="bi bi-building"></i>
-            Billed to Fleet Account: {{ jobcard.bulk_payer.customer_name }} — payment is settled from that account's page, not here.
-        </a>
+    {% comment %}
+    `update_bill_status` redirects back here with a message, and this page used
+    to render none — so "Billing updated" was never shown, and worse, surfaced
+    later on whatever unrelated screen the user opened next. This template is
+    standalone (it does not extend base.html), so rendering messages here is the
+    one place it can happen, not a duplicate of base.html's block.
+    {% endcomment %}
+    {% if messages %}
+    <div class="notices no-print">
+        {% for message in messages %}
+        <div class="notice notice-{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
     </div>
     {% endif %}
 
-    <div class="invoice-container">
-        <!-- Header -->
-        <div class="header">
-            <div class="logo-section">
-                <div class="logo">
-                    <span class="formula">FORMULA</span> <span class="d">D</span>
+    {% comment %}
+    ========================================================================
+    THE BILL
+    ========================================================================
+    {% endcomment %}
+    <div class="sheet-wrap">
+        <div class="sheet" id="sheet">
+
+            <header class="inv-head">
+                <div class="brand">
+                    {% comment %}
+                    The wordmark is set, not an image: a logo file that fails to
+                    load leaves a customer holding an unbranded invoice, and a
+                    raster one prints soft.
+                    {% endcomment %}
+                    <div class="brand-mark">FORMULA <span class="d">D</span></div>
+                    <div class="brand-rule"></div>
+                    <div class="brand-tag">Diagnosis &amp; Service</div>
+                    <div class="brand-addr">
+                        Calicut Road, Pullara<br>
+                        PIN: 676517<br>
+                        Phone: +91 9207217978<br>
+                        formuladservice.in@gmail.com
+                    </div>
                 </div>
-                <div class="tagline">Diagnostic & Service</div>
-                <div class="company-info">
-                    Calicut Road, Pullara<br>
-                    PIN: 676517<br>
-                    Phone: +91 9207217978<br>
-                    formuladservice.in@gmail.com
+
+                <div class="inv-doc">
+                    <div class="inv-title">INVOICE</div>
+                    <div class="inv-meta">
+                        <span>DATE:&nbsp; {{ jobcard.admitted_date|date:"j-M-Y" }}</span>
+                        <span>#: {{ jobcard.bill_number|default:"" }}</span>
+                    </div>
                 </div>
-            </div>
-            <div class="invoice-section">
-                <div class="invoice-title">INVOICE</div>
-                <div class="invoice-meta">
-                    <strong>DATE:</strong> {{ jobcard.admitted_date|date:"d-M-Y" }}<br>
-                    <strong>#:</strong> {{ jobcard.bill_number|default:"Pending" }}<br>
-                    <strong>PAYMENT:</strong> <span style="text-transform: uppercase; font-weight: bold; color: {% if jobcard.payment_status == 'PAID' %}#27ae60{% else %}#e74c3c{% endif %};">{{ jobcard.get_payment_status_display }}</span>
-                </div>
-            </div>
-        </div>
+            </header>
 
-        <!-- Bill To & Vehicle Info -->
-        <div class="info-row">
-            <div class="info-box">
-                <div class="info-header">BILL TO</div>
-                <div class="info-content">
-                    <div class="info-line"><strong>NAME:</strong> {{ jobcard.customer_name|default:"N/A" }}</div>
-                    <div class="info-line"><strong>MAKE:</strong> {{ jobcard.brand_name }}</div>
-                </div>
-            </div>
-            <div class="info-box">
-                <div class="info-header">VEHICLE INFO</div>
-                <div class="info-content">
-                    <div class="info-line"><strong>REG NO:</strong> {{ jobcard.registration_number }}</div>
-                    <div class="info-line"><strong>MODEL:</strong> {{ jobcard.model_name }}</div>
-                    <div class="info-line"><strong>MILAGE:</strong> {{ jobcard.mileage|default:"N/A" }}</div>
-                </div>
-            </div>
-        </div>
+            <table class="inv-table inv-parties">
+                <colgroup>
+                    <col style="width:57.5%">
+                    <col style="width:42.5%">
+                </colgroup>
+                {% comment %}
+                This heading row sits in a <tbody>, NOT a <thead>, on purpose:
+                `thead { display: table-header-group }` repeats a heading on
+                every printed page, which is right for the money columns and
+                wrong for the vehicle block — it belongs to page 1 only.
+                {% endcomment %}
+                <tbody>
+                    <tr class="band">
+                        <th class="p-left">BILL TO</th>
+                        <th class="p-right">VEHICLE INFO</th>
+                    </tr>
+                    <tr>
+                        <td>
+                            NAME: {{ jobcard.customer_name|default:"" }}<br>
+                            MAKE: {{ jobcard.brand_name|default:"" }}
+                        </td>
+                        <td>
+                            REG NO: {{ jobcard.registration_number|default:"" }}<br>
+                            MODEL: {{ jobcard.model_name|default:"" }}<br>
+                            MILEAGE: {{ jobcard.mileage|default:"" }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
 
-        <!-- Job Performed -->
-        <table>
-            <thead>
-                <tr>
-                    <th colspan="2" class="table-header">JOB PERFOMED</th>
-                </tr>
-                <tr>
-                    <th style="width: 70%; text-align: left;">DESCRIPTION</th>
-                    <th style="width: 30%;" class="text-right">AMOUNT</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for labour in jobcard.labours.all %}
-                <tr>
-                    <td>{{ labour.job_description }}</td>
-                    <td class="text-right">₹ {{ labour.amount|floatformat:2 }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="2" style="text-align: center; color: #999;">No labour charges</td>
-                </tr>
-                {% endfor %}
+            {% comment %}
+            JOB PERFORMED — descriptions only. The per-line amounts exist on the
+            job card and are deliberately not printed; the section is charged as
+            one SUBTOTAL. See workshop/invoice.py for why.
+            {% endcomment %}
+            <table class="inv-table inv-jobs">
+                <colgroup>
+                    <col style="width:57.5%">
+                    <col style="width:7.7%">
+                    <col style="width:14.5%">
+                    <col style="width:20.3%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th colspan="3" class="h-left">JOB PERFORMED</th>
+                        <th>AMOUNT</th>
+                    </tr>
+                </thead>
+                <tbody class="rows">
+                    {% for line in job_lines %}
+                    <tr>
+                        <td colspan="3">{{ line.description }}</td>
+                        <td></td>
+                    </tr>
+                    {% endfor %}
+                    {% for _ in job_pad %}
+                    <tr>
+                        <td colspan="3">&nbsp;</td>
+                        <td></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tbody class="totals">
+                    <tr>
+                        <td colspan="2" class="void"></td>
+                        <td class="sub-label">SUBTOTAL</td>
+                        <td class="money sub-cell">
+                            <span class="acct"><span>₹</span><span>{{ job_subtotal|inr_exact }}</span></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
 
-                <tr class="subtotal-row">
-                    <td class="text-right"><strong>SUBTOTAL</strong></td>
-                    <td class="text-right"><strong>₹ {{ labour_subtotal|floatformat:2 }}</strong></td>
-                </tr>
-            </tbody>
-        </table>
+            {% comment %}
+            PART NAME — spare-shop purchases and warehouse draws in ONE list, in
+            the order they were added. A draw prints under its category name
+            ("Engine Oil"), never the branded product it was bought as; a blank
+            quantity has already been resolved to 1 and the unit price derived
+            from the customer total, so no row can print an amount with nothing
+            beside it. All of that happens in workshop/invoice.py.
+            {% endcomment %}
+            <table class="inv-table inv-parts">
+                <colgroup>
+                    <col style="width:57.5%">
+                    <col style="width:7.7%">
+                    <col style="width:14.5%">
+                    <col style="width:20.3%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="h-left">PART NAME</th>
+                        <th>QTY</th>
+                        <th>UNIT PRICE</th>
+                        <th>AMOUNT</th>
+                    </tr>
+                </thead>
+                <tbody class="rows">
+                    {% for part in part_lines %}
+                    <tr>
+                        <td>{{ part.name }}</td>
+                        <td class="c">{{ part.quantity|clean_qty }}</td>
+                        <td class="r">{{ part.unit_price|inr_exact }}</td>
+                        <td class="money">
+                            {% if part.priced %}<span class="acct"><span>₹</span><span>{{ part.amount|inr_exact }}</span></span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% for _ in part_pad %}
+                    <tr>
+                        <td>&nbsp;</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tbody class="totals">
+                    <tr>
+                        <td class="void"></td>
+                        <td class="sub-cell"></td>
+                        <td class="sub-label">SUBTOTAL</td>
+                        <td class="r sub-cell">{{ part_subtotal|inr_exact }}</td>
+                    </tr>
+                    <tr class="grand">
+                        <td class="thanks">Thank you for your business!</td>
+                        <td class="grand-cell"></td>
+                        <td class="grand-label">TOTAL</td>
+                        <td class="money grand-amount">
+                            <span class="acct"><span>₹</span><span>{{ grand_total|inr_exact }}</span></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
 
-        <!-- Parts -->
-        <table class="parts-table">
-            <thead>
-                <tr>
-                    <th style="width: 40%;">PART NAME</th>
-                    <th style="width: 15%;" class="text-right">QTY</th>
-                    <th style="width: 20%;" class="text-right">UNIT PRICE</th>
-                    <th style="width: 25%;" class="text-right">AMOUNT</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for spare in jobcard.spares.all %}
-                <tr>
-                    <td>{{ spare.spare_part_name }}</td>
-                    <td class="text-right">{{ spare.quantity|clean_qty }}</td>
-                    <td class="text-right">₹ {{ spare.total_price|divide:spare.quantity|floatformat:2 }}</td>
-                    <td class="text-right">₹ {{ spare.total_price|floatformat:2 }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="4" style="text-align: center; color: #999;">No spare parts</td>
-                </tr>
-                {% endfor %}
-
-                <tr class="subtotal-row">
-                    <td colspan="3" class="text-right"><strong>TOTAL BILL</strong></td>
-                    <td class="text-right"><strong>₹ {{ grand_total|floatformat:2 }}</strong></td>
-                </tr>
-                <tr class="total-row">
-                    <td colspan="3" class="text-right"><strong>PAID AMOUNT</strong></td>
-                    <td class="text-right"><strong>₹ {{ received|floatformat:2 }}</strong></td>
-                </tr>
-            </tbody>
-        </table>
-
-        <!-- Footer -->
-        <div class="footer">
-            <div class="thank-you">Thank you for your business!</div>
-            <div class="contact-info">
+            <div class="inv-foot">
                 Should you have any enquiries concerning this invoice please contact:<br>
                 Rijas Mohd, +91 92 07 21 79 78
             </div>
         </div>
-
-        <!-- Action Buttons -->
-        <div class="no-print" style="text-align: center; margin-top: 30px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-            <button onclick="window.print()"
-                style="padding: 12px 25px; background: #2c5282; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 8px;">
-                <i class="bi bi-printer"></i> Print / PDF
-            </button>
-            
-            {% if jobcard.bulk_payer %}
-            <a href="{% url 'bulk_payer_detail' jobcard.bulk_payer.pk %}"
-                style="padding: 12px 25px; background: #6f42c1; color: white; text-decoration: none; border-radius: 8px; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 8px;">
-                <i class="bi bi-building"></i> Billed to Fleet: {{ jobcard.bulk_payer.customer_name }} — Settle There
-            </a>
-            {% elif request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-            <button type="button" class="btn btn-warning fw-bold" data-bs-toggle="modal" data-bs-target="#billStatusModal"
-                style="padding: 12px 25px; border-radius: 8px; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                <i class="bi bi-currency-rupee"></i> Settle Bill
-            </button>
-            {% endif %}
-
-            <a href="{% url 'jobcard_edit' jobcard.pk %}"
-                style="padding: 12px 25px; background: #27ae60; color: white; text-decoration: none; border-radius: 8px; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 8px;">
-                <i class="bi bi-pencil-square"></i> Edit Job
-            </a>
-        </div>
     </div>
 
-    <!-- BILL STATUS MODAL — never rendered for a fleet-billed job; settlement
-         goes through the Bulk Payer cascade instead (see update_bill_status). -->
+    {% comment %}
+    Settlement. Never rendered for a fleet-billed job — that money moves through
+    the Bulk Payer cascade, and `update_bill_status` refuses it here anyway.
+    {% endcomment %}
     {% if not jobcard.bulk_payer %}
-    <div class="modal fade" id="billStatusModal" tabindex="-1" aria-labelledby="billStatusModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow">
-                <form action="{% url 'update_bill_status' jobcard.pk %}" method="POST">
-                    {% csrf_token %}
-                    <div class="modal-header bg-primary text-white py-3">
-                        <h5 class="modal-title fw-bold" id="billStatusModalLabel">Update Bill Status</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body p-4">
-                        <div class="mb-3">
-                            <label class="form-label small text-muted">Bill Grand Total</label>
-                            <h4 class="fw-bold mb-3">₹ {{ grand_total|floatformat:2 }}</h4>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="received_amount" class="form-label fw-bold small">Received Amount (Cash/UPI/Transfer)</label>
-                            <input type="number" step="0.01" class="form-control form-control-lg border-primary" id="received_amount" name="received_amount" value="{{ grand_total|floatformat:2 }}" required>
-                        </div>
+    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" %}
+    <dialog class="pay no-print" id="payDialog">
+        <form action="{% url 'update_bill_status' jobcard.pk %}" method="POST">
+            {% csrf_token %}
+            <div class="pay-head">Settle Bill — {{ jobcard.registration_number }}</div>
+            <div class="pay-body">
+                <label for="pay_total">Bill grand total</label>
+                <p class="pay-total" id="pay_total">₹ {{ grand_total|inr_exact }}</p>
 
-                        <div class="mb-3">
-                            <label for="payment_method" class="form-label fw-bold small">Payment Method</label>
-                            <select class="form-select" id="payment_method" name="payment_method">
-                                <option value="UPI">UPI / QR Code</option>
-                                <option value="CASH">Cash</option>
-                                <option value="TRANSFER">Bank Transfer</option>
-                                <option value="CARD">Card</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="modal-footer bg-light border-top-0 py-3">
-                        <button type="button" class="btn btn-secondary px-4 py-2" data-bs-toggle="modal">Close</button>
-                        <button type="submit" class="btn btn-primary px-4 py-2 fw-bold">Settle Bill</button>
-                    </div>
-                </form>
+                <label for="received_amount">Received amount (Cash / UPI / Transfer)</label>
+                {% comment %}
+                "2u" is the UNLOCALIZED form. A number input only accepts a bare
+                decimal, and a localized 20,300.00 would arrive blank.
+                {% endcomment %}
+                <input type="number" step="0.01" min="0" id="received_amount" name="received_amount"
+                       value="{{ grand_total|floatformat:'2u' }}" required>
+
+                <label for="payment_method">Payment method</label>
+                <select id="payment_method" name="payment_method">
+                    <option value="UPI">UPI / QR Code</option>
+                    <option value="CASH">Cash</option>
+                    <option value="TRANSFER">Bank Transfer</option>
+                    <option value="CARD">Card</option>
+                </select>
             </div>
-        </div>
-    </div>
+            <div class="pay-foot">
+                <button type="button" class="btn btn-ghost"
+                        onclick="document.getElementById('payDialog').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Settle Bill</button>
+            </div>
+        </form>
+    </dialog>
+    {% endif %}
     {% endif %}
 
-    <!-- Include Bootstrap JS for Modal -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <style>
-        /* Override some bootstrap styles to keep invoice clean but add modal support */
-        .modal-backdrop {
-            background-color: rgba(0,0,0,0.5) !important;
-        }
-    </style>
+    <script>
+        (function () {
+            'use strict';
+
+            // Fit the sheet to a narrow screen by SCALING it, never by reflowing
+            // it. Owners open invoices on a phone; a layout that rearranged
+            // itself to fit would stop being a preview of what prints. Print
+            // clears the transform outright (see @media print).
+            var wrap = document.querySelector('.sheet-wrap');
+            var sheet = document.getElementById('sheet');
+
+            function fitSheet() {
+                if (!wrap || !sheet) return;
+                sheet.style.transform = '';
+                wrap.style.height = '';
+                var available = wrap.clientWidth - 24;   // .sheet-wrap side padding
+                var natural = sheet.offsetWidth;
+                if (!natural || available >= natural) return;
+                var scale = available / natural;
+                sheet.style.transform = 'scale(' + scale + ')';
+                // The transform does not shrink the space the sheet reserves, so
+                // the wrapper would keep a page of empty scroll beneath it.
+                wrap.style.height = (sheet.offsetHeight * scale + 58) + 'px';
+            }
+
+            fitSheet();
+
+            // Refit on BOTH signals, deliberately. window.resize is the one
+            // that always exists; a ResizeObserver additionally catches a
+            // rotation some browsers report without a window resize, and a
+            // wrapper resized by anything other than the viewport. fitSheet is
+            // idempotent, so the two firing together costs one wasted measure.
+            window.addEventListener('resize', fitSheet);
+
+            // The observer must react to WIDTH only: fitSheet sets the
+            // wrapper's height, which is itself a resize, so watching both
+            // would have it call itself forever.
+            if (window.ResizeObserver && wrap) {
+                var lastWidth = wrap.clientWidth;
+                new ResizeObserver(function () {
+                    if (wrap.clientWidth === lastWidth) return;
+                    lastWidth = wrap.clientWidth;
+                    fitSheet();
+                }).observe(wrap);
+            }
+
+            // Fonts land after first paint and change the sheet's height.
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(fitSheet);
+            }
+
+            // Ctrl/Cmd+P prints the sheet, not the scaled-down screen copy.
+            window.addEventListener('beforeprint', function () {
+                if (sheet) sheet.style.transform = '';
+                if (wrap) wrap.style.height = '';
+            });
+            window.addEventListener('afterprint', fitSheet);
+        }());
+    </script>
 </body>
 
 </html>

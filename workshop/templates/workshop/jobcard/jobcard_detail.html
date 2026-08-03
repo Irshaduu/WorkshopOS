@@ -231,16 +231,27 @@ View Job Card - {{ jobcard.registration_number }}
                         {% for labour in jobcard.labours.all %}
                             <div class="view-list-item">
                                 <span class="view-list-text">{{ labour.job_description }}</span>
-                                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-                                    <span class="status-badge status-neutral font-monospace">₹ {{ labour.amount|default:"0.00" }}</span>
-                                {% endif %}
                             </div>
                         {% endfor %}
                     </div>
                 {% else %}
-                    <div class="view-empty">No labour recorded</div>
+                    <div class="view-empty">No jobs recorded</div>
                 {% endif %}
             </div>
+            {% comment %}
+            One charge for all the work — the same figure the invoice prints as
+            the JOB PERFORMED subtotal. Shown even with no job lines, because the
+            money is on the card and hiding it would make a priced card look
+            free.
+            {% endcomment %}
+            {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+            <div class="card-footer bg-light border-top d-flex justify-content-between align-items-center py-3">
+                <span class="fw-bold text-secondary text-uppercase" style="font-size: .75rem; letter-spacing: .04em;">
+                    Labour Subtotal
+                </span>
+                <span class="fw-bold font-monospace">₹ {{ jobcard.labour_amount|inr_exact }}</span>
+            </div>
+            {% endif %}
         </div>
 
         <!-- ========================================== -->

@@ -195,8 +195,10 @@ class RenamingABrandOrModelReachesTheJobCardsTests(WorkshopTestCase):
         jc = JobCard.objects.create(
             registration_number=reg, brand_name=brand, model_name=model,
             admitted_date=date.today(), lead_mechanic=self.mechanic)
-        JobCardLabourItem.objects.create(job_card=jc, job_description='Service',
-                                         amount=Decimal('1000'))
+        JobCardLabourItem.objects.create(job_card=jc, job_description='Service')
+        jc.labour_amount = Decimal('1000')
+        jc.save()
+        jc.update_totals()
         return jc
 
     def test_renaming_a_brand_relabels_its_job_cards(self):
@@ -323,8 +325,10 @@ class MergingAMasterEntryNeverMovesMoneyOrStockTests(WorkshopTestCase):
                 job_card=jc, spare_part_name=name, quantity=Decimal('1'),
                 unit_price=Decimal(price), total_price=Decimal(price),
                 source=JobCardSpareItem.SOURCE_SHOP, shop=shop)
-            JobCardLabourItem.objects.create(job_card=jc, job_description='Fit',
-                                             amount=Decimal('500'))
+            JobCardLabourItem.objects.create(job_card=jc, job_description='Fit')
+            jc.labour_amount = Decimal('500')
+            jc.save()
+            jc.update_totals()
             jc.refresh_from_db()
             cards.append(jc)
         shop.refresh_from_db()
@@ -405,8 +409,10 @@ class MasterDataDeleteTouchesNoHistoryTests(WorkshopTestCase):
             job_card=jc, spare_part_name='Oil Filter', quantity=Decimal('2'),
             unit_price=Decimal('300'), total_price=Decimal('800'),
             source=JobCardSpareItem.SOURCE_SHOP, shop=shop)
-        JobCardLabourItem.objects.create(job_card=jc, job_description='Service',
-                                         amount=Decimal('500'))
+        JobCardLabourItem.objects.create(job_card=jc, job_description='Service')
+        jc.labour_amount = Decimal('500')
+        jc.save()
+        jc.update_totals()
         JobCardConcern.objects.create(job_card=jc, concern_text='Brake noise')
         jc.refresh_from_db()
         shop.refresh_from_db()

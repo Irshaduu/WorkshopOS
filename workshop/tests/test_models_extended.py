@@ -47,7 +47,7 @@ class ExtendedModelsTestCase(TestCase):
         jc_spare = JobCardSpareItem.objects.create(job_card=self.job, spare_part_name='Brake Pad', quantity=2)
         self.assertEqual(str(jc_spare), "Brake Pad (2)")
         
-        jc_labour = JobCardLabourItem.objects.create(job_card=self.job, job_description='Washing', amount=100)
+        jc_labour = JobCardLabourItem.objects.create(job_card=self.job, job_description='Washing')
         self.assertEqual(str(jc_labour), "Washing")
 
     def test_usersession_get_device_name(self):
@@ -146,15 +146,23 @@ class ExtendedModelsTestCase(TestCase):
         self.assertEqual(self.job.get_total_amount, 0)
         self.assertEqual(self.job.get_balance_amount, 0)
         
-        JobCardLabourItem.objects.create(job_card=self.job, job_description='Labour', amount=200)
+        JobCardLabourItem.objects.create(job_card=self.job, job_description='Labour')
+        self.job.labour_amount = 200
+        self.job.save()
+        self.job.update_totals()
         self.assertEqual(self.job.get_total_amount, 200)
         self.assertEqual(self.job.get_balance_amount, 200)
         
         self.job.received_amount = 50
         self.assertEqual(self.job.get_balance_amount, 150)
-        
-        # Test deleting labour item triggers update_totals
+
+        # Deleting a job LINE must not move the money. The line is a description
+        # of work; the charge for that work is `JobCard.labour_amount`. This
+        # assertion used to read `get_total_amount == 0` — back when each line
+        # carried its own price and removing one silently reduced the customer's
+        # bill. Removing a typo from the job list must not do that.
         labour = self.job.labours.first()
         labour.delete()
         self.job.refresh_from_db()
-        self.assertEqual(self.job.get_total_amount, 0)
+        self.assertEqual(self.job.get_total_amount, 200)
+        self.assertEqual(self.job.labours.count(), 0)

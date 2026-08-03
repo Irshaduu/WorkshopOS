@@ -471,8 +471,10 @@ class InsightSectionTests(AnalysisBase):
         JobCardSpareItem.objects.create(job_card=self.card, spare_part_name='Brake Pad',
                                         shop=self.shop, quantity=D('2'), unit_price=D('500'),
                                         total_price=D('1500'))
-        JobCardLabourItem.objects.create(job_card=self.card, job_description='Fitting',
-                                         amount=D('800'))
+        JobCardLabourItem.objects.create(job_card=self.card, job_description='Fitting')
+        self.card.labour_amount = D('800')
+        self.card.save()
+        self.card.update_totals()
 
     def test_all_sections_render(self):
         for key, *_ in __import__('workshop.analysis_views', fromlist=['x']).INSIGHT_SECTIONS:

@@ -71,7 +71,8 @@ class JobCardViewsTestCase(TestCase):
             'labours-MIN_NUM_FORMS': '0',
             'labours-MAX_NUM_FORMS': '1000',
             'labours-0-job_description': 'Service',
-            'labours-0-amount': '400',
+            # The charge for all the work rides on the card, not on the line.
+            'labour_amount': '400',
         }
 
     def test_jobcard_create_get(self):

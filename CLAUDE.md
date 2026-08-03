@@ -522,6 +522,120 @@ about to correct one of these, you are about to break the business:
   datetime to `TIME_ZONE` before taking `.date()`, so it lands on the correct
   IST calendar day. Guarded by `CashbookEntriesAreDatedByTheDayTheMoneyMovedTests`.
 
+- **Labour is ONE charge per job card, not a price per job line.** Added
+  2026-08-04, on the owner's description of how the workshop actually sells:
+  work is quoted whole — a customer is told "₹22,300 for the job" — and nobody
+  costs it line by line. So `JobCard.labour_amount` holds the figure, Office
+  types it once into the **Labour Subtotal** box at the foot of the Jobs
+  section, and `JobCardLabourItem` became a list of what was done with no money
+  on it at all. `update_totals()` is now `spares + labour_amount`.
+  `JobCardLabourItem.amount` is **dormant** in the same sense as
+  `JobCard.is_deleted`: still on the table, never written, never read for money.
+  Migration **0066** summed every existing card's line amounts into
+  `labour_amount` in one correlated-subquery UPDATE, so not a single
+  `total_bill_amount` changed value; the old column is kept rather than dropped
+  so a historical card's original pricing stays inspectable.
+  Four consequences worth not rediscovering:
+  (a) **Saving a job line no longer recomputes the bill**, because the line
+  carries no money — `JobCardLabourItem.save()`/`delete()` lost their
+  `update_totals()` calls. That means **`jobcard_create` and `jobcard_edit` must
+  call `jobcard.update_totals()` explicitly**, or a card whose only change was
+  its labour figure keeps its old total forever. The seeder needs the same call
+  before it reads `total_bill_amount` to decide what was paid.
+  (b) **Deleting a job line must NOT move money.** It used to; that was the
+  per-line column. `test_jobcard_properties` asserted the old behaviour and is
+  now inverted — removing a typo from the job list cannot reduce a customer's
+  bill.
+  (c) **Dropping `amount` from the formset closed a hole rather than opening
+  one.** It was rendered for Floor inside a `d-none` cell (an absent formset
+  field saves as blank and wipes the row — the same reason the spare prices are
+  rendered hidden), but `_price_locked_data` only ever rewrote the `spares` and
+  `inventory` prefixes, so a Floor login could POST `labours-0-amount` and
+  rewrite the labour charge. That is AUD-0081 for parts, unnoticed for labour. A
+  field that does not exist cannot be posted. **`labour_amount` needed the
+  opposite treatment**: it is a field on the *card*, so `_price_locked_data` now
+  pins it too and its return value binds `JobCardForm` as well as the formsets.
+  Unlike a formset field it can safely be omitted from the template for Floor —
+  an absent field on a ModelForm leaves the stored value alone.
+  (d) **The field is `blank=True` and empty means zero.** Plenty of cards are
+  parts only; required would refuse to save one. `clean_labour_amount` turns
+  empty into `Decimal('0')` (the column is NOT NULL, so cleaning to None would
+  be an IntegrityError rather than a message) and refuses a negative outright
+  rather than clamping. Guarded by `TheLabourChargeLivesOnTheCardTests` and
+  `LabourPrintsAsOneSubtotalTests`.
+
+- **The printed invoice is NOT a transcription of the job card, and the four
+  differences are rules.** Added 2026-08-04, `workshop/invoice.py`. The bill is
+  a customer-facing document rebuilt to match the workshop's own reference
+  invoice, and each departure from the job card is deliberate.
+  (a) **Both spare routes print in ONE "PART NAME" list.** `JobCardSpareItem`
+  already holds a shop purchase and a warehouse draw in one table, told apart by
+  `source`; the Job Card *edits* them as two sections because a draw has no shop
+  and no ordering workflow, but a customer has no interest in which shelf a part
+  came off. One list, insertion order, one subtotal.
+  (b) **A warehouse draw is billed under its CATEGORY, never its product.**
+  `Item.name` is the branded SKU the workshop buys ("Castrol Edge 5W-30");
+  `Category.name` is what it is ("Engine Oil"). Naming the brand on a document
+  the workshop hands out also publishes its supply chain. Shop spares keep their
+  free-text name — those are typed per job and already read the way the customer
+  would say them. **Consequence for go-live: the Category is what the customer
+  reads, so the taxonomy has to be Category = generic part, Item = branded SKU.
+  The demo seed data is the other way round (Category "Fluids", Item "Engine
+  Oil") and would print "Fluids" on a bill** — that is the seed file being
+  wrong, not the rule.
+  (c) **Labour prints its descriptions and one SUBTOTAL, never per-line
+  amounts.** Splitting a ₹2,500 job into five numbers invites a line-by-line
+  negotiation about work that was quoted whole.
+  (d) **A blank QTY is ONE, and prints as 1.** Staff routinely leave the box
+  empty for a single part. The column used to divide by the missing quantity and
+  print ₹0.00 beside a real amount. Blank and a typed 1 now produce byte-for-byte
+  identical markup — asserted by comparing two rendered parts tables, which is
+  the only form of that requirement worth testing. Only shop spares can reach
+  this: `InventoryDrawForm` refuses a draw with no quantity, because that number
+  moves warehouse stock, so the printed quantity can never disagree with what
+  came off the shelf. Zero and negative are folded in with blank rather than
+  left to divide by nothing.
+  Two further things worth not rediscovering. **The UNIT PRICE column is always
+  DERIVED** as `total_price ÷ quantity` and never read from a stored field:
+  `JobCardSpareItem.unit_price` is the workshop's *cost* (see the entry above)
+  and printing it would put the margin on every part into the customer's hand;
+  deriving also gives the identical answer where `customer_rate` is set, so one
+  rule covers both routes and `qty × unit` always reconciles to the amount beside
+  it. And **a part with no price prints an empty cell while one given away prints
+  ₹0.00** — `PartLine.priced` exists so a truthiness check cannot collapse the
+  two. Guarded by `workshop/tests/test_invoice.py`.
+
+- **The invoice page loads NOTHING from a third party, and its controls live
+  outside the paper.** Added 2026-08-04. It used to pull Bootstrap CSS, Bootstrap
+  JS and an icon font from a CDN — which bought one modal and cost control over
+  what lands on paper: a framework reset shipping upstream could move a column on
+  a customer's bill, and a workshop printing on a dropped connection got an
+  unstyled page. Everything is now inline in the template, the modal is a native
+  `<dialog>`, and the icons are inline SVG. Separately, the screen controls
+  (toolbar, buttons, messages, dialog) are **outside the `.sheet` element
+  entirely**, not merely `display:none` in print — `NothingInteractiveLivesOnThePaperTests`
+  asserts the sheet contains no `<button>`, `<a>`, `<form>`, `<input>`, `<script>`
+  or `<dialog>`, because a CSS-only rule is one stylesheet edit from printing.
+  The template is standalone (does not extend `base.html`), so it **must** render
+  the `messages` block itself — that is not the double-render `base.html`
+  forbids. It previously rendered none, so "Billing updated" from
+  `update_bill_status` was never shown here and surfaced later on an unrelated
+  screen.
+
+- **The invoice is one A4 sheet on screen as well as on paper — narrow screens
+  SCALE it, they do not reflow it.** Added 2026-08-04. Owners open invoices on a
+  phone, and a bill that rearranged itself to fit would stop being a preview of
+  what prints. `fitSheet()` applies a `transform: scale()` and sets the wrapper's
+  height to match; `@media print` clears the transform outright. Two traps: the
+  wrapper's height is set by the same function that watches it resize, so the
+  `ResizeObserver` must compare **width only** or it calls itself forever; and
+  both `window.resize` and the observer are attached deliberately, since some
+  browsers report a rotation through only one of them. Pagination is pure CSS —
+  `thead { display: table-header-group }` repeats the column headings on every
+  page, `tr { break-inside: avoid }` stops a row splitting across the fold, and
+  SUBTOTAL/TOTAL sit in their own `<tbody class="totals">` rather than a
+  `<tfoot>`, **which would have repeated them at the foot of every page.**
+
 - **An unassigned spare can be deleted, and only from the Unassigned Hub.**
   Added 2026-07-31. There was previously no way to delete one at all — no route,
   no button, and `/admin/` unreachable by design — so a mistyped ledger entry
@@ -768,7 +882,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (32 test files, 555 tests, ~15-30 min; always uses SQLite, see below)
+# Run full test suite (35 test files, 791 tests, ~53 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -841,7 +955,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 555 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 791 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -898,7 +1012,7 @@ Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_H
 ### App boundaries
 - **`workshop/`** — job cards, billing, bulk payers, spare shops, cashbook, auth, owner analytics, deletion history, master data (brands/models/spares/concerns).
   - `views/` is a package (14 modules: `dashboard`, `jobcard`, `completed`, `deletion_history`, `billing`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`, `salary_advance`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
-  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section, and `master_data.py` likewise holds no views: it is the one implementation of the master-list rename/merge rule, shared by `views/master_lists.py` and `cleanup_views.py` (see "Deliberate decisions" for why that sharing is load-bearing).
+  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section, and `master_data.py` likewise holds no views: it is the one implementation of the master-list rename/merge rule, shared by `views/master_lists.py` and `cleanup_views.py` (see "Deliberate decisions" for why that sharing is load-bearing). **`invoice.py` is the third of these** — no views, no HTTP: it is the one answer to "what does the customer see?", so a second printing surface (a PDF export, a reprint from Paid Bills) cannot grow its own slightly-different version. `views/billing.py` resolves the record and renders; it contains no arithmetic.
   - `decorators.py` defines the RBAC decorators (`owner_required`, `office_required`, `staff_required`) built on three Django auth Groups: **Owner**, **Office**, **Floor**. Superusers pass every check. Use these decorators on any new view instead of rolling custom permission checks.
   - `middleware.py` (`SessionTrackingMiddleware`) updates `UserSession` (device/IP/last-activity) on every authenticated request, throttled to a 5-minute cooldown per session.
 - **`inventory/`** — stock items/categories and supplier shops (`views.py` for core inventory, `views_suppliers.py` for the supplier-shop module). Stock levels are kept in sync with workshop activity purely via Django signals in `signals.py` — there is no direct view-to-view coupling between the two apps for stock changes.
@@ -1036,7 +1150,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (27 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 34 files, 730 tests. Expect the full suite to take **15-25 minutes**; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (30 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 35 files, **791 tests** (measured 2026-08-04; the figures here had gone stale twice before, so re-count rather than trusting this line). Expect the full suite to take **45-55 minutes** — a full run was timed at 53; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

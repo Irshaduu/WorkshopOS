@@ -35,7 +35,7 @@ from django.shortcuts import render
 
 from .decorators import owner_required
 from .models import (
-    JobCard, JobCardSpareItem, JobCardLabourItem, BulkPayer, SpareShop,
+    JobCard, JobCardSpareItem, BulkPayer, SpareShop,
 )
 from . import analysis_engine as engine
 from .analysis_engine import MONEY, ZERO, SPARE_COST, live_jobcards, _sum
@@ -266,8 +266,12 @@ def _insight_spares(start, end):
     totals['profit'] = totals['revenue'] - totals['cost']
     totals['margin'] = float(totals['profit'] / totals['revenue'] * 100) if totals['revenue'] else 0.0
 
-    labour = _sum(JobCardLabourItem.objects.filter(
-        job_card__is_deleted=False, job_card__admitted_date__range=(start, end)), F('amount'))
+    # Off the job card, not off its job lines: the labour charge moved onto
+    # `JobCard.labour_amount` when the workshop's real practice — one price for
+    # the whole job — replaced the per-line column. Summing the lines here would
+    # now report every card created since as ₹0 of labour.
+    labour = _sum(JobCard.objects.filter(
+        is_deleted=False, admitted_date__range=(start, end)), F('labour_amount'))
 
     return {
         'most_used': most_used,

@@ -786,6 +786,20 @@ class JobCard(models.Model):
     lead_mechanic = models.ForeignKey(Mechanic, on_delete=models.SET_NULL, null=True, blank=True, related_name='job_cards', help_text="The main mechanic assigned to this job")
     bulk_payer = models.ForeignKey('BulkPayer', on_delete=models.SET_NULL, null=True, blank=True, related_name='job_cards', help_text="Assigned bulk payer")
 
+    # One charge for ALL the work on this card. The workshop quotes labour as a
+    # whole — a customer is told "₹22,300 for the job", never a price per line —
+    # so Office types one figure and the Jobs section lists only what was done.
+    # `JobCardLabourItem.amount` is the column this replaced; it is dormant now
+    # (see that model) and every existing row's lines were summed into here by
+    # migration, so no bill changed value.
+    # blank=True because plenty of job cards are parts only. Required would make
+    # an empty box a validation error and refuse to save a card that genuinely
+    # has no labour on it; JobCardForm.clean_labour_amount turns empty into 0.
+    labour_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, blank=True,
+        help_text="Total labour charge for every job on this card (entered once, not per line)"
+    )
+
     # Financials (NEW - Optimized for 1M+ records)
     total_bill_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Denormalized total for instant dashboard loading")
     received_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Amount actually received from customer")
@@ -920,9 +934,10 @@ class JobCard(models.Model):
         from django.db.models.functions import Coalesce
         
         spare_total = self.spares.aggregate(total=Coalesce(Sum('total_price'), 0, output_field=models.DecimalField()))['total']
-        labour_total = self.labours.aggregate(total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField()))['total']
-        
-        new_total = spare_total + labour_total
+
+        # Labour is ONE figure on this row, not a sum over the job lines. It used
+        # to be Sum(labours.amount); the lines no longer carry money.
+        new_total = spare_total + (self.labour_amount or Decimal('0'))
         if self.total_bill_amount != new_total:
             self.total_bill_amount = new_total
             # Use update to avoid triggering save() recursion if called from save()
@@ -1180,20 +1195,27 @@ class JobCardSpareItem(models.Model):
 
 class JobCardLabourItem(models.Model):
     """
-    Labour charges added to a Job Card (independent of spares).
+    One job that was done. A DESCRIPTION, not a price.
+
+    The workshop does not cost work line by line — it quotes a job as a whole and
+    Office enters that single figure on `JobCard.labour_amount`. So this model
+    answers "what was done?" and nothing else; the invoice prints these lines
+    with an empty AMOUNT column and one SUBTOTAL underneath, which is exactly how
+    the workshop's own printed bill has always read.
+
+    `amount` is DORMANT, in the same sense as `JobCard.is_deleted`: still on the
+    table, no longer written by any form, and no longer read by any total. Every
+    existing row's value was summed into `JobCard.labour_amount` by migration
+    0066 so not one bill changed, and it is kept rather than dropped so that
+    history remains inspectable. Do not reintroduce it as a money source — two
+    places holding the labour charge is exactly one more than can be reconciled.
     """
     job_card = models.ForeignKey(JobCard, on_delete=models.CASCADE, related_name='labours')
     job_description = models.CharField(max_length=150)
-    amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True) 
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        self.job_card.update_totals()
-
-    def delete(self, *args, **kwargs):
-        job_card = self.job_card
-        super().delete(*args, **kwargs)
-        job_card.update_totals()
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True,
+        help_text="DORMANT — pre-2026-08-04 per-line charge. Superseded by JobCard.labour_amount."
+    )
 
     def __str__(self):
         return self.job_description

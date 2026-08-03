@@ -14,7 +14,7 @@ from django.core.paginator import Paginator
 from django.urls import reverse
 
 from ..models import (
-    JobCard, JobCardSpareItem, JobCardLabourItem,
+    JobCard, JobCardSpareItem,
     BulkPayer, BulkPaymentHistory, DeletionLog,
 )
 from ..decorators import office_required, owner_required
@@ -64,15 +64,18 @@ def bulk_payer_list(request):
         .values('s')
     )
 
-    # SQL subquery: sum of labour for PENDING/PARTIAL job cards
+    # SQL subquery: sum of labour for PENDING/PARTIAL job cards.
+    # Off the CARDS — `labour_amount` is one charge per card, and the dormant
+    # per-line column it replaced would report zero labour for everything raised
+    # since 2026-08-04, understating what each fleet still owes.
     labour_sq = (
-        JobCardLabourItem.objects
+        JobCard.objects
         .filter(
-            job_card__bulk_payer=OuterRef('pk'),
-            job_card__payment_status__in=['PENDING', 'PARTIAL'],
+            bulk_payer=OuterRef('pk'),
+            payment_status__in=['PENDING', 'PARTIAL'],
         )
-        .values('job_card__bulk_payer')
-        .annotate(s=Sum('amount'))
+        .values('bulk_payer')
+        .annotate(s=Sum('labour_amount'))
         .values('s')
     )
 
@@ -148,8 +151,12 @@ def bulk_payer_detail(request, pk):
     # -------------------------------------------------------------------------
     total_received_all = base_cards_query.aggregate(s=Sum('received_amount'))['s'] or Decimal('0.0')
     total_spares = JobCardSpareItem.objects.filter(job_card__in=base_cards_query).aggregate(s=Sum('total_price'))['s'] or Decimal('0.0')
-    total_labour = JobCardLabourItem.objects.filter(job_card__in=base_cards_query).aggregate(s=Sum('amount'))['s'] or Decimal('0.0')
-    
+    # Off the cards, not off their job lines. This summed
+    # `JobCardLabourItem.amount` until 2026-08-04; that column is dormant now, so
+    # the fleet's outstanding balance would have silently shed all the labour on
+    # every card raised since.
+    total_labour = base_cards_query.aggregate(s=Sum('labour_amount'))['s'] or Decimal('0.0')
+
     total_bill_all = total_spares + total_labour
     total_balance_all = total_bill_all - total_received_all  # Can be negative (fully settled)
     card_count = base_cards_query.count()

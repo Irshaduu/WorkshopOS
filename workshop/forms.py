@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django import forms
 from django.forms import inlineformset_factory, BaseInlineFormSet
 
@@ -256,9 +258,19 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
             'lead_mechanic',
             'car_color',
             'car_color_other',
+            # One charge for all the work — see JobCard.labour_amount. Rendered
+            # inside the Jobs section, not with the vehicle details, and only for
+            # Office/Owner (the template gates it; `_price_locked_data` enforces
+            # that on the server, because a hidden input is still a posted one).
+            'labour_amount',
         ]
         widgets = {
             'admitted_date': forms.DateInput(attrs={'type': 'date'}),
+            'labour_amount': forms.TextInput(attrs={
+                'class': 'form-control text-end fw-bold',
+                'inputmode': 'decimal',
+                'placeholder': '0.00',
+            }),
             'brand_name': forms.TextInput(attrs={
                 'autocomplete': 'off',
                 'class': 'autocomplete-brand',
@@ -294,6 +306,36 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
         if current_id and current_id not in eligible_ids:
             eligible_ids.append(current_id)
         self.fields['lead_mechanic'].queryset = Mechanic.objects.filter(pk__in=eligible_ids)
+
+    def clean_labour_amount(self):
+        """
+        Empty means no labour, not an error — and never NULL.
+
+        The box is blank on every parts-only card and is not rendered at all for
+        Floor, so "absent" has to be a valid answer. The column is NOT NULL, so
+        an empty field cleaning to None would take the save down with an
+        IntegrityError rather than a message.
+
+        Negative is refused outright rather than clamped: a clamp saves a number
+        nobody typed, and a negative labour charge would reduce the bill below
+        the parts on it — the same reasoning as the leave-days bound in
+        Salary & Advance. `max_digits` is enforced by the field itself, so an
+        oversized figure is a validation message, never a Postgres overflow.
+        """
+        value = self.cleaned_data.get('labour_amount')
+        if value in (None, ''):
+            # ABSENT and BLANK are different answers, and conflating them
+            # destroys money. A POST that never carried the field at all comes
+            # from a form that did not render it — Floor's job card, or a
+            # disabled input on a locked record — and must leave the stored
+            # charge alone. A field that WAS rendered and left empty means the
+            # card has no labour on it.
+            if 'labour_amount' not in self.data and self.instance.pk:
+                return self.instance.labour_amount
+            return Decimal('0')
+        if value < 0:
+            raise forms.ValidationError("A labour charge cannot be negative.")
+        return value
 
 
 # =============================================================================
@@ -477,10 +519,21 @@ JobCardInventoryFormSet = inlineformset_factory(
     validate_min=False,
 )
 
+# Descriptions only. `amount` is deliberately NOT a field here: the workshop
+# charges for the work as a whole, so the figure lives once on
+# `JobCard.labour_amount` and this section just lists what was done.
+#
+# Dropping it also closes a hole rather than opening one. The per-line amount
+# used to be rendered for Floor inside a `d-none` cell (same reason the spare
+# price fields are — an absent field saves as blank and wipes what Office
+# entered), but `_price_locked_data` only ever rewrote the `spares` and
+# `inventory` prefixes. So a Floor login POSTing `labours-0-amount=1` could
+# rewrite the labour charge, exactly the defect AUD-0081 fixed for parts. A
+# field that does not exist cannot be posted.
 JobCardLabourFormSet = inlineformset_factory(
     JobCard,
     JobCardLabourItem,
-    fields=['job_description', 'amount'],
+    fields=['job_description'],
     extra=0,
     can_delete=True,
     validate_min=False,
@@ -488,10 +541,6 @@ JobCardLabourFormSet = inlineformset_factory(
         'job_description': forms.TextInput(attrs={
             'class': 'form-control',
             'placeholder': 'Job Performed',
-        }),
-        'amount': forms.TextInput(attrs={
-            'class': 'form-control text-end',
-            'placeholder': 'Amount'
         }),
     }
 )

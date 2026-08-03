@@ -1,7 +1,7 @@
 from django import template
 from django.contrib.auth.models import Group
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils import timezone
 
 register = template.Library()
@@ -133,6 +133,27 @@ def inr_amount(value):
     if paise:
         out += f".{int(paise * 100):02d}"
     return ('-' if neg else '') + out
+
+
+@register.filter
+def inr_exact(value):
+    """
+    Indian-grouped rupees with the paise ALWAYS shown: 17800 -> '17,800.00'.
+
+    For the printed invoice. `inr` rounds to whole rupees and `inr_amount` hides
+    a '.00', both of which are right on a screen and wrong in a money column a
+    customer adds up by eye — '1,200' beside '1,919.00' reads as a different
+    kind of number. Empty for None, so a part fitted but not yet costed prints a
+    blank cell rather than '₹0.00' against a part that was not free.
+    """
+    d = _to_decimal(value)
+    if d is None:
+        return ''
+    neg = d < 0
+    a = abs(d).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    whole = int(a)
+    paise = int((a - whole) * 100)
+    return f"{'-' if neg else ''}{inr(whole)}.{paise:02d}"
 
 
 @register.filter

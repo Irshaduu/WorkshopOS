@@ -93,7 +93,8 @@ class WorkshopViewTests(TestCase):
             'labours-TOTAL_FORMS': '1',
             'labours-INITIAL_FORMS': '0',
             'labours-0-job_description': 'Oil Change',
-            'labours-0-amount': '200',
+            # The charge for all the work rides on the card, not on the line.
+            'labour_amount': '200',
         }
         
         response = self.client.post(url, data)

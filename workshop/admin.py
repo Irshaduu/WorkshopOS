@@ -101,6 +101,10 @@ class JobCardSpareItemInline(admin.TabularInline):
 class JobCardLabourItemInline(admin.TabularInline):
     model = JobCardLabourItem
     extra = 1
+    # `amount` is dormant (see the model). Showing it here would offer an edit
+    # box for a number nothing reads — and one that no longer moves the bill,
+    # which is a worse thing to hand someone than no box at all.
+    fields = ('job_description',)
 
 
 @admin.register(JobCard)

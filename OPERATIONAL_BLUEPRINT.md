@@ -29,7 +29,7 @@ graph TD
 
     J --> M["Mechanic Works on Concerns"]
     M --> N["Concern Status: PENDING to WORKING to FIXED"]
-    N --> O["Labour Charges Added"]
+    N --> O["Labour Subtotal Entered (one charge for all jobs)"]
     O --> P["Completion % Updates Automatically"]
 
     P --> Q{"All Concerns Fixed?"}
@@ -66,7 +66,7 @@ graph TD
  OFFICE STAFF
    Everything Floor can do + these actions:
    - View full Job Card List with search
-   - Delete job cards (permanent + logged; blocked if the card still holds spares/labour/payment)
+   - Delete job cards (permanent + logged; blocked if the card still holds spares, jobs, a labour charge, or a payment)
    - Deactivate / reactivate Spare Shops & Fleet Accounts; delete (reverse + log) Fleet/Shop payments
    - Mark cars as Completed / Undo completion
    - View and Generate Invoices
@@ -86,7 +86,7 @@ graph TD
  FLOOR (Mechanics / Floor Manager)
    - View Dashboard (active cars on floor)
    - Create new Job Cards
-   - Edit existing Job Cards (add concerns, spares, labour)
+   - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Labour Subtotal included, is Office/Owner only and is enforced on the server)
    - View Live Report (quick scroll of all jobs)
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
@@ -112,10 +112,10 @@ Everything in the system connects through the Job Card:
      |                |
      |     +----------+----------+
      |     |          |          |
-     |  CONCERNS    SPARES    LABOUR
+     |  CONCERNS    SPARES    JOBS
      |  - Text      - Part     - Job Desc
-     |  - Status:   - Qty      - Amount
-     |   PENDING    - Shop $
+     |  - Status:   - Qty      (description only —
+     |   PENDING    - Shop $    no per-line amount)
      |   WORKING    - Cust $
      |   FIXED      - Shop FK
      |              - Status:
@@ -130,8 +130,9 @@ Everything in the system connects through the Job Card:
      |                |
      +------->  TOTAL BILL AMOUNT
            = Sum(Spare Customer Prices)
-           + Sum(Labour Amounts)
-           Auto-calculated on every save
+           + Labour Subtotal        <- ONE figure on the job card
+                                       (JobCard.labour_amount), typed
+                                       once by Office for all the jobs
            (denormalized for performance)
 ```
 
@@ -144,7 +145,12 @@ Everything in the system connects through the Job Card:
 ```
 Spare Part Added (Customer Price) --+
                                     +--> Total Bill Auto-Calculated --> Invoice
-Labour Added (Amount) -------------+     (denormalized, updates on every save)
+Labour Subtotal typed on the card --+     (denormalized)
+
+The workshop quotes work as a WHOLE — a customer is told one figure for the
+job — so the Jobs section lists what was done and carries no per-line price.
+Office types the single Labour Subtotal at the foot of that section, and the
+invoice prints it as the JOB PERFORMED subtotal.
 ```
 
 ### Payment States
@@ -561,6 +567,24 @@ COMPLETED LIST
   Shows: Cars that have been picked up
   Filters: Today / Week / Month / Year / Custom range / All
   Actions: Undo completion, View invoice
+
+INVOICE (Office / Owner)
+  Shows: The customer's bill, laid out to match the workshop's printed letterhead —
+         one A4 sheet, on screen exactly as it prints (narrow screens scale it
+         down rather than rearranging it).
+  Sections: JOB PERFORMED — what was done, with ONE subtotal and no per-line
+            amounts, because a job is quoted whole.
+            PART NAME — spare-shop purchases and warehouse draws merged into a
+            single list. A warehouse draw is billed under its CATEGORY
+            ("Engine Oil"), never the branded product ("Castrol Edge 5W-30").
+            The unit price shown is always the customer total ÷ quantity — the
+            workshop's own cost never appears on the bill.
+  Quantity: a blank QTY means one, and prints as 1.
+  Actions:  Print / Save PDF, Settle Bill (non-fleet only), Edit Job. All three
+            are screen-only and sit outside the sheet, so nothing but the bill
+            reaches paper. A fleet-billed job shows no Settle control at all —
+            that money moves through the Fleet Account cascade.
+  Rules in: workshop/invoice.py (all of the above; the view does no arithmetic)
 
 PENDING BILLS
   Shows: All unpaid/partially paid jobs
