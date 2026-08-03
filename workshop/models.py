@@ -1362,6 +1362,12 @@ class CashbookEntry(models.Model):
         indexes = [
             models.Index(fields=['-date', '-created_at']),
             models.Index(fields=['entry_type', '-date']),
+            # Two readers walk this column: the Profit page groups the whole
+            # cashbook by it, and the add form offers the spellings already in
+            # use so a new entry snaps to one rather than inventing a variant.
+            # Both are DISTINCT/GROUP BY over every row, which without an index
+            # is a full sort of the table each time the page opens.
+            models.Index(fields=['category']),
         ]
         constraints = [
             # AUD-0030: Database-level guard — cashbook amounts must be positive.

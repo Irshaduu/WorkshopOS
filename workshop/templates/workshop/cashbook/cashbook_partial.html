@@ -1,90 +1,12 @@
-<!-- EXPENSE STATS -->
-<div class="cb-stat-box" style="border-left:3px solid #ef4444;">
-    <div class="cb-stat-lbl">Total Expenses</div>
-    <div class="cb-stat-val" style="color:#ef4444;">₹{{ cashbook_totals.expense }}</div>
-</div>
+{% comment %}
+  The AJAX response for /cashbook/ — the two regions a filter, a search, a type
+  chip or a page change can move. The add form deliberately sits between them
+  on the page and is NOT in here: swapping it would wipe whatever someone had
+  half-typed the moment a filter changed.
 
-<!-- EXPENSE LIST -->
-<div class="cb-list">
-    <div class="cb-list-hd">
-        <span class="col-name" style="padding-left:14px;">Name</span>
-        <span class="col-amt">Amount</span><span class="col-menu"></span>
-    </div>
-    {% for entry in expenses %}
-    {% ifchanged entry.date %}
-    <div class="cb-date-header">{{ entry.date|date:"d/m/Y" }}</div>
-    {% endifchanged %}
-    <div class="cb-entry">
-        <span class="col-name">{{ entry.category }} <span style="font-size:0.7rem; color:#94a3b8; background:#f1f5f9; padding:2px 6px; border-radius:4px; margin-left:6px;">{{ entry.get_payment_method_display }}</span></span>
-        <span class="col-amt" style="color:#ef4444;">-₹{{ entry.amount }}</span>
-        <span class="col-menu">
-            <div class="dropdown">
-                <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
-                <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
-                    <li><a class="dropdown-item" href="#"
-                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.entry_type }}'); return false;">
-                        <i class="bi bi-pencil text-primary"></i> Edit
-                    </a></li>
-                    <li><a class="dropdown-item del-item" href="#"
-                           onclick="cbConfirmDelete({{ entry.id }}, '{{ entry.category|escapejs }}'); return false;">
-                        <i class="bi bi-trash3"></i> Delete
-                    </a></li>
-                </ul>
-            </div>
-        </span>
-    </div>
-    {% endfor %}
-    {% if not expenses %}<div class="cb-empty-row">No expenses recorded for this period.</div>{% endif %}
-    {% comment %}Mirrors cashbook.html — this partial is what the filter buttons swap in.{% endcomment %}
-    {% if expense_hidden %}
-    <div class="cb-empty-row" style="border-top:1px solid var(--color-border-light);">
-        Showing the {{ expenses|length }} most recent of {{ expense_count }}.
-        The total above includes all {{ expense_count }} — narrow the date range to see the rest.
-    </div>
-    {% endif %}
-</div>
-
-<!-- INCOME STATS -->
-<div class="cb-stat-box" style="border-left:3px solid #10b981; margin-top:2rem;">
-    <div class="cb-stat-lbl">Total Income</div>
-    <div class="cb-stat-val" style="color:#10b981;">₹{{ cashbook_totals.income }}</div>
-</div>
-
-<!-- INCOME LIST -->
-<div class="cb-list">
-    <div class="cb-list-hd">
-        <span class="col-name" style="padding-left:14px;">Name</span>
-        <span class="col-amt">Amount</span><span class="col-menu"></span>
-    </div>
-    {% for entry in incomes %}
-    {% ifchanged entry.date %}
-    <div class="cb-date-header">{{ entry.date|date:"d/m/Y" }}</div>
-    {% endifchanged %}
-    <div class="cb-entry">
-        <span class="col-name">{{ entry.category }} <span style="font-size:0.7rem; color:#94a3b8; background:#f1f5f9; padding:2px 6px; border-radius:4px; margin-left:6px;">{{ entry.get_payment_method_display }}</span></span>
-        <span class="col-amt" style="color:#10b981;">+₹{{ entry.amount }}</span>
-        <span class="col-menu">
-            <div class="dropdown">
-                <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
-                <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
-                    <li><a class="dropdown-item" href="#"
-                           onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.entry_type }}'); return false;">
-                        <i class="bi bi-pencil text-primary"></i> Edit
-                    </a></li>
-                    <li><a class="dropdown-item del-item" href="#"
-                           onclick="cbConfirmDelete({{ entry.id }}, '{{ entry.category|escapejs }}'); return false;">
-                        <i class="bi bi-trash3"></i> Delete
-                    </a></li>
-                </ul>
-            </div>
-        </span>
-    </div>
-    {% endfor %}
-    {% if not incomes %}<div class="cb-empty-row">No income recorded for this period.</div>{% endif %}
-    {% if income_hidden %}
-    <div class="cb-empty-row" style="border-top:1px solid var(--color-border-light);">
-        Showing the {{ incomes|length }} most recent of {{ income_count }}.
-        The total above includes all {{ income_count }} — narrow the date range to see the rest.
-    </div>
-    {% endif %}
-</div>
+  cashbook.html renders these same two includes; the JS lifts each out of this
+  response by id and replaces its counterpart, so the page can order them
+  however it likes without this file knowing.
+{% endcomment %}
+{% include "workshop/cashbook/_stats.html" %}
+{% include "workshop/cashbook/_ledger.html" %}

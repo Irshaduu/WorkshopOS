@@ -613,12 +613,17 @@ class CashbookCategoriesDoNotSplitTheProfitPageTests(TestCase):
                          "flagged, never filtered — the money stays counted")
 
 
-class ACappedCashbookListSaysSoTests(TestCase):
+class ALongCashbookPeriodStaysReadableTests(TestCase):
     """
-    The lists are capped for performance while the totals above them come from
-    the full queryset. A period holding more than the cap therefore showed a
-    total that plainly did not add up from the rows on screen, with nothing to
-    explain the gap.
+    The totals above the list come from the whole period, so the rows under
+    them have to account for that figure.
+
+    The list used to be capped at 300 with a notice explaining the gap — an
+    honest workaround, but the rows past the cap were reachable only by
+    narrowing the date range until they fitted. Pages removed the gap
+    altogether on 2026-08-03: nothing is hidden, so nothing needs explaining,
+    and the count is stated beside the pager. These tests were the cap's
+    guard and are now the pager's.
     """
 
     def setUp(self):
@@ -629,7 +634,7 @@ class ACappedCashbookListSaysSoTests(TestCase):
         self.client = Client()
         self.client.login(username='office', password='pass')
 
-    def test_a_truncated_list_states_the_real_count(self):
+    def test_the_total_is_made_of_rows_you_can_actually_reach(self):
         today = timezone.localdate()
         CashbookEntry.objects.bulk_create([
             CashbookEntry(entry_type='EXPENSE', category=f'Item {i}',
@@ -637,12 +642,19 @@ class ACappedCashbookListSaysSoTests(TestCase):
             for i in range(320)
         ])
         resp = self.client.get(reverse('cashbook') + '?filter=today')
-        self.assertEqual(resp.context['expense_count'], 320)
-        self.assertEqual(resp.context['expense_hidden'], 20)
-        self.assertContains(resp, 'Showing the 300 most recent of 320')
+        paginator = resp.context['page_obj'].paginator
+        self.assertEqual(paginator.count, 320)
         self.assertEqual(resp.context['cashbook_totals']['expense'], Decimal('3200'))
+        self.assertContains(resp, '320 entries')
 
-    def test_the_ajax_partial_says_it_too(self):
+        seen = set()
+        for page in range(1, paginator.num_pages + 1):
+            page_resp = self.client.get(f"{reverse('cashbook')}?filter=today&page={page}")
+            seen.update(e.pk for e in page_resp.context['entries'])
+        self.assertEqual(len(seen), 320,
+                         "every row behind the total has a page it can be read on")
+
+    def test_the_ajax_partial_carries_the_pager_too(self):
         """The filter buttons swap in the partial, not the full page."""
         today = timezone.localdate()
         CashbookEntry.objects.bulk_create([
@@ -652,15 +664,18 @@ class ACappedCashbookListSaysSoTests(TestCase):
         ])
         resp = self.client.get(reverse('cashbook') + '?filter=today',
                                HTTP_X_REQUESTED_WITH='XMLHttpRequest')
-        self.assertContains(resp, 'Showing the 300 most recent of 310')
+        self.assertContains(resp, '310 entries')
+        self.assertContains(resp, 'cb-js-page')
 
-    def test_a_short_list_says_nothing(self):
+    def test_a_short_list_shows_no_pager_at_all(self):
         CashbookEntry.objects.create(
             entry_type='EXPENSE', category='Rent', amount=Decimal('9000'),
             payment_method='CASH', date=timezone.localdate())
         resp = self.client.get(reverse('cashbook') + '?filter=today')
-        self.assertEqual(resp.context['expense_hidden'], 0)
-        self.assertNotContains(resp, 'most recent of')
+        self.assertEqual(resp.context['page_obj'].paginator.num_pages, 1)
+        # `class="..."`, not the bare name: the page carries its own stylesheet,
+        # so a `.cb-pager` rule is in the response whether the pager renders or not.
+        self.assertNotContains(resp, 'class="cb-pager"')
 
 
 class DeleteFormsPostTheReasonTheirViewsRecordTests(TestCase):

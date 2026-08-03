@@ -106,6 +106,36 @@ def inr(value):
 
 
 @register.filter
+def abs_value(value):
+    """Magnitude only — lets a template render its own '−' beside the ₹ sign."""
+    d = _to_decimal(value)
+    return value if d is None else abs(d)
+
+
+@register.filter
+def inr_amount(value):
+    """
+    Indian-grouped rupees that keep the paise only when there are any.
+
+    `inr` rounds to whole rupees, which is right for a headline and wrong for a
+    ledger line — a row printed as ₹500 when ₹499.50 left the till is a figure
+    that cannot be reconciled against the bill it came from. Whole amounts
+    still read as '1,200', not '1,200.00'.
+    """
+    d = _to_decimal(value)
+    if d is None:
+        return value
+    neg = d < 0
+    a = abs(d)
+    whole = int(a)
+    paise = (a - whole).quantize(Decimal('0.01'))
+    out = inr(whole)
+    if paise:
+        out += f".{int(paise * 100):02d}"
+    return ('-' if neg else '') + out
+
+
+@register.filter
 def inr_compact(value):
     """
     Short rupee figure for hero numbers on a phone: '45.2L', '4.57Cr', '8,500'.

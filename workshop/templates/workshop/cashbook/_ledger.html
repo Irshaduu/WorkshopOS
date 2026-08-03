@@ -1,0 +1,153 @@
+{% load custom_filters %}
+{% comment %}
+  The ledger itself: type chips, one chronological stream, pagination.
+
+  One stream rather than an expenses list and an income list. They are the same
+  ledger read from two sides, and duplicating every control for a side used a
+  handful of times a month is what made this page hard to read.
+{% endcomment %}
+<div id="cbLedger">
+
+    <div class="cb-ledger-head">
+        <h2 class="cb-section-title">
+            <i class="bi bi-journal-text"></i> Entries
+        </h2>
+        <div class="cb-chips" role="group" aria-label="Show which side of the ledger">
+            <button type="button" class="cb-chip {% if entry_type_filter == 'all' %}is-active{% endif %}"
+                    data-type="all" aria-pressed="{% if entry_type_filter == 'all' %}true{% else %}false{% endif %}">
+                All <span class="cb-chip-n">{{ type_counts.all }}</span>
+            </button>
+            <button type="button" class="cb-chip cb-chip--out {% if entry_type_filter == 'expense' %}is-active{% endif %}"
+                    data-type="expense" aria-pressed="{% if entry_type_filter == 'expense' %}true{% else %}false{% endif %}">
+                Out <span class="cb-chip-n">{{ type_counts.expense }}</span>
+            </button>
+            <button type="button" class="cb-chip cb-chip--in {% if entry_type_filter == 'income' %}is-active{% endif %}"
+                    data-type="income" aria-pressed="{% if entry_type_filter == 'income' %}true{% else %}false{% endif %}">
+                In <span class="cb-chip-n">{{ type_counts.income }}</span>
+            </button>
+        </div>
+    </div>
+
+    {% comment %}
+      Read by the page header's count pill after an AJAX swap — the pill sits
+      outside this block, so it has nowhere else to learn the new total from.
+    {% endcomment %}
+    <span id="cbTotalCount" data-count="{{ page_obj.paginator.count }}" hidden></span>
+
+    <div class="cb-list">
+        <div class="cb-list-head">
+            <span>Entry</span>
+            <span class="cb-h-amt">Amount</span>
+            <span></span>
+        </div>
+
+        {% for entry in entries %}
+            {% ifchanged entry.date %}
+            <div class="cb-day">
+                <span class="cb-day-label">
+                    {% if entry.date == today %}Today{% elif entry.date == yesterday %}Yesterday{% else %}{{ entry.date|date:"D, d M Y" }}{% endif %}
+                </span>
+                {% if entry.date == today or entry.date == yesterday %}
+                <span class="cb-day-date">{{ entry.date|date:"d M Y" }}</span>
+                {% endif %}
+            </div>
+            {% endifchanged %}
+
+            <div class="cb-row {% if entry.entry_type == 'INCOME' %}is-in{% else %}is-out{% endif %}">
+                <span class="cb-row-ico" aria-hidden="true">
+                    <i class="bi {% if entry.entry_type == 'INCOME' %}bi-arrow-down-left{% else %}bi-arrow-up-right{% endif %}"></i>
+                </span>
+
+                <div class="cb-row-main">
+                    <div class="cb-row-name">{{ entry.category }}</div>
+                    <div class="cb-row-meta">
+                        <span class="cb-tag">{{ entry.get_payment_method_display }}</span>
+                        {% if entry.description %}<span class="cb-note" title="{{ entry.description }}">{{ entry.description }}</span>{% endif %}
+                    </div>
+                </div>
+
+                <div class="cb-row-amt">
+                    {% if entry.entry_type == 'INCOME' %}+{% else %}−{% endif %}₹{{ entry.amount|inr_amount }}
+                </div>
+
+                <div class="cb-row-act">
+                    <div class="dropdown">
+                        <button class="cb-kebab" type="button" data-bs-toggle="dropdown"
+                                aria-label="Options for {{ entry.category }}">
+                            <i class="bi bi-three-dots-vertical"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
+                            <li><button type="button" class="dropdown-item cb-js-edit"
+                                    data-id="{{ entry.id }}"
+                                    data-name="{{ entry.category }}"
+                                    data-amount="{{ entry.amount }}"
+                                    data-method="{{ entry.payment_method }}"
+                                    data-date="{{ entry.date|date:'Y-m-d' }}"
+                                    data-etype="{{ entry.entry_type }}"
+                                    data-note="{{ entry.description|default:'' }}">
+                                <i class="bi bi-pencil"></i> Edit
+                            </button></li>
+                            {% comment %}
+                              data-amount is the raw column value the edit form
+                              needs; data-shown is the same figure the row
+                              prints, so the delete confirmation quotes what is
+                              on screen rather than '3350.00'.
+                            {% endcomment %}
+                            <li><button type="button" class="dropdown-item cb-js-delete del-item"
+                                    data-id="{{ entry.id }}"
+                                    data-name="{{ entry.category }}"
+                                    data-shown="{{ entry.amount|inr_amount }}">
+                                <i class="bi bi-trash3"></i> Delete
+                            </button></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        {% empty %}
+            <div class="cb-empty">
+                <i class="bi {% if q %}bi-search{% else %}bi-journal-x{% endif %}"></i>
+                {% if q %}
+                    <p class="cb-empty-title">Nothing matches “{{ q }}”</p>
+                    <p class="cb-empty-sub">Try a different word, or widen the date range.</p>
+                {% elif entry_type_filter == 'income' %}
+                    <p class="cb-empty-title">No income in this period</p>
+                    <p class="cb-empty-sub">Income here is rare — scrap, black oil and the like.</p>
+                {% elif entry_type_filter == 'expense' %}
+                    <p class="cb-empty-title">No expenses in this period</p>
+                    <p class="cb-empty-sub">Add one above as soon as money leaves the till.</p>
+                {% else %}
+                    <p class="cb-empty-title">Nothing recorded for this period</p>
+                    <p class="cb-empty-sub">Use the form above to record the first entry.</p>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="cb-pager">
+        {% comment %}
+          previous_page_number / next_page_number RAISE EmptyPage at the edges
+          and Django does not silence that in a template — so each is only ever
+          rendered inside its has_* guard.
+        {% endcomment %}
+        {% if page_obj.has_previous %}
+        <button type="button" class="cb-page-btn cb-js-page" data-page="{{ page_obj.previous_page_number }}"
+                aria-label="Previous page"><i class="bi bi-chevron-left"></i></button>
+        {% else %}
+        <button type="button" class="cb-page-btn" disabled aria-label="Previous page">
+            <i class="bi bi-chevron-left"></i></button>
+        {% endif %}
+        <span class="cb-page-state">
+            Page <strong>{{ page_obj.number }}</strong> of <strong>{{ page_obj.paginator.num_pages }}</strong>
+            <span class="cb-page-total">· {{ page_obj.paginator.count }} entries</span>
+        </span>
+        {% if page_obj.has_next %}
+        <button type="button" class="cb-page-btn cb-js-page" data-page="{{ page_obj.next_page_number }}"
+                aria-label="Next page"><i class="bi bi-chevron-right"></i></button>
+        {% else %}
+        <button type="button" class="cb-page-btn" disabled aria-label="Next page">
+            <i class="bi bi-chevron-right"></i></button>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

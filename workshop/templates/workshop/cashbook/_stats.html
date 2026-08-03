@@ -1,0 +1,47 @@
+{% load custom_filters %}
+{% comment %}
+  The period headline.
+
+  Money Out leads and is the biggest figure on the page: this ledger is ~98%
+  small general expenses, so "what did we spend" IS the question it is opened
+  to answer. Money In sits beside it, small, and reads "no income this period"
+  on the many periods where there is none.
+
+  Net is rendered ONLY when income exists. With no income it is Money Out with
+  a minus sign — the same number printed twice — and a figure labelled "Net"
+  beside an expense total invites being read as profit, which is the Profit
+  page's job and a different calculation entirely.
+
+  All three describe the whole date window and never the type chip below: a
+  chip is a way of reading the period, not a different period.
+{% endcomment %}
+<div class="cb-stats {% if not cashbook_totals.income %}is-out-only{% endif %}" id="cbStats">
+
+    <div class="cb-stat cb-stat--out">
+        <div class="cb-stat-lbl"><i class="bi bi-arrow-up-right"></i> Money Out</div>
+        <div class="cb-stat-val">₹{{ cashbook_totals.expense|inr_amount }}</div>
+        <div class="cb-stat-sub">
+            {{ type_counts.expense }} expense{{ type_counts.expense|pluralize }} this period
+        </div>
+    </div>
+
+    <div class="cb-stat cb-stat--in {% if not cashbook_totals.income %}is-empty{% endif %}">
+        <div class="cb-stat-lbl"><i class="bi bi-arrow-down-left"></i> Money In</div>
+        <div class="cb-stat-val">₹{{ cashbook_totals.income|inr_amount }}</div>
+        <div class="cb-stat-sub">
+            {% if cashbook_totals.income %}
+                {{ type_counts.income }} entr{{ type_counts.income|pluralize:"y,ies" }} — scrap, black oil…
+            {% else %}
+                Nothing came in — normal
+            {% endif %}
+        </div>
+    </div>
+
+    {% if cashbook_totals.income %}
+    <div class="cb-stat cb-stat--net {% if cashbook_totals.net < 0 %}is-neg{% endif %}">
+        <div class="cb-stat-lbl"><i class="bi bi-wallet2"></i> Net movement</div>
+        <div class="cb-stat-val">{% if cashbook_totals.net < 0 %}−{% endif %}₹{{ cashbook_totals.net|abs_value|inr_amount }}</div>
+        <div class="cb-stat-sub">In minus out — not profit</div>
+    </div>
+    {% endif %}
+</div>

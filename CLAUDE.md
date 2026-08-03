@@ -423,12 +423,82 @@ about to correct one of these, you are about to break the business:
   from the check, so deliberately re-casing the only entry of its kind still
   works. Wage-looking categories are still **flagged, never filtered** — that
   rule is unchanged.
+  **Extended 2026-08-03: the name box now offers those spellings as a
+  `<datalist>`.** The snap was silent — someone typed "electricity", the row
+  saved as "Electricity", and nothing had said why. Showing the list while
+  typing puts the rule where it applies rather than after it. It is a
+  suggestion, not a constraint: a genuinely new category is still just typed.
+  Skipped on the AJAX path, since the datalist sits outside the swapped
+  regions and does not change with a filter. `CashbookEntry.category` gained
+  an index in the same change — that `DISTINCT` and the Profit page's
+  `values('category')` are both full-column reads.
 
-- **A capped Cashbook list says so.** Added 2026-08-02. The lists are sliced at
-  `LIST_CAP` for performance while the totals above them are computed from the
-  full queryset, so any period holding more rows than the cap showed a total
-  that plainly did not add up from what was on screen, with nothing to explain
-  the gap. Both the full page and the AJAX partial now state the real count.
+- **The Cashbook is ONE stream, and every row behind the total is reachable.**
+  Added 2026-08-02 as "a capped list says so", rewritten 2026-08-03 when the
+  page was redesigned. Two things were wrong and they had the same root.
+  (a) The page was an expenses list beside an income list — two totals, two
+  add forms, two of every control — for a ledger whose income side is used a
+  handful of times a month. It is now a single chronological stream with
+  `All / Out / In` chips over it, one search box and one pager.
+  (b) Each list was sliced at `LIST_CAP = 300` while the totals above them
+  came from the full queryset, so a busy period printed a figure that could
+  not be added up from what was on screen, and the rows past the cap were
+  reachable only by narrowing the date range until they fitted. The notice
+  explaining the gap was honest but was papering over it. `PAGE_SIZE = 45`
+  (the app's list-view convention) replaced the cap: nothing is hidden, so
+  nothing needs explaining. **The totals deliberately follow the date window
+  and the search but NOT the type chip** — a chip is a way of reading the
+  period, not a different period, and moving the headline when one is tapped
+  would make the expenses appear to vanish from a period they are still part
+  of. Totals and both chip counts come from **one** aggregate, so they can
+  never disagree. Guarded by `TheLedgerIsOneSearchableStreamTests` and
+  `ALongCashbookPeriodStaysReadableTests`.
+
+- **The Cashbook's date box is small, first, and silent only while it is
+  right.** Added 2026-08-03. Almost every entry is dated today, so the field
+  that is nearly always correct should not be the widest control on the row —
+  it is a 46px calendar glyph with the real `<input type="date">` invisible on
+  top of it, which is what makes one tap open the OS picker on every platform.
+  Two things stop that being a trap. The moment the date is *not* today the box
+  turns amber and spells the day out, and the add confirmation repeats the
+  whole entry — date included, marked "(today)" when it is — before a rupee is
+  written. Desktop Chrome opens a date picker only from the calendar glyph,
+  which the transparent overlay hides, so the click handler calls
+  `showPicker()`; on mobile the tap has already opened it and the second call
+  throws, which is caught.
+
+- **The Cashbook is ~98% expenses, and the page is weighted for that.** Added
+  2026-08-03 on the owner's clarification. Income is scrap, black oil and the
+  like — a handful of entries a month against a stream of small general
+  expenses. So **Money Out leads the headline and is the largest figure on the
+  page**, the add form opens on Money Out, and the income card recedes to grey
+  reading "nothing came in — normal" on the many periods with none. **Net is
+  rendered only when there IS income**: with none it is Money Out with a minus
+  sign, the same number twice, and a figure labelled "Net" beside an expense
+  total invites being read as profit — which is the Profit page's job and a
+  different calculation. When shown it is labelled "Net movement / in minus
+  out — not profit". The engine still computes `cashbook_totals['net']`
+  unconditionally; only the card is conditional.
+
+- **`.cb-list` must NOT be `overflow: hidden`, however much the rounded corners
+  want it.** Learned 2026-08-03. The row's Edit/Delete menu is an
+  absolutely-positioned Bootstrap dropdown inside that box, and hiding the
+  overflow clips it — invisibly, and only sometimes, which is what made it hard
+  to spot: with a long list the menu opens over the rows beneath it and stays
+  inside the box, so it looks correct, and with one row the box is barely
+  taller than the row and both items were cut off with nothing on screen to
+  say why. Popper cannot escape a clipping ancestor. The corners are rounded on
+  `.cb-list > :first-child` / `:last-child` instead. Same trap waits for any
+  future list that puts a dropdown inside a rounded, clipped container.
+
+- **Never `transition: all` on a Cashbook control.** Learned 2026-08-03 and
+  worth not rediscovering. `.cb-chip` carried `transition: all 0.15s` and the
+  mobile rule gives those chips `flex: 1` — `all` transitions **flex-grow
+  itself**, and the chips stayed pinned at their content width with the
+  correct rule matching, `justify-content` from the same block applied, and
+  `getComputedStyle().flexGrow` reporting `0` forever. It looks exactly like a
+  media query that is not being applied. Transition the paint (background,
+  border-color, color, box-shadow), never the layout.
 
 - **Income mis-keyed as an expense can be corrected in place.** Added
   2026-08-02. It lands on the *wrong side* of the Profit equation — a

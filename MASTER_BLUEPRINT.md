@@ -462,7 +462,7 @@ stateDiagram-v2
 | `/invoice/` | `invoice_template.html` | Professional invoice |
 | `/spare_shops/` | `shop_list.html`, `shop_detail.html`, `shop_print.html`, `unassigned_hub.html` | 4 spare shop screens |
 | `/manage/` | `manage_dashboard.html`, `data_cleanup.html` | 2 admin screens |
-| `/cashbook/` | `cashbook.html`, `cashbook_partial.html` | 2 cashbook screens (standalone) |
+| `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
 | `/includes/` | `pagination.html` | Reusable pagination component |
 
 ### Inventory Templates (`inventory/templates/inventory/`) — 20 files

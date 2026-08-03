@@ -1,187 +1,640 @@
 {% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% comment %}
+  CASHBOOK — the workshop's general expenses and miscellaneous income.
+
+  Read top to bottom: what the period did (the three headline figures), how to
+  add to it (one form, one side switch), then the stream itself. Everything
+  that narrows the page — search, date window, type — lives in the header or
+  directly above the list, never buried beside a row.
+{% endcomment %}
+
 {% block title %}Cashbook{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ─────────────────────────────────────────────────────────────
+       Cashbook. Green is the section accent (matches the drawer);
+       red = money out, emerald = money in, amber = a back-dated entry.
+       ───────────────────────────────────────────────────────────── */
+    .cb {
+        --cb-accent: #10b981;
+        --cb-out:    #dc2626;
+        --cb-in:     #059669;
+        --cb-warn:   #d97706;
+    }
+
+    /* ── Page header ─────────────────────────────────────────── */
+    .cb-page-header {
+        margin: 0.5rem 0 1.25rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid var(--color-border);
+        position: relative;
+    }
+    .cb-page-header::after {
+        content: ''; position: absolute; bottom: -2px; left: 0;
+        width: 48px; height: 2px; background: var(--cb-accent);
+    }
+    .cb-header-top {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .cb-page-title {
+        font-size: 1.45rem; font-weight: 800; letter-spacing: -0.3px;
+        color: var(--color-text); line-height: 1.1;
+        display: flex; align-items: center; gap: 9px; margin: 0;
+    }
+    .cb-page-title .title-icon { color: var(--cb-accent); }
+    .cb-count-pill {
+        font-size: 0.62rem; font-weight: 700; letter-spacing: 0.9px;
+        text-transform: uppercase; white-space: nowrap;
+        background: rgba(16,185,129,0.1); color: #047857;
+        padding: 3px 9px; border-radius: 999px;
+        border: 1px solid rgba(16,185,129,0.22); align-self: center;
+    }
+
+    /* ── Controls: search + date filter (same vocabulary as every
+         other list page in the app) ───────────────────────────── */
+    .cb-controls { display: flex; align-items: center; gap: 8px; }
+    .cb-search-wrap { position: relative; flex: 1; min-width: 0; }
+    .cb-search-wrap .search-icon {
+        position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+        color: var(--color-text-muted); font-size: 0.78rem; pointer-events: none;
+    }
+    .cb-search-input {
+        width: 100%; border: 1px solid var(--color-border); border-radius: 999px;
+        background: var(--color-card); font-size: 0.82rem; color: var(--color-text);
+        padding: 9px 34px 9px 33px; outline: none;
+        box-shadow: 0 1px 3px var(--color-shadow);
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .cb-search-input:focus {
+        border-color: var(--cb-accent);
+        box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
+    }
+    .cb-search-input::placeholder { color: var(--color-text-muted); }
+    /* WebKit puts its own clear button on type=search; ours is styled to match
+       the rest of the page and sits where the layout expects it. */
+    .cb-search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+    .cb-search-clear {
+        position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+        border: none; background: transparent; color: var(--color-text-muted);
+        width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+        display: none; align-items: center; justify-content: center; font-size: 0.8rem;
+    }
+    .cb-search-clear:hover { background: var(--color-hover); color: var(--color-text); }
+    .cb-search-wrap.has-value .cb-search-clear { display: flex; }
+
+    .cb-filter-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 999px; padding: 9px 13px; min-height: 40px;
+        font-size: 0.78rem; font-weight: 700; color: var(--color-text);
+        cursor: pointer; box-shadow: 0 1px 3px var(--color-shadow);
+        white-space: nowrap; flex-shrink: 0; transition: border-color 0.15s;
+    }
+    .cb-filter-btn:hover { border-color: var(--cb-accent); }
+    .cb-filter-btn .bi-funnel { font-size: 0.72rem; color: var(--color-text-muted); }
+    .cb-filter-btn .bi-chevron-down { font-size: 0.6rem; opacity: 0.5; }
+
+    .cb-dropdown-menu {
+        border-radius: 16px; border: 1px solid var(--color-border);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.14), 0 6px 16px rgba(0,0,0,0.07);
+        padding: 4px; min-width: 172px; width: max-content;
+        max-height: calc(100vh - 160px); overflow-y: auto; margin-top: 6px !important;
+    }
+    .cb-dropdown-menu .dropdown-item {
+        border-radius: 9px; font-size: 0.8rem; font-weight: 500; padding: 8px 12px;
+        color: var(--color-text); display: flex; align-items: center; gap: 8px;
+        transition: background 0.12s, color 0.12s;
+    }
+    .cb-dropdown-menu .dropdown-item .item-icon {
+        font-size: 0.72rem; opacity: 0.38; width: 14px; text-align: center;
+        flex-shrink: 0; transition: opacity 0.12s;
+    }
+    .cb-dropdown-menu .dropdown-item:hover { background: rgba(16,185,129,0.08); color: #047857; }
+    .cb-dropdown-menu .dropdown-item:hover .item-icon { opacity: 0.7; }
+    .cb-dropdown-menu .dropdown-item.active {
+        background: rgba(16,185,129,0.13); color: #047857; font-weight: 700;
+    }
+    .cb-dropdown-menu .dropdown-item.active .item-icon { opacity: 1; }
+    .cb-dropdown-menu .dropdown-item.active::after {
+        content: '✓'; margin-left: auto; font-size: 0.75rem; font-weight: 900; color: #047857;
+    }
+    .cb-dropdown-menu .dropdown-divider { margin: 4px 8px; }
+    .cb-dropdown-menu .form-control-sm { font-size: 0.78rem; border-radius: 8px; }
+
+    /* ── Headline figures ────────────────────────────────────── */
+    /* Money Out leads and takes the extra room — this ledger is almost all
+       expenses. With no income in the period the Net card is not rendered at
+       all (it would restate Money Out), so Out grows into the space. */
+    .cb-stats {
+        display: grid; grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr));
+        gap: 10px; margin-bottom: 16px;
+    }
+    .cb-stats.is-out-only { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+    .cb-stat {
+        position: relative; overflow: hidden;
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 14px; padding: 12px 14px 11px 16px;
+        box-shadow: 0 1px 4px var(--color-shadow);
+    }
+    .cb-stat::before {
+        content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    }
+    .cb-stat--in::before  { background: var(--cb-in); }
+    .cb-stat--out::before { background: var(--cb-out); }
+    .cb-stat--net::before { background: #334155; }
+    .cb-stat-lbl {
+        display: flex; align-items: center; gap: 5px;
+        font-size: 0.64rem; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.07em; color: var(--color-text-muted); margin-bottom: 4px;
+    }
+    .cb-stat-lbl i { font-size: 0.7rem; }
+    .cb-stat-val {
+        font-size: clamp(1.02rem, 3.6vw, 1.42rem); font-weight: 800; line-height: 1.15;
+        font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+        word-break: break-word;
+    }
+    .cb-stat--in  .cb-stat-val { color: var(--cb-in); }
+    .cb-stat--out .cb-stat-val { color: var(--cb-out); }
+    .cb-stat--net .cb-stat-val { color: #0f172a; }
+    .cb-stat--net.is-neg .cb-stat-val { color: var(--cb-out); }
+    /* The page's headline figure, not one of three equals. */
+    .cb-stat--out .cb-stat-val { font-size: clamp(1.25rem, 4.4vw, 1.75rem); }
+    /* An empty income side is the normal state, so it recedes rather than
+       sitting there in green announcing a zero. */
+    .cb-stat--in.is-empty::before { background: var(--color-border); }
+    .cb-stat--in.is-empty .cb-stat-val { color: var(--color-text-muted); font-weight: 700; }
+    .cb-stat-sub {
+        font-size: 0.66rem; color: var(--color-text-muted); margin-top: 2px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ── Add entry ───────────────────────────────────────────── */
+    .cb-add {
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 16px; padding: 13px 14px 14px;
+        box-shadow: 0 1px 4px var(--color-shadow); margin-bottom: 20px;
+    }
+    .cb-add-top {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; margin-bottom: 11px; flex-wrap: wrap;
+    }
+    .cb-section-title {
+        font-size: 0.82rem; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.06em; color: var(--color-text-muted); margin: 0;
+        display: flex; align-items: center; gap: 7px;
+    }
+    .cb-section-title i { font-size: 0.86rem; color: var(--cb-accent); }
+
+    .cb-seg {
+        display: inline-flex; background: var(--color-border-light);
+        border-radius: 999px; padding: 3px; gap: 2px;
+    }
+    .cb-seg-btn {
+        border: none; background: transparent; border-radius: 999px;
+        padding: 7px 15px; min-height: 34px; font-size: 0.78rem; font-weight: 700;
+        color: var(--color-text-muted); cursor: pointer;
+        display: inline-flex; align-items: center; gap: 6px;
+        transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+    .cb-seg-btn i { font-size: 0.75rem; }
+    .cb-seg-btn:hover { color: var(--color-text); }
+    .cb-seg-btn.is-active { background: var(--color-card); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+    .cb-seg-btn[data-type="EXPENSE"].is-active { color: var(--cb-out); }
+    .cb-seg-btn[data-type="INCOME"].is-active  { color: var(--cb-in); }
+
+    .cb-add-grid {
+        display: grid; gap: 8px; align-items: center;
+        grid-template-columns: auto minmax(0, 1fr) 150px 138px auto;
+        grid-template-areas: "date name amt meth go";
+    }
+    .cb-f-date { grid-area: date; }
+    .cb-f-name { grid-area: name; }
+    .cb-f-amt  { grid-area: amt;  }
+    .cb-f-meth { grid-area: meth; }
+    .cb-f-go   { grid-area: go;   }
+    .cb-f-note { grid-area: note; display: none; }
+    .cb-add-grid.show-note { grid-template-areas: "date name amt meth go" "note note note note note"; }
+    .cb-add-grid.show-note .cb-f-note { display: block; }
+
+    .cb-input, .cb-select {
+        width: 100%; min-height: 44px;
+        border: 1px solid var(--color-border); border-radius: 10px;
+        padding: 9px 12px; font-size: 0.875rem; color: var(--color-text);
+        background: var(--color-card); outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .cb-input:focus, .cb-select:focus {
+        border-color: var(--cb-accent); box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+    }
+    .cb-input::placeholder { color: var(--color-text-muted); }
+    .cb-select { cursor: pointer; }
+
+    /* The date box. Small and first, because on almost every entry it is
+       already right — today. It shows a calendar glyph and nothing else
+       until someone back-dates the entry, at which point it turns amber and
+       spells the date out, so a wrong day can never be posted unseen. The
+       real <input type=date> lies invisible on top of it, which is what makes
+       one tap open the OS picker on every platform. */
+    .cb-datebox {
+        position: relative; display: inline-flex; align-items: center;
+        justify-content: center; gap: 6px;
+        min-width: 46px; height: 44px; padding: 0 11px;
+        border: 1px solid var(--color-border); border-radius: 10px;
+        background: var(--color-card); cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .cb-datebox:hover { border-color: var(--cb-accent); }
+    .cb-datebox:focus-within { border-color: var(--cb-accent); box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+    .cb-datebox i { font-size: 1.02rem; color: var(--color-text-muted); }
+    .cb-datebox input[type="date"] {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        opacity: 0; border: none; padding: 0; margin: 0; cursor: pointer;
+        background: transparent;
+    }
+    .cb-date-txt {
+        display: none; font-size: 0.78rem; font-weight: 700; white-space: nowrap;
+    }
+    .cb-datebox.is-custom { border-color: var(--cb-warn); background: #fffbeb; }
+    .cb-datebox.is-custom i { color: #b45309; }
+    .cb-datebox.is-custom .cb-date-txt { display: inline; color: #b45309; }
+
+    .cb-note-toggle {
+        border: none; background: transparent; color: var(--color-text-muted);
+        font-size: 0.74rem; font-weight: 700; cursor: pointer; padding: 4px 6px;
+        border-radius: 6px; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .cb-note-toggle:hover { color: var(--cb-accent); background: rgba(16,185,129,0.07); }
+
+    .cb-submit {
+        border: none; border-radius: 10px; min-height: 44px; padding: 0 20px;
+        font-size: 0.85rem; font-weight: 800; color: #fff; cursor: pointer;
+        white-space: nowrap; display: inline-flex; align-items: center;
+        justify-content: center; gap: 6px; transition: background 0.15s, transform 0.1s;
+        width: 100%;
+    }
+    .cb-submit:active { transform: translateY(1px); }
+    .cb-submit.is-out { background: var(--cb-out); }
+    .cb-submit.is-out:hover { background: #b91c1c; }
+    .cb-submit.is-in  { background: var(--cb-in); }
+    .cb-submit.is-in:hover { background: #047857; }
+
+    /* ── Ledger ──────────────────────────────────────────────── */
+    .cb-ledger-head {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .cb-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .cb-chip {
+        border: 1px solid var(--color-border); background: var(--color-card);
+        color: var(--color-text-muted); border-radius: 999px;
+        padding: 6px 12px; min-height: 34px; font-size: 0.76rem; font-weight: 700;
+        cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+        {% comment %}
+          NEVER `transition: all` on a chip. The mobile rule below gives these
+          `flex: 1`, and `all` transitions flex-grow itself — the chips were
+          left pinned at their content width, permanently, with the correct
+          rule matching and its value simply never arriving. Transition the
+          paint, never the layout.
+        {% endcomment %}
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .cb-chip:hover { border-color: #94a3b8; color: var(--color-text); }
+    .cb-chip-n {
+        font-size: 0.68rem; font-weight: 800; background: var(--color-border-light);
+        color: var(--color-text-muted); border-radius: 999px; padding: 1px 7px;
+        font-variant-numeric: tabular-nums;
+    }
+    .cb-chip.is-active { background: #0f172a; border-color: #0f172a; color: #fff; }
+    .cb-chip.is-active .cb-chip-n { background: rgba(255,255,255,0.2); color: #fff; }
+    .cb-chip--out.is-active { background: var(--cb-out); border-color: var(--cb-out); }
+    .cb-chip--in.is-active  { background: var(--cb-in);  border-color: var(--cb-in); }
+
+    {% comment %}
+      NO `overflow: hidden` here, however much the rounded corners want it. The
+      row menu is an absolutely-positioned Bootstrap dropdown inside this box,
+      and hiding the overflow CLIPS IT — invisibly, and only sometimes. With a
+      long list the menu opens over the rows beneath it and stays inside the
+      box, so it looks fine; with one row the box is barely taller than the row
+      and Edit/Delete were cut off with nothing to say why. The corners are
+      rounded on the first and last children instead.
+    {% endcomment %}
+    .cb-list {
+        background: var(--color-card); border: 1px solid var(--color-border);
+        border-radius: 14px; box-shadow: 0 1px 4px var(--color-shadow);
+    }
+    .cb-list > :first-child { border-radius: 13px 13px 0 0; }
+    .cb-list > :last-child  { border-radius: 0 0 13px 13px; border-bottom: none; }
+    .cb-list-head {
+        display: grid; grid-template-columns: 30px minmax(0, 1fr) 120px 38px;
+        gap: 10px; align-items: center; padding: 8px 14px;
+        background: var(--color-bg); border-bottom: 1px solid var(--color-border-light);
+    }
+    .cb-list-head span {
+        font-size: 0.64rem; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.07em; color: var(--color-text-muted);
+    }
+    .cb-list-head span:first-child { grid-column: 1 / span 2; }
+    .cb-list-head .cb-h-amt { text-align: right; }
+
+    .cb-day {
+        display: flex; align-items: baseline; gap: 8px;
+        padding: 11px 14px 5px; background: var(--color-card);
+        border-bottom: 1px solid var(--color-border-light);
+    }
+    .cb-day-label {
+        font-size: 0.72rem; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.06em; color: #475569;
+    }
+    .cb-day-date { font-size: 0.68rem; color: var(--color-text-muted); }
+
+    .cb-row {
+        display: grid; grid-template-columns: 30px minmax(0, 1fr) auto 38px;
+        gap: 10px; align-items: center; padding: 10px 14px;
+        border-bottom: 1px solid var(--color-border-light);
+        transition: background 0.12s;
+    }
+    .cb-row:last-child { border-bottom: none; }
+    .cb-row:hover { background: var(--color-hover); }
+    .cb-row-ico {
+        width: 26px; height: 26px; border-radius: 8px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 0.72rem; flex-shrink: 0;
+    }
+    .cb-row.is-out .cb-row-ico { background: rgba(220,38,38,0.09); color: var(--cb-out); }
+    .cb-row.is-in  .cb-row-ico { background: rgba(5,150,105,0.1);  color: var(--cb-in); }
+    .cb-row-main { min-width: 0; }
+    .cb-row-name {
+        font-size: 0.875rem; font-weight: 700; color: var(--color-text);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cb-row-meta {
+        display: flex; align-items: center; gap: 7px; margin-top: 2px; min-width: 0;
+    }
+    .cb-tag {
+        font-size: 0.65rem; font-weight: 700; color: #64748b;
+        background: var(--color-border-light); padding: 2px 7px;
+        border-radius: 5px; flex-shrink: 0;
+    }
+    .cb-note {
+        font-size: 0.72rem; color: var(--color-text-muted);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    }
+    .cb-row-amt {
+        font-size: 0.9rem; font-weight: 800; text-align: right;
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    .cb-row.is-out .cb-row-amt { color: var(--cb-out); }
+    .cb-row.is-in  .cb-row-amt { color: var(--cb-in); }
+    .cb-row-act { display: flex; justify-content: flex-end; }
+
+    .cb-kebab {
+        background: none; border: none; color: var(--color-text-muted);
+        width: 34px; height: 34px; border-radius: 8px; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 0.95rem; transition: background 0.15s, color 0.15s;
+    }
+    .cb-kebab:hover { background: var(--color-border-light); color: var(--color-text); }
+    .cb-kebab-menu {
+        border-radius: 12px; border: 1px solid var(--color-border);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.13); padding: 4px; min-width: 148px;
+    }
+    .cb-kebab-menu .dropdown-item {
+        border-radius: 8px; font-size: 0.8rem; font-weight: 600; padding: 9px 12px;
+        display: flex; align-items: center; gap: 9px; width: 100%; border: none;
+        background: transparent; text-align: left; cursor: pointer;
+    }
+    .cb-kebab-menu .dropdown-item i { font-size: 0.82rem; }
+    .cb-kebab-menu .dropdown-item.del-item { color: var(--cb-out); }
+    .cb-kebab-menu .dropdown-item.del-item:hover { background: #fef2f2; }
+
+    .cb-empty { padding: 44px 22px; text-align: center; }
+    .cb-empty i { font-size: 1.7rem; color: var(--color-border); display: block; margin-bottom: 10px; }
+    .cb-empty-title { font-size: 0.9rem; font-weight: 700; color: var(--color-text); margin: 0 0 3px; }
+    .cb-empty-sub { font-size: 0.79rem; color: var(--color-text-muted); margin: 0; }
+
+    /* ── Pager ───────────────────────────────────────────────── */
+    .cb-pager {
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        margin: 16px 0 34px;
+    }
+    .cb-page-btn {
+        width: 40px; height: 40px; border-radius: 10px;
+        border: 1px solid var(--color-border); background: var(--color-card);
+        color: var(--color-text); cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        box-shadow: 0 1px 3px var(--color-shadow);
+        transition: border-color 0.15s, color 0.15s;
+    }
+    .cb-page-btn:hover:not(:disabled) { border-color: var(--cb-accent); color: #047857; }
+    .cb-page-btn:disabled { opacity: 0.4; cursor: default; }
+    .cb-page-state { font-size: 0.78rem; color: var(--color-text-muted); }
+    .cb-page-state strong { color: var(--color-text); }
+
+    /* ── Modals ──────────────────────────────────────────────── */
+    .cb-modal-overlay {
+        display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.5);
+        z-index: 1060; align-items: center; justify-content: center; padding: 18px;
+        overflow-y: auto;
+    }
+    .cb-modal-overlay.show { display: flex; }
+    .cb-modal-box {
+        background: #fff; border-radius: 18px; padding: 22px;
+        max-width: 400px; width: 100%; box-shadow: 0 24px 70px rgba(0,0,0,0.25);
+        animation: cbPop 0.16s ease; margin: auto;
+    }
+    @keyframes cbPop { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .cb-modal-icon {
+        width: 42px; height: 42px; border-radius: 12px; display: flex;
+        align-items: center; justify-content: center; font-size: 1.15rem; margin-bottom: 12px;
+    }
+    .cb-modal-icon.out { background: rgba(220,38,38,0.1); color: var(--cb-out); }
+    .cb-modal-icon.in  { background: rgba(5,150,105,0.1); color: var(--cb-in); }
+    .cb-modal-icon.warn{ background: rgba(220,38,38,0.1); color: var(--cb-out); }
+    .cb-modal-icon.edit{ background: rgba(37,99,235,0.1); color: #2563eb; }
+    .cb-modal-title { font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-bottom: 5px; }
+    .cb-modal-msg { font-size: 0.85rem; color: #64748b; margin-bottom: 16px; line-height: 1.55; }
+    .cb-modal-msg strong { color: #0f172a; }
+    .cb-recap {
+        background: var(--color-bg); border: 1px solid var(--color-border);
+        border-radius: 12px; padding: 11px 13px; margin-bottom: 16px;
+    }
+    .cb-recap-row {
+        display: flex; justify-content: space-between; gap: 12px;
+        font-size: 0.8rem; padding: 3px 0;
+    }
+    .cb-recap-row dt { color: #64748b; font-weight: 500; margin: 0; }
+    .cb-recap-row dd { color: #0f172a; font-weight: 700; margin: 0; text-align: right;
+                       word-break: break-word; }
+    .cb-recap-row dd.amt-out { color: var(--cb-out); }
+    .cb-recap-row dd.amt-in  { color: var(--cb-in); }
+    .cb-recap-row dd.dated   { color: #b45309; }
+    .cb-modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+    .cb-btn-cancel {
+        background: var(--color-border-light); border: none; border-radius: 10px;
+        padding: 11px 17px; font-size: 0.84rem; font-weight: 700; color: #475569;
+        cursor: pointer; min-height: 44px;
+    }
+    .cb-btn-cancel:hover { background: #e2e8f0; }
+    .cb-btn-confirm {
+        border: none; border-radius: 10px; padding: 11px 19px; min-height: 44px;
+        font-size: 0.84rem; font-weight: 800; color: #fff; cursor: pointer;
+    }
+    .cb-btn-confirm.danger  { background: var(--cb-out); }
+    .cb-btn-confirm.danger:hover { background: #b91c1c; }
+    .cb-btn-confirm.success { background: var(--cb-in); }
+    .cb-btn-confirm.success:hover { background: #047857; }
+    .cb-field { margin-bottom: 10px; }
+    .cb-field label {
+        display: block; font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.06em; color: #64748b; margin-bottom: 4px;
+    }
+    .cb-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* ── Tablet ──────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+        .cb-add-grid {
+            grid-template-columns: auto minmax(0, 1fr) 140px 130px;
+            grid-template-areas: "date name amt meth" "go go go go";
+        }
+        .cb-add-grid.show-note {
+            grid-template-areas: "date name amt meth" "note note note note" "go go go go";
+        }
+        /* The grid item is the wrapper, not the button — justify-self on the
+           button itself does nothing here. */
+        .cb-f-go { display: flex; justify-content: flex-end; }
+        .cb-submit { width: auto; min-width: 180px; }
+    }
+
+    /* ── Mobile ──────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+        .cb-page-title { font-size: 1.3rem; }
+        /* Out gets the full width; In and Net share the row beneath it. When
+           there is no income, In takes the full width too rather than sitting
+           half-empty beside nothing. */
+        .cb-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .cb-stats.is-out-only { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .cb-stat--out { grid-column: 1 / -1; }
+        .cb-stats.is-out-only .cb-stat--in { grid-column: 1 / -1; }
+        .cb-add-grid {
+            grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-areas: "date name name" "amt amt meth" "go go go";
+        }
+        .cb-add-grid.show-note {
+            grid-template-areas: "date name name" "amt amt meth" "note note note" "go go go";
+        }
+        .cb-f-go { display: block; }
+        .cb-submit { width: 100%; min-width: 0; }
+        .cb-list-head { display: none; }
+        .cb-row { grid-template-columns: 26px minmax(0, 1fr) auto 34px; gap: 8px; padding: 10px 11px; }
+        .cb-row-ico { width: 24px; height: 24px; }
+        .cb-row-amt { font-size: 0.85rem; }
+        .cb-day { padding: 10px 11px 4px; }
+        .cb-ledger-head { gap: 8px; }
+        .cb-chips { width: 100%; }
+        .cb-chip { flex: 1; justify-content: center; }
+        .cb-field-row { grid-template-columns: 1fr; }
+        .cb-modal-box { padding: 18px; }
+    }
+
+    /* Very narrow phones: the amount is the one thing that must never wrap. */
+    @media (max-width: 360px) {
+        .cb-stat-val { font-size: 0.98rem; }
+        .cb-row-name { font-size: 0.83rem; }
+    }
+
+    /* Touch: the small controls grow to a thumb rather than a cursor. Keyed to
+       the pointer, not the width, so a tablet in landscape still gets them and
+       a narrow desktop window does not waste the space. */
+    @media (pointer: coarse) {
+        .cb-chip, .cb-seg-btn { min-height: 42px; padding-top: 9px; padding-bottom: 9px; }
+        .cb-kebab { width: 42px; height: 42px; }
+        .cb-page-btn { width: 46px; height: 46px; }
+        .cb-dropdown-menu .dropdown-item { padding: 11px 12px; }
+        .cb-kebab-menu .dropdown-item { padding: 12px; }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
+<div class="cb">
 
-
-    <style>
-        /* Cashbook page styles */
-        .cb-page-header { margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:2px solid var(--color-border); position:relative; }
-        .cb-page-header::after { content:''; position:absolute; bottom:-2px; left:0; width:48px; height:2px; background:#10b981; }
-        .cb-header-top { display:flex; justify-content:space-between; align-items:center; gap:12px; }
-        .cb-page-title { font-size:1.45rem; font-weight:800; color:var(--color-text); display:flex; align-items:center; gap:8px; }
-        .cb-page-title .cb-icon { color:#10b981; }
-
-        .cb-filter-btn {
-            display:inline-flex; align-items:center; gap:5px;
-            background:var(--color-card); border:1px solid var(--color-border); border-radius:999px;
-            padding:7px 12px; font-size:0.78rem; font-weight:600; color:var(--color-text);
-            cursor:pointer; box-shadow:0 1px 3px var(--color-shadow); white-space:nowrap; flex-shrink:0;
-            transition:border-color 0.15s;
-        }
-        .cb-filter-btn:hover { border-color:#2563eb; }
-        .cb-filter-btn .bi-funnel { font-size:0.72rem; color:var(--color-text-muted); }
-        .cb-filter-btn .bi-chevron-down { font-size:0.6rem; opacity:0.5; }
-        .cb-dropdown-menu {
-            border-radius: 16px; border: 1px solid var(--color-border);
-            box-shadow: 0 20px 60px rgba(0,0,0,0.14), 0 6px 16px rgba(0,0,0,0.07);
-            padding: 4px; min-width: 155px; width: max-content;
-            max-height: calc(100vh - 160px); overflow-y: auto;
-            margin-top: 6px !important;
-        }
-        .cb-dropdown-menu .dropdown-item {
-            border-radius: 8px; font-size: 0.8rem; font-weight: 500;
-            padding: 6px 12px; color: var(--color-text);
-            transition: background 0.12s, color 0.12s;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .cb-dropdown-menu .dropdown-item .item-icon {
-            font-size: 0.72rem; opacity: 0.38; flex-shrink: 0;
-            width: 14px; text-align: center; transition: opacity 0.12s;
-        }
-        .cb-dropdown-menu .dropdown-item:hover {
-            background: rgba(16,185,129,0.08); color: #10b981;
-        }
-        .cb-dropdown-menu .dropdown-item:hover .item-icon { opacity: 0.7; }
-        .cb-dropdown-menu .dropdown-item.active {
-            background: rgba(16,185,129,0.12); color: #10b981; font-weight: 700;
-        }
-        .cb-dropdown-menu .dropdown-item.active .item-icon { opacity: 1; }
-        .cb-dropdown-menu .dropdown-item.active::after {
-            content: '✓'; margin-left: auto; font-size: 0.75rem;
-            font-weight: 900; color: #10b981;
-        }
-        .cb-dropdown-menu .dropdown-divider { margin: 4px 8px; }
-
-        .cb-section { margin-bottom:2rem; }
-        .cb-section-hd { display:flex; align-items:center; gap:10px; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--color-border-light); }
-        .cb-section-hd .cb-sicon { font-size:1rem; }
-        .cb-section-hd h6 { font-size:0.9rem; font-weight:700; margin:0; }
-
-        .cb-add-form { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
-        .cb-add-form input[type="text"], .cb-add-form input[type="number"],
-        .cb-add-form input[type="date"], .cb-add-form select {
-            border:1px solid var(--color-border); border-radius:8px; padding:8px 12px;
-            font-size:0.875rem; color:var(--color-text); background:var(--color-card); outline:none; transition:border-color 0.2s;
-        }
-        .cb-add-form input[type="text"] { flex:1; }
-        .cb-add-form input[type="number"] { width:130px; flex-shrink:0; }
-        /* Wider than the number box: iOS and Android render dd/mm/yyyy plus a
-           picker glyph inside the field, and a 130px box clips it. */
-        .cb-add-form input[type="date"] { width:150px; flex-shrink:0; cursor:pointer; }
-        .cb-add-form select { width:120px; flex-shrink:0; cursor:pointer; }
-        .cb-add-form input:focus, .cb-add-form select:focus { border-color:#94a3b8; box-shadow:none; }
-        .cb-add-form input::placeholder { color:var(--color-text-muted); font-size:0.83rem; }
-        .cb-add-form .cb-add-btn { border:none; border-radius:8px; padding:8px 18px; font-size:0.85rem; font-weight:700; cursor:pointer; flex-shrink:0; transition:all 0.18s; white-space:nowrap; }
-        .cb-add-btn.exp { background:#ef4444; color:#fff; }
-        .cb-add-btn.exp:hover { background:#dc2626; }
-        .cb-add-btn.inc { background:transparent; color:#10b981; border:1.5px solid #6ee7b7; }
-        .cb-add-btn.inc:hover { background:#f0fdf4; }
-
-        /* Stats */
-        .cb-stat-box { background:var(--color-card); border:1px solid var(--color-border); border-radius:12px; padding:12px 20px; display:inline-flex; flex-direction:column; box-shadow:0 1px 4px var(--color-shadow); margin-bottom:14px; }
-        .cb-stat-lbl { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--color-text-muted); margin-bottom:2px; }
-        .cb-stat-val { font-size:1.3rem; font-weight:700; line-height:1.1; }
-        /* List */
-        .cb-list { background:var(--color-card); border:1px solid var(--color-border); border-radius:12px; overflow:hidden; box-shadow:0 1px 4px var(--color-shadow); }
-        .cb-list-hd { display:flex; align-items:center; padding:7px 14px; border-bottom:1px solid var(--color-border-light); background:var(--color-bg); }
-        .cb-list-hd span { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--color-text-muted); }
-        .cb-entry { display:flex; align-items:center; padding:9px 14px; border-bottom:1px solid var(--color-border-light); transition:background 0.12s; }
-        .cb-entry:last-child { border-bottom:none; }
-        .cb-entry:hover { background:var(--color-hover); }
-        .col-name  { flex:1; font-size:0.875rem; font-weight:600; color:var(--color-text); padding:0 8px; }
-        .col-amt   { width:110px; text-align:right; font-size:0.875rem; font-weight:700; font-variant-numeric:tabular-nums; flex-shrink:0; }
-        .col-menu  { width:36px; display:flex; justify-content:flex-end; flex-shrink:0; }
-        .cb-empty-row { padding:28px; text-align:center; color:var(--color-text-muted); font-size:0.83rem; }
-        .cb-date-header { padding:14px 14px 4px; font-size:0.85rem; color:#64748b; font-weight:500; background:var(--color-card); border-bottom:1px solid #f1f5f9; }
-        /* Kebab 3-dot button */
-        .cb-kebab { background:none; border:none; color:var(--color-text-muted); padding:4px 6px; border-radius:6px; cursor:pointer; font-size:1rem; line-height:1; transition:all 0.15s; }
-        .cb-kebab:hover { background:var(--color-hover); color:var(--color-text); }
-        .cb-kebab-menu { border-radius:10px; border:1px solid var(--color-border); box-shadow:0 6px 20px rgba(0,0,0,0.12); padding:4px; min-width:130px; }
-        .cb-kebab-menu .dropdown-item { border-radius:7px; font-size:0.8rem; font-weight:500; padding:7px 12px; display:flex; align-items:center; gap:8px; }
-        .cb-kebab-menu .dropdown-item.del-item { color:#ef4444; }
-        .cb-kebab-menu .dropdown-item.del-item:hover { background:#fef2f2; }
-        /* Custom confirm overlay */
-        .cb-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center; }
-        .cb-modal-overlay.show { display:flex; }
-        .cb-modal-box { background:#fff; border-radius:16px; padding:28px 28px 20px; max-width:360px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.2); animation:cbPop 0.18s ease; }
-        @keyframes cbPop { from { transform:scale(0.92); opacity:0; } to { transform:scale(1); opacity:1; } }
-        .cb-modal-icon { font-size:2rem; margin-bottom:10px; }
-        .cb-modal-title { font-size:1rem; font-weight:700; color:#1e293b; margin-bottom:6px; }
-        .cb-modal-msg { font-size:0.85rem; color:#64748b; margin-bottom:20px; line-height:1.5; }
-        .cb-modal-actions { display:flex; gap:8px; justify-content:flex-end; }
-        .cb-modal-cancel { background:#f1f5f9; border:none; border-radius:8px; padding:8px 16px; font-size:0.85rem; font-weight:600; color:#475569; cursor:pointer; }
-        .cb-modal-confirm { border:none; border-radius:8px; padding:8px 18px; font-size:0.85rem; font-weight:700; color:#fff; cursor:pointer; }
-        .cb-modal-confirm.danger { background:#ef4444; }
-        .cb-modal-confirm.success { background:#10b981; }
-        /* Edit inline form in modal */
-        .cb-modal-input { width:100%; border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:0.875rem; margin-bottom:8px; outline:none; }
-        .cb-modal-input:focus { border-color:#94a3b8; }
-        
-        @media (max-width: 600px) {
-            .cb-add-form { flex-wrap:wrap; }
-            .cb-add-form input[type="text"] { flex:0 0 100%; }
-            .cb-add-form input[type="number"], .cb-add-form input[type="date"],
-            .cb-add-form select { flex:1; width:auto; }
-            /* The date needs the full width on a phone — sharing a row with the
-               amount and the method squeezes all three below a tappable size. */
-            .cb-add-form input[type="date"] { flex:0 0 100%; min-height:44px; }
-            .cb-add-form .cb-add-btn { flex:0 0 100%; display:flex; justify-content:center; align-items:center; }
-            .col-amt { width:80px; }
-        }
-    </style>
-
-    <!-- PAGE HEADER -->
+    <!-- ── HEADER ─────────────────────────────────────────────── -->
     <div class="cb-page-header">
         <div class="cb-header-top">
-            <div class="cb-page-title"><i class="bi bi-wallet2 cb-icon"></i> Cashbook</div>
+            <h1 class="cb-page-title">
+                <i class="bi bi-wallet2 title-icon"></i> Cashbook
+                <span class="cb-count-pill" id="cbCountPill">
+                    <span id="cbRangeLabel">{% if filter_type == 'today' %}Today{% elif filter_type == 'this_week' %}This Week{% elif filter_type == 'this_month' %}This Month{% elif filter_type == 'this_year' %}This Year{% elif filter_type == 'last_week' %}Last Week{% elif filter_type == 'last_month' %}Last Month{% elif filter_type == 'last_year' %}Last Year{% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}{% else %}Today{% endif %}</span>
+                    · {{ page_obj.paginator.count }}
+                </span>
+            </h1>
+        </div>
+
+        <div class="cb-controls">
+            <form id="cbSearchForm" class="cb-search-wrap {% if q %}has-value{% endif %}" role="search">
+                <i class="bi bi-search search-icon"></i>
+                <input type="search" id="cbSearch" name="q" class="cb-search-input"
+                       placeholder="Search name, note, method or amount…"
+                       value="{{ q }}" autocomplete="off" aria-label="Search cashbook entries">
+                <button type="button" class="cb-search-clear" id="cbSearchClear" aria-label="Clear search">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </form>
+
             <div class="dropdown">
-                <button class="cb-filter-btn" type="button" data-bs-toggle="dropdown">
+                <button id="cbFilterBtn" class="cb-filter-btn" type="button" data-bs-toggle="dropdown"
+                        aria-label="Choose date range">
                     <i class="bi bi-funnel"></i>
-                    <span>{% if filter_type == 'today' %}Today{% elif filter_type == 'this_week' %}This Week{% elif filter_type == 'this_month' %}This Month{% elif filter_type == 'this_year' %}This Year{% elif filter_type == 'last_week' %}Last Week{% elif filter_type == 'last_month' %}Last Month{% elif filter_type == 'last_year' %}Last Year{% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}{% else %}Today{% endif %}</span>
+                    <span id="cbFilterLabel">{% if filter_type == 'today' %}Today{% elif filter_type == 'this_week' %}This Week{% elif filter_type == 'this_month' %}This Month{% elif filter_type == 'this_year' %}This Year{% elif filter_type == 'last_week' %}Last Week{% elif filter_type == 'last_month' %}Last Month{% elif filter_type == 'last_year' %}Last Year{% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}{% else %}Today{% endif %}</span>
                     <i class="bi bi-chevron-down"></i>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end cb-dropdown-menu">
-                    <li><a class="dropdown-item {% if filter_type == 'today' %}active{% endif %}" href="?filter=today">
+                    <li><button type="button" class="dropdown-item {% if filter_type == 'today' %}active{% endif %}" data-filter="today">
                         <i class="bi bi-brightness-high item-icon"></i>Today
-                    </a></li>
+                    </button></li>
 
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item {% if filter_type == 'this_week' %}active{% endif %}" href="?filter=this_week">
+                    <li><button type="button" class="dropdown-item {% if filter_type == 'this_week' %}active{% endif %}" data-filter="this_week">
                         <i class="bi bi-calendar3 item-icon"></i>This Week
-                    </a></li>
-                    <li><a class="dropdown-item {% if filter_type == 'this_month' %}active{% endif %}" href="?filter=this_month">
+                    </button></li>
+                    <li><button type="button" class="dropdown-item {% if filter_type == 'this_month' %}active{% endif %}" data-filter="this_month">
                         <i class="bi bi-calendar3 item-icon"></i>This Month
-                    </a></li>
-                    <li><a class="dropdown-item {% if filter_type == 'this_year' %}active{% endif %}" href="?filter=this_year">
+                    </button></li>
+                    <li><button type="button" class="dropdown-item {% if filter_type == 'this_year' %}active{% endif %}" data-filter="this_year">
                         <i class="bi bi-calendar3 item-icon"></i>This Year
-                    </a></li>
+                    </button></li>
 
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item {% if filter_type == 'last_week' %}active{% endif %}" href="?filter=last_week">
+                    <li><button type="button" class="dropdown-item {% if filter_type == 'last_week' %}active{% endif %}" data-filter="last_week">
                         <i class="bi bi-calendar2 item-icon"></i>Last Week
-                    </a></li>
-                    <li><a class="dropdown-item {% if filter_type == 'last_month' %}active{% endif %}" href="?filter=last_month">
+                    </button></li>
+                    <li><button type="button" class="dropdown-item {% if filter_type == 'last_month' %}active{% endif %}" data-filter="last_month">
                         <i class="bi bi-calendar2 item-icon"></i>Last Month
-                    </a></li>
-                    <li><a class="dropdown-item {% if filter_type == 'last_year' %}active{% endif %}" href="?filter=last_year">
+                    </button></li>
+                    <li><button type="button" class="dropdown-item {% if filter_type == 'last_year' %}active{% endif %}" data-filter="last_year">
                         <i class="bi bi-calendar2 item-icon"></i>Last Year
-                    </a></li>
+                    </button></li>
 
                     <li><hr class="dropdown-divider"></li>
-                    <li><a id="cbCustomRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">
+                    <li><button type="button" id="cbCustomToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}">
                         <i class="bi bi-calendar-range item-icon"></i>Custom Range
-                    </a></li>
-                    <li id="cbCustomDatePicker"
+                    </button></li>
+                    <li id="cbCustomPicker"
                         style="display: {% if filter_type == 'custom' %}block{% else %}none{% endif %};"
                         onclick="event.stopPropagation()">
                         <div class="px-2 pt-2 pb-1">
-                            <form id="cbCustomDateForm" method="get" class="d-flex flex-column gap-2">
-                                <input type="hidden" name="filter" value="custom">
+                            <form id="cbCustomForm" class="d-flex flex-column gap-2">
                                 <label class="small text-muted mb-0" style="font-size:0.7rem;">Start</label>
-                                <input type="date" name="start_date" class="form-control form-control-sm rounded-3" value="{{ start_date }}" required>
+                                <input type="date" id="cbStart" class="form-control form-control-sm"
+                                       value="{{ start_date }}" max="{{ today_iso }}" required>
                                 <label class="small text-muted mb-0" style="font-size:0.7rem;">End</label>
-                                <input type="date" name="end_date" class="form-control form-control-sm rounded-3" value="{{ end_date }}" required>
-                                <button type="submit" class="btn btn-sm rounded-pill mt-1 fw-bold" style="background:#10b981; color:#fff;">Apply</button>
+                                <input type="date" id="cbEnd" class="form-control form-control-sm"
+                                       value="{{ end_date }}" max="{{ today_iso }}" required>
+                                <button type="submit" class="btn btn-sm rounded-pill mt-1 fw-bold"
+                                        style="background:#10b981; color:#fff;">Apply</button>
                             </form>
                         </div>
                     </li>
@@ -190,310 +643,529 @@
         </div>
     </div>
 
-    <!-- ─── SECTION 1: GENERAL EXPENSES ─── -->
-    <div class="cb-section">
-        <div class="cb-section-hd">
-            <i class="bi bi-dash-circle-fill cb-sicon" style="color:#ef4444;"></i>
-            <h6>General Expenses</h6>
-        </div>
-        <!-- Stat -->
-        <div class="cb-stat-box" style="border-left:3px solid #ef4444;">
-            <div class="cb-stat-lbl">Total Expenses</div>
-            <div class="cb-stat-val" style="color:#ef4444;">₹{{ cashbook_totals.expense }}</div>
-        </div>
-        <!-- Add Expense form — intercepted by JS custom confirm -->
-        <form id="addExpenseForm" method="post" action="{% url 'manage_add_cashbook_entry' %}" class="cb-add-form" autocomplete="off">
-            {% csrf_token %}
-            <input type="hidden" name="entry_type" value="EXPENSE">
-            <input type="text"   id="expName"   name="category" placeholder="Expense name — Electricity, Rent, Courier…" required>
-            <input type="number" id="expAmount" name="amount"   placeholder="₹ Amount" step="0.01" min="0.01" required>
-            <input type="date"   id="expDate"   name="date" value="{{ today_iso }}" title="Date the money moved" aria-label="Expense date" required>
-            <select id="expMethod" name="payment_method" required>
-                <option value="CASH" selected>Cash</option>
-                <option value="UPI">UPI</option>
-                <option value="CARD">Card</option>
-                <option value="TRANSFER">Transfer</option>
-            </select>
-            <button type="button" class="cb-add-btn exp" onclick="cbConfirmAdd('expense')"><i class="bi bi-plus-lg me-1"></i>Add</button>
-        </form>
-        <!-- Expense List -->
-        <div class="cb-list">
-            <div class="cb-list-hd">
-                <span class="col-name" style="padding-left:14px;">Name</span>
-                <span class="col-amt">Amount</span><span class="col-menu"></span>
+    <!-- ── HEADLINE FIGURES (swapped by AJAX) ─────────────────── -->
+    {% include "workshop/cashbook/_stats.html" %}
+
+    <!-- ── ADD ENTRY ──────────────────────────────────────────── -->
+    <form id="cbAddForm" method="post" action="{% url 'manage_add_cashbook_entry' %}"
+          class="cb-add" autocomplete="off">
+        {% csrf_token %}
+        <input type="hidden" name="entry_type" id="cbEntryType" value="EXPENSE">
+
+        <div class="cb-add-top">
+            <h2 class="cb-section-title"><i class="bi bi-plus-circle"></i> Record an entry</h2>
+            <div class="cb-seg" role="group" aria-label="Entry side">
+                <button type="button" class="cb-seg-btn is-active" data-type="EXPENSE" aria-pressed="true">
+                    <i class="bi bi-arrow-up-right"></i> Money Out
+                </button>
+                <button type="button" class="cb-seg-btn" data-type="INCOME" aria-pressed="false">
+                    <i class="bi bi-arrow-down-left"></i> Money In
+                </button>
             </div>
-            {% for entry in expenses %}
-            {% ifchanged entry.date %}
-            <div class="cb-date-header">{{ entry.date|date:"d/m/Y" }}</div>
-            {% endifchanged %}
-            <div class="cb-entry">
-                <span class="col-name">{{ entry.category }} <span style="font-size:0.7rem; color:#94a3b8; background:#f1f5f9; padding:2px 6px; border-radius:4px; margin-left:6px;">{{ entry.get_payment_method_display }}</span></span>
-                <span class="col-amt" style="color:#ef4444;">-₹{{ entry.amount }}</span>
-                <span class="col-menu">
-                    <div class="dropdown">
-                        <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
-                        <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
-                            <li><a class="dropdown-item" href="#"
-                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.entry_type }}'); return false;">
-                                <i class="bi bi-pencil text-primary"></i> Edit
-                            </a></li>
-                            <li><a class="dropdown-item del-item" href="#"
-                                   onclick="cbConfirmDelete({{ entry.id }}, '{{ entry.category|escapejs }}'); return false;">
-                                <i class="bi bi-trash3"></i> Delete
-                            </a></li>
-                        </ul>
-                    </div>
+        </div>
+
+        <div class="cb-add-grid" id="cbAddGrid">
+            <div class="cb-f-date">
+                <span class="cb-datebox" id="cbDateBox" title="Date the money moved — defaults to today">
+                    <i class="bi bi-calendar-event"></i>
+                    <span class="cb-date-txt" id="cbDateTxt"></span>
+                    <input type="date" name="date" id="cbDate" value="{{ today_iso }}"
+                           max="{{ today_iso }}" required aria-label="Date the money moved">
                 </span>
             </div>
-            {% endfor %}
-            {% if not expenses %}<div class="cb-empty-row">No expenses recorded for this period.</div>{% endif %}
-            {% comment %}
-            The total above is computed from every matching row; this list is
-            capped. Without saying so, a long period showed a total that plainly
-            did not add up from what was on screen.
-            {% endcomment %}
-            {% if expense_hidden %}
-            <div class="cb-empty-row" style="border-top:1px solid var(--color-border-light);">
-                Showing the {{ expenses|length }} most recent of {{ expense_count }}.
-                The total above includes all {{ expense_count }} — narrow the date range to see the rest.
-            </div>
-            {% endif %}
-        </div>
-    </div>
 
-    <!-- ─── SECTION 2: INCOME ─── -->
-    <div class="cb-section">
-        <div class="cb-section-hd">
-            <i class="bi bi-plus-circle-fill cb-sicon" style="color:#10b981;"></i>
-            <h6>Income <span style="font-weight:400; color:#94a3b8; font-size:0.8rem;">(Rare — Scrap, Black Oil…)</span></h6>
-        </div>
-        <!-- Stat -->
-        <div class="cb-stat-box" style="border-left:3px solid #10b981;">
-            <div class="cb-stat-lbl">Total Income</div>
-            <div class="cb-stat-val" style="color:#10b981;">₹{{ cashbook_totals.income }}</div>
-        </div>
-        <!-- Add Income -->
-        <form id="addIncomeForm" method="post" action="{% url 'manage_add_cashbook_entry' %}" class="cb-add-form" autocomplete="off">
-            {% csrf_token %}
-            <input type="hidden" name="entry_type" value="INCOME">
-            <input type="text"   id="incName"   name="category" placeholder="Income name — Scrap Sell, Black Oil Sell…" required>
-            <input type="number" id="incAmount" name="amount"   placeholder="₹ Amount" step="0.01" min="0.01" required>
-            <input type="date"   id="incDate"   name="date" value="{{ today_iso }}" title="Date the money moved" aria-label="Income date" required>
-            <select id="incMethod" name="payment_method" required>
-                <option value="CASH" selected>Cash</option>
-                <option value="UPI">UPI</option>
-                <option value="CARD">Card</option>
-                <option value="TRANSFER">Transfer</option>
-            </select>
-            <button type="button" class="cb-add-btn inc" onclick="cbConfirmAdd('income')"><i class="bi bi-plus-lg me-1"></i>Add</button>
-        </form>
-        <!-- Income List -->
-        <div class="cb-list">
-            <div class="cb-list-hd">
-                <span class="col-name" style="padding-left:14px;">Name</span>
-                <span class="col-amt">Amount</span><span class="col-menu"></span>
+            <div class="cb-f-name">
+                <input type="text" name="category" id="cbName" class="cb-input" list="cbCategories"
+                       placeholder="What for? — Electricity, Rent, Courier…" maxlength="100"
+                       required aria-label="Entry name">
+                <datalist id="cbCategories">
+                    {% for c in categories %}<option value="{{ c }}"></option>{% endfor %}
+                </datalist>
             </div>
-            {% for entry in incomes %}
-            {% ifchanged entry.date %}
-            <div class="cb-date-header">{{ entry.date|date:"d/m/Y" }}</div>
-            {% endifchanged %}
-            <div class="cb-entry">
-                <span class="col-name">{{ entry.category }} <span style="font-size:0.7rem; color:#94a3b8; background:#f1f5f9; padding:2px 6px; border-radius:4px; margin-left:6px;">{{ entry.get_payment_method_display }}</span></span>
-                <span class="col-amt" style="color:#10b981;">+₹{{ entry.amount }}</span>
-                <span class="col-menu">
-                    <div class="dropdown">
-                        <button class="cb-kebab" data-bs-toggle="dropdown" title="Options">⋮</button>
-                        <ul class="dropdown-menu dropdown-menu-end cb-kebab-menu">
-                            <li><a class="dropdown-item" href="#"
-                                   onclick="cbOpenEdit({{ entry.id }}, '{{ entry.category|escapejs }}', '{{ entry.amount }}', '{{ entry.payment_method }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.entry_type }}'); return false;">
-                                <i class="bi bi-pencil text-primary"></i> Edit
-                            </a></li>
-                            <li><a class="dropdown-item del-item" href="#"
-                                   onclick="cbConfirmDelete({{ entry.id }}, '{{ entry.category|escapejs }}'); return false;">
-                                <i class="bi bi-trash3"></i> Delete
-                            </a></li>
-                        </ul>
-                    </div>
-                </span>
-            </div>
-            {% endfor %}
-            {% if not incomes %}<div class="cb-empty-row">No income recorded for this period.</div>{% endif %}
-            {% if income_hidden %}
-            <div class="cb-empty-row" style="border-top:1px solid var(--color-border-light);">
-                Showing the {{ incomes|length }} most recent of {{ income_count }}.
-                The total above includes all {{ income_count }} — narrow the date range to see the rest.
-            </div>
-            {% endif %}
-        </div>
-    </div>
 
-    <!-- ============================================================ -->
-    <!-- CUSTOM CONFIRM MODALS -->
-    <!-- ============================================================ -->
-
-    <!-- ADD CONFIRM -->
-    <div class="cb-modal-overlay" id="addConfirmModal">
-        <div class="cb-modal-box">
-            <div class="cb-modal-icon" id="addModalIcon">💰</div>
-            <div class="cb-modal-title" id="addModalTitle">Confirm Add Expense</div>
-            <div class="cb-modal-msg" id="addModalMsg"></div>
-            <div class="cb-modal-actions">
-                <button class="cb-modal-cancel" onclick="cbCloseModal('addConfirmModal')">Cancel</button>
-                <button class="cb-modal-confirm" id="addModalConfirmBtn" onclick="cbSubmitAdd()">Yes, Add</button>
+            <div class="cb-f-amt">
+                <input type="number" name="amount" id="cbAmount" class="cb-input"
+                       placeholder="₹ Amount" step="0.01" min="0.01" required aria-label="Amount">
             </div>
-        </div>
-    </div>
 
-    <!-- DELETE CONFIRM -->
-    <div class="cb-modal-overlay" id="delConfirmModal">
-        <div class="cb-modal-box">
-            <div class="cb-modal-icon">🗑️</div>
-            <div class="cb-modal-title">Delete Entry?</div>
-            <div class="cb-modal-msg" id="delModalMsg"></div>
-            <div class="cb-modal-actions">
-                <button class="cb-modal-cancel" onclick="cbCloseModal('delConfirmModal')">Cancel</button>
-                <form id="delForm" method="post" style="display:inline;">
-                    {% csrf_token %}
-                    {% comment %}
-                    delete_cashbook_entry reads `reason` and DeletionLog stores
-                    it, but nothing ever posted one — so every cashbook row in
-                    the Owner's Deletion History had a blank reason. Optional,
-                    like the job-card delete form's.
-                    {% endcomment %}
-                    <input type="text" name="reason" class="cb-modal-input" maxlength="255"
-                           placeholder="Reason (optional)" aria-label="Reason for deleting this entry">
-                    <button type="submit" class="cb-modal-confirm danger">Yes, Delete</button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- EDIT MODAL -->
-    <div class="cb-modal-overlay" id="editModal">
-        <div class="cb-modal-box">
-            <div class="cb-modal-icon">✏️</div>
-            <div class="cb-modal-title">Edit Entry</div>
-            <form id="editForm" method="post" style="margin-top:12px;">
-                {% csrf_token %}
-                <input type="text"   id="editName"   name="category" class="cb-modal-input" placeholder="Name" required>
-                <input type="number" id="editAmount" name="amount"   class="cb-modal-input" placeholder="Amount" step="0.01" min="0.01" required>
-                <input type="date"   id="editDate"   name="date"     class="cb-modal-input" aria-label="Date the money moved" required>
-                {% comment %}
-                Income keyed as an expense lands on the wrong side of the Profit
-                page equation — a double-sized error — and the only way back
-                used to be deleting the row and re-adding it. Rendered here
-                because the server-side fix is unreachable otherwise: this modal
-                is the only edit path there is.
-                {% endcomment %}
-                <select id="editType" name="entry_type" class="cb-modal-input" required style="cursor:pointer;"
-                        aria-label="Income or expense">
-                    <option value="EXPENSE">Expense (Cash Out)</option>
-                    <option value="INCOME">Income (Cash In)</option>
-                </select>
-                <select id="editMethod" name="payment_method" class="cb-modal-input" required style="cursor:pointer;">
-                    <option value="CASH">Cash</option>
+            <div class="cb-f-meth">
+                <select name="payment_method" id="cbMethod" class="cb-select" required aria-label="Payment method">
+                    <option value="CASH" selected>Cash</option>
                     <option value="UPI">UPI</option>
                     <option value="CARD">Card</option>
-                    <option value="TRANSFER">Transfer</option>
+                    <option value="TRANSFER">Bank Transfer</option>
                 </select>
-                <div class="cb-modal-actions" style="margin-top:8px;">
-                    <button type="button" class="cb-modal-cancel" onclick="cbCloseModal('editModal')">Cancel</button>
-                    <button type="submit" class="cb-modal-confirm success">Save Changes</button>
+            </div>
+
+            <div class="cb-f-note">
+                <input type="text" name="description" id="cbNote" class="cb-input"
+                       placeholder="Note (optional) — bill number, who it went to…" aria-label="Note">
+            </div>
+
+            <div class="cb-f-go">
+                <button type="button" class="cb-submit is-out" id="cbSubmitBtn">
+                    <i class="bi bi-plus-lg"></i> <span id="cbSubmitLabel">Add Expense</span>
+                </button>
+            </div>
+        </div>
+
+        <div style="margin-top:8px;">
+            <button type="button" class="cb-note-toggle" id="cbNoteToggle">
+                <i class="bi bi-sticky"></i> <span>Add a note</span>
+            </button>
+        </div>
+    </form>
+
+    <!-- ── LEDGER (swapped by AJAX) ───────────────────────────── -->
+    {% include "workshop/cashbook/_ledger.html" %}
+
+    <!-- ══ MODALS ═════════════════════════════════════════════ -->
+
+    {% comment %}
+      The add confirmation is what makes the small date box safe: it spells the
+      whole entry back, date included, before a rupee is written.
+    {% endcomment %}
+    <div class="cb-modal-overlay" id="cbAddModal" role="dialog" aria-modal="true" aria-labelledby="cbAddModalTitle">
+        <div class="cb-modal-box">
+            <div class="cb-modal-icon out" id="cbAddModalIcon"><i class="bi bi-arrow-up-right"></i></div>
+            <div class="cb-modal-title" id="cbAddModalTitle">Confirm expense</div>
+            <div class="cb-modal-msg">Check it over — this writes straight to the ledger.</div>
+            <dl class="cb-recap">
+                <div class="cb-recap-row"><dt>Name</dt><dd id="cbRecapName">—</dd></div>
+                <div class="cb-recap-row"><dt>Amount</dt><dd id="cbRecapAmount">—</dd></div>
+                <div class="cb-recap-row"><dt>Date</dt><dd id="cbRecapDate">—</dd></div>
+                <div class="cb-recap-row"><dt>Method</dt><dd id="cbRecapMethod">—</dd></div>
+                <div class="cb-recap-row" id="cbRecapNoteRow" hidden><dt>Note</dt><dd id="cbRecapNote">—</dd></div>
+            </dl>
+            <div class="cb-modal-actions">
+                <button type="button" class="cb-btn-cancel" data-cb-close="cbAddModal">Cancel</button>
+                <button type="button" class="cb-btn-confirm danger" id="cbAddConfirmBtn">Yes, add it</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="cb-modal-overlay" id="cbDelModal" role="dialog" aria-modal="true" aria-labelledby="cbDelTitle">
+        <div class="cb-modal-box">
+            <div class="cb-modal-icon warn"><i class="bi bi-trash3"></i></div>
+            <div class="cb-modal-title" id="cbDelTitle">Delete this entry?</div>
+            <div class="cb-modal-msg" id="cbDelMsg"></div>
+            <form id="cbDelForm" method="post">
+                {% csrf_token %}
+                {% comment %}
+                delete_cashbook_entry reads `reason` and DeletionLog stores it,
+                but nothing ever posted one — so every cashbook row in the
+                Owner's Deletion History had a blank reason. Optional, like the
+                job-card delete form's.
+                {% endcomment %}
+                <div class="cb-field">
+                    <label for="cbDelReason">Reason (optional)</label>
+                    <input type="text" name="reason" id="cbDelReason" class="cb-input" maxlength="255"
+                           placeholder="Why is it going?">
+                </div>
+                <p class="cb-modal-msg" style="margin:12px 0 14px; font-size:0.78rem;">
+                    Permanent — there is no undo. It is written to the owners' Deletion History.
+                </p>
+                <div class="cb-modal-actions">
+                    <button type="button" class="cb-btn-cancel" data-cb-close="cbDelModal">Cancel</button>
+                    <button type="submit" class="cb-btn-confirm danger">Yes, delete</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <script>
-    let _addTarget = null;
+    <div class="cb-modal-overlay" id="cbEditModal" role="dialog" aria-modal="true" aria-labelledby="cbEditTitle">
+        <div class="cb-modal-box">
+            <div class="cb-modal-icon edit"><i class="bi bi-pencil"></i></div>
+            <div class="cb-modal-title" id="cbEditTitle">Edit entry</div>
+            <form id="cbEditForm" method="post">
+                {% csrf_token %}
+                <div class="cb-field">
+                    <label for="cbEditName">Name</label>
+                    <input type="text" name="category" id="cbEditName" class="cb-input"
+                           maxlength="100" required>
+                </div>
+                <div class="cb-field-row">
+                    <div class="cb-field">
+                        <label for="cbEditAmount">Amount (₹)</label>
+                        <input type="number" name="amount" id="cbEditAmount" class="cb-input"
+                               step="0.01" min="0.01" required>
+                    </div>
+                    <div class="cb-field">
+                        <label for="cbEditDate">Date money moved</label>
+                        <input type="date" name="date" id="cbEditDate" class="cb-input"
+                               max="{{ today_iso }}" required>
+                    </div>
+                </div>
+                <div class="cb-field-row">
+                    <div class="cb-field">
+                        {% comment %}
+                        Income keyed as an expense lands on the wrong side of
+                        the Profit page equation — a double-sized error — and
+                        the only way back used to be deleting the row and
+                        re-adding it. Rendered here because the server-side fix
+                        is unreachable otherwise: this modal is the only edit
+                        path there is.
+                        {% endcomment %}
+                        <label for="cbEditType">Side</label>
+                        <select name="entry_type" id="cbEditType" class="cb-select" required>
+                            <option value="EXPENSE">Money Out (expense)</option>
+                            <option value="INCOME">Money In (income)</option>
+                        </select>
+                    </div>
+                    <div class="cb-field">
+                        <label for="cbEditMethod">Method</label>
+                        <select name="payment_method" id="cbEditMethod" class="cb-select" required>
+                            <option value="CASH">Cash</option>
+                            <option value="UPI">UPI</option>
+                            <option value="CARD">Card</option>
+                            <option value="TRANSFER">Bank Transfer</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="cb-field">
+                    <label for="cbEditNote">Note (optional)</label>
+                    <input type="text" name="description" id="cbEditNote" class="cb-input"
+                           placeholder="Bill number, who it went to…">
+                </div>
+                <div class="cb-modal-actions" style="margin-top:14px;">
+                    <button type="button" class="cb-btn-cancel" data-cb-close="cbEditModal">Cancel</button>
+                    <button type="submit" class="cb-btn-confirm success">Save changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
-    function cbConfirmAdd(type) {
-        const isExp = type === 'expense';
-        const name   = isExp ? document.getElementById('expName').value.trim()
-                              : document.getElementById('incName').value.trim();
-        const amount = isExp ? document.getElementById('expAmount').value
-                              : document.getElementById('incAmount').value;
-        const methodEl = isExp ? document.getElementById('expMethod') 
-                               : document.getElementById('incMethod');
-        const method = methodEl.options[methodEl.selectedIndex].text;
-        
-        if (!name || !amount || parseFloat(amount) <= 0) {
-            // trigger native validation
-            const form = isExp ? document.getElementById('addExpenseForm')
-                               : document.getElementById('addIncomeForm');
-            form.reportValidity(); return;
-        }
-        _addTarget = type;
-        const icon = document.getElementById('addModalIcon');
-        const title = document.getElementById('addModalTitle');
-        const msg   = document.getElementById('addModalMsg');
-        const btn   = document.getElementById('addModalConfirmBtn');
-        if (isExp) {
-            icon.textContent  = '🧾';
-            title.textContent = 'Confirm Expense';
-            msg.innerHTML     = `Add <strong>${name}</strong> — <strong>₹${parseFloat(amount).toFixed(2)}</strong> via ${method}?`;
-            btn.className     = 'cb-modal-confirm danger';
-            btn.textContent   = 'Yes, Add Expense';
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const RANGE_LABELS = {
+        today: 'Today', this_week: 'This Week', this_month: 'This Month',
+        this_year: 'This Year', last_week: 'Last Week', last_month: 'Last Month',
+        last_year: 'Last Year',
+    };
+
+    let currentFilter = '{{ filter_type|escapejs }}';
+    let currentType   = '{{ entry_type_filter|escapejs }}';
+    let currentPage   = 1;
+    let debounce;
+
+    const searchInput = document.getElementById('cbSearch');
+    const searchWrap  = document.getElementById('cbSearchForm');
+    const filterLabel = document.getElementById('cbFilterLabel');
+    const rangeLabel  = document.getElementById('cbRangeLabel');
+    const countPill   = document.getElementById('cbCountPill');
+
+    /* ── Fetch: rebuild the URL, swap the two live regions ──────────
+       Only #cbStats and #cbLedger move. The add form sits between them
+       and must survive a filter change with whatever is half-typed in
+       it, which is why the response is picked apart by id rather than
+       dropped into one container. */
+    function refresh(page) {
+        currentPage = page || 1;
+        const url = new URL(window.location.href);
+        url.searchParams.set('filter', currentFilter);
+        if (currentPage > 1) { url.searchParams.set('page', currentPage); }
+        else { url.searchParams.delete('page'); }
+        const q = searchInput.value.trim();
+        if (q) { url.searchParams.set('q', q); } else { url.searchParams.delete('q'); }
+        if (currentType && currentType !== 'all') {
+            url.searchParams.set('type', currentType);
         } else {
-            icon.textContent  = '💵';
-            title.textContent = 'Confirm Income';
-            msg.innerHTML     = `Record <strong>${name}</strong> — <strong>₹${parseFloat(amount).toFixed(2)}</strong> via ${method}?`;
-            btn.className     = 'cb-modal-confirm success';
-            btn.textContent   = 'Yes, Add Income';
+            url.searchParams.delete('type');
         }
-        document.getElementById('addConfirmModal').classList.add('show');
+        if (currentFilter === 'custom') {
+            const s = document.getElementById('cbStart').value;
+            const e = document.getElementById('cbEnd').value;
+            if (s) url.searchParams.set('start_date', s);
+            if (e) url.searchParams.set('end_date', e);
+        } else {
+            url.searchParams.delete('start_date');
+            url.searchParams.delete('end_date');
+        }
+
+        let label = RANGE_LABELS[currentFilter] || 'Today';
+        if (currentFilter === 'custom') {
+            const s = document.getElementById('cbStart').value;
+            const e = document.getElementById('cbEnd').value;
+            label = (s && e) ? (s + ' – ' + e) : 'Custom';
+        }
+        if (filterLabel) filterLabel.textContent = label;
+        if (rangeLabel)  rangeLabel.textContent  = label;
+
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => r.text())
+            .then(html => {
+                const holder = document.createElement('div');
+                holder.innerHTML = html;
+                ['cbStats', 'cbLedger'].forEach(id => {
+                    const fresh = holder.querySelector('#' + id);
+                    const live  = document.getElementById(id);
+                    if (fresh && live) live.replaceWith(fresh);
+                });
+                window.history.replaceState({}, '', url);
+                // The pill lives in the header, outside both swapped regions,
+                // so it takes its number from the marker the ledger carries.
+                const marker = document.getElementById('cbTotalCount');
+                if (marker && countPill && rangeLabel) {
+                    countPill.innerHTML = '';
+                    countPill.appendChild(rangeLabel);
+                    countPill.append(' · ' + marker.dataset.count);
+                }
+            })
+            .catch(err => console.error('Cashbook refresh failed:', err));
     }
 
-    function cbSubmitAdd() {
-        cbCloseModal('addConfirmModal');
-        const form = _addTarget === 'expense' ? document.getElementById('addExpenseForm')
-                                              : document.getElementById('addIncomeForm');
-        form.submit();
+    function refreshDebounced() {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => refresh(1), 300);
     }
 
-    function cbConfirmDelete(id, name) {
-        document.getElementById('delModalMsg').innerHTML =
-            `Delete <strong>${name}</strong>? This action cannot be undone.`;
-        document.getElementById('delForm').action = `/cashbook/${id}/delete/`;
-        document.getElementById('delConfirmModal').classList.add('show');
+    /* ── Search ─────────────────────────────────────────────── */
+    function syncClearBtn() {
+        searchWrap.classList.toggle('has-value', searchInput.value.length > 0);
     }
-
-    function cbOpenEdit(id, name, amount, method, entryDate, entryType) {
-        document.getElementById('editName').value   = name;
-        document.getElementById('editAmount').value = amount;
-        document.getElementById('editMethod').value = method;
-        document.getElementById('editType').value   = entryType;
-        // Without this the date input opens blank; `required` would then block
-        // the save, and dropping `required` would silently reset the entry to
-        // today — which is the bug this field exists to fix.
-        document.getElementById('editDate').value   = entryDate;
-        document.getElementById('editForm').action  = `/cashbook/${id}/edit/`;
-        document.getElementById('editModal').classList.add('show');
+    // The long placeholder names what is searchable, which is worth the room on
+    // a laptop and clips mid-word on a phone. A placeholder cannot be shortened
+    // in CSS, so it is swapped here.
+    const narrow = window.matchMedia('(max-width: 600px)');
+    function syncPlaceholder(mq) {
+        searchInput.placeholder = mq.matches
+            ? 'Search entries…'
+            : 'Search name, note, method or amount…';
     }
+    narrow.addEventListener('change', syncPlaceholder);
+    syncPlaceholder(narrow);
+    searchInput.addEventListener('input', function () { syncClearBtn(); refreshDebounced(); });
+    searchWrap.addEventListener('submit', function (e) { e.preventDefault(); clearTimeout(debounce); refresh(1); });
+    document.getElementById('cbSearchClear').addEventListener('click', function () {
+        searchInput.value = ''; syncClearBtn(); searchInput.focus(); refresh(1);
+    });
+    syncClearBtn();
 
-    function cbCloseModal(id) {
-        document.getElementById(id).classList.remove('show');
-    }
+    /* ── Date-range dropdown ────────────────────────────────── */
+    document.querySelectorAll('.cb-dropdown-menu [data-filter]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.cb-dropdown-menu [data-filter], #cbCustomToggle')
+                    .forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            currentFilter = this.dataset.filter;
+            refresh(1);
+        });
+    });
+    const customToggle = document.getElementById('cbCustomToggle');
+    customToggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const picker = document.getElementById('cbCustomPicker');
+        picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+    });
+    document.getElementById('cbCustomForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const s = document.getElementById('cbStart').value;
+        const en = document.getElementById('cbEnd').value;
+        if (!s || !en) return;
+        document.querySelectorAll('.cb-dropdown-menu [data-filter]').forEach(b => b.classList.remove('active'));
+        customToggle.classList.add('active');
+        currentFilter = 'custom';
+        refresh(1);
+        const dd = bootstrap.Dropdown.getInstance(document.getElementById('cbFilterBtn'));
+        if (dd) dd.hide();
+    });
 
-    // Close on overlay click
-    document.querySelectorAll('.cb-modal-overlay').forEach(el => {
-        el.addEventListener('click', function(e) {
-            if (e.target === this) this.classList.remove('show');
+    /* ── Type chips + pager (delegated: both are re-rendered) ─ */
+    document.addEventListener('click', function (e) {
+        const chip = e.target.closest('.cb-chip');
+        if (chip) { currentType = chip.dataset.type; refresh(1); return; }
+
+        const pager = e.target.closest('.cb-js-page');
+        if (pager) {
+            refresh(parseInt(pager.dataset.page, 10) || 1);
+            document.getElementById('cbLedger').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+
+    /* ── Add form ───────────────────────────────────────────── */
+    const entryType   = document.getElementById('cbEntryType');
+    const submitBtn   = document.getElementById('cbSubmitBtn');
+    const submitLabel = document.getElementById('cbSubmitLabel');
+
+    document.querySelectorAll('.cb-seg-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.cb-seg-btn').forEach(b => {
+                b.classList.remove('is-active');
+                b.setAttribute('aria-pressed', 'false');
+            });
+            this.classList.add('is-active');
+            this.setAttribute('aria-pressed', 'true');
+            const isIncome = this.dataset.type === 'INCOME';
+            entryType.value = isIncome ? 'INCOME' : 'EXPENSE';
+            submitBtn.classList.toggle('is-in', isIncome);
+            submitBtn.classList.toggle('is-out', !isIncome);
+            submitLabel.textContent = isIncome ? 'Add Income' : 'Add Expense';
+            document.getElementById('cbName').placeholder = isIncome
+                ? 'What for? — Scrap sale, Black oil sale…'
+                : 'What for? — Electricity, Rent, Courier…';
         });
     });
 
-    // Custom Range date picker toggle
-    const cbCustomToggle = document.getElementById('cbCustomRangeToggle');
-    if (cbCustomToggle) {
-        cbCustomToggle.addEventListener('click', function(e) {
-            e.preventDefault(); e.stopPropagation();
-            const picker = document.getElementById('cbCustomDatePicker');
-            if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
-        });
+    // Note field is collapsed by default: most entries have none, and an empty
+    // box on every row is what made the old form feel wider than it was.
+    const noteToggle = document.getElementById('cbNoteToggle');
+    noteToggle.addEventListener('click', function () {
+        const grid = document.getElementById('cbAddGrid');
+        const open = grid.classList.toggle('show-note');
+        this.querySelector('span').textContent = open ? 'Hide note' : 'Add a note';
+        if (open) document.getElementById('cbNote').focus();
+        else document.getElementById('cbNote').value = '';
+    });
+
+    /* The date box: a calendar glyph while the entry is dated today, an amber
+       box spelling the day out as soon as it is not. Nothing is hidden — the
+       confirmation below repeats it in full either way. */
+    const TODAY_ISO = '{{ today_iso|escapejs }}';
+    const dateInput = document.getElementById('cbDate');
+    const dateBox   = document.getElementById('cbDateBox');
+    const dateTxt   = document.getElementById('cbDateTxt');
+
+    function prettyDate(iso) {
+        if (!iso) return '';
+        const [y, m, d] = iso.split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        if (isNaN(dt)) return iso;
+        return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     }
-    </script>
+    function syncDateBox() {
+        const custom = dateInput.value && dateInput.value !== TODAY_ISO;
+        dateBox.classList.toggle('is-custom', !!custom);
+        dateTxt.textContent = custom ? prettyDate(dateInput.value) : '';
+        dateBox.title = custom
+            ? 'Back-dated to ' + prettyDate(dateInput.value) + ' — tap to change'
+            : 'Dated today — tap to change';
+    }
+    dateInput.addEventListener('change', syncDateBox);
+    syncDateBox();
 
+    // A tap on a phone opens the OS picker by itself (the invisible input
+    // covers the whole box). Desktop Chrome only opens it from the calendar
+    // glyph, which is exactly what the transparent overlay hides — so ask for
+    // it. Throws if the picker is already opening; that is the mobile case.
+    dateBox.addEventListener('click', function () {
+        if (typeof dateInput.showPicker === 'function') {
+            try { dateInput.showPicker(); } catch (err) { /* already open */ }
+        }
+    });
 
+    /* ── Add confirmation ───────────────────────────────────── */
+    const addForm = document.getElementById('cbAddForm');
+    function openAddConfirm() {
+        if (!addForm.reportValidity()) return;
+        const isIncome = entryType.value === 'INCOME';
+        const methodEl = document.getElementById('cbMethod');
+        const amount   = parseFloat(document.getElementById('cbAmount').value);
+        const note     = document.getElementById('cbNote').value.trim();
+        const showNote = document.getElementById('cbAddGrid').classList.contains('show-note') && note;
 
+        document.getElementById('cbAddModalIcon').className =
+            'cb-modal-icon ' + (isIncome ? 'in' : 'out');
+        document.getElementById('cbAddModalIcon').innerHTML =
+            '<i class="bi ' + (isIncome ? 'bi-arrow-down-left' : 'bi-arrow-up-right') + '"></i>';
+        document.getElementById('cbAddModalTitle').textContent =
+            isIncome ? 'Confirm income' : 'Confirm expense';
+        document.getElementById('cbRecapName').textContent = document.getElementById('cbName').value.trim();
 
+        const amtCell = document.getElementById('cbRecapAmount');
+        // Paise are shown in full or not at all — '₹1,250.5' reads like a
+        // truncated figure. Same rule as the `inr_amount` filter on the rows.
+        amtCell.textContent = (isIncome ? '+₹' : '−₹') + amount.toLocaleString('en-IN', {
+            minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 });
+        amtCell.className = isIncome ? 'amt-in' : 'amt-out';
+
+        const backDated = dateInput.value !== TODAY_ISO;
+        const dateCell  = document.getElementById('cbRecapDate');
+        dateCell.textContent = new Date(dateInput.value + 'T00:00:00')
+            .toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+            + (backDated ? '' : ' (today)');
+        dateCell.className = backDated ? 'dated' : '';
+
+        document.getElementById('cbRecapMethod').textContent =
+            methodEl.options[methodEl.selectedIndex].text;
+        document.getElementById('cbRecapNoteRow').hidden = !showNote;
+        document.getElementById('cbRecapNote').textContent = note;
+
+        const confirmBtn = document.getElementById('cbAddConfirmBtn');
+        confirmBtn.className = 'cb-btn-confirm ' + (isIncome ? 'success' : 'danger');
+        confirmBtn.textContent = isIncome ? 'Yes, add income' : 'Yes, add expense';
+
+        openModal('cbAddModal');
+    }
+    submitBtn.addEventListener('click', openAddConfirm);
+    // Enter anywhere in the form goes through the same confirmation rather
+    // than posting straight past it.
+    addForm.addEventListener('submit', function (e) {
+        if (!addForm.dataset.confirmed) { e.preventDefault(); openAddConfirm(); }
+    });
+    // The form has no submit button (the Add control opens the confirmation
+    // instead), and a multi-field form without one does not submit on Enter at
+    // all — so Enter would silently do nothing on the fastest way to key an
+    // entry. Route it to the same confirmation.
+    addForm.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            openAddConfirm();
+        }
+    });
+    document.getElementById('cbAddConfirmBtn').addEventListener('click', function () {
+        this.disabled = true;
+        addForm.dataset.confirmed = '1';
+        addForm.submit();
+    });
+
+    /* ── Row actions ────────────────────────────────────────── */
+    document.addEventListener('click', function (e) {
+        const edit = e.target.closest('.cb-js-edit');
+        if (edit) {
+            const d = edit.dataset;
+            document.getElementById('cbEditName').value   = d.name;
+            document.getElementById('cbEditAmount').value = d.amount;
+            document.getElementById('cbEditMethod').value = d.method;
+            document.getElementById('cbEditType').value   = d.etype;
+            document.getElementById('cbEditNote').value   = d.note || '';
+            // Without this the date opens blank; `required` would then block
+            // the save, and dropping `required` would silently reset the entry
+            // to today — the very bug this field exists to fix.
+            document.getElementById('cbEditDate').value   = d.date;
+            document.getElementById('cbEditForm').action  = '/cashbook/' + d.id + '/edit/';
+            openModal('cbEditModal');
+            return;
+        }
+        const del = e.target.closest('.cb-js-delete');
+        if (del) {
+            const d = del.dataset;
+            document.getElementById('cbDelMsg').innerHTML =
+                'Delete <strong></strong>?';
+            document.getElementById('cbDelMsg').querySelector('strong').textContent =
+                d.name + ' — ₹' + d.shown;
+            document.getElementById('cbDelForm').action = '/cashbook/' + d.id + '/delete/';
+            document.getElementById('cbDelReason').value = '';
+            openModal('cbDelModal');
+        }
+    });
+
+    /* ── Modal plumbing ─────────────────────────────────────── */
+    function openModal(id)  { document.getElementById(id).classList.add('show'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+    document.querySelectorAll('[data-cb-close]').forEach(btn => {
+        btn.addEventListener('click', () => closeModal(btn.dataset.cbClose));
+    });
+    document.querySelectorAll('.cb-modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', function (e) {
+            if (e.target === this) this.classList.remove('show');
+        });
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.cb-modal-overlay.show').forEach(m => m.classList.remove('show'));
+        }
+    });
+});
+</script>
 {% endblock %}
