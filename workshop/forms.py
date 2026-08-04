@@ -24,6 +24,14 @@ class BootstrapFormMixin:
     """
     Mixin to apply Bootstrap 'form-control' class to all fields.
     Crucially, it APPENDS the class to existing classes to preserve custom hooks.
+
+    It does the same for the placeholder: a widget that declares one KEEPS it,
+    and only fields without one fall back to the label. It used to overwrite
+    unconditionally, which quietly threw away every hint an author had written —
+    `mileage` declares 'e.g. 50000 or 50k' and rendered as 'Mileage', and
+    `car_color_other` declares 'Specify "Other" color...' and rendered as
+    'Car color other'. The docstring already claimed custom hooks were
+    preserved; now that is true of the placeholder as well as the class.
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -32,21 +40,18 @@ class BootstrapFormMixin:
             bootstrap_class = 'form-control'
             if isinstance(field.widget, forms.CheckboxInput):
                 bootstrap_class = 'form-check-input'
-            
+
             # Get any existing class (e.g., 'autocomplete-brand')
             existing_class = field.widget.attrs.get('class', '')
-            
+
             # Append or set the new class
             if existing_class:
                 new_class = f"{existing_class} {bootstrap_class}"
             else:
                 new_class = bootstrap_class
-            
-            # Update the widget attributes
-            field.widget.attrs.update({
-                'class': new_class,
-                'placeholder': field.label
-            })
+
+            field.widget.attrs['class'] = new_class
+            field.widget.attrs.setdefault('placeholder', field.label)
 
 
 # =============================================================================
@@ -269,7 +274,7 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
             'labour_amount': forms.TextInput(attrs={
                 'class': 'form-control text-end fw-bold',
                 'inputmode': 'decimal',
-                'placeholder': '0.00',
+                'placeholder': 'Total Amount',
             }),
             'brand_name': forms.TextInput(attrs={
                 'autocomplete': 'off',

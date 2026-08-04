@@ -526,7 +526,7 @@ about to correct one of these, you are about to break the business:
   2026-08-04, on the owner's description of how the workshop actually sells:
   work is quoted whole — a customer is told "₹22,300 for the job" — and nobody
   costs it line by line. So `JobCard.labour_amount` holds the figure, Office
-  types it once into the **Labour Subtotal** box at the foot of the Jobs
+  types it once into the **Total Labour** box at the foot of the Jobs
   section, and `JobCardLabourItem` became a list of what was done with no money
   on it at all. `update_totals()` is now `spares + labour_amount`.
   `JobCardLabourItem.amount` is **dormant** in the same sense as

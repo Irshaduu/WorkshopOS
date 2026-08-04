@@ -247,7 +247,7 @@ View Job Card - {{ jobcard.registration_number }}
             {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
             <div class="card-footer bg-light border-top d-flex justify-content-between align-items-center py-3">
                 <span class="fw-bold text-secondary text-uppercase" style="font-size: .75rem; letter-spacing: .04em;">
-                    Labour Subtotal
+                    Total Labour
                 </span>
                 <span class="fw-bold font-monospace">₹ {{ jobcard.labour_amount|inr_exact }}</span>
             </div>

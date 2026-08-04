@@ -29,7 +29,7 @@ graph TD
 
     J --> M["Mechanic Works on Concerns"]
     M --> N["Concern Status: PENDING to WORKING to FIXED"]
-    N --> O["Labour Subtotal Entered (one charge for all jobs)"]
+    N --> O["Total Labour Entered (one charge for all jobs)"]
     O --> P["Completion % Updates Automatically"]
 
     P --> Q{"All Concerns Fixed?"}
@@ -86,7 +86,7 @@ graph TD
  FLOOR (Mechanics / Floor Manager)
    - View Dashboard (active cars on floor)
    - Create new Job Cards
-   - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Labour Subtotal included, is Office/Owner only and is enforced on the server)
+   - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Total Labour included, is Office/Owner only and is enforced on the server)
    - View Live Report (quick scroll of all jobs)
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
@@ -130,7 +130,7 @@ Everything in the system connects through the Job Card:
      |                |
      +------->  TOTAL BILL AMOUNT
            = Sum(Spare Customer Prices)
-           + Labour Subtotal        <- ONE figure on the job card
+           + Total Labour        <- ONE figure on the job card
                                        (JobCard.labour_amount), typed
                                        once by Office for all the jobs
            (denormalized for performance)
@@ -145,11 +145,11 @@ Everything in the system connects through the Job Card:
 ```
 Spare Part Added (Customer Price) --+
                                     +--> Total Bill Auto-Calculated --> Invoice
-Labour Subtotal typed on the card --+     (denormalized)
+Total Labour typed on the card --+     (denormalized)
 
 The workshop quotes work as a WHOLE — a customer is told one figure for the
 job — so the Jobs section lists what was done and carries no per-line price.
-Office types the single Labour Subtotal at the foot of that section, and the
+Office types the single Total Labour at the foot of that section, and the
 invoice prints it as the JOB PERFORMED subtotal.
 ```
 

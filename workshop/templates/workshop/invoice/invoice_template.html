@@ -45,14 +45,27 @@
         page box IS the paper: 100% scale, and the margin below is the margin
         that prints, on A4 and Letter alike.
 
-        The margin stays on `@page` rather than becoming padding on the sheet,
-        because @page applies to EVERY page. An element's padding does not — it
-        pads the top of page 1 and the bottom of the last page, so a two-page
-        invoice would start page 2 hard against the paper edge, inside the area
-        most printers physically cannot reach.
+        ZERO margin here, and the sheet supplies the real one as padding.
+
+        That is what removes the browser's own print header and footer — the
+        date, the page title, the localhost URL, the "1/1". Those are drawn by
+        Chrome INSIDE the page margin; with no margin there is nowhere to draw
+        them and they are omitted. No CSS can switch them off directly, and the
+        print dialog's "Headers and footers" tick is per-machine, so a workshop
+        printing from a new device would get them back.
+
+        The cost, stated plainly: `@page` margins apply to every page, element
+        padding does not — it pads the top of page 1 and the bottom of the last
+        page only. So on an invoice that runs to two or more pages, the
+        continuation pages start closer to the paper edge than 12mm. Single-page
+        bills — which is nearly all of them here, and all three of the
+        workshop's own reference invoices — are unaffected and print at exactly
+        12mm all round. If long invoices ever become common, the fix is to wrap
+        the document in a frame table whose thead/tfoot repeat per page; that is
+        a bigger change and not worth its risk today.
         {% endcomment %}
         @page {
-            margin: 12mm;
+            margin: 0;
         }
 
         * {
@@ -143,13 +156,15 @@
             background: #d97706;
         }
 
+        /* Edit Job is the quietest of the three: it leaves the invoice rather
+           than doing anything to it. Print is the loud one, on the right. */
         .btn-edit {
-            background: #059669;
-            color: #fff;
+            background: #e2e8f0;
+            color: #334155;
         }
 
         .btn-edit:hover {
-            background: #047857;
+            background: #cbd5e1;
         }
 
         .chip {
@@ -239,7 +254,8 @@
         .sheet {
             width: 210mm;
             min-height: 297mm;
-            padding: 14mm;
+            /* Same 12mm the print rule uses, so the screen IS the preview. */
+            padding: 12mm;
             margin: 0 auto;
             background: #fff;
             box-shadow: 0 4px 24px rgba(15, 23, 42, .16);
@@ -426,20 +442,25 @@
             border-style: solid;
         }
 
-        .inv-parties .band .p-left {
+        {% comment %}
+        BILL TO and VEHICLE INFO are both left-aligned, on the SAME indent as the
+        data underneath them. The reference sets VEHICLE INFO adrift towards the
+        middle of its half while REG NO / MODEL / MILEAGE sit hard left, so the
+        heading floats above nothing — the one place the reference is simply
+        wrong rather than deliberate. One indent value drives the band and the
+        cells beneath it, so they cannot drift apart again.
+        {% endcomment %}
+        .inv-parties .band th,
+        .inv-parties td {
             text-align: left;
             padding-left: 3.5mm;
-        }
-
-        .inv-parties .band .p-right {
-            text-align: center;
         }
 
         .inv-parties td {
             background: #dce6f1;
             border: 1px solid #dce6f1;
             vertical-align: top;
-            padding: 0 2mm;
+            padding-right: 2mm;
             line-height: 4.98mm;
             font-size: 10pt;
         }
@@ -535,7 +556,9 @@
                 width: auto;
                 min-height: 0;
                 margin: 0;
-                padding: 0;
+                /* The page margin itself — @page is zero so the browser cannot
+                   draw its header and footer. See the note on @page above. */
+                padding: 12mm;
                 box-shadow: none;
                 /* The screen's fit-to-width scaling must never reach paper. */
                 transform: none !important;
@@ -717,10 +740,14 @@
 
         <span class="bar-spacer"></span>
 
-        <button type="button" class="btn btn-primary" onclick="window.print()">
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
-            Print / Save PDF
-        </button>
+        {% comment %}
+        Left to right: Edit Job, Settle Bill, Print / Save PDF — weakest action
+        to strongest, ending on the one this page exists for.
+        {% endcomment %}
+        <a href="{% url 'jobcard_edit' jobcard.pk %}" class="btn btn-edit">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.1 1.3a1.1 1.1 0 0 1 1.6 0l1 1a1.1 1.1 0 0 1 0 1.6l-.9.9-2.6-2.6.9-.9zM10.5 2.9l2.6 2.6-7.3 7.3-3.3.7.7-3.3 7.3-7.3z"/></svg>
+            Edit Job
+        </a>
 
         {% if jobcard.bulk_payer %}
         <a href="{% url 'bulk_payer_detail' jobcard.bulk_payer.pk %}" class="btn btn-ghost">
@@ -734,10 +761,10 @@
         </button>
         {% endif %}
 
-        <a href="{% url 'jobcard_edit' jobcard.pk %}" class="btn btn-edit">
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.1 1.3a1.1 1.1 0 0 1 1.6 0l1 1a1.1 1.1 0 0 1 0 1.6l-.9.9-2.6-2.6.9-.9zM10.5 2.9l2.6 2.6-7.3 7.3-3.3.7.7-3.3 7.3-7.3z"/></svg>
-            Edit Job
-        </a>
+        <button type="button" class="btn btn-primary" onclick="window.print()">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
+            Print / Save PDF
+        </button>
     </div>
 
     {% comment %}
@@ -803,8 +830,8 @@
                 {% endcomment %}
                 <tbody>
                     <tr class="band">
-                        <th class="p-left">BILL TO</th>
-                        <th class="p-right">VEHICLE INFO</th>
+                        <th>BILL TO</th>
+                        <th>VEHICLE INFO</th>
                     </tr>
                     <tr>
                         <td>

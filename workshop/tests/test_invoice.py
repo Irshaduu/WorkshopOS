@@ -695,13 +695,15 @@ class TheLabourChargeLivesOnTheCardTests(InvoiceTestCase):
         url = reverse('jobcard_edit', args=[job.pk])
 
         office_html = self.client.get(url).content.decode()
-        self.assertIn('Labour Subtotal', office_html)
+        self.assertIn('Total Labour', office_html)
         self.assertIn('name="labour_amount"', office_html)
 
         self.client.logout()
         self.client.login(username='floor', password='pw')
         floor_html = self.client.get(url).content.decode()
-        self.assertNotIn('Labour Subtotal', floor_html)
+        self.assertNotIn('Total Labour', floor_html)
+        # The field itself is the assertion that matters — a label can be
+        # reworded, but an input Floor can post from cannot exist.
         self.assertNotIn('name="labour_amount"', floor_html)
 
     def test_no_job_row_offers_an_amount_box_to_anyone(self):
