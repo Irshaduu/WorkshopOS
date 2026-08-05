@@ -44,7 +44,11 @@ from .master_lists import (
 from .autocomplete import (
     autocomplete_brands, autocomplete_models,
     autocomplete_spares, autocomplete_concerns,
-    autocomplete_inventory_items,
+    autocomplete_inventory_items, spare_price_hint,
+)
+from .estimate import (
+    estimate_list, estimate_create, estimate_edit,
+    estimate_print, estimate_delete,
 )
 from .salary_advance import (
     salary_advance_home, salary_advance_add, salary_advance_delete,

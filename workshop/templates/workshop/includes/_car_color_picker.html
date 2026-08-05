@@ -1,0 +1,161 @@
+{% comment %}
+================================================================================
+CAR COLOUR PICKER — one implementation, used by the Job Card and the Estimate.
+================================================================================
+Usage:
+
+    {% include 'workshop/includes/_car_color_picker.html' with record=jobcard %}
+    {% include 'workshop/includes/_car_color_picker.html' with record=estimate %}
+
+`form` must be in context and carry `car_color` + `car_color_other`. `record` is
+the instance being edited, or absent on a create form — it is read only for the
+swatch's starting colour, so absent simply means "no colour yet".
+
+It was inline in `jobcard_form.html` and is shared now because the Estimate
+needs the identical control. A second copy would be ~100 lines of markup, CSS
+and JS free to drift, on top of a palette that is already shared in Python
+(`CAR_COLOR_CHOICES` / `CAR_COLOR_HEX` in models.py).
+
+Three things about the mechanism, none of them obvious:
+
+* **The visible swatch is a `<div>`, not the field.** What posts is the hidden
+  `{{ form.car_color }}` select beside it; the swatch is only a way of choosing.
+  Hidden fields stay ENABLED on purpose — a disabled input is not submitted, so
+  disabling them would clear the colour on every save.
+* **"Other" opens the browser's own colour input** and stores the resulting hex
+  in `car_color_other`. `car_color_hex()` in models.py reads a leading `#` back
+  out, which is why a literal hex is a valid value there.
+* **`.rainbow-dot` must be removed before a background colour will show** — it
+  sets `background` with `!important`, so leaving it on makes every selection
+  look like it did nothing.
+{% endcomment %}
+
+<div class="dropdown">
+    <div id="color-picker-trigger"
+         class="cursor-pointer border shadow-sm {% if not record.car_color %}rainbow-dot{% endif %}"
+         data-bs-toggle="dropdown" aria-expanded="false"
+         style="width: 100%; height: 36px; background-color: {{ record.get_car_color_hex }};"
+         title="Select Car Colour"></div>
+
+    <div class="dropdown-menu p-3 shadow-lg border-0 color-dropdown-menu"
+         style="min-width: 180px; border-radius: 12px;">
+        <div class="color-mini-grid">
+            {% for val, name in form.fields.car_color.choices %}
+            {% if val %}
+            <div class="color-dot-item {% if val == 'Other' %}rainbow-dot{% endif %}"
+                 data-value="{{ val }}" title="{{ name }}"
+                 style="background-color:
+                    {% if val == 'Black' %}#000000{% elif val == 'White' %}#f8fafc{% elif val == 'Silver' %}#94a3b8{% elif val == 'Grey' %}#64748b{% elif val == 'Red' %}#dc2626{% elif val == 'Light Blue' %}#38bdf8{% elif val == 'Blue' %}#2563eb{% elif val == 'Dark Blue' %}#1d4ed8{% elif val == 'Yellow' %}#eab308{% elif val == 'Light Green' %}#4ade80{% elif val == 'Green' %}#16a34a{% elif val == 'Dark Green' %}#15803d{% elif val == 'Brown' %}#78350f{% elif val == 'Dark Brown' %}#451a03{% else %}transparent{% endif %};
+                    {% if val == 'White' %}border: 1px solid #dee2e6;{% endif %}"></div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% comment %} What actually posts. {% endcomment %}
+<div class="d-none">
+    {{ form.car_color }}
+    <input type="color" id="native-color-picker"
+           value="{{ record.car_color_other|default:'#0d6efd' }}">
+</div>
+<div id="other-color-container" class="d-none">
+    {{ form.car_color_other }}
+</div>
+
+<style>
+    .cursor-pointer { cursor: pointer; }
+
+    .color-mini-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        justify-items: center;
+    }
+
+    .color-dot-item {
+        width: 24px;
+        height: 24px;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: transform 0.2s, border 0.2s;
+        border: 2px solid transparent;
+    }
+
+    .color-dot-item:hover { transform: scale(1.2); border: 2px solid #0d6efd; }
+
+    .color-dot-item.active {
+        border: 2px solid #0d6efd;
+        box-shadow: 0 0 0 2px white inset;
+    }
+
+    .rainbow-dot {
+        background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red) !important;
+    }
+
+    #color-picker-trigger { border-radius: 3px !important; }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const colorDots = document.querySelectorAll('.color-dot-item');
+        const colorTrigger = document.getElementById('color-picker-trigger');
+        const hiddenColorInput = document.querySelector('[name="car_color"]');
+        const otherInput = document.querySelector('[name="car_color_other"]');
+        // Optional — the Job Card echoes the colour in its page header; the
+        // Estimate has no such dot. Guarded rather than required.
+        const headerDot = document.getElementById('header-color-dot');
+        const nativePicker = document.getElementById('native-color-picker');
+
+        if (!colorTrigger || !hiddenColorInput) return;
+
+        colorDots.forEach(dot => {
+            dot.addEventListener('click', function () {
+                const val = this.getAttribute('data-value');
+                if (val === 'Other') {
+                    if (nativePicker) nativePicker.click();
+                } else {
+                    updateColorSelection(val, this.style.backgroundColor);
+                }
+            });
+        });
+
+        if (nativePicker) {
+            nativePicker.addEventListener('input', function () {
+                updateColorSelection('Other', this.value);
+            });
+        }
+
+        function updateColorSelection(val, hex) {
+            hiddenColorInput.value = val;
+            if (otherInput) otherInput.value = (val === 'Other') ? hex : '';
+
+            colorTrigger.style.backgroundColor = hex;
+            // Must go, or the conic gradient keeps painting over the choice.
+            if (val) {
+                colorTrigger.classList.remove('rainbow-dot');
+            } else {
+                colorTrigger.classList.add('rainbow-dot');
+            }
+
+            if (headerDot) {
+                headerDot.style.backgroundColor = hex;
+                headerDot.classList.remove('d-none');
+                headerDot.classList.remove('rainbow-dot');
+            }
+
+            const dropdownToggle = bootstrap.Dropdown.getInstance(colorTrigger);
+            if (dropdownToggle) dropdownToggle.hide();
+
+            colorDots.forEach(d => d.classList.remove('active'));
+            const selectedDot = document.querySelector('.color-dot-item[data-value="' + val + '"]');
+            if (selectedDot) selectedDot.classList.add('active');
+        }
+
+        if (hiddenColorInput.value) {
+            const activeDot = document.querySelector(
+                '.color-dot-item[data-value="' + hiddenColorInput.value + '"]');
+            if (activeDot) activeDot.classList.add('active');
+        }
+    });
+</script>

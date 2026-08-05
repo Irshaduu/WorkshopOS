@@ -1,0 +1,55 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Delete {{ estimate.estimate_number }}{% endblock %}
+
+{% comment %}
+Deliberately says LESS than the job-card delete confirmation, because less is
+true here. There is no Deletion History line to promise (an estimate moves no
+money — see estimate_delete for why it is not logged), no ledger to warn about,
+and no reason box, since nobody is going to read it back. What it does show is
+what the customer was quoted, so the number on screen is the one being removed.
+{% endcomment %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow border-danger">
+            <div class="card-body p-4">
+                <h4 class="mb-3 text-danger text-center">
+                    <i class="bi bi-exclamation-circle"></i> Delete this estimate?
+                </h4>
+
+                <div class="border rounded p-3 mb-3 bg-light">
+                    <div class="d-flex justify-content-between align-items-baseline">
+                        <strong>{{ estimate.estimate_number }}</strong>
+                        <small class="text-muted">{{ estimate.date|date:"j M Y" }}</small>
+                    </div>
+                    <div class="mt-1">
+                        {{ estimate.registration_number|default:"No reg no" }}
+                        {% if estimate.vehicle_label %}
+                        <span class="text-muted">· {{ estimate.vehicle_label }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-muted small">{{ estimate.customer_name|default:"No customer name" }}</div>
+                    <div class="mt-2 fw-bold">Quoted ₹ {{ estimate.total_amount|inr_exact }}</div>
+                </div>
+
+                <p class="text-muted text-center mb-3" style="font-size: .9rem;">
+                    This removes the quotation and its lines. Nothing else changes —
+                    an estimate is not attached to any bill, stock or account.
+                    <strong>It cannot be restored.</strong>
+                </p>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger fw-bold">Yes, Delete</button>
+                        <a href="{% url 'estimate_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

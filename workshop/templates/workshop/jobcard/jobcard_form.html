@@ -229,28 +229,17 @@
                             <div class="d-flex gap-3">
                                 <div style="flex: 0 0 45px;">
                                     <label for="{{ form.mileage.id_for_label }}" class="form-label small text-muted">Color</label>
-                                    <!-- COMPACT COLOR PICKER -->
-                                    <div class="dropdown">
-                                        <div id="color-picker-trigger" class="cursor-pointer border shadow-sm {% if not jobcard.car_color %}rainbow-dot{% endif %}" 
-                                             data-bs-toggle="dropdown" aria-expanded="false"
-                                             style="width: 100%; height: 36px; background-color: {{ jobcard.get_car_color_hex }};"
-                                             title="Select Car Color">
-                                        </div>
-                                        <div class="dropdown-menu p-3 shadow-lg border-0 color-dropdown-menu" style="min-width: 180px; border-radius: 12px;">
-                                            <div class="color-mini-grid">
-                                                {% for val, name in form.fields.car_color.choices %}
-                                                    {% if val %}
-                                                    <div class="color-dot-item {% if val == 'Other' %}rainbow-dot{% endif %}" 
-                                                         data-value="{{ val }}" title="{{ name }}"
-                                                         style="background-color: 
-                                                            {% if val == 'Black' %}#212529{% elif val == 'White' %}#ffffff{% elif val == 'Silver' %}#C0C0C0{% elif val == 'Grey' %}#9E9E9E{% elif val == 'Red' %}#F44336{% elif val == 'Light Blue' %}#81D4FA{% elif val == 'Blue' %}#2196F3{% elif val == 'Dark Blue' %}#1565C0{% elif val == 'Yellow' %}#FFEB3B{% elif val == 'Light Green' %}#81C784{% elif val == 'Green' %}#4CAF50{% elif val == 'Dark Green' %}#2E7D32{% elif val == 'Brown' %}#795548{% elif val == 'Dark Brown' %}#4E342E{% else %}transparent{% endif %};
-                                                            {% if val == 'White' %}border: 1px solid #dee2e6;{% endif %}">
-                                                    </div>
-                                                    {% endif %}
-                                                {% endfor %}
-                                            </div>
-                                        </div>
-                                    </div>
+                                    {% comment %}
+                                    The picker moved to a shared include on
+                                    2026-08-05 so the Estimate could use the
+                                    identical control instead of a second copy
+                                    free to drift. The swatch colours it offers
+                                    now come from CAR_COLOR_HEX in models.py —
+                                    the same map the dashboard stripe and the
+                                    estimate list read — so a Grey job card and
+                                    a Grey estimate cannot print different greys.
+                                    {% endcomment %}
+                                    {% include 'workshop/includes/_car_color_picker.html' with record=jobcard %}
                                 </div>
                                 <div class="flex-grow-1">
                                     <label class="form-label small text-muted">Mileage (Km)</label>
@@ -278,131 +267,20 @@
 
                     </div>
 
-                    <!-- Hidden original fields for form submission -->
-                    <div class="d-none">
-                        {{ form.car_color }}
-                        <input type="color" id="native-color-picker" value="{{ jobcard.car_color_other|default:'#0d6efd' }}">
-                    </div>
-
-                    <!-- Compact "Other" Input (Used for Hex Storage) -->
-                    <div id="other-color-container" class="d-none">
-                        {{ form.car_color_other }}
-                    </div>
+                    {% comment %}
+                    The hidden car_color / car_color_other fields and the native
+                    colour input now live inside the shared picker include
+                    above, beside the swatch that drives them.
+                    {% endcomment %}
                 </div>
             </div>
 
-            <!-- Compact Color CSS -->
-            <style>
-                .cursor-pointer { cursor: pointer; }
-                .color-mini-grid {
-                    display: grid;
-                    grid-template-columns: repeat(5, 1fr);
-                    gap: 12px;
-                    justify-items: center;
-                }
-                .color-dot-item {
-                    width: 24px;
-                    height: 24px;
-                    border-radius: 3px;
-                    cursor: pointer;
-                    transition: transform 0.2s, border 0.2s;
-                    border: 2px solid transparent;
-                }
-                .color-dot-item:hover {
-                    transform: scale(1.2);
-                    border: 2px solid #0d6efd;
-                }
-                .color-dot-item.active {
-                    border: 2px solid #0d6efd;
-                    box-shadow: 0 0 0 2px white inset;
-                }
-                .rainbow-dot {
-                    background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red) !important;
-                }
-                #color-picker-trigger {
-                    border-radius: 3px !important;
-                }
-            </style>
-
-            <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    const colorDots = document.querySelectorAll('.color-dot-item');
-                    const colorTrigger = document.getElementById('color-picker-trigger');
-                    const hiddenColorInput = document.querySelector('[name="car_color"]');
-                    const otherInput = document.querySelector('[name="car_color_other"]');
-                    const headerDot = document.getElementById('header-color-dot');
-                    const nativePicker = document.getElementById('native-color-picker');
-
-                    if (!colorTrigger || !hiddenColorInput) return;
-
-                    colorDots.forEach(dot => {
-                        dot.addEventListener('click', function() {
-                            const val = this.getAttribute('data-value');
-                            
-                            if (val === 'Other') {
-                                // Trigger native color picker
-                                if (nativePicker) nativePicker.click();
-                            } else {
-                                const hex = this.style.backgroundColor;
-                                updateColorSelection(val, hex);
-                            }
-                        });
-                    });
-
-                    // Listen for native color picker changes
-                    if (nativePicker) {
-                        nativePicker.addEventListener('input', function() {
-                            const hex = this.value;
-                            updateColorSelection('Other', hex);
-                        });
-                    }
-
-                    function updateColorSelection(val, hex) {
-                        // Update hidden fields
-                        hiddenColorInput.value = val;
-                        if (val === 'Other') {
-                            if (otherInput) otherInput.value = hex;
-                        } else {
-                            if (otherInput) otherInput.value = '';
-                        }
-
-                        // Update UI Trigger and Header
-                        colorTrigger.style.backgroundColor = hex;
-                        
-                        // IMPORTANT: Remove rainbow-dot class to allow background-color to show!
-                        if (val) {
-                            colorTrigger.classList.remove('rainbow-dot');
-                        } else {
-                            // If clearing color (if we ever allow it), re-add rainbow-dot
-                            colorTrigger.classList.add('rainbow-dot');
-                        }
-
-                        if (headerDot) {
-                            headerDot.style.backgroundColor = hex;
-                            headerDot.classList.remove('d-none');
-                            headerDot.classList.remove('rainbow-dot');
-                        }
-
-                        // Close dropdown (Bootstrap)
-                        const dropdownToggle = bootstrap.Dropdown.getInstance(colorTrigger);
-                        if (dropdownToggle) dropdownToggle.hide();
-
-                        // Highlight active dot
-                        colorDots.forEach(d => d.classList.remove('active'));
-                        const selectedDot = document.querySelector(`.color-dot-item[data-value="${val}"]`);
-                        if (selectedDot) selectedDot.classList.add('active');
-                    }
-
-                    // Set Initial State
-                    if (hiddenColorInput && hiddenColorInput.value) {
-                        const val = hiddenColorInput.value;
-                        const activeDot = document.querySelector(`.color-dot-item[data-value="${val}"]`);
-                        if (activeDot) {
-                             activeDot.classList.add('active');
-                        }
-                    }
-                });
-            </script>
+            {% comment %}
+            The picker's CSS and JavaScript moved into
+            `workshop/includes/_car_color_picker.html` on 2026-08-05, beside
+            the markup they drive, so the Estimate could use the identical
+            control rather than a second copy free to drift.
+            {% endcomment %}
 
 
 

@@ -4,66 +4,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice {{ jobcard.bill_number|default:"" }} — Formula D</title>
+    <title>Estimate {{ estimate.estimate_number|default:"" }} — Formula D</title>
 
     {% comment %}
     ============================================================================
-    THE PRINTED BILL. Read this before changing anything below.
+    THE PRINTED ESTIMATE. Read this before changing anything below.
     ============================================================================
-    This page is deliberately SELF-CONTAINED: no Bootstrap, no icon font, no CDN
-    of any kind. It used to pull three external files, which bought one modal and
-    cost the thing that actually matters here — control over what lands on paper.
-    A framework reset that ships tomorrow must not be able to move a column on a
-    customer's invoice, and a workshop printing a bill on a dropped connection
-    must not get an unstyled page. Everything this document needs is in this file.
+    A deliberate near-twin of `invoice/invoice_template.html`. The two documents
+    leave the same workshop for the same car, the estimate first and the bill
+    after it, so they must be recognisably one family of paper: same letterhead,
+    same navy bands, same column grid, same totals block. Where they differ it is
+    only in what the document IS —
 
-    There are two layers, and the boundary is absolute:
+        title            ESTIMATE, not INVOICE
+        jobs heading     "JOB NEEDS TO BE PERFORMED", not "JOB PERFORMED"
+                         (future tense: nothing has happened yet)
+        toolbar          no Settle Bill, no payment chip, no fleet link. An
+                         estimate has no payment state to show or change, and
+                         offering one would imply money can be taken against it.
+        footer           "concerning this estimate"
 
-      .no-print   the workshop's controls — toolbar, buttons, messages, the
-                  settle dialog. Screen only. None of it exists on paper.
-      .sheet      the bill. Reproduces the reference invoice; nothing in here is
-                  conditional on who is looking at it or what they may do.
+    Everything else is held in step with the invoice ON PURPOSE. If you restyle
+    one, restyle both, or the customer receives two documents that look like they
+    came from different businesses.
 
-    Money and naming decisions are NOT here — they are in `workshop/invoice.py`,
-    which is why this template contains no arithmetic. If a figure looks wrong,
-    that module is where it is decided.
+    Same two absolute layers as the invoice:
+
+      .no-print   the workshop's controls. Screen only, and physically OUTSIDE
+                  the sheet element — not merely hidden in print.
+      .sheet      the document. Nothing in here is conditional on who is
+                  looking at it.
+
+    SELF-CONTAINED: no Bootstrap, no icon font, no CDN. A framework update must
+    not be able to move a column on a customer's quotation, and a workshop
+    printing on a dropped connection must not get an unstyled page.
+
+    No arithmetic lives here. Every figure and every naming rule is decided in
+    `workshop/invoice.py` (`build_estimate`), which is the same module that
+    decides the invoice — that shared module is what stops the quote and the
+    bill disagreeing about how a blank quantity or an unpriced part reads.
     {% endcomment %}
 
     <style>
         /* ==================================================================
            PAGE
+           ==================================================================
+           NO `size:` declaration, and a ZERO @page margin with the sheet
+           supplying the real one as padding. Both are load-bearing and both are
+           explained at length in invoice_template.html — in short: declaring a
+           paper size makes the browser scale the document when the tray holds a
+           different one, and a zero margin is the only way to stop Chrome
+           printing its own header/footer (date, URL, page number) on a
+           customer's document.
            ================================================================== */
-        {% comment %}
-        NO `size:` declaration here, deliberately — the paper chosen in the print
-        dialog wins.
-
-        This said `size: A4` once and it was measurably wrong. A4 is TALLER than
-        US Letter (297mm vs 279mm), so printing an A4-sized page onto Letter made
-        Chrome shrink the whole document by 279/297 = 0.939 to fit, then centre
-        it. The declared 14mm margin came out as 9.5 + (14 x 0.939) = 22.6mm, and
-        every figure on the bill printed 6% small. Leaving `size` alone means the
-        page box IS the paper: 100% scale, and the margin below is the margin
-        that prints, on A4 and Letter alike.
-
-        ZERO margin here, and the sheet supplies the real one as padding.
-
-        That is what removes the browser's own print header and footer — the
-        date, the page title, the localhost URL, the "1/1". Those are drawn by
-        Chrome INSIDE the page margin; with no margin there is nowhere to draw
-        them and they are omitted. No CSS can switch them off directly, and the
-        print dialog's "Headers and footers" tick is per-machine, so a workshop
-        printing from a new device would get them back.
-
-        The cost, stated plainly: `@page` margins apply to every page, element
-        padding does not — it pads the top of page 1 and the bottom of the last
-        page only. So on an invoice that runs to two or more pages, the
-        continuation pages start closer to the paper edge than 12mm. Single-page
-        bills — which is nearly all of them here, and all three of the
-        workshop's own reference invoices — are unaffected and print at exactly
-        12mm all round. If long invoices ever become common, the fix is to wrap
-        the document in a frame table whose thead/tfoot repeat per page; that is
-        a bigger change and not worth its risk today.
-        {% endcomment %}
         @page {
             margin: 0;
         }
@@ -110,7 +103,7 @@
             align-items: center;
             justify-content: center;
             gap: 7px;
-            /* 44px — these are tapped on a tablet and a phone, not only clicked. */
+            /* 44px — tapped on a tablet and a phone, not only clicked. */
             min-height: 44px;
             padding: 0 16px;
             border: 1px solid transparent;
@@ -147,17 +140,6 @@
             background: #17395a;
         }
 
-        .btn-money {
-            background: #f59e0b;
-            color: #422006;
-        }
-
-        .btn-money:hover {
-            background: #d97706;
-        }
-
-        /* Edit Job is the quietest of the three: it leaves the invoice rather
-           than doing anything to it. Print is the loud one, on the right. */
         .btn-edit {
             background: #e2e8f0;
             color: #334155;
@@ -176,21 +158,8 @@
             font-size: 12.5px;
             font-weight: 700;
             letter-spacing: .02em;
-        }
-
-        .chip-paid {
-            background: #dcfce7;
-            color: #14532d;
-        }
-
-        .chip-due {
-            background: #fee2e2;
-            color: #7f1d1d;
-        }
-
-        .chip-fleet {
-            background: #ede9fe;
-            color: #4c1d95;
+            background: #e0f2fe;
+            color: #075985;
         }
 
         .notices {
@@ -232,19 +201,13 @@
             color: #1e40af;
         }
 
-        .notice a {
-            color: inherit;
-            font-weight: 700;
-        }
-
         /* ==================================================================
            THE SHEET
            ==================================================================
-           210mm wide on screen as well as on paper, so what an owner reviews on
-           a phone is the document, not an approximation of it. Narrow screens
-           scale the whole sheet down (see fitSheet() at the foot of this file)
-           rather than reflowing it — a bill that rearranged itself to fit a
-           phone would not be the bill that prints.
+           210mm wide on screen as well as on paper. Narrow screens SCALE the
+           whole sheet (see fitSheet() at the foot of this file) rather than
+           reflowing it — a quotation that rearranged itself to fit a phone
+           would stop being a preview of what prints.
            ================================================================== */
         .sheet-wrap {
             padding: 18px 12px 40px;
@@ -254,17 +217,15 @@
         .sheet {
             width: 210mm;
             min-height: 297mm;
-            /* Same 12mm the print rule uses, so the screen IS the preview. */
             padding: 12mm;
             margin: 0 auto;
             background: #fff;
             box-shadow: 0 4px 24px rgba(15, 23, 42, .16);
             transform-origin: top left;
 
-            /* Calibri is what the reference invoice is set in and is present on
-               every Windows machine in the workshop; the rest are fallbacks with
-               comparable metrics so a bill opened on a phone keeps its line
-               breaks. */
+            /* Calibri is what the workshop's own template is set in and is on
+               every Windows machine here; the rest are metric-comparable
+               fallbacks so a sheet opened on a phone keeps its line breaks. */
             font-family: Calibri, "Segoe UI", Candara, "Trebuchet MS", Arial, sans-serif;
             font-size: 10pt;
             line-height: 1.15;
@@ -297,7 +258,6 @@
             height: 1mm;
             background: #e8112d;
             margin: 1.1mm 0 .6mm;
-            /* Sized to the wordmark rather than the column, as on the letterhead. */
             width: 56mm;
         }
 
@@ -323,9 +283,11 @@
         }
 
         {% comment %}
-        Sized off the reference rather than picked: the word sets about as wide
-        as the DATE line beneath it and ends level with it, ~16.8% of the
-        content width. 30pt overshot that by half again.
+        Same 21.5pt as INVOICE, deliberately, even though ESTIMATE is a
+        character longer and therefore sets a little wider. The two documents
+        are a pair; matching the TYPE SIZE keeps them looking like it, whereas
+        matching the word's printed WIDTH would mean two different title sizes
+        for no reason a customer could name.
         {% endcomment %}
         .inv-title {
             font-family: Arial, Helvetica, sans-serif;
@@ -347,8 +309,8 @@
 
         /* ---- Shared table shell ----
            Both money tables run on ONE column grid so the QTY / UNIT PRICE /
-           AMOUNT boundaries line up between them, exactly as they do on the
-           reference. Change a width here and both tables move together. */
+           AMOUNT boundaries line up between them. Change a width here and both
+           tables move together. Identical grid to the invoice. */
         .inv-table {
             width: 100%;
             border-collapse: collapse;
@@ -357,8 +319,8 @@
 
         .inv-table td,
         .inv-table th {
-            /* Gridlines are WHITE: the banding is what separates the rows, and a
-               grey rule over a blue band reads as a smudge at print size. */
+            /* Gridlines are WHITE: the banding separates the rows, and a grey
+               rule over a blue band reads as a smudge at print size. */
             border: 1px solid #fff;
             padding: 0 2mm;
             font-weight: 400;
@@ -367,7 +329,6 @@
             overflow-wrap: break-word;
         }
 
-        /* The navy header is one unbroken bar — its internal borders are the bar. */
         .inv-table thead th {
             background: #1f4e79;
             border-color: #1f4e79;
@@ -382,13 +343,11 @@
         }
 
         {% comment %}
-        Every cell modifier below is qualified with `.inv-table` on purpose.
-        `.inv-table td` is specificity (0,1,1); a bare `.thanks` or `.grand-label`
-        is (0,1,0) and LOSES to it. That is not theoretical — it shipped once and
-        silently flattened SUBTOTAL, TOTAL and the thank-you line to 10pt
-        regular, while their colours and fills (which nothing else set) came
-        through fine, so the page looked almost right. Qualifying makes each one
-        (0,2,0) and beats the base rule.
+        Every cell modifier below is qualified with `.inv-table`. `.inv-table td`
+        is specificity (0,1,1); a bare `.thanks` or `.grand-label` is (0,1,0) and
+        LOSES to it — which shipped once on the invoice and silently flattened
+        SUBTOTAL, TOTAL and the thank-you line to 10pt regular while their
+        colours came through fine, so the page looked almost right.
         {% endcomment %}
         .inv-table .c {
             text-align: center;
@@ -398,11 +357,9 @@
             text-align: right;
         }
 
-        /* An accounting cell: the ₹ sits against the left edge, the figure
-           against the right, the way every amount on the reference is set.
-           A flex row rather than a float — a float inside a cell anchors to the
-           top of the box, so the rupee sign drifted off the baseline of the
-           figure it belongs to on every row with a set height. */
+        /* An accounting cell: ₹ against the left edge, figure against the
+           right. A flex row, not a float — a float inside a cell anchors to the
+           top of the box and drifts the rupee sign off the baseline. */
         .money .acct {
             display: flex;
             align-items: baseline;
@@ -410,7 +367,6 @@
             gap: 2mm;
         }
 
-        /* Cells outside the shaded totals block carry no fill and no rule. */
         .inv-table .void {
             background: #fff;
             border-color: #fff;
@@ -442,14 +398,8 @@
             border-style: solid;
         }
 
-        {% comment %}
-        BILL TO and VEHICLE INFO are both left-aligned, on the SAME indent as the
-        data underneath them. The reference sets VEHICLE INFO adrift towards the
-        middle of its half while REG NO / MODEL / MILEAGE sit hard left, so the
-        heading floats above nothing — the one place the reference is simply
-        wrong rather than deliberate. One indent value drives the band and the
-        cells beneath it, so they cannot drift apart again.
-        {% endcomment %}
+        /* One indent value drives the band and the cells beneath it, so the
+           heading and its data cannot drift apart. */
         .inv-parties .band th,
         .inv-parties td {
             text-align: left;
@@ -465,7 +415,7 @@
             font-size: 10pt;
         }
 
-        /* ---- Job performed ---- */
+        /* ---- Jobs ---- */
         .inv-jobs {
             margin-top: 1.4mm;
         }
@@ -475,7 +425,7 @@
         }
 
         /* Banding starts on the SECOND row here and on the FIRST row in the
-           parts table — that is how the reference is set, not an oversight. */
+           parts table — that is how the workshop's own template is set. */
         .inv-jobs tbody.rows tr:nth-child(even) td {
             background: #dce6f1;
         }
@@ -495,7 +445,6 @@
 
         .inv-parts .grand td {
             height: 6.8mm;
-            /* A little air above the closing line, as on the reference. */
             border-top-width: 2px;
         }
 
@@ -531,10 +480,6 @@
 
         /* ==================================================================
            PRINT
-           ==================================================================
-           Everything the workshop uses to drive this page disappears; the sheet
-           becomes the page itself. Pagination rules are the second half — see
-           the comment on each.
            ================================================================== */
         @media print {
             .no-print {
@@ -557,59 +502,50 @@
                 min-height: 0;
                 margin: 0;
                 /* The page margin itself — @page is zero so the browser cannot
-                   draw its header and footer. See the note on @page above. */
+                   draw its own header and footer. */
                 padding: 12mm;
                 box-shadow: none;
                 /* The screen's fit-to-width scaling must never reach paper. */
                 transform: none !important;
             }
 
-            /* Bands and banding ARE the design — without this the bill prints as
-               an unreadable grid of empty boxes on a default browser setup. */
+            /* Bands and banding ARE the design — without this the sheet prints
+               as an unreadable grid of empty boxes on a default setup. */
             * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
 
-            /* --- Pagination ---
-               The column headings repeat at the top of every page they carry
-               rows onto, so page 3 of a parts list is still labelled
-               PART NAME / QTY / UNIT PRICE / AMOUNT. */
+            /* --- Pagination --- */
             thead {
                 display: table-header-group;
             }
 
-            /* ...and never strand a heading at the foot of a page with its rows
-               overleaf. */
             thead tr {
                 break-after: avoid;
                 page-break-after: avoid;
             }
 
             .inv-table {
-                /* The table itself MUST be breakable — it is the only thing long
-                   enough to need more than one page. */
                 break-inside: auto;
                 page-break-inside: auto;
             }
 
-            /* A row is atomic. Half a part name at the foot of a page and its
-               price at the top of the next is the failure this prevents. */
+            /* A row is atomic — half a part name at the foot of a page and its
+               price at the top of the next is what this prevents. */
             tr {
                 break-inside: avoid;
                 page-break-inside: avoid;
             }
 
-            /* SUBTOTAL and TOTAL are one thought and travel together. They sit in
-               their own <tbody> for exactly this — a <tfoot> would have repeated
-               them at the bottom of every page. */
+            /* SUBTOTAL and TOTAL are one thought and travel together. They sit
+               in their own <tbody> for exactly this — a <tfoot> would have
+               repeated them at the bottom of every page. */
             .totals {
                 break-inside: avoid;
                 page-break-inside: avoid;
             }
 
-            /* The letterhead and the vehicle block belong to page 1, whole, with
-               the table that follows them started rather than orphaned. */
             .inv-head,
             .inv-parties {
                 break-inside: avoid;
@@ -621,84 +557,12 @@
                 page-break-after: avoid;
             }
 
-            /* One footer, on the last page, entire — and not stranded on a page
-               of its own when the totals happen to end on a page boundary. */
             .inv-foot {
                 break-inside: avoid;
                 page-break-inside: avoid;
                 break-before: avoid;
                 page-break-before: avoid;
             }
-        }
-
-        /* ==================================================================
-           SETTLE DIALOG (screen only)
-           ================================================================== */
-        dialog.pay {
-            width: min(420px, calc(100vw - 32px));
-            padding: 0;
-            border: none;
-            border-radius: 14px;
-            box-shadow: 0 18px 50px rgba(15, 23, 42, .3);
-        }
-
-        dialog.pay::backdrop {
-            background: rgba(15, 23, 42, .5);
-        }
-
-        .pay-head {
-            background: #1f4e79;
-            color: #fff;
-            padding: 16px 20px;
-            font-size: 16px;
-            font-weight: 700;
-        }
-
-        .pay-body {
-            padding: 20px;
-        }
-
-        .pay-body label {
-            display: block;
-            font-size: 12.5px;
-            font-weight: 700;
-            color: #475569;
-            margin-bottom: 6px;
-        }
-
-        .pay-total {
-            font-size: 26px;
-            font-weight: 800;
-            margin: 0 0 18px;
-        }
-
-        .pay-body input,
-        .pay-body select {
-            width: 100%;
-            min-height: 46px;
-            padding: 0 12px;
-            font-size: 16px;
-            font-family: inherit;
-            border: 1px solid #cbd5e1;
-            border-radius: 10px;
-            background: #fff;
-            color: #0f172a;
-            margin-bottom: 16px;
-        }
-
-        .pay-body input:focus,
-        .pay-body select:focus {
-            outline: 2px solid #1f4e79;
-            outline-offset: 1px;
-        }
-
-        .pay-foot {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            padding: 14px 20px;
-            background: #f8fafc;
-            border-top: 1px solid #e2e8f0;
         }
 
         @media (max-width: 640px) {
@@ -719,7 +583,9 @@
 
     {% comment %}
     ========================================================================
-    SCREEN ONLY — nothing from here to the sheet reaches paper.
+    SCREEN ONLY — nothing from here to the sheet reaches paper. These controls
+    live OUTSIDE .sheet entirely, not merely hidden in print: a CSS-only rule is
+    one stylesheet edit away from printing a button on a customer's quotation.
     ========================================================================
     {% endcomment %}
     <div class="bar no-print">
@@ -728,38 +594,26 @@
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
             Back
         </a>
+        {% else %}
+        <a href="{% url 'estimate_list' %}" class="btn btn-ghost">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+            All Estimates
+        </a>
         {% endif %}
 
-        {% if jobcard.bulk_payer %}
-        <span class="chip chip-fleet">Fleet · {{ jobcard.bulk_payer.customer_name }}</span>
-        {% elif jobcard.payment_status == 'PAID' %}
-        <span class="chip chip-paid">{{ jobcard.get_payment_status_display }}</span>
-        {% else %}
-        <span class="chip chip-due">{{ jobcard.get_payment_status_display }}</span>
-        {% endif %}
+        {% comment %}
+        The one chip. It says what this piece of paper is — not a bill, nothing
+        owed, nothing to settle. There is no payment state on an estimate and
+        deliberately no control that implies one.
+        {% endcomment %}
+        <span class="chip">Quotation — not a bill</span>
 
         <span class="bar-spacer"></span>
 
-        {% comment %}
-        Left to right: Edit Job, Settle Bill, Print / Save PDF — weakest action
-        to strongest, ending on the one this page exists for.
-        {% endcomment %}
-        <a href="{% url 'jobcard_edit' jobcard.pk %}" class="btn btn-edit">
+        <a href="{% url 'estimate_edit' estimate.pk %}" class="btn btn-edit">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.1 1.3a1.1 1.1 0 0 1 1.6 0l1 1a1.1 1.1 0 0 1 0 1.6l-.9.9-2.6-2.6.9-.9zM10.5 2.9l2.6 2.6-7.3 7.3-3.3.7.7-3.3 7.3-7.3z"/></svg>
-            Edit Job
+            Edit Estimate
         </a>
-
-        {% if jobcard.bulk_payer %}
-        <a href="{% url 'bulk_payer_detail' jobcard.bulk_payer.pk %}" class="btn btn-ghost">
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 1h8v14H8v-3H4v3H2V1zm2 2v2h2V3H4zm4 0v2h2V3H8zM4 6v2h2V6H4zm4 0v2h2V6H8zm3-1h3v10h-3V5z"/></svg>
-            Settle on Fleet Account
-        </a>
-        {% elif request.user|has_group:"Office" or request.user|has_group:"Owner" %}
-        <button type="button" class="btn btn-money" onclick="document.getElementById('payDialog').showModal()">
-            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v1.4H9.3c.5.4.9.9 1.1 1.6H12v1.4h-1.5c-.2 1.7-1.6 2.9-3.5 3l3.9 4.2V15H9.1L4.7 10v-1.6h1.7c1.4 0 2.3-.5 2.5-1.6H4V5.4h4.8C8.5 4.6 7.7 4.2 6.4 4.2H4V2z"/></svg>
-            Settle Bill
-        </button>
-        {% endif %}
 
         <button type="button" class="btn btn-primary" onclick="window.print()">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
@@ -768,11 +622,10 @@
     </div>
 
     {% comment %}
-    `update_bill_status` redirects back here with a message, and this page used
-    to render none — so "Billing updated" was never shown, and worse, surfaced
-    later on whatever unrelated screen the user opened next. This template is
-    standalone (it does not extend base.html), so rendering messages here is the
-    one place it can happen, not a duplicate of base.html's block.
+    This template is standalone (it does not extend base.html), so it must render
+    messages itself — that is not the double-render base.html forbids. Without
+    it, "Estimate EST-26-004 created" would surface later on whatever unrelated
+    screen the user opened next.
     {% endcomment %}
     {% if messages %}
     <div class="notices no-print">
@@ -784,7 +637,7 @@
 
     {% comment %}
     ========================================================================
-    THE BILL
+    THE ESTIMATE
     ========================================================================
     {% endcomment %}
     <div class="sheet-wrap">
@@ -794,7 +647,7 @@
                 <div class="brand">
                     {% comment %}
                     The wordmark is set, not an image: a logo file that fails to
-                    load leaves a customer holding an unbranded invoice, and a
+                    load leaves a customer holding an unbranded document, and a
                     raster one prints soft.
                     {% endcomment %}
                     <div class="brand-mark">FORMULA <span class="d">D</span></div>
@@ -809,10 +662,10 @@
                 </div>
 
                 <div class="inv-doc">
-                    <div class="inv-title">INVOICE</div>
+                    <div class="inv-title">ESTIMATE</div>
                     <div class="inv-meta">
-                        <span>DATE:&nbsp; {{ jobcard.admitted_date|date:"j-M-Y" }}</span>
-                        <span>#: {{ jobcard.bill_number|default:"" }}</span>
+                        <span>DATE:&nbsp; {{ estimate.date|date:"j-M-Y" }}</span>
+                        <span>#: {{ estimate.estimate_number|default:"" }}</span>
                     </div>
                 </div>
             </header>
@@ -823,10 +676,10 @@
                     <col style="width:42.5%">
                 </colgroup>
                 {% comment %}
-                This heading row sits in a <tbody>, NOT a <thead>, on purpose:
-                `thead { display: table-header-group }` repeats a heading on
-                every printed page, which is right for the money columns and
-                wrong for the vehicle block — it belongs to page 1 only.
+                This heading row sits in a <tbody>, NOT a <thead>: `thead
+                { display: table-header-group }` repeats a heading on every
+                printed page, which is right for the money columns and wrong for
+                the vehicle block — it belongs to page 1 only.
                 {% endcomment %}
                 <tbody>
                     <tr class="band">
@@ -835,22 +688,27 @@
                     </tr>
                     <tr>
                         <td>
-                            NAME: {{ jobcard.customer_name|default:"" }}<br>
-                            MAKE: {{ jobcard.brand_name|default:"" }}
+                            NAME: {{ estimate.customer_name|default:"" }}<br>
+                            MAKE: {{ estimate.brand_name|default:"" }}
                         </td>
                         <td>
-                            REG NO: {{ jobcard.registration_number|default:"" }}<br>
-                            MODEL: {{ jobcard.model_name|default:"" }}<br>
-                            MILEAGE: {{ jobcard.mileage|default:"" }}
+                            REG NO: {{ estimate.registration_number|default:"" }}<br>
+                            MODEL: {{ estimate.model_name|default:"" }}<br>
+                            MILEAGE: {{ estimate.mileage|default:"" }}
                         </td>
                     </tr>
                 </tbody>
             </table>
 
             {% comment %}
-            JOB PERFORMED — descriptions only. The per-line amounts exist on the
-            job card and are deliberately not printed; the section is charged as
-            one SUBTOTAL. See workshop/invoice.py for why.
+            JOB NEEDS TO BE PERFORMED — descriptions only, then one SUBTOTAL.
+
+            The workshop quotes work whole ("₹22,300 for the job"), so the
+            charge is a single figure on the estimate and this section lists
+            only what will be done. Splitting it into five prices would invite a
+            line-by-line negotiation over work that the invoice will then
+            present as one number — the same rule, from the same reason, as the
+            invoice's JOB PERFORMED section.
             {% endcomment %}
             <table class="inv-table inv-jobs">
                 <colgroup>
@@ -861,7 +719,7 @@
                 </colgroup>
                 <thead>
                     <tr>
-                        <th colspan="3" class="h-left">JOB PERFORMED</th>
+                        <th colspan="3" class="h-left">JOB NEEDS TO BE PERFORMED</th>
                         <th>AMOUNT</th>
                     </tr>
                 </thead>
@@ -891,12 +749,10 @@
             </table>
 
             {% comment %}
-            PART NAME — spare-shop purchases and warehouse draws in ONE list, in
-            the order they were added. A draw prints under its category name
-            ("Engine Oil"), never the branded product it was bought as; a blank
-            quantity has already been resolved to 1 and the unit price derived
-            from the customer total, so no row can print an amount with nothing
-            beside it. All of that happens in workshop/invoice.py.
+            PART NAME — a blank quantity has already been resolved to 1 and the
+            unit price derived from the quoted amount, so no row can print an
+            amount with nothing beside it. All of that happens in
+            workshop/invoice.py, shared with the bill.
             {% endcomment %}
             <table class="inv-table inv-parts">
                 <colgroup>
@@ -952,60 +808,20 @@
             </table>
 
             <div class="inv-foot">
-                Should you have any enquiries concerning this invoice please contact:<br>
+                Should you have any enquiries concerning this estimate please contact:<br>
                 Rijas Mohd, +91 92 07 21 79 78
             </div>
         </div>
     </div>
 
-    {% comment %}
-    Settlement. Never rendered for a fleet-billed job — that money moves through
-    the Bulk Payer cascade, and `update_bill_status` refuses it here anyway.
-    {% endcomment %}
-    {% if not jobcard.bulk_payer %}
-    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" %}
-    <dialog class="pay no-print" id="payDialog">
-        <form action="{% url 'update_bill_status' jobcard.pk %}" method="POST">
-            {% csrf_token %}
-            <div class="pay-head">Settle Bill — {{ jobcard.registration_number }}</div>
-            <div class="pay-body">
-                <label for="pay_total">Bill grand total</label>
-                <p class="pay-total" id="pay_total">₹ {{ grand_total|inr_exact }}</p>
-
-                <label for="received_amount">Received amount (Cash / UPI / Transfer)</label>
-                {% comment %}
-                "2u" is the UNLOCALIZED form. A number input only accepts a bare
-                decimal, and a localized 20,300.00 would arrive blank.
-                {% endcomment %}
-                <input type="number" step="0.01" min="0" id="received_amount" name="received_amount"
-                       value="{{ grand_total|floatformat:'2u' }}" required>
-
-                <label for="payment_method">Payment method</label>
-                <select id="payment_method" name="payment_method">
-                    <option value="UPI">UPI / QR Code</option>
-                    <option value="CASH">Cash</option>
-                    <option value="TRANSFER">Bank Transfer</option>
-                    <option value="CARD">Card</option>
-                </select>
-            </div>
-            <div class="pay-foot">
-                <button type="button" class="btn btn-ghost"
-                        onclick="document.getElementById('payDialog').close()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Settle Bill</button>
-            </div>
-        </form>
-    </dialog>
-    {% endif %}
-    {% endif %}
-
     <script>
         (function () {
             'use strict';
 
-            // Fit the sheet to a narrow screen by SCALING it, never by reflowing
-            // it. Owners open invoices on a phone; a layout that rearranged
-            // itself to fit would stop being a preview of what prints. Print
-            // clears the transform outright (see @media print).
+            // Fit the sheet to a narrow screen by SCALING it, never by
+            // reflowing it. Owners open these on a phone; a layout that
+            // rearranged itself to fit would stop being a preview of what
+            // prints. Print clears the transform outright (see @media print).
             var wrap = document.querySelector('.sheet-wrap');
             var sheet = document.getElementById('sheet');
 
@@ -1018,18 +834,17 @@
                 if (!natural || available >= natural) return;
                 var scale = available / natural;
                 sheet.style.transform = 'scale(' + scale + ')';
-                // The transform does not shrink the space the sheet reserves, so
-                // the wrapper would keep a page of empty scroll beneath it.
+                // The transform does not shrink the space the sheet reserves,
+                // so the wrapper would keep a page of empty scroll beneath it.
                 wrap.style.height = (sheet.offsetHeight * scale + 58) + 'px';
             }
 
             fitSheet();
 
-            // Refit on BOTH signals, deliberately. window.resize is the one
-            // that always exists; a ResizeObserver additionally catches a
-            // rotation some browsers report without a window resize, and a
-            // wrapper resized by anything other than the viewport. fitSheet is
-            // idempotent, so the two firing together costs one wasted measure.
+            // Both signals, deliberately: window.resize always exists, and a
+            // ResizeObserver additionally catches a rotation that some browsers
+            // report without one. fitSheet is idempotent, so the two firing
+            // together costs one wasted measure.
             window.addEventListener('resize', fitSheet);
 
             // The observer must react to WIDTH only: fitSheet sets the

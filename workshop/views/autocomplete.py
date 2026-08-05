@@ -1,7 +1,10 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.http import JsonResponse
 
-from ..models import CarBrand, CarModel, SparePart, ConcernSolution
-from ..decorators import staff_required
+from ..models import CarBrand, CarModel, SparePart, ConcernSolution, JobCardSpareItem
+from ..decorators import staff_required, office_required
+from ..invoice import effective_quantity
 
 
 @staff_required
@@ -87,6 +90,82 @@ def autocomplete_inventory_items(request):
         }
         for it in items
     ], safe=False)
+
+
+# How many past sales the hint averages over. Five is the number the owner
+# asked for and it is a reasonable one: enough to absorb the odd oddly-priced
+# job, short enough that a price rise six months ago has already washed out.
+PRICE_HINT_SAMPLE = 5
+
+
+@office_required
+def spare_price_hint(request):
+    """
+    What this part usually sells for — a SUGGESTION for the Estimate screen.
+
+    Returns the average customer price per unit over the last few times this
+    part name was billed, so the Estimate form can put it in the Unit Price
+    box's *placeholder*. It is never written into the field, and nothing on the
+    server ever reads it back: a price a human did not type must not be able to
+    reach a document a customer is handed. If the hint is wrong, the worst case
+    is grey text nobody uses.
+
+    Three decisions worth not re-deriving:
+
+    * **The figure is the CUSTOMER price, not the cost.** It fills a
+      customer-facing box, and it is derived with `derive_unit_price`'s own rule
+      — `total_price / effective_quantity` — so the suggestion means exactly
+      what the printed UNIT PRICE column means. `JobCardSpareItem.unit_price`
+      is the workshop's cost and is deliberately NOT read here; suggesting it
+      would quote parts at cost.
+
+    * **Job cards only, never past estimates.** A job card is what the workshop
+      actually charged and collected. An estimate is a proposal that may have
+      been refused, and letting estimates feed each other would let one
+      optimistic quote drift the suggestion upward forever with nothing real
+      underneath it.
+
+    * **Ordered by most recently recorded** (`-pk`), which is what "the last 5
+      entries" means, and it needs no join. Rows with no price are skipped
+      before the slice rather than after, so a part priced once and left blank
+      four times still returns that one real figure instead of nothing.
+
+    `@office_required`, not `@staff_required` like its neighbours: this is a
+    price, and Floor is not shown prices anywhere else in the app.
+    """
+    name = (request.GET.get('name') or '').strip()
+    if not name:
+        return JsonResponse({'found': False})
+
+    # `__iexact` over an unindexed column, deliberately: the table is small
+    # (single-digit thousands of rows) and `spare_part_name` is free text, so a
+    # plain btree index would not serve a case-insensitive match anyway. If this
+    # ever shows up in a slow query log, the fix is a functional index on
+    # UPPER(spare_part_name), not a change of rule.
+    rows = (
+        JobCardSpareItem.objects
+        .filter(spare_part_name__iexact=name, total_price__isnull=False, total_price__gt=0)
+        .order_by('-pk')
+        .values_list('total_price', 'quantity')[:PRICE_HINT_SAMPLE]
+    )
+
+    unit_prices = [
+        Decimal(total) / effective_quantity(qty)
+        for total, qty in rows
+    ]
+    if not unit_prices:
+        return JsonResponse({'found': False})
+
+    average = (sum(unit_prices) / len(unit_prices)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP
+    )
+    return JsonResponse({
+        'found': True,
+        'average': str(average),
+        # The sample size rides along so the screen can say "avg of last 2"
+        # rather than implying five sales that did not happen.
+        'count': len(unit_prices),
+    })
 
 
 @staff_required

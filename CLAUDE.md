@@ -636,6 +636,286 @@ about to correct one of these, you are about to break the business:
   SUBTOTAL/TOTAL sit in their own `<tbody class="totals">` rather than a
   `<tfoot>`, **which would have repeated them at the foot of every page.**
 
+- **An ESTIMATE is connected to NOTHING, and that isolation is the feature.**
+  Added 2026-08-05. `Estimate` / `EstimateJobLine` / `EstimatePartLine` are read
+  by five views and one printing function, and by nothing else — no job card, no
+  spare shop, no warehouse stock, no ledger, no line in `analysis_engine.py`.
+  Money on an estimate is a *proposal*: a quote that moved stock or entered the
+  Profit page would be the workshop counting work it has not done and parts it
+  has not fitted. Three consequences worth not rediscovering.
+  (a) **The part name is free text and matches nothing on purpose** — quoting
+  "Castrol Edge 5W-30" must not deduct the shelf, and
+  `test_quoting_a_stock_product_moves_no_warehouse_stock` says so.
+  (b) **`EstimatePartLine.customer_rate` / `.amount` are named the OPPOSITE way
+  round from `JobCardSpareItem`** deliberately. There, `unit_price` is the
+  workshop's COST and `total_price` is what the customer pays. An estimate has
+  no cost side at all — every figure on it is a quoted price — so the per-unit
+  field reuses the one `JobCardSpareItem` name that already means exactly that.
+  Nothing here may ever be read as a cost.
+  (c) **Deleting one writes NO `DeletionLog` row.** The only place the section
+  departs from the app's deletion model, and it is a decision. `DeletionLog.record()`
+  is also the origin of `RECORD_DELETED`, which is **CRITICAL** and pushes to
+  both owners' phones; an estimate is a draft expected to be rewritten and
+  discarded, and buzzing two phones over housekeeping is precisely how a critical
+  alert stops being read. Logging-without-notifying was rejected because it means
+  weakening the choke point that keeps the other ten entity types correct.
+  Guarded by `AnEstimateIsConnectedToNothingTests`.
+
+- **`workshop/invoice.py` owns BOTH customer documents — do not fork it, and
+  do not "unify" the two places they deliberately differ.** Added 2026-08-05,
+  amended the same day. `build_invoice()` and `build_estimate()` share
+  `effective_quantity`, `derive_unit_price`, `PartLine`, `JobLine` and the
+  `MIN_JOB_ROWS`/`MIN_PART_ROWS` padding. The estimate is handed over first and
+  the invoice follows it for the same car, so where they agree they must agree
+  exactly: an unpriced part prints an empty cell while a free one prints ₹0.00
+  (`PartLine.priced` exists so a truthiness check cannot collapse them), labour
+  prints descriptions plus one SUBTOTAL, and both pad to the same row counts.
+  `EstimateJobLine` has **no money column at all** — `JobCardLabourItem.amount`
+  was kept only because it had history to preserve. Numbers are `EST-26-001`,
+  never `JB-`.
+  **TWO columns diverge, on the owner's instruction, and both follow from one
+  fact: a bill records work that happened, an estimate describes work that has
+  not.** So a blank box on a bill is a fact too obvious to type, while a blank
+  box on an estimate is something nobody has decided — and filling either in
+  with a computed number puts a figure on the page that no one chose.
+  (a) **QTY.** The invoice prints `1` for a blank quantity (blank and a typed 1
+  produce byte-identical markup — asserted). The estimate prints **nothing**,
+  while still counting it as 1 in the arithmetic. `PartLine` therefore carries
+  both `quantity` (the money) and `display_quantity` (the cell); the invoice
+  sets them equal, the estimate does not.
+  (b) **UNIT PRICE.** The invoice always DERIVES it as `amount ÷ quantity` —
+  right there, because every billed part has a real quantity. The estimate
+  prints it **only when `customer_rate` was actually entered**: deriving would
+  present the workshop's own arithmetic as a quoted rate, and on a row with no
+  quantity it would divide by a 1 nobody agreed to. It still reconciles when
+  shown, because `amount = customer_rate × quantity` is enforced on save.
+  Nothing can carry an estimate's figures onto a job card — the card is typed
+  fresh — so the two documents can never contradict each other on one car.
+  `TheEstimatePrintsWhatSomebodyTypedTests` pins the divergence;
+  `TheEstimatePrintsLikeTheBillTests` pins what is still shared.
+
+- **Django overwrites an inherited `get_<field>_display`, silently.** Learned
+  2026-08-05 while sharing the car-colour helpers between `JobCard` and
+  `Estimate`. `Field.contribute_to_class` guards its generated accessor with
+  `"get_%s_display" % self.name not in cls.__dict__` — the class's **own**
+  dict, never its bases, expressly so a subclass can override inherited
+  choices. So `CarColourMixin.get_car_color_display` was replaced by Django's
+  partialmethod on both models and nothing raised: `car_color='Other'` started
+  reading back the literal word "Other" instead of the picked colour, and an
+  unset colour read `''` instead of "Unknown". Each model therefore repeats
+  `get_car_color_display = CarColourMixin.get_car_color_display` in its own
+  body — one line, with the implementation still shared. `get_car_color_hex`
+  has no such clash and inherits normally. Guarded by
+  `test_the_estimate_and_the_job_card_agree_on_every_colour`.
+
+- **One car-colour palette, one picker.** Added 2026-08-05. `CAR_COLOR_CHOICES`
+  and `CAR_COLOR_HEX` live at module level in `models.py`, and
+  `workshop/includes/_car_color_picker.html` is the single swatch control, used
+  by the Job Card and the Estimate. Both were previously inline in
+  `jobcard_form.html`; a second copy for Estimates would have been ~100 lines of
+  markup, CSS and JS plus fifteen hex values free to drift, and a Grey job card
+  printing a different grey from a Grey estimate is invisible until the two are
+  side by side. The estimate's colour is **not printed on the quotation** — it
+  is the stripe down each history row, the same identity cue the dashboard's
+  live cards use, and the customer already knows what colour their car is.
+
+- **On an Estimate there is no delete button — clearing the name IS the
+  delete.** Added 2026-08-05, on the owner's instruction. A ✕ beside every row
+  is a one-tap way to lose work on a tablet, and a quote is typed in a hurry.
+  `BlankRowIsNoRowFormSet` therefore marks a row DELETE when it is blank, **and
+  additionally whenever a STORED row has lost its name — even if its figures are
+  still there.** That last part is the whole gesture: refusing a priced row
+  would make the only delete there is fail on exactly the rows people want to
+  remove. A **new** row carrying figures with no name is still refused, because
+  there it is a slip rather than an erasure and dropping it would throw away a
+  price someone just typed. Guarded by
+  `test_clearing_the_name_deletes_a_PRICED_stored_line` and
+  `test_a_priced_NEW_row_with_no_name_is_still_refused`.
+
+- **On an Estimate, a blank row is not a row — and the fix has to run BEFORE
+  `super().clean()`.** Added 2026-08-05, `BlankRowIsNoRowFormSet` in
+  `workshop/forms.py`. Everything on a quote is optional, so a line someone
+  typed into and then cleared must not become "This field is required" — that is
+  the form arguing with the person filling it in. The line forms drop
+  `required` and the formset marks any all-blank row `DELETE`, which Django's
+  own delete path then skips (new row) or removes (stored row). **The ordering
+  is load-bearing and cost an hour to find:** `BaseModelFormSet.clean()` calls
+  `validate_unique()`, which reads `self.deleted_forms` — and that property
+  **caches** its answer in `_deleted_form_indexes` on first access. Marking the
+  rows after `super().clean()` marks them too late; the cache is already built
+  from the unmarked forms and `deleted_forms` stays empty forever. The failure
+  is worse than a no-op: `_post_clean` excludes a blank value on a
+  not-required field from model validation, so the emptied row raises no error
+  either — it is simply **saved**, writing `description=''` and printing an
+  unnamed line on a customer's document. Guarded by
+  `test_clearing_an_existing_line_removes_it_instead_of_erroring`.
+
+- **A money box must not fight the person typing into it.** Added 2026-08-05,
+  `_tidy_money_initial` in `workshop/forms.py`. A field arriving with `0` turns
+  the first keystroke into `08500`; one arriving with `8500.00` puts two zeros
+  and a point between the caret and the next digit, so entering a figure means
+  deleting characters first. Both were true of Total Labour, the box Office
+  touches on nearly every estimate. Display only — `clean_labour_amount` still
+  turns empty into `Decimal('0')` and the column still holds two decimals — and
+  **real paise are kept** (`1250.50`), because dropping those changes the number
+  rather than tidying it. Bound forms are deliberately untouched:
+  `BoundField.value()` reads submitted data, not `initial`, so a rejected POST
+  still shows exactly what was typed instead of a reformatted guess at it.
+
+- **Estimates offer TWO date filters, not the eight the day-to-day lists
+  carry.** Added 2026-08-05. Paid Bills / Completed / Cashbook sort a stream of
+  daily activity, where Today and Last Month each answer a real question. A
+  workshop writes a handful of quotes a month and looks them up months later, so
+  six of those eight would return an empty page most of the time — which reads
+  as a broken screen, not an empty period. This Year (default) or All Time, as
+  two pills rather than a dropdown, because two options should be one tap. An
+  unrecognised `?filter=` falls back to This Year rather than silently widening
+  to everything.
+
+- **The Manage pill's highlight is a LIST in Python, not a chain of `{% if %}`
+  in `base.html`.** Fixed 2026-08-05. It used to be ten `p|slice` comparisons
+  inline on the button, and it had quietly fallen two sections behind: **Salary
+  & Advance and Estimates were both in the drawer and missing from it**, so
+  Manage read as inactive on pages reachable only through it. A missing entry in
+  a ten-clause boolean is invisible. It is now `DRAWER_SECTION_PREFIXES` in
+  `templatetags/custom_filters.py` with an `is_drawer_section` filter, and
+  `test_every_drawer_destination_lights_the_manage_button` scrapes the drawer's
+  own links and asserts every one is covered — so the next section added fails
+  loudly instead of shipping unhighlighted.
+
+- **A list row may NOT be an `<a>` wrapped around a `<button>`.** Learned
+  2026-08-05 on the Estimates history and worth not rediscovering. An `<a>`
+  cannot contain interactive content, and browsers do not forgive it quietly:
+  the parser closes the anchor and reopens it around what follows. One estimate
+  rendered as **four** anchor elements, three of them empty, and the CSS grid row
+  split into four grid containers. Django renders the markup verbatim so nothing
+  server-side notices, and the page looks *almost* right. The fix is a
+  `.stretched-link` inside a `<div>` — the link's `::after` covers the row at
+  z-index 1 and the ⋮ menu sits above it at z-index 2, so it keeps its own clicks
+  with no click-swallowing JavaScript. `test_no_list_row_puts_a_button_inside_a_link`
+  parses the rendered page and asserts the invariant, not the implementation.
+  (Two related traps already documented elsewhere apply here too: `.est-card`
+  must stay `overflow: visible` or the dropdown is clipped invisibly, and never
+  `transition: all` on a filter chip.)
+
+- **The Estimate's part-price suggestion is a PLACEHOLDER, and never anything
+  more.** Added 2026-08-05, `spare_price_hint` in `views/autocomplete.py`. When a
+  part name is entered, the Unit Price box's *placeholder* becomes the average
+  customer price over the last 5 times that name was billed. It is never written
+  into the field and never posted, so the worst case when the endpoint is slow,
+  wrong or down is grey text nobody uses — **a price on a document handed to a
+  customer must be something a person decided.** Three rules: it is the
+  **customer price**, derived with the printed document's own
+  `derive_unit_price` rule (`total_price ÷ effective_quantity`) and never
+  `JobCardSpareItem.unit_price`, which is the workshop's *cost* and would quote
+  every part at cost; it reads **job cards only, never past estimates**, or one
+  optimistic quote would drift the suggestion upward forever with nothing real
+  underneath it; and a part with no history returns `found: false` rather than
+  zero, because "never sold" and "it is free" are different answers. It is
+  `@office_required`, not `@staff_required` like its neighbours in the same
+  module — Floor is shown no prices anywhere else in the app. The `__iexact`
+  filter runs on an unindexed column deliberately: the table is single-digit
+  thousands of rows and a plain btree index cannot serve a case-insensitive
+  match anyway; if it ever shows up in a slow-query log the fix is a functional
+  index on `UPPER(spare_part_name)`, not a change of rule.
+
+- **On an Estimate, a blank row is not a row — and the fix has to run BEFORE
+  `super().clean()`.** Added 2026-08-05, `BlankRowIsNoRowFormSet` in
+  `workshop/forms.py`. Everything on a quote is optional, so a line someone
+  typed into and then cleared must not become "This field is required" — that is
+  the form arguing with the person filling it in. The line forms drop
+  `required` and the formset marks any all-blank row `DELETE`, which Django's
+  own delete path then skips (new row) or removes (stored row). **The ordering
+  is load-bearing and cost an hour to find:** `BaseModelFormSet.clean()` calls
+  `validate_unique()`, which reads `self.deleted_forms` — and that property
+  **caches** its answer in `_deleted_form_indexes` on first access. Marking the
+  rows after `super().clean()` marks them too late; the cache is already built
+  from the unmarked forms and `deleted_forms` stays empty forever. The failure
+  is worse than a no-op: `_post_clean` excludes a blank value on a
+  not-required field from model validation, so the emptied row raises no error
+  either — it is simply **saved**, writing `description=''` and printing an
+  unnamed line on a customer's document. Guarded by
+  `test_clearing_an_existing_line_removes_it_instead_of_erroring`.
+
+- **A money box must not fight the person typing into it.** Added 2026-08-05,
+  `_tidy_money_initial` in `workshop/forms.py`. A field arriving with `0` turns
+  the first keystroke into `08500`; one arriving with `8500.00` puts two zeros
+  and a point between the caret and the next digit, so entering a figure means
+  deleting characters first. Both were true of Total Labour, the box Office
+  touches on nearly every estimate. Display only — `clean_labour_amount` still
+  turns empty into `Decimal('0')` and the column still holds two decimals — and
+  **real paise are kept** (`1250.50`), because dropping those changes the number
+  rather than tidying it. Bound forms are deliberately untouched:
+  `BoundField.value()` reads submitted data, not `initial`, so a rejected POST
+  still shows exactly what was typed instead of a reformatted guess at it.
+
+- **Estimates offer TWO date filters, not the eight the day-to-day lists
+  carry.** Added 2026-08-05. Paid Bills / Completed / Cashbook sort a stream of
+  daily activity, where Today and Last Month each answer a real question. A
+  workshop writes a handful of quotes a month and looks them up months later, so
+  six of those eight would return an empty page most of the time — which reads
+  as a broken screen, not an empty period. This Year (default) or All Time, as
+  two pills rather than a dropdown, because two options should be one tap. An
+  unrecognised `?filter=` falls back to This Year rather than silently widening
+  to everything.
+
+- **The Manage pill's highlight is a LIST in Python, not a chain of `{% if %}`
+  in `base.html`.** Fixed 2026-08-05. It used to be ten `p|slice` comparisons
+  inline on the button, and it had quietly fallen two sections behind: **Salary
+  & Advance and Estimates were both in the drawer and missing from it**, so
+  Manage read as inactive on pages reachable only through it. A missing entry in
+  a ten-clause boolean is invisible. It is now `DRAWER_SECTION_PREFIXES` in
+  `templatetags/custom_filters.py` with an `is_drawer_section` filter, and
+  `test_every_drawer_destination_lights_the_manage_button` scrapes the drawer's
+  own links and asserts every one is covered — so the next section added fails
+  loudly instead of shipping unhighlighted.
+
+- **The Estimates header keeps its action beside the title, at every width —
+  the row must never become a column.** Added 2026-08-05. The mobile rules
+  originally switched `.est-header-top` to `flex-direction: column`, which gave
+  a phone a full-width "New Estimate" button on a line of its own and pushed the
+  first card below the fold. The title shrinks instead (`.est-title-word` is a
+  separate element precisely so it, and not the count pill or the button, is
+  what truncates), and the description sits **outside** that flex row rather
+  than inside its left column. Verified at 320 / 360 / 414px. Same reasoning
+  puts the search box and both filter chips on one row on a phone: the chips go
+  small rather than the search wrapping. Guarded by
+  `test_the_header_puts_the_action_beside_the_title_not_under_it`.
+
+- **An Estimate list row survives every combination of blank fields.** Added
+  2026-08-05. Most of a quote is optional, so the row cannot assume a make, a
+  model, a registration or a customer. Two rules do that work: the **headline is
+  whatever identifies the car best** — brand + model, else the registration,
+  else the estimate number — so there is always exactly one big line and never
+  an empty space where one should be; and **nothing blank is announced**, so a
+  missing customer prints nothing rather than "No customer name" (a row with
+  three grey apologies in it looks broken). The registration shares the headline
+  line rather than sitting under it, which is what keeps every row two lines
+  tall: on its own line, rows ran 67px or 91px depending on whether someone had
+  typed one, and down a list of 45 that raggedness is the first thing the eye
+  catches and it carries no meaning. **On a phone the row keeps that shape
+  rather than folding** — dropping the amount onto a third line made every card
+  half again as tall (102px against 60px), and a list is read by scanning down
+  it, so fewer cards per screen is the cost that matters, not a few pixels of
+  width. The name truncates instead; the plate and the amount never do. A quote with no figures yet prints **"Not
+  priced"**, never `₹0.00` — the same `priced` distinction the printed sheet
+  makes.
+
+- **The Estimate form uses a native `<datalist>` for part names, not the Job
+  Card's fetch autocomplete.** Added 2026-08-05. The master spare list is ~200
+  entries (a few KB), and a datalist needs no wiring — so a row added *after*
+  page load gets the same suggestions with nothing to re-initialise. That is the
+  whole point: `script.js`'s three documented cloning traps all live in
+  per-element wiring, and there was no reason to let a new section reintroduce
+  one on the Job Card. For the same reason `estimate.js` is its own file and is
+  **pure event delegation** on the two list containers, and its blank rows live
+  in `<template>` elements rather than hidden `<div>`s — a template's contents
+  are a detached fragment that `querySelectorAll` cannot reach, so the
+  `__prefix__` placeholder can never be picked up by a document-wide sweep.
+  Removing a row **ticks DELETE and hides it, never removes the node**: Django
+  reads a formset by contiguous index, so pulling a row out of the DOM renumbers
+  everything after it.
+
 - **An unassigned spare can be deleted, and only from the Unassigned Hub.**
   Added 2026-07-31. There was previously no way to delete one at all — no route,
   no button, and `/admin/` unreachable by design — so a mistyped ledger entry
@@ -1011,8 +1291,8 @@ Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_H
 
 ### App boundaries
 - **`workshop/`** — job cards, billing, bulk payers, spare shops, cashbook, auth, owner analytics, deletion history, master data (brands/models/spares/concerns).
-  - `views/` is a package (14 modules: `dashboard`, `jobcard`, `completed`, `deletion_history`, `billing`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`, `salary_advance`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
-  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section, and `master_data.py` likewise holds no views: it is the one implementation of the master-list rename/merge rule, shared by `views/master_lists.py` and `cleanup_views.py` (see "Deliberate decisions" for why that sharing is load-bearing). **`invoice.py` is the third of these** — no views, no HTTP: it is the one answer to "what does the customer see?", so a second printing surface (a PDF export, a reprint from Paid Bills) cannot grow its own slightly-different version. `views/billing.py` resolves the record and renders; it contains no arithmetic.
+  - `views/` is a package (15 modules: `dashboard`, `jobcard`, `completed`, `deletion_history`, `billing`, `estimate`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`, `salary_advance`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
+  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section, and `master_data.py` likewise holds no views: it is the one implementation of the master-list rename/merge rule, shared by `views/master_lists.py` and `cleanup_views.py` (see "Deliberate decisions" for why that sharing is load-bearing). **`invoice.py` is the third of these** — no views, no HTTP: it is the one answer to "what does the customer see?", so a second printing surface (a PDF export, a reprint from Paid Bills) cannot grow its own slightly-different version. It owns **both** customer documents — `build_invoice()` and `build_estimate()`, sharing every rule between them (see "Deliberate decisions"). `views/billing.py` and `views/estimate.py` resolve the record and render; neither contains any arithmetic.
   - `decorators.py` defines the RBAC decorators (`owner_required`, `office_required`, `staff_required`) built on three Django auth Groups: **Owner**, **Office**, **Floor**. Superusers pass every check. Use these decorators on any new view instead of rolling custom permission checks.
   - `middleware.py` (`SessionTrackingMiddleware`) updates `UserSession` (device/IP/last-activity) on every authenticated request, throttled to a 5-minute cooldown per session.
 - **`inventory/`** — stock items/categories and supplier shops (`views.py` for core inventory, `views_suppliers.py` for the supplier-shop module). Stock levels are kept in sync with workshop activity purely via Django signals in `signals.py` — there is no direct view-to-view coupling between the two apps for stock changes.
@@ -1150,7 +1430,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (30 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 35 files, **791 tests** (measured 2026-08-04; the figures here had gone stale twice before, so re-count rather than trusting this line). Expect the full suite to take **45-55 minutes** — a full run was timed at 53; budget for that rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (32 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 37 files, **865 tests** (measured 2026-08-05; the figures here had gone stale twice before, so re-count rather than trusting this line). Expect the full suite to take **30-55 minutes** — timed at 53 minutes on 2026-08-04 and 31 on 2026-08-05, so the spread is wide; budget for the top of it rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.

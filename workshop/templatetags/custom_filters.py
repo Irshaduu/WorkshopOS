@@ -6,6 +6,43 @@ from django.utils import timezone
 
 register = template.Library()
 
+
+# -----------------------------------------------------------------------------
+# NAVIGATION
+# -----------------------------------------------------------------------------
+# Every destination that lives behind the Manage/Menu drawer. The top bar's
+# Manage button highlights while the current page is one of these, so the user
+# can see which pill they arrived through.
+#
+# This is a LIST in Python, not a chain of `{% if p|slice:… == '/x/' %}` clauses
+# in base.html, because that chain is what the highlight used to be — and it had
+# silently fallen two sections behind. Both **Salary & Advance** and
+# **Estimates** were in the drawer but missing from it, so opening either left
+# Manage looking inactive on a page that is only reachable through it. A missing
+# entry in a ten-clause boolean is invisible; a missing entry in a list is one
+# line to add, and `NavHighlightTests` checks every drawer link is covered.
+DRAWER_SECTION_PREFIXES = (
+    '/analysis/',
+    '/cashbook/',
+    '/pending-payments/',
+    '/paid-bills/',
+    '/salary-advance/',
+    '/inventory/',
+    '/spare-shops/',
+    '/estimates/',
+    '/car-profiles/',
+    '/master-lists/',
+    '/deletion-history/',
+    '/manage/',
+)
+
+
+@register.filter
+def is_drawer_section(path):
+    """True while the current path belongs to a section reached via the drawer."""
+    return any(str(path or '').startswith(prefix) for prefix in DRAWER_SECTION_PREFIXES)
+
+
 @register.filter
 def is_tomorrow(value):
     """Check if a date is tomorrow"""

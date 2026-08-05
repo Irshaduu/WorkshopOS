@@ -41,6 +41,13 @@ A premium, comprehensive Django-based workshop management system for a single au
 - **One Nav, Three Devices** — A single fixed top bar (Floor · New · Completed · Notifications · Manage) renders identically on laptop (Office), tablet (Floor) and mobile (Owners), with 44px touch targets and labels that shed gracefully on narrow phones. "Manage" opens an off-canvas drawer holding every other destination, grouped by section and filtered by role.
 - **Skeleton Loading** — Shimmer animations for a smooth loading experience.
 
+### Estimates
+- **Quotations on the workshop's own letterhead** — Write a quote before any work is agreed, print it, and keep every one in a searchable history (`EST-26-001`).
+- **The same document as the bill** — Both are built by one module, so an estimate and the invoice that follows it agree on the letterhead, the layout and how labour is subtotalled. Where they differ is deliberate: an estimate prints only the quantities and unit prices somebody actually typed, because it describes work that has not happened yet.
+- **Connected to nothing, on purpose** — An estimate creates no job card, moves no stock, and touches no ledger or report. A quote is a proposal; counting it would be counting work the workshop has not done.
+- **Suggested pricing** — Typing a part name shows what it last sold for (average of its last five bills) in the Unit Price box's placeholder. A suggestion only — never filled in, never saved.
+- **Nothing is required** — A quote saves however little is filled in, and the car's colour is recorded with the same picker as a Job Card so it can be spotted at a glance in the history.
+
 ### Invoice & Billing
 - **Print-ready invoices** — One A4 sheet matching the workshop's own letterhead, rendered the same on screen as on paper (narrow screens scale the page rather than rearranging it). Fully self-contained: no CDN, so a bill never prints unstyled on a bad connection.
 - **One parts list** — Spare-shop purchases and warehouse draws merged into a single "PART NAME" section. A warehouse draw is billed under its category ("Engine Oil"), never the branded product it was bought as, and the unit price shown is always derived from the customer total — the workshop's own cost never reaches the bill.

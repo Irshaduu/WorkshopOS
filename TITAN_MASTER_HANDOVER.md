@@ -13,7 +13,7 @@
 
 **WorkshopOS** is engineered for a single premium automotive workshop — appointment-driven, high-value vehicles, not high-volume throughput. That distinction matters: the system is built to be fast and correct for a small, hands-on team, not to demonstrate generic "web scale."
 
-- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **28 files / 470 tests** covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, and the owner profit engine.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **37 files** (see CLAUDE.md for the live test count) covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, and the owner profit engine.
 
 ---
 
@@ -137,11 +137,12 @@ In the order set as of 2026-07-23:
 1. ✅ **Documentation accuracy pass** — bring CLAUDE.md, MASTER_BLUEPRINT.md, OPERATIONAL_BLUEPRINT.md, README.md, and this handover back in sync with the actual codebase after several undocumented commits. *(This update.)*
 2. ✅ **Staff Registration** (added 2026-07-26) — `Mechanic` model gained a `role` field (Mechanic / Assistant Mechanic / Office Staff / General Helper), giving the workshop one staff roster instead of a mechanics-only list. Lives at `/manage/?section=staff`; only Mechanic/Assistant Mechanic feed the Job Card mechanic picker. See CLAUDE.md's "Deliberate decisions" for why the model keeps the `Mechanic` name.
 3. ✅ **Salary & Advance** (added 2026-07-27) — cash advances recorded the day they happen, plus a month-end settlement that freezes each staff member's salary/leave/advance/net into a `SalaryPaymentLine`. Built against the same staff roster from #2, so a person's history survives a role change. Lives at `/salary-advance/`; a settled month's figures never move afterwards, even if the salary changes later.
-4. **Attendance** (next) — likely against the same staff roster; the leave-days figure currently typed by hand at settlement is the natural thing for it to feed.
-5. **Noted fixes** — already-identified issues to be resolved during hardening:
+4. ✅ **Estimates** (added 2026-08-05) — quotations on the workshop's own letterhead: write one, print it, keep every one in a searchable history (`EST-26-001`). Built on the invoice's printing module (`workshop/invoice.py` now owns `build_invoice` *and* `build_estimate`), so a quote and the bill that follows it can never disagree about a blank quantity, an unpriced part, or how labour is subtotalled. **Deliberately connected to nothing else** — no job card, no stock, no ledger, no report; see CLAUDE.md's "Deliberate decisions" for why, and for why an estimate delete writes no `DeletionLog` row. Includes a suggested unit price (average of a part's last five bills) shown as a *placeholder only*.
+5. **Attendance** (next) — likely against the same staff roster; the leave-days figure currently typed by hand at settlement is the natural thing for it to feed.
+6. **Noted fixes** — already-identified issues to be resolved during hardening:
    - **Supplier-Shop RBAC asymmetry** (flagged 2026-07-23): every Supplier-Shop view in the Inventory app is `@staff_required`, so Floor mechanics can create/delete supplier restock bills and delete supplier payment records — broader than the sibling Spare-Shop module, which restricts destructive actions to Office/Owner. Decide whether Floor should keep full access (small-shop trust) or whether destructive supplier ops should require Office/Owner; if tightening, add tests. See `OPERATIONAL_BLUEPRINT.md` §5B.
    - *(Add further noted issues here as they're identified, so "fix later" items have one durable home.)*
-6. ~~**Auth & notifications rebuild**~~ — ✅ **complete 2026-07-29**, delivered in six ordered phases so each left a working system:
+7. ~~**Auth & notifications rebuild**~~ — ✅ **complete 2026-07-29**, delivered in six ordered phases so each left a working system:
    - Owner identity moved from `.env` into the database; the `Owner` group was **empty** and every group-based query silently returned nobody (§II.2b)
    - **Change Password** for signed-in owners — the handover path, needs no email at all
    - **Emailed 6-digit reset code**, DB-backed and throttled per account, replacing the SMS/Telegram OTP (§II.2b)
@@ -151,14 +152,14 @@ In the order set as of 2026-07-23:
    - **Twilio and Telegram deleted** (§II.2). The order was the point: the replacement was proven before the channel was removed.
    - **Web Push** (§II.1d) — added once the app was hosted on Render (HTTPS is a hard requirement). CRITICAL events only; the in-app feed remains the source of truth.
    - *Remaining*: enable it on each owner's real device. On iPhone that means **Add to Home Screen first**, then open the installed app and use the button on `/notifications/` — Safari does not expose Web Push to a normal browser tab.
-7. ~~**Owner Analysis & Reports — full rebuild**~~ — ✅ **done 2026-07-27**: rebuilt from scratch as a protected Profit page plus a separate Deep Analysis page (see §II.5).
-8. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL (Neon, Singapore). SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
-9. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
-10. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
-11. **Test coverage toward 100%**.
-12. **Deep debug pass**.
-13. **Repo cleanup** — get the workspace hosting-ready (see §V).
-14. **Hosting** — deploy the live system.
+8. ~~**Owner Analysis & Reports — full rebuild**~~ — ✅ **done 2026-07-27**: rebuilt from scratch as a protected Profit page plus a separate Deep Analysis page (see §II.5).
+9. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL (Neon, Singapore). SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
+10. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
+11. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
+12. **Test coverage toward 100%**.
+13. **Deep debug pass**.
+14. **Repo cleanup** — get the workspace hosting-ready (see §V).
+15. **Hosting** — deploy the live system.
 
 ---
 

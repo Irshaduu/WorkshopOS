@@ -13,6 +13,7 @@
 
 ```mermaid
 graph TD
+    Q0["📄 (optional) Office writes an ESTIMATE — EST-26-001"] -.->|"customer agrees;<br/>re-entered by hand, nothing carries over"| B
     A["🚗 Customer Arrives with Car"] --> B["📝 Floor/Office Creates Job Card"]
     B --> C["Auto: Bill Number Generated JB-26-001"]
     C --> D["Vehicle Details Filled"]
@@ -135,6 +136,85 @@ Everything in the system connects through the Job Card:
                                        once by Office for all the jobs
            (denormalized for performance)
 ```
+
+---
+
+## 3B. ESTIMATES — THE QUOTE THAT COMES BEFORE ANY OF THIS
+
+An **Estimate** is the piece of paper handed to a customer *before* the work is
+agreed. It is the one section of WorkshopOS that is connected to nothing else.
+
+```
+Customer asks "what will this cost?"
+        |
+        v
+Estimates -> New Estimate
+   customer + vehicle (free text, same autocomplete AND the same colour
+                       picker as a Job Card)
+   jobs to be done   (descriptions; ONE Total Labour figure, as on a bill)
+   parts needed      (name, qty, unit price, amount)
+        |
+        v
+Save & Print  ->  EST-26-001 on the workshop's own letterhead
+        |
+        +--> customer says yes  ->  Office opens a NEW Job Card by hand
+        +--> customer says no   ->  the estimate just sits in the history
+```
+
+**Nothing crosses that boundary automatically, and that is the design.** An
+estimate creates no job card, moves no warehouse stock, touches no spare-shop or
+fleet ledger, and never appears on the Profit page. Money on an estimate is a
+*proposal*: a quote that entered a report would be the workshop counting work it
+has not done and parts it has not fitted. Quoting "Castrol Edge 5W-30" does not
+deduct the shelf, because nothing has physically been taken.
+
+Two things carry over from the printed bill, deliberately:
+
+* **The document.** `workshop/invoice.py` builds both, so the estimate and the
+  invoice that follows it agree about an unpriced part and how labour is
+  subtotalled. The sheet is the same letterhead and the same column grid.
+* **The pricing rule.** Labour is one figure for the whole job, exactly as on a
+  Job Card — the workshop quotes work whole, so the estimate does too.
+
+And two things deliberately do NOT, because a bill records work that happened
+while an estimate describes work that has not:
+
+* **QTY prints only what was typed.** A blank stays blank, though it still
+  counts as 1 in the arithmetic. The bill does the opposite and prints 1 —
+  because a fitted part really was one, while an unquoted count is simply not
+  decided yet.
+* **UNIT PRICE prints only when a rate was entered.** It is never derived from
+  the total, which would present the workshop's own arithmetic to the customer
+  as a quoted rate.
+
+One convenience, and it is only a convenience: when Office types a part name,
+the **Unit Price box's placeholder** reads `avg: 1064` — what that part sold for
+on average across its last five bills. It is grey suggestion text — never filled
+in, never posted. A price on a document handed to a customer is a decision
+somebody makes.
+
+**Nothing on an estimate is required.** The screen is filled in with the
+customer standing there, so a quote may be half a car and two parts, and it
+saves that way. A row left blank is not saved; a row cleared out is deleted, not
+argued with. The only two things refused are the ones that would print nonsense:
+a figure typed into a **new** row with no part name beside it, and a negative
+amount.
+
+**Removing a line is clearing its name and saving.** There is no delete button
+on a row, deliberately — a ✕ beside every line is a one-tap way to lose work on
+a tablet, and a quote is typed in a hurry. Clearing the name removes the line
+even when its figures are still there, because those are exactly the lines
+people want to remove.
+
+The car's **colour** is recorded with the same picker as a Job Card and shows as
+a stripe down each row of the Estimates list, the same cue the dashboard's live
+cards use — it is how staff find a car at a glance. It is deliberately not
+printed: the customer knows what colour their own car is.
+
+Estimates are Office/Owner. Deleting one is permanent and, unlike every
+financial delete in the app, is **not** written to Deletion History — an
+estimate is a draft expected to be rewritten and discarded, and a critical alert
+that fires for housekeeping stops being read for the things that matter.
 
 ---
 
@@ -585,6 +665,40 @@ INVOICE (Office / Owner)
             reaches paper. A fleet-billed job shows no Settle control at all —
             that money moves through the Fleet Account cascade.
   Rules in: workshop/invoice.py (all of the above; the view does no arithmetic)
+
+ESTIMATES (Office / Owner)
+  Shows: Every quotation ever written, newest first. Estimate no, date, reg +
+         vehicle, customer, and what it came to — labelled "Quoted", never
+         anything that could read as owed or earned.
+  Filters: This Year (default) / All Time — only two, unlike every other list
+           in the app. Those pages sort daily activity where Today and Last
+           Month each answer something; quotes are written a handful of times a
+           month and looked up months later, so six of the usual eight would
+           show an empty page and read as broken.
+  Search:  live, same as Completed and Paid Bills — reg no, car, customer or
+           estimate number, as you type.
+  Header:  title and the New Estimate button share one row at every width, with
+           a one-line description under them; on a phone the title shrinks
+           rather than the button dropping to a line of its own.
+  Rows:    a colour stripe down the left edge (same cue as the dashboard's live
+           cards), then the car (make + model, with the plate beside it), then the
+           estimate number, date and customer underneath, then what it came to.
+           Any of those may be blank, so the headline falls back to the
+           registration, and then to the estimate number — there is always one
+           clear line, and nothing missing is announced. An estimate with no
+           figures yet reads "Not priced", never "₹0.00", which would state a
+           price the workshop never quoted.
+  Actions: New Estimate, Open & Print, Edit, Delete.
+  The sheet: the same document as the invoice — same letterhead, bands, column
+             grid and totals block — differing in the QTY and UNIT PRICE rules
+             described in §3B, in the title (ESTIMATE), the
+             jobs heading (JOB NEEDS TO BE PERFORMED, future tense) and the
+             absence of any payment chip or settle control. An estimate has no
+             payment state, and offering one would imply money can be taken
+             against it.
+  Deleting: permanent, and deliberately NOT recorded in Deletion History — see
+            §3B and workshop/views/estimate.py.
+  Rules in: workshop/invoice.py (build_estimate — shared with the bill)
 
 PENDING BILLS
   Shows: All unpaid/partially paid jobs

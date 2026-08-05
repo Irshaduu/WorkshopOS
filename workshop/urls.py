@@ -110,6 +110,9 @@ urlpatterns = [
     path('api/autocomplete/spares/', views.autocomplete_spares, name='autocomplete_spares'),
     path('api/autocomplete/concerns/', views.autocomplete_concerns, name='autocomplete_concerns'),
     path('api/autocomplete/inventory-items/', views.autocomplete_inventory_items, name='autocomplete_inventory_items'),
+    # Suggested selling price for a part, from what it last sold for. Feeds a
+    # PLACEHOLDER on the Estimate screen and nothing else — see the view.
+    path('api/spare-price-hint/', views.spare_price_hint, name='spare_price_hint'),
 
     # ------------------
     # CAR PROFILES
@@ -121,6 +124,15 @@ urlpatterns = [
     # INVOICE
     # ------------------
     path('invoice/<int:pk>/', views.invoice_view, name='invoice_view'),
+
+    # ------------------
+    # ESTIMATES (quotations — standalone, connected to nothing)
+    # ------------------
+    path('estimates/', views.estimate_list, name='estimate_list'),
+    path('estimates/create/', views.estimate_create, name='estimate_create'),
+    path('estimates/<int:pk>/', views.estimate_print, name='estimate_print'),
+    path('estimates/<int:pk>/edit/', views.estimate_edit, name='estimate_edit'),
+    path('estimates/<int:pk>/delete/', views.estimate_delete, name='estimate_delete'),
 
     # ------------------
     # AUTH: LOGIN/LOGOUT

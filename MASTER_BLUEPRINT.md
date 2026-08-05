@@ -3,7 +3,7 @@
 > **Project**: WorkshopOS (Titan) · Django project package name `formulad_workshop`
 > **Framework**: Django 5.2 LTS · Python 3.13 · **PostgreSQL** (Neon — development *and* production since 2026-07-27; SQLite retained only for bulk dummy-data seeding and the test suite)
 > **Apps**: `workshop` (core) + `inventory` (warehouse)
-> **Accurate as of**: 2026-07-30 (v9)
+> **Accurate as of**: 2026-08-05 (v10)
 >
 > This is the **technical reference** doc — exact model/route/template/admin/test counts and structure. For workflow narrative see `OPERATIONAL_BLUEPRINT.md`; for mission, status, and roadmap see `TITAN_MASTER_HANDOVER.md`; for day-to-day coding conventions see `CLAUDE.md`.
 
@@ -19,21 +19,21 @@ graph TB
     end
 
     subgraph WORKSHOP["Workshop App (Core)"]
-        W_MODELS["models.py — 25 Models"]
-        W_VIEWS["views/ — 16 Module Package"]
+        W_MODELS["models.py — 28 Models"]
+        W_VIEWS["views/ — 17 Module Package"]
         W_ANALYSIS["analysis_views.py + analysis_engine.py — Owner Profit & Insights"]
         W_AUTH["auth_views.py — Auth Views"]
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 107 URL Patterns"]
-        W_FORMS["forms.py — 7 Forms + 4 Formsets"]
+        W_URLS["urls.py — 115 URL Patterns"]
+        W_FORMS["forms.py — 9 Forms + 6 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session Tracker"]
         W_TAGS["templatetags — 8 Filters"]
         W_ADMIN["admin.py — 10 Registered"]
         W_CMD["Commands — 9 management commands"]
-        W_TPL["Templates — 68 HTML Files"]
+        W_TPL["Templates — 76 HTML Files"]
     end
 
     subgraph INVENTORY["Inventory App (Warehouse + Supplier Shops)"]
@@ -64,7 +64,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (25)
+### Workshop App Models (28)
 
 ```mermaid
 erDiagram
@@ -117,6 +117,9 @@ erDiagram
 | 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
 | 24 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
 | 25 | **SalaryPaymentLine** | payment (FK), staff (FK→Mechanic), salary_used, leave_days, advance_used, net_amount — unique per (payment, staff) | One staff member's **frozen** figures for that month. Written once and never recalculated, so a later pay rise cannot rewrite a month already paid. |
+| 26 | **Estimate** | estimate_number (unique, auto `EST-26-001`), date, customer/vehicle (all free text), **car_color/car_color_other**, labour_amount, total_amount (denormalized), notes, created_by | A **quotation**, connected to nothing — no job card, no stock, no ledger, no report. Added 2026-08-05 (migrations `0067_estimate_estimatejobline_estimatepartline_and_more`, `0068_estimate_car_color_estimate_car_color_other`). Colour uses the shared `CAR_COLOR_CHOICES`/`CAR_COLOR_HEX`, is picked with the shared `_car_color_picker.html`, and is drawn as the stripe on each history row — never printed on the quotation. `total_amount` is written only by `update_totals()`, called explicitly by the views; there are no signals on any of these three models. |
+| 27 | **EstimateJobLine** | estimate (FK), description | One line of work being quoted. **No money column at all** — the charge lives once on `Estimate.labour_amount`, same rule as `JobCard.labour_amount`. |
+| 28 | **EstimatePartLine** | estimate (FK), name, quantity, **customer_rate**, **amount** | One quoted part. Note the naming is the OPPOSITE of `JobCardSpareItem`: an estimate has no cost side, so both figures are customer prices. `amount = customer_rate × quantity` is enforced on save when a rate is set. |
 
 Salary models added 2026-07-27 (migration `0054_mechanic_current_salary_and_more`, which also added `Mechanic.current_salary`). Wage cost for a settled month is `net_amount + advance_used` — the advance already left the drawer and the settlement pays the remainder.
 
@@ -198,9 +201,9 @@ parallel system.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (129 Total)
+## 4. ALL URL ROUTES — COMPLETE (148 Total)
 
-### Workshop App (96 routes)
+### Workshop App (115 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -266,9 +269,15 @@ parallel system.
 | | `/api/autocomplete/spares/` | `autocomplete_spares` | Staff |
 | | `/api/autocomplete/concerns/` | `autocomplete_concerns` | Staff |
 | | `/api/autocomplete/inventory-items/` | `autocomplete_inventory_items` | Staff |
+| | `/api/spare-price-hint/` | `spare_price_hint` | **Office** — it returns a price, and Floor sees no prices anywhere |
 | **CAR PROFILES** | `/car-profiles/` | `car_profile_list` | Office |
 | | `/car-profiles/<reg>/` | `car_profile_detail` | Office |
 | **INVOICE** | `/invoice/<pk>/` | `invoice_view` | Office |
+| **ESTIMATES** | `/estimates/` | `estimate_list` | Office |
+| | `/estimates/create/` | `estimate_create` | Office |
+| | `/estimates/<pk>/` | `estimate_print` | Office |
+| | `/estimates/<pk>/edit/` | `estimate_edit` | Office |
+| | `/estimates/<pk>/delete/` | `estimate_delete` | Office |
 | **AUTH** | `/login/` | `login_view` (face=staff) | Public |
 | | `/admin-login/` | `login_view` (face=owner) | Public |
 | | `/change-password/` | `change_password_view` | Owner |
@@ -434,7 +443,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (90 HTML Files)
+## 7. TEMPLATE STRUCTURE (99 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -444,7 +453,7 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 67 files
+### Workshop Templates (`workshop/templates/workshop/`) — 76 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -460,10 +469,11 @@ stateDiagram-v2
 | `/master_lists/` | 13 files across brands/models/spares/concerns (list/form/confirm_delete each) | Master list CRUD screens |
 | `/car_profiles/` | `car_profile_list.html`, `car_profile_detail.html`, `car_list_partial.html` | 3 car profile screens |
 | `/invoice/` | `invoice_template.html` | The printed bill. Standalone (does **not** extend `base.html`) and fully self-contained — no Bootstrap, no icon font, no CDN of any kind, so nothing external can move a column on a customer's invoice. Screen controls live outside the `.sheet` element entirely, not merely behind `display:none`. |
+| `/estimate/` | `estimate_print.html`, `estimate_form.html`, `estimate_list.html`, `estimate_list_partial.html`, `estimate_confirm_delete.html` | The quotation. `estimate_print.html` is a deliberate near-twin of `invoice_template.html` — same letterhead, bands, column grid and totals block, standalone and self-contained on the same terms. It differs in what the document *is* — title `ESTIMATE`, heading `JOB NEEDS TO BE PERFORMED`, no payment chip, no settle control — and in exactly two columns: **QTY prints only what was typed** (blank stays blank, though it still counts as 1 in the maths) and **UNIT PRICE prints only when a rate was entered** (never derived). Both follow from a bill recording work that happened while an estimate describes work that has not; see `build_estimate`. **Restyle one and you must restyle both**, or the customer gets two documents that look like different businesses. |
 | `/spare_shops/` | `shop_list.html`, `shop_detail.html`, `shop_print.html`, `unassigned_hub.html` | 4 spare shop screens |
 | `/manage/` | `manage_dashboard.html`, `data_cleanup.html` | 2 admin screens |
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
-| `/includes/` | `pagination.html` | Reusable pagination component |
+| `/includes/` | `pagination.html`, `_car_color_picker.html` | Reusable pagination component; and the ONE car-colour swatch picker, shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`) |
 
 ### Inventory Templates (`inventory/templates/inventory/`) — 20 files
 
@@ -501,6 +511,9 @@ stateDiagram-v2
 | `ConcernSolutionForm` | ConcernSolution | concern |
 | `SpareShopForm` | SpareShop | name, phone, address |
 | `JobCardForm` | JobCard | 10 fields (dates, vehicle, customer, mechanic, color) |
+| `EstimateForm` | Estimate | 9 fields (date, customer, vehicle, labour_amount, notes) |
+| `EstimateJobLineForm` | EstimateJobLine | description — `required=False`, so an emptied line is deleted rather than erroring |
+| `EstimatePartLineForm` | EstimatePartLine | name, quantity, customer_rate, amount — all optional; a priced row with no name is refused |
 
 | Formset | Parent→Child | Fields | Features |
 |---------|-------------|--------|----------|
@@ -508,6 +521,8 @@ stateDiagram-v2
 | `JobCardSpareFormSet` | JobCard→Spare (`source=SHOP`) | 8 fields (name, qty, prices, shop, status, dates) | Autocomplete, can_delete. Prefix `spares` |
 | `JobCardInventoryFormSet` | JobCard→Spare (`source=INVENTORY`) | 4 fields (item FK, qty, customer_rate, total_price) | Prefix `inventory`. Product **picked**, not typed — hidden `item` field carries the choice; `InventoryDrawForm.clean()` rejects a started row with no product. Added 2026-07-30 |
 | `JobCardLabourFormSet` | JobCard→Labour | job_description | can_delete. No `amount` field — deliberately: the charge lives on `JobCard.labour_amount`, and a field that does not exist cannot be posted by a Floor login. |
+| `EstimateJobFormSet` | Estimate→JobLine | description | Prefix `jobs`, `extra=3`, `BlankRowIsNoRowFormSet`. No money field — the charge lives on `Estimate.labour_amount` |
+| `EstimatePartFormSet` | Estimate→PartLine | name, quantity, customer_rate, amount | Prefix `parts`, `extra=3`, `BlankRowIsNoRowFormSet`. Names come from a native `<datalist>`, not the Job Card's fetch autocomplete — it needs no wiring, so a row added after page load works with nothing to re-initialise |
 
 All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 
@@ -522,7 +537,7 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 | `inventory.signals` | `signals.py` | Auto stock sync — 8 handlers in 3 groups: 3 for JobCardSpareItem (consumption, `source='INVENTORY'` only) + 2 for JobCard (soft-delete stock reversal, dormant) + 3 for SupplierRestockItem (restock). Never clamps stock at zero |
 | `inventory.costing` | `costing.py` | Weighted-average warehouse cost. Pure functions over a date-ordered replay of receipts and draws; holds no view logic and never touches `current_stock`. Receipts move the average, draws do not |
 | Management Commands | `management/commands/` | `setup_groups` (legacy setup), `backup_db` (automated SQLite backups), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address) |
-| Custom template filters | `templatetags/custom_filters.py` | `has_group`, `is_tomorrow`, `divide`, `multiply`, `clean_qty`/`qty`, `get_range`, `abs_value`, and the four rupee formatters — `inr` (whole rupees, Indian grouping), `inr_amount` (paise only when there are any), `inr_exact` (paise always, for the printed invoice's money columns), `inr_compact` (`45.2L` / `4.57Cr`, for hero figures on a phone) |
+| Custom template filters | `templatetags/custom_filters.py` | `has_group`, `is_drawer_section` (drives the nav's Manage highlight from one prefix list), `is_tomorrow`, `divide`, `multiply`, `clean_qty`/`qty`, `get_range`, `abs_value`, and the four rupee formatters — `inr` (whole rupees, Indian grouping), `inr_amount` (paise only when there are any), `inr_exact` (paise always, for the printed invoice's money columns), `inr_compact` (`45.2L` / `4.57Cr`, for hero figures on a phone) |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV`, raises `ImproperlyConfigured` if unset |
 | `WhiteNoiseMiddleware` | `settings/production.py` | Serves static assets directly from the application in production |
 
@@ -672,9 +687,9 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 
 ---
 
-## 13. TEST SUITE (28 Files / 470 Tests)
+## 13. TEST SUITE (37 Files / see CLAUDE.md for the live count)
 
-### Workshop Tests — `workshop/tests/` package (25 files)
+### Workshop Tests — `workshop/tests/` package (32 files)
 
 | File | Coverage Area |
 |------|--------------|
@@ -702,8 +717,15 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 | `test_control_hub.py` | Owner-only gate on every hub section and action; owner unlock of locked staff accounts |
 | `test_notifications.py` | Fan-out, actor exclusion, audience-by-group, retention, feed RBAC, and all 8 event hooks |
 | `test_push.py` | Service-worker root scope, subscribe/unsubscribe RBAC, CRITICAL-only dispatch, dead-endpoint reaping, and the guarantee that a failing push never breaks the feed |
+| `test_invoice.py` | Every rule in `workshop/invoice.py` a customer would notice: one parts list, category naming for warehouse draws, derived unit price, blank QTY, labour as one subtotal, nothing interactive on the paper |
+| `test_estimate.py` | Estimates: the printed sheet held in step with the invoice, isolation from job cards / stock / ledgers / DeletionLog, `EST-` numbering, the price-hint endpoint, and the screens' RBAC |
+| `test_jobcard_inventory_section.py` | The Job Card's two spare routes as two formsets over one model, scoped by `source` |
+| `test_template_comments.py` | Static scan: no multi-line `{# … #}`, which stops being a comment and renders on the page |
+| `test_fleet_cashbook_integrity.py` | Fleet Account + Cashbook invariants |
+| `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants |
+| `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants |
 
-### Inventory Tests (3 files)
+### Inventory Tests (5 files)
 
 | File | Coverage Area |
 |------|--------------|
@@ -728,8 +750,8 @@ WorkshopOS (Titan)/
 │   ├── urls.py                 ← Root: admin + workshop + inventory
 │   ├── wsgi.py / asgi.py
 │
-├── workshop/                   ← Core App (96 URL routes)
-│   ├── models.py               ← 25 Models
+├── workshop/                   ← Core App (115 URL routes)
+│   ├── models.py               ← 28 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
 │   │   ├── dashboard.py        ← home, live_report
@@ -737,6 +759,7 @@ WorkshopOS (Titan)/
 │   │   ├── completed.py        ← completed_list, mark/undo/toggle
 │   │   ├── deletion_history.py ← deletion_history_list/detail (Owner-only, read-only)
 │   │   ├── billing.py          ← invoice_view, update_bill_status
+│   │   ├── estimate.py         ← Estimates: list, create, edit, print, delete (connected to nothing)
 │   │   ├── bulk_payer.py       ← bulk payer / "Fleet Account" views incl. advance-balance cascade
 │   │   ├── spare_shop.py       ← spare shop views
 │   │   ├── pending.py          ← pending_payments_list
@@ -744,17 +767,17 @@ WorkshopOS (Titan)/
 │   │   ├── audits.py           ← audit_high_discounts, audit_deleted_bulk_payers, restore_bulk_payer
 │   │   ├── car_profiles.py     ← car_profile_list, detail
 │   │   ├── master_lists.py     ← master list views
-│   │   ├── autocomplete.py     ← 4 autocomplete API views
+│   │   ├── autocomplete.py     ← 4 autocomplete API views + spare_price_hint
 │   │   └── salary_advance.py   ← Salary & Advance: advances, month-end settlement
 │   ├── analysis_views.py       ← Owner Profit + Insights views
 │   ├── analysis_engine.py      ← All Analysis money math (pure functions, no HTML)
-│   ├── invoice.py              ← What the printed bill shows (pure functions, no views)
+│   ├── invoice.py              ← What BOTH customer documents show — build_invoice + build_estimate (pure functions, no views)
 │   ├── auth_views.py           ← Auth views + helpers
 │   ├── management_views.py     ← Management views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook views (standalone ledger)
 │   ├── cleanup_views.py        ← 5 Cleanup views
-│   ├── urls.py                 ← 96 URL patterns
-│   ├── forms.py                ← 6 Forms + 3 Formsets
+│   ├── urls.py                 ← 115 URL patterns
+│   ├── forms.py                ← 8 Forms + 6 Formsets
 │   ├── decorators.py           ← 3 RBAC decorators
 │   ├── middleware.py           ← Session tracker
 │   ├── admin.py                ← 10 admin registrations

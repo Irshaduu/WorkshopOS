@@ -1,0 +1,385 @@
+{% extends 'workshop/base.html' %}
+{% load static %}
+
+{% block title %}{% if is_new %}New Estimate{% else %}Edit {{ estimate.estimate_number }}{% endif %}{% endblock %}
+
+{% comment %}
+================================================================================
+THE ESTIMATE FORM
+================================================================================
+Organised the way the Job Card is, because Office fills both and switching
+between two different arrangements of the same information is where mistakes
+come from. Same card-per-section shell, same `card-header bg-white` + blue
+`h6` heading, same `form-label small text-muted` labels, same `row g-3` grid.
+
+Four sections, in the order the printed sheet reads:
+
+    1. Vehicle Details      make · model · reg · mileage · date
+    2. Customer             name · phone · internal note
+    3. Job Needs To Be Performed   descriptions, then ONE Total Labour
+    4. Part Name            name · qty · unit price · amount
+
+The one difference from the Job Card is that **nothing here is required.** A
+quote is written with the customer standing there and is often half a car and
+two parts; a form that refused to save until every box was filled would be
+slower than the pad it replaces. Every field is `blank=True`/`null=True` at the
+model, so the only validation left is the pair that would produce a nonsense
+document: a priced row with no part name, and a negative figure.
+
+Two decisions worth not undoing:
+
+* **Part names come from a native `<datalist>`, not the Job Card's fetch
+  autocomplete.** The master spare list is ~200 entries, and a datalist needs no
+  wiring — so a row added after page load gets the same suggestions with nothing
+  to re-initialise. The Job Card's autocomplete needs a listener per input,
+  which is exactly where its three documented cloning traps live.
+* **The unit-price hint is a PLACEHOLDER only** (see estimate.js). A price on a
+  document handed to a customer has to be one a person decided.
+================================================================================
+{% endcomment %}
+
+{% block extra_css %}
+<style>
+    /* One grid drives the header strip and every row under it, so the columns
+       cannot drift apart. Desktop: name | qty | unit | amount.
+       There is NO remove button, deliberately — see the note on the parts
+       section below. */
+    .est-row {
+        display: grid;
+        gap: .5rem;
+        align-items: start;
+        grid-template-columns: minmax(0, 1fr) 90px 152px 160px;
+        padding: .55rem .75rem;
+        border-bottom: 1px solid var(--color-border, #e2e8f0);
+    }
+
+    .est-row--job { grid-template-columns: minmax(0, 1fr); }
+
+    .est-row:last-child { border-bottom: 0; }
+
+    .est-head {
+        font-size: .68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: #64748b;
+        background: #f8fafc;
+        border-bottom: 1px solid var(--color-border, #e2e8f0);
+        padding-top: .5rem;
+        padding-bottom: .5rem;
+        align-items: center;
+    }
+
+    .est-row .form-control { min-height: 44px; }
+
+    /* Placeholders are LABELS, not content. Smaller and paler than a typed
+       value so a row of empty boxes reads as empty at a glance, rather than as
+       a row someone has already filled in. */
+    #estimate-form .form-control::placeholder {
+        font-size: .78rem;
+        color: #aab4c2;
+    }
+
+    /* The suggested unit price arrives as this box's placeholder, so it has to
+       read as a hint and never as a value someone typed. */
+    .estimate-rate::placeholder { font-style: italic; }
+
+    .est-labour-box { max-width: 190px; min-width: 150px; }
+
+    .est-total-bar {
+        /* NOT sticky. It floated over the last rows of the parts list and
+           covered the row being typed into — on a laptop it hid the bottom of
+           the form, and on a phone it took a third of the screen. The total is
+           something you read once before saving, not something to watch. */
+        border: 1px solid var(--color-border, #e2e8f0);
+        border-radius: 14px;
+        background: #fff;
+    }
+
+    .est-total-label {
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: #64748b;
+    }
+
+    .est-total-value { font-size: 1.75rem; font-weight: 800; letter-spacing: -.5px; }
+
+    @media (max-width: 991.98px) {
+        .est-row {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            row-gap: .4rem;
+        }
+
+        .est-row .est-name { grid-column: 1 / -1; }
+        .est-row--job { grid-template-columns: minmax(0, 1fr); }
+        .est-row--job .est-name { grid-column: auto; }
+
+        /* The strip labels columns that are no longer beside their inputs at
+           this width. Every input declares a placeholder, which does that job
+           instead. */
+        .est-head { display: none; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3" style="max-width: 1100px;">
+
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+        <h5 class="fw-bold mb-0">
+            {% if is_new %}New Estimate{% else %}Edit {{ estimate.estimate_number }}{% endif %}
+        </h5>
+        <a href="{% url 'estimate_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-list-ul me-1"></i> All Estimates
+        </a>
+    </div>
+
+    <form method="POST" id="estimate-form" novalidate
+          data-price-hint-url="{% url 'spare_price_hint' %}">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+        <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        {% comment %} ── 1. VEHICLE DETAILS ── {% endcomment %}
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 text-primary fw-bold">Vehicle Details</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    {% comment %}
+                    Make and Model keep the Job Card's fetch autocomplete: both
+                    are single inputs present at page load, so script.js's one
+                    initial sweep wires them and no cloning is involved. The
+                    empty `.list-group` sibling is REQUIRED — setupAutocomplete()
+                    looks for it as the input's nextElementSibling and silently
+                    does nothing when it is missing.
+                    {% endcomment %}
+                    <div class="col-12 col-sm-4 position-relative">
+                        <label for="{{ form.brand_name.id_for_label }}" class="form-label small text-muted">Car Brand</label>
+                        {{ form.brand_name }}
+                        <div class="list-group autocomplete-suggestions position-absolute w-auto shadow" style="z-index: 30;"></div>
+                        {% if form.brand_name.errors %}<div class="text-danger small mt-1">{{ form.brand_name.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 col-sm-4 position-relative">
+                        <label for="{{ form.model_name.id_for_label }}" class="form-label small text-muted">Car Model</label>
+                        {{ form.model_name }}
+                        <div class="list-group autocomplete-suggestions position-absolute w-auto shadow" style="z-index: 30;"></div>
+                        {% if form.model_name.errors %}<div class="text-danger small mt-1">{{ form.model_name.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 col-sm-4">
+                        <label for="{{ form.registration_number.id_for_label }}" class="form-label small text-muted">Registration Number</label>
+                        {{ form.registration_number }}
+                        {% if form.registration_number.errors %}<div class="text-danger small mt-1">{{ form.registration_number.errors.0 }}</div>{% endif %}
+                    </div>
+
+                    {% comment %}
+                    Colour and Mileage share a cell exactly as they do on the
+                    Job Card — a 45px swatch beside the number. The picker is
+                    the SHARED include, so the two screens cannot offer
+                    different palettes or behave differently.
+                    {% endcomment %}
+                    <div class="col-12 col-sm-4">
+                        <div class="d-flex gap-3">
+                            <div style="flex: 0 0 45px;">
+                                <label class="form-label small text-muted">Colour</label>
+                                {% include 'workshop/includes/_car_color_picker.html' with record=estimate %}
+                            </div>
+                            <div class="flex-grow-1">
+                                <label for="{{ form.mileage.id_for_label }}" class="form-label small text-muted">Mileage (Km)</label>
+                                {{ form.mileage }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-4">
+                        <label for="{{ form.date.id_for_label }}" class="form-label small text-muted">Estimate Date</label>
+                        {{ form.date }}
+                        {% if form.date.errors %}<div class="text-danger small mt-1">{{ form.date.errors.0 }}</div>{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% comment %} ── 2. CUSTOMER ── {% endcomment %}
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header bg-white py-3">
+                <h6 class="mb-0 text-primary fw-bold">Customer</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6">
+                        <label for="{{ form.customer_name.id_for_label }}" class="form-label small text-muted">Customer Name</label>
+                        {{ form.customer_name }}
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label for="{{ form.customer_contact.id_for_label }}" class="form-label small text-muted">Contact Number</label>
+                        {{ form.customer_contact }}
+                    </div>
+                    {% comment %}
+                    A row to itself. It is the only field on the page that never
+                    reaches the customer, so sitting it beside two that do
+                    invited it being read as part of the same block — and it is
+                    the one box where someone might write something they would
+                    not want printed.
+                    {% endcomment %}
+                    <div class="col-12">
+                        <label for="{{ form.notes.id_for_label }}" class="form-label small text-muted">
+                            Internal note <span class="fst-italic">(never printed)</span>
+                        </label>
+                        {{ form.notes }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% comment %}
+        ── 3. JOBS ──
+        Descriptions only. The charge is the one figure in the footer, because
+        this workshop quotes work whole. See Estimate.labour_amount.
+        {% endcomment %}
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 text-primary fw-bold">Job Needs To Be Performed</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-add-row="jobs">+ Add Job</button>
+            </div>
+
+            <div class="card-body p-0">
+                {{ job_formset.management_form }}
+                <div id="jobs-list">
+                    {% for jf in job_formset %}
+                    <div class="est-row est-row--job">
+                        {{ jf.id }}
+                        <div class="d-none">{{ jf.DELETE }}</div>
+                        <div class="est-name">
+                            {{ jf.description }}
+                            {% if jf.description.errors %}<div class="text-danger small mt-1">{{ jf.description.errors.0 }}</div>{% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card-footer bg-light border-top py-3">
+                <div class="d-flex align-items-center justify-content-end gap-3 flex-wrap">
+                    <label for="{{ form.labour_amount.id_for_label }}"
+                           class="mb-0 fw-bold text-secondary text-uppercase"
+                           style="font-size: .75rem; letter-spacing: .04em;">
+                        Total Labour (₹)
+                    </label>
+                    <div class="est-labour-box">{{ form.labour_amount }}</div>
+                </div>
+                {% if form.labour_amount.errors %}
+                <div class="text-danger text-end mt-2" style="font-size: .78rem;">
+                    {{ form.labour_amount.errors|striptags }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% comment %} ── 4. PARTS ── {% endcomment %}
+        <div class="card shadow-sm mb-4 border-0">
+            {% comment %}
+            NO per-row delete control, on either section, and that is the
+            owner's rule rather than an omission. A ✕ beside every line is a
+            one-tap way to lose work on a tablet, and a quote is typed in a
+            hurry. **To remove a line, clear its name and save.** An emptied row
+            is deleted rather than argued with — see BlankRowIsNoRowFormSet —
+            so the gesture that looks like undoing a mistake *is* the delete.
+            {% endcomment %}
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 text-primary fw-bold">Part Name</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-add-row="parts">+ Add Part</button>
+            </div>
+
+            <div class="card-body p-0">
+                <div class="est-row est-head">
+                    <div>Part Name</div>
+                    <div>Qty</div>
+                    <div>Unit Price</div>
+                    <div>Amount</div>
+                </div>
+
+                {{ part_formset.management_form }}
+                <div id="parts-list">
+                    {% for pf in part_formset %}
+                    <div class="est-row">
+                        {{ pf.id }}
+                        <div class="d-none">{{ pf.DELETE }}</div>
+                        <div class="est-name">
+                            {{ pf.name }}
+                            {% if pf.name.errors %}<div class="text-danger small mt-1">{{ pf.name.errors.0 }}</div>{% endif %}
+                        </div>
+                        <div>{{ pf.quantity }}</div>
+                        <div>{{ pf.customer_rate }}</div>
+                        <div>{{ pf.amount }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        {% comment %}
+        The running total is a READING AID, computed in the browser. What is
+        stored and printed is recomputed server-side by Estimate.update_totals()
+        after the formsets save — this figure is never posted or trusted.
+        {% endcomment %}
+        <div class="est-total-bar p-3 mb-3">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                <div>
+                    <div class="est-total-label">Estimated Total</div>
+                    <div class="est-total-value" id="estimate-running-total">₹ 0.00</div>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'estimate_list' %}" class="btn btn-outline-secondary">Cancel</a>
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="bi bi-printer me-1"></i>
+                        {% if is_new %}Save &amp; Print{% else %}Save Changes{% endif %}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {% comment %}
+    The master spare list, offered natively. A couple of hundred names is a few
+    KB, and unlike a wired autocomplete it works on a row created after page
+    load with nothing to re-initialise. A SUGGESTION, not a constraint — a part
+    not on the list is simply typed, exactly as on a Job Card.
+    {% endcomment %}
+    <datalist id="estimate-part-names">
+        {% for name in spare_names %}<option value="{{ name }}"></option>{% endfor %}
+    </datalist>
+</div>
+
+{% comment %}
+Blank rows for the Add buttons, in <template> elements so their __prefix__
+placeholders are inert: template contents are a detached fragment, invisible to
+querySelectorAll and therefore to any global initialiser walking the document.
+{% endcomment %}
+<template id="jobs-empty-template">
+    <div class="est-row est-row--job">
+        {{ job_formset.empty_form.id }}
+        <div class="d-none">{{ job_formset.empty_form.DELETE }}</div>
+        <div class="est-name">{{ job_formset.empty_form.description }}</div>
+    </div>
+</template>
+
+<template id="parts-empty-template">
+    <div class="est-row">
+        {{ part_formset.empty_form.id }}
+        <div class="d-none">{{ part_formset.empty_form.DELETE }}</div>
+        <div class="est-name">{{ part_formset.empty_form.name }}</div>
+        <div>{{ part_formset.empty_form.quantity }}</div>
+        <div>{{ part_formset.empty_form.customer_rate }}</div>
+        <div>{{ part_formset.empty_form.amount }}</div>
+    </div>
+</template>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/estimate.js' %}?v=2"></script>
+{% endblock %}

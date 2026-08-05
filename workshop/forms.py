@@ -1,7 +1,8 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django import forms
 from django.forms import inlineformset_factory, BaseInlineFormSet
+from django.forms.formsets import DELETION_FIELD_NAME
 
 from .models import (
     CarBrand,
@@ -9,6 +10,9 @@ from .models import (
     SparePart,
     ConcernSolution,
     SpareShop,
+    Estimate,
+    EstimateJobLine,
+    EstimatePartLine,
     JobCard,
     JobCardConcern,
     JobCardSpareItem,
@@ -548,4 +552,341 @@ JobCardLabourFormSet = inlineformset_factory(
             'placeholder': 'Job Performed',
         }),
     }
+)
+
+
+# =============================================================================
+# ESTIMATE
+# =============================================================================
+# A quotation, connected to nothing (see the Estimate model). The forms
+# deliberately reuse the job card's autocomplete hooks — `autocomplete-brand`,
+# `autocomplete-model` — because those endpoints already exist and an estimate
+# names a car exactly the way a job card does. No new lookup was invented here.
+
+
+def _tidy_money_initial(form, *names):
+    """
+    Render `8500`, not `8500.00` — and blank, not `0`, on a new record.
+
+    Purely about typing. A money box that arrives holding `0` makes the first
+    keystroke produce `08500`, and one holding `8500.00` puts two zeros and a
+    point between the caret and the next digit, so entering a figure means
+    deleting characters first. Both are the box fighting the person filling it
+    in, on the field they touch most.
+
+    Only the DISPLAY changes. Nothing is stored differently: `clean_labour_amount`
+    still turns an empty box into `Decimal('0')`, and the column still holds two
+    decimal places. Paise are kept whenever there are any (`1250.50`), because
+    dropping those would change the number rather than tidy it.
+
+    Bound forms are untouched by design — `BoundField.value()` reads submitted
+    data, not `initial`, so a rejected POST still shows exactly what was typed
+    rather than a reformatted guess at it.
+    """
+    for name in names:
+        raw = form.initial.get(name)
+        if raw in (None, ''):
+            form.initial[name] = ''
+            continue
+        try:
+            value = Decimal(str(raw))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        if not value.is_finite() or value == 0:
+            form.initial[name] = ''
+        elif value == value.to_integral_value():
+            form.initial[name] = f'{value.to_integral_value():f}'
+        else:
+            form.initial[name] = f'{value:.2f}'
+
+class EstimateForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Estimate
+        fields = [
+            'date',
+            'customer_name',
+            'customer_contact',
+            'brand_name',
+            'model_name',
+            'registration_number',
+            'mileage',
+            # Chosen through the shared swatch picker, exactly as on a Job Card.
+            # The visible control is a <div>; these are what post.
+            'car_color',
+            'car_color_other',
+            'labour_amount',
+            'notes',
+        ]
+        labels = {
+            'brand_name': 'Car Brand',
+            'model_name': 'Car Model',
+            'registration_number': 'Registration Number',
+            'notes': 'Internal note (never printed)',
+        }
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date'}),
+            'brand_name': forms.TextInput(attrs={
+                'autocomplete': 'off',
+                'class': 'autocomplete-brand',
+                'placeholder': 'e.g. Toyota',
+            }),
+            'model_name': forms.TextInput(attrs={
+                'autocomplete': 'off',
+                'class': 'autocomplete-model',
+                'placeholder': 'e.g. Corolla',
+            }),
+            'registration_number': forms.TextInput(attrs={
+                'style': 'text-transform: uppercase;',
+                'autocapitalize': 'characters',
+                'placeholder': 'e.g. KL 10 AB 1234',
+            }),
+            'mileage': forms.TextInput(attrs={
+                'placeholder': 'e.g. 50000 or 50k',
+                'inputmode': 'numeric',
+            }),
+            'customer_contact': forms.TextInput(attrs={
+                'inputmode': 'tel',
+                'placeholder': 'Phone (optional)',
+            }),
+            'labour_amount': forms.TextInput(attrs={
+                'class': 'form-control text-end fw-bold',
+                'inputmode': 'decimal',
+                'placeholder': 'Total Amount',
+            }),
+            'notes': forms.TextInput(attrs={
+                'placeholder': 'Only you see this',
+            }),
+            'car_color_other': forms.TextInput(attrs={
+                'placeholder': 'Specify "Other" colour…',
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Total Labour is the box Office types into on almost every estimate.
+        # Left alone it arrives holding `0` on a new quote and `8500.00` on an
+        # edit — both of which have to be deleted before a figure can be typed.
+        _tidy_money_initial(self, 'labour_amount')
+
+    def clean_labour_amount(self):
+        """
+        Empty means no labour quoted, not an error — and never NULL.
+
+        Word for word the rule on JobCardForm.labour_amount: plenty of estimates
+        are parts only, the column is NOT NULL so cleaning to None would be an
+        IntegrityError rather than a message, and a negative is refused outright
+        rather than clamped (a clamp saves a number nobody typed).
+        """
+        value = self.cleaned_data.get('labour_amount')
+        if value in (None, ''):
+            return Decimal('0')
+        if value < 0:
+            raise forms.ValidationError("A labour charge cannot be negative.")
+        return value
+
+
+class BlankRowIsNoRowFormSet(BaseInlineFormSet):
+    """
+    A row left empty — or emptied out — is a row that does not exist.
+
+    **Clearing the name and saving IS the delete gesture.** There is no ✕ on a
+    row, deliberately: a per-row delete control is a one-tap way to lose work on
+    a tablet, and a quote is typed in a hurry. So two rules:
+
+      * A row where nothing was typed is not saved. `description` and `name` are
+        NOT NULL at the column, so a row of empty strings would otherwise put an
+        unnamed line on a document a customer reads.
+      * **An existing row whose name has been cleared is DELETED — even if its
+        figures are still there.** That is the whole gesture. Leaving the money
+        behind and refusing the save would make "clear the name" mean nothing on
+        exactly the rows people want to remove, which are the priced ones.
+
+    Marking the row DELETE resolves both at once: Django's own delete path skips
+    it when new (`save_new_objects`) and removes it when stored
+    (`save_existing_objects`). The line forms drop `required` so a blank row
+    reaches here cleanly in the first place.
+
+    What is still refused: a **new** row carrying figures with no name
+    (`EstimatePartLineForm.clean`), and any negative figure. A new row is being
+    filled in, so a missing name there is a slip, not an erasure — and silently
+    dropping it would throw away a price someone just typed.
+    """
+
+    #: Fields that decide whether the row holds anything. Set per subclass.
+    content_fields = ()
+    #: The field that names the row. Clearing it on a stored row deletes it.
+    identity_field = None
+
+    def clean(self):
+        # BEFORE super(), and that order is load-bearing.
+        #
+        # `BaseModelFormSet.clean()` calls `validate_unique()`, which reads
+        # `self.deleted_forms` — and that property CACHES its answer in
+        # `_deleted_form_indexes` on first access. Marking the rows after
+        # super() therefore marks them too late: the cache has already been
+        # built from the unmarked forms, `deleted_forms` stays empty forever,
+        # and `save_existing_objects` never deletes anything.
+        #
+        # The failure is worse than a no-op, which is why it is worth a comment
+        # this long. `_post_clean` excludes a blank value on a not-required
+        # field from model validation, so the emptied row raises no error
+        # either — it is simply SAVED, writing `description=''` onto the
+        # estimate. An unnamed line then prints on a document a customer reads.
+        # Guarded by `test_clearing_an_existing_line_removes_it_instead_of_erroring`.
+        for form in self.forms:
+            # Absent when the form failed validation — those rows are not blank
+            # by definition, and their errors are the right answer.
+            cleaned = getattr(form, 'cleaned_data', None)
+            if not cleaned:
+                continue
+            if self._row_is_gone(form, cleaned):
+                cleaned[DELETION_FIELD_NAME] = True
+        super().clean()
+
+    @classmethod
+    def _row_is_gone(cls, form, cleaned):
+        # A stored row that has lost its name is a deliberate erasure, whatever
+        # else is still in it — that is the delete gesture. A NEW row is only
+        # dropped when it is empty all through, so a price typed into a row
+        # whose name was forgotten raises an error instead of vanishing.
+        if form.instance.pk and cls.identity_field:
+            return not cls._filled(cleaned.get(cls.identity_field))
+        return not any(cls._filled(cleaned.get(f)) for f in cls.content_fields)
+
+    @staticmethod
+    def _filled(value):
+        if isinstance(value, str):
+            return bool(value.strip())
+        return value not in (None, '')
+
+
+class EstimateJobLineFormSet(BlankRowIsNoRowFormSet):
+    content_fields = ('description',)
+    identity_field = 'description'
+
+
+class EstimatePartLineFormSet(BlankRowIsNoRowFormSet):
+    content_fields = ('name', 'quantity', 'customer_rate', 'amount')
+    identity_field = 'name'
+
+
+class EstimateJobLineForm(forms.ModelForm):
+    """One line of work being quoted. A description, never a price."""
+
+    class Meta:
+        model = EstimateJobLine
+        fields = ['description']
+        widgets = {
+            'description': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Job to be performed',
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Blank is a legitimate answer here — see BlankRowIsNoRowFormSet. The
+        # column stays NOT NULL; a blank row is deleted, never written empty.
+        self.fields['description'].required = False
+
+
+class EstimatePartLineForm(forms.ModelForm):
+    """
+    One quoted part. Every box is optional — the reference document prints
+    parts with an empty price, which is how a workshop quotes something it still
+    has to ring a supplier about.
+    """
+
+    class Meta:
+        model = EstimatePartLine
+        fields = ['name', 'quantity', 'customer_rate', 'amount']
+        widgets = {
+            'name': forms.TextInput(attrs={
+                # A native <datalist>, not the Job Card's fetch-based
+                # autocomplete: it needs no wiring, so it works identically on a
+                # row added after page load. `estimate-part-name` is the hook
+                # the price hint delegates on (see estimate.js).
+                'class': 'form-control estimate-part-name',
+                'list': 'estimate-part-names',
+                'autocomplete': 'off',
+                'placeholder': 'Part Name',
+            }),
+            'quantity': forms.TextInput(attrs={
+                'class': 'form-control text-center estimate-qty',
+                'inputmode': 'decimal',
+                'placeholder': 'Qty',
+            }),
+            'customer_rate': forms.TextInput(attrs={
+                'class': 'form-control text-end estimate-rate',
+                'inputmode': 'decimal',
+                'placeholder': 'Unit Price (₹)',
+                # The label to restore when a part has no sales history. Without
+                # it, clearing the name would leave the previous part's
+                # suggestion sitting under the new one.
+                'data-placeholder': 'Unit Price (₹)',
+            }),
+            'amount': forms.TextInput(attrs={
+                'class': 'form-control text-end fw-bold estimate-amount',
+                'inputmode': 'decimal',
+                'placeholder': 'Amount (₹)',
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['name'].required = False   # see BlankRowIsNoRowFormSet
+        # Same reasoning as Total Labour: reopening a quote to change 7 litres
+        # to 4 should not mean deleting `.00` first, on every row.
+        _tidy_money_initial(self, 'quantity', 'customer_rate', 'amount')
+
+    def clean(self):
+        cleaned = super().clean()
+        name = (cleaned.get('name') or '').strip()
+        has_money = any(
+            cleaned.get(f) not in (None, '')
+            for f in ('quantity', 'customer_rate', 'amount')
+        )
+        # A priced row with no name prints an amount beside a blank line and
+        # inflates the total by something the customer cannot identify.
+        #
+        # NEW rows only. On a STORED row, clearing the name is the delete
+        # gesture (see BlankRowIsNoRowFormSet) — raising here would make it fail
+        # on exactly the rows people want to remove, which are the priced ones.
+        if has_money and not name and not self.instance.pk:
+            self.add_error('name', "Name the part, or clear the figures on this row.")
+        for field in ('quantity', 'customer_rate', 'amount'):
+            value = cleaned.get(field)
+            if value is not None and value != '' and value < 0:
+                self.add_error(field, "Cannot be negative.")
+        return cleaned
+
+
+# `extra=3` on both, unlike the job card's `extra=0` + "Add row" button. The
+# paper form these replace opens with a block of empty lines and Office fills
+# down it, so a new estimate that showed nothing until you pressed Add would be
+# slower than the pad it is meant to replace. Django skips an extra row that was
+# never touched (`has_changed()`), so unused ones cost nothing and save nothing.
+# The Add button is still there for a long quote.
+ESTIMATE_BLANK_ROWS = 3
+
+EstimateJobFormSet = inlineformset_factory(
+    Estimate,
+    EstimateJobLine,
+    form=EstimateJobLineForm,
+    formset=EstimateJobLineFormSet,
+    fields=['description'],
+    extra=ESTIMATE_BLANK_ROWS,
+    can_delete=True,
+    validate_min=False,
+)
+
+EstimatePartFormSet = inlineformset_factory(
+    Estimate,
+    EstimatePartLine,
+    form=EstimatePartLineForm,
+    formset=EstimatePartLineFormSet,
+    fields=['name', 'quantity', 'customer_rate', 'amount'],
+    extra=ESTIMATE_BLANK_ROWS,
+    can_delete=True,
+    validate_min=False,
 )

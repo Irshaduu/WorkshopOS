@@ -1,0 +1,152 @@
+{% load custom_filters %}
+{% comment %}
+================================================================================
+ESTIMATE ROWS — the only part live search and paging replace.
+================================================================================
+Kept apart from the page shell so an AJAX response re-renders the rows and the
+count, and nothing else: the header, the search box and the filter pills keep
+their state and their focus. Same split as Paid Bills and Completed.
+
+THE ROW, and why it is shaped this way.
+
+An estimate is written fast, often with the customer standing there, so most of
+its fields are optional and any of them may be blank. The row therefore has to
+read well in every combination, not just a full one. Two rules do that work:
+
+  1. **The headline is whatever identifies the car best.** Brand + model if they
+     were typed, else the registration number, else the estimate number. There
+     is always exactly one big line, never an empty space where one should be.
+  2. **Nothing blank is announced.** A missing customer prints nothing at all
+     rather than "No customer name" — a row with three grey apologies in it
+     looks broken, and the absence already says everything it needs to.
+
+`priced` is the same distinction the printed document makes: ₹0.00 means a quote
+someone deliberately made for nothing, while an estimate with no figures yet is
+a draft. Printing "₹ 0.00" for a draft would state a price the workshop never
+quoted.
+{% endcomment %}
+
+{% comment %}
+The count rides in the swapped markup rather than being recomputed in the
+browser: the page shows the number of matches across ALL pages, which the 45
+rows on screen cannot tell you. The header pill reads it from here after a
+search so the two can never disagree.
+{% endcomment %}
+<span hidden data-total-count="{{ total_count }}"></span>
+
+<div class="est-list" id="estimateRows">
+    {% for est in estimates %}
+    <div class="est-row">
+        {% comment %}
+        The car's colour, as a stripe down the left edge — the same identity cue
+        the dashboard's live cards and the Completed list use, drawn from the
+        same `CAR_COLOR_HEX` map in models.py. It is how staff spot a car in a
+        list before they have read a word of it.
+
+        Two states are told apart deliberately: no colour recorded gets a
+        diagonal hatch (never a grey bar, which would read as a grey car), and a
+        white car gets an inset border so it does not disappear into the row.
+        {% endcomment %}
+        <span class="est-stripe
+                {% if not est.car_color %}est-stripe--unset
+                {% elif est.car_color == 'White' %}est-stripe--white{% endif %}"
+              style="--stripe-color: {{ est.get_car_color_hex }};"
+              title="{{ est.get_car_color_display }}"></span>
+
+        <div class="est-identity">
+            {% comment %}
+            Headline and registration share ONE line, and every row is therefore
+            exactly two lines tall whatever is filled in. With the reg on a line
+            of its own, rows ran 67px or 91px depending on whether someone had
+            typed one — down a list of 45 that raggedness is the first thing the
+            eye catches, and it carries no meaning.
+            {% endcomment %}
+            <div class="est-title-line">
+                {% if est.brand_name or est.model_name %}
+                <a class="est-headline stretched-link" href="{% url 'estimate_print' est.pk %}">
+                    {{ est.brand_name }}{% if est.brand_name and est.model_name %} {% endif %}{{ est.model_name }}
+                </a>
+                {% if est.registration_number %}
+                <span class="est-reg">{{ est.registration_number }}</span>
+                {% endif %}
+                {% elif est.registration_number %}
+                {% comment %}
+                No make or model, so the registration IS the identity — printed
+                as the headline rather than repeated as a chip beside nothing.
+                {% endcomment %}
+                <a class="est-headline stretched-link" href="{% url 'estimate_print' est.pk %}">
+                    {{ est.registration_number }}
+                </a>
+                {% else %}
+                {% comment %}
+                Nothing about the car was recorded. The estimate number is the
+                only true thing left, so it becomes the headline rather than
+                leaving the row's most prominent line empty.
+                {% endcomment %}
+                <a class="est-headline est-headline--bare stretched-link" href="{% url 'estimate_print' est.pk %}">
+                    {{ est.estimate_number }}
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="est-meta">
+                {% if est.brand_name or est.model_name or est.registration_number %}
+                <span class="est-no">{{ est.estimate_number }}</span>
+                <span class="est-dot">·</span>
+                {% endif %}
+                <span class="est-date">{{ est.date|date:"j M Y" }}</span>
+                {% if est.customer_name %}
+                <span class="est-dot">·</span>
+                <span class="est-cust">{{ est.customer_name }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="est-money">
+            <span class="est-money-label">Quoted</span>
+            {% if est.total_amount %}
+            <span class="est-money-value">₹{{ est.total_amount|inr_exact }}</span>
+            {% else %}
+            <span class="est-money-value est-money-value--none">Not priced</span>
+            {% endif %}
+        </div>
+
+        {% comment %}
+        The menu sits ABOVE the stretched link (z-index 2) so it takes its own
+        clicks. It must not be nested inside the <a> — an anchor may not contain
+        a button, and the parser splits it into several empty anchors when it is.
+        {% endcomment %}
+        <div class="dropdown est-menu">
+            <button class="est-menu-btn" type="button" data-bs-toggle="dropdown"
+                    aria-expanded="false" aria-label="Actions for {{ est.estimate_number }}">
+                <i class="bi bi-three-dots-vertical"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow est-menu-list">
+                <li><a class="dropdown-item" href="{% url 'estimate_print' est.pk %}">
+                    <i class="bi bi-printer me-2"></i>Open &amp; Print</a></li>
+                <li><a class="dropdown-item" href="{% url 'estimate_edit' est.pk %}">
+                    <i class="bi bi-pencil me-2"></i>Edit</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-danger" href="{% url 'estimate_delete' est.pk %}">
+                    <i class="bi bi-trash me-2"></i>Delete</a></li>
+            </ul>
+        </div>
+    </div>
+    {% empty %}
+    <div class="est-empty">
+        <i class="bi bi-file-earmark-text"></i>
+        {% if q %}
+        <p>Nothing matches “{{ q }}”.</p>
+        <span>Try the registration number, or switch to All Time.</span>
+        {% else %}
+        <p>No estimates yet.</p>
+        <span>Quotes you write for customers will collect here.</span>
+        {% endif %}
+        <a href="{% url 'estimate_create' %}" class="est-empty-btn">
+            <i class="bi bi-plus-lg"></i> New Estimate
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+{% include 'workshop/includes/pagination.html' %}

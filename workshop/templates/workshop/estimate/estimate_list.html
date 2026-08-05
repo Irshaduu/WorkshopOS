@@ -1,0 +1,581 @@
+{% extends 'workshop/base.html' %}
+
+{% block title %}Estimates{% endblock %}
+
+{% comment %}
+================================================================================
+ESTIMATE HISTORY
+================================================================================
+The page shell. The rows live in `estimate_list_partial.html`, which is what an
+AJAX search or a page change replaces — the header, the search box and the
+filter pills keep their state and their focus.
+
+Deliberately plain: an estimate is not money, so there is no totals bar, no
+"outstanding", no status. The one figure per row is labelled "Quoted", never
+anything that could be read as owed or earned.
+
+TWO filters, not the eight the day-to-day lists carry — see DATE_FILTERS in
+workshop/views/estimate.py for why. Two options is one tap, so they are pills
+rather than the dropdown those pages need for eight.
+================================================================================
+{% endcomment %}
+
+{% block extra_css %}
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --est-font-display: 'Barlow Condensed', sans-serif;
+        --est-font-body: 'Barlow', sans-serif;
+        --est-accent: #4f46e5;
+    }
+
+    .est-page { max-width: 1000px; margin: 0 auto; }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .est-page-header {
+        margin: 0.5rem 0 1.25rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid var(--color-border);
+        position: relative;
+    }
+
+    .est-page-header::after {
+        content: '';
+        position: absolute;
+        bottom: -2px; left: 0;
+        width: 48px; height: 2px;
+        background: var(--est-accent);
+    }
+
+    .est-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+    }
+
+    .est-page-title {
+        font-family: var(--est-font-display);
+        font-size: 1.6rem;
+        font-weight: 800;
+        letter-spacing: -0.3px;
+        color: var(--color-text);
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .est-page-title .title-icon { color: var(--est-accent); flex: 0 0 auto; }
+
+    .est-count-pill {
+        font-family: var(--est-font-body);
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        background: rgba(79, 70, 229, 0.1);
+        color: var(--est-accent);
+        padding: 2px 8px;
+        border-radius: 20px;
+        border: 1px solid rgba(79, 70, 229, 0.2);
+        white-space: nowrap;
+        flex: 0 0 auto;
+    }
+
+    .est-page-sub {
+        font-family: var(--est-font-body);
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: var(--color-text-muted);
+        margin: 0 0 12px;
+        max-width: 62ch;
+    }
+
+    .est-new-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        /* 44px — tapped on a tablet, not only clicked. */
+        min-height: 44px;
+        padding: 0 16px;
+        border-radius: 999px;
+        background: var(--est-accent);
+        color: #fff;
+        font-family: var(--est-font-body);
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+        border: 0;
+        transition: background-color 0.15s, box-shadow 0.15s;
+    }
+
+    .est-new-btn:hover { background: #4338ca; color: #fff; }
+
+    /* ── Controls (same vocabulary as Completed / Paid Bills) ── */
+    .est-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+
+    .est-search-wrap {
+        position: relative;
+        flex: 1 1 240px;
+        min-width: 0;
+    }
+
+    /* The two chips are ONE unit and wrap as one. Left to themselves they broke
+       apart onto separate lines on a phone — the search box takes the first
+       row, then "This Year" wrapped alone and "All Time" wrapped again, which
+       read as three unrelated controls stacked up. */
+    .est-chip-group {
+        display: flex;
+        gap: 8px;
+        flex: 0 0 auto;
+    }
+
+    .est-search-wrap .search-icon {
+        position: absolute;
+        left: 12px; top: 50%;
+        transform: translateY(-50%);
+        color: var(--color-text-muted);
+        font-size: 0.75rem;
+        pointer-events: none;
+    }
+
+    .est-search-input {
+        width: 100%;
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        background: var(--color-card);
+        font-family: var(--est-font-body);
+        font-size: 0.8rem;
+        color: var(--color-text);
+        padding: 10px 14px 10px 32px;
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+        box-shadow: 0 1px 3px var(--color-shadow);
+    }
+
+    .est-search-input:focus {
+        border-color: var(--est-accent);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    .est-search-input::placeholder { color: var(--color-text-muted); }
+
+    .est-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        padding: 9px 14px;
+        font-family: var(--est-font-body);
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--color-text);
+        text-decoration: none;
+        white-space: nowrap;
+        cursor: pointer;
+        /* Paint only. NEVER `transition: all` on a pill — it animates
+           flex-grow, and the chip stays pinned at its content width with the
+           correct rule matching and no way to see why. */
+        transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .est-chip:hover { border-color: #94a3b8; color: var(--color-text); }
+
+    /* SLATE, not the accent. "New Estimate" is the accent, and when the active
+       filter wore the same indigo the page had two equally loud purple pills
+       doing completely different jobs — one creates a record, one narrows a
+       list. Different role, different colour; the accent now means "this
+       button makes something". */
+    .est-chip.active {
+        background: #334155;
+        border-color: #334155;
+        color: #fff;
+    }
+
+    /* ── The list ───────────────────────────────────────────── */
+    .est-list {
+        border: 1px solid var(--color-border);
+        border-radius: 14px;
+        background: var(--color-card);
+        box-shadow: 0 1px 3px var(--color-shadow);
+        /* NOT `overflow: hidden`, however much the rounded corners want it: the
+           row's ⋮ menu is an absolutely-positioned dropdown inside this box and
+           Popper cannot escape a clipping ancestor — it is cut off invisibly,
+           and only sometimes. Corners are rounded on the children instead. */
+        overflow: visible;
+    }
+
+    .est-list > :first-child { border-radius: 14px 14px 0 0; }
+    .est-list > :last-child  { border-radius: 0 0 14px 14px; }
+    .est-list > :only-child  { border-radius: 14px; }
+
+    .est-row {
+        position: relative;          /* the stretched link anchors to this */
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto 40px;
+        align-items: center;
+        gap: 4px 14px;
+        padding: 12px 8px 12px 18px;
+        border-bottom: 1px solid var(--color-border);
+        font-family: var(--est-font-body);
+    }
+
+    .est-row:last-child { border-bottom: 0; }
+    .est-row:hover { background: var(--color-bg); }
+
+    /* Car colour, down the left edge — same identity cue as the dashboard's
+       live cards, same hex map. */
+    .est-stripe {
+        position: absolute;
+        left: 0;
+        top: 6px;
+        bottom: 6px;
+        width: 5px;
+        border-radius: 0 4px 4px 0;
+        background: var(--stripe-color, #e2e8f0);
+    }
+
+    /* No colour recorded — a hatch, never a grey bar, which would read as a
+       grey car. */
+    .est-stripe--unset {
+        background: repeating-linear-gradient(-45deg,
+            #e2e8f0 0px, #e2e8f0 3px, #f8fafc 3px, #f8fafc 7px);
+    }
+
+    /* A white car needs an edge or it vanishes into the row. */
+    .est-stripe--white {
+        background: #f8fafc;
+        box-shadow: inset -1px 0 0 #e2e8f0;
+    }
+
+    .est-identity { min-width: 0; }
+
+    /* The car and its plate on one line, so every row is exactly two lines tall
+       whatever is filled in. The name takes the slack and truncates; the plate
+       never shrinks, because half a registration number is worse than none. */
+    .est-title-line {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .est-headline {
+        font-family: var(--est-font-display);
+        font-size: 1.12rem;
+        font-weight: 700;
+        letter-spacing: -0.2px;
+        line-height: 1.25;
+        color: var(--color-text);
+        text-decoration: none;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .est-headline:hover { color: var(--est-accent); }
+
+    /* Only used when NOTHING about the car was recorded, so the estimate number
+       is standing in as the headline. Lighter, because it is a fallback, not a
+       vehicle. */
+    .est-headline--bare { color: var(--color-text-muted); font-weight: 600; }
+
+    .est-reg {
+        flex: 0 0 auto;
+        padding: 1px 7px;
+        border-radius: 5px;
+        background: var(--color-bg);
+        border: 1px solid var(--color-border);
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+    }
+
+    .est-meta {
+        margin-top: 4px;
+        font-size: 0.72rem;
+        color: var(--color-text-muted);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 5px;
+        min-width: 0;
+    }
+
+    .est-no { font-weight: 700; color: var(--est-accent); letter-spacing: 0.2px; }
+    .est-dot { opacity: 0.45; }
+    .est-cust { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .est-money { text-align: right; white-space: nowrap; }
+
+    .est-money-label {
+        display: block;
+        font-size: 0.58rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--color-text-muted);
+    }
+
+    .est-money-value {
+        font-family: var(--est-font-display);
+        font-size: 1.18rem;
+        font-weight: 800;
+        color: var(--color-text);
+        letter-spacing: -0.2px;
+    }
+
+    /* A draft with no figures yet is NOT "₹ 0.00" — that would state a price
+       the workshop never quoted. Same distinction the printed sheet makes. */
+    .est-money-value--none {
+        font-family: var(--est-font-body);
+        font-size: 0.76rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+    }
+
+    .est-menu { position: relative; z-index: 2; }   /* above the stretched link */
+
+    .est-menu-btn {
+        width: 40px; height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--color-text-muted);
+    }
+
+    .est-menu-btn:hover { background: var(--color-border); color: var(--color-text); }
+    .est-menu-list { border-radius: 12px; padding: 6px; min-width: 190px; }
+    .est-menu-list .dropdown-item { border-radius: 8px; font-size: 0.84rem; padding: 8px 10px; }
+
+    /* ── Empty ──────────────────────────────────────────────── */
+    .est-empty {
+        text-align: center;
+        padding: 3rem 1.25rem;
+        font-family: var(--est-font-body);
+        color: var(--color-text-muted);
+    }
+
+    .est-empty i { font-size: 2rem; opacity: 0.3; display: block; margin-bottom: 0.6rem; }
+    .est-empty p { margin: 0; font-weight: 700; color: var(--color-text); font-size: 0.95rem; }
+    .est-empty span { font-size: 0.8rem; }
+
+    .est-empty-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 1.1rem;
+        min-height: 40px;
+        padding: 0 16px;
+        border-radius: 999px;
+        border: 1px solid var(--est-accent);
+        color: var(--est-accent);
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .est-empty-btn:hover { background: var(--est-accent); color: #fff; }
+
+    /* ── Tablet ─────────────────────────────────────────────── */
+    @media (max-width: 767.98px) {
+        {% comment %}
+        The header row stays a ROW here — it used to switch to a column, which
+        gave the phone a full-width button on a line of its own and pushed the
+        first card below the fold. The title shrinks instead (see below); the
+        button never does, because it is the only action on the page.
+        {% endcomment %}
+        .est-page-title { min-width: 0; }
+        .est-page-title .est-title-word {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Search and BOTH chips on one row. The chips shrink to make room —
+           they are two short words and do not need a 44px pill each once the
+           search box is competing for the same 360px. `flex-basis: 0` on the
+           search is what lets it take whatever is left instead of forcing a
+           wrap at its natural width. */
+        .est-search-wrap { flex: 1 1 0; min-width: 90px; }
+        .est-search-input { padding: 8px 10px 8px 28px; font-size: 0.76rem; }
+        .est-search-wrap .search-icon { left: 10px; }
+        .est-chip { padding: 7px 10px; font-size: 0.72rem; }
+        .est-chip-group { gap: 6px; }
+
+        /* The title shrinks before the button does — "New Estimate" is the
+           action, and a page whose only action has wrapped to its own line
+           looks like two headers. */
+        .est-page-title { font-size: 1.3rem; gap: 6px; }
+        .est-page-title .title-icon { font-size: 1.1rem; }
+        .est-count-pill { font-size: 0.55rem; padding: 2px 6px; }
+        .est-new-btn { min-height: 40px; padding: 0 13px; font-size: 0.78rem; flex: 0 0 auto; }
+
+        {% comment %}
+        The row keeps its shape rather than folding — identity, money, menu, all
+        on the same two lines it uses on a laptop. Dropping the money onto a
+        third line made every card half again as tall, and a list is read by
+        scanning down it: fewer cards per screen is the cost that matters here,
+        not a few pixels of width. The name truncates instead, which it can
+        afford to — the plate and the amount beside it never do.
+        {% endcomment %}
+        .est-row {
+            grid-template-columns: minmax(0, 1fr) auto 34px;
+            gap: 2px 8px;
+            padding: 10px 2px 10px 14px;
+        }
+
+        .est-money-label { font-size: 0.52rem; letter-spacing: 0.6px; }
+        .est-money-value { font-size: 1rem; }
+        .est-headline { font-size: 1rem; }
+        .est-reg { font-size: 0.6rem; padding: 1px 5px; }
+        .est-meta { font-size: 0.68rem; margin-top: 2px; gap: 4px; }
+        .est-menu-btn { width: 34px; height: 34px; }
+        .est-stripe { width: 4px; top: 4px; bottom: 4px; }
+    }
+</style>
+
+<div class="est-page">
+
+    <div class="est-page-header">
+        {% comment %}
+        Title and the New button share this row at EVERY width — the subtitle
+        sits below it, outside the flex, rather than inside the left column
+        pushing the button onto a line of its own on a phone.
+        {% endcomment %}
+        <div class="est-header-top">
+            <h1 class="est-page-title">
+                <i class="bi bi-file-earmark-text title-icon"></i>
+                {% comment %}
+                The word is its own element so it can be the thing that
+                truncates on a narrow phone — the count pill and the button
+                beside it must not be squeezed into ellipses.
+                {% endcomment %}
+                <span class="est-title-word">Estimates</span>
+                <span class="est-count-pill" id="estimateCount">TOTAL {{ total_count }}</span>
+            </h1>
+            <a href="{% url 'estimate_create' %}" class="est-new-btn">
+                <i class="bi bi-plus-lg"></i> <span class="est-new-btn-label">New Estimate</span>
+            </a>
+        </div>
+
+        <p class="est-page-sub">
+            Isolated from every other section — create, print, update freely.
+        </p>
+
+        <div class="est-controls">
+            <form id="estimateSearchForm" class="est-search-wrap" onsubmit="return false;">
+                <i class="bi bi-search search-icon"></i>
+                <input type="text" id="estimateSearch" name="q" class="est-search-input"
+                       placeholder="Search reg no, car, customer, estimate no…"
+                       value="{{ q }}" autocomplete="off">
+            </form>
+
+            <div class="est-chip-group">
+                {% for key, label in filters %}
+                <button type="button" class="est-chip{% if filter_type == key %} active{% endif %}"
+                        data-filter="{{ key }}">{{ label }}</button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div id="estimateResults">
+        {% include 'workshop/estimate/estimate_list_partial.html' %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        'use strict';
+
+        var input = document.getElementById('estimateSearch');
+        var results = document.getElementById('estimateResults');
+        var countPill = document.getElementById('estimateCount');
+        if (!input || !results) return;
+
+        var filter = '{{ filter_type }}';
+        var timer = null;
+        var seq = 0;
+
+        function fetchResults(page) {
+            var url = new URL(window.location.pathname, window.location.origin);
+            if (input.value.trim()) url.searchParams.set('q', input.value.trim());
+            url.searchParams.set('filter', filter);
+            if (page && page !== '1') url.searchParams.set('page', page);
+
+            // Every response carries the request number it belongs to. Typing
+            // fast means several requests in flight, and they do not
+            // necessarily come back in order — without this, a slow response
+            // for "KL" can land after the one for "KL 10" and put stale rows
+            // under a narrower search.
+            var mine = ++seq;
+
+            fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(function (r) { return r.ok ? r.text() : null; })
+                .then(function (html) {
+                    if (html === null || mine !== seq) return;
+                    results.innerHTML = html;
+                    var freshCount = results.querySelector('[data-total-count]');
+                    if (countPill && freshCount) {
+                        countPill.textContent = 'TOTAL ' + freshCount.getAttribute('data-total-count');
+                    }
+                    // Keep the address bar in step so a reload, a back button or
+                    // a shared link reproduces what is on screen.
+                    window.history.replaceState({}, '', url);
+                })
+                .catch(function () { /* a failed search must not blank the list */ });
+        }
+
+        input.addEventListener('input', function () {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(function () { fetchResults(1); }, 250);
+        });
+
+        document.querySelectorAll('.est-chip').forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                document.querySelectorAll('.est-chip').forEach(function (c) {
+                    c.classList.remove('active');
+                });
+                chip.classList.add('active');
+                filter = chip.getAttribute('data-filter');
+                fetchResults(1);
+            });
+        });
+
+        // Pagination is rendered inside the swapped region, so its links are
+        // replaced on every search — delegation on the container is what keeps
+        // them working without re-wiring.
+        results.addEventListener('click', function (e) {
+            var link = e.target.closest('.pagination a.page-link');
+            if (!link) return;
+            e.preventDefault();
+            var page = new URL(link.href, window.location.origin).searchParams.get('page');
+            fetchResults(page || '1');
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        });
+    }());
+</script>
+{% endblock %}

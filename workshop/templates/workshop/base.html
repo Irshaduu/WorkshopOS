@@ -951,9 +951,18 @@ widen this and the audience together.
             <div class="notif-backdrop" id="notifBackdrop"></div>
             {% endif %}
 
-            <!-- Manage / Menu — opens the drawer -->
+            {% comment %}
+            Manage / Menu — opens the drawer, and highlights while the current
+            page lives behind it. The section list is `DRAWER_SECTION_PREFIXES`
+            in templatetags/custom_filters.py, NOT a chain of slice comparisons
+            here: that chain is what this used to be, and it had quietly fallen
+            two sections behind — Salary & Advance and Estimates were both in
+            the drawer and missing from the highlight, so Manage read as
+            inactive on pages reachable only through it. One list, one place to
+            add to.
+            {% endcomment %}
             <button type="button"
-                    class="nav-btn nav-btn--menu{% if p|slice:':10' == '/analysis/' or p|slice:':10' == '/cashbook/' or p|slice:':18' == '/pending-payments/' or p|slice:':12' == '/paid-bills/' or p|slice:':11' == '/inventory/' or p|slice:':13' == '/spare-shops/' or p|slice:':14' == '/car-profiles/' or p|slice:':14' == '/master-lists/' or p|slice:':8' == '/manage/' or p|slice:':18' == '/deletion-history/' %} is-open{% endif %}"
+                    class="nav-btn nav-btn--menu{% if p|is_drawer_section %} is-open{% endif %}"
                     data-bs-toggle="offcanvas" data-bs-target="#appDrawer" aria-controls="appDrawer"
                     aria-label="{% if is_owner or is_office %}Manage{% else %}Menu{% endif %}"
                     title="{% if is_owner or is_office %}Manage{% else %}Menu{% endif %}">
@@ -1075,6 +1084,16 @@ widen this and the audience together.
                 <a class="drawer-link accent-sky{% if p|slice:':14' == '/car-profiles/' %} active{% endif %}" href="{% url 'car_profile_list' %}">
                     <span class="drawer-ico"><i class="bi bi-car-front"></i></span>
                     Car Profiles
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% comment %}
+                Estimates is Office/Owner, matching `@office_required` on every
+                view in workshop/views/estimate.py. Keep the two in step: if that
+                decorator changes, this gate changes in the same edit.
+                {% endcomment %}
+                <a class="drawer-link accent-indigo{% if p|slice:':11' == '/estimates/' %} active{% endif %}" href="{% url 'estimate_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-file-earmark-text"></i></span>
+                    Estimates
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 <a class="drawer-link accent-teal{% if p|slice:':14' == '/master-lists/' %} active{% endif %}" href="{% url 'master_lists_home' %}">

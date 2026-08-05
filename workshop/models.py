@@ -2,7 +2,7 @@ import json
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import User
 from django.contrib.auth.signals import user_logged_out
 from django.dispatch import receiver
@@ -712,7 +712,97 @@ class SpareShop(models.Model):
 # These handle the daily work. loosely coupled to Study models via text fields.
 # -----------------------------------------------------------------------------
 
-class JobCard(models.Model):
+# -----------------------------------------------------------------------------
+# CAR COLOUR — one palette, shared by every record that describes a vehicle
+# -----------------------------------------------------------------------------
+# Job Cards and Estimates both name a car's colour, and both draw the same
+# stripe from it (dashboard cards, completed list, estimate history). The list
+# and the hex map therefore live here rather than on either model: two copies
+# would let a Grey job card and a Grey estimate print different greys, which is
+# the kind of difference nobody notices until they are side by side.
+CAR_COLOR_CHOICES = [
+    ('Black', 'Black'),
+    ('White', 'White'),
+    ('Silver', 'Silver'),
+    ('Grey', 'Grey'),
+    ('Red', 'Red'),
+    ('Light Blue', 'Light Blue'),
+    ('Blue', 'Blue'),
+    ('Dark Blue', 'Dark Blue'),
+    ('Yellow', 'Yellow'),
+    ('Light Green', 'Light Green'),
+    ('Green', 'Green'),
+    ('Dark Green', 'Dark Green'),
+    ('Brown', 'Brown'),
+    ('Dark Brown', 'Dark Brown'),
+    ('Other', 'Other'),
+]
+
+CAR_COLOR_HEX = {
+    'Black': '#000000',
+    'White': '#f8fafc',   # off-white, so it is visible against a white card
+    'Silver': '#94a3b8',  # deeper metallic silver
+    'Grey': '#64748b',    # slate grey
+    'Red': '#dc2626',
+    'Light Blue': '#38bdf8',
+    'Blue': '#2563eb',
+    'Dark Blue': '#1d4ed8',
+    'Yellow': '#eab308',
+    'Light Green': '#4ade80',
+    'Green': '#16a34a',
+    'Dark Green': '#15803d',
+    'Brown': '#78350f',
+    'Dark Brown': '#451a03',
+}
+
+#: Shown when no colour was recorded. Solid slate — the templates additionally
+#: hatch the stripe so "not recorded" never looks like a grey car.
+CAR_COLOR_UNSET_HEX = '#475569'
+
+
+def car_color_hex(color, other=None):
+    """The CSS colour for a stored choice. 'Other' may carry a literal hex."""
+    if color == 'Other' and other and other.startswith('#'):
+        return other
+    return CAR_COLOR_HEX.get(color, CAR_COLOR_UNSET_HEX)
+
+
+def car_color_label(color, other=None):
+    """What to call the colour in words."""
+    if color == 'Other':
+        return other or 'Other'
+    return color or 'Unknown'
+
+
+class CarColourMixin:
+    """
+    `get_car_color_hex` / `get_car_color_display` for anything carrying
+    `car_color` + `car_color_other`. Property names are kept exactly as JobCard
+    had them — a dozen templates call them, and renaming would be churn for no
+    behavioural gain.
+
+    **`get_car_color_display` must be RE-DECLARED in each model's own body**, and
+    the line below shows how. Inheriting it silently does not work: a field with
+    `choices` generates its own `get_<field>_display`, and Django's
+    `Field.contribute_to_class` guards that with `"get_%s_display" not in
+    cls.__dict__` — it checks the class's OWN dict, never its bases, expressly so
+    a subclass can override inherited choices. So a property arriving through a
+    mixin is overwritten every time, and the attribute quietly becomes Django's
+    partialmethod: `car_color='Other'` then reads "Other" instead of the colour
+    that was picked, and an unset colour reads "" instead of "Unknown". Nothing
+    raises. `get_car_color_hex` has no such clash and inherits normally.
+    """
+
+    @property
+    def get_car_color_hex(self):
+        return car_color_hex(self.car_color, self.car_color_other)
+
+    @property
+    def get_car_color_display(self):
+        return car_color_label(self.car_color, self.car_color_other)
+
+
+class JobCard(CarColourMixin, models.Model):
     # What counts as a discount worth an owner's attention. Shared by
     # `audit_high_discounts` and the HIGH_DISCOUNT notification so the audit
     # page and the alert can never disagree about where the line is.
@@ -757,25 +847,11 @@ class JobCard(models.Model):
     registration_number = models.CharField(max_length=50, db_index=True)
     mileage = models.CharField(max_length=20, blank=True, null=True, help_text="e.g. 50000 or 50k")
 
-    # NEW: Car Color
-    COLOR_CHOICES = [
-        ('Black', 'Black'),
-        ('White', 'White'),
-        ('Silver', 'Silver'),
-        ('Grey', 'Grey'),
-        ('Red', 'Red'),
-        ('Light Blue', 'Light Blue'),
-        ('Blue', 'Blue'),
-        ('Dark Blue', 'Dark Blue'),
-        ('Yellow', 'Yellow'),
-        ('Light Green', 'Light Green'),
-        ('Green', 'Green'),
-        ('Dark Green', 'Dark Green'),
-        ('Brown', 'Brown'),
-        ('Dark Brown', 'Dark Brown'),
-        ('Other', 'Other'),
-    ]
-    car_color = models.CharField(max_length=50, choices=COLOR_CHOICES, blank=True, null=True)
+    # Car Colour. The list itself is CAR_COLOR_CHOICES above, shared with
+    # Estimate; the alias is kept because `jobcard_form.html` renders the picker
+    # from `form.fields.car_color.choices` and other code may reference it.
+    COLOR_CHOICES = CAR_COLOR_CHOICES
+    car_color = models.CharField(max_length=50, choices=CAR_COLOR_CHOICES, blank=True, null=True)
     car_color_other = models.CharField(max_length=100, blank=True, null=True, help_text="Specific color name if 'Other' is selected")
 
     # Customer Details
@@ -970,38 +1046,10 @@ class JobCard(models.Model):
     def __str__(self):
         return f"{self.bill_number or f'#{self.id}'}"
 
-    @property
-    def get_car_color_hex(self):
-        """Returns the CSS/Hex color code for the car_color choice."""
-        if self.car_color == 'Other' and self.car_color_other:
-            # Check if it looks like a hex code (starts with #)
-            if self.car_color_other.startswith('#'):
-                return self.car_color_other
-        
-        mapping = {
-            'Black': '#000000',
-            'White': '#f8fafc',  # Off-white for better visibility
-            'Silver': '#94a3b8', # Deeper metallic silver
-            'Grey': '#64748b',   # Slate Grey
-            'Red': '#dc2626',
-            'Light Blue': '#38bdf8',
-            'Blue': '#2563eb',
-            'Dark Blue': '#1d4ed8',
-            'Yellow': '#eab308',
-            'Light Green': '#4ade80',
-            'Green': '#16a34a',
-            'Dark Green': '#15803d',
-            'Brown': '#78350f',
-            'Dark Brown': '#451a03',
-        }
-        return mapping.get(self.car_color, '#475569') # Solid Slate for unassigned
-
-    @property
-    def get_car_color_display(self):
-        """Returns the color name (either standard choice or 'Other' text)."""
-        if self.car_color == 'Other':
-            return self.car_color_other or 'Other'
-        return self.car_color or 'Unknown'
+    # From CarColourMixin, so the Job Card and the Estimate cannot print two
+    # different greys. `get_car_color_display` has to be named again HERE rather
+    # than inherited — see the mixin for why, and do not "tidy" this line away.
+    get_car_color_display = CarColourMixin.get_car_color_display
 
     @property
     def get_total_amount(self):
@@ -1402,6 +1450,224 @@ class CashbookEntry(models.Model):
     def __str__(self):
         return f"{self.get_entry_type_display()} - {self.category}: ₹{self.amount} ({self.get_payment_method_display()})"
 
+
+# -----------------------------------------------------------------------------
+# ESTIMATES — a quote, and nothing more
+# -----------------------------------------------------------------------------
+# An estimate is a piece of paper handed to a customer BEFORE any work is agreed.
+# It is deliberately connected to nothing: no job card, no spare shop, no
+# warehouse stock, no ledger, no line on the Profit page. Money on an estimate is
+# a proposal, and a proposal that moved stock or entered a report would be the
+# workshop counting work it has not done.
+#
+# That isolation is the design, not an unfinished edge. Three consequences worth
+# knowing before "connecting it up":
+#
+#   * These three models are read by exactly two views and one printing
+#     function. Nothing in `analysis_engine.py`, `inventory/signals.py` or any
+#     ledger touches them, and nothing should start to.
+#   * The lines are free text — even the part name — for the same reason a job
+#     card's is (see the taxonomy decision in CLAUDE.md). An estimate is typed
+#     fastest of all, often with the customer waiting.
+#   * Deleting one moves no money, so it does NOT write a DeletionLog row. See
+#     `estimate_delete` for why that is the deliberate answer and not an
+#     oversight.
+# -----------------------------------------------------------------------------
+
+class Estimate(CarColourMixin, models.Model):
+    """
+    One quotation. Mirrors the shape of a JobCard's printable half — vehicle,
+    customer, jobs, parts — and carries none of its machinery.
+    """
+
+    # EST-, never JB-. An estimate and a bill must not be confusable in the
+    # workshop's own books: the same three digits under two prefixes is the whole
+    # point, so a number read out over the phone says which document it is.
+    NUMBER_PREFIX = 'EST'
+
+    estimate_number = models.CharField(
+        max_length=20, unique=True, blank=True, null=True,
+        help_text="Auto-generated (e.g. EST-26-001)"
+    )
+    date = models.DateField(db_index=True, default=timezone.localdate)
+
+    # Vehicle + customer. Free text with autocomplete, exactly as on a job card —
+    # an estimate is often written for a car that has never been here.
+    customer_name = models.CharField(max_length=150, blank=True, null=True, db_index=True)
+    customer_contact = models.CharField(max_length=20, blank=True, null=True)
+    brand_name = models.CharField(max_length=100, blank=True, null=True)
+    model_name = models.CharField(max_length=100, blank=True, null=True)
+    registration_number = models.CharField(max_length=50, blank=True, null=True, db_index=True)
+    mileage = models.CharField(max_length=20, blank=True, null=True)
+
+    # Same palette and the same picker as a Job Card, and it is NOT printed on
+    # the sheet: the colour is how staff recognise a car in the history list
+    # (the stripe down each row, exactly as on the dashboard), not something a
+    # customer needs on their quotation.
+    car_color = models.CharField(max_length=50, choices=CAR_COLOR_CHOICES, blank=True, null=True)
+    car_color_other = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="Specific colour name if 'Other' is selected"
+    )
+
+    # One figure for all the work quoted — the same rule as JobCard.labour_amount,
+    # and for the same reason: this workshop quotes a job whole ("₹22,300 for the
+    # job"), so EstimateJobLine carries no money at all. An estimate that split
+    # the work into five prices would invite a line-by-line negotiation over work
+    # the bill will then present as one number.
+    labour_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, blank=True,
+        help_text="Total quoted labour for every job line (entered once, not per line)"
+    )
+
+    # Denormalized, exactly like JobCard.total_bill_amount: the history list reads
+    # one column instead of aggregating each row's lines. Written only by
+    # update_totals(), which the create/edit views call once after the formsets
+    # save. There are no signals on these models — deliberately, since nothing
+    # else in the app has any reason to react to an estimate changing.
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    notes = models.CharField(max_length=255, blank=True, help_text="Internal note — never printed")
+
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='estimates')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', '-id']
+        indexes = [
+            models.Index(fields=['-date', '-id']),
+        ]
+        verbose_name = "Estimate"
+        verbose_name_plural = "Estimates"
+
+    def clean(self):
+        """Same normalisation a job card applies, so the two agree about what a
+        registration number and a brand look like."""
+        if self.registration_number:
+            self.registration_number = self.registration_number.strip().upper()
+        if self.brand_name:
+            self.brand_name = ' '.join(self.brand_name.split()).title()
+        if self.model_name:
+            # Whitespace only — NOT title-cased. 'i20' → 'I20' and 'CR-V' →
+            # 'Cr-V' is why JobCard.clean does the same.
+            self.model_name = ' '.join(self.model_name.split())
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        if not self.estimate_number:
+            with transaction.atomic():
+                year = str((self.date or timezone.localdate()).year)[2:]
+                prefix = f'{self.NUMBER_PREFIX}-{year}-'
+
+                # NUMERIC, not lexicographic. A CharField sorts "EST-26-999"
+                # above "EST-26-1000", which is how JobCard's numbering once
+                # looped back and collided on its unique constraint past 999.
+                # select_for_update locks the year's rows so two estimates saved
+                # at once cannot take the same number (real on PostgreSQL, a
+                # harmless no-op on SQLite).
+                max_num = 0
+                for existing in (
+                    Estimate.objects.select_for_update()
+                    .filter(estimate_number__startswith=prefix)
+                    .only('estimate_number')
+                ):
+                    try:
+                        n = int(existing.estimate_number.rsplit('-', 1)[-1])
+                    except (ValueError, IndexError):
+                        continue
+                    if n > max_num:
+                        max_num = n
+
+                self.estimate_number = f'{prefix}{str(max_num + 1).zfill(3)}'
+
+        super().save(*args, **kwargs)
+
+    def update_totals(self):
+        """
+        Recompute the denormalized total: quoted parts + the one labour figure.
+
+        Called explicitly by the views after the formsets save — there is no
+        signal doing it. The lines carry no side effects, so a save-time hook
+        would be machinery with nothing to protect.
+        """
+        from django.db.models import Sum
+        from django.db.models.functions import Coalesce
+
+        part_total = self.parts.aggregate(
+            total=Coalesce(Sum('amount'), Decimal('0'), output_field=models.DecimalField())
+        )['total']
+        new_total = part_total + (self.labour_amount or Decimal('0'))
+        if self.total_amount != new_total:
+            self.total_amount = new_total
+            Estimate.objects.filter(pk=self.pk).update(total_amount=new_total)
+
+    # Named again here rather than inherited — see CarColourMixin. Without this
+    # line Django's generated display method wins and an 'Other' colour reads
+    # back as the literal word "Other".
+    get_car_color_display = CarColourMixin.get_car_color_display
+
+    @property
+    def vehicle_label(self):
+        """'Toyota Corolla' — for list rows, never for the printed sheet."""
+        return ' '.join(p for p in (self.brand_name, self.model_name) if p)
+
+    def __str__(self):
+        return self.estimate_number or f'Estimate #{self.pk}'
+
+
+class EstimateJobLine(models.Model):
+    """
+    One line of work being quoted. A DESCRIPTION, not a price.
+
+    Same shape as JobCardLabourItem after the 2026-08-04 change, and for the
+    identical reason — the charge lives once on `Estimate.labour_amount`. This
+    model deliberately has no `amount` column at all: JobCardLabourItem kept a
+    dormant one only because it had history to preserve, and there is no reason
+    to create a second place that could hold the quoted labour figure.
+    """
+    estimate = models.ForeignKey(Estimate, on_delete=models.CASCADE, related_name='job_lines')
+    description = models.CharField(max_length=150)
+
+    def __str__(self):
+        return self.description
+
+
+class EstimatePartLine(models.Model):
+    """
+    One part being quoted.
+
+    NOTE the naming, because it is the opposite of `JobCardSpareItem`: there,
+    `unit_price` means the workshop's COST per unit and `total_price` is what the
+    customer pays. An estimate has no cost side — every figure on it is what the
+    customer is being quoted — so the per-unit field is called `customer_rate`,
+    matching the one field on JobCardSpareItem that already means exactly that.
+    Nothing here may be read as a cost, by the analysis engine or anyone else.
+    """
+    estimate = models.ForeignKey(Estimate, on_delete=models.CASCADE, related_name='parts')
+    name = models.CharField(max_length=100)
+    quantity = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    customer_rate = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True,
+        help_text="Quoted price per unit (optional; drives amount when set)"
+    )
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True,
+        help_text="Quoted price for this line — the figure that prints"
+    )
+
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.strip()
+        # A rate that was deliberately entered wins over a stale total, so
+        # editing 7 L down to 4 L requotes the line instead of leaving the old
+        # figure. Identical rule to JobCardSpareItem.customer_rate.
+        if self.customer_rate is not None and self.quantity is not None:
+            self.amount = (self.customer_rate * self.quantity).quantize(Decimal('0.01'))
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} ({self.quantity})"
 
 
 # -----------------------------------------------------------------------------

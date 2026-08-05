@@ -1,10 +1,18 @@
 """
-What an invoice PRINTS — one module, no views, no HTTP.
+What a CUSTOMER DOCUMENT prints — one module, no views, no HTTP.
+
+Two documents leave this workshop: the INVOICE for work that was done, and the
+ESTIMATE for work being quoted. `build_invoice()` and `build_estimate()` are the
+whole public surface, and they live in one file on purpose.
 
 Same shape as `analysis_engine.py` and `master_data.py`: the rule lives in one
 importable place so a second screen (a PDF export, a WhatsApp share, a reprint
 from Paid Bills) cannot grow its own slightly-different answer to "what does the
-customer see?".
+customer see?". The estimate is the sharpest case of that — it is handed over
+first and the invoice follows it, so if the two ever disagreed about how a
+quantity, a blank price or a labour charge reads, the customer is the one who
+finds out. They share `effective_quantity`, `derive_unit_price`, `PartLine`, `JobLine`
+and the row-padding constants for exactly that reason. Do not fork them.
 
 The printed bill is deliberately NOT a transcription of the job card. Four
 things differ, and each is a decision rather than a shortcut:
@@ -106,9 +114,19 @@ class JobLine:
 @dataclass(frozen=True)
 class PartLine:
     name: str
+    #: The quantity the MONEY is computed from — blank already resolved to 1.
     quantity: Decimal
     unit_price: Optional[Decimal]
     amount: Optional[Decimal]
+    #: What the QTY column prints. `None` prints an empty cell.
+    #:
+    #: Separate from `quantity` because the two documents answer differently,
+    #: and both answers are right. An INVOICE bills a fitted part, so a blank
+    #: box means one and prints as 1 — a fact. An ESTIMATE may be written before
+    #: anyone has counted, so a blank box means "not decided yet" and printing 1
+    #: would state something the workshop has not established. The arithmetic is
+    #: identical either way; only the cell differs.
+    display_quantity: Optional[Decimal] = None
 
     @property
     def priced(self):
@@ -123,7 +141,7 @@ class PartLine:
         return self.amount is not None
 
 
-def _unit_price(total_price, quantity):
+def derive_unit_price(total_price, quantity):
     """
     The per-unit figure printed beside a part.
 
@@ -172,7 +190,10 @@ def build_invoice(jobcard):
         part_lines.append(PartLine(
             name=part_display_name(spare),
             quantity=quantity,
-            unit_price=_unit_price(spare.total_price, quantity),
+            # A bill always prints a quantity: the part was fitted, so a blank
+            # box means one and 1 is the true figure. See PartLine.
+            display_quantity=quantity,
+            unit_price=derive_unit_price(spare.total_price, quantity),
             amount=spare.total_price,
         ))
         part_subtotal += spare.total_price or Decimal('0')
@@ -191,4 +212,69 @@ def build_invoice(jobcard):
         # recomputed here, so a drift between the two would show on the page as
         # a bill that does not add up rather than being papered over.
         'grand_total': jobcard.total_bill_amount or Decimal('0'),
+    }
+
+
+def build_estimate(estimate):
+    """
+    Everything the estimate template renders, derived from one Estimate.
+
+    Built from the same parts as the invoice, and it prints the same in every
+    respect but TWO. Both exceptions come from one fact: a bill records work
+    that happened, an estimate describes work that has not. So a blank box on a
+    bill is a fact too obvious to type, while a blank box on an estimate is
+    something nobody has decided yet — and printing a number for it would put a
+    figure on the page that no one chose.
+
+      * **QTY prints only what was typed; blank stays blank.** `quantity` is
+        still resolved to 1 for the arithmetic, so the money is identical — only
+        the cell is empty. The bill does the opposite and prints 1, which is the
+        documented rule there and stays. (There is no case where an estimate can
+        contradict the bill that follows it: nothing carries over, the job card
+        is typed fresh.)
+      * **UNIT PRICE prints only when a rate was actually entered.** The bill
+        DERIVES it from the total every time, which is right there because every
+        billed part has a real quantity. Here, deriving would present the
+        workshop's own arithmetic as a quoted rate, and on a row with no
+        quantity it would divide by a 1 nobody agreed to. When `customer_rate`
+        IS set, `amount` was computed from it on save, so `qty x unit` still
+        reconciles exactly.
+
+    Everything else is shared verbatim: one parts list, labour as descriptions
+    plus a single subtotal, an unpriced part printing an empty cell while a free
+    one prints ₹0.00, and the same row padding.
+    """
+    job_lines = [
+        JobLine(description=line.description or '')
+        for line in estimate.job_lines.all()
+    ]
+    job_subtotal = estimate.labour_amount or Decimal('0')
+
+    part_lines = []
+    part_subtotal = Decimal('0')
+    for part in estimate.parts.all():
+        part_lines.append(PartLine(
+            name=part.name or '',
+            # Blank still counts as one for the money...
+            quantity=effective_quantity(part.quantity),
+            # ...but the column shows only what somebody typed.
+            display_quantity=part.quantity,
+            unit_price=part.customer_rate,
+            amount=part.amount,
+        ))
+        part_subtotal += part.amount or Decimal('0')
+
+    return {
+        'job_lines': job_lines,
+        'job_pad': range(max(0, MIN_JOB_ROWS - len(job_lines))),
+        'job_subtotal': job_subtotal,
+
+        'part_lines': part_lines,
+        'part_pad': range(max(0, MIN_PART_ROWS - len(part_lines))),
+        'part_subtotal': part_subtotal,
+
+        # The denormalized column, same reasoning as the invoice's: a drift
+        # between it and the two subtotals should show on the page rather than
+        # be quietly recomputed away.
+        'grand_total': estimate.total_amount or Decimal('0'),
     }
