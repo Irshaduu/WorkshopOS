@@ -120,6 +120,28 @@
   }
   .pf-row.total .name, .pf-row.total .amt { font-weight: 800; }
 
+  /* Collapsed tail of the Cashbook category list. Written with both classes
+     so it beats `.pf-row { display: flex }` outright rather than relying on
+     which rule happens to come later in the file. */
+  .pf-row.pf-cat-hidden { display: none; }
+  .pf-more {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    width: 100%; margin-top: 10px;
+    min-height: 44px;              /* tapped on a phone — the owners read this page there */
+    border: 1px dashed var(--color-border); border-radius: 11px;
+    background: transparent; color: var(--color-text-muted);
+    font-size: 0.79rem; font-weight: 700;
+    /* Paint only. `transition: all` here would animate layout too — the same
+       trap that pinned the Cashbook's own filter chips at content width. */
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  }
+  .pf-more:hover {
+    border-color: var(--color-primary); color: var(--color-primary);
+    background: var(--color-primary-light);
+  }
+  .pf-more i { font-size: 0.8rem; transition: transform 0.18s ease; }
+  .pf-more[aria-expanded="true"] i { transform: rotate(180deg); }
+
   /* Expense share bar */
   .pf-bar { height: 5px; border-radius: 999px; background: var(--color-border-light); margin-top: 6px; }
   .pf-bar > span { display: block; height: 100%; border-radius: 999px; background: #dc2626; }
@@ -368,76 +390,108 @@
     </div>
   </div>
 
-  <!-- ── Cashbook detail ────────────────────────────────────── -->
+  {% comment %}
+  Salary sits beside the donut and the Cashbook runs full width beneath it —
+  the reverse of how they were first laid out, on the owner's instruction.
+  Salary is a FIXED four-line calculation, so it fits the narrow column
+  exactly and never outgrows it. The Cashbook is an open-ended list of
+  free-text categories that grows with the period being read, and a list that
+  can be forty rows long does not belong in the smaller half of a split row.
+  {% endcomment %}
+  <!-- ── Salary detail ──────────────────────────────────────── -->
   <div class="col-12 col-lg-7">
     <div class="pf-card">
       <div class="pf-card-title">
-        <i class="bi bi-journal-text text-primary"></i>General Cashbook
-        <span class="sub">₹{{ report.cashbook.total|inr }}</span>
+        <i class="bi bi-cash-coin text-primary"></i>Salary &amp; Advance
+        <span class="sub">{{ report.salary.settled_months }} month{{ report.salary.settled_months|pluralize }} settled</span>
       </div>
-      {% for c in report.cashbook.by_category %}
-        <div class="pf-row">
-          <span class="lbl">
-            <i class="bi {% if c.looks_like_wages %}bi-exclamation-triangle-fill text-warning{% else %}bi-dot{% endif %}"></i>
-            <span><span class="name">{{ c.category }}</span>
-            <span class="hint">{{ c.count }} entr{{ c.count|pluralize:"y,ies" }}</span></span>
-          </span>
-          <span class="amt minus">₹{{ c.total|inr }}</span>
-        </div>
-      {% empty %}
-        <p class="text-muted mb-0" style="font-size: 0.84rem;">No cashbook expenses in this range.</p>
-      {% endfor %}
-
-      {% if report.cashbook.wage_suspects and report.salary.total %}
-      <div class="pf-note mt-3" style="background: #fffbeb; color: #92400e;">
-        <i class="bi bi-exclamation-triangle-fill mt-1" style="color: #d97706;"></i>
-        <span>
-          <strong>Wages may be counted twice.</strong>
-          Wages come from Salary &amp; Advance (₹{{ report.salary.total|inr }} here), but
-          ₹{{ report.cashbook.wage_suspect_total|inr }} of Cashbook expense is also filed under
-          {% for c in report.cashbook.wage_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}.
-          Nothing has been removed automatically — move or rename those Cashbook entries if they
-          are the same money, and this warning will clear.
+      <div class="pf-row">
+        <span class="lbl"><i class="bi bi-wallet2"></i>
+          <span><span class="name">Paid at settlement</span>
+          <span class="hint">Net handed over at month end</span></span>
         </span>
+        <span class="amt">₹{{ report.salary.settled_net|inr }}</span>
+      </div>
+      <div class="pf-row">
+        <span class="lbl"><i class="bi bi-cash"></i>
+          <span><span class="name">Advances within settled months</span>
+          <span class="hint">Already taken during the month</span></span>
+        </span>
+        <span class="amt">₹{{ report.salary.settled_advance|inr }}</span>
+      </div>
+      {% if report.salary.unsettled_advance %}
+      <div class="pf-row">
+        <span class="lbl"><i class="bi bi-hourglass-split"></i>
+          <span><span class="name">Advances in unsettled months</span>
+          <span class="hint">Cash out, month not settled yet</span></span>
+        </span>
+        <span class="amt">₹{{ report.salary.unsettled_advance|inr }}</span>
       </div>
       {% endif %}
+      <div class="pf-row total">
+        <span class="lbl"><span class="name">Total Wage Cost</span></span>
+        <span class="amt minus">₹{{ report.salary.total|inr }}</span>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ── Salary detail ────────────────────────────────────────── -->
+<!-- ── Cashbook detail ──────────────────────────────────────── -->
 <div class="pf-card">
   <div class="pf-card-title">
-    <i class="bi bi-cash-coin text-primary"></i>Salary &amp; Advance
-    <span class="sub">{{ report.salary.settled_months }} month{{ report.salary.settled_months|pluralize }} settled</span>
+    <i class="bi bi-journal-text text-primary"></i>General Cashbook
+    <span class="sub">₹{{ report.cashbook.total|inr }}</span>
   </div>
-  <div class="pf-row">
-    <span class="lbl"><i class="bi bi-wallet2"></i>
-      <span><span class="name">Paid at settlement</span>
-      <span class="hint">Net handed over at month end</span></span>
+  {% comment %}
+  Categories are free text with no master list, so this list has no ceiling —
+  All Time on a real workshop's books runs to dozens of them, and the tail is
+  a long run of one-off ₹200 lines that push everything below this card off
+  the screen. The biggest few are shown and the rest are one tap away.
+
+  NOT truncated, though — every row is in the page, only hidden, so the total
+  in the heading always adds up from what "Show all" reveals. A capped list
+  that silently dropped its tail would print a figure the rows beneath it
+  could not account for.
+
+  A wage-looking category is never collapsed, whatever its size: the warning
+  underneath names it and tells the owner to go and move it, and flagging a
+  row while hiding it is the page arguing with itself.
+  {% endcomment %}
+  {% for c in report.cashbook.by_category %}
+    <div class="pf-row{% if forloop.counter > 6 and not c.looks_like_wages %} pf-cat-hidden{% endif %}">
+      <span class="lbl">
+        <i class="bi {% if c.looks_like_wages %}bi-exclamation-triangle-fill text-warning{% else %}bi-dot{% endif %}"></i>
+        <span><span class="name">{{ c.category }}</span>
+        <span class="hint">{{ c.count }} entr{{ c.count|pluralize:"y,ies" }}</span></span>
+      </span>
+      <span class="amt minus">₹{{ c.total|inr }}</span>
+    </div>
+  {% empty %}
+    <p class="text-muted mb-0" style="font-size: 0.84rem;">No cashbook expenses in this range.</p>
+  {% endfor %}
+
+  {% if report.cashbook.by_category|length > 6 %}
+  <button type="button" class="pf-more" id="pfCatMore"
+          data-more="Show all {{ report.cashbook.by_category|length }} categories"
+          data-less="Show fewer" aria-expanded="false">
+    <span class="pf-more-text">Show all {{ report.cashbook.by_category|length }} categories</span>
+    <i class="bi bi-chevron-down"></i>
+  </button>
+  {% endif %}
+
+  {% if report.cashbook.wage_suspects and report.salary.total %}
+  <div class="pf-note mt-3" style="background: #fffbeb; color: #92400e;">
+    <i class="bi bi-exclamation-triangle-fill mt-1" style="color: #d97706;"></i>
+    <span>
+      <strong>Wages may be counted twice.</strong>
+      Wages come from Salary &amp; Advance (₹{{ report.salary.total|inr }} here), but
+      ₹{{ report.cashbook.wage_suspect_total|inr }} of Cashbook expense is also filed under
+      {% for c in report.cashbook.wage_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}.
+      Nothing has been removed automatically — move or rename those Cashbook entries if they
+      are the same money, and this warning will clear.
     </span>
-    <span class="amt">₹{{ report.salary.settled_net|inr }}</span>
-  </div>
-  <div class="pf-row">
-    <span class="lbl"><i class="bi bi-cash"></i>
-      <span><span class="name">Advances within settled months</span>
-      <span class="hint">Already taken during the month</span></span>
-    </span>
-    <span class="amt">₹{{ report.salary.settled_advance|inr }}</span>
-  </div>
-  {% if report.salary.unsettled_advance %}
-  <div class="pf-row">
-    <span class="lbl"><i class="bi bi-hourglass-split"></i>
-      <span><span class="name">Advances in unsettled months</span>
-      <span class="hint">Cash out, month not settled yet</span></span>
-    </span>
-    <span class="amt">₹{{ report.salary.unsettled_advance|inr }}</span>
   </div>
   {% endif %}
-  <div class="pf-row total">
-    <span class="lbl"><span class="name">Total Wage Cost</span></span>
-    <span class="amt minus">₹{{ report.salary.total|inr }}</span>
-  </div>
 </div>
 
 <!-- ── Position right now ───────────────────────────────────── -->
@@ -522,6 +576,29 @@ behind it yet.
 
 {% block extra_js %}
 {% if has_data %}
+{% comment %}
+Deliberately its own script, ahead of the Chart.js tag: the category list is
+plain HTML that has nothing to do with the charts, and a CDN that fails to
+answer must not leave the "Show all" button inert.
+{% endcomment %}
+<script>
+(function () {
+  var btn = document.getElementById('pfCatMore');
+  if (!btn) return;
+  var hidden = document.querySelectorAll('.pf-cat-hidden');
+  // Every row past the cut-off can be a wage suspect, which is never
+  // collapsed — then there is nothing to reveal and no button to show.
+  if (!hidden.length) { btn.remove(); return; }
+
+  var text = btn.querySelector('.pf-more-text');
+  btn.addEventListener('click', function () {
+    var open = btn.getAttribute('aria-expanded') === 'true';
+    hidden.forEach(function (row) { row.classList.toggle('pf-cat-hidden', open); });
+    btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    text.textContent = open ? btn.dataset.more : btn.dataset.less;
+  });
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 (function () {

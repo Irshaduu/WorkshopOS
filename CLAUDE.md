@@ -522,6 +522,25 @@ about to correct one of these, you are about to break the business:
   datetime to `TIME_ZONE` before taking `.date()`, so it lands on the correct
   IST calendar day. Guarded by `CashbookEntriesAreDatedByTheDayTheMoneyMovedTests`.
 
+- **On the Profit page, Salary sits beside the donut and the Cashbook runs
+  full width beneath it — and its long tail COLLAPSES, it is never
+  truncated.** Added 2026-08-06, on the owner's instruction, reversing how the
+  two were first laid out. The reason the swap is stable rather than a matter
+  of taste: **Salary & Advance is a fixed four-line calculation** that can
+  never outgrow the narrow half of a split row, while **General Cashbook is an
+  open-ended list of free-text categories** that grows with the period being
+  read — All Time runs to dozens, and the tail is a long run of one-off ₹200
+  lines that pushed everything below the card off the screen. The larger
+  container goes to the thing that varies.
+  Two rules on the collapse itself. **Every row is in the page, only hidden**
+  — the heading carries `report.cashbook.total`, so the figure must always add
+  up from what "Show all" reveals; a capped list that dropped its tail would
+  print a total the rows beneath it could not account for (the same reasoning
+  that replaced the Cashbook's own `LIST_CAP` with a pager). And **a
+  wage-looking category is never collapsed**, whatever its size: the warning
+  underneath names it and tells the owner to go and move it, so flagging a row
+  while hiding it is the page arguing with itself.
+
 - **Labour is ONE charge per job card, not a price per job line.** Added
   2026-08-04, on the owner's description of how the workshop actually sells:
   work is quoted whole — a customer is told "₹22,300 for the job" — and nobody
@@ -1122,25 +1141,44 @@ and status codes and nothing was reading what the page actually said. Use
 `{% comment %} … {% endcomment %}` for anything spanning lines.
 `workshop/tests/test_template_comments.py` statically scans every template for this.
 
-### Navigation — one bar, one drawer (rebuilt 2026-07-25)
-There is exactly **one** nav: a fixed top bar in `base.html` that renders identically on
-all three form factors, plus a Bootstrap off-canvas drawer (`#appDrawer`) behind the
-Manage/Menu button. There used to be a second, divergent mobile bottom nav; it was
-deleted because the two menus listed different things. **Don't add a second nav** — a new
-destination goes in the drawer, in the section it belongs to.
+### Navigation — one bar, one drawer (rebuilt 2026-07-25, moved to the bottom on phones 2026-08-06)
+There is exactly **one** nav: a fixed bar in `base.html`, plus a Bootstrap off-canvas
+drawer (`#appDrawer`) behind the Manage/Menu button. There used to be a second,
+divergent mobile bottom nav; it was deleted because the two menus listed different
+things. **Don't add a second nav** — a new destination goes in the drawer, in the
+section it belongs to.
 - Top bar is deliberately minimal: Floor · New · Completed · Notifications · Manage
-  (Floor role gets Inventory instead of Completed/Notifications; the bell is Owner/Office
-  only and is an intentional `href="#"` placeholder until the feature exists).
-- `--nav-h` is the single source of truth for the bar height; `.main-content` offsets
-  itself by it. Change the variable, not the individual margins.
-- The bar must carry Bootstrap's `fixed-top` class. It is load-bearing, not cosmetic:
-  Bootstrap's scrollbar helper only pads elements matching `.fixed-top` when the drawer
-  locks body scroll, and without it the bar jumps sideways by the scrollbar width on
-  open. For the same reason `body` uses `overflow-y: scroll` **without**
-  `scrollbar-gutter: stable` — the two together double-count the scrollbar.
-- Labels shed worst-first on narrow phones (Manage below 420px, then
-  `.nav-btn--label-optional` below 350px), so every pill that can become icon-only
-  carries an `aria-label`. Keep that pairing when adding a pill.
+  (Floor role gets Inventory instead of Completed/Notifications; the bell is Owner-only).
+- **On phones (≤640px) that same bar renders at the BOTTOM.** It is the one element,
+  repositioned in a media query — not a second nav. The top edge is the hardest place
+  on a phone for a thumb and every destination on the bar is tapped constantly. Five
+  things move with it and each is wired to `--nav-h`, so they cannot drift apart:
+  `.main-content`'s offset (top margin → `body`'s `padding-bottom`), the notification
+  panel (opens **upward** from the bar), the PWA install banner (sits on top of the
+  bar, not under it — its z-index is below the bar's), the `--sticky-top` variable
+  that sticky page headers rest against (`0` on a phone, `--nav-h` elsewhere), and the
+  safe-area inset for the iPhone home indicator.
+- `--nav-h` is the single source of truth for the bar height, and `--sticky-top` for
+  where a `position: sticky` page header comes to rest. Change the variables, not the
+  individual margins — a hard-coded `top: 60px` on two job-card headers is exactly how
+  they ended up with an empty strip above them when the bar moved.
+- The bar must carry Bootstrap's `fixed-top` class **even on the phone layout, where it
+  paints at the bottom**. It is load-bearing, not cosmetic: Bootstrap's scrollbar helper
+  only pads elements matching `.fixed-top` when the drawer locks body scroll, and
+  without it the bar jumps sideways by the scrollbar width on open. Swapping in
+  `.fixed-bottom` is **not** the fix — Bootstrap's `bottom: 0` would combine with our
+  own `top: 0` and stretch the bar down the whole viewport. For the same reason `body`
+  uses `overflow-y: scroll` **without** `scrollbar-gutter: stable` — the two together
+  double-count the scrollbar.
+- Phone tabs are **equal-width columns**, and separation comes from the container's
+  `gap` — never from padding on the tabs. `flex-basis: 0` sizes the *content* box and
+  padding is then added on top of the equal share, so one padded tab beside the bell's
+  unpadded wrapper came out 4px wider than its neighbours. `max-width: 96px` stops a
+  landscape phone rendering 150px slabs. The bell is the one icon-only pill on a wide
+  screen and gains a label ("Alerts") on the tab bar only — an unlabelled tab among
+  labelled ones sits its glyph ~7px lower than the rest, which reads as a misalignment.
+- Every pill that can become icon-only carries an `aria-label`. Keep that pairing when
+  adding a pill.
 - Drawer items are role-filtered in the template to match each view's decorator. If you
   change a view's RBAC decorator, update its drawer entry in the same edit.
 - **Logout is confirmed, and there is exactly one logout control in the whole app.** The
@@ -1176,7 +1214,7 @@ python manage.py makemigrations
 python manage.py migrate
 
 # One-off management commands
-python manage.py backup_db       # rotated SQLite backup, keeps last 7 in /backups
+python manage.py backup_db       # rotated backup of whichever DB is active, keeps last 14 in /backups
 python manage.py setup_groups    # (legacy) creates Owner/Office/Floor auth groups
 python manage.py sync_owner_identity        # DRY RUN — owner group/mobile/admin-access: .env -> DB
 python manage.py sync_owner_identity --yes  # apply
@@ -1195,6 +1233,18 @@ python manage.py purge_business_data --yes  # actually delete
 python manage.py copy_sqlite_to_postgres        # DRY RUN — prints the plan
 python manage.py copy_sqlite_to_postgres --yes  # replace Postgres with the SQLite contents
 ```
+
+`backup_db` follows whichever database is active: `pg_dump` for PostgreSQL,
+a file copy for SQLite. **The extension tells you how to restore it** — a
+custom-format archive is `.dump` (needs `pg_restore`), plain SQL is `.sql`
+(needs `psql`), a SQLite copy is `.sqlite3`. Custom format is tried first and
+plain is the fallback, so both are possible from one run; naming them alike
+would leave you guessing on the day you actually need one. A dump is written
+to a `.part` file and only renamed once `pg_dump` reports success — a
+truncated file left under a real backup's name would occupy one of the 14
+retention slots and, once the folder filled, evict a good backup to keep
+itself. Requires the PostgreSQL client tools on PATH; it says so plainly if
+they are missing rather than failing obscurely.
 
 `purge_business_data` clears **all** business tables (job cards, shops, fleet
 accounts, inventory, cashbook, staff roster, deletion history) — it deliberately

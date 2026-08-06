@@ -56,9 +56,15 @@
             --color-success: #10b981;
             --color-danger: #ef4444;
 
-            /* Navigation — single source of truth for the top-bar height.
+            /* Navigation — single source of truth for the bar's height.
                .main-content offsets itself by this, so changing it here is enough. */
             --nav-h: 58px;
+
+            /* Where a `position: sticky` page header should come to rest.
+               Clears the bar while the bar is at the top; on a phone the bar
+               is at the BOTTOM, so it becomes 0 (see the phone block below)
+               rather than leaving an empty strip above the sticky header. */
+            --sticky-top: var(--nav-h);
 
             /* Premium light-blue — deep on the left, brightening smoothly to
                the right. The top bar and the drawer header share this
@@ -275,15 +281,24 @@
         }
         .notif-backdrop.is-open { display: block; }
 
-        @media (max-width: 560px) {
+        {% comment %}
+        Kept in step with the phone breakpoint below (640px, where the bar
+        moves to the bottom). At 560px it used to leave 561–640px opening a
+        380px dropdown *downwards* from a bell that by then sits on the
+        bottom edge — i.e. off the screen entirely.
+        {% endcomment %}
+        @media (max-width: 640px) {
             /* Anchoring a 380px dropdown to a button near the screen edge puts it
-               half off-screen. On a phone it becomes a sheet instead. */
+               half off-screen. On a phone it becomes a sheet instead — and it
+               rises from the bar rather than dropping out of it, because the
+               bar is at the bottom here. */
             .notif-panel {
                 position: fixed;
-                top: calc(var(--nav-h) + 8px);
+                top: auto;
+                bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 8px);
                 left: 10px; right: 10px;
                 width: auto;
-                max-height: calc(100vh - var(--nav-h) - 24px);
+                max-height: calc(100vh - var(--nav-h) - env(safe-area-inset-bottom, 0px) - 24px);
             }
         }
 
@@ -370,22 +385,106 @@
             .nav-btn--icon { width: 44px; }
         }
 
-        /* Phones — icon-forward like a native tab bar: a bigger glyph on
-           top, the name small underneath. Needs less horizontal room per
-           button than the tablet's side-by-side layout, so this is when
-           space gets tight, not before. */
+        /* The bell is the one icon-only pill on a wide screen. On the phone
+           tab bar it gets its name like every other tab — an unlabelled tab
+           among four labelled ones has its glyph sitting lower than the rest
+           (nothing beneath it to balance against), which reads as a
+           misalignment rather than a deliberately quieter control. */
+        .nav-btn--icon .nav-label { display: none; }
+
+        /* ==========================================================
+           PHONES — the SAME bar, moved to the BOTTOM.
+
+           This is not a second nav (see the note above the drawer): it is
+           the one bar in base.html, repositioned. On a phone the top edge
+           is the hardest place on the screen for a thumb and the bottom is
+           the easiest, and every one of these destinations is tapped
+           constantly.
+
+           Layout also goes icon-forward — a bigger glyph on top, the name
+           small underneath — which needs less horizontal room per button
+           than the tablet's side-by-side layout, so this is when space
+           gets tight, not before.
+           ========================================================== */
         @media (max-width: 640px) {
-            .navbar-container { gap: 2px; }
+            /* Nothing at the top of the viewport now, so a sticky page
+               header rests against it directly. */
+            :root { --sticky-top: 0px; }
+
+            /* `fixed-top` stays on the element deliberately, even though it
+               now paints at the bottom: Bootstrap's scrollbar helper pads
+               `.fixed-top` when the drawer locks body scroll, and without
+               that class the bar shifts sideways by the scrollbar width on
+               open. Adding `.fixed-bottom` instead is NOT the fix — its
+               `bottom: 0` would combine with our own `top: 0` and stretch
+               the bar down the whole viewport. */
+            .navbar-top {
+                top: auto;
+                bottom: 0;
+                height: auto;   /* grows by the safe-area inset below */
+                border-bottom: 0;
+                border-top: 1px solid rgba(147, 197, 253, 0.22);
+                box-shadow: 0 -3px 18px rgba(10, 25, 60, 0.32);
+                /* iPhone home-indicator strip. Resolves to 0 everywhere
+                   else, so it costs nothing on Android or in a tab. */
+                padding-bottom: env(safe-area-inset-bottom, 0px);
+            }
+
+            /* Even columns, edge to edge — a tab bar, not a row of pills
+               pushed apart by whatever space was left over. Natural widths
+               put 20px between "New" and "Completed" and 4px between the
+               bell and "Manage", so no two taps were the same size. */
+            .navbar-container {
+                height: var(--nav-h);
+                gap: 4px;
+                padding: 0 2px;
+                /* Only takes effect once the tabs stop filling the row — a
+                   landscape phone, or the two-item signed-out bar, where
+                   equal shares would otherwise be 150px+ slabs. Spread from
+                   the centre in that case rather than pinned to the edges. */
+                justify-content: space-evenly;
+            }
+            /* Separation comes from the container's `gap`, and the tabs carry
+               NO horizontal padding of their own. `flex-basis: 0` zeroes the
+               content box and padding is then added on top of the equal
+               share, so a padded tab beside the bell's unpadded wrapper came
+               out 4px wider — five taps, none of them the same size. */
+            .navbar-container > .nav-btn,
+            .navbar-container > .notif-anchor { flex: 1 1 0; min-width: 0; max-width: 96px; }
+            .notif-anchor { display: flex; }
+
             .nav-btn {
                 flex-direction: column;
                 gap: 3px;
+                width: 100%;
                 height: 54px;
-                padding: 5px 9px;
+                padding: 5px 0;
                 border-radius: 12px;
             }
             .nav-btn i { font-size: 20px; }
-            .nav-btn .nav-label { font-size: 9.5px; letter-spacing: 0.01em; }
-            .nav-btn--icon { width: 54px; padding: 0; }
+            .nav-btn .nav-label {
+                font-size: 9.5px;
+                letter-spacing: 0.01em;
+                max-width: 100%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .nav-btn--icon { width: 100%; padding: 5px 0; }
+            .nav-btn--icon i { font-size: 20px; }
+            .nav-btn--icon .nav-label { display: block; }
+
+            /* The badge follows the bell glyph, not the button's right edge —
+               a full-width tab would otherwise park the count out in empty
+               space with nothing under it. */
+            .nav-btn--bell .nav-badge { top: 3px; right: calc(50% - 16px); }
+
+            /* Room beneath the content so the last row of every page clears
+               the bar. The matching `.main-content` margin reset lives down
+               in the CONTENT WRAPPER section, not here — that rule is
+               declared *after* this block, so an override up here would lose
+               the cascade to it and the page would keep a 62px gap at the
+               top with nothing in it. */
+            body { padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 24px); }
         }
 
         /* ========================================== */
@@ -654,6 +753,13 @@
             margin: var(--nav-h) auto 0; /* Always offset for the fixed top nav */
         }
 
+        /* Phones: the bar is at the BOTTOM (see the nav section above), so
+           there is nothing above the content to offset for — the clearance
+           moves to body's padding-bottom instead. */
+        @media (max-width: 640px) {
+            .main-content { margin-top: 0; }
+        }
+
         /* Analysis & Reports page — full-width override */
         body.analysis-page .main-content {
             max-width: 1400px;
@@ -738,6 +844,17 @@
             font-size: 1.05rem; flex-shrink: 0;
         }
         .pwa-banner-close:hover { background: var(--color-hover); }
+
+        /* On a phone the nav bar owns the bottom edge, so the banner sits on
+           top of it instead of underneath it — z-index 1025 is below the
+           bar's 1030, so at bottom:0 it would simply be hidden by it. The
+           safe-area inset moves to the bar for the same reason. */
+        @media (max-width: 640px) {
+            .pwa-banner {
+                bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+                padding-bottom: 12px;
+            }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
@@ -925,6 +1042,13 @@ widen this and the audience together.
                     breaks the pill.
                     {% endcomment %}
                     <span class="nav-badge" id="notifBadge"{% if not unread_notifications %} hidden{% endif %}>{% if unread_notifications > 99 %}99+{% else %}{{ unread_notifications }}{% endif %}</span>
+                    {% comment %}
+                    Rendered always, shown only on the phone tab bar (see
+                    `.nav-btn--icon .nav-label`). The bell stays a bare icon
+                    pill on laptop and tablet, where the bar is a row of pills
+                    and it is deliberately the quieter one.
+                    {% endcomment %}
+                    <span class="nav-label">Alerts</span>
                 </a>
 
                 <div class="notif-panel" id="notifPanel" role="dialog" aria-label="Notifications">
