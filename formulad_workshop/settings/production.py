@@ -7,6 +7,12 @@ from .base import postgres_db
 
 DEBUG = False
 
+# Mail goes over Resend's HTTPS API, not SMTP. Railway blocks outbound SMTP on
+# every plan below Pro, so the SMTP settings in base.py cannot deliver from this
+# host no matter how they are configured. Only the transport changes: the reset
+# flow, its throttles and its tests are untouched. See workshop/email_backend.py.
+EMAIL_BACKEND = 'workshop.email_backend.ResendEmailBackend'
+
 # Production database (configure in .env). Built by the shared helper in
 # base.py — the same one development.py uses — so the two environments cannot
 # drift apart on connection settings.

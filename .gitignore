@@ -54,7 +54,14 @@ htmlcov/
 .pytest_cache/
 
 # Temporary / Logs
+# NOTE: `*.txt` is deliberately blunt, and it bites. `requirements.txt` only
+# survives because it was tracked before this rule existed — gitignore does not
+# affect files already in the index. Any NEW .txt that the app actually needs
+# must be un-ignored below, or it is silently absent from the deploy and the
+# failure only shows up in production.
 *.txt
+!requirements.txt
+!workshop/templates/workshop/robots.txt
 TITAN_BLUEPRINT.html
 errors.log
 

@@ -1,0 +1,6 @@
+# WorkshopOS - a private system for one workshop's staff.
+# Nothing here is meant for search engines. The business's public site is a
+# different host entirely and is unaffected by this file.
+# Kept ASCII-only: this is served as text/plain with no charset declared.
+User-agent: *
+Disallow: /

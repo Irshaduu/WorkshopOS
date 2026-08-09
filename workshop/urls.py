@@ -1,5 +1,6 @@
 from django.urls import path
 from django.contrib.auth import views as django_auth_views
+from django.views.generic import TemplateView
 from . import views
 from . import auth_views
 from . import management_views
@@ -160,6 +161,26 @@ urlpatterns = [
     # control pages at or below its own path, so serving it under /static/ would
     # limit its scope to /static/ and it would never receive a push for the app.
     path('sw.js', views.service_worker, name='service_worker'),
+
+    # Keep the app out of search results. This is a private system for one
+    # workshop's staff; the business's public site is a separate host.
+    # `Disallow` and the `X-Robots-Tag: noindex` header from
+    # NoIndexMiddleware are deliberately BOTH present, and the interaction is
+    # worth knowing before anyone "simplifies" it: a crawler that obeys
+    # Disallow never fetches the page, so it never sees the header — the two
+    # are not belt-and-braces on the same crawler, they cover different ones.
+    # Disallow stops well-behaved bots; the header is what de-indexes a URL
+    # that got in anyway (someone pasting a link in a public place is the
+    # realistic route). Nothing here is a security control — every page behind
+    # this is behind a login.
+    path(
+        'robots.txt',
+        TemplateView.as_view(
+            template_name='workshop/robots.txt',
+            content_type='text/plain',
+        ),
+        name='robots_txt',
+    ),
     path('push/subscribe/', views.push_subscribe, name='push_subscribe'),
     path('push/unsubscribe/', views.push_unsubscribe, name='push_unsubscribe'),
 

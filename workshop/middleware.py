@@ -46,3 +46,29 @@ class SessionTrackingMiddleware:
                     )
 
         return response
+
+
+class NoIndexMiddleware:
+    """
+    Tell search engines not to index anything this app serves.
+
+    A middleware rather than a `<meta name="robots">` tag because the tag has
+    to be added to every template that does not extend `base.html` — the
+    printed invoice, the printed estimate and the four signed-out auth pages
+    are all standalone — and the day someone adds a fifth, nothing fails.
+    A header covers every response, including `robots.txt` and `sw.js`, with
+    nothing to remember.
+
+    This is NOT a security control and must never be treated as one. Every
+    page worth protecting is behind a login; this only keeps the workshop's
+    internal system out of search results, which is tidiness, not defence.
+    See the note on `robots.txt` in urls.py for why both exist.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        response['X-Robots-Tag'] = 'noindex, nofollow'
+        return response

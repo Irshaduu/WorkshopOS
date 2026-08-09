@@ -1152,7 +1152,68 @@ about to correct one of these, you are about to break the business:
   system this close to shipping. Revisit only if that pattern needs changing
   again.
 
+- **Password reset stays an EMAILED CODE. TOTP was considered and rejected.**
+  Added 2026-08-10, after Railway's SMTP block sent three separate AI reviews to
+  the same suggestion. TOTP is a *second factor*; a reset is a *recovery
+  channel*, and the two fail in opposite directions — TOTP proves you hold the
+  device, which is worthless exactly when the device is what was lost. That
+  matters more here than in most apps because **owners cannot reset each
+  other**: `manage_reset_password` refuses any account in the Owner group, so
+  email is the only self-service route an owner has. Making TOTP the reset
+  would leave a lost phone with no in-app recovery at all. It would also delete
+  a working, tested subsystem (`PasswordResetOTP`, `test_password_reset.py`,
+  the two-step form, both throttles, the subject-line delivery built for iOS
+  PWAs) and add a dependency, to solve a transport problem. The fallback the
+  suggestion was really reaching for is a shell password reset, documented in
+  `GO_LIVE_RUNBOOK.md` §5.3 — nothing to carry, nothing to lose, nothing to
+  expire.
+- **Mail leaves over Resend's HTTPS API in production, not SMTP — and only the
+  transport changed.** Added 2026-08-10, `workshop/email_backend.py`. Railway
+  blocks outbound SMTP on every plan below Pro (ports 25/465/587/2525), and
+  Render's free tier does the same — the reset mail timed out at the 10s
+  `EMAIL_TIMEOUT`. Since Django routes every `send_mail()` through
+  `EMAIL_BACKEND` and this app has exactly **one** call site
+  (`auth_views.py:189`), swapping that setting moves the mail onto HTTPS with
+  no change to the flow, the throttles or the tests. Written against stdlib
+  `urllib.request` rather than `requests` or the `resend` SDK: `requests` was
+  removed when Twilio went, and re-adding a dependency to send single-digit
+  emails per year is a poor trade. The SMTP block in `base.py` stays, because
+  development and any host that permits SMTP still use it. **Verify the sending
+  domain on a SUBDOMAIN** (`mail.formuladservice.in`) — SPF/DKIM at the root
+  can disturb mail for the business domain itself, which carries the public
+  WordPress site.
+- **`STATICFILES_STORAGE` is DEAD on Django 5.1+ and Django does not warn.**
+  Learned 2026-08-10, and it had been broken in production for months. The
+  setting was removed in favour of `STORAGES`; leaving the old name in place
+  raises nothing and changes nothing, so this project ran on the plain
+  `StaticFilesStorage` while `base.py` said `CompressedManifestStaticFilesStorage`
+  — no content-hashed filenames, therefore no far-future caching, and none of
+  WhiteNoise's gzip/brotli pre-compression. **The `?v=4` query strings on the
+  `<script>` tags in `base.html` are the workaround someone reached for when
+  cache-busting silently stopped working; they are what the setting is supposed
+  to make unnecessary.** Symptom to recognise: `collectstatic` reports files
+  *copied* but none *post-processed*. One-line check —
+  `manage.py shell -c "from django.contrib.staticfiles.storage import staticfiles_storage; print(staticfiles_storage.__class__)"`.
+  Note that a manifest storage is **strict**: once it is genuinely active, any
+  `{% static %}` naming a file that does not exist raises at render time
+  instead of emitting a dead link, so re-run the render smoke tests after
+  touching it.
+- **The app tells search engines to stay out, in two ways, and they cover
+  different crawlers.** Added 2026-08-10. `robots.txt` (a `TemplateView` in
+  `urls.py`, no view function needed) carries `Disallow: /`, and
+  `NoIndexMiddleware` sets `X-Robots-Tag: noindex, nofollow` on every response.
+  This is **not** redundancy: a crawler that obeys `Disallow` never fetches the
+  page and so never sees the header, so `Disallow` stops well-behaved bots
+  while the header is what de-indexes a URL that got in anyway. The middleware
+  is deliberately not a `<meta>` tag — the printed invoice, the printed
+  estimate and the four signed-out auth pages are all standalone templates that
+  do not extend `base.html`, and a fifth would be added one day with nothing
+  failing. **Neither is a security control**; every page worth protecting is
+  behind a login.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
+**Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
+variables, the rollback, and what to do when both owners are locked out.
 **Product scope that was deliberately left out** — GST, customer-facing
 notifications, attendance, multi-mechanic assignment, car photos — is recorded
 in `TITAN_MASTER_HANDOVER.md` §VII, not here and not in `TECH_DEBT.md`.
@@ -1530,5 +1591,6 @@ As of 2026-07-23 the root docs were restructured so each fact has exactly one ho
 - **`README.md`** — the outward-facing summary for this deployment: feature highlights, tech stack, install steps. Summarizes and links to the three docs above rather than duplicating their tables.
 - **`CLAUDE.md`** (this file) — how to work in the codebase day to day, plus the **deliberate decisions** that must not be "fixed".
 - **`TECH_DEBT.md`** (local, gitignored) — known issues that are *not yet scheduled*. Distinct from the roadmap: `TITAN_MASTER_HANDOVER.md` says what we plan to do, `TECH_DEBT.md` says what we know is wrong. Re-verify an item before acting on it; it goes stale like anything else.
+- **`GO_LIVE_RUNBOOK.md`** — the deployment procedure: Railway build/pre-deploy commands, the full environment-variable list, the DNS records, the ordered go-live day steps, and the rollback and lockout recovery paths. Operational only; it states no rules of its own, so a decision recorded here or in the handover is never restated there.
 
 When a change touches more than trivia (new model/field, new route, new workflow, roadmap item completed), update the owning doc in the same session — that's what let these go four commits stale last time.

@@ -82,6 +82,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'workshop.middleware.SessionTrackingMiddleware',
+    'workshop.middleware.NoIndexMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -139,7 +140,25 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'  # AUD-0047
+
+# Django 5.1 REMOVED `STATICFILES_STORAGE` in favour of `STORAGES`, and does not
+# warn when the old name is present — it is simply ignored. This project set
+# `STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'`
+# and had silently been running on the plain default ever since the Django 5
+# upgrade: no content-hashed filenames, so no far-future caching, and none of
+# WhiteNoise's gzip/brotli pre-compression. The manual `?v=4` query strings on
+# the <script> tags in base.html are the workaround someone reached for when
+# cache-busting stopped working; they are what this setting is supposed to make
+# unnecessary. Verify with:
+#   manage.py shell -c "from django.contrib.staticfiles.storage import staticfiles_storage; print(type(staticfiles_storage))"
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 
 MEDIA_URL = 'media/'
@@ -177,6 +196,14 @@ EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='WorkshopOS <noreply@localhost>')
+
+# Resend (HTTPS API) — production only. Railway blocks outbound SMTP below the
+# Pro plan, so the SMTP settings above cannot deliver there however correct they
+# are. `production.py` points EMAIL_BACKEND at workshop.email_backend; the SMTP
+# block stays because development, and any host that does allow SMTP, still use
+# it. An empty key is a valid configuration everywhere except production, and
+# the backend says so loudly rather than failing quietly.
+RESEND_API_KEY = config('RESEND_API_KEY', default='')
 EMAIL_TIMEOUT = 10
 
 # ---------------------------------------------------------------------------
