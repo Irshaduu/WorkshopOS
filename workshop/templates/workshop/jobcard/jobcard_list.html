@@ -202,6 +202,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const searchForm  = document.getElementById('jobsSearchForm');
     const container   = document.getElementById('job-list-container');
     let timeout = null;
+    let seq = 0;
 
     function performSearch(event) {
         if (event && event.type === 'submit') event.preventDefault();
@@ -213,11 +214,16 @@ document.addEventListener('DOMContentLoaded', function () {
             url.searchParams.set('q', query);
             url.searchParams.set('page', '1');
             container.style.opacity = '0.5';
+            // Responses do not necessarily arrive in the order they were sent,
+            // so each carries its request number and a stale one is dropped —
+            // otherwise a slow reply for "KL" lands after the one for "KL 10".
+            const mine = ++seq;
             fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(r => r.text())
                 .then(html => {
+                    if (mine !== seq) return;
                     container.innerHTML = html;
-                    
+
                     // Update count from the hidden data element in the partial
                     const countEl = container.querySelector('#job-count-data');
                     if (countEl) {

@@ -1121,7 +1121,42 @@ about to correct one of these, you are about to break the business:
   fixed. The code is single-use, expiring, and already in their inbox, so echoing it
   reveals nothing. The two password fields are deliberately not echoed.
 
+- **The frontend is server-rendered Django templates with page-scoped inline
+  JavaScript, and there is no build step. This is the settled architecture, not
+  a backlog item.** Added 2026-08-10, because every outside review reaches the
+  same suggestion. Measured: ~2,660 lines of inline JS across 34 templates.
+  Three shared files already exist — `script.js`, `estimate.js`,
+  `notifications.js` — and the rule for what goes in one is **used on more than
+  one page**; what stays inline is genuinely page-specific. The usual arguments
+  for extracting the rest do not apply here: **there is no CSP** (so no
+  hardening is unlocked today), the largest page carries ~12 KB of script read
+  by four devices on one shop's LAN (so caching is a rounding error), and there
+  is **no npm, no bundler, no linter and no JS test runner** — none of which
+  will be added. That last point is the load-bearing one: **nothing in the 865
+  Django tests executes a line of JavaScript**, so a JS refactor leaves the
+  suite green whether or not it broke, and this codebase has already been bitten
+  by exactly that (see the three `script.js` cloning traps above — "the symptom
+  in every case was a control that simply did nothing, with a clean console").
+  Moving working code with no way to prove it still works is the bad trade, not
+  the inline JS. Two rules follow: the printed invoice and estimate load
+  **nothing** from a third party and keep their JS inline on purpose (see the
+  invoice entry above), and **no new runtime dependency is added without a
+  defect it is the only fix for.**
+  *Consequence, accepted knowingly:* the AJAX list-search pattern exists as
+  **seven near-copies** across the list pages. It has drifted once already —
+  `estimate_list.html` gained an out-of-order-response guard the other six never
+  received, so they showed stale rows for a fast typist until 2026-08-10, when
+  the guard was copied to all of them by hand. Logged as AUD-0086 in
+  `TECH_DEBT.md`. A shared `list_search.js` is the textbook fix and was
+  deliberately declined: seven working copies beat one untested abstraction on a
+  system this close to shipping. Revisit only if that pattern needs changing
+  again.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
+**Product scope that was deliberately left out** — GST, customer-facing
+notifications, attendance, multi-mechanic assignment, car photos — is recorded
+in `TITAN_MASTER_HANDOVER.md` §VII, not here and not in `TECH_DEBT.md`.
+Proposing one of those is proposing scope, not reporting a defect.
 
 ### Devices the UI must work on
 Every screen is used on **three** form factors, and each role uses a different one:
@@ -1491,7 +1526,7 @@ Tests live in `workshop/tests/` (32 files) and `inventory/` (`tests.py`, `tests_
 As of 2026-07-23 the root docs were restructured so each fact has exactly one home; update the owning doc, don't restate its content elsewhere:
 - **`MASTER_BLUEPRINT.md`** — the numbers: model/field tables, URL route tables, template inventory, admin registrations, settings/env vars, test file inventory, file tree. If a model/view/route/template changes, update here.
 - **`OPERATIONAL_BLUEPRINT.md`** — the workflow narrative: lifecycle flows, "who does what" by role, billing/cascade-algorithm walkthroughs, dashboard screen descriptions. Links to `MASTER_BLUEPRINT.md` for exact field/route names instead of repeating them.
-- **`TITAN_MASTER_HANDOVER.md`** — mission statement, current status, the **single authoritative roadmap** ("Coming Soon"), and the AI/developer working conventions ("Titan Creed"). Other docs link here instead of keeping their own roadmap list.
+- **`TITAN_MASTER_HANDOVER.md`** — mission statement, current status, the **single authoritative roadmap** ("Coming Soon"), the **deliberately out-of-scope list** (§VII — features left unbuilt on purpose), and the AI/developer working conventions ("Titan Creed"). Other docs link here instead of keeping their own roadmap list.
 - **`README.md`** — the outward-facing summary for this deployment: feature highlights, tech stack, install steps. Summarizes and links to the three docs above rather than duplicating their tables.
 - **`CLAUDE.md`** (this file) — how to work in the codebase day to day, plus the **deliberate decisions** that must not be "fixed".
 - **`TECH_DEBT.md`** (local, gitignored) — known issues that are *not yet scheduled*. Distinct from the roadmap: `TITAN_MASTER_HANDOVER.md` says what we plan to do, `TECH_DEBT.md` says what we know is wrong. Re-verify an item before acting on it; it goes stale like anything else.

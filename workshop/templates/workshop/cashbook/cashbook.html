@@ -848,6 +848,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentType   = '{{ entry_type_filter|escapejs }}';
     let currentPage   = 1;
     let debounce;
+    let seq = 0;
 
     const searchInput = document.getElementById('cbSearch');
     const searchWrap  = document.getElementById('cbSearchForm');
@@ -892,9 +893,15 @@ document.addEventListener('DOMContentLoaded', function () {
         if (filterLabel) filterLabel.textContent = label;
         if (rangeLabel)  rangeLabel.textContent  = label;
 
+        // Responses do not necessarily arrive in the order they were sent, so
+        // each carries its request number and a stale one is dropped — without
+        // this, a slow reply for "elec" lands after the one for "electricity".
+        const mine = ++seq;
+
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(r => r.text())
             .then(html => {
+                if (mine !== seq) return;
                 const holder = document.createElement('div');
                 holder.innerHTML = html;
                 ['cbStats', 'cbLedger'].forEach(id => {

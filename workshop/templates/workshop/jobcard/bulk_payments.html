@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('bulkSearchInput');
     const container = document.getElementById('bulk-results-container');
     let timeout = null;
+    let seq = 0;
 
     searchInput.addEventListener('input', function() {
         const query = searchInput.value.trim();
@@ -51,6 +52,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (timeout) clearTimeout(timeout);
         
         if (query.length === 0) {
+            // Clearing the box must also invalidate anything still in flight,
+            // or a reply for the last query lands on top of the empty state.
+            seq++;
             container.innerHTML = `
                 <div class="text-center py-5">
                     <i class="bi bi-search" style="font-size: 4rem; opacity: 0.1; color: var(--color-primary);"></i>
@@ -63,13 +67,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
         timeout = setTimeout(() => {
             container.style.opacity = '0.5';
-            
+
+            // Responses do not necessarily arrive in the order they were sent,
+            // so each carries its request number and a stale one is dropped —
+            // otherwise a slow reply for "KL" lands after the one for "KL 10".
+            const mine = ++seq;
+
             fetch(`{% url 'bulk_payments_search' %}?q=${encodeURIComponent(query)}`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(res => res.text())
             .then(html => {
+                if (mine !== seq) return;
                 container.innerHTML = html;
+                container.style.opacity = '1';
+            })
+            .catch(err => {
+                if (mine !== seq) return;
+                console.error('Search failed:', err);
                 container.style.opacity = '1';
             });
         }, 300);

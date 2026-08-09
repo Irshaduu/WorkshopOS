@@ -312,6 +312,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const resultsContainer = document.getElementById('resultsContainer');
     let currentFilter = '{{ filter_type }}';
     let debounceTimer;
+    let seq = 0;
 
     function updateResults(q, page = 1, event = null) {
         if (event && event.type === 'submit') event.preventDefault();
@@ -351,9 +352,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const delay = (event && event.type === 'submit') ? 0 : 300;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
+            // Responses do not necessarily arrive in the order they were sent,
+            // so each carries its request number and a stale one is dropped —
+            // otherwise a slow reply for "KL" lands after the one for "KL 10".
+            const mine = ++seq;
             fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(res => res.text())
                 .then(html => {
+                    if (mine !== seq) return;
                     resultsContainer.innerHTML = html;
                     window.history.pushState({}, '', url);
                     // The count pill lives in the page header, outside this

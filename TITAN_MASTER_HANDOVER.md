@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT (pre-go-live)
-> **Last Updated**: 2026-07-27
+> **Last Updated**: 2026-08-10
 > **Version**: 8
 >
 > This is the **mission, status, and roadmap** doc — the single authoritative "Coming Soon" list lives here; other docs link to it instead of keeping their own copy. For exact model/route/template tables see `MASTER_BLUEPRINT.md`; for workflow narrative see `OPERATIONAL_BLUEPRINT.md`; for day-to-day coding conventions see `CLAUDE.md`.
@@ -138,9 +138,9 @@ In the order set as of 2026-07-23:
 2. ✅ **Staff Registration** (added 2026-07-26) — `Mechanic` model gained a `role` field (Mechanic / Assistant Mechanic / Office Staff / General Helper), giving the workshop one staff roster instead of a mechanics-only list. Lives at `/manage/?section=staff`; only Mechanic/Assistant Mechanic feed the Job Card mechanic picker. See CLAUDE.md's "Deliberate decisions" for why the model keeps the `Mechanic` name.
 3. ✅ **Salary & Advance** (added 2026-07-27) — cash advances recorded the day they happen, plus a month-end settlement that freezes each staff member's salary/leave/advance/net into a `SalaryPaymentLine`. Built against the same staff roster from #2, so a person's history survives a role change. Lives at `/salary-advance/`; a settled month's figures never move afterwards, even if the salary changes later.
 4. ✅ **Estimates** (added 2026-08-05) — quotations on the workshop's own letterhead: write one, print it, keep every one in a searchable history (`EST-26-001`). Built on the invoice's printing module (`workshop/invoice.py` now owns `build_invoice` *and* `build_estimate`), so a quote and the bill that follows it can never disagree about a blank quantity, an unpriced part, or how labour is subtotalled. **Deliberately connected to nothing else** — no job card, no stock, no ledger, no report; see CLAUDE.md's "Deliberate decisions" for why, and for why an estimate delete writes no `DeletionLog` row. Includes a suggested unit price (average of a part's last five bills) shown as a *placeholder only*.
-5. **Attendance** (next) — likely against the same staff roster; the leave-days figure currently typed by hand at settlement is the natural thing for it to feed.
+5. ~~**Attendance**~~ — **moved out of scope 2026-08-10.** Not planned; see §VII. Leave days stay typed at settlement, which is what a seven-person shop needs.
 6. **Noted fixes** — already-identified issues to be resolved during hardening:
-   - **Supplier-Shop RBAC asymmetry** (flagged 2026-07-23): every Supplier-Shop view in the Inventory app is `@staff_required`, so Floor mechanics can create/delete supplier restock bills and delete supplier payment records — broader than the sibling Spare-Shop module, which restricts destructive actions to Office/Owner. Decide whether Floor should keep full access (small-shop trust) or whether destructive supplier ops should require Office/Owner; if tightening, add tests. See `OPERATIONAL_BLUEPRINT.md` §5B.
+   - ~~**Supplier-Shop RBAC asymmetry**~~ (flagged 2026-07-23) — ✅ **resolved.** Verified 2026-08-10: every view in `inventory/views_suppliers.py` is `@office_required`, including all seven destructive ones (`remove_shop_catalog_item`, `update_bill_discount`, `shop_restock_bill`, `edit_restock_bill`, `delete_restock_bill`, `add_shop_payment`, `delete_shop_payment`). Floor has no supplier access at all. This entry described `@staff_required` and was stale.
    - *(Add further noted issues here as they're identified, so "fix later" items have one durable home.)*
 7. ~~**Auth & notifications rebuild**~~ — ✅ **complete 2026-07-29**, delivered in six ordered phases so each left a working system:
    - Owner identity moved from `.env` into the database; the `Owner` group was **empty** and every group-based query silently returned nobody (§II.2b)
@@ -156,18 +156,39 @@ In the order set as of 2026-07-23:
 9. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL (Neon, Singapore). SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
 10. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
 11. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
-12. **Test coverage toward 100%**.
+12. **Keep every financial and security rule under test** — not a coverage percentage. The 865 existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. Add a test when a rule is added or a bug is fixed, not to move a metric.
 13. **Deep debug pass**.
 14. **Repo cleanup** — get the workspace hosting-ready (see §V).
 15. **Hosting** — deploy the live system.
 
 ---
 
-## 💡 VII. AI & DEVELOPER INSTRUCTIONS (The "Titan" Creed)
+## 🚫 VII. DELIBERATELY OUT OF SCOPE
+
+*Recorded 2026-08-10. This system is built for one workshop, to that workshop's
+actual working rhythm. The following are **not missing features** — each was
+considered and left out. They will be built only if the client asks for them.*
+
+| Not built | Why |
+|---|---|
+| **GST / tax invoicing** | The workshop does not bill under GST. No tax fields, no HSN codes, no GSTIN anywhere in billing — see `workshop/invoice.py` for what the customer actually receives. |
+| **Customer-facing notifications** (SMS / WhatsApp / email to car owners) | The app makes exactly **one** kind of outbound network call: SMTP, for owner password-reset codes. Twilio and Telegram were deleted on 2026-07-29. Do not reintroduce a messaging integration. |
+| **Attendance tracking** | Leave days are typed once per person at month-end settlement. For seven staff, that is less work than maintaining a daily attendance record. |
+| **Multi-mechanic assignment** | A job card has one `lead_mechanic`. Work is assigned verbally on the floor; the card records who owns the job, not everyone who touched it. |
+| **Car photos / attachments** | No upload, no file storage, no image handling anywhere in the app. This is also why the deployment needs no media backend. |
+
+**For reviewers — human or AI:** proposing any of the above is proposing
+**scope**, not reporting a defect. If a review flags one as "missing", the
+correct response is to point here, not to build it. The same applies to the
+frontend architecture note in `CLAUDE.md` § Deliberate decisions.
+
+---
+
+## 💡 VIII. AI & DEVELOPER INSTRUCTIONS (The "Titan" Creed)
 
 1. **Maintain the Standard**: "Fix the code, not the tests." If a test fails, the logic is likely wrong. Never bypass a security test.
 2. **Industrial Grade Aesthetics**: No placeholders. No generic colors. Use harmonious color palettes (HSL), responsive layouts, and professional typography. The UI must match the premium quality of the backend.
-3. **Titan Integrity**: Every new feature **must** be accompanied by new `assertEqual` tests covering edge cases.
+3. **Titan Integrity**: Every new feature **must** be accompanied by new `assertEqual` tests covering edge cases. **One honest exception: nothing in the suite executes JavaScript** — there is no Playwright, Selenium or jest, and none is planned. So a JS change leaves the suite green whether or not it broke, and must be verified by hand in the browser on the page it touches. Treat that as a reason to keep JS changes small, not as a reason to add a test runner.
 4. **Communicate like a Titan**: Commit messages and documentation must be concise, professional, and confident — and accurate. Overstated or unverified claims (e.g. performance numbers with no benchmark behind them) undermine the doc's credibility; state what's actually true.
 5. **Keep docs in sync**: When a change touches more than trivia (new model/field, new route, new workflow, a roadmap item completed), update the owning doc in the same session — see the doc ownership map in `CLAUDE.md`. This is what let the docs drift four commits stale before this update; don't let it happen again.
 
