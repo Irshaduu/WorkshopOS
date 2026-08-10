@@ -252,6 +252,35 @@ about to correct one of these, you are about to break the business:
   month that was hardest to get right. Guarded by `ASettledMonthIsLockedTests`
   and `OnlyTheMostRecentSettlementCanBeChangedTests`.
 
+- **A SETTLED month is a closed set of people; an UNSETTLED month is the
+  roster.** Added 2026-08-10. The entry below freezes the salary of everyone
+  who *has* a line. This is the half it did not cover — people who have
+  **none**. Both the settlement screen and its POST loop walked
+  `Mechanic.objects.filter(is_active=True)` regardless of whether the month was
+  settled, so a staff member hired *after* a month was settled appeared on it;
+  with no line to read, `salary_used` fell through to `staff.current_salary`.
+  A month captioned "Closed — paid and settled" therefore rendered that person
+  at **today's** salary with a live "Pay now" figure that was never paid —
+  observed as ₹5,55,000 on a month whose real payroll was five people. Worse,
+  the POST loop's `update_or_create` would then write them a genuine line at
+  that salary if the newest settlement was ever unlocked and re-saved, adding a
+  wage the month never carried to `salary_expense`. Stored data was never
+  wrong: `salary_expense` reads `SalaryPaymentLine` only, and no line existed.
+  The **page** was wrong, which is worse than it sounds on a screen an owner
+  reads to decide what to pay. The GET now builds its rows from
+  `payment.lines` when a settlement exists, the POST skips any staff member
+  with no existing line (`already_settled and existing_line is None`), and the
+  template gates on **`row.salary_used`, never `row.staff.current_salary`** —
+  which also fixes a settled card rendering blank after a salary was cleared.
+  Adding somebody to a past month is deliberately not an edit: delete the
+  settlement and settle again, the same remedy as repricing one.
+  **It fixes the mirror defect for free, which is the tell that the rule is the
+  right one:** rows came from *active* staff, so retiring someone also erased
+  them from a month they were genuinely paid in — the line sat in the database
+  with nothing on screen accounting for it. Reading a settled month from its
+  own lines answers both directions with one rule. Guarded by
+  `ASettledMonthIsAClosedSetOfPeopleTests`.
+
 - **A month keeps the salary it was FIRST settled at, and there is no way to
   edit it.** Added 2026-08-03. Salaries are revised at the same month boundary
   the previous month is settled on, so whichever was done first used to decide
@@ -1081,7 +1110,7 @@ about to correct one of these, you are about to break the business:
   hardening is unlocked today), the largest page carries ~12 KB of script read
   by four devices on one shop's LAN (so caching is a rounding error), and there
   is **no npm, no bundler, no linter and no JS test runner** — none of which
-  will be added. That last point is the load-bearing one: **nothing in the 877
+  will be added. That last point is the load-bearing one: **nothing in the 882
   Django tests executes a line of JavaScript**, so a JS refactor leaves the
   suite green whether or not it broke, and this codebase has already been bitten
   by exactly that (see the three `script.js` cloning traps above — "the symptom
@@ -1245,7 +1274,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (38 test files, 877 tests, ~23-53 min; always uses SQLite, see below)
+# Run full test suite (38 test files, 882 tests, ~23-53 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -1331,7 +1360,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 877 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 882 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -1526,7 +1555,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (33 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 38 files, **877 tests, all passing** (run in full 2026-08-10; the figures here had gone stale three times before, so re-count rather than trusting this line). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05 and 23 on 2026-08-10, so the spread is wide and machine-dependent; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (33 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 38 files, **882 tests, all passing** (run in full 2026-08-10; the figures here had gone stale three times before, so re-count rather than trusting this line). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23 **and 33 on the same machine on 2026-08-10**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

@@ -757,6 +757,146 @@ class AMonthKeepsTheSalaryItWasSettledAtTests(WorkshopTestCase):
         self.assertEqual(SalaryPaymentLine.objects.get().salary_used, Decimal('25000.00'))
 
 
+class ASettledMonthIsAClosedSetOfPeopleTests(WorkshopTestCase):
+    """
+    `AMonthKeepsTheSalaryItWasSettledAtTests` above pins the salary of anyone
+    who HAS a line. This pins the other half, which it did not cover: people who
+    have NO line.
+
+    Both the settlement screen and its POST loop used to walk the live roster,
+    so a staff member hired after a month was settled appeared on it. With no
+    line to read, `salary_used` fell through to `staff.current_salary` — the
+    page showed a month marked "Closed — paid and settled" carrying today's
+    salary and a live "Pay now" figure that was never paid. Re-saving that month
+    then `update_or_create`d a real line for them, adding a wage the month never
+    carried to `salary_expense`.
+
+    The rule: a settled month IS its lines. An unsettled month is the roster.
+    Adding somebody to a past month is not an edit — delete the settlement and
+    settle again, the same remedy as repricing one.
+    """
+
+    def _last_month(self):
+        return (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    def _month_end(self, m):
+        return (m.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+    def _settle_with_only(self, month, staff):
+        return self.client.post(
+            reverse('salary_payment_form', args=[month.year, month.month]),
+            {f'leave_days_{staff.pk}': '0'},
+        )
+
+    def test_someone_hired_after_the_month_was_settled_is_not_shown_on_it(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle_with_only(last, anil)
+
+        # Hired afterwards, on a salary far larger than anything that month paid.
+        latecomer = Mechanic.objects.create(name='Zara', current_salary=Decimal('555000'))
+
+        resp = self.client.get(reverse('salary_payment_form', args=[last.year, last.month]))
+        shown = {r['staff'].pk for r in resp.context['rows']}
+        self.assertIn(anil.pk, shown)
+        self.assertNotIn(latecomer.pk, shown)
+        # The figure that made this obvious on screen must not appear at all.
+        self.assertNotContains(resp, '555000')
+
+    def test_re_saving_a_settled_month_does_not_enrol_a_latecomer(self):
+        """The half that moves money."""
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle_with_only(last, anil)
+        latecomer = Mechanic.objects.create(name='Zara', current_salary=Decimal('555000'))
+
+        # A crafted (or simply stale) payload carrying the latecomer's key.
+        self.client.post(
+            reverse('salary_payment_form', args=[last.year, last.month]),
+            {
+                f'leave_days_{anil.pk}': '1',
+                f'leave_days_{latecomer.pk}': '0',
+                'settlement_unlock': 'true',
+            },
+        )
+
+        self.assertFalse(
+            SalaryPaymentLine.objects.filter(staff=latecomer).exists(),
+            'Re-saving a settled month enrolled somebody who was never paid in it.',
+        )
+        self.assertEqual(SalaryPaymentLine.objects.count(), 1)
+        # The correction that was actually asked for still applies.
+        self.assertEqual(SalaryPaymentLine.objects.get().leave_days, Decimal('1.0'))
+
+    def test_the_wage_bill_does_not_move_when_a_latecomer_is_hired(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle_with_only(last, anil)
+        before = ae.salary_expense(last, self._month_end(last))['total']
+
+        Mechanic.objects.create(name='Zara', current_salary=Decimal('555000'))
+        self.client.post(
+            reverse('salary_payment_form', args=[last.year, last.month]),
+            {f'leave_days_{anil.pk}': '0', 'settlement_unlock': 'true'},
+        )
+
+        self.assertEqual(ae.salary_expense(last, self._month_end(last))['total'], before)
+
+    def test_a_settled_month_still_renders_when_the_salary_is_cleared_afterwards(self):
+        """
+        The card used to be gated on `staff.current_salary`, so clearing a
+        salary blanked an already-paid settlement — the money was in the
+        database and the page stopped showing it.
+        """
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle_with_only(last, anil)
+
+        Mechanic.objects.filter(pk=anil.pk).update(current_salary=None)
+
+        resp = self.client.get(reverse('salary_payment_form', args=[last.year, last.month]))
+        self.assertEqual(resp.context['rows'][0]['salary_used'], Decimal('20000.00'))
+        self.assertContains(resp, '20,000')
+        # And it must not be reported as "needs a salary before settling" — it
+        # has already been settled and paid.
+        self.assertEqual(list(resp.context['missing_salary']), [])
+
+    def test_someone_paid_that_month_still_appears_after_they_retire(self):
+        """
+        The mirror of the latecomer, and it was broken the same way: rows came
+        from ACTIVE staff, so retiring somebody erased them from a month they
+        were genuinely paid in — the line sat in the database with nothing on
+        screen accounting for it. Reading a settled month from its own lines
+        fixes both directions at once.
+        """
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self._settle_with_only(last, anil)
+
+        Mechanic.objects.filter(pk=anil.pk).update(is_active=False)
+
+        resp = self.client.get(reverse('salary_payment_form', args=[last.year, last.month]))
+        shown = {r['staff'].pk for r in resp.context['rows']}
+        self.assertIn(anil.pk, shown, 'A retired staff member vanished from a month they were paid in.')
+        self.assertContains(resp, '20,000')
+
+    def test_an_unsettled_month_still_shows_the_whole_roster(self):
+        """The change must not narrow the screen that does the actual work."""
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        bina = Mechanic.objects.create(name='Bina', current_salary=Decimal('18000'))
+
+        resp = self.client.get(reverse('salary_payment_form', args=[last.year, last.month]))
+        shown = {r['staff'].pk for r in resp.context['rows']}
+        # A superset check, not equality: the fixture carries its own mechanic.
+        self.assertTrue({anil.pk, bina.pk}.issubset(shown))
+        self.assertEqual(
+            shown,
+            set(Mechanic.objects.filter(is_active=True).values_list('pk', flat=True)),
+            'An unsettled month must offer every active staff member.',
+        )
+
+
 class ASettledMonthIsLockedTests(WorkshopTestCase):
     """
     A settled month opens read-only — the same rule the Job Card applies to a

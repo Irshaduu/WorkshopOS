@@ -737,6 +737,9 @@ SALARY & ADVANCE (Office and Owner)
   A month cannot be settled while someone who was handed an advance would get no
     settlement line, and an advance cannot be recorded into a settled month —
     both are refused at the moment of the mistake, not flagged afterwards.
+  A settled month shows exactly the people it paid — not today's roster. Staff
+    hired since simply do not appear on it, and re-saving cannot enrol them.
+    To add somebody to a past month, delete the settlement and settle again.
   Deleting a whole settlement is Owner-only, goes through a confirmation page,
     and is written to Deletion History. Advances are NOT affected by it.
   Feeds: the Salary & Advance expense line on the Owner Profit page — wages come

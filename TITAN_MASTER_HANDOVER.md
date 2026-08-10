@@ -157,7 +157,7 @@ In the order set as of 2026-07-23:
 9. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL. Development is Neon (Singapore); production moves to Railway's own Postgres at go-live, co-located with the app. SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
 10. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
 11. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
-12. **Keep every financial and security rule under test** — not a coverage percentage. The 877 existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. Add a test when a rule is added or a bug is fixed, not to move a metric.
+12. **Keep every financial and security rule under test** — not a coverage percentage. The 882 existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. Add a test when a rule is added or a bug is fixed, not to move a metric.
 13. **Deep debug pass**.
 14. ✅ **Repo cleanup** (done 2026-08-10) — five unreferenced files removed: `API_DOCUMENTATION.md` and `TECH_INFO.md` (both described Twilio/Telegram, soft-delete-with-Trash and SMS 2FA as the *current* system, and the second opened by telling AI agents to copy those exact patterns), `TITAN_BLUEPRINT.html` (a v7 render), `migrate_to_postgres.py` (superseded by `copy_sqlite_to_postgres`) and `_phase3_audit.py` (a scratch script). Every count in `MASTER_BLUEPRINT.md` was recounted from the code in the same pass — models, routes, templates, migrations and test files had all drifted.
 15. **Hosting** — *in progress.* The system runs on Railway at a temporary URL; static-file serving, the build/pre-deploy commands and the email transport are done. Remaining: the production project on the Hobby plan, DNS for `app.formuladservice.in`, Resend verification, and the go-live steps themselves. Procedure: `GO_LIVE_RUNBOOK.md`. Ongoing operation: `RAILWAY_OPERATIONS.md`.
@@ -187,17 +187,18 @@ In the order set as of 2026-07-23:
         cost of manual work per card. Note the current merge is deliberately scoped to
         `source=SHOP` and uses `.update()` so no signals fire — per-card editing goes
         through the normal save path, so an `INVENTORY` row would behave differently.
-    12. **Salary shown against a settled month.** ✅ *Verified 2026-08-10: no calculation
-        issue.* `salary_used` is frozen onto `SalaryPaymentLine` at settle time and the
-        settled month renders that frozen figure; a later raise cannot reprice it, guarded
-        by `AMonthKeepsTheSalaryItWasSettledAtTests`. The current salary the owner sees is
-        the Salary & Advance **home** list (`home.html:260`), which correctly shows today's
-        figure. Remaining work is presentational only — make the two impossible to confuse.
-        **One real defect found while checking:** `payment_form.html:285` and `:294` gate
-        the whole salary block on `staff.current_salary`, so clearing a staff member's
-        salary makes an already-settled month render their card greyed with no figures,
-        even though a real frozen amount was paid. The stored data is correct; the page
-        stops showing it.
+    12. ✅ **Salary shown against a settled month — FIXED 2026-08-10.** Two defects, one
+        root cause: the settlement screen and its POST loop both walked the live roster
+        regardless of whether the month was settled, so anyone hired after a settlement
+        appeared on it priced at today's salary. A month captioned "Closed — paid and
+        settled" showed a "Pay now" of ₹5,55,000 that was never paid, and re-saving the
+        newest settlement would have written that figure as a real line. Stored data was
+        never affected — `salary_expense` reads `SalaryPaymentLine` only. A settled month
+        now renders from its own lines, the POST skips anyone without one, and the
+        template gates on the frozen figure rather than the live salary (which also fixed
+        a settled card rendering blank after a salary was cleared). See CLAUDE.md,
+        "A SETTLED month is a closed set of people"; guarded by
+        `ASettledMonthIsAClosedSetOfPeopleTests`.
     13. **Protected pages still visible via the browser Back button after logout.** The
         session is genuinely dead (any action fails) — this is the browser's history cache
         painting the old page. Fix is `Cache-Control: no-store` on authenticated responses.

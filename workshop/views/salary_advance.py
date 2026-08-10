@@ -415,6 +415,10 @@ def salary_payment_form(request, year, month):
 
     month_start, month_end = _month_bounds(year, month)
     payment = SalaryPayment.objects.filter(month=target_month).first()
+    # Captured BEFORE the POST branch, which creates the payment when settling
+    # for the first time — after that `payment` is truthy either way and can no
+    # longer answer "was this month already settled when the request arrived?".
+    already_settled = payment is not None
     existing_lines = {}
     if payment:
         existing_lines = {line.staff_id: line for line in payment.lines.select_related('staff').all()}
@@ -518,6 +522,21 @@ def salary_payment_form(request, year, month):
                 # month at a different salary, delete the settlement and settle
                 # again, which is deliberate, Owner-only and logged.
                 existing_line = existing_lines.get(staff.pk)
+
+                # A SETTLED month is a closed set of people, not a live roster.
+                # Re-saving one must never enrol somebody who was not paid in
+                # it — a staff member hired after the month was settled has no
+                # line, and without this guard `update_or_create` below would
+                # write them a brand new one priced at TODAY's salary, adding
+                # a wage that month never carried to `salary_expense`. The
+                # frozen-salary rule protected everyone who already had a line
+                # and said nothing about people who had none.
+                # Adding someone to a past month is deliberately not an edit:
+                # delete the settlement and settle again, which is Owner-only
+                # and logged — the same remedy as repricing one.
+                if already_settled and existing_line is None:
+                    continue
+
                 salary_used = existing_line.salary_used if existing_line else staff.current_salary
 
                 overtime = parse_money(
@@ -567,8 +586,26 @@ def salary_payment_form(request, year, month):
     blockers = _unsettleable_staff(month_start, month_end)
     blocker_ids = {s.pk for s, _amt, _why in blockers}
 
+    # A SETTLED month is its lines; an UNSETTLED one is the roster.
+    #
+    # This used to read the roster either way, and a staff member with no line
+    # then fell through to `staff.current_salary` below — so a month marked
+    # "Closed — paid and settled" rendered anyone hired since at TODAY's salary,
+    # with a live "Pay now" figure that was never paid and never will be. On a
+    # real system that is the normal case, not an edge one: every month settled
+    # before a new hire would show them.
+    # `existing_lines` already carries `select_related('staff')`, so reading the
+    # settled set costs no extra query.
+    if payment:
+        staff_for_rows = sorted(
+            (line.staff for line in existing_lines.values()),
+            key=lambda s: s.name,
+        )
+    else:
+        staff_for_rows = Mechanic.objects.filter(is_active=True).order_by('name')
+
     rows, missing_salary = [], []
-    for staff in Mechanic.objects.filter(is_active=True).order_by('name'):
+    for staff in staff_for_rows:
         advance_used = SalaryAdvance.objects.filter(
             staff=staff, date__gte=month_start, date__lt=month_end
         ).aggregate(
@@ -585,7 +622,11 @@ def salary_payment_form(request, year, month):
         # settlement outright and is reported by the stronger banner instead —
         # listing them twice, under two different consequences, would be worse
         # than listing them once.
-        if staff.current_salary is None and staff.pk not in blocker_ids:
+        # "Needs a salary before this month can be settled" is a statement about
+        # settling. On a month already settled it is both untrue and alarming —
+        # and it would fire for anyone whose salary was cleared *after* they
+        # were paid, whose line is sitting right there with a real figure on it.
+        if not payment and staff.current_salary is None and staff.pk not in blocker_ids:
             missing_salary.append(staff)
         rows.append({
             'staff': staff,

@@ -282,7 +282,14 @@ lost by leaving them out, so it stays the softer note it always was.
   {% csrf_token %}
 
   {% for row in rows %}
-  <div class="calc-card {% if not row.staff.current_salary %}disabled{% endif %}">
+  {% comment %}
+  Both conditions below test `row.salary_used`, the figure this row is actually
+  built on — NOT `row.staff.current_salary`, the live one. On an unsettled month
+  the two are the same value, so nothing changes there. On a settled month the
+  live salary may since have been cleared, and gating on it hid a card whose
+  frozen figure was real and already paid: a settlement that rendered blank.
+  {% endcomment %}
+  <div class="calc-card {% if not row.salary_used %}disabled{% endif %}">
     <div class="calc-head">
       <span class="calc-avatar">{{ row.staff.name|first|upper }}</span>
       <div style="min-width:0;">
@@ -291,7 +298,7 @@ lost by leaving them out, so it stays the softer note it always was.
       </div>
     </div>
 
-    {% if row.staff.current_salary %}
+    {% if row.salary_used %}
       {% comment %}
       The salary is TEXT, and there is deliberately no way to edit it here.
 
