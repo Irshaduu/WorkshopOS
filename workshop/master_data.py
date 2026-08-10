@@ -38,6 +38,166 @@ def concern_usage_count(text):
         concern_text__iexact=(text or '').strip()).count()
 
 
+def brand_usage_count(name):
+    """How many job cards carry this brand's name."""
+    from .models import JobCard
+    return JobCard.objects.filter(brand_name__iexact=(name or '').strip()).count()
+
+
+def model_usage_count(brand_name, name):
+    """How many job cards of that brand carry this model name.
+
+    Scoped to the brand for the same reason `rename_model` is: Toyota's
+    "Corolla" and another make's are different cars.
+    """
+    from .models import JobCard
+    return JobCard.objects.filter(
+        brand_name__iexact=(brand_name or '').strip(),
+        model_name__iexact=(name or '').strip()).count()
+
+
+# ---------------------------------------------------------------------------
+# Would this rename MERGE?
+#
+# Each `*_rename_target` normalises the typed name and finds the entry the
+# rename would merge into, returning `(final_name, existing_or_None)`. The
+# matching `rename_*` calls it, and so does the view that renders the
+# confirmation page — so the page cannot promise one outcome while the rename
+# performs another. Keeping that as ONE lookup per entity is the same rule that
+# put the rename itself in this module: two implementations of "does this
+# collide" would be two answers free to disagree, and the disagreement would
+# only show up as a merge nobody was warned about.
+# ---------------------------------------------------------------------------
+
+def spare_rename_target(spare, new_name):
+    field = SparePart._meta.get_field('name')
+    new_name = _collapse(new_name)[:field.max_length]
+    existing = SparePart.objects.filter(
+        name__iexact=new_name).exclude(pk=spare.pk).first()
+    return (existing.name if existing else new_name), existing
+
+
+def concern_rename_target(concern, new_text):
+    new_text = _collapse(new_text)
+    existing = ConcernSolution.objects.filter(
+        concern__iexact=new_text).exclude(pk=concern.pk).first()
+    return (existing.concern if existing else new_text), existing
+
+
+def brand_rename_target(brand, new_name):
+    from .models import CarBrand
+    field = CarBrand._meta.get_field('name')
+    new_name = _collapse(new_name)[:field.max_length]
+    existing = CarBrand.objects.filter(
+        name__iexact=new_name).exclude(pk=brand.pk).first()
+    return (existing.name if existing else new_name), existing
+
+
+def model_rename_target(model, new_name):
+    from .models import CarModel
+    field = CarModel._meta.get_field('name')
+    new_name = _collapse(new_name)[:field.max_length]
+    existing = CarModel.objects.filter(
+        brand=model.brand, name__iexact=new_name).exclude(pk=model.pk).first()
+    return (existing.name if existing else new_name), existing
+
+
+MERGE_CONFIRM_TEMPLATE = 'workshop/manage/master_confirm_merge.html'
+
+
+def merge_preview(obj, new_name):
+    """Describe the merge this rename would perform, or None if it only renames.
+
+    A rename that lands on a name already in the list is a MERGE: the row being
+    edited is deleted and every job card carrying its wording is relabelled onto
+    the survivor's. That is the right tool for two spellings of one part, and it
+    is also the one irreversible thing on these screens — renaming back does not
+    undo it, because it would then drag the survivor's own rows along too.
+
+    It used to happen with no warning: the only sign was the success message
+    afterwards, by which point the history had already moved. This is what the
+    confirmation page reads.
+
+    Returns pure data, never an HttpResponse, so Master Lists and Data Cleanup
+    can each render it their own way while agreeing on what it says.
+    """
+    from .models import CarBrand, CarModel
+
+    if isinstance(obj, SparePart):
+        final, existing = spare_rename_target(obj, new_name)
+        if not existing:
+            return None
+        return {
+            'kind': 'Spare Part', 'usage_noun': 'job-card part line',
+            'from_label': obj.name, 'from_usage': spare_usage_count(obj.name),
+            'into_label': existing.name, 'into_usage': spare_usage_count(existing.name),
+            'final_name': final, 'extra': [],
+        }
+
+    if isinstance(obj, ConcernSolution):
+        final, existing = concern_rename_target(obj, new_name)
+        if not existing:
+            return None
+        return {
+            'kind': 'Concern', 'usage_noun': 'job-card concern',
+            'from_label': obj.concern, 'from_usage': concern_usage_count(obj.concern),
+            'into_label': existing.concern,
+            'into_usage': concern_usage_count(existing.concern),
+            'final_name': final, 'extra': [],
+        }
+
+    if isinstance(obj, CarBrand):
+        final, existing = brand_rename_target(obj, new_name)
+        if not existing:
+            return None
+        absorbed, dropped = brand_merge_model_split(obj, existing)
+        extra = []
+        if absorbed:
+            extra.append(f"{len(absorbed)} model(s) move across: {', '.join(absorbed)}")
+        if dropped:
+            extra.append(
+                f"{len(dropped)} model(s) already exist under '{existing.name}' and "
+                f"will be dropped: {', '.join(dropped)}")
+        return {
+            'kind': 'Car Brand', 'usage_noun': 'job card',
+            'from_label': obj.name, 'from_usage': brand_usage_count(obj.name),
+            'into_label': existing.name, 'into_usage': brand_usage_count(existing.name),
+            'final_name': final, 'extra': extra,
+        }
+
+    if isinstance(obj, CarModel):
+        final, existing = model_rename_target(obj, new_name)
+        if not existing:
+            return None
+        brand_name = obj.brand.name
+        return {
+            'kind': 'Car Model', 'usage_noun': f'{brand_name} job card',
+            'from_label': f'{brand_name} {obj.name}',
+            'from_usage': model_usage_count(brand_name, obj.name),
+            'into_label': f'{brand_name} {existing.name}',
+            'into_usage': model_usage_count(brand_name, existing.name),
+            'final_name': final, 'extra': [],
+        }
+
+    raise TypeError(f"merge_preview does not handle {type(obj).__name__}")
+
+
+def brand_merge_model_split(brand, survivor):
+    """Which of `brand`'s models would move across, and which would be dropped.
+
+    A brand merge carries the dying brand's models to the survivor, except any
+    whose name already exists there — `CarModel` is
+    `unique_together('brand', 'name')`, so moving one would violate it. Returns
+    `(absorbed, dropped)` as sorted name lists, for the confirmation page to
+    show before the merge rather than the DeletionLog to record after it.
+    """
+    kept = {n.lower() for n in survivor.models.values_list('name', flat=True)}
+    absorbed, dropped = [], []
+    for name in brand.models.values_list('name', flat=True):
+        (dropped if name.lower() in kept else absorbed).append(name)
+    return sorted(absorbed), sorted(dropped)
+
+
 def _collapse(text):
     """Trim and collapse runs of whitespace, without touching case.
 
@@ -61,12 +221,8 @@ def rename_spare(spare, new_name, user=None):
     wins, so the master list and the job cards can never end up saying the same
     thing two ways.
     """
-    field = SparePart._meta.get_field('name')
-    new_name = _collapse(new_name)[:field.max_length]
     old_name = spare.name
-
-    existing = SparePart.objects.filter(name__iexact=new_name).exclude(pk=spare.pk).first()
-    final_name = existing.name if existing else new_name
+    final_name, existing = spare_rename_target(spare, new_name)
 
     # SHOP rows only.
     #
@@ -120,28 +276,19 @@ def rename_brand(brand, new_name, user=None):
     already exists under the surviving brand is dropped rather than moved,
     which would violate the constraint.
     """
-    from .models import JobCard, CarBrand, CarModel
+    from .models import JobCard
 
-    field = CarBrand._meta.get_field('name')
-    new_name = _collapse(new_name)[:field.max_length]
     old_name = brand.name
-
-    existing = CarBrand.objects.filter(name__iexact=new_name).exclude(pk=brand.pk).first()
-    final_name = existing.name if existing else new_name
+    final_name, existing = brand_rename_target(brand, new_name)
 
     moved = JobCard.objects.filter(brand_name__iexact=old_name).update(brand_name=final_name)
 
     if existing:
-        kept = {n.lower() for n in existing.models.values_list('name', flat=True)}
-        absorbed, dropped = [], []
-        for model in brand.models.all():
-            if model.name.lower() in kept:
-                dropped.append(model.name)
-                model.delete()
-            else:
-                absorbed.append(model.name)
-                model.brand = existing
-                model.save(update_fields=['brand'])
+        # Split by the same helper the confirmation page reads, so the models
+        # the page says will be dropped are exactly the ones that are.
+        absorbed, dropped = brand_merge_model_split(brand, existing)
+        brand.models.filter(name__in=dropped).delete()
+        brand.models.filter(name__in=absorbed).update(brand=existing)
         DeletionLog.record(
             DeletionLog.ENTITY_MASTER_DATA, brand, user=user,
             reason=f"Merged into '{final_name}'",
@@ -167,16 +314,11 @@ def rename_model(model, new_name, user=None):
     model under another make are different cars, which is exactly what
     `unique_together('brand', 'name')` already says.
     """
-    from .models import JobCard, CarModel
+    from .models import JobCard
 
-    field = CarModel._meta.get_field('name')
-    new_name = _collapse(new_name)[:field.max_length]
     old_name = model.name
     brand_name = model.brand.name
-
-    existing = CarModel.objects.filter(
-        brand=model.brand, name__iexact=new_name).exclude(pk=model.pk).first()
-    final_name = existing.name if existing else new_name
+    final_name, existing = model_rename_target(model, new_name)
 
     moved = JobCard.objects.filter(
         brand_name__iexact=brand_name, model_name__iexact=old_name,
@@ -203,12 +345,8 @@ def rename_concern(concern, new_text, user=None):
     Rename one master concern. Returns (final_text, merged). Same rules as
     rename_spare — propagate to job cards, merge on a case-insensitive match.
     """
-    new_text = _collapse(new_text)
     old_text = concern.concern
-
-    existing = ConcernSolution.objects.filter(
-        concern__iexact=new_text).exclude(pk=concern.pk).first()
-    final_text = existing.concern if existing else new_text
+    final_text, existing = concern_rename_target(concern, new_text)
 
     moved = JobCardConcern.objects.filter(concern_text__iexact=old_text).update(
         concern_text=final_text)

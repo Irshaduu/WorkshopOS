@@ -7,7 +7,9 @@ from django.urls import reverse
 from .decorators import office_required
 from .master_data import (
     rename_spare, rename_concern, spare_usage_count, concern_usage_count,
+    merge_preview,
 )
+from .views.master_lists import _confirm_merge, _merge_confirmed
 from .models import (
     SparePart, ConcernSolution, JobCardSpareItem, JobCardConcern, DeletionLog,
 )
@@ -108,8 +110,18 @@ def cleanup_rename_spare(request, spare_id):
             return redirect('data_cleanup')
 
         # One implementation, shared with Master Lists' spare edit — see
-        # workshop/master_data.py for why that matters.
+        # workshop/master_data.py for why that matters. The merge confirmation is
+        # shared for the same reason: a warning shown on one screen and not the
+        # other would just move the silent merge to whichever door was open.
         old_name = spare.name
+        preview = merge_preview(spare, new_name)
+        if preview and not _merge_confirmed(request):
+            return _confirm_merge(
+                request, preview,
+                action=reverse('cleanup_rename_spare', args=[spare.pk]),
+                field_name='new_name', field_value=new_name,
+                cancel_url=reverse('data_cleanup'))
+
         final_name, merged = rename_spare(spare, new_name, user=request.user)
         if merged:
             messages.success(request, f"✅ Merged '{old_name}' → '{final_name}'. All job cards updated.")
@@ -159,6 +171,14 @@ def cleanup_rename_concern(request, concern_id):
             return redirect('data_cleanup')
 
         # Shared with Master Lists' concern edit — see workshop/master_data.py.
+        preview = merge_preview(concern, new_text)
+        if preview and not _merge_confirmed(request):
+            return _confirm_merge(
+                request, preview,
+                action=reverse('cleanup_rename_concern', args=[concern.pk]),
+                field_name='new_name', field_value=new_text,
+                cancel_url=reverse('data_cleanup'))
+
         _final, merged = rename_concern(concern, new_text, user=request.user)
         if merged:
             messages.success(request, "✅ Merged concern into existing entry. All job cards updated.")

@@ -76,9 +76,10 @@ class DataCleanupViewsTestCase(TestCase):
 
     def test_cleanup_rename_spare_merge(self):
         url = reverse('cleanup_rename_spare', args=[self.spare2.id])
-        # Merge 'Break pad' into 'Brake Pad'
-        self.client.post(url, {'new_name': 'Brake Pad'})
-        
+        # Merge 'Break pad' into 'Brake Pad'. A merge is confirmed first — see
+        # AMergeIsConfirmedBeforeItHappensTests for the gate itself.
+        self.client.post(url, {'new_name': 'Brake Pad', 'confirm_merge': 'yes'})
+
         # spare2 should be deleted
         self.assertFalse(SparePart.objects.filter(id=self.spare2.id).exists())
         # spare1 should still exist
@@ -110,9 +111,9 @@ class DataCleanupViewsTestCase(TestCase):
 
     def test_cleanup_rename_concern_merge(self):
         url = reverse('cleanup_rename_concern', args=[self.concern2.id])
-        # Merge into concern1
-        self.client.post(url, {'new_name': 'Engine Noise'})
-        
+        # Merge into concern1 — confirmed, as above.
+        self.client.post(url, {'new_name': 'Engine Noise', 'confirm_merge': 'yes'})
+
         self.assertFalse(ConcernSolution.objects.filter(id=self.concern2.id).exists())
         
         # Verify job card

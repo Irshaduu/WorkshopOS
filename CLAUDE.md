@@ -161,6 +161,39 @@ about to correct one of these, you are about to break the business:
   since renaming back relabels every row now carrying the surviving name.
   Guarded by `RenamingAMasterEntryMeansTheSameThingFromBothScreensTests` and
   `MergingAMasterEntryNeverMovesMoneyOrStockTests`.
+  **A merge is CONFIRMED first; a plain rename is not.** Added 2026-08-10.
+  That "not cleanly undoable" property above was the only warning anyone got —
+  the merge happened on the same POST as an ordinary rename, and the sole sign
+  was the success message afterwards, by which point the history had already
+  moved. Mistype "ABS Sensor" as "ABS Module" and 13 job cards are relabelled
+  with nothing asked. The gate fires **only on a collision**: a rename that
+  matches nothing stays one POST, because confirming what cannot surprise
+  anyone is how confirmations stop being read. `merge_preview()` in
+  `master_data.py` returns the two names and both usage counts, or `None` when
+  it is only a rename, and it reads the **same** `*_rename_target()` helpers
+  `rename_*` uses to decide — two lookups of "does this collide" would be two
+  answers free to disagree, and they would disagree exactly where it matters,
+  as a merge nobody was warned about. A brand merge additionally discloses the
+  models it will carry across and the ones it will **drop** as duplicates,
+  which is a second permanent delete hidden inside the first;
+  `brand_merge_model_split()` is likewise shared with the code that performs
+  it. Both screens gate it, or the silent merge just moves to whichever door
+  is open. One trap: in `brand_edit` the check must run **before**
+  `form.is_valid()` — `_post_clean()` writes the posted name onto the bound
+  instance, so a preview built after validation names the *survivor* as the
+  row being deleted, i.e. tells the owner the opposite of what will happen.
+  Guarded by `AMergeIsConfirmedBeforeItHappensTests`.
+  *Considered and rejected in the same discussion:* **blocking delete on an
+  in-use entry.** Usage effectively never returns to zero (the job-card delete
+  guard forbids deleting a card that carries spares), so `used > 0` is a
+  one-way door — every name ever typed would become permanently unremovable
+  and the list could only grow, which is the opposite of what Data Cleanup is
+  for. It also guards nothing: a master-list delete touches no job card, no
+  bill and no report, is logged, and auto-learn restores the entry the moment
+  someone types it again. Delete and merge are different intents at every
+  usage count — merge relabels the history onto one wording, delete just drops
+  the suggestion — and the confirmation above is what keeps them from being
+  confused for each other.
 
 - **Renaming a BRAND or MODEL reaches the job cards too, and the master list
   decides how its own entries are spelled.** Added 2026-08-02. Reports group by

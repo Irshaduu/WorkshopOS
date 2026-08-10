@@ -137,7 +137,7 @@ class RenamingAMasterEntryMeansTheSameThingFromBothScreensTests(WorkshopTestCase
         self._card_with_spare('KL02BB0002', 'Front Left Wheel Bearing')
 
         self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'Front Left Wheel Bearing'})
+                         {'name': 'Front Left Wheel Bearing', 'confirm_merge': 'yes'})
 
         self.assertEqual(SparePart.objects.count(), 1)
         self.assertEqual(
@@ -156,7 +156,8 @@ class RenamingAMasterEntryMeansTheSameThingFromBothScreensTests(WorkshopTestCase
             SparePart.objects.create(name='Brake Pad')
             self._card_with_spare('KL01AA0001', 'Brake Pd')
 
-            self.client.post(reverse(view_name, args=pk_getter(typo)), {field: 'Brake Pad'})
+            self.client.post(reverse(view_name, args=pk_getter(typo)),
+                             {field: 'Brake Pad', 'confirm_merge': 'yes'})
 
             self.assertEqual(SparePart.objects.count(), 1, view_name)
             self.assertEqual(
@@ -167,7 +168,8 @@ class RenamingAMasterEntryMeansTheSameThingFromBothScreensTests(WorkshopTestCase
         typo = SparePart.objects.create(name='Brake Pd')
         SparePart.objects.create(name='Brake Pad')
         self._card_with_spare('KL01AA0001', 'Brake Pd')
-        self.client.post(reverse('spare_edit', args=[typo.pk]), {'name': 'BRAKE PAD'})
+        self.client.post(reverse('spare_edit', args=[typo.pk]),
+                         {'name': 'BRAKE PAD', 'confirm_merge': 'yes'})
         self.assertEqual(SparePart.objects.get().name, 'Brake Pad')
         self.assertEqual(JobCardSpareItem.objects.get().spare_part_name, 'Brake Pad')
 
@@ -175,10 +177,198 @@ class RenamingAMasterEntryMeansTheSameThingFromBothScreensTests(WorkshopTestCase
         typo = SparePart.objects.create(name='Brake Pd')
         SparePart.objects.create(name='Brake Pad')
         self._card_with_spare('KL01AA0001', 'Brake Pd')
-        self.client.post(reverse('spare_edit', args=[typo.pk]), {'name': 'Brake Pad'})
+        self.client.post(reverse('spare_edit', args=[typo.pk]),
+                         {'name': 'Brake Pad', 'confirm_merge': 'yes'})
         log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_MASTER_DATA)
         self.assertIn('Brake Pd', log.entity_label)
         self.assertEqual(log.snapshot.get('job_card_lines_relabelled'), 1)
+
+
+class AMergeIsConfirmedBeforeItHappensTests(WorkshopTestCase):
+    """
+    A rename onto a name already in the list is a MERGE, not a rename: the row
+    being edited is deleted and every job card carrying its wording is
+    relabelled onto the survivor's.
+
+    It is the one irreversible action on these screens — renaming back does not
+    undo it, because it would then drag the survivor's own rows across too — and
+    it used to happen with no warning at all. The only sign was the success
+    message afterwards, by which point the history had already moved. Mistype
+    'ABS Sensor' as 'ABS Module' and thirteen job cards were silently relabelled.
+
+    A plain rename with no collision must stay ONE post. Confirming something
+    that cannot surprise anyone is how confirmations stop being read.
+    """
+
+    def _card_with_spare(self, reg, spare_name):
+        jc = JobCard.objects.create(
+            registration_number=reg, brand_name='Toyota', model_name='Corolla',
+            admitted_date=date.today(), lead_mechanic=self.mechanic)
+        JobCardSpareItem.objects.create(
+            job_card=jc, spare_part_name=spare_name, quantity=Decimal('1'),
+            unit_price=Decimal('500'), total_price=Decimal('500'),
+            source=JobCardSpareItem.SOURCE_SHOP)
+        return jc
+
+    @staticmethod
+    def _text(response):
+        """Rendered page with runs of whitespace collapsed, so an assertion on a
+        phrase is not defeated by template indentation."""
+        return ' '.join(response.content.decode().split())
+
+    def test_an_unconfirmed_merge_writes_nothing(self):
+        typo = SparePart.objects.create(name='Brake Pd')
+        SparePart.objects.create(name='Brake Pad')
+        self._card_with_spare('KL01AA0001', 'Brake Pd')
+
+        resp = self.client.post(reverse('spare_edit', args=[typo.pk]),
+                                {'name': 'Brake Pad'})
+
+        self.assertEqual(resp.status_code, 200,
+                         "the confirmation renders; it must not redirect as a done deal")
+        self.assertEqual(SparePart.objects.count(), 2, "both entries still stand")
+        self.assertEqual(JobCardSpareItem.objects.get().spare_part_name, 'Brake Pd')
+        self.assertFalse(DeletionLog.objects.exists(), "nothing was deleted")
+
+    def test_confirming_performs_the_merge(self):
+        typo = SparePart.objects.create(name='Brake Pd')
+        SparePart.objects.create(name='Brake Pad')
+        self._card_with_spare('KL01AA0001', 'Brake Pd')
+
+        self.client.post(reverse('spare_edit', args=[typo.pk]),
+                         {'name': 'Brake Pad', 'confirm_merge': 'yes'})
+
+        self.assertEqual(SparePart.objects.count(), 1)
+        self.assertEqual(JobCardSpareItem.objects.get().spare_part_name, 'Brake Pad')
+
+    def test_a_rename_with_no_collision_is_not_gated(self):
+        """Fixing a typo that matches nothing stays a single post."""
+        spare = SparePart.objects.create(name='Oil Fillter')
+        self._card_with_spare('KL01AA0001', 'Oil Fillter')
+
+        resp = self.client.post(reverse('spare_edit', args=[spare.pk]),
+                                {'name': 'Oil Filter'})
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(SparePart.objects.get().name, 'Oil Filter')
+        self.assertEqual(JobCardSpareItem.objects.get().spare_part_name, 'Oil Filter')
+
+    def test_the_confirmation_names_both_entries_and_both_counts(self):
+        typo = SparePart.objects.create(name='Wheel Bearing Front Left')
+        SparePart.objects.create(name='Front Left Wheel Bearing')
+        for i in range(3):
+            self._card_with_spare(f'KL01AA000{i}', 'Wheel Bearing Front Left')
+        for i in range(5):
+            self._card_with_spare(f'KL02BB000{i}', 'Front Left Wheel Bearing')
+
+        text = self._text(self.client.post(
+            reverse('spare_edit', args=[typo.pk]),
+            {'name': 'Front Left Wheel Bearing'}))
+
+        self.assertIn('Wheel Bearing Front Left', text)
+        self.assertIn('on 3 job-card part lines', text)
+        self.assertIn('already on 5 job-card part lines', text)
+        self.assertIn('cannot be undone', text)
+
+    def test_the_page_promises_exactly_what_the_merge_then_does(self):
+        """
+        The count the page shows and the rows the merge relabels come from the
+        same helper in `master_data`. Two lookups of "does this collide, and how
+        much moves" would be two answers free to disagree — and the disagreement
+        would only ever surface as a merge nobody was warned about.
+        """
+        typo = SparePart.objects.create(name='Brake Pd')
+        SparePart.objects.create(name='Brake Pad')
+        for i in range(4):
+            self._card_with_spare(f'KL01AA000{i}', 'Brake Pd')
+
+        text = self._text(self.client.post(
+            reverse('spare_edit', args=[typo.pk]), {'name': 'Brake Pad'}))
+        self.assertIn('on 4 job-card part lines', text)
+
+        self.client.post(reverse('spare_edit', args=[typo.pk]),
+                         {'name': 'Brake Pad', 'confirm_merge': 'yes'})
+
+        log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_MASTER_DATA)
+        self.assertEqual(log.snapshot.get('job_card_lines_relabelled'), 4,
+                         "the page said 4; the merge must have moved 4")
+
+    def test_both_screens_gate_it(self):
+        """
+        A warning on one screen and not the other would just move the silent
+        merge to whichever door happened to be open — the same failure that put
+        the rename itself into one shared module.
+        """
+        for view_name, field in (('spare_edit', 'name'),
+                                 ('cleanup_rename_spare', 'new_name')):
+            SparePart.objects.all().delete()
+            typo = SparePart.objects.create(name='Brake Pd')
+            SparePart.objects.create(name='Brake Pad')
+
+            resp = self.client.post(reverse(view_name, args=[typo.pk]),
+                                    {field: 'Brake Pad'})
+
+            self.assertEqual(resp.status_code, 200, view_name)
+            self.assertEqual(SparePart.objects.count(), 2, view_name)
+
+    def test_a_concern_merge_is_gated(self):
+        typo = ConcernSolution.objects.create(concern='Brake noise')
+        ConcernSolution.objects.create(concern='Brake squeal')
+
+        resp = self.client.post(reverse('concern_edit', args=[typo.pk]),
+                                {'concern': 'Brake squeal'})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(ConcernSolution.objects.count(), 2)
+
+    def test_a_model_merge_is_gated(self):
+        brand = CarBrand.objects.create(name='Toyota')
+        typo = CarModel.objects.create(brand=brand, name='Corola')
+        CarModel.objects.create(brand=brand, name='Corolla')
+
+        resp = self.client.post(reverse('model_edit', args=[typo.pk]),
+                                {'brand': brand.pk, 'name': 'Corolla'})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(CarModel.objects.count(), 2)
+
+    def test_a_brand_merge_discloses_the_models_it_will_drop(self):
+        """
+        A brand merge does something no other merge does: it carries the dying
+        brand's MODELS across, and silently drops any whose name already exists
+        under the survivor (`CarModel` is unique_together, so moving one would
+        violate it). That is a second permanent delete hidden inside the first,
+        and the page has to say so.
+        """
+        typo = CarBrand.objects.create(name='Toyta')
+        keeper = CarBrand.objects.create(name='Toyota')
+        CarModel.objects.create(brand=typo, name='Innova')     # moves across
+        CarModel.objects.create(brand=typo, name='Corolla')    # dropped
+        CarModel.objects.create(brand=keeper, name='Corolla')
+
+        text = self._text(self.client.post(
+            reverse('brand_edit', args=[typo.pk]), {'name': 'Toyota'}))
+
+        self.assertEqual(CarBrand.objects.count(), 2, "nothing written yet")
+        self.assertEqual(CarModel.objects.count(), 3)
+        self.assertIn('Innova', text)
+        self.assertIn('will be dropped: Corolla', text)
+
+    def test_the_brand_confirmation_names_the_entry_being_deleted(self):
+        """
+        `form.is_valid()` writes the posted name onto the bound instance, so a
+        preview built after validation would name the SURVIVOR as the row being
+        deleted — telling the owner the opposite of what is about to happen.
+        """
+        typo = CarBrand.objects.create(name='Toyta')
+        CarBrand.objects.create(name='Toyota')
+
+        text = self._text(self.client.post(
+            reverse('brand_edit', args=[typo.pk]), {'name': 'Toyota'}))
+
+        self.assertIn('Toyta', text)
+        typo.refresh_from_db()
+        self.assertEqual(typo.name, 'Toyta', "an unconfirmed merge renames nothing")
 
 
 class RenamingABrandOrModelReachesTheJobCardsTests(WorkshopTestCase):
@@ -225,7 +415,8 @@ class RenamingABrandOrModelReachesTheJobCardsTests(WorkshopTestCase):
         CarModel.objects.create(brand=keeper, name='Corolla')
         self._card('KL01AA0001', 'Toyta', 'Innova')
 
-        self.client.post(reverse('brand_edit', args=[typo.pk]), {'name': 'Toyota'})
+        self.client.post(reverse('brand_edit', args=[typo.pk]),
+                         {'name': 'Toyota', 'confirm_merge': 'yes'})
 
         self.assertEqual(CarBrand.objects.count(), 1)
         self.assertEqual(
@@ -254,7 +445,8 @@ class RenamingABrandOrModelReachesTheJobCardsTests(WorkshopTestCase):
     def test_a_brand_rename_is_logged_when_it_merges(self):
         typo = CarBrand.objects.create(name='Toyta')
         CarBrand.objects.create(name='Toyota')
-        self.client.post(reverse('brand_edit', args=[typo.pk]), {'name': 'Toyota'})
+        self.client.post(reverse('brand_edit', args=[typo.pk]),
+                         {'name': 'Toyota', 'confirm_merge': 'yes'})
         log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_MASTER_DATA)
         self.assertIn('Toyta', log.entity_label)
 
@@ -348,7 +540,7 @@ class MergingAMasterEntryNeverMovesMoneyOrStockTests(WorkshopTestCase):
 
         before = snapshot()
         self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'Front Left Wheel Bearing'})
+                         {'name': 'Front Left Wheel Bearing', 'confirm_merge': 'yes'})
         self.assertEqual(before, snapshot(),
                          "a merge must relabel text only — no figure may move")
 
@@ -371,7 +563,8 @@ class MergingAMasterEntryNeverMovesMoneyOrStockTests(WorkshopTestCase):
         item.refresh_from_db()
         stock_before = item.current_stock
 
-        self.client.post(reverse('spare_edit', args=[typo.pk]), {'name': 'Engine Oil'})
+        self.client.post(reverse('spare_edit', args=[typo.pk]),
+                         {'name': 'Engine Oil', 'confirm_merge': 'yes'})
 
         draw.refresh_from_db()
         item.refresh_from_db()

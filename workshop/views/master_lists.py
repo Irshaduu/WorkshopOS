@@ -3,11 +3,34 @@ from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q
 from django.core.paginator import Paginator
+from django.urls import reverse
 
 from ..models import CarBrand, CarModel, SparePart, ConcernSolution, DeletionLog
 from ..forms import CarBrandForm, CarModelForm, SparePartForm, ConcernSolutionForm
-from ..master_data import rename_spare, rename_concern, rename_brand, rename_model
+from ..master_data import (
+    rename_spare, rename_concern, rename_brand, rename_model,
+    merge_preview, MERGE_CONFIRM_TEMPLATE,
+)
 from ..decorators import staff_required, office_required
+
+
+def _confirm_merge(request, preview, *, action, field_name, field_value,
+                   cancel_url, extra_fields=None):
+    """Render the shared 'this is a merge, not a rename' confirmation.
+
+    The gate itself is one line at each call site (`preview and not confirmed`)
+    rather than a decorator, because each view reads the new name from a
+    differently-named POST field and has to hand that field back to the
+    confirmation form so the re-post carries it.
+    """
+    return render(request, MERGE_CONFIRM_TEMPLATE, dict(
+        preview, action=action, field_name=field_name, field_value=field_value,
+        cancel_url=cancel_url, extra_fields=extra_fields or {},
+    ))
+
+
+def _merge_confirmed(request):
+    return request.POST.get('confirm_merge') == 'yes'
 
 
 # =============================================================================
@@ -65,23 +88,38 @@ def brand_edit(request, pk):
         new_name = (request.POST.get('name') or '').strip()
         if not new_name:
             form.add_error('name', 'Brand name cannot be empty.')
-        elif form.is_valid():
-            # The form still validates and saves the LOGO (an ImageField whose
-            # checks are worth keeping) but must not write the name: renaming
-            # the row first would leave rename_brand searching for job cards
-            # carrying a name that no longer exists — the master list moves and
-            # the history stays behind, the exact bug being fixed here.
-            obj = form.save(commit=False)
-            obj.name = old_name
-            obj.save()
+        else:
+            # Checked BEFORE `form.is_valid()`, for the same reason `old_name` is
+            # captured above it: `_post_clean()` writes the posted name onto the
+            # bound instance, so by then `brand.name` is already the NEW one and
+            # the confirmation would name the wrong entry as the one being
+            # deleted. (A logo uploaded in the same submit is dropped by the
+            # re-post — moot on a merge, since this row is about to be deleted.)
+            preview = merge_preview(brand, new_name)
+            if preview and not _merge_confirmed(request):
+                return _confirm_merge(
+                    request, preview,
+                    action=reverse('brand_edit', args=[brand.pk]),
+                    field_name='name', field_value=new_name,
+                    cancel_url=reverse('brand_list'))
 
-            brand.refresh_from_db()
-            final_name, merged = rename_brand(brand, new_name, user=request.user)
-            messages.success(
-                request,
-                f"Merged '{old_name}' into '{final_name}'. Job cards updated." if merged
-                else f"Renamed to '{final_name}'. Job cards updated.")
-            return redirect('brand_list')
+            if form.is_valid():
+                # The form still validates and saves the LOGO (an ImageField whose
+                # checks are worth keeping) but must not write the name: renaming
+                # the row first would leave rename_brand searching for job cards
+                # carrying a name that no longer exists — the master list moves and
+                # the history stays behind, the exact bug being fixed here.
+                obj = form.save(commit=False)
+                obj.name = old_name
+                obj.save()
+
+                brand.refresh_from_db()
+                final_name, merged = rename_brand(brand, new_name, user=request.user)
+                messages.success(
+                    request,
+                    f"Merged '{old_name}' into '{final_name}'. Job cards updated." if merged
+                    else f"Renamed to '{final_name}'. Job cards updated.")
+                return redirect('brand_list')
 
     return render(request, 'workshop/master_lists/brand_form.html', {'form': form, 'title': 'Edit Brand'})
 
@@ -161,6 +199,14 @@ def model_edit(request, pk):
         new_name = (request.POST.get('name') or '').strip()
         if new_name:
             brand_id = model.brand_id
+            preview = merge_preview(model, new_name)
+            if preview and not _merge_confirmed(request):
+                return _confirm_merge(
+                    request, preview,
+                    action=reverse('model_edit', args=[model.pk]),
+                    field_name='name', field_value=new_name,
+                    extra_fields={'brand': brand_id},
+                    cancel_url=reverse('brand_model_list', args=[brand_id]))
             final_name, merged = rename_model(model, new_name, user=request.user)
             messages.success(
                 request,
@@ -239,6 +285,13 @@ def spare_edit(request, pk):
         new_name = (request.POST.get('name') or '').strip()
         if new_name:
             old_name = spare.name
+            preview = merge_preview(spare, new_name)
+            if preview and not _merge_confirmed(request):
+                return _confirm_merge(
+                    request, preview,
+                    action=reverse('spare_edit', args=[spare.pk]),
+                    field_name='name', field_value=new_name,
+                    cancel_url=reverse('spare_list'))
             final_name, merged = rename_spare(spare, new_name, user=request.user)
             if merged:
                 messages.success(request, f"Merged '{old_name}' into '{final_name}'. All job cards updated.")
@@ -299,6 +352,13 @@ def concern_edit(request, pk):
     if request.method == 'POST':
         new_text = (request.POST.get('concern') or '').strip()
         if new_text:
+            preview = merge_preview(concern, new_text)
+            if preview and not _merge_confirmed(request):
+                return _confirm_merge(
+                    request, preview,
+                    action=reverse('concern_edit', args=[concern.pk]),
+                    field_name='concern', field_value=new_text,
+                    cancel_url=reverse('concern_list'))
             _final, merged = rename_concern(concern, new_text, user=request.user)
             messages.success(
                 request,
