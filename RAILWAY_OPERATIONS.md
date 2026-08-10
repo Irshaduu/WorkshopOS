@@ -50,18 +50,43 @@ Consequences that bite in practice:
 
 Do this once. It takes about 20 minutes.
 
-### 2.1 The account — decide who owns it
+### 2.1 The account — use a neutral email, and decide ownership later
 
-**Before creating anything, decide whether the Railway account belongs to you or
-to Formula D.** This is not a technical question and it is hard to undo.
+Who ends up owning this — you, the workshop, or both — does **not** have to be
+settled before you deploy. Only one choice actually locks you in:
 
-- **Workshop-owned email** (recommended for a handover): the owners hold the
-  account, you are added as a member. If you stop working with them, nothing
-  needs migrating.
-- **Your account**: simpler day to day, but the workshop's entire system lives
-  behind your personal login.
+**Do not create the account with your personal email.** An account is bound to
+the address that made it, and that is the thing that is hard to undo.
 
-Either is defensible. Choose deliberately and tell the owners which it is.
+Create one neutral identity and use it for Railway, for Resend, and for anything
+else the system comes to depend on:
+
+- a mailbox on the domain the workshop already owns —
+  `system@formuladservice.in`, or
+- a dedicated address created for the purpose
+
+All three outcomes then cost nothing to choose later:
+
+| Outcome | What it takes |
+|---|---|
+| The workshop holds everything | Hand over the password |
+| You hold and maintain it | Keep the password; the owners never need it |
+| Shared | Both know it |
+
+**The trap:** if you enable 2FA on that account with only your phone, you have
+made it yours whatever the email says — handing over the password later still
+leaves the owners locked out. If handover is even a possibility, **save the 2FA
+recovery codes and give the owners a copy at setup**, not when you need them.
+
+For reference, what is genuinely easy to move later: Railway projects transfer
+between accounts, GitHub repos transfer in a few clicks, environment variables
+are just text, and the domain is already the workshop's. The email and the 2FA
+holder are the only real one-way doors.
+
+Note that **who owns the hosting account and who owns the code are separate
+questions**, the second being commercial rather than technical. The repository
+currently lives in a personal GitHub account. That is an ordinary arrangement
+for freelance work — it is only a problem if it was never stated out loud.
 
 ### 2.2 Subscribe to Hobby
 
