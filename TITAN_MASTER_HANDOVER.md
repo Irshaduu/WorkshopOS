@@ -161,6 +161,51 @@ In the order set as of 2026-07-23:
 13. **Deep debug pass**.
 14. ✅ **Repo cleanup** (done 2026-08-10) — five unreferenced files removed: `API_DOCUMENTATION.md` and `TECH_INFO.md` (both described Twilio/Telegram, soft-delete-with-Trash and SMS 2FA as the *current* system, and the second opened by telling AI agents to copy those exact patterns), `TITAN_BLUEPRINT.html` (a v7 render), `migrate_to_postgres.py` (superseded by `copy_sqlite_to_postgres`) and `_phase3_audit.py` (a scratch script). Every count in `MASTER_BLUEPRINT.md` was recounted from the code in the same pass — models, routes, templates, migrations and test files had all drifted.
 15. **Hosting** — *in progress.* The system runs on Railway at a temporary URL; static-file serving, the build/pre-deploy commands and the email transport are done. Remaining: the production project on the Hobby plan, DNS for `app.formuladservice.in`, Resend verification, and the go-live steps themselves. Procedure: `GO_LIVE_RUNBOOK.md`. Ongoing operation: `RAILWAY_OPERATIONS.md`.
+16. **Post-review task list** — the owner's own verified list, 2026-08-10. Supersedes the
+    Antigravity-generated `QA_VERIFICATION_REPORT.txt`, which was built from an older
+    draft. Not started; recorded here so the list has one home.
+    1. Repeated OTP requests and wrong-OTP submissions by one owner raise no notification
+       to the other.
+    2. Push not working on Android on Render's free tier; the "Install as app" banner does
+       not appear on `railway.app`. **Both may resolve with the move to a custom domain on
+       Railway — re-test before investigating.**
+    3. Mobile scale/layout: correct in the browser's device emulator, too small on a real
+       phone.
+    4. High-discount alert should fire at **₹3,500**, not 30% — with a clean confirmation
+       when settling. Touches `audit_high_discounts` and the `HIGH_DISCOUNT` event.
+    5. Bill and Estimate PDF filenames: `Audi A4 KL11 AJ 2266 (JB-26-037).pdf`.
+    6. Spare Shop ⋮ button to the top-right on mobile.
+    7. Supplies Shop payment-history delete to move inside a ⋮ menu.
+    8. Job Card "Stock" and "Shop" buttons open a new window, which breaks the flow inside
+       an installed PWA.
+    9. Home header shows blank instead of `0` when no cars are in the workshop.
+    10. Job Card placeholders too prominent — smaller, lower contrast.
+    11. **Master data: replace rename/merge with delete-only plus click-through.** Proposal
+        is to drop editing and merging entirely, and instead click a master-list entry to
+        see the job cards using it and correct them one at a time. Trade to weigh: it
+        removes all bulk mutation (and the merge that is *not cleanly undoable*), at the
+        cost of manual work per card. Note the current merge is deliberately scoped to
+        `source=SHOP` and uses `.update()` so no signals fire — per-card editing goes
+        through the normal save path, so an `INVENTORY` row would behave differently.
+    12. **Salary shown against a settled month.** ✅ *Verified 2026-08-10: no calculation
+        issue.* `salary_used` is frozen onto `SalaryPaymentLine` at settle time and the
+        settled month renders that frozen figure; a later raise cannot reprice it, guarded
+        by `AMonthKeepsTheSalaryItWasSettledAtTests`. The current salary the owner sees is
+        the Salary & Advance **home** list (`home.html:260`), which correctly shows today's
+        figure. Remaining work is presentational only — make the two impossible to confuse.
+        **One real defect found while checking:** `payment_form.html:285` and `:294` gate
+        the whole salary block on `staff.current_salary`, so clearing a staff member's
+        salary makes an already-settled month render their card greyed with no figures,
+        even though a real frozen amount was paid. The stored data is correct; the page
+        stops showing it.
+    13. **Protected pages still visible via the browser Back button after logout.** The
+        session is genuinely dead (any action fails) — this is the browser's history cache
+        painting the old page. Fix is `Cache-Control: no-store` on authenticated responses.
+    14. Salary-advance notification: the on-click destination needs work.
+    15. Sound on important actions — worth scoping to irreversible/money actions only, and
+        it must be user-toggleable. A workshop is loud and phones are often silent, so
+        sound on *every* action becomes noise and then gets ignored.
+
 
 ---
 
