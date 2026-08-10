@@ -10,6 +10,11 @@ purpose you understand is one you can recover from.
 **The one rule:** if a step fails, stop and read the error. Do not run the next
 step hoping it clears. Every destructive command here has a dry run — use it.
 
+**Its companion:** `RAILWAY_OPERATIONS.md` is the ongoing reference — creating
+the project, the full variable table, shipping updates after go-live, backups,
+costs, maintenance and troubleshooting. This file is the one-time procedure;
+that one is what you come back to.
+
 | | |
 |---|---|
 | **Target host** | Railway (Hobby plan) |
