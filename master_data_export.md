@@ -1,5 +1,21 @@
 # Master Data Export
 
+> **What this is:** the brands, models and spare parts **collected from Formula D
+> itself** — the real list the workshop works with, gathered before the system
+> went live. It is a source record, not generated output.
+>
+> **Do not delete it as a duplicate.** The same data also exists as a Python list
+> inside `workshop/management/commands/load_master_data.py`, which is what
+> actually seeds the database — but that file is the *implementation*, and this
+> is where the data came from. If the two ever disagree, this one records what
+> the workshop said.
+>
+> **Editing this file changes nothing on its own.** To change what gets seeded,
+> edit the list in `load_master_data.py` as well.
+>
+> Already loaded into the test deployment. It must be loaded once into the real
+> database too — `GO_LIVE_RUNBOOK.md` §3.1.
+
 ## 1. Car Brands & Models
 - **Aston Martin**
   - DB11

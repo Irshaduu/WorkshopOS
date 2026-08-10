@@ -1,7 +1,7 @@
 # 🏗️ WorkshopOS (Titan) — SUPER MASTER BLUEPRINT
 
 > **Project**: WorkshopOS (Titan) · Django project package name `formulad_workshop`
-> **Framework**: Django 5.2 LTS · Python 3.13 · **PostgreSQL** (Neon — development *and* production since 2026-07-27; SQLite retained only for bulk dummy-data seeding and the test suite)
+> **Framework**: Django 5.2 LTS · Python 3.13 · **PostgreSQL** — development *and* production since 2026-07-27 (development on Neon, production on Railway's own Postgres alongside the app; SQLite retained only for bulk dummy-data seeding and the test suite)
 > **Apps**: `workshop` (core) + `inventory` (warehouse)
 > **Accurate as of**: 2026-08-05 (v10)
 >
@@ -201,9 +201,13 @@ parallel system.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (148 Total)
+## 4. ALL URL ROUTES — COMPLETE (147 Total)
 
-### Workshop App (115 routes)
+*Counted 2026-08-10 from the resolver, excluding Django admin and the framework's
+own routes. Recount rather than trusting this line — it has gone stale before:*
+`manage.py shell -c "..."` *walking `get_resolver().url_patterns`.*
+
+### Workshop App (114 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -533,10 +537,12 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 | Component | File | Purpose |
 |-----------|------|---------|
 | `SessionTrackingMiddleware` | `middleware.py` | Logs every authenticated request to `UserSession` (5-min cooldown) |
+| `NoIndexMiddleware` | `middleware.py` | Sets `X-Robots-Tag: noindex, nofollow` on every response. Paired with `/robots.txt` (`Disallow: /`), which covers a different set of crawlers — one that obeys Disallow never fetches the page and so never sees the header. Neither is a security control |
+| `ResendEmailBackend` | `email_backend.py` | `EMAIL_BACKEND` in production. Sends via Resend's HTTPS API using stdlib `urllib` — Railway blocks outbound SMTP below the Pro plan. Only the transport differs; the reset flow is unchanged |
 | `create_user_groups` | `apps.py` | Auto-creates Owner/Office/Floor groups on migrate |
 | `inventory.signals` | `signals.py` | Auto stock sync — 8 handlers in 3 groups: 3 for JobCardSpareItem (consumption, `source='INVENTORY'` only) + 2 for JobCard (soft-delete stock reversal, dormant) + 3 for SupplierRestockItem (restock). Never clamps stock at zero |
 | `inventory.costing` | `costing.py` | Weighted-average warehouse cost. Pure functions over a date-ordered replay of receipts and draws; holds no view logic and never touches `current_stock`. Receipts move the average, draws do not |
-| Management Commands | `management/commands/` | `setup_groups` (legacy setup), `backup_db` (automated SQLite backups), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address) |
+| Management Commands | `management/commands/` | All nine: `setup_groups` (legacy setup), `backup_db` (follows the active engine — `pg_dump` for Postgres, file copy for SQLite, keeps 14), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address), `load_master_data` (brands/models/spares), `seed_dummy_data` + `seed_salary_data` (demo data), `purge_business_data` (clears every business table; the reversal of seeding), `copy_sqlite_to_postgres` (seed on SQLite, push up) |
 | Custom template filters | `templatetags/custom_filters.py` | `has_group`, `is_drawer_section` (drives the nav's Manage highlight from one prefix list), `is_tomorrow`, `divide`, `multiply`, `clean_qty`/`qty`, `get_range`, `abs_value`, and the four rupee formatters — `inr` (whole rupees, Indian grouping), `inr_amount` (paise only when there are any), `inr_exact` (paise always, for the printed invoice's money columns), `inr_compact` (`45.2L` / `4.57Cr`, for hero figures on a phone) |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV`, raises `ImproperlyConfigured` if unset |
 | `WhiteNoiseMiddleware` | `settings/production.py` | Serves static assets directly from the application in production |
@@ -658,7 +664,8 @@ graph TB
 | `SESSION_COOKIE_AGE` | 40 days (3,456,000s) |
 | `SESSION_SAVE_EVERY_REQUEST` | True |
 | `STATIC_URL` | `/static/` |
-| `MEDIA_URL` | `/media/` |
+| `STORAGES['staticfiles']` | `whitenoise.storage.CompressedManifestStaticFilesStorage`. **Must be set via `STORAGES`, not `STATICFILES_STORAGE`** — Django 5.1 removed the latter and ignores it without warning, which silently disabled hashing and compression here for months |
+| `MEDIA_URL` | `/media/` — **not served in production.** `formulad_workshop/urls.py` routes it through Django's `static()` helper, which returns an empty list when `DEBUG=False`. See `TECH_DEBT.md` AUD-0088 |
 | `LOGGING` | Rotating file handler → `errors.log` (5MB × 5 backups) |
 | `CSRF_TRUSTED_ORIGINS` | From `.env` |
 
@@ -672,8 +679,9 @@ graph TB
 | `CSRF_TRUSTED_ORIGINS` | Comma-separated trusted CSRF origins |
 | `OWNER_1_USERNAME`, `OWNER_1_MOBILE` | Owner 1. Read **only** by `sync_owner_identity`; the authoritative copy lives in the database (`User`, `UserProfile.mobile_number`) |
 | `OWNER_2_USERNAME`, `OWNER_2_MOBILE` | Owner 2, same |
-| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS` | SMTP transport for password-reset codes |
+| `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS` | SMTP transport for password-reset codes. **Development only** — production overrides `EMAIL_BACKEND` to Resend because Railway blocks outbound SMTP below the Pro plan |
 | `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | Sending mailbox. The password is a Google **App Password**, not the account password |
+| `RESEND_API_KEY` | Production transport. Empty is valid everywhere except production, where the backend raises `ImproperlyConfigured` rather than reporting a delivery failure. The sending domain is verified on a **subdomain** (`mail.formuladservice.in`) so the root domain's mail is untouched |
 | `DEFAULT_FROM_EMAIL` | Display name + address recipients see |
 | `BUSINESS_NAME` | The name owners know the workshop by (default `Formula D`). Used in the reset email's subject and body — **not** "WorkshopOS", which is the project's internal name and appears nowhere in the UI. A setting rather than a literal so the codebase can serve another workshop without a hunt |
 | `EMAIL_REAL` | Development only. False (default) prints mail to the console instead of sending |
@@ -687,9 +695,9 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 
 ---
 
-## 13. TEST SUITE (37 Files / see CLAUDE.md for the live count)
+## 13. TEST SUITE (38 Files / see CLAUDE.md for the live count)
 
-### Workshop Tests — `workshop/tests/` package (32 files)
+### Workshop Tests — `workshop/tests/` package (33 files)
 
 | File | Coverage Area |
 |------|--------------|
@@ -721,6 +729,7 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 | `test_estimate.py` | Estimates: the printed sheet held in step with the invoice, isolation from job cards / stock / ledgers / DeletionLog, `EST-` numbering, the price-hint endpoint, and the screens' RBAC |
 | `test_jobcard_inventory_section.py` | The Job Card's two spare routes as two formsets over one model, scoped by `source` |
 | `test_template_comments.py` | Static scan: no multi-line `{# … #}`, which stops being a comment and renders on the page |
+| `test_email_backend.py` | The Resend HTTPS transport under password reset: the delivered count `send_mail` reports back, a missing key raising rather than looking like a delivery failure, `fail_silently` semantics, and the owner's address never reaching the logs |
 | `test_fleet_cashbook_integrity.py` | Fleet Account + Cashbook invariants |
 | `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants |
 | `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants |
@@ -825,4 +834,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · 33 Models (25 workshop + 8 inventory) · 137 URL Routes (104 + 33) · 88 Templates (68 + 20) · 3 RBAC Tiers · 2 External Services (SMTP, Web Push) · 8 Signal Handlers (3 groups) · 27 Test Files · 66 Migrations (59 workshop + 7 inventory)
+> **Total** *(recounted 2026-08-10 — every figure here had drifted)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 38 Test Files · 76 Migrations (68 workshop + 8 inventory)

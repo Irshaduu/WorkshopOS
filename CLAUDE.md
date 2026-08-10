@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-WorkshopOS ("Titan") is a Django 5.2 monolith for a single premium automotive workshop: job cards, inventory, spare/supplier shops, bulk payer billing, cashbook, and owner analytics. Two apps: `workshop` (core business logic) and `inventory` (stock + supplier shops). **PostgreSQL** (Neon, Singapore) is the database in both development and production as of 2026-07-27; SQLite survives only for bulk dummy-data seeding and the test suite — see "Which database am I on?" below. The app is still pre-go-live: the Postgres instance holds demo data, not a real workshop's books, so don't describe it as "live production data".
+WorkshopOS ("Titan") is a Django 5.2 monolith for a single premium automotive workshop: job cards, inventory, spare/supplier shops, bulk payer billing, cashbook, and owner analytics. Two apps: `workshop` (core business logic) and `inventory` (stock + supplier shops). **PostgreSQL** is the database in both development and production as of 2026-07-27; SQLite survives only for bulk dummy-data seeding and the test suite — see "Which database am I on?" below. Development runs against **Neon** (Singapore); **production will be Railway's own PostgreSQL**, in the same project as the app, so the two talk over Railway's private network instead of crossing a region. The app is still pre-go-live: neither instance holds a real workshop's books, so don't describe either as "live production data". Deployment lives in `GO_LIVE_RUNBOOK.md` and `RAILWAY_OPERATIONS.md`.
 
 Built for a low-volume, high-value workshop (premium/luxury car servicing, appointment-driven, not a high-throughput chain garage) with a small, flat staff structure — this is why RBAC only needs three tiers and why performance work should be judged against realistic load, not generic "web scale" assumptions.
 
@@ -838,57 +838,6 @@ about to correct one of these, you are about to break the business:
   match anyway; if it ever shows up in a slow-query log the fix is a functional
   index on `UPPER(spare_part_name)`, not a change of rule.
 
-- **On an Estimate, a blank row is not a row — and the fix has to run BEFORE
-  `super().clean()`.** Added 2026-08-05, `BlankRowIsNoRowFormSet` in
-  `workshop/forms.py`. Everything on a quote is optional, so a line someone
-  typed into and then cleared must not become "This field is required" — that is
-  the form arguing with the person filling it in. The line forms drop
-  `required` and the formset marks any all-blank row `DELETE`, which Django's
-  own delete path then skips (new row) or removes (stored row). **The ordering
-  is load-bearing and cost an hour to find:** `BaseModelFormSet.clean()` calls
-  `validate_unique()`, which reads `self.deleted_forms` — and that property
-  **caches** its answer in `_deleted_form_indexes` on first access. Marking the
-  rows after `super().clean()` marks them too late; the cache is already built
-  from the unmarked forms and `deleted_forms` stays empty forever. The failure
-  is worse than a no-op: `_post_clean` excludes a blank value on a
-  not-required field from model validation, so the emptied row raises no error
-  either — it is simply **saved**, writing `description=''` and printing an
-  unnamed line on a customer's document. Guarded by
-  `test_clearing_an_existing_line_removes_it_instead_of_erroring`.
-
-- **A money box must not fight the person typing into it.** Added 2026-08-05,
-  `_tidy_money_initial` in `workshop/forms.py`. A field arriving with `0` turns
-  the first keystroke into `08500`; one arriving with `8500.00` puts two zeros
-  and a point between the caret and the next digit, so entering a figure means
-  deleting characters first. Both were true of Total Labour, the box Office
-  touches on nearly every estimate. Display only — `clean_labour_amount` still
-  turns empty into `Decimal('0')` and the column still holds two decimals — and
-  **real paise are kept** (`1250.50`), because dropping those changes the number
-  rather than tidying it. Bound forms are deliberately untouched:
-  `BoundField.value()` reads submitted data, not `initial`, so a rejected POST
-  still shows exactly what was typed instead of a reformatted guess at it.
-
-- **Estimates offer TWO date filters, not the eight the day-to-day lists
-  carry.** Added 2026-08-05. Paid Bills / Completed / Cashbook sort a stream of
-  daily activity, where Today and Last Month each answer a real question. A
-  workshop writes a handful of quotes a month and looks them up months later, so
-  six of those eight would return an empty page most of the time — which reads
-  as a broken screen, not an empty period. This Year (default) or All Time, as
-  two pills rather than a dropdown, because two options should be one tap. An
-  unrecognised `?filter=` falls back to This Year rather than silently widening
-  to everything.
-
-- **The Manage pill's highlight is a LIST in Python, not a chain of `{% if %}`
-  in `base.html`.** Fixed 2026-08-05. It used to be ten `p|slice` comparisons
-  inline on the button, and it had quietly fallen two sections behind: **Salary
-  & Advance and Estimates were both in the drawer and missing from it**, so
-  Manage read as inactive on pages reachable only through it. A missing entry in
-  a ten-clause boolean is invisible. It is now `DRAWER_SECTION_PREFIXES` in
-  `templatetags/custom_filters.py` with an `is_drawer_section` filter, and
-  `test_every_drawer_destination_lights_the_manage_button` scrapes the drawer's
-  own links and asserts every one is covered — so the next section added fails
-  loudly instead of shipping unhighlighted.
-
 - **The Estimates header keeps its action beside the title, at every width —
   the row must never become a column.** Added 2026-08-05. The mobile rules
   originally switched `.est-header-top` to `flex-direction: column`, which gave
@@ -1322,6 +1271,7 @@ python manage.py load_master_data  # brands/models/spare parts — prerequisite 
 # Seed into SQLite (fast), then push the finished result up to Postgres.
 python manage.py seed_dummy_data                                    # default 5-year range
 python manage.py seed_dummy_data --start 2026-01-01 --end 2026-07-25 --cards-per-day 3
+python manage.py seed_salary_data           # salary months + advances only
 python manage.py purge_business_data        # DRY RUN — prints what it would delete
 python manage.py purge_business_data --yes  # actually delete
 
@@ -1437,7 +1387,7 @@ Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_H
 
 ### App boundaries
 - **`workshop/`** — job cards, billing, bulk payers, spare shops, cashbook, auth, owner analytics, deletion history, master data (brands/models/spares/concerns).
-  - `views/` is a package (15 modules: `dashboard`, `jobcard`, `completed`, `deletion_history`, `billing`, `estimate`, `bulk_payer`, `spare_shop`, `pending`, `paid`, `car_profiles`, `master_lists`, `autocomplete`, `audits`, `salary_advance`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
+  - `views/` is a package (17 modules: `audits`, `autocomplete`, `billing`, `bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`, `estimate`, `jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `push`, `salary_advance`, `spare_shop`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
   - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section, and `master_data.py` likewise holds no views: it is the one implementation of the master-list rename/merge rule, shared by `views/master_lists.py` and `cleanup_views.py` (see "Deliberate decisions" for why that sharing is load-bearing). **`invoice.py` is the third of these** — no views, no HTTP: it is the one answer to "what does the customer see?", so a second printing surface (a PDF export, a reprint from Paid Bills) cannot grow its own slightly-different version. It owns **both** customer documents — `build_invoice()` and `build_estimate()`, sharing every rule between them (see "Deliberate decisions"). `views/billing.py` and `views/estimate.py` resolve the record and render; neither contains any arithmetic.
   - `decorators.py` defines the RBAC decorators (`owner_required`, `office_required`, `staff_required`) built on three Django auth Groups: **Owner**, **Office**, **Floor**. Superusers pass every check. Use these decorators on any new view instead of rolling custom permission checks.
   - `middleware.py` (`SessionTrackingMiddleware`) updates `UserSession` (device/IP/last-activity) on every authenticated request, throttled to a 5-minute cooldown per session.
@@ -1454,7 +1404,7 @@ Split into `formulad_workshop/settings/{base,development,production}.py`. `__ini
 ### Notifications — one catalogue, one entry point
 The whole event list lives in **`workshop/notifications.py`**. Add an event to `EVENTS`, then call `notify()` from the single place it happens — **never** `Notification.objects.create()` in a view. With a dozen call sites across fourteen view modules, that file is the only way to answer "what does this thing notify about?" without grepping.
 - **Fanned out per recipient**, so the unread count is one indexed query. **No FK to the subject** — most events announce a *deletion*, and a FK would cascade the notification away with the thing it was about; `object_type`/`object_id` plus a frozen label in `body` is the same discipline as `DeletionLog.snapshot`.
-- **`DeletionLog.record()` is the deletion hook.** Every permanent delete already funnels through it, so one call covers all nine entity types and any added later. Don't scatter equivalent `notify()` calls into individual delete views.
+- **`DeletionLog.record()` is the deletion hook.** Every permanent delete already funnels through it, so one call covers all eleven entity types and any added later. Don't scatter equivalent `notify()` calls into individual delete views.
 - **Owners only, and the actor never hears about their own action.** Floor gets nothing — a notification a mechanic can't act on trains everyone to ignore the bell. The bell in `base.html` is Owner-gated to match; widen the gate and the audience together or you get a bell that can never fill.
 - Audience is resolved by **group membership**, not `is_superuser` — see the Owner-group note under Security below for why that distinction is load-bearing.
 - `notify()` swallows its own errors so a malformed body can't fail a payment. That promise stops at database errors inside an atomic block: the surrounding transaction is already doomed and shouldn't be rescued.
@@ -1579,7 +1529,16 @@ Keep any new stock-affecting model change signal-driven rather than mutating `It
 Tests live in `workshop/tests/` (32 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 37 files, **865 tests** (measured 2026-08-05; the figures here had gone stale twice before, so re-count rather than trusting this line). Expect the full suite to take **30-55 minutes** — timed at 53 minutes on 2026-08-04 and 31 on 2026-08-05, so the spread is wide; budget for the top of it rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
-- `API_DOCUMENTATION.md` is a long-form design doc kept at repo root — check it for historical rationale before assuming something is undocumented.
+- `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with
+  `TITAN_BLUEPRINT.html` (a v7 render, two doc versions behind), `migrate_to_postgres.py`
+  (superseded by the `copy_sqlite_to_postgres` management command) and `_phase3_audit.py`
+  (a throwaway exploration script). All five were unreferenced. The two docs were worse
+  than merely stale: they described Twilio/Telegram notifications, `is_deleted` soft-delete
+  with a Trash screen, and SMS 2FA as the *current* system, and `TECH_INFO.md` opened by
+  instructing future AI agents to "copy these exact patterns. Do NOT hallucinate
+  alternatives." Every one of those patterns had been removed from the codebase. They are
+  in git history if a historical question ever needs them. Don't recreate them — what was
+  accurate is owned by `MASTER_BLUEPRINT.md` and this file.
 - `AUDIT_LOG.md` and `Aditing files/` were **removed on 2026-07-25**. Every finding was re-verified against the code; the ones still open were consolidated into `TECH_DEBT.md` (local, not in git), the deliberate ones into "Deliberate decisions" above, and the rest were confirmed fixed. Don't recreate them — that split was what caused the drift.
 - The SMS/Telegram notification system was **deleted on 2026-07-29**, along with `verify_twilio.py`, `verify_alerts.py`, the `twilio` and `requests` dependencies, and its `.env` keys. Owner alerts are the in-app feed now (see "Notifications" above). If you find a doc still describing a dual-channel broadcast, that doc is stale.
 

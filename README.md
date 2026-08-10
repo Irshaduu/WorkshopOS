@@ -64,11 +64,12 @@ A premium, comprehensive Django-based workshop management system for a single au
 ## Tech Stack
 
 - **Backend**: Python 3.13 / Django 5.2 LTS
-- **Database**: PostgreSQL (Neon) in both development and production as of 2026-07-27. SQLite is kept only for bulk dummy-data seeding and for running the test suite, which selects it automatically.
-- **Frontend**: Bootstrap 5, vanilla JavaScript, CSS3
-- **Security**: `python-decouple` for environment variables, role-based decorators, IP-based lockout
-- **Static Assets**: WhiteNoise for production static serving
-- **Notifications**: in-app feed behind the nav bell, owner-only (login, large discounts, permanent deletions, salary activity, archives). Twilio/Telegram were removed 2026-07-29; SMTP for password-reset codes is the only outbound integration.
+- **Database**: PostgreSQL in both development and production as of 2026-07-27. SQLite is kept only for bulk dummy-data seeding and for running the test suite, which selects it automatically.
+- **Hosting**: Railway — the app and its PostgreSQL database in one project. See [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md).
+- **Frontend**: Bootstrap 5, vanilla JavaScript, CSS3. Server-rendered Django templates with page-scoped inline JS and **no build step** — a deliberate choice, recorded in [`CLAUDE.md`](CLAUDE.md).
+- **Security**: `python-decouple` for environment variables, role-based decorators, per-account and per-IP lockout
+- **Static Assets**: WhiteNoise, configured through `STORAGES` (Django 5.1 removed `STATICFILES_STORAGE` and ignores it silently)
+- **Notifications**: in-app feed behind the nav bell, owner-only (login, large discounts, permanent deletions, salary activity, archives). Twilio/Telegram were removed 2026-07-29. The only outbound integration is transactional email for password-reset codes, sent over **Resend's HTTPS API** — Railway blocks outbound SMTP below its Pro plan.
 
 ## Installation
 
@@ -96,7 +97,7 @@ A premium, comprehensive Django-based workshop management system for a single au
    ```
 
 4. **Configure environment**
-   - Create a `.env` file with the required variables — see `CLAUDE.md` for the full list (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_*`, the `EMAIL_*` block for password-reset codes, and the PostgreSQL settings).
+   - Create a `.env` file with the required variables — see `CLAUDE.md` for the full list (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_*`, the `EMAIL_*` block for password-reset codes in development, and the PostgreSQL settings). Production instead uses `RESEND_API_KEY`; the full deployment variable table is in [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) §3.
    - Set `DJANGO_ENV=development` in your shell/session (required — there is no default; see `CLAUDE.md`).
 
 5. **Run migrations**
@@ -140,11 +141,12 @@ Exact model/route/template counts live in [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRI
 
 ## 🛡️ Reliability, Performance & Security
 
-WorkshopOS is backed by an automated test suite (19 files) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
+WorkshopOS is backed by an automated test suite (38 files) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
 
 ## 🛠️ Operational Tooling
-- **Automated SQLite Backups** — `python manage.py backup_db` for secure, rotated archiving of the local SQLite file (keeps the 7 most recent). Note: this backs up SQLite only; PostgreSQL backups are handled by Neon.
+- **Database Backups** — `python manage.py backup_db` follows whichever database is active: `pg_dump` for PostgreSQL, a file copy for SQLite, keeping the 14 most recent. **On Railway it writes into the container's ephemeral filesystem, so the file does not survive the next deploy** — see [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) §6 for the backup procedure that actually persists.
 - **Production Static Serving** — `WhiteNoiseMiddleware` serves static files directly from the application layer.
+- **Deployment** — [`GO_LIVE_RUNBOOK.md`](GO_LIVE_RUNBOOK.md) is the one-time go-live checklist; [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) is the ongoing platform reference.
 
 ## 🔜 Roadmap
 

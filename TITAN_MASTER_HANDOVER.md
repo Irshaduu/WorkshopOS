@@ -13,7 +13,7 @@
 
 **WorkshopOS** is engineered for a single premium automotive workshop — appointment-driven, high-value vehicles, not high-volume throughput. That distinction matters: the system is built to be fast and correct for a small, hands-on team, not to demonstrate generic "web scale."
 
-- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **37 files** (see CLAUDE.md for the live test count) covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, and the owner profit engine.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **38 files** (see CLAUDE.md for the live test count) covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, the owner profit engine, and the email transport behind password reset.
 
 ---
 
@@ -38,7 +38,7 @@
 ### 1c. Notifications — in-app feed (added 2026-07-29)
 - The nav bell is real: an owner-only feed at `/notifications/` with an unread badge, mark-one-on-open, mark-all-read, and a 14-day sweep of *read* rows (unread are never swept).
 - **Eight events**, all Owner-audience, all declared in one file (`workshop/notifications.py`): `LOGIN`, `ACCOUNT_LOCKED`, `USER_CREATED`, `HIGH_DISCOUNT`, `RECORD_DELETED`, `ACCOUNT_ARCHIVED`, `SALARY_ADVANCE`, `SALARY_SETTLED`.
-- **`RECORD_DELETED` hooks `DeletionLog.record()`** — the single choke point every permanent delete already passes through, so one call covers all nine entity types and anything added later for free.
+- **`RECORD_DELETED` hooks `DeletionLog.record()`** — the single choke point every permanent delete already passes through, so one call covers all eleven entity types and anything added later for free.
 - **The actor is excluded from their own events**, which roughly halves volume with two owners, and Floor receives nothing at all. Notification fatigue is the failure mode here: a bell that cries wolf stops being read, and the events that matter (large discount, permanent delete) are exactly the ones that would be missed.
 - `HIGH_DISCOUNT` uses `JobCard.HIGH_DISCOUNT_RATIO`, the same constant as `audit_high_discounts`, so the audit page and the alert cannot disagree about what "large" means.
 - This replaced the SMS/Telegram broadcast described in §2.
@@ -123,8 +123,9 @@ WorkshopOS uses deliberate, standard performance patterns rather than ad hoc que
 
 - **Core-Only Architecture**: The repository root contains application code, migration files, and documented standards.
 - **Environment Isolation**: Secrets live in `.env` — `SECRET_KEY`, the PostgreSQL credentials, and the SMTP sending mailbox (an App Password, not an account password). Owner *identity* deliberately does **not**: usernames, mobiles and email addresses are database rows, so adding an owner or changing an address needs no deploy.
-- **Split Settings**: `settings/` package selects development or production via `DJANGO_ENV`, which has no default — an unset value raises `ImproperlyConfigured` rather than silently choosing a database. **Both environments run on PostgreSQL** (Neon); SQLite is used only for bulk dummy-data seeding (`USE_SQLITE=true`) and automatically for `manage.py test`.
-- **Modular Views**: The `workshop` app's views live in a `views/` package (13 focused modules), maintaining full backward compatibility via re-exports in `__init__.py`.
+- **Split Settings**: `settings/` package selects development or production via `DJANGO_ENV`, which has no default — an unset value raises `ImproperlyConfigured` rather than silently choosing a database. **Both environments run on PostgreSQL** — development on Neon, production on Railway's own Postgres in the same project as the app; SQLite is used only for bulk dummy-data seeding (`USE_SQLITE=true`) and automatically for `manage.py test`.
+- **Modular Views**: The `workshop` app's views live in a `views/` package (17 focused modules), maintaining full backward compatibility via re-exports in `__init__.py`.
+- **Deployment**: Railway (app + PostgreSQL in one project), behind `app.formuladservice.in`. Mail leaves over Resend's HTTPS API — Railway blocks outbound SMTP below the Pro plan. Procedure in `GO_LIVE_RUNBOOK.md`, ongoing operation in `RAILWAY_OPERATIONS.md`.
 
 ---
 
@@ -153,13 +154,13 @@ In the order set as of 2026-07-23:
    - **Web Push** (§II.1d) — added once the app was hosted on Render (HTTPS is a hard requirement). CRITICAL events only; the in-app feed remains the source of truth.
    - *Remaining*: enable it on each owner's real device. On iPhone that means **Add to Home Screen first**, then open the installed app and use the button on `/notifications/` — Safari does not expose Web Push to a normal browser tab.
 8. ~~**Owner Analysis & Reports — full rebuild**~~ — ✅ **done 2026-07-27**: rebuilt from scratch as a protected Profit page plus a separate Deep Analysis page (see §II.5).
-9. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL (Neon, Singapore). SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
+9. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL. Development is Neon (Singapore); production moves to Railway's own Postgres at go-live, co-located with the app. SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
 10. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
 11. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
 12. **Keep every financial and security rule under test** — not a coverage percentage. The 865 existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. Add a test when a rule is added or a bug is fixed, not to move a metric.
 13. **Deep debug pass**.
-14. **Repo cleanup** — get the workspace hosting-ready (see §V).
-15. **Hosting** — deploy the live system.
+14. ✅ **Repo cleanup** (done 2026-08-10) — five unreferenced files removed: `API_DOCUMENTATION.md` and `TECH_INFO.md` (both described Twilio/Telegram, soft-delete-with-Trash and SMS 2FA as the *current* system, and the second opened by telling AI agents to copy those exact patterns), `TITAN_BLUEPRINT.html` (a v7 render), `migrate_to_postgres.py` (superseded by `copy_sqlite_to_postgres`) and `_phase3_audit.py` (a scratch script). Every count in `MASTER_BLUEPRINT.md` was recounted from the code in the same pass — models, routes, templates, migrations and test files had all drifted.
+15. **Hosting** — *in progress.* The system runs on Railway at a temporary URL; static-file serving, the build/pre-deploy commands and the email transport are done. Remaining: the production project on the Hobby plan, DNS for `app.formuladservice.in`, Resend verification, and the go-live steps themselves. Procedure: `GO_LIVE_RUNBOOK.md`. Ongoing operation: `RAILWAY_OPERATIONS.md`.
 
 ---
 

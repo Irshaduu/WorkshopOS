@@ -719,11 +719,24 @@ SALARY & ADVANCE (Office and Owner)
   Shows: every active staff member with their monthly salary and advances taken
   Give an advance: recorded against a staff member on the day it happens
   Settle a month: one row per staff — salary, leave days deducted, advances
-    already taken, and the net cash to hand over. Saving freezes those figures.
-  Re-saving a settled month simply recomputes and overwrites it — safe, because
-    nothing else reads these numbers until they are saved.
+    already taken, any overtime, and the net cash to hand over. Overtime is a
+    single amount per person per month, added to the net. Saving freezes it all.
+  A month has THREE states, following the workshop's own rhythm — a month is
+    settled in the first days of the next one and the cash handed over at once:
+      open    — not yet settled
+      locked  — settled and still the most recent. Correctable, but only via
+                "Edit this settlement" in the ⋮ menu; a plain re-save is refused
+      closed  — a newer month has since been settled. No edit, no delete, for
+                anyone including owners
+  Closure is a stored one-way flag, not "is this the latest?" — otherwise
+    deleting the newest settlement would hand editability back to the one before
+    it, and the whole history could be walked backwards one delete at a time.
   A later pay rise never rewrites a month already settled; the frozen line keeps
-    the salary that was actually in effect.
+    the salary that was actually in effect. To settle a month at a different
+    figure, delete the settlement and settle again.
+  A month cannot be settled while someone who was handed an advance would get no
+    settlement line, and an advance cannot be recorded into a settled month —
+    both are refused at the moment of the mistake, not flagged afterwards.
   Deleting a whole settlement is Owner-only, goes through a confirmation page,
     and is written to Deletion History. Advances are NOT affected by it.
   Feeds: the Salary & Advance expense line on the Owner Profit page — wages come

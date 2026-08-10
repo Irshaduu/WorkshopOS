@@ -1,8 +1,12 @@
 """
 Management command: load_master_data
 -------------------------------------
-Seeds the database with master Car Brands, Car Models, and Spare Parts
-as defined in master_data_export.md.
+Seeds the database with master Car Brands, Car Models, and Spare Parts.
+
+The data is the Python list **below, in this file** — nothing is read from disk
+at runtime. `master_data_export.md` at the repo root is the source record it was
+transcribed from (the real list collected from the workshop), so editing that
+file alone changes nothing here; both have to be kept in step.
 
 Usage:
     python manage.py load_master_data
