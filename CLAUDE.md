@@ -1081,7 +1081,7 @@ about to correct one of these, you are about to break the business:
   hardening is unlocked today), the largest page carries ~12 KB of script read
   by four devices on one shop's LAN (so caching is a rounding error), and there
   is **no npm, no bundler, no linter and no JS test runner** — none of which
-  will be added. That last point is the load-bearing one: **nothing in the 865
+  will be added. That last point is the load-bearing one: **nothing in the 877
   Django tests executes a line of JavaScript**, so a JS refactor leaves the
   suite green whether or not it broke, and this codebase has already been bitten
   by exactly that (see the three `script.js` cloning traps above — "the symptom
@@ -1245,7 +1245,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (35 test files, 791 tests, ~53 min; always uses SQLite, see below)
+# Run full test suite (38 test files, 877 tests, ~23-53 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -1331,7 +1331,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 791 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 877 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -1526,7 +1526,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (32 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 37 files, **865 tests** (measured 2026-08-05; the figures here had gone stale twice before, so re-count rather than trusting this line). Expect the full suite to take **30-55 minutes** — timed at 53 minutes on 2026-08-04 and 31 on 2026-08-05, so the spread is wide; budget for the top of it rather than assuming it has hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (33 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 38 files, **877 tests, all passing** (run in full 2026-08-10; the figures here had gone stale three times before, so re-count rather than trusting this line). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05 and 23 on 2026-08-10, so the spread is wide and machine-dependent; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with
