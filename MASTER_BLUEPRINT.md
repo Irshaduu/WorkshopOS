@@ -191,8 +191,18 @@ Any event → workshop/notifications.py :: notify(event, body, actor=…)
                     └─→ nav bell → /notifications/
 ```
 
-The event catalogue is the `EVENTS` dict in `workshop/notifications.py` — eight
-entries, one screen. **Never call `Notification.objects.create()` from a view.**
+The event catalogue is the `EVENTS` dict in `workshop/notifications.py` —
+thirteen entries, one screen. **Never call `Notification.objects.create()` from
+a view.**
+
+Two of the thirteen break the "minus the actor" rule in the diagram above, and
+deliberately: `RESET_CODE_LIMIT` and `RESET_CODE_ATTEMPTS_SPENT` (added
+2026-08-10) are raised from the *unauthenticated* password-reset form, so there
+is no actor to exclude and they reach **both** owners including the one being
+targeted. They are also the only events passed through `recently_raised()`,
+which caps them at one per account per hour — a form that needs no login would
+otherwise be a doorbell anyone could hold down. See CLAUDE.md for the full rule,
+including why the visitor's response must stay byte-identical.
 
 The Twilio SMS + Telegram broadcast this section used to describe was deleted on
 2026-07-29 (see `TITAN_MASTER_HANDOVER.md` §1c). No outbound messaging
@@ -538,6 +548,7 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 |-----------|------|---------|
 | `SessionTrackingMiddleware` | `middleware.py` | Logs every authenticated request to `UserSession` (5-min cooldown) |
 | `NoIndexMiddleware` | `middleware.py` | Sets `X-Robots-Tag: noindex, nofollow` on every response. Paired with `/robots.txt` (`Disallow: /`), which covers a different set of crawlers — one that obeys Disallow never fetches the page and so never sees the header. Neither is a security control |
+| `NoStoreMiddleware` | `middleware.py` | `Cache-Control: no-store, no-cache, must-revalidate, private` (+ `Pragma`/`Expires`) on **authenticated** responses, so the back/forward cache cannot redisplay a signed-in page after logout. Must stay after `AuthenticationMiddleware` — it reads `request.user`. Static assets never reach it; WhiteNoise returns them earlier in the chain |
 | `ResendEmailBackend` | `email_backend.py` | `EMAIL_BACKEND` in production. Sends via Resend's HTTPS API using stdlib `urllib` — Railway blocks outbound SMTP below the Pro plan. Only the transport differs; the reset flow is unchanged |
 | `create_user_groups` | `apps.py` | Auto-creates Owner/Office/Floor groups on migrate |
 | `inventory.signals` | `signals.py` | Auto stock sync — 8 handlers in 3 groups: 3 for JobCardSpareItem (consumption, `source='INVENTORY'` only) + 2 for JobCard (soft-delete stock reversal, dormant) + 3 for SupplierRestockItem (restock). Never clamps stock at zero |
@@ -804,9 +815,10 @@ WorkshopOS (Titan)/
 │   │   ├── purge_business_data.py     ← Clears all business tables (dry run by default)
 │   │   └── copy_sqlite_to_postgres.py ← Push a seeded SQLite file up to PostgreSQL
 │   ├── templates/workshop/     ← 68 HTML files
-│   ├── static/css/, static/js/ ← App-specific assets
+│   ├── static/js/              ← script.js (formsets + service-worker registration),
+│   │                             estimate.js, spare_autofill.js, sound.js (outcome tones)
 │   ├── migrations/             ← 59 migrations
-│   └── tests/                  ← 25 test files (package, not flat files)
+│   └── tests/                  ← 34 test files (package, not flat files)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)

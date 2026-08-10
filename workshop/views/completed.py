@@ -127,6 +127,12 @@ def mark_completed(request, pk):
         jobcard.completed = True
         jobcard.completed_date = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
         jobcard.save()
+        # This said NOTHING before — the card simply vanished off the Floor
+        # board and the page reloaded, which on a tablet is indistinguishable
+        # from a mis-tap that did nothing. Every other action in the app
+        # reports itself; these three did not. It is also what earns the
+        # confirmation sound, since those are driven off the message tag.
+        messages.success(request, f"{jobcard.registration_number} marked completed.")
     return redirect('home')
 
 
@@ -154,6 +160,10 @@ def undo_completed(request, pk):
         jobcard.completed = False
         jobcard.completed_date = None
         jobcard.save()
+        messages.success(
+            request,
+            f"{jobcard.registration_number} moved back to the workshop floor."
+        )
     return redirect('completed_list')
 
 
@@ -167,4 +177,10 @@ def toggle_hold(request, pk):
         jobcard = get_object_or_404(JobCard, pk=pk)
         jobcard.on_hold = not jobcard.on_hold
         jobcard.save()
+        messages.success(
+            request,
+            f"{jobcard.registration_number} put on hold."
+            if jobcard.on_hold else
+            f"{jobcard.registration_number} taken off hold."
+        )
     return redirect('home')

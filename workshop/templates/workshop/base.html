@@ -36,7 +36,7 @@
     owners' installed PWA (never fully quit) meant a shipped fix could simply not
     arrive. Bump this number whenever you change any file under static/.
     {% endcomment %}
-    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=4">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=5">
 
     <style>
         /* ========================================== */
@@ -620,6 +620,31 @@
 
         .drawer-logout-compact:hover { background-color: #fef2f2; }
 
+        /* Same row shape as Logout above, in the neutral colour — it is a
+           preference, not an action with consequences. */
+        .drawer-sound-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 18px;
+            border: 0;
+            background: transparent;
+            color: var(--color-text);
+            font-size: 0.88rem;
+            font-weight: 600;
+            text-align: left;
+            /* Paint only — never `transition: all` on a control in this
+               codebase (see the cashbook chip note in CLAUDE.md). */
+            transition: background-color 0.15s ease;
+        }
+
+        .drawer-sound-toggle i { font-size: 1rem; width: 1rem; }
+
+        .drawer-sound-toggle:hover { background-color: var(--color-hover); }
+
+        .drawer-sound-toggle[aria-pressed="false"] { color: var(--color-text-muted); }
+
 
         /* --- Scrollable body --- */
         .drawer-body {
@@ -1151,6 +1176,20 @@ widen this and the audience together.
                 Floor tablet a re-entered password mid-job. The POST form lives
                 in the modal (below, outside the drawer) — this is only a trigger.
                 {% endcomment %}
+                {% comment %}
+                Sound on/off, per DEVICE — stored in localStorage, exactly like
+                the push toggle, and for the same reason: the Floor tablet and
+                an owner's phone want different answers and neither should be
+                deciding for the other. It lives beside Logout rather than in a
+                settings screen because there is no settings screen, and one
+                switch does not earn one.
+                {% endcomment %}
+                <button type="button" class="drawer-sound-toggle" id="soundToggle"
+                        aria-pressed="true">
+                    <i class="bi bi-volume-up" id="soundToggleIcon"></i>
+                    <span id="soundToggleLabel">Sounds on</span>
+                </button>
+
                 <button type="button" class="drawer-logout-compact"
                         data-bs-toggle="modal" data-bs-target="#logoutConfirmModal">
                     <i class="bi bi-box-arrow-right"></i> Logout
@@ -1372,8 +1411,18 @@ owner to type the password back in.
     <main class="main-content">
         {% if messages %}
             <div class="container-fluid px-0 mb-4">
+                {% comment %}
+                `data-sound-tag` carries Django's own tag onto the banner, and
+                sound.js reads it. That is the whole wiring for the outcome
+                sounds: the app already tags every result through the messages
+                framework, so one attribute here covers every action in the
+                system — payments, deletes, settlements, job cards — with no
+                per-action code, and anything added later is covered by
+                default.
+                {% endcomment %}
                 {% for message in messages %}
-                    <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} shadow-sm d-flex align-items-center mb-2" style="border-radius: 12px;">
+                    <div data-sound-tag="{{ message.tags }}"
+                         class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} shadow-sm d-flex align-items-center mb-2" style="border-radius: 12px;">
                         <i class="bi {% if message.tags == 'error' or message.tags == 'warning' %}bi-exclamation-triangle-fill{% elif message.tags == 'success' %}bi-check-circle-fill{% else %}bi-info-circle-fill{% endif %} me-2"></i>
                         <div class="fw-medium">{{ message }}</div>
                         <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -1386,7 +1435,14 @@ owner to type the password back in.
 
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{% static 'js/script.js' %}?v=4"></script>
+    <script src="{% static 'js/script.js' %}?v=5"></script>
+    {% comment %}
+    Loaded for every role, not just owners: the sounds confirm Office's
+    payments and Floor's saves, which is most of what happens in a day. It
+    reads `data-sound-tag` off the banners above, so on a page with no messages
+    it does nothing at all and never opens an AudioContext.
+    {% endcomment %}
+    <script src="{% static 'js/sound.js' %}?v=5"></script>
     {% comment %}
     Panel + device on/silent toggle. Owner-only, like the bell itself.
 
@@ -1396,7 +1452,7 @@ owner to type the password back in.
     never got its JavaScript.
     {% endcomment %}
     {% if request.user|has_group:"Owner" %}
-    <script src="{% static 'js/notifications.js' %}?v=4"></script>
+    <script src="{% static 'js/notifications.js' %}?v=5"></script>
     {% endif %}
     <script>
         // (The bell used to be an href="#" placeholder whose click had to be
@@ -1411,6 +1467,36 @@ owner to type the password back in.
                 if (panel) bootstrap.Collapse.getOrCreateInstance(panel, { toggle: false }).hide();
             });
         }
+
+        // Sound on/off. Reads and writes through WorkshopSound so there is one
+        // AudioContext and one stored preference, not a second copy of either.
+        (function () {
+            var button = document.getElementById('soundToggle');
+            if (!button || !window.WorkshopSound) return;
+
+            var icon = document.getElementById('soundToggleIcon');
+            var label = document.getElementById('soundToggleLabel');
+
+            function paint() {
+                var on = window.WorkshopSound.isEnabled();
+                button.setAttribute('aria-pressed', on ? 'true' : 'false');
+                icon.className = on ? 'bi bi-volume-up' : 'bi bi-volume-mute';
+                label.textContent = on ? 'Sounds on' : 'Sounds off';
+            }
+
+            button.addEventListener('click', function () {
+                var on = !window.WorkshopSound.isEnabled();
+                window.WorkshopSound.setEnabled(on);
+                paint();
+                // Turning it ON plays the tone once, as the answer to "what
+                // will this sound like?". This click is a real user gesture, so
+                // it is also the one moment the AudioContext is guaranteed to
+                // be allowed to start.
+                if (on) window.WorkshopSound.play('success');
+            });
+
+            paint();
+        }());
     </script>
     {% block extra_js %}{% endblock %}
 

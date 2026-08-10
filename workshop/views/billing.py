@@ -65,6 +65,12 @@ def invoice_view(request, pk):
     context.update({
         'jobcard': jobcard,
         'back_url': _safe_back(request),
+        # Screen only — the settle dialog warns past this figure. Passed from
+        # the model rather than written into the template so the confirmation,
+        # the HIGH_DISCOUNT alert below and `audit_high_discounts` cannot come
+        # to mean three different things. Deliberately NOT part of
+        # `build_invoice()`: nothing about it reaches paper.
+        'high_discount_threshold': JobCard.HIGH_DISCOUNT_AMOUNT,
     })
     return render(request, 'workshop/invoice/invoice_template.html', context)
 
@@ -132,10 +138,13 @@ def update_bill_status(request, pk):
         # Same threshold as `audit_high_discounts`, read from one constant so the
         # audit page and the alert can never disagree about what "large" means.
         if jobcard.discount_amount and total_bill > 0:
-            ratio = jobcard.discount_amount / total_bill
-            if ratio > JobCard.HIGH_DISCOUNT_RATIO:
+            if jobcard.discount_amount > JobCard.HIGH_DISCOUNT_AMOUNT:
+                ratio = jobcard.discount_amount / total_bill
                 notify(
                     'HIGH_DISCOUNT',
+                    # The percentage stays in the body — it is not the threshold
+                    # any more, but it is still the context an owner reads the
+                    # figure against.
                     f"{jobcard.registration_number} — ₹{jobcard.discount_amount} off "
                     f"₹{total_bill} ({ratio:.0%}) on bill {jobcard.bill_number}.",
                     actor=request.user,

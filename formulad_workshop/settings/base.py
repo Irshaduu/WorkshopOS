@@ -83,6 +83,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'workshop.middleware.SessionTrackingMiddleware',
     'workshop.middleware.NoIndexMiddleware',
+    # Must stay AFTER AuthenticationMiddleware — it reads request.user to decide
+    # whether the response is worth withholding from the cache.
+    'workshop.middleware.NoStoreMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

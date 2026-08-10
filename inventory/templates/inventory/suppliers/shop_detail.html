@@ -129,11 +129,10 @@
   }
 
   /* ── PAYMENT OFFCANVAS ROWS ── */
-  .pay-row {
-    border-bottom: 1px solid var(--color-border-light);
-    padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;
-  }
-  .pay-row:last-child { border-bottom: none; }
+  /* The payment rows carry no bespoke styling any more: they use the same
+     utility classes as the Spare Shop payment history so the two screens
+     cannot drift apart. `.pay-method-badge` below is still used elsewhere on
+     this page. */
 </style>
 
 <!-- ── BACK + FILTER ROW ── -->
@@ -755,6 +754,11 @@
         currentPaymentsPage--;
       });
   }
+
+  // No per-row JavaScript for the payment ⋮ menus. Bootstrap initialises
+  // dropdowns from its own document-level delegated handler, so the rows
+  // appended by loadMorePayments() above work with nothing added here — the
+  // same reason the Spare Shop history needs none either.
 </script>
 
 {% endblock %}

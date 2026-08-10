@@ -105,6 +105,52 @@ def part_display_name(spare):
     return spare.spare_part_name or ''
 
 
+# Characters that are not legal in a filename on Windows, and are mangled or
+# silently rewritten on the others. Stripped rather than substituted: a
+# registration number containing one of these is a data anomaly, and a bill
+# named "KL11 AJ 2266" reads better than one named "KL11_AJ_2266".
+_FILENAME_UNSAFE = str.maketrans({character: None for character in '/\\:*?"<>|\r\n\t'})
+
+# Long enough for any real brand + model + plate + number, short enough that no
+# filesystem or mail client truncates it into something ambiguous.
+MAX_TITLE_LENGTH = 120
+
+
+def document_title(record, number, fallback):
+    """
+    What the browser tab says — and therefore what the saved PDF is called.
+
+    Both sheets are printed with the browser's own Print → Save as PDF, and
+    every browser suggests `document.title` as the filename. So the title is not
+    decoration: it is the name of the file an owner ends up with in a folder of
+    hundreds. "Invoice — Formula D" told them nothing there; "Audi A4 KL11 AJ
+    2266 (JB-26-037)" is searchable by car, by plate and by document number at
+    once.
+
+    Everything is optional except the result. An estimate may legitimately carry
+    no make, no model and no registration (most of the quote form is optional by
+    design), so the parts that exist are joined and the ones that do not are
+    dropped — never printed as an empty gap or a "None". If the car cannot be
+    named at all the document number stands alone, and if there is no number
+    either the caller's `fallback` word does, because a blank tab title makes a
+    browser fall back to the URL.
+    """
+    parts = [
+        ' '.join(str(value).split())
+        for value in (
+            getattr(record, 'brand_name', '') or '',
+            getattr(record, 'model_name', '') or '',
+            getattr(record, 'registration_number', '') or '',
+        )
+    ]
+    car = ' '.join(part for part in parts if part)
+
+    number = ' '.join(str(number or '').split())
+    title = f"{car} ({number})" if car and number else (car or number or fallback)
+
+    return title.translate(_FILENAME_UNSAFE).strip()[:MAX_TITLE_LENGTH]
+
+
 @dataclass(frozen=True)
 class JobLine:
     """One line of work. Carries no amount — see decision 3 above."""
@@ -212,6 +258,8 @@ def build_invoice(jobcard):
         # recomputed here, so a drift between the two would show on the page as
         # a bill that does not add up rather than being papered over.
         'grand_total': jobcard.total_bill_amount or Decimal('0'),
+
+        'document_title': document_title(jobcard, jobcard.bill_number, 'Invoice'),
     }
 
 
@@ -277,4 +325,6 @@ def build_estimate(estimate):
         # between it and the two subtotals should show on the page rather than
         # be quietly recomputed away.
         'grand_total': estimate.total_amount or Decimal('0'),
+
+        'document_title': document_title(estimate, estimate.estimate_number, 'Estimate'),
     }

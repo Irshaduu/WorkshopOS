@@ -1222,6 +1222,183 @@ about to correct one of these, you are about to break the business:
   failing. **Neither is a security control**; every page worth protecting is
   behind a login.
 
+- **A signed-in page is `no-store`, so Back cannot un-log-out.** Added
+  2026-08-10, `NoStoreMiddleware`. Logging out flushes the session, so the
+  next *request* is bounced to the sign-in page — but Back never makes a
+  request. It restores the page from the browser's back/forward cache, fully
+  rendered: the dashboard, a customer's bill, the Profit page, on a laptop
+  now in somebody else's hands. Nothing server-side can undo that after the
+  page has been sent, so the only lever is telling the browser at the time
+  not to keep it. Scoped to authenticated responses (it reads `request.user`,
+  so it must stay after `AuthenticationMiddleware`); static assets never
+  reach it because WhiteNoise returns them earlier in the chain. The cost is
+  accepted knowingly: Back re-fetches instead of restoring instantly.
+
+- **The service worker is registered on EVERY page load, and `sw.js` has a
+  `fetch` handler that caches nothing.** Added 2026-08-10. Registration used
+  to live only inside `enablePush()` in `notifications.js`, which runs when an
+  *owner* taps "turn alerts on" in the bell panel — so on an ordinary page
+  load there was no worker at all, and Office and Floor had no bell and
+  therefore no route to ever register one. Two things followed, and both
+  looked like hosting problems: Chrome fires `beforeinstallprompt` only for a
+  page with a registered worker **that has a fetch handler**, so the "Install
+  Formula D" banner could appear on iOS only (a separate branch in
+  `base.html`); and moving host made it look newly broken when what actually
+  reset it was the new **origin** — registration, install state and push
+  subscriptions are all per-origin, so every device has to re-enable push
+  after a move. Chrome dropped the worker requirement for menu-installing in
+  108/112 but kept it for the automatic prompt. The registration lives in
+  `script.js`, not inline, because it runs on more than one page — this
+  codebase's rule for what earns a place in a shared file — and `register()`
+  is idempotent, so `notifications.js` calling it again changes nothing.
+  **The fetch handler caches nothing and must not start.** The no-caching
+  rule at the top of `sw.js` stands; all it does is pass requests through and
+  answer a *navigation* that fails with a plain inline "no connection" page,
+  so bad workshop wifi reads as an explanation rather than a broken app.
+  Guarded by `ServiceWorkerRouteTests` and
+  `TheAppRegistersItsWorkerOnEveryPageTests`, which assert both the handler's
+  presence and that no cache API is referenced.
+
+- **Abusing the password-reset form now tells BOTH owners.** Added
+  2026-08-10. `PASSWORD_RESET` fired only on a *successful* reset, so the
+  system announced every routine sign-in and stayed silent for the two
+  signals that mean somebody is working through an owner's account — and only
+  owner accounts can reach that flow (`can_reset_password`).
+  `RESET_CODE_LIMIT` (the account's hourly code budget exhausted) and
+  `RESET_CODE_ATTEMPTS_SPENT` (all five verify attempts burned on one code)
+  are both CRITICAL. They are the only events raised with **no actor**, so
+  they reach both owners including the one targeted: there is no signed-in
+  person to exclude, the account holder is who can act, and the other owner
+  is the corroboration. Three things are load-bearing. (a) Only the HOURLY
+  limit fires — the 60-second cooldown is a double-tapped button.
+  `PasswordResetOTP.throttle_kind()` is the single lookup behind both the
+  message and the alert, because two implementations of "is this throttled,
+  and why?" would disagree exactly where it matters. (b) `recently_raised()`
+  de-dupes to one per account per hour: the form needs no login, so without
+  it anyone knowing an owner's username could buzz both phones until the
+  alert stopped being read — that, not the reset, is the attack. (c) **The
+  visitor's response must not change by a single byte.** Step 1 has one
+  generic reply precisely so it cannot answer "does this account exist", and
+  a notification raised behind it must not become a new way to ask;
+  `test_raising_an_alert_changes_nothing_the_visitor_can_see` compares the
+  rendered pages for a real and an invented username. Note the ordering does
+  most of the work: `_own_request_throttle` is checked first on the same two
+  numbers, so an owner fumbling in one browser is stopped by their own
+  session log and never reaches here. Getting this far means the requests
+  arrived with no session history behind them.
+
+- **A large discount is a flat ₹3,500, not 30% — and it is CONFIRMED before
+  it happens.** Changed 2026-08-10 on the owner's instruction.
+  `JobCard.HIGH_DISCOUNT_AMOUNT` replaces `HIGH_DISCOUNT_RATIO`, read by
+  `audit_high_discounts`, the `HIGH_DISCOUNT` alert and the settle dialog, so
+  no two can disagree about where the line is. A proportion answered the
+  wrong question: what an owner wants telling about is *money*, and 30% means
+  something different on every bill — ₹1,500 off a ₹5,000 service tripped the
+  old alert and is a rounding-down at pickup, while ₹7,000 off a ₹60,000
+  rebuild did not and is a quarter of a month's margin. Accepted consequence:
+  a small bill can now be discounted to almost nothing silently, because the
+  amount at stake is genuinely small; the audit page still lists every one.
+  Separately, **the settle screen now says what the shortfall becomes.** A
+  part-paid walk-in books its shortfall as a discount and is marked PAID —
+  the business rule above — and nothing on screen had ever said so, so Office
+  typed the figure agreed at the counter and the difference became a
+  permanent write-off named nowhere. The running shortfall shows on *every*
+  settlement; the confirmation fires **only past the threshold**, because
+  confirming what cannot surprise anyone is how confirmations stop being
+  read. It does not block — the owner may well have agreed the figure.
+  Guarded by `ALargeDiscountIsConfirmedBeforeItHappensTests` and
+  `TheDiscountAuditListsByAmountTests`.
+
+- **Outcome sounds ride on Django's message tags, and are wired nowhere
+  else.** Added 2026-08-10. Three synthesised tones — success, error, warning
+  — played from `data-sound-tag` on the message banner. The app already tags
+  every outcome (78 `messages.success`, 94 `messages.error`, 6 warnings), so
+  one attribute covers every action in the system and anything added later is
+  covered by default. **Do not wire per-button sounds:** ~180 call sites is
+  180 chances to attach the wrong tone, and each would fire at *click* time,
+  announcing "done" before the server had done anything. `info`/`debug` are
+  deliberately silent — a tone for every notice trains everyone to stop
+  hearing the two that matter, the same reasoning that keeps the CRITICAL
+  push list short. Tones are Web Audio oscillators, **no audio files and no
+  dependency**, which keeps the no-new-runtime-dependency rule. Per-device
+  toggle in the drawer (`localStorage`, default ON), same shape as the push
+  toggle. Two things worth not rediscovering: the printed invoice and
+  estimate are standalone templates and had to be given the tag and the
+  script explicitly, or the one page where money is actually settled would be
+  the one page that stayed silent; and browsers block audio on a freshly
+  loaded page without user activation, which Chrome **exempts for an
+  installed PWA** — so it is reliable on the owners' phones and the Floor
+  tablet, and the first outcome in a plain browser tab may be silent. That is
+  a missing nicety, never a missing fact: the banner is on screen either way.
+  **Extended 2026-08-10 with a fourth tone, `prompt`, on the two ways this app
+  asks a question** — a Bootstrap modal (`show.bs.modal`, which bubbles, so one
+  document listener catches every one) and a native `<dialog>` (no bubbling
+  open event, so `showModal` is wrapped once on the prototype). Two hooks cover
+  every confirmation in the app including any added later, same reasoning as
+  the message tags. It is **gated to questions**: `confirmActionModal`, the
+  logout confirm, and anything carrying `data-sound-prompt`. A plain "add a
+  payment" form modal is a *workspace* and stays silent — a tone every time a
+  modal opened is noise, and noise is how the tones that matter stop being
+  heard. Bonus worth knowing: the prompt fires on a real click, so it is never
+  blocked by the autoplay policy and it warms the AudioContext, which makes the
+  *outcome* tone after a confirmed action audible even in a plain browser tab.
+  **Three views were silent and now report themselves** — `mark_completed`,
+  `undo_completed` and `toggle_hold` wrote no message at all, so on a tablet
+  the card vanished off the board with nothing distinguishing that from a
+  mis-tap. Fixing it at the view is what earns them a sound, rather than wiring
+  a button; that is the rule working as intended.
+
+- **The two payment histories are one screen, and the Bootstrap dropdown in
+  them is SAFE — measured.** Added 2026-08-10. Spare Shops and Supplies Shops
+  both keep a payment history in an offcanvas and had drifted into looking like
+  different products: a bare trash icon on one and a ⋮ menu on the other,
+  different typography, amounts in different colours. They now share markup
+  exactly, amounts print green on both, and the tests assert the **parity**
+  rather than either implementation — the failure worth catching is them
+  drifting apart again. Two things were found while doing it. The delete gate
+  on the spare-shop side said `Owner` while `spare_shop_payment_reverse` is
+  `@office_required` and its own docstring says "Owner + Office", so it hid the
+  action from the role whose job it is — both gates now mirror their decorators
+  (the `InvoiceLinkVisibilityTests` rule). And the "Bulk Pay" badge printed on
+  every supplier payment unconditionally, so it distinguished nothing.
+  **The clipping worry was wrong and it is worth recording why**, because the
+  first attempt built a bespoke clip-proof inline menu to avoid a problem that
+  does not exist here. `.offcanvas-body` is `overflow-y: auto`, which is the
+  usual setup for Popper being clipped — but the body is **full viewport
+  height**, so at the bottom edge Popper simply flips the menu upwards and it
+  stays fully visible (verified with a scrolled 19-row list, last row hard
+  against the edge: menu bottom 74px *inside* the container). The `.cb-list`
+  trap is a different shape — `overflow: hidden` on a box barely taller than
+  one row, where there is nowhere to flip to. Check which one you have before
+  designing around it.
+
+- **A shop header gives up its actions before it gives up its name.** Settled
+  2026-08-10 after two attempts, and the second is the rule. The first pinned
+  the actions beside the title at every width, reasoning that a control belongs
+  next to what it acts on. On a phone that made the buttons and the shop NAME
+  compete for one line and the name lost — "Kochi Auto Spares" rendered as
+  "Kochi Auto Spa…", cutting off the one piece of text that says what you are
+  looking at. Below 768px the actions now take a row of their own, **aligned
+  right** so the ⋮ still lands in the corner under the thumb, and the name gets
+  the full width with truncation lifted entirely. Above 768px there is room for
+  both and nothing gives. Note this is the *opposite* call from the Estimates
+  header, and the difference is real: there the action is a short fixed "New
+  Estimate" button against a title the page controls, here it is a variable
+  count badge against a name the customer chose.
+
+- **Adding a static file means running `collectstatic`, or every page 500s.**
+  Learned 2026-08-10 while adding `sound.js`. Now that `STORAGES` genuinely
+  points at `CompressedManifestStaticFilesStorage` (see the note above about
+  `STATICFILES_STORAGE` being dead on Django 5.1+), the manifest is **strict**:
+  `{% static 'js/sound.js' %}` raises `ValueError: Missing staticfiles
+  manifest entry` at render time for any file not in `staticfiles.json`. It
+  fails in the test suite too, which is how it was caught. Consequence for
+  tests: assert on `js/sound.` and never `js/sound.js`, because the rendered
+  name is content-hashed (`js/sound.951c822c33d6.js`) — asserting the plain
+  filename would only pass for as long as static hashing stayed broken. The
+  `?v=` query strings in `base.html` are now belt-and-braces rather than the
+  mechanism; leave them, but the hash is what actually busts the cache.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
 variables, the rollback, and what to do when both owners are locked out.
@@ -1307,7 +1484,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (38 test files, 882 tests, ~23-53 min; always uses SQLite, see below)
+# Run full test suite (39 test files, 955 tests, ~23-55 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -1393,7 +1570,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 882 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 955 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -1472,6 +1649,8 @@ The whole event list lives in **`workshop/notifications.py`**. Add an event to `
 - `notify()` swallows its own errors so a malformed body can't fail a payment. That promise stops at database errors inside an atomic block: the surrounding transaction is already doomed and shouldn't be rescued.
 - Severity is a tier, not decoration: **`CRITICAL` events send a Web Push, `INFO` events only land in the feed.** Keep the critical list short — a phone that buzzes for routine activity stops being read for the things that matter.
 - **A notification's `url` must land somewhere that can act on its subject — check the destination actually *contains* it.** `ACCOUNT_LOCKED` pointed every lockout at Control Hub → Accounts, which lists Office and Floor only, and `manage_unlock_account` refuses owner accounts by design. So a locked *owner* opened a page that did not contain the account, did not mention a lockout, and offered nothing to press. It is now routed by role (owner → Security, staff → Accounts) with the remedy stated in the body. When adding an event, ask what the reader will do next and whether that page can do it; an empty `url` falling back to the feed is better than a confident link to the wrong place.
+  **This rule was then broken a second time, in the same shape.** Found 2026-08-10, by the owner deliberately locking an account to see what the alert did. Archiving a Supplies Shop raised `ACCOUNT_ARCHIVED` pointing at `supplier_shop_list` — which filters `is_active=True`, making it the one page guaranteed *not* to contain the shop the notification is about. The spare-shop and fleet versions of the very same event already pointed at their archived lists; only this one did not. It now points at `deactivated_supplier_shop_list`, and the test follows the URL and asserts the shop's name is on the page it reaches, because comparing against a `reverse()` proves nothing about whether the destination shows the thing.
+  **A stale instruction is a different failure from a wrong link, and needs a different fix.** The same investigation cleared `ACCOUNT_LOCKED` of being wrong: `manage_dashboard` sets `lock_minutes` per account and the template gates the unlock button on it, all correct. But a lockout lasts `AccountLockout.LOCKOUT_MINUTES` (15) and a notification is permanent, so an owner reading it an hour later followed "Unlock it from Control Hub → Accounts", found an ordinary account list, and reasonably concluded the alert was lying. The button is right to disappear — a permanent unlock button invites being pressed as a fix for something unrelated. The **body** was wrong to describe a permanent remedy, and now states the window first. The general rule: **if the remedy an event describes expires, the body has to say so**, because the reader may arrive at any time.
 - **A password reset raises `PASSWORD_RESET` (CRITICAL) to the *other* owner.** Every routine sign-in was announced while the one event meaning an account changed hands was silent — and since a reset also terminates every session, the real owner was signed out everywhere with no message, which reads as the app misbehaving. `actor=user` excludes whoever performed it: a genuine owner needs no telling, and an intruder should not receive the warning about themselves. The victim's own signal is the reset email, which now says to raise it with the other owner.
 - **Read rows are swept after `RETENTION_DAYS` (14); unread are kept forever.** This table is a feed, not an archive — the permanent record lives in `DeletionLog`, the audit pages and the ledgers.
 - **The bell opens a floating panel, fetched lazily** from `/notifications/panel/`. The bell is on every owner page, so baking ten rows plus their actors into every response would cost a join on pages that have nothing to do with notifications; only the unread *count* rides in the context processor. The panel caps at `PANEL_SIZE`, and the badge caps at `99+` — past that the exact number changes nothing an owner would do.
@@ -1588,7 +1767,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (33 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 38 files, **882 tests, all passing** (run in full 2026-08-10; the figures here had gone stale three times before, so re-count rather than trusting this line). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23 **and 33 on the same machine on 2026-08-10**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (34 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 39 files, **955 tests, all passing** (run in full 2026-08-10; the figures here had gone stale three times before, so re-count rather than trusting this line). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35 **and 41 on the same machine on 2026-08-10**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

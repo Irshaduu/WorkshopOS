@@ -331,7 +331,13 @@ def salary_advance_add(request):
                 'SALARY_ADVANCE',
                 f"₹{amount:,.0f} advance to {staff.name} on {advance_date:%d %b %Y}.",
                 actor=request.user,
-                url=reverse('salary_advance_staff_detail', args=[staff.pk]),
+                # The SECTION, with the person's history opened on arrival — not
+                # `salary_advance_staff_detail`, which is the AJAX fragment that
+                # modal fetches. Linking there put the owner on a bare unstyled
+                # scrap of HTML with no nav and no way back, because the partial
+                # extends no base template. See CLAUDE.md: a notification's url
+                # has to land somewhere that can act on its subject.
+                url=f"{reverse('salary_advance_home')}?staff={staff.pk}",
                 object_type='SALARY_ADVANCE', object_id=advance.pk,
             )
             messages.success(request, f"₹{amount:,.0f} advance recorded for {staff.name}.")

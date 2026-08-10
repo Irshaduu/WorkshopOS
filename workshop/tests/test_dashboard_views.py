@@ -216,3 +216,56 @@ class DashboardViewsTestCase(TestCase):
             url, {'q': 'Honda'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest'
         )
         self.assertEqual(response.status_code, 200)
+
+
+class AnEmptyWorkshopCountsZeroTests(TestCase):
+    """
+    The header figure has to be able to print 0.
+
+    It was `{{ page_obj.paginator.count|default:active_jobcards.count }}`, and
+    `default` fires on any FALSY value — so the one number it could never show
+    was zero. The fallback it then reached for was `active_jobcards.count`,
+    which is a `Page`: its `.count` is `Sequence.count(value)`, a method wanting
+    an argument. Django's variable resolver swallows that and substitutes
+    `string_if_invalid`, so an empty workshop rendered a BLANK box where the
+    count belongs — which reads as the page having failed to load, on the one
+    screen every role opens first.
+    """
+
+    def setUp(self):
+        Group.objects.get_or_create(name='Owner')
+        Group.objects.get_or_create(name='Floor')
+        self.user = User.objects.create_user(username='floor', password='password')
+        self.user.groups.add(Group.objects.get(name='Floor'))
+        self.client = Client()
+        self.client.login(username='floor', password='password')
+
+    def _stat(self, html, label):
+        """The number printed above `label` in the header strip."""
+        import re
+        match = re.search(
+            r'<span class="stat-value[^"]*">([^<]*)</span>\s*'
+            r'<span class="stat-label">' + label + r'</span>',
+            html,
+        )
+        self.assertIsNotNone(match, f"could not find the {label} stat in the page")
+        return match.group(1).strip()
+
+    def test_no_cars_prints_zero_not_a_blank(self):
+        self.assertFalse(JobCard.objects.exists())
+
+        page = self.client.get(reverse('home')).content.decode()
+
+        self.assertEqual(self._stat(page, 'In Workshop'), '0')
+        self.assertEqual(self._stat(page, 'Completed'), '0')
+
+    def test_the_count_is_still_right_when_there_are_cars(self):
+        for n in range(3):
+            JobCard.objects.create(
+                admitted_date=date.today(), brand_name='Toyota', model_name='Corolla',
+                registration_number=f'KL01Z{n:04d}', customer_name='X',
+            )
+
+        page = self.client.get(reverse('home')).content.decode()
+
+        self.assertEqual(self._stat(page, 'In Workshop'), '3')

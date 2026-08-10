@@ -752,3 +752,191 @@ class TheBackLinkCannotLeaveTheSiteTests(InvoiceTestCase):
         response = self.client.get(self.url, {'back': 'javascript:alert(1)'})
         self.assertIsNone(response.context['back_url'])
         self.assertNotIn('javascript:', response.content.decode())
+
+
+class TheTitleIsTheFilenameTests(InvoiceTestCase):
+    """
+    `document.title` is what every browser suggests as the filename when this
+    sheet goes through Print → Save as PDF. So the title is not decoration: it
+    names the file an owner keeps in a folder of hundreds, and "Invoice —
+    Formula D" named every one of them the same thing.
+
+    The rule is shared with the estimate (`workshop/invoice.py`), because the
+    two documents are handed to the same customer for the same car and should
+    not name themselves by different rules.
+    """
+
+    def test_the_title_is_car_then_document_number(self):
+        job = self._jobcard(
+            brand_name='Audi', model_name='A4', registration_number='KL11 AJ 2266',
+        )
+        expected = f"Audi A4 KL11 AJ 2266 ({job.bill_number})"
+
+        self.assertEqual(build_invoice(job)['document_title'], expected)
+        self.assertIn(f"<title>{expected}</title>", self._render(job).content.decode())
+
+    def test_a_missing_part_of_the_car_is_dropped_not_left_as_a_gap(self):
+        """
+        Most of an estimate is optional and a job card can be saved thin. A
+        blank make must not print as a double space or the word "None" — the
+        parts that exist are joined, the ones that do not are simply absent.
+        """
+        job = self._jobcard(brand_name='', model_name='', registration_number='KL11 AJ 2266')
+
+        self.assertEqual(
+            build_invoice(job)['document_title'],
+            f"KL11 AJ 2266 ({job.bill_number})",
+        )
+
+    def test_a_car_with_nothing_recorded_falls_back_to_the_document_number(self):
+        job = self._jobcard(brand_name='', model_name='', registration_number='')
+
+        self.assertEqual(build_invoice(job)['document_title'], job.bill_number)
+
+    def test_the_title_is_never_empty(self):
+        """
+        A blank <title> makes a browser fall back to showing the URL, which as a
+        filename is worse than useless. There is always a word.
+        """
+        job = self._jobcard(brand_name='', model_name='', registration_number='')
+        # .update(), not .save() — save() regenerates a bill number the moment it
+        # finds the field empty, which is exactly the behaviour being worked
+        # around to reach the state this asserts about.
+        JobCard.objects.filter(pk=job.pk).update(bill_number='')
+        job.refresh_from_db()
+
+        self.assertEqual(build_invoice(job)['document_title'], 'Invoice')
+
+    def test_characters_a_filesystem_would_reject_are_stripped(self):
+        """
+        A '/' in a registration number becomes a path separator in the saved
+        file's name; ':' and '?' are outright illegal on Windows. Stripped
+        rather than substituted — a plate reading "KL11 AJ 2266" beats one
+        reading "KL11_AJ_2266".
+        """
+        job = self._jobcard(
+            brand_name='Audi', model_name='A/4', registration_number='KL11:AJ?2266',
+        )
+        title = build_invoice(job)['document_title']
+
+        for character in r'/\:*?"<>|':
+            self.assertNotIn(character, title)
+        self.assertIn('A4', title)
+
+    def test_stray_whitespace_and_newlines_never_reach_the_filename(self):
+        job = self._jobcard(
+            brand_name='  Audi  ', model_name='A4\n', registration_number=' KL11   AJ 2266 ',
+        )
+
+        self.assertEqual(
+            build_invoice(job)['document_title'],
+            f"Audi A4 KL11 AJ 2266 ({job.bill_number})",
+        )
+
+
+class ALargeDiscountIsConfirmedBeforeItHappensTests(InvoiceTestCase):
+    """
+    A part-paid walk-in books its shortfall as a DISCOUNT and is marked PAID —
+    the business rule in CLAUDE.md, not a bug. What was missing is that nothing
+    on the settle screen said so: Office typed the figure the owner agreed at
+    the counter and the difference became a permanent write-off, named nowhere.
+
+    Two things now say it, and the split matters. The running shortfall is shown
+    on EVERY settlement, because it costs nothing and is always the truth. The
+    confirmation fires only past `HIGH_DISCOUNT_AMOUNT` — confirming what cannot
+    surprise anyone is exactly how confirmations stop being read.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.job = self._jobcard()
+        self.job.total_bill_amount = Decimal('22300.00')
+        self.job.save(update_fields=['total_bill_amount'])
+
+    def test_the_settle_dialog_shows_the_running_shortfall(self):
+        page = self._render(self.job).content.decode()
+
+        self.assertIn('id="payGap"', page)
+        self.assertIn('will be recorded as a discount', page)
+
+    def test_the_threshold_reaches_the_page_from_the_model(self):
+        """
+        Not typed into the template. The confirmation, the HIGH_DISCOUNT alert
+        and the audit page have to read one number, or they come to mean three
+        different things.
+        """
+        response = self._render(self.job)
+
+        self.assertEqual(
+            response.context['high_discount_threshold'], JobCard.HIGH_DISCOUNT_AMOUNT,
+        )
+        self.assertIn(str(int(JobCard.HIGH_DISCOUNT_AMOUNT)), response.content.decode())
+
+    def test_the_confirmation_is_not_on_the_paper(self):
+        """
+        Same rule as every other control here: it lives OUTSIDE `.sheet`. A
+        CSS-only `no-print` is one stylesheet edit from printing a dialog on a
+        customer's bill.
+        """
+        sheet = _sheet(self._render(self.job).content.decode())
+
+        self.assertNotEqual(sheet, '', "the sheet scan found nothing — the test would pass vacuously")
+        self.assertNotIn('confirmGapDialog', sheet)
+        self.assertNotIn('<dialog', sheet)
+
+    def test_a_fleet_card_gets_neither_dialog(self):
+        """
+        Fleet money moves through the Bulk Payer cascade and `update_bill_status`
+        refuses it here anyway, so no settlement control renders at all.
+        """
+        payer = BulkPayer.objects.create(customer_name='Skyline Fleet')
+        self.job.bulk_payer = payer
+        self.job.save(update_fields=['bulk_payer'])
+
+        page = self._render(self.job).content.decode()
+
+        self.assertNotIn('confirmGapDialog', page)
+        self.assertNotIn('id="payDialog"', page)
+
+
+class TheDiscountAuditListsByAmountTests(InvoiceTestCase):
+    """
+    The audit page and the alert must agree about what "large" means. It was a
+    30% ratio on both until 2026-08-10; it is a flat ₹3,500 on both now.
+    """
+
+    def setUp(self):
+        super().setUp()
+        owner_group, _ = Group.objects.get_or_create(name='Owner')
+        self.owner = User.objects.create_user(username='owner_audit', password='pw')
+        self.owner.groups.add(owner_group)
+        self.client.login(username='owner_audit', password='pw')
+
+    def _settled(self, reg, total, discount):
+        job = self._jobcard(registration_number=reg)
+        job.total_bill_amount = Decimal(total)
+        job.discount_amount = Decimal(discount)
+        job.received_amount = Decimal(total) - Decimal(discount)
+        job.payment_status = 'PAID'
+        job.save()
+        return job
+
+    def test_a_big_rupee_discount_is_listed_even_at_a_small_percentage(self):
+        self._settled('KL01C0001', '60000.00', '7000.00')  # 12%
+
+        page = self.client.get(reverse('audit_high_discounts')).content.decode()
+
+        self.assertIn('KL01C0001', page)
+
+    def test_a_big_percentage_of_a_small_bill_is_not(self):
+        self._settled('KL01C0002', '1000.00', '400.00')  # 40%
+
+        page = self.client.get(reverse('audit_high_discounts')).content.decode()
+
+        self.assertNotIn('KL01C0002', page)
+
+    def test_the_page_states_the_threshold_it_is_actually_using(self):
+        page = self.client.get(reverse('audit_high_discounts')).content.decode()
+
+        self.assertIn('3,500', page)
+        self.assertNotIn('30%', page)

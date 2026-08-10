@@ -455,3 +455,185 @@ class ResetFlowTests(TestCase):
         response = self.client.get(self.forgot_url)
 
         self.assertRedirects(response, reverse('home'), fetch_redirect_response=False)
+
+
+class AbusingTheResetFormTellsTheOwnersTests(TestCase):
+    """
+    The two ways a reset can be ATTEMPTED and fail, both of which were silent.
+
+    The system announced every routine sign-in and said nothing about somebody
+    working through an owner's account — and only owner accounts can reach this
+    flow at all (`can_reset_password`). Since the form needs no login, there is
+    no actor to exclude, so both owners hear it: the account holder is the one
+    who can act, and the other owner is the corroboration.
+    """
+
+    def setUp(self):
+        FailedAttempt.objects.all().delete()
+        Group.objects.get_or_create(name='Owner')
+
+        self.owner = User.objects.create_user(
+            username='Sahad', password=OLD_PASSWORD, email='sahad@example.com',
+        )
+        self.owner.groups.add(Group.objects.get(name='Owner'))
+        self.other = User.objects.create_user(
+            username='Rijas', password=OLD_PASSWORD, email='rijas@example.com',
+        )
+        self.other.groups.add(Group.objects.get(name='Owner'))
+
+        self.forgot_url = reverse('owner_forgot_password')
+        self.reset_url = reverse('owner_reset_password')
+        mail.outbox = []
+
+    def _events(self, event):
+        from workshop.models import Notification
+        return Notification.objects.filter(event=event)
+
+    def _burn_the_hourly_budget(self):
+        """
+        Spend the account's whole hourly allowance, from a browser that keeps no
+        session log — a cleared cookie jar, a private window, another machine.
+
+        That distinction is the point: `_own_request_throttle` runs on the same
+        two numbers and is checked FIRST, so an owner fumbling in one browser is
+        stopped by their own session log and never reaches the account-keyed
+        limit. Getting there means the requests arrived from somewhere with no
+        history behind them.
+        """
+        for _ in range(PasswordResetOTP.MAX_REQUESTS_PER_HOUR):
+            PasswordResetOTP.objects.create(
+                user=self.owner,
+                code_hash='x' * 64,
+                expires_at=timezone.now() + timedelta(minutes=10),
+            )
+        # Backdated past the 60-second cooldown, because that check runs FIRST
+        # and would otherwise be the one that answers. Three codes issued
+        # seconds apart is impossible anyway — the cooldown is what spaces them
+        # out, so a real budget is always spent over minutes, and this is what
+        # the fourth request an attacker makes actually meets.
+        # `.update()`, since `created_at` is auto_now_add.
+        PasswordResetOTP.objects.filter(user=self.owner).update(
+            created_at=timezone.now() - timedelta(minutes=5)
+        )
+
+    # -- the hourly code limit ----------------------------------------
+    def test_burning_the_hourly_budget_alerts_both_owners(self):
+        self._burn_the_hourly_budget()
+
+        self.client.post(self.forgot_url, {'username': 'Sahad'})
+
+        alerts = self._events('RESET_CODE_LIMIT')
+        self.assertEqual(alerts.count(), 2, "both owners should hear it")
+        self.assertEqual(
+            set(alerts.values_list('recipient__username', flat=True)),
+            {'Sahad', 'Rijas'},
+        )
+        self.assertEqual(alerts.first().severity, 'CRITICAL')
+        self.assertIn('Sahad', alerts.first().body)
+
+    def test_a_normal_request_alerts_nobody(self):
+        self.client.post(self.forgot_url, {'username': 'Sahad'})
+
+        self.assertEqual(self._events('RESET_CODE_LIMIT').count(), 0)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_the_sixty_second_cooldown_is_not_worth_an_alert(self):
+        """
+        A double-tapped button is not an attack. Only the hourly limit fires;
+        an alert for the cooldown would be noise inside a week, and a critical
+        alert nobody reads protects nothing.
+        """
+        PasswordResetOTP.objects.create(
+            user=self.owner, code_hash='x' * 64,
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        self.client.post(self.forgot_url, {'username': 'Sahad'})
+
+        self.assertEqual(self._events('RESET_CODE_LIMIT').count(), 0)
+
+    def test_the_alert_cannot_be_used_as_a_doorbell(self):
+        """
+        This form needs no login. Without a limit, anyone who knows an owner's
+        username could buzz both phones on demand until the alert stopped being
+        read — which is the real attack, not the reset itself.
+        """
+        self._burn_the_hourly_budget()
+
+        for _ in range(6):
+            self.client.post(self.forgot_url, {'username': 'Sahad'})
+
+        self.assertEqual(self._events('RESET_CODE_LIMIT').count(), 2)  # one per owner, once
+
+    # -- the five-attempt code budget ---------------------------------
+    def test_guessing_a_code_to_death_alerts_both_owners(self):
+        self.client.post(self.forgot_url, {'username': 'Sahad'})
+
+        for _ in range(PasswordResetOTP.MAX_ATTEMPTS):
+            self.client.post(self.reset_url, {
+                'otp': '000000', 'new_password': NEW_PASSWORD,
+                'confirm_password': NEW_PASSWORD,
+            })
+
+        alerts = self._events('RESET_CODE_ATTEMPTS_SPENT')
+        self.assertEqual(alerts.count(), 2)
+        self.assertIn('Sahad', alerts.first().body)
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.check_password(OLD_PASSWORD), "password must be untouched")
+
+    def test_one_wrong_digit_alerts_nobody(self):
+        self.client.post(self.forgot_url, {'username': 'Sahad'})
+
+        self.client.post(self.reset_url, {
+            'otp': '000000', 'new_password': NEW_PASSWORD,
+            'confirm_password': NEW_PASSWORD,
+        })
+
+        self.assertEqual(self._events('RESET_CODE_ATTEMPTS_SPENT').count(), 0)
+
+    def test_an_expired_code_is_not_an_attack(self):
+        """
+        `_dead_end()` is reached by an expired or already-spent code too — an
+        owner coming back to yesterday's email. The alert is raised at the exact
+        fifth-wrong-guess transition instead, not from inside `_dead_end`.
+        """
+        self.client.post(self.forgot_url, {'username': 'Sahad'})
+        PasswordResetOTP.objects.update(expires_at=timezone.now() - timedelta(minutes=1))
+
+        self.client.post(self.reset_url, {
+            'otp': '123456', 'new_password': NEW_PASSWORD,
+            'confirm_password': NEW_PASSWORD,
+        })
+
+        self.assertEqual(self._events('RESET_CODE_ATTEMPTS_SPENT').count(), 0)
+
+    # -- the rule none of this may break ------------------------------
+    def test_raising_an_alert_changes_nothing_the_visitor_can_see(self):
+        """
+        Step 1 replies identically whether or not the account exists — that is
+        the whole reason it has one generic message. A notification raised
+        behind it must not become a new way to ask the question: the status, the
+        redirect and the rendered page all have to match an invented username
+        byte for byte.
+        """
+        self._burn_the_hourly_budget()
+        real = self.client.post(self.forgot_url, {'username': 'Sahad'}, follow=True)
+
+        self.client.logout()
+        self.client.cookies.clear()
+        fake = self.client.post(self.forgot_url, {'username': 'not-a-person'}, follow=True)
+
+        def _comparable(response):
+            """
+            The page minus the one thing that legitimately differs: the CSRF
+            token is per-session and says nothing about the account. Everything
+            else — every message, every hidden field, every byte — must match.
+            """
+            import re
+            return re.sub(rb'value="[A-Za-z0-9]{32,}"', b'value="CSRF"', response.content)
+
+        self.assertEqual(real.status_code, fake.status_code)
+        self.assertEqual(real.redirect_chain, fake.redirect_chain)
+        self.assertEqual(_comparable(real), _comparable(fake))
+        # ...and the alert really did fire, so this is not passing by accident.
+        self.assertEqual(self._events('RESET_CODE_LIMIT').count(), 2)

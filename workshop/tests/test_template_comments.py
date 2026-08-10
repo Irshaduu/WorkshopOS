@@ -26,13 +26,25 @@ from django.test import TestCase
 UNCLOSED_COMMENT = re.compile(r'\{#(?![^\n]*#\})')
 
 
+#: Not just `*.html`. `sw.js` and `robots.txt` are Django templates too — they
+#: are rendered by views so they can carry `{% static %}` URLs — and a leaked
+#: `{#` in the service worker is worse than one on a page: it is a syntax error
+#: in JavaScript, so the worker fails to install and push stops working
+#: silently. Scanning every file under a templates/ root costs nothing and
+#: removes the question of which extensions are "real" templates.
+TEMPLATE_SUFFIXES = ('.html', '.js', '.txt', '.svg', '.xml')
+
+
 def _template_files():
     roots = [Path(settings.BASE_DIR) / 'templates']
     for app in ('workshop', 'inventory'):
         roots.append(Path(settings.BASE_DIR) / app / 'templates')
     for root in roots:
         if root.exists():
-            yield from sorted(root.rglob('*.html'))
+            yield from sorted(
+                path for path in root.rglob('*')
+                if path.is_file() and path.suffix in TEMPLATE_SUFFIXES
+            )
 
 
 class TemplateCommentSyntaxTests(TestCase):

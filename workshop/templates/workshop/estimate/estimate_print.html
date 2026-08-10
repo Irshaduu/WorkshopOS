@@ -1,10 +1,16 @@
-{% load custom_filters %}<!DOCTYPE html>
+{% load custom_filters static %}<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estimate {{ estimate.estimate_number|default:"" }} — Formula D</title>
+    {% comment %}
+    The title IS the filename — see the matching note on the invoice. Built by
+    the same `document_title()` in workshop/invoice.py, which drops whichever of
+    make / model / registration a quote was written without rather than printing
+    a gap for it.
+    {% endcomment %}
+    <title>{{ document_title }}</title>
 
     {% comment %}
     ============================================================================
@@ -630,7 +636,8 @@
     {% if messages %}
     <div class="notices no-print">
         {% for message in messages %}
-        <div class="notice notice-{{ message.tags|default:'info' }}">{{ message }}</div>
+        <div data-sound-tag="{{ message.tags }}"
+             class="notice notice-{{ message.tags|default:'info' }}">{{ message }}</div>
         {% endfor %}
     </div>
     {% endif %}
@@ -872,6 +879,15 @@
             window.addEventListener('afterprint', fitSheet);
         }());
     </script>
+
+    {% comment %}
+    The outcome sound, same as every other screen. This template is standalone,
+    so without it the ONE page where money is actually settled would be the one
+    page that stayed silent. Same-origin static file, not a CDN — the rule this
+    document keeps is "nothing from a third party", and if it fails to load the
+    banner above is still on screen, which is where the fact lives.
+    {% endcomment %}
+    <script src="{% static 'js/sound.js' %}?v=5"></script>
 </body>
 
 </html>

@@ -14,6 +14,41 @@
     margin-bottom: 1.25rem;
     color: #fff;
   }
+  /* ── Header layout ───────────────────────────────────────────────
+     On a WIDE screen the actions sit beside the title: there is room for both,
+     so nothing has to give.
+
+     On a PHONE they drop to their own row and align RIGHT. Beside the title
+     they were competing for width with a shop name, and the name lost — "Kochi
+     Auto Spares" rendered as "Kochi Auto Spa…", which is the one piece of text
+     on the page identifying what you are looking at. A shop is identified by
+     its name far more often than by the position of its ⋮, so the name gets the
+     full width and the controls take a line of their own. Right-aligned rather
+     than left so the ⋮ still lands under the thumb, in the corner.
+
+     `min-width: 0` on the title block is load-bearing on the wide layout: a
+     flex item defaults to `min-width: auto` and refuses to shrink below its
+     content, which is what made the row wrap unpredictably before. */
+  .shop-titleblock { min-width: 0; flex: 1 1 auto; }
+  .shop-actions { flex: 0 0 auto; }
+  .shop-title,
+  .shop-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  @media (max-width: 767.98px) {
+    .shop-headrow { flex-wrap: wrap; }
+    /* 100% basis on the title block is what FORCES the break — without it the
+       two boxes share the line again as soon as they happen to fit. */
+    .shop-titleblock { flex: 1 1 100%; }
+    .shop-actions { flex: 1 1 100%; justify-content: flex-end; }
+    /* Full width now, so nothing needs cutting off. */
+    .shop-title,
+    .shop-sub { white-space: normal; overflow: visible; text-overflow: clip; }
+  }
+
+  @media (max-width: 480px) {
+    .detail-header { padding: 1rem 1rem; }
+    .shop-title { font-size: 1.1rem !important; }
+  }
   .stat-box {
     text-align: center; padding: 0.8rem 1rem;
     border-radius: 10px; background: rgba(255,255,255,0.07);
@@ -201,13 +236,22 @@
 
 <!-- ── Header Card ── -->
 <div class="detail-header mb-3">
-  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-    <div>
-      <div class="fw-bold" style="font-size: 1.25rem;"><i class="bi bi-tools me-2"></i>{{ shop.name }}</div>
-      {% if shop.phone %}<div style="color: rgba(255,255,255,0.6); font-size: 0.82rem;"><i class="bi bi-telephone me-1"></i>{{ shop.phone }}</div>{% endif %}
-      {% if shop.address %}<div style="color: rgba(255,255,255,0.6); font-size: 0.82rem;"><i class="bi bi-geo-alt me-1"></i>{{ shop.address }}</div>{% endif %}
+  {% comment %}
+  No `flex-wrap`. It used to carry one, and on a phone the whole action group —
+  Payments and the ⋮ menu — dropped onto a line of its own UNDER the address,
+  which is the last place anyone looks for the controls of the thing named at
+  the top. The row stays a row at every width and the SHOP NAME truncates
+  instead; `.shop-title` is its own element precisely so it, and not the buttons,
+  is what gives way. Same rule as the Estimates header (CLAUDE.md): the header
+  keeps its action beside the title, the row must never become a column.
+  {% endcomment %}
+  <div class="shop-headrow d-flex justify-content-between align-items-start mb-3 gap-2">
+    <div class="shop-titleblock">
+      <div class="fw-bold shop-title" style="font-size: 1.25rem;"><i class="bi bi-tools me-2"></i>{{ shop.name }}</div>
+      {% if shop.phone %}<div class="shop-sub" style="color: rgba(255,255,255,0.6); font-size: 0.82rem;"><i class="bi bi-telephone me-1"></i>{{ shop.phone }}</div>{% endif %}
+      {% if shop.address %}<div class="shop-sub" style="color: rgba(255,255,255,0.6); font-size: 0.82rem;"><i class="bi bi-geo-alt me-1"></i>{{ shop.address }}</div>{% endif %}
     </div>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 shop-actions">
       <button class="btn btn-sm btn-outline-info rounded-pill px-3" data-bs-toggle="offcanvas" data-bs-target="#paymentHistoryOffcanvas" style="font-size: 0.8rem;">
         <i class="bi bi-cash-stack"></i> Payments ({{ pay_count }})
       </button>
@@ -491,14 +535,24 @@
       {% for pay in pay_page_obj %}
       <div class="px-3 py-3 border-bottom d-flex justify-content-between align-items-center">
         <div>
-          <div class="fw-bold" style="font-size: 1.1rem;">₹{{ pay.amount|floatformat:0 }}</div>
+          {% comment %}
+          Green on both this and the Supplies Shop history — money that has
+          LEFT the workshop and settled a debt.
+          {% endcomment %}
+          <div class="fw-bold text-success" style="font-size: 1.1rem;">₹{{ pay.amount|floatformat:0|intcomma }}</div>
           <div class="text-muted" style="font-size: 0.75rem;">
             {{ pay.created_at|date:"d/m/Y, g:i A" }}<br>
             {{ pay.get_payment_method_display }}
             {% if pay.note %}<br><i class="bi bi-chat-text me-1"></i>{{ pay.note }}{% endif %}
           </div>
         </div>
-        {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+        {% comment %}
+        Office AND Owner. `spare_shop_payment_reverse` is `@office_required` and
+        its own docstring says "Owner + Office", but this gate said Owner alone —
+        so the role whose job it is could not see the action its view allows.
+        A template gate must mirror its view's decorator (CLAUDE.md).
+        {% endcomment %}
+        {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
         <div class="dropdown">
           <button class="btn btn-link text-muted p-0 text-decoration-none" type="button" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="bi bi-three-dots-vertical" style="font-size: 1.2rem;"></i>

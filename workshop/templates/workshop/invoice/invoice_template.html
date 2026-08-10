@@ -1,10 +1,17 @@
-{% load custom_filters %}<!DOCTYPE html>
+{% load custom_filters static %}<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice {{ jobcard.bill_number|default:"" }} — Formula D</title>
+    {% comment %}
+    The title IS the filename. Every browser suggests document.title when this
+    sheet is sent to Print → Save as PDF, so "Audi A4 KL11 AJ 2266 (JB-26-037)"
+    is what lands in the owner's folder — searchable by car, plate or bill
+    number. Built in workshop/invoice.py beside the estimate's, so the two
+    documents can never drift apart on how they name themselves.
+    {% endcomment %}
+    <title>{{ document_title }}</title>
 
     {% comment %}
     ============================================================================
@@ -701,6 +708,71 @@
             border-top: 1px solid #e2e8f0;
         }
 
+        /* ------------------------------------------------------------------
+           The running shortfall, under the received-amount box.
+           ------------------------------------------------------------------
+           A part-paid walk-in books its shortfall as a DISCOUNT and is marked
+           PAID (CLAUDE.md — that is the business rule). Nothing on this screen
+           ever said so: Office typed a figure the owner had agreed verbally and
+           the difference silently became a permanent write-off. This states it
+           while there is still time to retype the number. */
+        .pay-gap {
+            margin: -8px 0 16px;
+            font-size: 13px;
+            font-weight: 600;
+            min-height: 18px;
+        }
+
+        .pay-gap.is-zero  { color: #16a34a; }
+        .pay-gap.is-small { color: #b45309; }
+        .pay-gap.is-large { color: #b91c1c; }
+        .pay-gap.is-over  { color: #1f4e79; }
+
+        /* The threshold confirmation. Its own dialog rather than a confirm(),
+           because it has a figure to show and a native confirm() on an iPad
+           renders as a system alert with no room to explain anything. */
+        dialog.confirm-gap {
+            width: min(400px, calc(100vw - 32px));
+            padding: 0;
+            border: none;
+            border-radius: 14px;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, .3);
+        }
+
+        dialog.confirm-gap::backdrop { background: rgba(15, 23, 42, .5); }
+
+        .cg-head {
+            background: #b91c1c;
+            color: #fff;
+            padding: 16px 20px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .cg-body { padding: 20px; }
+
+        .cg-amount {
+            font-size: 30px;
+            font-weight: 800;
+            color: #b91c1c;
+            margin: 0 0 4px;
+        }
+
+        .cg-of {
+            font-size: 13px;
+            color: #64748b;
+            margin: 0 0 16px;
+        }
+
+        .cg-body p {
+            margin: 0 0 10px;
+            font-size: 13.5px;
+            line-height: 1.5;
+            color: #334155;
+        }
+
+        .cg-body p:last-child { margin-bottom: 0; }
+
         @media (max-width: 640px) {
             .bar {
                 gap: 6px;
@@ -777,7 +849,8 @@
     {% if messages %}
     <div class="notices no-print">
         {% for message in messages %}
-        <div class="notice notice-{{ message.tags|default:'info' }}">{{ message }}</div>
+        <div data-sound-tag="{{ message.tags }}"
+             class="notice notice-{{ message.tags|default:'info' }}">{{ message }}</div>
         {% endfor %}
     </div>
     {% endif %}
@@ -979,6 +1052,7 @@
                 {% endcomment %}
                 <input type="number" step="0.01" min="0" id="received_amount" name="received_amount"
                        value="{{ grand_total|floatformat:'2u' }}" required>
+                <div class="pay-gap" id="payGap" aria-live="polite"></div>
 
                 <label for="payment_method">Payment method</label>
                 <select id="payment_method" name="payment_method">
@@ -994,6 +1068,34 @@
                 <button type="submit" class="btn btn-primary">Settle Bill</button>
             </div>
         </form>
+    </dialog>
+
+    {% comment %}
+    Fires ONLY past JobCard.HIGH_DISCOUNT_AMOUNT. A settlement that rounds ₹120
+    off a bill is the ordinary case and stays one tap — confirming what cannot
+    surprise anyone is exactly how confirmations stop being read. The threshold
+    is handed to the page from the model, so this dialog, the alert in
+    `update_bill_status` and the audit page all read one number.
+
+    Notice it does NOT block: the shortfall-as-discount rule is the business's,
+    and the owner may well have agreed the figure at the counter. This states
+    what is about to happen permanently, and gets out of the way.
+    {% endcomment %}
+    <dialog class="confirm-gap no-print" id="confirmGapDialog">
+        <div class="cg-head">Large discount</div>
+        <div class="cg-body">
+            <p class="cg-amount" id="cgAmount">₹ 0.00</p>
+            <p class="cg-of" id="cgOf"></p>
+            <p>
+                The unpaid part of a bill is recorded as a <strong>discount</strong>,
+                and the bill is marked paid in full. This is permanent.
+            </p>
+            <p>Both owners are alerted when a discount is this large.</p>
+        </div>
+        <div class="pay-foot">
+            <button type="button" class="btn btn-ghost" id="cgBack">Go back</button>
+            <button type="button" class="btn btn-primary" id="cgConfirm">Settle anyway</button>
+        </div>
     </dialog>
     {% endif %}
     {% endif %}
@@ -1056,7 +1158,110 @@
             });
             window.addEventListener('afterprint', fitSheet);
         }());
+
+        {% if not jobcard.bulk_payer %}{% if request.user|has_group:"Office" or request.user|has_group:"Owner" %}
+        // ==============================================================
+        // Settlement — say what the shortfall becomes, before it becomes it
+        // ==============================================================
+        //
+        // A part-paid walk-in books its shortfall as a DISCOUNT and is marked
+        // PAID. That is the business rule (CLAUDE.md), not a bug — a normal
+        // customer has exactly one payment event, so the unpaid portion IS the
+        // discount. What was missing is that the screen never said so. Office
+        // typed whatever the owner agreed at the counter and the difference
+        // became a permanent write-off with nothing on the page naming it.
+        (function () {
+            'use strict';
+
+            var TOTAL = Number('{{ grand_total|floatformat:"2u" }}');
+            var THRESHOLD = Number('{{ high_discount_threshold|floatformat:"2u" }}');
+
+            var form = document.querySelector('#payDialog form');
+            var input = document.getElementById('received_amount');
+            var gap = document.getElementById('payGap');
+            var confirmDialog = document.getElementById('confirmGapDialog');
+            if (!form || !input || !gap || !confirmDialog) return;
+
+            function money(value) {
+                return '₹' + value.toLocaleString('en-IN', {
+                    minimumFractionDigits: 2, maximumFractionDigits: 2
+                });
+            }
+
+            function shortfall() {
+                var received = parseFloat(input.value);
+                if (isNaN(received)) return 0;
+                return TOTAL - received;
+            }
+
+            function paint() {
+                var short = shortfall();
+                gap.className = 'pay-gap';
+
+                if (short > 0.005) {
+                    // Named a discount here and not a "balance": there is no
+                    // pay-the-rest-later for a walk-in, so calling it an
+                    // outstanding amount would promise a screen that does not
+                    // exist.
+                    gap.classList.add(short > THRESHOLD ? 'is-large' : 'is-small');
+                    gap.textContent = money(short) + ' will be recorded as a discount';
+                } else if (short < -0.005) {
+                    gap.classList.add('is-over');
+                    gap.textContent = money(-short) + ' overpaid — recorded, no discount';
+                } else {
+                    gap.classList.add('is-zero');
+                    gap.textContent = 'Paid in full';
+                }
+            }
+
+            input.addEventListener('input', paint);
+            document.getElementById('payDialog').addEventListener('close', function () {
+                confirmDialog.close();
+            });
+            paint();
+
+            // The gate. Only past the threshold — below it this is one tap, as
+            // it always was.
+            var confirmed = false;
+            form.addEventListener('submit', function (event) {
+                if (confirmed) return;
+
+                var short = shortfall();
+                if (short <= THRESHOLD) return;
+
+                event.preventDefault();
+                document.getElementById('cgAmount').textContent = money(short);
+                document.getElementById('cgOf').textContent =
+                    'off a bill of ' + money(TOTAL);
+                confirmDialog.showModal();
+            });
+
+            document.getElementById('cgBack').addEventListener('click', function () {
+                confirmDialog.close();
+                input.focus();
+                input.select();
+            });
+
+            document.getElementById('cgConfirm').addEventListener('click', function () {
+                confirmed = true;
+                confirmDialog.close();
+                // requestSubmit, not submit(): submit() does not fire the
+                // submit event, which is fine here but would silently skip any
+                // future validation added to this form.
+                if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+            });
+        }());
+        {% endif %}{% endif %}
     </script>
+
+    {% comment %}
+    The outcome sound, same as every other screen. This template is standalone,
+    so without it the ONE page where money is actually settled would be the one
+    page that stayed silent. Same-origin static file, not a CDN — the rule this
+    document keeps is "nothing from a third party", and if it fails to load the
+    banner above is still on screen, which is where the fact lives.
+    {% endcomment %}
+    <script src="{% static 'js/sound.js' %}?v=5"></script>
 </body>
 
 </html>

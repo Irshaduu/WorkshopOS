@@ -408,29 +408,66 @@ class EventHookTests(TestCase):
         self.assertIn('1500.00', note.body)
 
     def test_high_discount_notifies_but_a_normal_one_does_not(self):
+        """
+        The threshold is a flat ₹3,500, not a proportion (changed 2026-08-10).
+
+        These two cards are what the change actually means. The first gives away
+        40% of a ₹1,000 bill — the old rule shouted about it, and it is ₹400,
+        which is a rounding-down at the counter. The second gives away 12% of
+        ₹60,000 — the old rule was silent, and it is ₹7,000.
+        """
         self.client.login(username='officestaff', password=PASSWORD)
 
-        modest = JobCard.objects.create(
+        proportionally_steep = JobCard.objects.create(
             admitted_date=date.today(), brand_name='Toyota', model_name='Corolla',
             registration_number='KL01A0001', total_bill_amount=Decimal('1000.00'),
         )
-        self.client.post(reverse('update_bill_status', args=[modest.pk]),
-                         {'received_amount': '900', 'payment_method': 'CASH'})
+        self.client.post(reverse('update_bill_status', args=[proportionally_steep.pk]),
+                         {'received_amount': '600', 'payment_method': 'CASH'})
         self.assertNotIn('HIGH_DISCOUNT', self._events())
 
-        steep = JobCard.objects.create(
+        genuinely_large = JobCard.objects.create(
             admitted_date=date.today(), brand_name='Toyota', model_name='Corolla',
-            registration_number='KL01A0002', total_bill_amount=Decimal('1000.00'),
+            registration_number='KL01A0002', total_bill_amount=Decimal('60000.00'),
         )
-        self.client.post(reverse('update_bill_status', args=[steep.pk]),
-                         {'received_amount': '600', 'payment_method': 'CASH'})
+        self.client.post(reverse('update_bill_status', args=[genuinely_large.pk]),
+                         {'received_amount': '53000', 'payment_method': 'CASH'})
 
         self.assertIn('HIGH_DISCOUNT', self._events())
         # Office raised it, so both owners get a copy.
         notes = Notification.objects.filter(event='HIGH_DISCOUNT')
         self.assertEqual(notes.count(), 2)
         self.assertIn('KL01A0002', notes.first().body)
-        self.assertIn('40%', notes.first().body)
+        # The percentage is still in the body — no longer the threshold, but
+        # still the context an owner reads ₹7,000 against.
+        self.assertIn('12%', notes.first().body)
+
+    def test_the_discount_threshold_is_a_boundary_not_a_range(self):
+        """
+        Exactly ₹3,500 is not a large discount; ₹3,500.01 is. Pinned because
+        `>` and `>=` are one keystroke apart and the difference is a phone
+        buzzing on a settlement somebody makes every week.
+        """
+        self.client.login(username='officestaff', password=PASSWORD)
+
+        for index, (received, expected) in enumerate(
+            [(Decimal('6500.00'), False), (Decimal('6499.99'), True)]
+        ):
+            job = JobCard.objects.create(
+                admitted_date=date.today(), brand_name='Toyota', model_name='Corolla',
+                registration_number=f'KL01B{index:04d}', total_bill_amount=Decimal('10000.00'),
+            )
+            Notification.objects.all().delete()
+
+            self.client.post(reverse('update_bill_status', args=[job.pk]),
+                             {'received_amount': str(received), 'payment_method': 'CASH'})
+
+            job.refresh_from_db()
+            self.assertEqual(job.discount_amount, Decimal('10000.00') - received)
+            self.assertEqual(
+                Notification.objects.filter(event='HIGH_DISCOUNT').exists(), expected,
+                f"₹{job.discount_amount} off should{'' if expected else ' not'} alert",
+            )
 
     def test_lockout_notifies_once_on_crossing_only(self):
         """
@@ -514,3 +551,42 @@ class EventHookTests(TestCase):
 
         self.assertIn('SALARY_ADVANCE', self._events())
         self.assertTrue(SalaryAdvance.objects.exists())
+
+    def test_the_salary_advance_link_opens_a_real_page(self):
+        """
+        A notification's url has to land somewhere that can act on its subject —
+        the rule in CLAUDE.md, broken here for months.
+
+        It pointed at `salary_advance_staff_detail`, which is the AJAX fragment
+        the history modal fetches: a partial that extends no base template. An
+        owner tapping the alert on their phone got a bare wall of unstyled rows,
+        no nav, no heading, and no way back except the browser's own Back
+        button. It now opens Salary & Advance with that person's history
+        expanded.
+
+        Asserted by FOLLOWING the stored url rather than comparing it to a
+        `reverse()` — the failure was never a wrong string, it was a page that
+        did not render as a page, and only fetching it can tell the difference.
+        """
+        self.client.login(username='officestaff', password=PASSWORD)
+        mech = Mechanic.objects.create(name='Ravi')
+        self.client.post(reverse('salary_advance_add'), {
+            'staff_id': mech.pk, 'amount': '2500', 'date': date.today().isoformat(),
+        })
+
+        note = Notification.objects.filter(event='SALARY_ADVANCE').first()
+        self.assertIsNotNone(note)
+        self.assertTrue(note.url)
+
+        self.client.login(username='Sahad', password=PASSWORD)
+        landing = self.client.get(note.url)
+
+        self.assertEqual(landing.status_code, 200)
+        page = landing.content.decode()
+        # The chrome base.html renders and a fragment cannot: if these are
+        # missing, the link is pointing at a partial again.
+        self.assertIn('<nav', page)
+        self.assertIn('</html>', page)
+        # And it arrived carrying the person it is about, so the page can open
+        # their history rather than dropping the owner on a list of everyone.
+        self.assertIn(f'staff={mech.pk}', note.url)

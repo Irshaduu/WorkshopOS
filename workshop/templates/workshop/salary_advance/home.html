@@ -274,7 +274,8 @@
                 aria-label="Give advance to {{ s.name }}" title="Give advance">
           <i class="bi bi-cash-coin"></i><span class="icon-btn-label">Advance</span>
         </button>
-        <button type="button" class="icon-btn act-history" onclick="openStaffHistory({{ s.id }}, '{{ s.name|escapejs }}')"
+        <button type="button" class="icon-btn act-history" data-staff-id="{{ s.id }}"
+                onclick="openStaffHistory({{ s.id }}, '{{ s.name|escapejs }}')"
                 aria-label="Advance history for {{ s.name }}" title="Advance history">
           <i class="bi bi-clock-history"></i><span class="icon-btn-label">History</span>
         </button>
@@ -498,6 +499,31 @@
         body.innerHTML = '<div class="text-center text-danger py-4">Couldn\'t load history. Try again.</div>';
       });
   }
+
+  // ?staff=<pk> opens that person's advance history straight away.
+  //
+  // This is what a SALARY_ADVANCE notification links to. It used to point at
+  // /salary-advance/staff/<pk>/, which is the AJAX fragment the modal above
+  // fetches — a partial that extends no base template, so tapping the
+  // notification landed the owner on a bare unstyled scrap of HTML with no way
+  // back. The rule it broke is in CLAUDE.md: a notification's url must land
+  // somewhere that can act on its subject.
+  //
+  // Degrades silently when the id matches no row — a retired staff member is
+  // not rendered here, and dropping the owner on the right page with nothing
+  // opened beats an error about a person they can still see in the history.
+  (function () {
+    var wanted = new URLSearchParams(window.location.search).get('staff');
+    if (!wanted) return;
+
+    // Drop the parameter before anything else, so a refresh (or the Back
+    // button returning here) does not re-open the modal unasked.
+    var clean = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, '', clean);
+
+    var btn = document.querySelector('.act-history[data-staff-id="' + CSS.escape(wanted) + '"]');
+    if (btn) btn.click();
+  })();
 </script>
 
 {% endblock %}

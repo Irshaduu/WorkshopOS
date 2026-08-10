@@ -5,6 +5,45 @@
 {% if is_edit %}Edit Job Card{% else %}New Job Card{% endif %}
 {% endblock %}
 
+{% block extra_css %}
+<style>
+    /* ==========================================================
+       PLACEHOLDERS — quieter than the values they stand in for
+       ==========================================================
+       Every field on this form gets a placeholder automatically:
+       `_set_default_placeholder` in workshop/forms.py does
+       `attrs.setdefault('placeholder', field.label)`, so most boxes repeat
+       their own label back — "Car Brand" over a box saying "Brand name".
+
+       At the browser default (a fairly solid grey, same size as the value)
+       that reads as a box someone has already filled in. Staff were scanning
+       a screen of what looked like entered data, which on the app's busiest
+       form is the difference between checking a job card and re-typing it.
+
+       Smaller and lighter, so a placeholder reads as a hint and a real value
+       reads as a value. Colour only and font-size only — no `transition: all`
+       anywhere near a form control on this codebase (CLAUDE.md records why),
+       and nothing here touches layout, so no input changes height. */
+    .form-control::placeholder,
+    .form-select::placeholder,
+    textarea::placeholder,
+    input::placeholder {
+        color: #b6bfcc;
+        opacity: 1; /* Firefox dims placeholders again on top of the colour */
+        font-size: 0.86em; /* `em`, so it tracks whatever size the input is */
+        font-weight: 400;
+    }
+
+    /* A focused box is the one being typed into: fade the hint further rather
+       than leaving grey text under a live caret. */
+    .form-control:focus::placeholder,
+    textarea:focus::placeholder,
+    input:focus::placeholder {
+        color: #d3dae3;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-18">
@@ -434,10 +473,16 @@
                         <h6 class="mb-0 text-primary fw-bold">Inventory Items</h6>
                         <small class="text-muted" style="font-size: 0.72rem;">Taken from workshop stock</small>
                     </div>
+                    {% comment %}
+                    There was a "Stock" link here opening the Inventory list in a
+                    new tab. In an installed PWA `target="_blank"` leaves the app
+                    entirely and opens the system browser — signed out, on a
+                    fresh session, with the half-typed job card stranded behind
+                    it. Removing it costs two taps through the drawer on the rare
+                    occasion someone wants the stock list; leaving it cost the
+                    card. Same for the Spare Shops link below.
+                    {% endcomment %}
                     <div class="d-flex gap-2">
-                        <a href="{% url 'inventory_list' %}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size: 0.75rem;" title="Open Inventory">
-                            <i class="bi bi-box-seam"></i> Stock
-                        </a>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="add-inventory-btn">
                             + Add Item
                         </button>
@@ -507,10 +552,13 @@
                         <h6 class="mb-0 text-primary fw-bold">Spare Parts</h6>
                         <small class="text-muted" style="font-size: 0.72rem;">Ordered from a spare shop</small>
                     </div>
+                    {% comment %}
+                    The "Shops" link that used to sit here opened a new window —
+                    see the note on the Inventory section above for why that is
+                    the wrong thing to do to somebody mid-job-card in an
+                    installed app.
+                    {% endcomment %}
                     <div class="d-flex gap-2">
-                        <a href="{% url 'spare_shop_list' %}" target="_blank" class="btn btn-sm btn-outline-secondary" style="font-size: 0.75rem;" title="Manage Spare Shops">
-                            <i class="bi bi-tools"></i> Shops
-                        </a>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="add-spare-btn">
                             + Add Spare
                         </button>
@@ -1019,7 +1067,7 @@
 
 <!-- Spare Parts Auto-Fill Logic -->
 {% load static %}
-<script src="{% static 'js/spare_autofill.js' %}?v=4"></script>
+<script src="{% static 'js/spare_autofill.js' %}?v=5"></script>
 
 <!-- UNASSIGN CONFIRMATION MODAL -->
 <div class="modal fade" id="unassignConfirmModal" tabindex="-1" aria-hidden="true">

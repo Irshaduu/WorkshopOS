@@ -72,3 +72,48 @@ class NoIndexMiddleware:
         response = self.get_response(request)
         response['X-Robots-Tag'] = 'noindex, nofollow'
         return response
+
+
+class NoStoreMiddleware:
+    """
+    Keep signed-in pages out of the browser's cache, so Back cannot un-log-out.
+
+    Logging out flushes the session, and the very next request would be bounced
+    to the sign-in page — but the browser never made that request. Every page
+    the user had already visited sat in the back/forward cache, so pressing Back
+    after signing out re-displayed the dashboard, a customer's bill or the
+    Profit page from memory, fully rendered, on a device that is now in somebody
+    else's hands. That is the entire threat model of the logout button on a
+    shared workshop laptop.
+
+    Nothing server-side can fix this after the fact: the page was already sent.
+    The only lever is telling the browser at the time not to keep it, which is
+    what `no-store` does. `must-revalidate` and the two legacy headers are for
+    intermediaries and older browsers that honour one but not the others.
+
+    **Scoped to authenticated responses.** A signed-out page holds nothing worth
+    protecting, and leaving the login form cacheable costs nothing. `request.user`
+    is available because this runs after `AuthenticationMiddleware`; keep it
+    there if the MIDDLEWARE order is ever rearranged.
+
+    Static assets never reach here — WhiteNoise sits earlier in the chain and
+    returns them without calling the rest of it — so this cannot accidentally
+    make the CSS and JS uncacheable.
+
+    The cost is real and accepted: Back now re-fetches instead of restoring
+    instantly. On a workshop LAN that is a page load; the alternative is a
+    signed-out phone still showing the month's takings.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+
+        if getattr(request, 'user', None) is not None and request.user.is_authenticated:
+            response['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
+            response['Pragma'] = 'no-cache'
+            response['Expires'] = '0'
+
+        return response

@@ -44,6 +44,22 @@ EVENTS = {
     # again", the easiest thing in the world to shrug off. CRITICAL so it
     # reaches the other owner's phone, not just the bell.
     'PASSWORD_RESET':   ("Password was reset",       CRITICAL, AUDIENCE_OWNERS),
+    # The two ways a reset can be ATTEMPTED and fail. Both were silent, which
+    # left the system announcing every routine sign-in while saying nothing at
+    # all about somebody working through an owner's account — the only accounts
+    # that can reach the reset flow (`can_reset_password`).
+    #
+    # These are the one pair raised with **no actor**, so unlike every other
+    # event here they reach BOTH owners, the targeted one included. That is
+    # deliberate: there is no signed-in person to exclude, the account holder is
+    # the one who can act, and the other owner is the corroboration. CRITICAL so
+    # they reach a phone; de-duped to one per account per hour by
+    # `_recently_raised`, because the form behind them needs no login and would
+    # otherwise be a doorbell anyone could hold down.
+    'RESET_CODE_LIMIT':
+        ("Too many reset codes requested", CRITICAL, AUDIENCE_OWNERS),
+    'RESET_CODE_ATTEMPTS_SPENT':
+        ("Wrong reset code entered repeatedly", CRITICAL, AUDIENCE_OWNERS),
     'USER_CREATED':     ("New login created",        CRITICAL, AUDIENCE_OWNERS),
     # Creating a login was announced while deleting one and changing its
     # password were silent — the two actions in Control Hub that actually hand
@@ -78,6 +94,34 @@ def _recipients(audience, exclude=None):
     if exclude is not None and getattr(exclude, 'pk', None):
         people = people.exclude(pk=exclude.pk)
     return people
+
+
+def recently_raised(event, object_id, within_minutes=60):
+    """
+    Has this exact event already been raised about this subject recently?
+
+    A de-dupe for the events that can be triggered from OUTSIDE a login — the
+    password-reset pair. Every other event in this file costs the sender a
+    session and a role; those two cost a stranger a form submission, so without
+    a limit anyone who knows an owner's username could buzz both phones on
+    demand until the alert stopped being read. Which is the actual attack: not
+    the reset itself, which the throttles already stop, but the alarm about it
+    being made worthless.
+
+    Reads the fanned-out rows, so one hit is enough — every recipient got theirs
+    in the same `bulk_create`. Cheap: `event` and `created_at` are both indexed.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+
+    if object_id is None:
+        return False
+
+    return Notification.objects.filter(
+        event=event,
+        object_id=object_id,
+        created_at__gte=timezone.now() - timedelta(minutes=within_minutes),
+    ).exists()
 
 
 def notify(event, body='', *, actor=None, url='', object_type='', object_id=None):

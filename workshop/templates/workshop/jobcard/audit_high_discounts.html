@@ -107,7 +107,7 @@
     <h1 class="page-title">
         <i class="bi bi-tags-fill title-icon"></i> High Discount Audit
     </h1>
-    <p class="text-muted mt-2" style="font-family: var(--font-body);">Showing paid bills with discounts exceeding 30% of the total amount.</p>
+    <p class="text-muted mt-2" style="font-family: var(--font-body);">Showing paid bills that gave away more than ₹{{ threshold|floatformat:0|intcomma }}.</p>
 </div>
 
 {% if bills %}

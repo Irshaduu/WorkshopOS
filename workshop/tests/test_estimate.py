@@ -185,6 +185,55 @@ class TheEstimatePrintsLikeTheBillTests(TestCase):
         self.assertEqual(len(report['part_pad']), 0)
 
 
+class TheEstimateNamesItselfLikeTheBillTests(TestCase):
+    """
+    `document.title` is the filename a browser suggests when either sheet is
+    saved as a PDF. The estimate is handed over first and the invoice follows it
+    for the same car, so the two must name themselves by one rule — which is why
+    `document_title()` lives in `workshop/invoice.py` beside everything else the
+    two documents share.
+
+    The estimate is the harder case: make, model and registration are all
+    optional on a quote, so this is where a naive f-string prints "None" or a
+    double space into somebody's Downloads folder.
+    """
+
+    def test_the_title_is_car_then_estimate_number(self):
+        est = _estimate(brand_name='Audi', model_name='A4', registration_number='KL11 AJ 2266')
+
+        self.assertEqual(
+            build_estimate(est)['document_title'],
+            f"Audi A4 KL11 AJ 2266 ({est.estimate_number})",
+        )
+
+    def test_a_quote_with_no_car_details_still_names_itself(self):
+        est = _estimate(brand_name='', model_name='', registration_number='')
+
+        self.assertEqual(build_estimate(est)['document_title'], est.estimate_number)
+
+    def test_the_printed_page_carries_it_as_the_title(self):
+        self.client.force_login(_office_user())
+        est = _estimate(brand_name='Audi', model_name='A4', registration_number='KL11 AJ 2266')
+
+        response = self.client.get(reverse('estimate_print', args=[est.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            f"<title>Audi A4 KL11 AJ 2266 ({est.estimate_number})</title>",
+            response.content.decode(),
+        )
+
+    def test_it_is_numbered_EST_not_JB(self):
+        """
+        The one thing that must never leak across from the invoice's naming: a
+        quote is not a bill.
+        """
+        title = build_estimate(_estimate())['document_title']
+
+        self.assertIn('EST-', title)
+        self.assertNotIn('JB-', title)
+
+
 class TheTotalIsTheStoredColumnTests(TestCase):
 
     def test_update_totals_is_parts_plus_the_one_labour_figure(self):

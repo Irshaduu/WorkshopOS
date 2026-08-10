@@ -391,14 +391,28 @@ class PasswordResetOTP(models.Model):
         )
 
     # ------------------------------------------------------------------
+    #: `throttle_kind` outcomes. The two are treated differently everywhere:
+    #: COOLDOWN is somebody tapping the button twice, HOURLY is somebody working
+    #: through an account.
+    THROTTLE_COOLDOWN = 'COOLDOWN'
+    THROTTLE_HOURLY = 'HOURLY'
+
     @classmethod
-    def throttle_reason(cls, user):
+    def throttle_kind(cls, user):
         """
-        Why this account may not request a code right now, or None if it may.
+        WHICH limit stops this account requesting a code, or None if none does.
+
+        Split out from `throttle_reason` below so there is exactly one lookup
+        behind both the message shown to the visitor and the alert raised to the
+        owners. Two implementations of "is this account throttled, and why?"
+        would be two answers free to disagree — and they would disagree in the
+        one place it matters, as an account being worked through with nobody
+        told about it. Same reasoning as `merge_preview()` sharing its helpers
+        with `rename_*`.
 
         Counted per account rather than per session or per IP: a session counter
-        is cleared with the cookies, and both owners may sit behind the workshop's
-        single IP.
+        is cleared with the cookies, and both owners may sit behind the
+        workshop's single IP.
         """
         now = timezone.now()
 
@@ -407,10 +421,32 @@ class PasswordResetOTP(models.Model):
             elapsed = (now - latest.created_at).total_seconds()
             if elapsed < cls.RESEND_COOLDOWN_SECONDS:
                 wait = int(cls.RESEND_COOLDOWN_SECONDS - elapsed) + 1
-                return f"Please wait {wait} more second{'s' if wait != 1 else ''} before requesting another code."
+                return cls.THROTTLE_COOLDOWN, wait
 
         recent = cls.objects.filter(user=user, created_at__gte=now - timedelta(hours=1)).count()
         if recent >= cls.MAX_REQUESTS_PER_HOUR:
+            return cls.THROTTLE_HOURLY, recent
+
+        return None, 0
+
+    @classmethod
+    def throttle_reason(cls, user):
+        """
+        Why this account may not request a code right now, or None if it may.
+
+        Kept as its own method because callers read it as a plain "may this
+        proceed?" boolean; the wording is never shown to the visitor — step 1
+        replies identically whatever happens, or it becomes an account-existence
+        oracle.
+        """
+        kind, value = cls.throttle_kind(user)
+
+        if kind == cls.THROTTLE_COOLDOWN:
+            return (
+                f"Please wait {value} more second{'s' if value != 1 else ''} "
+                f"before requesting another code."
+            )
+        if kind == cls.THROTTLE_HOURLY:
             return "Too many reset codes requested in the last hour. Please try again later."
 
         return None
@@ -804,9 +840,24 @@ class CarColourMixin:
 
 class JobCard(CarColourMixin, models.Model):
     # What counts as a discount worth an owner's attention. Shared by
-    # `audit_high_discounts` and the HIGH_DISCOUNT notification so the audit
-    # page and the alert can never disagree about where the line is.
-    HIGH_DISCOUNT_RATIO = Decimal('0.30')
+    # `audit_high_discounts`, the HIGH_DISCOUNT notification and the settlement
+    # confirmation on the invoice, so no two of them can disagree about where
+    # the line is.
+    #
+    # A flat RUPEE figure, not a percentage. It was 30% until 2026-08-10, and
+    # the owner changed it because a proportion answers the wrong question here:
+    # what an owner wants to be told about is money, and 30% means something
+    # different on every bill. A ₹5,000 service discounted ₹1,500 tripped the
+    # old alert and is an ordinary rounding-down at pickup; a ₹60,000 rebuild
+    # discounted ₹15,000 did not trip it and is a quarter of a month's margin.
+    # The threshold now says the same thing on every bill: more than ₹3,500 off,
+    # and both owners hear about it.
+    #
+    # Consequence, accepted knowingly: a small bill can now be discounted to
+    # almost nothing without an alert (₹3,000 off ₹5,000 is 60% and silent),
+    # because the amount at stake is genuinely small. The compensating control
+    # for the proportion is still the audit page, which lists every one of them.
+    HIGH_DISCOUNT_AMOUNT = Decimal('3500')
 
     """
     The Industrial Heart of WorkshopOS. Manages the end-to-end lifecycle 

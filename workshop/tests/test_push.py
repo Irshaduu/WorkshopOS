@@ -67,6 +67,70 @@ class ServiceWorkerRouteTests(TestCase):
         self.assertIn("addEventListener('push'", body)
         self.assertIn("addEventListener('notificationclick'", body)
 
+    def test_it_has_a_fetch_handler_because_the_install_prompt_needs_one(self):
+        """
+        Chrome only fires `beforeinstallprompt` for a page whose service worker
+        has a fetch handler, and that event is what the "Install Formula D"
+        banner in base.html waits for. Without this the banner can appear on iOS
+        only — which is what was happening, and it read as a hosting problem.
+
+        Deleting this handler as dead code silently removes the install banner
+        on every Android device and nothing else fails.
+        """
+        body = self.client.get('/sw.js').content.decode()
+
+        self.assertIn("addEventListener('fetch'", body)
+
+    def test_the_worker_still_caches_nothing(self):
+        """
+        The fetch handler above exists to satisfy an installability check and to
+        answer a dead network with a sentence — never to store a response. A
+        cached job card is a screen showing yesterday's money, which is the one
+        failure this app cannot afford to make invisible.
+        """
+        body = self.client.get('/sw.js').content.decode()
+
+        self.assertNotIn('caches.', body)
+        self.assertNotIn('cache.put', body)
+        self.assertNotIn('CacheStorage', body)
+
+
+class TheAppRegistersItsWorkerOnEveryPageTests(TestCase):
+    """
+    Registration used to live only inside enablePush(), which runs when an owner
+    taps "turn alerts on" in the bell panel. Office and Floor have no bell, so
+    their devices could never register one by any route — and with no worker,
+    Chrome never offers to install the app.
+    """
+
+    def test_script_js_registers_it(self):
+        from django.conf import settings
+
+        script = (settings.BASE_DIR / 'workshop' / 'static' / 'js' / 'script.js').read_text(
+            encoding='utf-8'
+        )
+
+        self.assertIn("serviceWorker.register('/sw.js'", script)
+
+    def test_base_html_loads_script_js_for_everyone(self):
+        """
+        The registration is only as universal as the file carrying it. script.js
+        is loaded by base.html itself, outside every role block — if that ever
+        moves behind an {% if %}, this fails instead of the install banner
+        quietly disappearing for one role.
+        """
+        from django.conf import settings
+
+        base = (
+            settings.BASE_DIR / 'workshop' / 'templates' / 'workshop' / 'base.html'
+        ).read_text(encoding='utf-8')
+        marker = "js/script.js"
+
+        self.assertIn(marker, base)
+        before = base.split(marker)[0]
+        # No unclosed role gate between the top of the file and the tag.
+        self.assertEqual(before.count('{% if'), before.count('{% endif %}'))
+
 
 class SubscriptionEndpointTests(TestCase):
     def setUp(self):

@@ -475,12 +475,23 @@
 <div class="pit-header">
     <div class="pit-stats">
         <div class="stat-item">
-            <span class="stat-value">{{ page_obj.paginator.count|default:active_jobcards.count }}</span>
+            {% comment %}
+            No `|default:` on either of these. `default` fires on any FALSY value,
+            and the one value both of these have to be able to print is 0 — an
+            empty workshop, or a day with nothing completed yet. The fallback it
+            used to reach for was `active_jobcards.count`, which is a `Page`, whose
+            `.count` is `Sequence.count(value)` — a method wanting an argument.
+            Django's variable resolver swallows that and substitutes
+            `string_if_invalid`, so an empty workshop printed a BLANK box where the
+            number should be. Both figures below are always integers; they need no
+            fallback at all.
+            {% endcomment %}
+            <span class="stat-value">{{ page_obj.paginator.count }}</span>
             <span class="stat-label">In Workshop</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat-item">
-            <span class="stat-value completed">{{ completed_count|default:"0" }}</span>
+            <span class="stat-value completed">{{ completed_count }}</span>
             <span class="stat-label">Completed</span>
         </div>
     </div>

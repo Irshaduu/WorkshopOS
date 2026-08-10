@@ -7,7 +7,8 @@
 //
 // Deliberately does no offline caching. The workshop is always online, stale
 // cached job cards would be worse than a spinner, and a caching bug here would
-// be invisible until someone acted on out-of-date money.
+// be invisible until someone acted on out-of-date money. The `fetch` handler
+// below caches nothing and must never start — see the note above it.
 
 self.addEventListener('install', function (event) {
     // Take over immediately rather than waiting for every tab to close —
@@ -18,6 +19,47 @@ self.addEventListener('install', function (event) {
 
 self.addEventListener('activate', function (event) {
     event.waitUntil(self.clients.claim());
+});
+
+// A `fetch` handler has to EXIST for Chrome to offer the install prompt.
+//
+// Chrome dropped the service-worker requirement for installing from the menu
+// (108 on mobile, 112 on desktop), but the code path that fires
+// `beforeinstallprompt` still checks for a fetch handler — and that event is
+// what the app's own "Install Formula D" banner listens for. Without this the
+// banner could only ever appear on iOS, which has no such event and is handled
+// by a separate branch in base.html. That is exactly what was happening: the
+// banner looked like a hosting problem when it was this.
+//
+// It caches NOTHING, and must not start. The rule at the top of this file
+// stands: no app response is ever stored, so no screen can show yesterday's
+// money. All this does is pass the request through and, when the network is
+// genuinely gone, answer a page navigation with a plain sentence instead of the
+// browser's dinosaur — so somebody on bad workshop wifi is told what happened
+// rather than being shown a broken app.
+var OFFLINE_PAGE =
+    '<!doctype html><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>No connection</title>' +
+    '<style>body{font-family:system-ui,-apple-system,sans-serif;background:#f3f4f6;' +
+    'color:#1e293b;display:flex;min-height:100vh;margin:0;align-items:center;' +
+    'justify-content:center;text-align:center;padding:24px}' +
+    'h1{font-size:1.1rem;margin:0 0 8px}p{color:#64748b;font-size:0.9rem;margin:0}</style>' +
+    '<div><h1>No connection</h1><p>Formula D needs the network. ' +
+    'Check the wifi and try again.</p></div>';
+
+self.addEventListener('fetch', function (event) {
+    if (event.request.mode !== 'navigate') {
+        return; // everything else takes the browser's default path, untouched
+    }
+    event.respondWith(
+        fetch(event.request).catch(function () {
+            return new Response(OFFLINE_PAGE, {
+                status: 503,
+                headers: { 'Content-Type': 'text/html; charset=utf-8' }
+            });
+        })
+    );
 });
 
 self.addEventListener('push', function (event) {

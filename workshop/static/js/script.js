@@ -1,3 +1,37 @@
+// ==========================================
+// 0. SERVICE WORKER — registered on EVERY page
+// ==========================================
+//
+// It used to be registered in exactly one place: inside enablePush() in
+// notifications.js, which only runs when an owner opens the bell panel and taps
+// "turn alerts on". So on an ordinary page load there was no service worker at
+// all, and two things followed that both looked like hosting problems:
+//
+//   * Chrome never fired `beforeinstallprompt`, because that requires a
+//     registered worker with a fetch handler — so the "Install Formula D"
+//     banner in base.html could only ever appear on iOS, which uses a
+//     different branch entirely. Moving hosts made it look newly broken; a new
+//     ORIGIN is what actually reset it, since registration and install state
+//     are both per-origin.
+//   * Office and Floor have no bell at all, so no service worker could ever be
+//     registered on their devices by any route.
+//
+// Here rather than inline in base.html because it runs on more than one page,
+// which is this codebase's rule for what earns a place in a shared file.
+// register() is idempotent, so notifications.js calling it again on subscribe
+// changes nothing.
+//
+// Failure is a no-op by design: no HTTPS, an unsupported browser, or a worker
+// that will not parse must never take the rest of this file down with it.
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .catch(function (err) {
+                console.warn('Service worker registration failed:', err);
+            });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     console.log("Workshop Script Loaded");
 

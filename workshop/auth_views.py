@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from datetime import timedelta
 from django.utils import timezone
 from .models import UserSession, FailedAttempt, UserProfile, PasswordResetOTP, AccountLockout
-from .notifications import notify
+from .notifications import notify, recently_raised
 from django.urls import reverse
 from django.db.models import F
 import logging
@@ -337,7 +337,20 @@ def login_view(request, face='staff'):
                     )
                 else:
                     target = reverse('manage_dashboard') + '?section=accounts'
-                    remedy = "Unlock it from Control Hub → Accounts if this was a mistake."
+                    # The window is stated, and stated FIRST. The unlock button
+                    # in Control Hub renders only while the account is actually
+                    # locked (`lock_minutes`), which is correct — a permanent
+                    # button invites being clicked as a fix for something else.
+                    # But this notification is permanent and the condition it
+                    # describes is not, so an owner reading it an hour later
+                    # followed the instruction, found an ordinary account list,
+                    # and reasonably concluded the alert was lying. The owner
+                    # branch above already said the duration; this one did not.
+                    remedy = (
+                        f"It clears itself in {AccountLockout.LOCKOUT_MINUTES} minutes. "
+                        f"Within that window you can unlock it now from Control Hub → "
+                        f"Accounts; after it, there is nothing to undo."
+                    )
 
                 notify(
                     'ACCOUNT_LOCKED',
@@ -534,7 +547,41 @@ def owner_forgot_password_view(request):
         request.session['pwd_reset_pending'] = True
         request.session.pop('pwd_reset_user_id', None)
 
-        if can_reset_password(user) and PasswordResetOTP.throttle_reason(user) is None:
+        throttle_kind = (
+            PasswordResetOTP.throttle_kind(user)[0] if can_reset_password(user) else None
+        )
+
+        # Somebody has worked through this account's whole hourly budget. Tell
+        # the owners — this and the burned-attempts alert below were the only
+        # security events the system stayed silent about, while it announced
+        # every routine sign-in.
+        #
+        # Only the HOURLY limit. The 60-second cooldown is a double-tapped
+        # button, and an alert for that would be noise within a week.
+        #
+        # Worth understanding why this fires so rarely for an innocent owner,
+        # because it is the ordering above doing the work rather than luck.
+        # `_own_request_throttle` is checked FIRST and returns early, and it
+        # runs on the same two numbers — so an owner fumbling their own reset in
+        # one browser is stopped by their own session log and never reaches
+        # here. Getting this far means the requests arrived with no session log
+        # behind them: a cleared cookie jar, a private window, or another
+        # machine. Which is precisely the shape of the thing worth a phone
+        # buzzing about.
+        if throttle_kind == PasswordResetOTP.THROTTLE_HOURLY and not recently_raised(
+            'RESET_CODE_LIMIT', user.pk
+        ):
+            notify(
+                'RESET_CODE_LIMIT',
+                f"{user.username} — {PasswordResetOTP.MAX_REQUESTS_PER_HOUR} password reset "
+                f"codes requested within an hour from {get_client_ip(request)}. No further "
+                f"codes will be sent for now. If this was not you, change the password.",
+                url=reverse('manage_dashboard') + '?section=security',
+                object_type='USER',
+                object_id=user.pk,
+            )
+
+        if can_reset_password(user) and throttle_kind is None:
             otp, code = PasswordResetOTP.issue(user, ip=get_client_ip(request))
             request.session['pwd_reset_user_id'] = user.id
 
@@ -641,6 +688,23 @@ def owner_reset_password_view(request):
         if not otp.verify(submitted_code):
             remaining = otp.attempts_remaining
             if remaining == 0:
+                # Five wrong codes against a live one. Raised HERE and not
+                # inside `_dead_end()`, which is also reached by a code that
+                # merely expired or was already spent — an owner who came back
+                # to a stale email is not an attack and must not read like one.
+                #
+                # No actor, so both owners hear it: the account holder is who
+                # can act, and the other owner is the corroboration.
+                if not recently_raised('RESET_CODE_ATTEMPTS_SPENT', user.pk):
+                    notify(
+                        'RESET_CODE_ATTEMPTS_SPENT',
+                        f"{user.username} — a password reset code was guessed wrong "
+                        f"{PasswordResetOTP.MAX_ATTEMPTS} times from {get_client_ip(request)}. "
+                        f"The code is now dead. If this was not you, change the password.",
+                        url=reverse('manage_dashboard') + '?section=security',
+                        object_type='USER',
+                        object_id=user.pk,
+                    )
                 return _dead_end()
             messages.error(
                 request,

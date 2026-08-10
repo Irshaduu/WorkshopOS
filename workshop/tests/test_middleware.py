@@ -54,3 +54,72 @@ class MiddlewareSecurityTests(TestCase):
         
         session_record = UserSession.objects.get(session_key=request.session.session_key)
         self.assertEqual(session_record.ip_address, '203.0.113.1')
+
+
+class SignedInPagesAreNotKeptByTheBrowserTests(TestCase):
+    """
+    Pressing Back after signing out used to redisplay the dashboard.
+
+    Logging out flushes the session, so the *next request* is bounced to the
+    sign-in page — but Back never makes a request. It restores the page from the
+    back/forward cache, fully rendered, on a laptop that may now be in somebody
+    else's hands. Nothing server-side can undo that after the page has been
+    sent; the only lever is telling the browser at the time not to keep it.
+
+    A test client has no bfcache, so what is asserted here is the instruction —
+    which is exactly the thing that regressed by being absent.
+    """
+
+    def setUp(self):
+        from django.contrib.auth.models import Group
+        Group.objects.get_or_create(name='Owner')
+        Group.objects.get_or_create(name='Floor')
+        self.user = User.objects.create_user(username='floorhand', password='password123')
+        self.user.groups.add(Group.objects.get(name='Floor'))
+        self.client = Client()
+
+    def test_a_signed_in_page_says_no_store(self):
+        self.client.login(username='floorhand', password='password123')
+
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('no-store', response['Cache-Control'])
+        self.assertIn('private', response['Cache-Control'])
+
+    def test_the_sign_in_page_is_left_alone(self):
+        """
+        Scoped to authenticated responses on purpose. A signed-out page holds
+        nothing worth withholding, and widening this would make every asset and
+        error page uncacheable for no gain.
+        """
+        response = self.client.get('/login/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('no-store', response.get('Cache-Control', ''))
+
+    def test_a_bill_is_covered_too(self):
+        """
+        The pages that matter most here are the ones carrying money, and they do
+        not extend base.html — the printed invoice is a standalone template. A
+        header covers it with nothing to remember, which is the same reasoning
+        that made NoIndexMiddleware a header rather than a meta tag.
+        """
+        from datetime import date
+        from django.contrib.auth.models import Group
+        from django.urls import reverse
+        from workshop.models import JobCard
+
+        office, _ = Group.objects.get_or_create(name='Office')
+        clerk = User.objects.create_user(username='clerk', password='password123')
+        clerk.groups.add(office)
+        self.client.login(username='clerk', password='password123')
+
+        job = JobCard.objects.create(
+            admitted_date=date.today(), brand_name='Toyota', model_name='Corolla',
+            registration_number='KL01A9911', customer_name='X',
+        )
+        response = self.client.get(reverse('invoice_view', args=[job.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('no-store', response['Cache-Control'])

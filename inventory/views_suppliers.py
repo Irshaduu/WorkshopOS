@@ -221,9 +221,17 @@ def deactivate_supplier_shop(request, shop_id):
         shop.save()
         notify(
             'ACCOUNT_ARCHIVED',
-            f"Supplies Shop '{shop.name}' was archived.",
+            f"Supplies Shop '{shop.name}' was archived. Reactivate it from "
+            f"Supplies Shops → Deactivated.",
             actor=request.user,
-            url=reverse('supplier_shop_list'),
+            # The DEACTIVATED list, not `supplier_shop_list` — that one filters
+            # `is_active=True`, so it is the one page guaranteed NOT to contain
+            # the shop this notification is about. An owner tapped "Shop X was
+            # archived" and landed on a list without X in it, with nothing to
+            # press. Exactly the ACCOUNT_LOCKED defect recorded in CLAUDE.md,
+            # committed a second time. The spare-shop and fleet versions of this
+            # same event already point at their archived lists.
+            url=reverse('deactivated_supplier_shop_list'),
             object_type='SUPPLIER_SHOP', object_id=shop.pk,
         )
         messages.success(request, f"Shop '{shop.name}' deactivated.")
