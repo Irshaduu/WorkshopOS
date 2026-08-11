@@ -491,7 +491,16 @@
     body.innerHTML = '<div class="text-center py-4"><span class="spinner-border spinner-border-sm text-primary"></span></div>';
     new bootstrap.Modal(document.getElementById('staffHistoryModal')).show();
 
-    fetch(`/salary-advance/staff/${staffId}/`)
+    // The header is what asks for the bare fragment. Without it that URL now
+    // serves a full page — deliberately that way round, because the same URL is
+    // still stored on every SALARY_ADVANCE notification raised before
+    // 2026-08-10, and those must land on something readable. Dropping the
+    // header would put a whole page inside this modal, which is untidy; the
+    // reverse would put a naked fragment in front of an owner, which was the
+    // defect.
+    fetch(`/salary-advance/staff/${staffId}/`, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
       .then(r => r.text())
       .then(html => { body.innerHTML = html; })
       .catch(err => {

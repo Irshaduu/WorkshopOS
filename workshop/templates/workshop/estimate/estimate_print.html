@@ -246,33 +246,16 @@
             gap: 8mm;
         }
 
-        .brand-mark {
-            font-family: "Arial Black", "Arial Bold", Arial, sans-serif;
-            font-style: italic;
-            font-weight: 900;
-            font-size: 23pt;
-            letter-spacing: -.01em;
-            line-height: 1;
-            white-space: nowrap;
-        }
-
-        .brand-mark .d {
-            color: #e8112d;
-        }
-
-        .brand-rule {
-            height: 1mm;
-            background: #e8112d;
-            margin: 1.1mm 0 .6mm;
+        {% comment %}
+        Must stay identical to the invoice's rule — the two sheets carry the
+        same include, so a different width here would print the same artwork at
+        two sizes for one customer. 56mm is measured off the owner's own bill;
+        see the invoice template for the working.
+        {% endcomment %}
+        .brand-logo {
             width: 56mm;
-        }
-
-        .brand-tag {
-            font-family: "Arial Black", Arial, sans-serif;
-            font-style: italic;
-            font-weight: 900;
-            font-size: 8pt;
-            line-height: 1;
+            height: auto;
+            display: block;
         }
 
         .brand-addr {
@@ -380,6 +363,11 @@
 
         .inv-table .sub-cell {
             background: #dce6f1;
+            /* Matches the invoice. The estimate is handed over first and the
+               bill follows it for the same car, so a subtotal set lighter here
+               and bold there is a difference the customer sees across two
+               documents that are meant to read as one workshop's. */
+            font-weight: 700;
         }
 
         .inv-table .sub-label {
@@ -653,13 +641,12 @@
             <header class="inv-head">
                 <div class="brand">
                     {% comment %}
-                    The wordmark is set, not an image: a logo file that fails to
-                    load leaves a customer holding an unbranded document, and a
-                    raster one prints soft.
+                    The same lockup the invoice prints, from the same include —
+                    these two documents go to one customer days apart, so the
+                    letterhead is the last thing that should be able to drift
+                    between them.
                     {% endcomment %}
-                    <div class="brand-mark">FORMULA <span class="d">D</span></div>
-                    <div class="brand-rule"></div>
-                    <div class="brand-tag">Diagnosis &amp; Service</div>
+                    {% include 'workshop/includes/_brand_mark.html' %}
                     <div class="brand-addr">
                         Calicut Road, Pullara<br>
                         PIN: 676517<br>

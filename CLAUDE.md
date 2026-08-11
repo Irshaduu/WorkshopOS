@@ -686,8 +686,140 @@ about to correct one of these, you are about to break the business:
   ₹0.00** — `PartLine.priced` exists so a truthiness check cannot collapse the
   two. Guarded by `workshop/tests/test_invoice.py`.
 
-- **The invoice page loads NOTHING from a third party, and its controls live
-  outside the paper.** Added 2026-08-04. It used to pull Bootstrap CSS, Bootstrap
+- **The PAID box is a receipt stamp, not a line of the bill — and "settled" is
+  the payment STATUS, never `received >= total`.** Added 2026-08-11. A settled
+  bill prints a small green box under TOTAL carrying what was actually
+  received; an unsettled one prints nothing there, not an empty box and not a
+  zero. Three things are load-bearing. (a) **`settlement()` in
+  `workshop/invoice.py` decides, not the template.** A template asking
+  `received_amount > 0` or comparing it to the total would invent a second
+  definition of settled, and it would be wrong on the commonest case: a
+  part-paid walk-in is marked **PAID** with the shortfall booked as
+  `discount_amount` (the deliberate rule at the top of this file), so the
+  comparison prints nothing on exactly the bills most worth stamping. Settled
+  is `payment_status in ('PAID', 'BULK_PAID')`; **PARTIAL is deliberately
+  excluded** — for a walk-in it never occurs, and for a fleet card it means
+  money is still owed, which is not something to stamp PAID on a customer's
+  document. (b) **It prints the received amount and nothing else.** Not the
+  discount — that is the workshop's own write-off, agreed verbally, and
+  printing "DISCOUNT ₹3,000" invites a negotiation about a figure the customer
+  was never quoted. Not a balance either: a walk-in has none by construction,
+  and a fleet card's remainder is owed by the account, not by whoever holds
+  this sheet. (c) **The label is "PAID" / "FLEET PAID", not
+  `get_payment_status_display()`**, which reads "Fully Paid" — written for the
+  office screens, and beside ₹37,000 on a ₹40,820 bill it puts two claims on
+  one page. The box sits **outside** the table: those two totals rows are the
+  bill's arithmetic, and a third row would also widen the totals block's
+  `break-inside: avoid` on a long bill. Guarded by
+  `ThePaidStampAppearsOnlyOnceSettledTests` — note its assertions run against
+  `_sheet()`, because `.paid-box` is also a stylesheet rule and a whole-page
+  search finds it on every render.
+
+- **A notification's URL is permanent, so the fix for a bad one is to make that
+  URL work — not to repoint the next alert.** Added 2026-08-11. `SALARY_ADVANCE`
+  used to link to `/salary-advance/staff/<id>/`, the AJAX fragment the history
+  modal fetches, which extends no base template; the link was repointed at the
+  section on 2026-08-10, and that changed nothing for anyone, because a
+  `Notification` stores its `url` in a column and keeps it forever. Every alert
+  raised before the fix still arrives at that view, and an owner tapping a
+  month-old one still got an unstyled wall of rows with no nav and no way back.
+  The view now serves a **full page** on navigation and the bare fragment only
+  when `X-Requested-With: XMLHttpRequest` is present. That direction is
+  deliberate: **the fragment is the opt-in branch.** Lose the header and the
+  modal shows a whole page inside itself, which is untidy; the other way round
+  puts a naked fragment back in front of an owner, which is the defect being
+  closed. Guarded by `TheStaffAdvancePageOpensAsAPageTests`. **General rule:
+  before changing a notification's `url`, ask what happens to the ones already
+  sent.**
+
+- **That page answers THREE questions and then stops.** Added 2026-08-11, on
+  the owner's description of what they actually do: the alert buzzes, they tap
+  it, and they want *who is this* (Amlah), *how much just now* (₹5,000), *how
+  much this month* (₹8,000). Four to six seconds, then done. The first build
+  was a staff-role line plus a month-grouped history list plus a row-cap
+  notice — every part correct, every part in the way. **The history already has
+  a home** (the ⋮ modal on Salary & Advance, one tap through the link at the
+  foot), so a second copy here bought nothing and cost the glance. Four things
+  follow. The figures are **stacked at every width, never side by side**: the
+  owners' phones straddle any sensible breakpoint (375 vs 414), so a split
+  layout showed the same alert as two different pages, and side-by-side reads
+  as a *comparison* when the questions are a sequence. The notification now
+  carries **`?advance=<pk>`** so the exact advance is named; without it the
+  newest stands in and the label changes from "Advance given" to **"Latest
+  advance"**, because a months-old alert must not present today's advance as
+  the one it announced. The month total follows **the advance's own month**,
+  not today's — an alert opened on the 2nd about an advance given on the 31st
+  would otherwise put two figures on screen describing different months. And
+  the total is aggregated **in the database**, never summed from what is
+  rendered, so it cannot drift from what the settlement screen deducts. With a
+  single advance the two figures are the same number twice, so the subtitle
+  says "only advance" rather than leaving the repeat looking like a fault.
+
+- **The letterhead is the owner's own PNG, inlined as a data URI, from ONE
+  include — and a TRACE was tried twice and rejected.** Added 2026-08-11,
+  `workshop/includes/_brand_mark.html`. It replaced a three-part typographic
+  approximation (Arial Black italic wordmark, a CSS rule, an Arial Black
+  tagline) declared separately in both print templates. That was close — the
+  logo *is* a heavy oblique grotesque, and it is **not Racing Sans One**, which
+  has flared calligraphic terminals — but it was never the mark, and it printed
+  "Diagnosis & Service" where the real one reads **Diagnosis&Service**.
+  **Why not a vector.** Two auto-traced SVGs were offered. The first was
+  rejected on measurement: 98% of its path data was anti-aliasing noise, the
+  letterforms shredded into grey bands (`#d4d4d4` 40%, `#aaa` 26%, `#555` 11%).
+  The second was genuinely clean — 19 paths, every fill near-black or near-red,
+  no greys — and was shipped for half a day. It still lost, and the reason is
+  the useful part: **a trace approximates letterforms by construction.** Its
+  rendered ratio was **3.73:1 against the artwork's true 4.40:1**, a 15%
+  vertical stretch the owner spotted immediately beside the real mark. Measuring
+  colour purity caught the bad file; only measuring the *aspect* caught the
+  plausible one. **Greys in a two-colour logo are the tell for the first
+  failure; a ratio that disagrees with the source is the tell for the second.**
+  Five things are load-bearing.
+  (a) **A `data:` URI, never `<img src="/static/...">`.** The note this replaced
+  had the right instinct: anything fetched can fail to arrive, and a bill that
+  prints without its letterhead is worse than one that never had it. A static
+  path would render identically in development and then 404 on a deploy that
+  missed `collectstatic`. A data URI is part of the document — no request, no
+  static dependency, nothing for a CSP to permit — which keeps the printed
+  pages' promise of loading nothing from anywhere.
+  (b) **A raster is safe HERE because it out-resolves the paper.** 1323px across
+  56mm is **600 DPI**, twice what a 300 DPI print consumes;
+  `test_the_artwork_is_dense_enough_to_print` fails below 500. The old "a raster
+  prints soft" warning was about rasters that do not clear this bar.
+  (c) **The supplied file needed three fixes, all invisible on screen and all
+  obvious on paper**: its canvas carried whitespace padding (so 56mm would have
+  shrunk the *ink* below the real bill's size), its background was 253-grey
+  rather than white (a faint grey box on the sheet), and at 2168px it inlined
+  ~331KB. Cropped to ink, lifted to pure white, resampled to 600 DPI, and
+  encoded as a **16-colour palette** — 130KB truecolour became 38.6KB, since the
+  mark is three flat colours plus an anti-aliased skirt. Regenerate with
+  `scratchpad/build_logo_png.py`; never hand-edit the base64.
+  (d) **Sized by WIDTH (56mm), height `auto`.** Not a guess: the owner's running
+  bill was measured by splitting its top-left ink into bands, giving a lockup of
+  **55.6mm × 13.3mm** (the red rule is the widest element). 56mm renders
+  12.74mm tall — within 0.4mm and 0.6mm on the two axes. Height stays `auto` so
+  the ratio can only come from the file.
+  (e) **One include, both documents**, same reasoning as
+  `_car_color_picker.html`: the estimate and the invoice reach one customer days
+  apart. `BothDocumentsCarryTheSameLetterheadTests` asserts they embed the
+  byte-identical image and size it with an identical `.brand-logo` rule.
+
+- **The invoice page loads NOTHING from a third party — and that is asserted on
+  FETCHES, not on the string "http".** Rewritten 2026-08-11. The rule is
+  unchanged and still right; the test enforcing it was blunt
+  (`assertNotIn('http://', html)`) and broke the moment the logo went in,
+  because every SVG element declares `xmlns="http://www.w3.org/2000/svg"` — an
+  XML namespace **identifier**, a name shaped like a URL that no browser ever
+  resolves. A blunt failure like that pushes whoever hits it towards deleting
+  the namespace (breaking the SVG) or deleting the test (losing the rule);
+  neither is the answer. It now checks what actually causes a request: no
+  `cdn.`, no `<link`, no `@import`, no `url(http`, every `src`/`href`
+  same-origin, and every absolute URL one of the two namespace declarations.
+  Note `src=` is legitimately present — the page loads its own
+  `js/sound.js` off `/static/`, which is this server; the *printed sheet*
+  carries no reference at all, which is asserted separately.
+
+- **The invoice page's controls live outside the paper.** Added 2026-08-04. It used to pull Bootstrap CSS, Bootstrap
   JS and an icon font from a CDN — which bought one modal and cost control over
   what lands on paper: a framework reset shipping upstream could move a column on
   a customer's bill, and a workshop printing on a dropped connection got an
@@ -1143,7 +1275,7 @@ about to correct one of these, you are about to break the business:
   hardening is unlocked today), the largest page carries ~12 KB of script read
   by four devices on one shop's LAN (so caching is a rounding error), and there
   is **no npm, no bundler, no linter and no JS test runner** — none of which
-  will be added. That last point is the load-bearing one: **nothing in the 882
+  will be added. That last point is the load-bearing one: **nothing in the 956
   Django tests executes a line of JavaScript**, so a JS refactor leaves the
   suite green whether or not it broke, and this codebase has already been bitten
   by exactly that (see the three `script.js` cloning traps above — "the symptom
@@ -1484,7 +1616,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (39 test files, 955 tests, ~23-55 min; always uses SQLite, see below)
+# Run full test suite (39 test files, 956 tests, ~23-55 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -1570,7 +1702,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 955 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 956 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -1620,7 +1752,7 @@ Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_H
 
 **Web Push** (optional): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL`. Generated once — **regenerating them invalidates every existing subscription**, so treat them as permanent. The public key ships to the browser and is not a secret; the private key is. They must also be set in the host's environment (Render) or push is skipped there while the in-app feed keeps working.
 
-**Email** (password-reset codes): `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, plus `EMAIL_REAL` (development only). One workshop-owned sending mailbox — `EMAIL_HOST_PASSWORD` is a Google **App Password**, not the account password, and needs 2-Step Verification enabled on that account. Recipients are per-account `User.email` values in the database, never in `.env`; change one with `set_owner_email`, which is why it needs no deploy. Development uses the console backend unless `EMAIL_REAL=true`, so ordinary work never sends real mail; `manage.py test` uses Django's locmem backend regardless.
+**Email** (password-reset codes) — **two transports, one flow.** Production sets `EMAIL_BACKEND = 'workshop.email_backend.ResendEmailBackend'` and needs only **`RESEND_API_KEY`** plus `DEFAULT_FROM_EMAIL`; Railway blocks outbound SMTP below the Pro plan, so mail leaves over Resend's HTTPS API instead. Development still uses SMTP and reads `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, plus `EMAIL_REAL` — there `EMAIL_HOST_PASSWORD` is a Google **App Password**, not the account password, and needs 2-Step Verification on that account. Only the transport differs: there is exactly one `send_mail()` call site (`auth_views.py`), so the flow, the throttles and the tests are identical on both. Recipients are per-account `User.email` values in the database, never in `.env`; change one with `set_owner_email`, which is why it needs no deploy. Development uses the console backend unless `EMAIL_REAL=true`, so ordinary work never sends real mail; `manage.py test` uses Django's locmem backend regardless.
 
 ## Architecture
 
@@ -1641,7 +1773,7 @@ Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_H
 Split into `formulad_workshop/settings/{base,development,production}.py`. `__init__.py` picks one via `DJANGO_ENV` — there is no fallback default, so forgetting to set it fails loudly rather than silently using the wrong DB. The PostgreSQL and SQLite connection dicts are built by `postgres_db()` / `sqlite_db()` in `base.py` and shared by both environments; they used to be duplicated per file, which is how a connection setting gets fixed in one and left broken in the other.
 
 ### Notifications — one catalogue, one entry point
-The whole event list lives in **`workshop/notifications.py`**. Add an event to `EVENTS`, then call `notify()` from the single place it happens — **never** `Notification.objects.create()` in a view. With a dozen call sites across fourteen view modules, that file is the only way to answer "what does this thing notify about?" without grepping.
+The whole event list lives in **`workshop/notifications.py`**. Add an event to `EVENTS`, then call `notify()` from the single place it happens — **never** `Notification.objects.create()` in a view. With **17 call sites spread across 8 modules** (recounted 2026-08-10; `EVENTS` itself now holds **13** events, 9 CRITICAL and 4 INFO), that file is the only way to answer "what does this thing notify about?" without grepping.
 - **Fanned out per recipient**, so the unread count is one indexed query. **No FK to the subject** — most events announce a *deletion*, and a FK would cascade the notification away with the thing it was about; `object_type`/`object_id` plus a frozen label in `body` is the same discipline as `DeletionLog.snapshot`.
 - **`DeletionLog.record()` is the deletion hook.** Every permanent delete already funnels through it, so one call covers all eleven entity types and any added later. Don't scatter equivalent `notify()` calls into individual delete views.
 - **Owners only, and the actor never hears about their own action.** Floor gets nothing — a notification a mechanic can't act on trains everyone to ignore the bell. The bell in `base.html` is Owner-gated to match; widen the gate and the audience together or you get a bell that can never fill.
@@ -1678,7 +1810,7 @@ Both login faces and both password-recovery steps extend `workshop/auth/base_aut
 - **The whole Control Hub (`/manage/`) is Owner-only** — accounts, staff roster, and security alike. It was `@office_required` while the drawer only ever offered it to owners, so Office could not see it but could reach it by URL and create logins or reset passwords. One rule, no exceptions. Owner accounts are never managed *from* this panel: reset, delete and unlock each refuse them, because owner credentials are changed at `/change-password/` or recovered by emailed code.
 - **`manage_unlock_account` lets an owner lift a lockout immediately.** Five wrong attempts lock a staff account for 15 minutes, which is right against guessing and wrong when a mechanic fat-fingers their password mid-shift. The unlock button only renders while an account is actually locked.
 - **RBAC decorators return 403, not a login redirect, for signed-in users.** Anonymous visitors still get the sign-in page (with `?next=`, validated by `_safe_next` against open redirects). A signed-in user who simply lacks the role gets `PermissionDenied` → `templates/403.html`. Previously both cases redirected to a login form, so an Office user opening an Owner page saw a sign-in screen *while already signed in* — indistinguishable from being logged out. If you add a test asserting 302 for an authenticated wrong-role user, it's asserting the old bug.
-- Every successful login raises a `LOGIN` notification to the other owners (username, device, IP). **Twilio and Telegram are gone** — removed 2026-07-29 once the in-app feed had replaced them. There is no outbound SMS or chat integration left anywhere in this codebase, and no third-party messaging dependency; don't reintroduce one. The app now makes exactly **one** kind of outbound network call: SMTP, for password-reset codes.
+- Every successful login raises a `LOGIN` notification to the other owners (username, device, IP). **Twilio and Telegram are gone** — removed 2026-07-29 once the in-app feed had replaced them. There is no outbound SMS or chat integration left anywhere in this codebase, and no third-party messaging dependency; don't reintroduce one. The app makes exactly **two** kinds of outbound network call, both optional and neither on the request path: the password-reset email (SMTP in development, Resend's HTTPS API in production) and Web Push to the browser vendors' push services.
 - `UserSession` + `management_views.manage_terminate_session` give owners a kill switch over any active Django session from the dashboard.
 
 ### Financial/data integrity rules (enforced across the codebase, follow them in new code)
@@ -1767,7 +1899,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (34 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 39 files, **955 tests, all passing** (run in full 2026-08-10; the figures here had gone stale three times before, so re-count rather than trusting this line). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35 **and 41 on the same machine on 2026-08-10**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (34 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 39 files, **956 tests, all passing** (run in full 2026-08-10; the figures here had gone stale three times before, so re-count rather than trusting this line). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35 **and 41 on the same machine on 2026-08-10**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with
@@ -1782,6 +1914,26 @@ Tests live in `workshop/tests/` (34 files) and `inventory/` (`tests.py`, `tests_
   accurate is owned by `MASTER_BLUEPRINT.md` and this file.
 - `AUDIT_LOG.md` and `Aditing files/` were **removed on 2026-07-25**. Every finding was re-verified against the code; the ones still open were consolidated into `TECH_DEBT.md` (local, not in git), the deliberate ones into "Deliberate decisions" above, and the rest were confirmed fixed. Don't recreate them — that split was what caused the drift.
 - The SMS/Telegram notification system was **deleted on 2026-07-29**, along with `verify_twilio.py`, `verify_alerts.py`, the `twilio` and `requests` dependencies, and its `.env` keys. Owner alerts are the in-app feed now (see "Notifications" above). If you find a doc still describing a dual-channel broadcast, that doc is stale.
+- **`QA_VERIFICATION_REPORT.txt` was deleted on 2026-08-10**, after all 17 of its items
+  were checked against the code: 13 were already fixed or already recorded as a
+  deliberate decision, and the four still open became `AUD-0089`–`AUD-0092` in
+  `TECH_DEBT.md`. It was superseded by the owner's own list
+  (`TITAN_MASTER_HANDOVER.md` §VI.16), which is now marked up with a verified status
+  per item. Two backlogs describing one set of problems is how the original drift
+  started — don't recreate it.
+- **`errors.log` is a real source of findings, not just noise — read it before
+  clearing it.** Truncated on 2026-08-10, but only after two defects were lifted out
+  of it that no review had caught: `AUD-0089` (adding a Supplies Shop under a
+  duplicate name 500s, 40 occurrences, because the `except IntegrityError` runs on an
+  already-broken transaction) and `AUD-0090` (Resend rejecting every outbound message
+  that day with HTTP 422). It is gitignored, so nothing recovers it once cleared.
+- **A stale Claude worktree can hold unmerged work.** `.claude/worktrees/` is
+  gitignored machine-local state, but on 2026-08-10 the one there
+  (`quizzical-curie-d3bace`, branch already merged) still carried **uncommitted**
+  edits that were never applied to `main` — the fix removing the duplicated
+  `{% if messages %}` blocks from `jobcard_form.html` and `data_cleanup.html`. Check
+  `git -C <worktree> status` before pruning one; the branch being merged says nothing
+  about the working tree.
 
 ## Doc ownership map (avoid re-introducing drift)
 As of 2026-07-23 the root docs were restructured so each fact has exactly one home; update the owning doc, don't restate its content elsewhere:

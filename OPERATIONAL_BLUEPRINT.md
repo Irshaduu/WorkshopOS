@@ -60,7 +60,7 @@ graph TD
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
    - Monitor all active login sessions
    - Remotely revoke any staff access
-   - Receive notifications in-app (nav bell): sign-ins, discounts over 30%, permanent deletions, archives, salary activity
+   - Receive notifications in-app (nav bell): sign-ins, discounts over **₹3,500**, permanent deletions, archives, salary activity, and the account-security events (lockouts, resets, reset-code abuse, login created/deleted, staff password changed)
    - Change their own password, or recover it by emailed 6-digit code
    - **No** Django Admin access — `is_staff=False` on purpose; see `CLAUDE.md`
 

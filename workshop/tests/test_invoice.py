@@ -442,6 +442,278 @@ class TheTotalsAgreeWithTheJobCardTests(InvoiceTestCase):
         self.assertEqual(report['grand_total'], Decimal('11107'))
 
 
+class ThePaidStampAppearsOnlyOnceSettledTests(InvoiceTestCase):
+    """
+    A settled bill carries a small PAID box under TOTAL showing what was
+    actually received. An unsettled one carries nothing there — not an empty
+    box, not a zero.
+
+    The rule the template must not re-invent: a part-paid walk-in is marked
+    **PAID** with the shortfall booked as `discount_amount` (CLAUDE.md, "A
+    part-paid bill books the shortfall as a discount"). So "settled" is the
+    payment status, never `received >= total`. A template comparing the two
+    would print nothing on exactly the bills the workshop most wants stamped.
+    """
+
+    def _settled(self, received, total=Decimal('12000'), status='PAID'):
+        job = self._jobcard()
+        self._shop_spare(job, total_price=total)
+        job.refresh_from_db()
+        job.payment_status = status
+        job.received_amount = received
+        job.save(update_fields=['payment_status', 'received_amount'])
+        return job
+
+    def test_an_unpaid_bill_has_no_paid_box(self):
+        """
+        Asserted against `_sheet()`, not the whole page: `.paid-box` is also a
+        rule in the stylesheet, which is present on every render. The first
+        version of this test searched the full HTML, found the CSS, and failed
+        on a page that was in fact correct.
+        """
+        job = self._jobcard()
+        self._shop_spare(job)
+        job.refresh_from_db()
+
+        self.assertIsNone(build_invoice(job)['settlement'])
+        self.assertNotIn('class="paid-box"', _sheet(self._render(job).content.decode()))
+
+    def test_a_settled_bill_prints_what_was_received(self):
+        job = self._settled(Decimal('12000'))
+
+        self.assertEqual(build_invoice(job)['settlement']['received'], Decimal('12000'))
+        sheet = _sheet(self._render(job).content.decode())
+        self.assertIn('class="paid-box"', sheet)
+        self.assertIn('12,000.00', sheet)
+
+    def test_a_part_paid_walk_in_still_stamps_paid(self):
+        """
+        ₹9,000 received on a ₹12,000 bill: PAID, with ₹3,000 booked as a
+        discount. The box shows the ₹9,000 that changed hands.
+        """
+        job = self._settled(Decimal('9000'))
+
+        settlement = build_invoice(job)['settlement']
+        self.assertEqual(settlement['received'], Decimal('9000'))
+        sheet = _sheet(self._render(job).content.decode())
+        self.assertIn('9,000.00', sheet)
+
+        # "PAID", never the model's "Fully Paid" — the customer handed over
+        # ₹9,000 of ₹12,000, so a box reading FULLY PAID beside ₹9,000 puts two
+        # claims on the page and makes the reader pick one.
+        self.assertEqual(settlement['label'], 'Paid')
+        self.assertNotIn('FULLY PAID', sheet)
+
+    def test_the_discount_is_never_printed(self):
+        """
+        The write-off is the workshop's own figure, agreed at the counter and
+        never quoted. Putting it on the sheet invites a negotiation about it.
+        """
+        job = self._settled(Decimal('9000'))
+        job.discount_amount = Decimal('3000')
+        job.save(update_fields=['discount_amount'])
+
+        sheet = _sheet(self._render(job).content.decode())
+        self.assertNotIn('DISCOUNT', sheet.upper())
+        self.assertNotIn('3,000.00', sheet)
+
+    def test_a_fleet_settled_card_is_labelled_fleet_paid(self):
+        job = self._settled(Decimal('12000'), status='BULK_PAID')
+
+        settlement = build_invoice(job)['settlement']
+        self.assertTrue(settlement['is_fleet'])
+        self.assertEqual(settlement['label'], 'Fleet Paid')
+        self.assertIn('FLEET PAID', _sheet(self._render(job).content.decode()))
+
+    def test_a_partial_bill_is_not_stamped(self):
+        """
+        PARTIAL only ever means a fleet card with money still owed. Stamping
+        that "PAID" would tell the customer a debt is closed when it is not.
+        """
+        job = self._settled(Decimal('4000'), status='PARTIAL')
+
+        self.assertIsNone(build_invoice(job)['settlement'])
+        self.assertNotIn('class="paid-box"', _sheet(self._render(job).content.decode()))
+
+    def test_the_box_sits_outside_the_totals_table(self):
+        """
+        It is a receipt line, not part of the bill's arithmetic. Keeping it out
+        of `<tbody class="totals">` is also what stops it widening that block's
+        `break-inside: avoid` on a long bill.
+        """
+        job = self._settled(Decimal('12000'))
+        html = self._render(job).content.decode()
+
+        self.assertNotIn('class="paid-box"', _tables(html, 'inv-table'))
+        # Still on the paper, though — a stamp rendered outside `.sheet` would
+        # not print at all.
+        self.assertIn('class="paid-box"', _sheet(html))
+
+
+class TheSubtotalFigureIsBoldTests(InvoiceTestCase):
+    """
+    The SUBTOTAL label was bold and the amount beside it was not, so the one
+    number in the shaded block read lighter than the word naming it.
+
+    Asserted on the rule rather than the declaration order: `.sub-cell` must
+    carry a 700 weight, and it must stay qualified with `.inv-table` — an
+    unqualified `.sub-cell` is specificity (0,1,0) and loses to `.inv-table td`
+    at (0,1,1), which is the exact trap the stylesheet already documents.
+    """
+
+    def test_the_subtotal_cell_is_bold(self):
+        html = self._render(self._jobcard()).content.decode()
+        rule = re.search(r'\.inv-table\s+\.sub-cell\s*\{[^}]*\}', html)
+
+        self.assertIsNotNone(rule, "`.inv-table .sub-cell` rule is gone")
+        self.assertIn('font-weight: 700', rule.group(0))
+
+    def test_the_estimate_sets_it_the_same_way(self):
+        """
+        The quote is handed over first and the bill follows it for the same car.
+        A subtotal bold on one and light on the other is a difference the
+        customer sees across two documents meant to read as one workshop's —
+        the drift `workshop/invoice.py` exists to prevent, showing up in the
+        stylesheets instead.
+        """
+        from workshop.models import Estimate
+
+        estimate = Estimate.objects.create(customer_name='Ramesh')
+        page = self.client.get(
+            reverse('estimate_print', args=[estimate.pk])
+        ).content.decode()
+        rule = re.search(r'\.inv-table\s+\.sub-cell\s*\{[^}]*\}', page)
+
+        self.assertIsNotNone(rule, "`.inv-table .sub-cell` rule is gone")
+        self.assertIn('font-weight: 700', rule.group(0))
+
+    def test_both_subtotal_amounts_use_that_class(self):
+        """
+        Jobs and parts each print one, and both must be covered — counted on
+        the sheet, since the stylesheet names these classes too.
+        """
+        job = self._labour(Decimal('2500'), 'Diagnosis')
+        self._shop_spare(job, total_price=Decimal('12000'))
+        job.refresh_from_db()
+        sheet = _sheet(self._render(job).content.decode())
+
+        self.assertEqual(sheet.count('sub-label'), 2)
+        self.assertGreaterEqual(sheet.count('sub-cell'), 2)
+
+
+class BothDocumentsCarryTheSameLetterheadTests(InvoiceTestCase):
+    """
+    The wordmark used to be a typographic approximation — Arial Black italic,
+    a CSS rule, an Arial Black tagline — declared separately in each of the two
+    print templates. It is now the client's own artwork, inline, from ONE
+    include.
+
+    Two properties are worth pinning, and neither is about how it looks. The
+    documents must not be able to drift apart, since a quote and the bill that
+    follows it reach the same customer days apart. And the artwork must stay
+    INLINE: an `<img src>` that fails to resolve hands a customer an unbranded
+    invoice, which is precisely what the note in the template has warned about
+    since before there was a logo file to get wrong.
+    """
+
+    def _estimate_page(self):
+        from workshop.models import Estimate
+        estimate = Estimate.objects.create(customer_name='Ramesh')
+        return self.client.get(
+            reverse('estimate_print', args=[estimate.pk])
+        ).content.decode()
+
+    def test_the_lockup_is_embedded_not_fetched(self):
+        """
+        The artwork is a `data:` URI, which is part of the document rather than
+        a request. A `src` pointing at `/static/` would render identically in
+        development and then 404 on a deploy that missed `collectstatic`,
+        handing a customer an unbranded bill — the failure the wordmark was
+        set in text to avoid, back before there was a logo file at all.
+        """
+        sheet = _sheet(self._render(self._jobcard()).content.decode())
+
+        self.assertIn('class="brand-logo"', sheet)
+        self.assertIn('src="data:image/png;base64,', sheet)
+
+        # Every reference ON THE PAPER must be self-contained. `data:` is; a
+        # path or a URL is not.
+        for value in re.findall(r'\bsrc="([^"]*)"', sheet):
+            self.assertTrue(
+                value.startswith('data:'),
+                f'the printed sheet fetches something: src="{value[:60]}"',
+            )
+        self.assertNotIn('url(', sheet)
+
+    def test_the_estimate_carries_the_identical_artwork(self):
+        """
+        Byte-for-byte the same image. If someone regenerates the logo into one
+        template and not the other, the two documents a customer receives days
+        apart stop matching — and nothing else would catch it.
+        """
+        bill = _sheet(self._render(self._jobcard()).content.decode())
+        quote = self._estimate_page()
+
+        self.assertIn('class="brand-logo"', quote)
+        data = re.search(r'src="(data:image/png;base64,[^"]+)"', bill)
+        self.assertIsNotNone(data, 'no embedded logo on the invoice')
+        self.assertIn(data.group(1), quote)
+
+    def test_both_sheets_size_it_the_same(self):
+        """
+        One include printed at two widths would be the same logo at two sizes
+        for one customer — the drift the shared module exists to prevent,
+        reappearing in the stylesheets.
+        """
+        bill = self._render(self._jobcard()).content.decode()
+        quote = self._estimate_page()
+
+        pattern = r'\.brand-logo\s*\{[^}]*\}'
+        bill_rule = re.search(pattern, bill)
+        quote_rule = re.search(pattern, quote)
+
+        self.assertIsNotNone(bill_rule, '`.brand-logo` rule is gone from the invoice')
+        self.assertIsNotNone(quote_rule, '`.brand-logo` rule is gone from the estimate')
+        # 56mm is measured off the owner's own bill, whose lockup spans 55.6mm.
+        self.assertIn('width: 56mm', bill_rule.group(0))
+        self.assertEqual(
+            re.sub(r'\s+', ' ', bill_rule.group(0)),
+            re.sub(r'\s+', ' ', quote_rule.group(0)),
+        )
+
+    def test_the_artwork_is_not_stretched(self):
+        """
+        Height stays `auto` so the ratio comes from the file. This is not
+        hypothetical: the traced SVG that briefly stood here rendered at 3.73:1
+        against the artwork's true 4.40:1 — a 15% vertical stretch the owner
+        could see beside the real mark.
+        """
+        page = self._render(self._jobcard()).content.decode()
+        rule = re.search(r'\.brand-logo\s*\{[^}]*\}', page).group(0)
+
+        self.assertIn('height: auto', rule)
+
+        # The intrinsic dimensions ride on the tag, so the browser reserves the
+        # right box before the image decodes and the letterhead never jumps.
+        tag = re.search(r'<img class="brand-logo".*?>', page, re.S).group(0)
+        width = int(re.search(r'width="(\d+)"', tag).group(1))
+        height = int(re.search(r'height="(\d+)"', tag).group(1))
+        self.assertAlmostEqual(width / height, 4.40, delta=0.05)
+
+    def test_the_artwork_is_dense_enough_to_print(self):
+        """
+        A raster on a printed document is only safe while it out-resolves the
+        printer. At 56mm this must clear 300 DPI with room to spare, or the
+        old warning that "a raster prints soft" comes true.
+        """
+        page = self._render(self._jobcard()).content.decode()
+        tag = re.search(r'<img class="brand-logo".*?>', page, re.S).group(0)
+        width = int(re.search(r'width="(\d+)"', tag).group(1))
+
+        dpi = width / (56 / 25.4)
+        self.assertGreater(dpi, 500, f'letterhead is only {dpi:.0f} DPI at 56mm')
+
+
 class NothingInteractiveLivesOnThePaperTests(InvoiceTestCase):
     """
     Requirement: the print view carries no app chrome. Asserted STRUCTURALLY —
@@ -486,12 +758,43 @@ class NothingInteractiveLivesOnThePaperTests(InvoiceTestCase):
     def test_the_page_loads_nothing_from_a_third_party(self):
         """
         A bill that arrives unstyled because a CDN is slow is not a bill. The
-        page carries its own stylesheet and its own icons.
+        page carries its own stylesheet, its own icons and, since 2026-08-11,
+        its own letterhead as inline SVG.
+
+        Asserted on the things that cause a REQUEST rather than on the string
+        "http". That distinction became load-bearing when the logo went in:
+        every SVG element declares `xmlns="http://www.w3.org/2000/svg"`, which
+        is an XML namespace *identifier* — a name that happens to look like a
+        URL, which no browser ever resolves. The blunt check failed on it and
+        would have pushed someone towards deleting the namespace (breaking the
+        SVG) or dropping this test (losing the rule). Neither is the answer;
+        checking for fetches is.
         """
         html = self._render(self.job).content.decode()
+
         self.assertNotIn('cdn.', html)
-        self.assertNotIn('http://', html)
-        self.assertNotIn('https://', html)
+        self.assertNotIn('<link', html)         # external stylesheets, preconnect
+        self.assertNotIn('@import', html)       # the CSS-side back door
+        self.assertNotIn('url(http', html)      # web fonts, background images
+
+        # Every src/href must be SAME-ORIGIN. Asserting they are absent would be
+        # wrong — the page legitimately loads its own `js/sound.js` off
+        # `/static/`, which is this server. What must never appear is another
+        # host.
+        for attribute, value in re.findall(r'\b(src|href)="([^"]*)"', html):
+            self.assertFalse(
+                value.startswith(('http://', 'https://', '//')),
+                f'{attribute}="{value}" points off this origin',
+            )
+
+        # And no absolute URL anywhere outside the two SVG namespace
+        # declarations, which are names rather than addresses.
+        for match in re.findall(r'https?://[^\s"\'<>)]+', html):
+            self.assertIn(
+                match,
+                ('http://www.w3.org/2000/svg', 'http://www.w3.org/1999/xlink'),
+                f'unexpected third-party reference on the bill: {match}',
+            )
 
 
 class ALongBillPaginatesCleanlyTests(InvoiceTestCase):

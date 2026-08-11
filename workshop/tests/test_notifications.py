@@ -587,6 +587,16 @@ class EventHookTests(TestCase):
         # missing, the link is pointing at a partial again.
         self.assertIn('<nav', page)
         self.assertIn('</html>', page)
-        # And it arrived carrying the person it is about, so the page can open
-        # their history rather than dropping the owner on a list of everyone.
-        self.assertIn(f'staff={mech.pk}', note.url)
+
+        # It carries BOTH ids — the person, and the specific advance. Without
+        # the second the page can only show the newest advance and has to label
+        # it "Latest advance", which on an alert read days later would be a
+        # different sum from the one the alert announced.
+        advance = SalaryAdvance.objects.get(staff=mech)
+        self.assertIn(str(mech.pk), note.url)
+        self.assertIn(f'advance={advance.pk}', note.url)
+
+        # And the page shows that advance as the subject rather than a guess.
+        self.assertIn('Advance given', page)
+        self.assertIn('2,500', page)
+        self.assertIn('Ravi', page)

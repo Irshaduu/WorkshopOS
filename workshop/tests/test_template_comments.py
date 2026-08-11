@@ -47,6 +47,57 @@ def _template_files():
             )
 
 
+#: A template that renders its own messages block. `{% if messages %}` is the
+#: only way to open one, so matching it finds every case.
+RENDERS_MESSAGES = re.compile(r'\{%\s*if\s+messages\s*%\}')
+
+#: A template that inherits `base.html`'s chrome — and therefore its single
+#: messages banner.
+EXTENDS_BASE = re.compile(r"\{%\s*extends\s+['\"]workshop/base\.html['\"]\s*%\}")
+
+
+class MessagesAreRenderedOnceTests(TestCase):
+    """
+    `base.html` renders Django messages once, for every page that extends it. A
+    child template that renders them *again* prints every message twice — and in
+    practice does it with its own ad-hoc styling, which is the part that bites:
+    both offenders found on 2026-08-10 mapped every tag that was not `warning`
+    (or not `error`) onto **success**, so a failure to save a job card appeared
+    as a green tick, and the rename/merge warnings on Data Cleanup appeared as
+    confirmations. Neither carried `data-sound-tag`, so the duplicate was also
+    silent while the real banner played the tone.
+
+    The rule was documented in `CLAUDE.md` from the beginning and nothing
+    enforced it, which is exactly how two templates drifted out of it. A static
+    scan covers all ~102 templates, including the many with no view test.
+
+    The two printed documents are the deliberate exception: `invoice_template.html`
+    and `estimate_print.html` are standalone (they do not extend `base.html`), so
+    rendering their own messages is the only way they can show one at all — which
+    matters, because the invoice is the screen where money is actually settled.
+    They are excluded by the `extends` check rather than by name, so a third
+    standalone template needs no change here.
+    """
+
+    def test_no_template_extending_base_renders_its_own_messages(self):
+        offenders = []
+        for path in _template_files():
+            if path.suffix != '.html':
+                continue
+            source = path.read_text(encoding='utf-8', errors='replace')
+            if EXTENDS_BASE.search(source) and RENDERS_MESSAGES.search(source):
+                line = source[:RENDERS_MESSAGES.search(source).start()].count('\n') + 1
+                offenders.append(f'{path.name}:{line}')
+
+        self.assertEqual(
+            offenders, [],
+            "These templates extend base.html and also render {% if messages %}, "
+            "so every message prints twice and the duplicate loses its "
+            "error/success styling and its sound tag. Delete the block — "
+            "base.html already renders it: " + ', '.join(offenders)
+        )
+
+
 class TemplateCommentSyntaxTests(TestCase):
     def test_no_multiline_hash_comments(self):
         """

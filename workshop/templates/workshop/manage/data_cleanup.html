@@ -36,16 +36,12 @@
         <strong>Renaming updates all existing job cards automatically.</strong>
     </p>
 
-    {% if messages %}
-    <div class="mb-3">
-        {% for message in messages %}
-        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}success{% endif %} alert-dismissible fade show py-2">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
+    {% comment %}
+    Messages are rendered once by base.html and must not be repeated here.
+    This block printed every message a second time, and mapped warning onto
+    'success', so the rename/merge warnings this page exists to show appeared
+    as confirmations.
+    {% endcomment %}
 
     <!-- SKELETON LOADER (shown instantly, hidden after content loads) -->
     <div id="content-skeleton">

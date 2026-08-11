@@ -105,6 +105,52 @@ def part_display_name(spare):
     return spare.spare_part_name or ''
 
 
+#: A bill is settled once `update_bill_status` (walk-in) or `bulk_payer_pay`
+#: (fleet) has moved it here. Both are terminal; PARTIAL is deliberately absent,
+#: because for a walk-in it never occurs — the shortfall becomes a discount and
+#: the card goes straight to PAID — and for a fleet card it means money is still
+#: owed, which is not something to stamp "PAID" on a customer's document.
+SETTLED_STATUSES = ('PAID', 'BULK_PAID')
+
+
+def settlement(jobcard):
+    """
+    What the PAID box prints, or None while the bill is still owed.
+
+    This exists so the template never asks "has this been paid?" itself. That
+    question has a documented, non-obvious answer — a part-paid walk-in is
+    marked **PAID** with the shortfall booked as `discount_amount` (see
+    CLAUDE.md, "A part-paid bill books the shortfall as a discount") — and a
+    template reading `received_amount > 0` or comparing it to the total would
+    quietly invent a second, different definition of settled.
+
+    Deliberately prints the RECEIVED amount and nothing else. Not the discount:
+    that figure is the workshop's own write-off, agreed verbally at the counter,
+    and putting "DISCOUNT ₹2,000" on the sheet invites a negotiation about a
+    number the customer was never quoted. Not a balance either — for a walk-in
+    there is none by construction, and for a fleet card what remains is owed by
+    the account, not by the person holding this bill.
+
+    Returns None rather than a zero so the caller cannot accidentally render an
+    empty box: an unsettled bill has no PAID line at all.
+    """
+    if jobcard.payment_status not in SETTLED_STATUSES:
+        return None
+    is_fleet = jobcard.payment_status == 'BULK_PAID'
+    return {
+        'received': jobcard.received_amount or Decimal('0'),
+        # Deliberately NOT `get_payment_status_display()`, which reads "Fully
+        # Paid". That label is written for the office screens, and on a bill it
+        # is both longer than the box wants and quietly wrong-sounding: a
+        # part-paid walk-in is PAID with the shortfall discounted, so a customer
+        # who handed over ₹37,000 of ₹40,820 would read "FULLY PAID" beside
+        # ₹37,000 and reasonably wonder which number to believe. "PAID" states
+        # the fact the box exists to state, and nothing more.
+        'label': 'Fleet Paid' if is_fleet else 'Paid',
+        'is_fleet': is_fleet,
+    }
+
+
 # Characters that are not legal in a filename on Windows, and are mangled or
 # silently rewritten on the others. Stripped rather than substituted: a
 # registration number containing one of these is a data anomaly, and a bill
@@ -258,6 +304,11 @@ def build_invoice(jobcard):
         # recomputed here, so a drift between the two would show on the page as
         # a bill that does not add up rather than being papered over.
         'grand_total': jobcard.total_bill_amount or Decimal('0'),
+
+        # None until the bill is settled, and the template renders the PAID box
+        # only when it is truthy. The estimate has no equivalent and never will
+        # — nothing has been paid for work nobody has agreed to yet.
+        'settlement': settlement(jobcard),
 
         'document_title': document_title(jobcard, jobcard.bill_number, 'Invoice'),
     }

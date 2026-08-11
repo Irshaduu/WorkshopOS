@@ -1818,3 +1818,177 @@ class LoginNamesDedupeCaseInsensitivelyTests(WorkshopTestCase):
             reverse('manage_create_user'),
             {'username': 'reception', 'password': 'password123', 'role': 'Office'})
         self.assertTrue(User.objects.filter(username='reception').exists())
+
+
+class TheStaffAdvancePageOpensAsAPageTests(WorkshopTestCase):
+    """
+    `/salary-advance/staff/<id>/` served only the modal's fragment — a partial
+    that extends no base template.
+
+    That URL is stored on every `SALARY_ADVANCE` notification raised before
+    2026-08-10, and a notification keeps its url forever, so repointing new
+    alerts at the section could never fix the old ones: they still arrive here.
+    An owner tapping a month-old alert got an unstyled wall of rows with no
+    heading, no nav, and no way back.
+
+    Asserted by FETCHING both ways rather than by comparing markup — the failure
+    was never a wrong string, it was a response that did not render as a page.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.url = reverse('salary_advance_staff_detail', args=[self.staff.pk])
+        self.today = timezone.localdate()
+
+    def _advance(self, amount, when=None, note=None):
+        return SalaryAdvance.objects.create(
+            staff=self.staff, amount=Decimal(amount),
+            date=when or self.today, note=note,
+        )
+
+    def test_a_direct_visit_renders_a_full_page(self):
+        self._advance('2500')
+        page = self.client.get(self.url).content.decode()
+
+        # The chrome a fragment cannot have. If these are missing the owner is
+        # looking at a scrap of HTML again.
+        self.assertIn('<!DOCTYPE html>', page)
+        self.assertIn('id="appDrawer"', page)
+        self.assertIn('Anil', page)
+
+    def test_the_modal_still_gets_a_bare_fragment(self):
+        self._advance('2500')
+        fragment = self.client.get(
+            self.url, headers={'x-requested-with': 'XMLHttpRequest'},
+        ).content.decode()
+
+        self.assertNotIn('<!DOCTYPE html>', fragment)
+        self.assertNotIn('id="appDrawer"', fragment)
+        self.assertIn('2,500', fragment)
+
+    def test_the_page_answers_the_three_questions_and_stops(self):
+        """
+        Who, how much just now, how much this month — in that order, and nothing
+        else. The owner reads this in about four seconds after tapping an alert.
+
+        The first build of this page also carried the staff role, a
+        month-grouped history list and a row-cap notice. All of it was correct;
+        all of it was in the way. The history has a home already — the ⋮ modal
+        on Salary & Advance — so a *second* copy here bought nothing and cost
+        the glance.
+        """
+        older = self._advance('2500', date(self.today.year, self.today.month, 4))
+        newest = self._advance('5000', date(self.today.year, self.today.month, 18))
+        page = self.client.get(f'{self.url}?advance={newest.pk}').content.decode()
+
+        self.assertIn('Anil', page)            # who
+        self.assertIn('5,000', page)           # how much just now
+        self.assertIn('7,500', page)           # how much this month
+        self.assertIn('2 advances', page)      # why those two differ
+
+        # The other advance is NOT itemised. Listing it is what made the page a
+        # history instead of an answer.
+        self.assertNotIn('2,500', page)
+        self.assertNotIn(str(older.date.strftime('%d %b')), page)
+
+    def test_the_named_advance_is_the_one_shown(self):
+        """`?advance=` picks it out, so the alert and the page agree even when a
+        later advance has since been recorded."""
+        wanted = self._advance('2500', date(self.today.year, self.today.month, 4))
+        self._advance('5000', date(self.today.year, self.today.month, 18))
+
+        response = self.client.get(f'{self.url}?advance={wanted.pk}')
+        self.assertEqual(response.context['advance'], wanted)
+        self.assertTrue(response.context['advance_is_exact'])
+        self.assertContains(response, 'Advance given')
+
+    def test_an_alert_with_no_id_falls_back_and_says_so(self):
+        """
+        Every notification sent before 2026-08-11 carries no id, and those rows
+        are permanent. The newest advance stands in — but it is labelled "Latest
+        advance", never "Advance given", so a months-old alert cannot present
+        today's advance as the one it was announcing.
+        """
+        self._advance('2500', date(self.today.year, self.today.month, 4))
+        newest = self._advance('5000', date(self.today.year, self.today.month, 18))
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.context['advance'], newest)
+        self.assertFalse(response.context['advance_is_exact'])
+        self.assertContains(response, 'Latest advance')
+        self.assertNotContains(response, 'Advance given')
+
+    def test_another_staff_members_advance_id_is_ignored(self):
+        """Scoped to this person, so a hand-typed id cannot show someone else's
+        money on their page."""
+        other = Mechanic.objects.create(name='Bala')
+        theirs = SalaryAdvance.objects.create(
+            staff=other, amount=Decimal('9999'), date=self.today)
+        mine = self._advance('2500')
+
+        response = self.client.get(f'{self.url}?advance={theirs.pk}')
+        self.assertEqual(response.context['advance'], mine)
+        self.assertNotContains(response, '9,999')
+
+    def test_the_month_total_follows_the_advance_not_today(self):
+        """
+        An alert opened on the 2nd about an advance given on the 31st must total
+        the month that advance belongs to. Totalling *today's* month would put
+        two figures on screen describing different months.
+        """
+        last_month_day = date(self.today.year, self.today.month, 1) - timedelta(days=5)
+        old = self._advance('2500', last_month_day)
+        self._advance('1000', last_month_day - timedelta(days=1))
+        self._advance('9999')      # this month — must be excluded
+
+        response = self.client.get(f'{self.url}?advance={old.pk}')
+        self.assertEqual(response.context['month_total'], Decimal('3500'))
+        self.assertNotContains(response, '9,999')
+
+    def test_the_total_is_summed_in_the_database(self):
+        """
+        Aggregated over the whole calendar month — the same window
+        `salary_expense` settles on, so this figure and the one the settlement
+        screen deducts can never disagree.
+        """
+        for day in range(1, 27):
+            self._advance('1000', date(self.today.year, self.today.month, day))
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.context['month_total'], Decimal('26000'))
+        self.assertEqual(response.context['month_count'], 26)
+        self.assertContains(response, '26,000')
+
+    def test_a_single_advance_month_says_so_rather_than_repeating_itself(self):
+        """
+        With one advance the two figures are the same number twice. The subtitle
+        carries the reason instead of leaving the repeat looking like an error.
+        """
+        self._advance('2500')
+
+        response = self.client.get(self.url)
+        self.assertContains(response, 'only advance')
+        self.assertNotContains(response, '1 advances')
+
+    def test_a_staff_member_with_no_advances_still_gets_a_page(self):
+        page = self.client.get(self.url).content.decode()
+
+        self.assertIn('<!DOCTYPE html>', page)
+        self.assertIn('No advances recorded', page)
+
+    def test_a_retired_staff_member_is_still_reachable(self):
+        """Their advances are still real money, and the alert about one still
+        exists. Retiring somebody must not 404 the page it points at."""
+        self._advance('2500')
+        self.staff.is_active = False
+        self.staff.save(update_fields=['is_active'])
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Retired')
+
+    def test_floor_cannot_open_it(self):
+        """`@office_required`, like every other salary screen — wages are not
+        Floor's business."""
+        self.assertEqual(self.client_for('floor').get(self.url).status_code, 403)

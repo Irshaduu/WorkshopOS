@@ -69,7 +69,7 @@ A premium, comprehensive Django-based workshop management system for a single au
 - **Frontend**: Bootstrap 5, vanilla JavaScript, CSS3. Server-rendered Django templates with page-scoped inline JS and **no build step** — a deliberate choice, recorded in [`CLAUDE.md`](CLAUDE.md).
 - **Security**: `python-decouple` for environment variables, role-based decorators, per-account and per-IP lockout
 - **Static Assets**: WhiteNoise, configured through `STORAGES` (Django 5.1 removed `STATICFILES_STORAGE` and ignores it silently)
-- **Notifications**: in-app feed behind the nav bell, owner-only (login, large discounts, permanent deletions, salary activity, archives). Twilio/Telegram were removed 2026-07-29. The only outbound integration is transactional email for password-reset codes, sent over **Resend's HTTPS API** — Railway blocks outbound SMTP below its Pro plan.
+- **Notifications**: in-app feed behind the nav bell, owner-only — 13 events covering sign-ins, large discounts (over ₹3,500), permanent deletions, salary activity, archives, and account security (lockouts, password resets, reset-code abuse). The nine CRITICAL ones also push to a phone. Twilio/Telegram were removed 2026-07-29. Outbound integrations are transactional email for password-reset codes, sent over **Resend's HTTPS API** (Railway blocks outbound SMTP below its Pro plan), and Web Push — both optional, and the app runs correctly with neither configured.
 
 ## Installation
 
@@ -141,7 +141,7 @@ Exact model/route/template counts live in [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRI
 
 ## 🛡️ Reliability, Performance & Security
 
-WorkshopOS is backed by an automated test suite (38 files) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
+WorkshopOS is backed by an automated test suite (**39 files, 956 tests**, counted 2026-08-10) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
 
 ## 🛠️ Operational Tooling
 - **Database Backups** — `python manage.py backup_db` follows whichever database is active: `pg_dump` for PostgreSQL, a file copy for SQLite, keeping the 14 most recent. **On Railway it writes into the container's ephemeral filesystem, so the file does not survive the next deploy** — see [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) §6 for the backup procedure that actually persists.

@@ -331,13 +331,22 @@ def salary_advance_add(request):
                 'SALARY_ADVANCE',
                 f"₹{amount:,.0f} advance to {staff.name} on {advance_date:%d %b %Y}.",
                 actor=request.user,
-                # The SECTION, with the person's history opened on arrival — not
-                # `salary_advance_staff_detail`, which is the AJAX fragment that
-                # modal fetches. Linking there put the owner on a bare unstyled
-                # scrap of HTML with no nav and no way back, because the partial
-                # extends no base template. See CLAUDE.md: a notification's url
-                # has to land somewhere that can act on its subject.
-                url=f"{reverse('salary_advance_home')}?staff={staff.pk}",
+                # Straight to the one-glance answer page, naming THIS advance so
+                # it can be shown as the advance given rather than merely the
+                # latest one.
+                #
+                # This link has moved twice. It first pointed at
+                # `salary_advance_staff_detail` when that served only the modal's
+                # fragment — a partial extending no base template, so the owner
+                # landed on an unstyled scrap with no nav and no way back. It was
+                # then repointed at the section, which fixed nothing already sent,
+                # because a notification stores its url forever. The fix was to
+                # make this URL serve a real page; now that it does, it is also
+                # the right destination. See CLAUDE.md.
+                url=(
+                    reverse('salary_advance_staff_detail', args=[staff.pk])
+                    + f"?advance={advance.pk}"
+                ),
                 object_type='SALARY_ADVANCE', object_id=advance.pk,
             )
             messages.success(request, f"₹{amount:,.0f} advance recorded for {staff.name}.")
@@ -361,14 +370,77 @@ def salary_advance_delete(request, pk):
     return redirect('salary_advance_home')
 
 
+#: How many advances either surface shows. Two years of a monthly advance, so
+#: in practice the whole history for anyone the workshop currently employs.
+STAFF_ADVANCE_ROWS = 24
+
+
 @office_required
 def salary_advance_staff_detail(request, staff_id):
-    """AJAX fragment: a staff member's recent advance history, for the modal."""
+    """
+    One staff member's advance history — as a PAGE when navigated to, as a bare
+    fragment when the history modal fetches it.
+
+    It was fragment-only, and that was a defect rather than a limitation of the
+    design. A `SALARY_ADVANCE` notification used to link here; the link was
+    repointed at the section, but **notifications are permanent rows carrying a
+    stored url**, so every alert raised before that fix still arrives at this
+    view forever. Repointing new ones could never fix the old ones. An owner
+    tapping a month-old alert on their phone got an unstyled wall of rows with
+    no heading, no nav, and no way back but the browser's own Back button.
+
+    So the URL is made to work rather than the callers made to avoid it. The
+    fragment is now the *opt-in* branch: anything without the AJAX header gets
+    the full page. That direction matters — if the header is ever dropped the
+    modal degrades to showing a complete page inside itself, which is untidy,
+    whereas the reverse would put a naked fragment back in front of an owner,
+    which is the bug this exists to close.
+    """
     staff = get_object_or_404(Mechanic, pk=staff_id)
-    advances = staff.salary_advances.all()[:24]
-    return render(request, 'workshop/salary_advance/partials/staff_advances.html', {
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return render(request, 'workshop/salary_advance/partials/staff_advances.html', {
+            'staff': staff,
+            'advances': list(staff.salary_advances.all()[:STAFF_ADVANCE_ROWS]),
+        })
+
+    # Which advance the alert was about. New notifications name it with
+    # `?advance=`; the ones sent before that carry no id, so the newest stands
+    # in — right in the overwhelming case, because the alert is raised the
+    # moment the advance is recorded and is normally read the same day.
+    #
+    # It is LABELLED differently in the two cases rather than guessing
+    # confidently: an id that resolves says "Advance given", a fallback says
+    # "Latest advance", so a months-old alert cannot present today's advance as
+    # the one it was announcing. Scoped to this staff member, so a hand-typed id
+    # belonging to somebody else resolves to nothing rather than showing another
+    # person's money on this page.
+    advance = None
+    wanted = request.GET.get('advance')
+    if wanted and wanted.isdigit():
+        advance = staff.salary_advances.filter(pk=wanted).first()
+    exact = advance is not None
+    if advance is None:
+        advance = staff.salary_advances.first()   # Meta.ordering: newest first
+
+    # The month the ADVANCE falls in, not today's — an alert opened on the 2nd
+    # about an advance given on the 31st must total the month that advance
+    # belongs to, or the two figures on screen describe different months.
+    focus = advance.date if advance else timezone.localdate()
+
+    # Aggregated in the database over the whole calendar month — the same window
+    # `salary_expense` settles on, so this figure and the one the settlement
+    # screen deducts can never disagree.
+    month = staff.salary_advances.filter(date__year=focus.year, date__month=focus.month)
+    month_total = month.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
+    return render(request, 'workshop/salary_advance/staff_detail.html', {
         'staff': staff,
-        'advances': advances,
+        'advance': advance,
+        'advance_is_exact': exact,
+        'month_total': month_total,
+        'month_count': month.count(),
+        'month_label': focus.strftime('%B %Y'),
     })
 
 

@@ -13,7 +13,7 @@
 
 **WorkshopOS** is engineered for a single premium automotive workshop — appointment-driven, high-value vehicles, not high-volume throughput. That distinction matters: the system is built to be fast and correct for a small, hands-on team, not to demonstrate generic "web scale."
 
-- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **38 files** (see CLAUDE.md for the live test count) covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, the owner profit engine, and the email transport behind password reset.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **39 files / 956 tests** (recounted 2026-08-10; re-count rather than trusting this line) covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, the owner profit engine, and the email transport behind password reset.
 
 ---
 
@@ -37,10 +37,10 @@
 
 ### 1c. Notifications — in-app feed (added 2026-07-29)
 - The nav bell is real: an owner-only feed at `/notifications/` with an unread badge, mark-one-on-open, mark-all-read, and a 14-day sweep of *read* rows (unread are never swept).
-- **Eight events**, all Owner-audience, all declared in one file (`workshop/notifications.py`): `LOGIN`, `ACCOUNT_LOCKED`, `USER_CREATED`, `HIGH_DISCOUNT`, `RECORD_DELETED`, `ACCOUNT_ARCHIVED`, `SALARY_ADVANCE`, `SALARY_SETTLED`.
+- **13 events** (recounted 2026-08-10; eight at launch), all Owner-audience, all declared in one file (`workshop/notifications.py`). **CRITICAL — these push to a phone:** `ACCOUNT_LOCKED`, `PASSWORD_RESET`, `RESET_CODE_LIMIT`, `RESET_CODE_ATTEMPTS_SPENT`, `USER_CREATED`, `USER_DELETED`, `STAFF_PASSWORD_SET`, `HIGH_DISCOUNT`, `RECORD_DELETED`. **INFO — feed only:** `LOGIN`, `ACCOUNT_ARCHIVED`, `SALARY_ADVANCE`, `SALARY_SETTLED`. The five added since launch are all security events: the three Control Hub actions that hand over or revoke access, and the two password-reset abuse signals, which are the only events raised with **no actor** so they reach every owner including the one targeted.
 - **`RECORD_DELETED` hooks `DeletionLog.record()`** — the single choke point every permanent delete already passes through, so one call covers all eleven entity types and anything added later for free.
 - **The actor is excluded from their own events**, which roughly halves volume with two owners, and Floor receives nothing at all. Notification fatigue is the failure mode here: a bell that cries wolf stops being read, and the events that matter (large discount, permanent delete) are exactly the ones that would be missed.
-- `HIGH_DISCOUNT` uses `JobCard.HIGH_DISCOUNT_RATIO`, the same constant as `audit_high_discounts`, so the audit page and the alert cannot disagree about what "large" means.
+- `HIGH_DISCOUNT` uses `JobCard.HIGH_DISCOUNT_AMOUNT` (**a flat ₹3,500 since 2026-08-10**, replacing the old 30% `HIGH_DISCOUNT_RATIO`), the same constant as `audit_high_discounts` and the settle dialog, so the audit page, the alert and the confirmation cannot disagree about what "large" means.
 - This replaced the SMS/Telegram broadcast described in §2.
 
 ### 1d. Web Push — ✅ Added (2026-07-29)
@@ -55,7 +55,7 @@
 ### 2. Twilio & Telegram — ✅ Removed (2026-07-29)
 - Both channels are **gone**: `send_twilio_sms`, `send_telegram_msg`, `send_titan_security_alert`, the `twilio` and `requests` dependencies, the `TWILIO_*` / `TELEGRAM_BOT_TOKEN` / `OWNER_n_CHAT_ID` env keys, and the root-level `verify_twilio.py` / `verify_alerts.py` scripts.
 - Removed **last**, deliberately: the password-reset half went first (§2b, emailed codes), then the in-app feed took over login alerts (§1c) and was verified working, and only then was the channel deleted. A notification channel is never removed before its replacement is proven — otherwise the owners are left with no alert at all in the gap.
-- **The app now makes exactly one kind of outbound network call: SMTP**, for password-reset codes. Don't reintroduce a messaging integration; push notifications (roadmap) are a delivery layer over the existing `Notification` rows, not a parallel system.
+- **The app makes exactly two kinds of outbound network call**, both optional and neither on the request path: the password-reset code (SMTP in development, **Resend's HTTPS API in production** since 2026-08-10 — Railway blocks outbound SMTP below its Pro plan) and **Web Push**. Don't reintroduce a messaging integration; push is a delivery layer over the existing `Notification` rows, not a parallel system.
 
 ### 2b. Password Recovery — ✅ Rebuilt (2026-07-28)
 - **Change Password** (`/change-password/`, Owner-only): a signed-in owner sets a new password with no email involved. This is the **handover path** — an owner gets a temp password verbally, signs in, replaces it. Go-live therefore does not depend on SMTP being configured.
@@ -149,7 +149,7 @@ In the order set as of 2026-07-23:
    - **Emailed 6-digit reset code**, DB-backed and throttled per account, replacing the SMS/Telegram OTP (§II.2b)
    - **Login rebuilt**: one engine behind two faces, sign in by username/email/mobile, per-account lockout, 403 instead of a redirect loop (§II.1, §II.1b)
    - **Control Hub locked to Owners** + one-click unlock for locked staff accounts
-   - **In-app Notification feed** with eight events (§II.1c), and only then —
+   - **In-app Notification feed** — eight events at the time; **13 as of 2026-08-10** (§II.1c) — and only then —
    - **Twilio and Telegram deleted** (§II.2). The order was the point: the replacement was proven before the channel was removed.
    - **Web Push** (§II.1d) — added once the app was hosted on Render (HTTPS is a hard requirement). CRITICAL events only; the in-app feed remains the source of truth.
    - *Remaining*: enable it on each owner's real device. On iPhone that means **Add to Home Screen first**, then open the installed app and use the button on `/notifications/` — Safari does not expose Web Push to a normal browser tab.
@@ -157,30 +157,70 @@ In the order set as of 2026-07-23:
 9. ✅ **PostgreSQL migration** (done 2026-07-27) — both `development` and `production` now run on PostgreSQL. Development is Neon (Singapore); production moves to Railway's own Postgres at go-live, co-located with the app. SQLite is retained for exactly two jobs: bulk dummy-data seeding (`USE_SQLITE=true`, then `copy_sqlite_to_postgres`) and the test suite, which forces SQLite automatically so the runner never CREATEs/DROPs a database on hosted Postgres. Still pre-go-live: the instance holds demo data, and `purge_business_data` is the documented step before real books go in.
 10. **Frontend polish** — raise the visual/UX bar across the app to match the backend's rigor.
 11. **Stability, security, performance, and code quality hardening** — pushing all four toward production-grade across both apps.
-12. **Keep every financial and security rule under test** — not a coverage percentage. The 882 existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. Add a test when a rule is added or a bug is fixed, not to move a metric.
+12. **Keep every financial and security rule under test** — not a coverage percentage. The **956** existing tests (counted 2026-08-10) already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. Add a test when a rule is added or a bug is fixed, not to move a metric.
 13. **Deep debug pass**.
 14. ✅ **Repo cleanup** (done 2026-08-10) — five unreferenced files removed: `API_DOCUMENTATION.md` and `TECH_INFO.md` (both described Twilio/Telegram, soft-delete-with-Trash and SMS 2FA as the *current* system, and the second opened by telling AI agents to copy those exact patterns), `TITAN_BLUEPRINT.html` (a v7 render), `migrate_to_postgres.py` (superseded by `copy_sqlite_to_postgres`) and `_phase3_audit.py` (a scratch script). Every count in `MASTER_BLUEPRINT.md` was recounted from the code in the same pass — models, routes, templates, migrations and test files had all drifted.
 15. **Hosting** — *in progress.* The system runs on Railway at a temporary URL; static-file serving, the build/pre-deploy commands and the email transport are done. Remaining: the production project on the Hobby plan, DNS for `app.formuladservice.in`, Resend verification, and the go-live steps themselves. Procedure: `GO_LIVE_RUNBOOK.md`. Ongoing operation: `RAILWAY_OPERATIONS.md`.
 16. **Post-review task list** — the owner's own verified list, 2026-08-10. Supersedes the
     Antigravity-generated `QA_VERIFICATION_REPORT.txt`, which was built from an older
-    draft. Not started; recorded here so the list has one home.
-    1. Repeated OTP requests and wrong-OTP submissions by one owner raise no notification
-       to the other.
-    2. Push not working on Android on Render's free tier; the "Install as app" banner does
+    draft and was **deleted on 2026-08-10** once every one of its 17 items had been
+    checked against the code; the four that were still open moved to `TECH_DEBT.md` as
+    `AUD-0089`–`AUD-0092`. **Statuses below were re-verified against the code —
+    15 of 18 done.** Items 1–15 came from the owner on 2026-08-10 and were verified
+    that day; 16–18 were raised on 2026-08-11. Still open: **2** (push / install
+    banner, re-test after the domain move), **3** (mobile scale — a design decision,
+    not a bug) and **11** (master-data click-through, a proposal to weigh).
+    1. ✅ **Repeated OTP requests and wrong-OTP submissions raise no notification —
+       FIXED 2026-08-10.** `RESET_CODE_LIMIT` and `RESET_CODE_ATTEMPTS_SPENT`, both
+       CRITICAL, both raised with **no actor** so they reach every owner including the
+       one targeted. Only the hourly limit fires (the 60-second cooldown is a
+       double-tapped button), de-duped to one per account per hour so the form cannot be
+       used to buzz two phones. The visitor's response is byte-identical either way —
+       `test_raising_an_alert_changes_nothing_the_visitor_can_see`.
+    2. ⏳ Push not working on Android on Render's free tier; the "Install as app" banner does
        not appear on `railway.app`. **Both may resolve with the move to a custom domain on
-       Railway — re-test before investigating.**
-    3. Mobile scale/layout: correct in the browser's device emulator, too small on a real
-       phone.
-    4. High-discount alert should fire at **₹3,500**, not 30% — with a clean confirmation
-       when settling. Touches `audit_high_discounts` and the `HIGH_DISCOUNT` event.
-    5. Bill and Estimate PDF filenames: `Audi A4 KL11 AJ 2266 (JB-26-037).pdf`.
-    6. Spare Shop ⋮ button to the top-right on mobile.
-    7. Supplies Shop payment-history delete to move inside a ⋮ menu.
-    8. Job Card "Stock" and "Shop" buttons open a new window, which breaks the flow inside
-       an installed PWA.
-    9. Home header shows blank instead of `0` when no cars are in the workshop.
-    10. Job Card placeholders too prominent — smaller, lower contrast.
-    11. **Master data: replace rename/merge with delete-only plus click-through.** Proposal
+       Railway — re-test before investigating.** Partly addressed already: the service
+       worker is now registered on **every** page load rather than only when an owner
+       enables push, which is what Chrome's automatic install prompt requires. Note
+       registration, install state and push subscriptions are all **per-origin**, so
+       every device must re-enable push after the move regardless. Verification steps are
+       `GO_LIVE_RUNBOOK.md` §(post-deploy device checks).
+    3. ⏳ Mobile scale/layout: correct in the browser's device emulator, too small on a real
+       phone. **Still open — and it is a design decision, not a bug.** Measurements have
+       been taken; the approach has not been chosen.
+    4. ✅ **High-discount alert at ₹3,500, not 30% — DONE 2026-08-10.**
+       `JobCard.HIGH_DISCOUNT_AMOUNT = Decimal('3500')` replaced `HIGH_DISCOUNT_RATIO`
+       and is read by `audit_high_discounts`, the `HIGH_DISCOUNT` event and the settle
+       dialog, so none can disagree about where the line is. The settle screen now also
+       says what the shortfall *becomes* — a discount — with the confirmation firing only
+       past the threshold. Guarded by `ALargeDiscountIsConfirmedBeforeItHappensTests`.
+    5. ✅ **Bill and Estimate PDF filenames — DONE.** `document_title()` in
+       `workshop/invoice.py` builds the `<title>`, which is what the browser's "Save as
+       PDF" uses as the filename, for both documents from one function. Covered by tests
+       in `test_invoice.py` and `test_estimate.py`.
+    6. ✅ **Spare Shop ⋮ to the top-right on mobile — DONE 2026-08-10.** Settled on the
+       second attempt: below 768px the actions take their own row, aligned right, so the
+       shop *name* keeps the full width. The first attempt pinned them beside the title
+       and truncated the name, which is the one piece of text that says what you are
+       looking at.
+    7. ✅ **Supplies Shop payment-history delete inside a ⋮ menu — DONE 2026-08-10.** Both
+       payment histories now share markup exactly, and the tests assert the **parity**
+       rather than either implementation. Two real defects surfaced while doing it: the
+       spare-shop delete was gated on `Owner` while its view is `@office_required` (so it
+       was hidden from the role whose job it is), and the "Bulk Pay" badge printed on
+       every supplier payment, distinguishing nothing.
+    8. ✅ **Job Card "Stock" and "Shop" buttons opening a new window — FIXED.** No
+       `target="_blank"` remains in `jobcard_form.html`; the surviving mention is the
+       comment recording why it was removed.
+    9. ✅ **Home header blank instead of `0` — FIXED.** `{{ page_obj.paginator.count }}`
+       renders directly. The cause was `|default:` treating a legitimate `0` as falsy and
+       falling back to an attribute a `Page` object does not have, which `string_if_invalid`
+       then rendered as an empty string.
+    10. ✅ **Job Card placeholders too prominent — DONE.** `::placeholder` is now smaller
+        (`0.86em`, so it tracks the input's own size), lighter and muted, and fades
+        further on focus. Colour and font-size only — nothing that touches layout, and no
+        `transition: all` near a form control.
+    11. ⏳ **Master data: replace rename/merge with delete-only plus click-through.** Proposal
         is to drop editing and merging entirely, and instead click a master-list entry to
         see the job cards using it and correct them one at a time. Trade to weigh: it
         removes all bulk mutation (and the merge that is *not cleanly undoable*), at the
@@ -199,13 +239,77 @@ In the order set as of 2026-07-23:
         a settled card rendering blank after a salary was cleared). See CLAUDE.md,
         "A SETTLED month is a closed set of people"; guarded by
         `ASettledMonthIsAClosedSetOfPeopleTests`.
-    13. **Protected pages still visible via the browser Back button after logout.** The
-        session is genuinely dead (any action fails) — this is the browser's history cache
-        painting the old page. Fix is `Cache-Control: no-store` on authenticated responses.
-    14. Salary-advance notification: the on-click destination needs work.
-    15. Sound on important actions — worth scoping to irreversible/money actions only, and
-        it must be user-toggleable. A workshop is loud and phones are often silent, so
-        sound on *every* action becomes noise and then gets ignored.
+    13. ✅ **Protected pages visible via the browser Back button after logout — FIXED
+        2026-08-10.** `NoStoreMiddleware` sets `no-store` on authenticated responses. The
+        session was genuinely dead all along; this was the browser's back/forward cache
+        repainting a fully-rendered page — the dashboard, a customer's bill, the Profit
+        page — on a laptop now in someone else's hands. Nothing server-side can undo that
+        after the page has been sent, so telling the browser not to keep it is the only
+        lever. Accepted cost: Back re-fetches instead of restoring instantly.
+    14. ✅ **Salary-advance notification destination — FULLY fixed 2026-08-11.** Two
+        halves, and the first one alone did nothing for the owner. `SALARY_ADVANCE` was
+        repointed at the section with that person's history opened, instead of
+        `salary_advance_staff_detail` — the AJAX fragment the modal fetches, which
+        extends no base template and so rendered as a bare unstyled scrap with no nav
+        and no way back. But **a notification stores its `url` and keeps it forever**,
+        so every alert raised before that change still arrived at the old view; the
+        owner reported it after the "fix" precisely because the alert they tapped
+        predated it. The URL itself now serves a **real page**, and returns the bare
+        fragment only when `X-Requested-With: XMLHttpRequest` is set, so the modal is
+        unchanged. Guarded by `TheStaffAdvancePageOpensAsAPageTests`. The general rule
+        this produced is in `CLAUDE.md`: before changing a notification's url, ask what
+        happens to the ones already sent.
+        **Redesigned the same day, on the owner's own account of the four-second
+        read:** who is this → how much just now → how much this month, and nothing
+        else. The first version added the staff role, a month-grouped history list and
+        a row-cap notice, all correct and all in the way — the history already lives in
+        the ⋮ modal one tap away. The notification now names the exact advance with
+        `?advance=<pk>`; where that is missing (every alert sent before 2026-08-11) the
+        newest stands in and is labelled "Latest advance" instead of "Advance given".
+    15. ✅ **Sound on important actions — DONE 2026-08-10, scoped as asked.** Four
+        synthesised tones (Web Audio, **no audio files and no dependency**) riding on
+        Django's own message tags, so one attribute covers every outcome in the app and
+        anything added later. Deliberately **not** wired per-button: ~180 call sites is
+        180 chances to attach the wrong tone, and each would fire at *click* time,
+        announcing "done" before the server had done anything. `info`/`debug` are silent,
+        which is what stops the two that matter from being tuned out. Per-device toggle in
+        the drawer, default ON. Three views that had been silent (`mark_completed`,
+        `undo_completed`, `toggle_hold`) now report themselves, which is what earns them a
+        sound.
+
+    *Raised 2026-08-11, after the list above:*
+
+    16. ✅ **A PAID box on a settled bill — DONE 2026-08-11.** Small green box under
+        TOTAL, outside the totals table, carrying what was actually received; absent
+        entirely until the card reaches PAID/BULK_PAID. `settlement()` in
+        `workshop/invoice.py` decides — see `CLAUDE.md` for why the template must not,
+        and why the discount is deliberately never printed.
+    17. ✅ **SUBTOTAL amounts in bold — DONE 2026-08-11.** Applied to the estimate as
+        well as the invoice: the two are byte-identical here and are handed to the same
+        customer days apart, so letting them diverge on typography is the drift
+        `workshop/invoice.py` exists to prevent, showing up in the stylesheets instead.
+    18. ✅ **The real logo on the bill — DONE 2026-08-11.** The wordmark was Arial
+        Black italic: a close approximation (the logo *is* a heavy oblique grotesque —
+        it is **not** Racing Sans One, which has flared calligraphic terminals) but
+        never the logo, and it printed "Diagnosis & Service" where the mark reads
+        **Diagnosis&Service**. It is now the client's own artwork as inline SVG from one
+        include shared by the invoice and the estimate.
+        **Two traced SVGs were tried and both were dropped**, which is the part worth
+        keeping. The first was 98% anti-aliasing noise — letterforms shredded into grey
+        bands (`#d4d4d4` 40%, `#aaa` 26%, `#555` 11%) across 20 colours. The second was
+        genuinely clean (19 paths, all near-black or near-red, no greys) and shipped for
+        half a day — but a trace approximates letterforms by construction, and it
+        rendered at **3.73:1 against the artwork's true 4.40:1**, a 15% vertical stretch
+        the owner saw at once. The owner's own optimized PNG went in instead, inlined as
+        a data URI so nothing is ever fetched.
+        Measured against the running bill by splitting its letterhead ink into bands:
+        the real lockup is **55.6mm × 13.3mm**; ours renders **56 × 12.74mm**. The file
+        needed cropping to its ink (the canvas carried padding), its 253-grey background
+        lifted to white, and resampling to 600 DPI — then a 16-colour palette took it
+        from 130KB to 38.6KB. Regenerate with `scratchpad/build_logo_png.py`.
+        *Not changed:* the page's own margins are 12mm against the reference bill's
+        14.7mm left / 17.9mm top. That is the sheet's pre-existing padding, not the
+        logo, and moving it would shift every element on both documents.
 
 
 ---

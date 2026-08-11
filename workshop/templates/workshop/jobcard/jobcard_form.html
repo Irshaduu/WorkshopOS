@@ -107,38 +107,14 @@
 
 
 
-        <!-- Toast Notification (Fixed Position) -->
-        {% if messages %}
-        <div class="position-fixed top-0 end-0 p-3" style="z-index: 9999;">
-            {% for message in messages %}
-            <div class="toast show align-items-center text-white border-0 {% if message.tags == 'warning' %}bg-warning{% else %}bg-success{% endif %}"
-                role="alert" data-level="{{ message.tags }}">
-                <div class="d-flex">
-                    <div class="toast-body">
-                        {% if message.tags == 'warning' %}<i class="bi bi-exclamation-triangle me-2"></i>{% else %}<i class="bi bi-check-circle me-2"></i>{% endif %}{{ message }}
-                    </div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto"
-                        data-bs-dismiss="toast"></button>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        <script>
-            //Auto-dismiss success toasts only, warnings stay visible
-            document.addEventListener('DOMContentLoaded', function () {
-                const toasts = document.querySelectorAll('.toast');
-                toasts.forEach(toast => {
-                    const level = toast.getAttribute('data-level');
-                    if (level === 'success') {
-                        setTimeout(() => {
-                            toast.classList.remove('show');
-                            setTimeout(() => toast.remove(), 300);
-                        }, 2000);
-                    }
-                });
-            });
-        </script>
-        {% endif %}
+        {% comment %}
+        Messages are rendered once by base.html and must not be repeated here.
+        This block printed every message a second time, and mapped every tag
+        that was not 'warning' onto bg-success — so an *error* saving a job
+        card appeared as a green tick. It also carried no `data-sound-tag`,
+        which is what sound.js reads, so the duplicate was silent while the
+        real banner played the tone.
+        {% endcomment %}
 
         <!-- ========================================== -->
         <!-- ACTIVE VEHICLES DASHBOARD (Show on home only) -->

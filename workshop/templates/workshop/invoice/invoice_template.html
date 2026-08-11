@@ -286,34 +286,29 @@
             gap: 8mm;
         }
 
-        .brand-mark {
-            font-family: "Arial Black", "Arial Bold", Arial, sans-serif;
-            font-style: italic;
-            font-weight: 900;
-            font-size: 23pt;
-            letter-spacing: -.01em;
-            line-height: 1;
-            white-space: nowrap;
-        }
+        {% comment %}
+        The lockup is one piece of artwork (see includes/_brand_mark.html), so
+        it is sized once, by WIDTH.
 
-        .brand-mark .d {
-            color: #e8112d;
-        }
+        56mm is not a guess: the owner's own running bill was measured and its
+        lockup spans 55.6mm — the red rule being the widest element — against a
+        13.3mm height. The artwork's ratio puts 56mm at 12.74mm tall, which
+        lands within half a millimetre of the real thing on both axes.
 
-        .brand-rule {
-            height: 1mm;
-            background: #e8112d;
-            margin: 1.1mm 0 .6mm;
-            /* Sized to the wordmark rather than the column, as on the letterhead. */
+        Height stays `auto` so the ratio comes from the file. Setting both is
+        how a wordmark ends up subtly squashed, and this one has already been
+        caught once: the traced SVG that briefly stood here rendered at 3.73:1
+        against the artwork's true 4.40:1, a 15% vertical stretch that was
+        visible to the owner beside the real mark.
+
+        `display: block` matters — an inline image sits on the text baseline and
+        would otherwise carry a few points of descender space beneath it,
+        pushing the address block down by an amount that varies with the font.
+        {% endcomment %}
+        .brand-logo {
             width: 56mm;
-        }
-
-        .brand-tag {
-            font-family: "Arial Black", Arial, sans-serif;
-            font-style: italic;
-            font-weight: 900;
-            font-size: 8pt;
-            line-height: 1;
+            height: auto;
+            display: block;
         }
 
         .brand-addr {
@@ -425,6 +420,10 @@
 
         .inv-table .sub-cell {
             background: #dce6f1;
+            /* The SUBTOTAL figure carries the same weight as its label. It is a
+               total, and it was the only number in the shaded block set lighter
+               than the words beside it. */
+            font-weight: 700;
         }
 
         .inv-table .sub-label {
@@ -516,6 +515,57 @@
             font-weight: 700;
             font-size: 15pt;
             color: #1f4e79;
+        }
+
+        {% comment %}
+        PAID — a receipt stamp under the bill, not part of it.
+
+        Width is the TOTAL label + amount columns added (14.5% + 20.3%), so its
+        right edge and its internal split line up with the row above rather than
+        merely looking close. `margin-left: auto` does the rest; it never
+        stretches the sheet because it is a block inside the same padded column
+        the table sits in.
+
+        Deliberately quieter than TOTAL and smaller: green says settled at a
+        glance, but a receipt line competing with the amount due would be the
+        loudest thing on a customer's bill. Not a table, so it cannot disturb
+        the column widths the table computes.
+        {% endcomment %}
+        .paid-box {
+            width: 34.8%;
+            margin: 1.6mm 0 0 auto;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 2mm;
+            padding: 1.1mm 1.8mm;
+            border: .35mm solid #7fb37f;
+            background: #eaf5ea;
+            color: #24632c;
+            font-size: 9.5pt;
+            line-height: 1.15;
+        }
+
+        .paid-label {
+            font-weight: 700;
+            letter-spacing: .02em;
+            white-space: nowrap;
+        }
+
+        /* Mirrors `.money .acct` — the rupee sign anchors left, the figure
+           right — but scoped here because the box is not inside `.money`. */
+        .paid-box .acct {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 1.5mm;
+            flex: 1;
+        }
+
+        .paid-amount {
+            font-weight: 700;
+            flex: 1;
+            text-align: right;
         }
 
         .inv-table .thanks {
@@ -626,6 +676,23 @@
             .inv-parties {
                 break-after: avoid;
                 page-break-after: avoid;
+            }
+
+            /* The PAID stamp follows TOTAL or it means nothing — a receipt line
+               alone at the top of a fresh page reads as belonging to whatever
+               comes next. `break-before: avoid` keeps it with the totals block
+               it is commenting on. */
+            .paid-box {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-before: avoid;
+                page-break-before: avoid;
+                /* Background fills are dropped by default when printing. This
+                   is the one element whose meaning IS its colour, so it keeps
+                   the fill where the browser honours the request, and stays
+                   legible on its border and bold text where it does not. */
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
 
             /* One footer, on the last page, entire — and not stranded on a page
@@ -866,13 +933,18 @@
             <header class="inv-head">
                 <div class="brand">
                     {% comment %}
-                    The wordmark is set, not an image: a logo file that fails to
-                    load leaves a customer holding an unbranded invoice, and a
-                    raster one prints soft.
+                    The client's own artwork, inline. It replaces a three-part
+                    typographic approximation (Arial Black italic wordmark, a
+                    CSS rule, an Arial Black tagline) that was close but was
+                    never the logo.
+
+                    The original note here — a logo file that fails to load
+                    leaves a customer holding an unbranded invoice, and a raster
+                    one prints soft — still holds, and inline vector satisfies
+                    both: nothing to fetch, and it prints at the device's own
+                    resolution.
                     {% endcomment %}
-                    <div class="brand-mark">FORMULA <span class="d">D</span></div>
-                    <div class="brand-rule"></div>
-                    <div class="brand-tag">Diagnosis &amp; Service</div>
+                    {% include 'workshop/includes/_brand_mark.html' %}
                     <div class="brand-addr">
                         Calicut Road, Pullara<br>
                         PIN: 676517<br>
@@ -1023,6 +1095,31 @@
                     </tr>
                 </tbody>
             </table>
+
+            {% comment %}
+            PAID — only once the bill is settled, and OUTSIDE the table on
+            purpose.
+
+            It is a separate block rather than a third row in `<tbody
+            class="totals">` because those two rows are the bill's arithmetic:
+            SUBTOTAL and TOTAL add up, and a receipt line does not belong in
+            that sum. Adding a row would also have widened the totals block's
+            `break-inside: avoid`, making it likelier to be pushed whole onto a
+            page of its own on a long bill.
+
+            `settlement` is None until the card reaches PAID/BULK_PAID, so an
+            unpaid bill prints exactly what it printed before this existed —
+            nothing here at all, and no gap. See `settlement()` in
+            workshop/invoice.py for why the template does not decide this.
+            {% endcomment %}
+            {% if settlement %}
+            <div class="paid-box">
+                <span class="paid-label">{{ settlement.label|upper }}</span>
+                <span class="paid-amount">
+                    <span class="acct"><span>₹</span><span>{{ settlement.received|inr_exact }}</span></span>
+                </span>
+            </div>
+            {% endif %}
 
             <div class="inv-foot">
                 Should you have any enquiries concerning this invoice please contact:<br>

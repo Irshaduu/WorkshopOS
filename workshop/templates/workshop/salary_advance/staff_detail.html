@@ -1,0 +1,134 @@
+{% extends 'workshop/base.html' %}
+{% load humanize %}
+
+{% block title %}{{ staff.name }} — Advance{% endblock %}
+
+{% block content %}
+{% comment %}
+The page behind a "Salary advance given" notification.
+
+It answers three questions, in the order an owner actually asks them, and then
+it stops:
+
+    who is this?            → the name
+    how much just now?      → this advance
+    how much this month?    → the running total
+
+That is a four-second read, so nothing else earns a place. An earlier version
+of this page carried the role, a month-grouped history list and a row cap
+notice; all of it was correct and all of it was in the way. The full history
+already has a home — the ⋮ history modal on Salary & Advance, one tap away
+through the link at the foot.
+
+This URL is also where every SALARY_ADVANCE notification raised before
+2026-08-10 still points, because a notification stores its url and keeps it
+forever. Those carry no `?advance=` id, which is why the first figure is
+labelled "Latest advance" when the id is missing — see the view.
+{% endcomment %}
+
+<style>
+  .sa-wrap { max-width: 480px; }
+
+  .sa-card {
+    background: linear-gradient(135deg, #1e293b, #334155);
+    border-radius: 18px; padding: 22px 20px; color: #fff;
+  }
+
+  /* Question 1. The largest text on the page, because it is the first thing
+     the eye needs and the only thing that identifies whose money this is. */
+  .sa-name {
+    font-size: 1.6rem; font-weight: 800; line-height: 1.15;
+    word-break: break-word; letter-spacing: -0.01em;
+  }
+  .sa-retired {
+    display: inline-block; margin-left: 8px; padding: 3px 10px; border-radius: 999px;
+    background: rgba(248,113,113,0.18); color: #fecaca;
+    font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em;
+    vertical-align: middle; white-space: nowrap;
+  }
+
+  {% comment %}
+  Questions 2 and 3, STACKED — at every width, deliberately.
+
+  They were side by side first, with a stack below 380px. Two problems. The
+  owners' phones straddle that line (375 stacks, 414 does not), so the same
+  alert looked like two different pages depending on whose phone it was. And
+  side by side reads as a *comparison* — two figures to weigh against each
+  other — when the questions are a sequence: who, how much now, how much this
+  month. Stacked, the eye runs down the three answers in the order the
+  questions are asked, and there is no width at which an amount has to
+  truncate.
+  {% endcomment %}
+  .sa-figures {
+    margin-top: 20px; padding-top: 18px;
+    border-top: 1px solid rgba(255,255,255,0.14);
+  }
+  .sa-fig + .sa-fig {
+    margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid rgba(255,255,255,0.14);
+  }
+
+  .sa-label {
+    font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; opacity: 0.62; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .sa-value {
+    font-size: 1.85rem; font-weight: 800; line-height: 1.1; margin-top: 4px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  }
+  .sa-sub { font-size: 0.72rem; opacity: 0.55; margin-top: 3px; }
+
+  /* The month total is context for the figure beside it, not a rival to it. */
+  .sa-fig-month .sa-value { font-size: 1.45rem; opacity: 0.88; }
+
+  .sa-none { font-size: 1.05rem; font-weight: 700; opacity: 0.75; margin-top: 18px; }
+
+  .sa-back {
+    display: inline-flex; align-items: center; gap: 7px; margin-top: 16px;
+    color: var(--color-text-muted); text-decoration: none;
+    font-size: 0.82rem; font-weight: 700;
+  }
+  .sa-back:hover { color: var(--color-text); }
+</style>
+
+<div class="container-fluid py-3 sa-wrap">
+
+  <div class="sa-card">
+    <div class="sa-name">
+      {{ staff.name }}{% if not staff.is_active %}<span class="sa-retired">Retired</span>{% endif %}
+    </div>
+
+    {% if advance %}
+    <div class="sa-figures">
+      <div class="sa-fig">
+        <div class="sa-label">{% if advance_is_exact %}Advance given{% else %}Latest advance{% endif %}</div>
+        <div class="sa-value">₹{{ advance.amount|floatformat:0|intcomma }}</div>
+        <div class="sa-sub">{{ advance.date|date:"d M Y" }}</div>
+      </div>
+      <div class="sa-fig sa-fig-month">
+        <div class="sa-label">Total this month</div>
+        <div class="sa-value">₹{{ month_total|floatformat:0|intcomma }}</div>
+        {% comment %}
+        The count is what stops the two numbers looking like a contradiction —
+        ₹5,000 beside ₹8,000 is a question until you read "3 advances". With
+        one, they are equal and the line says so instead of leaving the repeat
+        unexplained.
+        {% endcomment %}
+        <div class="sa-sub">
+          {{ month_label }} ·
+          {% if month_count == 1 %}only advance{% else %}{{ month_count }} advances{% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="sa-none">No advances recorded yet.</div>
+    {% endif %}
+  </div>
+
+  <a class="sa-back" href="{% url 'salary_advance_home' %}?staff={{ staff.pk }}">
+    <i class="bi bi-arrow-left"></i> Salary &amp; Advance
+  </a>
+
+</div>
+{% endblock %}

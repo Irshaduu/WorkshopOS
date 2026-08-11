@@ -3,7 +3,15 @@
 > **Project**: WorkshopOS (Titan) · Django project package name `formulad_workshop`
 > **Framework**: Django 5.2 LTS · Python 3.13 · **PostgreSQL** — development *and* production since 2026-07-27 (development on Neon, production on Railway's own Postgres alongside the app; SQLite retained only for bulk dummy-data seeding and the test suite)
 > **Apps**: `workshop` (core) + `inventory` (warehouse)
-> **Accurate as of**: 2026-08-05 (v10)
+> **Accurate as of**: 2026-08-11 (v11) — every count in this file was re-derived
+> from the code (suite built with Django's runner, routes walked from the
+> resolver, files listed from disk). Seven had drifted on 2026-08-10: routes
+> 147→**150**, workshop routes 114→**117**, templates 99→**102**, workshop
+> templates 76→**79**, workshop migrations 59→**68**, inventory migrations
+> 7→**8**, inventory test files 3→**5**, and the test-suite heading said 38 files
+> while the section below it said 33 and 34 in two different places. Templates
+> then went **102→104 / 79→81** on 2026-08-11 with
+> `salary_advance/staff_detail.html` and `includes/_brand_mark.html`.
 >
 > This is the **technical reference** doc — exact model/route/template/admin/test counts and structure. For workflow narrative see `OPERATIONAL_BLUEPRINT.md`; for mission, status, and roadmap see `TITAN_MASTER_HANDOVER.md`; for day-to-day coding conventions see `CLAUDE.md`.
 
@@ -46,7 +54,8 @@ graph TB
     end
 
     subgraph EXTERNAL["External Services"]
-        SMTP["SMTP (password-reset codes only)"]
+        MAIL["Password-reset codes — SMTP in dev, Resend HTTPS API in production"]
+        WPUSH["Web Push — browser vendors' push services (CRITICAL events only)"]
     end
 
     ROOT_URLS -->|"/"|  W_URLS
@@ -55,10 +64,15 @@ graph TB
 
     I_SIGNALS -->|"Auto Stock Sync"| W_MODELS
     W_VIEWS -->|"Autocomplete API"| I_MODELS
-    W_AUTH --> SMTP
+    W_AUTH --> MAIL
+    W_MODELS -->|"queue_push, on_commit"| WPUSH
 ```
 
-> Twilio and Telegram were removed on 2026-07-29. SMTP is now the **only** outbound network call the application makes.
+> Twilio and Telegram were removed on 2026-07-29. The application now makes exactly
+> **two** kinds of outbound network call — the password-reset email and Web Push —
+> and both are optional: a deploy with no `RESEND_API_KEY` or no `VAPID_*` keys is
+> valid, and neither sits on the request path (push hands off to a background
+> thread via `transaction.on_commit`).
 
 ---
 
@@ -211,13 +225,16 @@ parallel system.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (147 Total)
+## 4. ALL URL ROUTES — COMPLETE (150 Total)
 
-*Counted 2026-08-10 from the resolver, excluding Django admin and the framework's
-own routes. Recount rather than trusting this line — it has gone stale before:*
-`manage.py shell -c "..."` *walking `get_resolver().url_patterns`.*
+*Recounted 2026-08-10 by walking `get_resolver().url_patterns` recursively and
+excluding Django admin (131 of its own) — the method below, not by grepping
+`path(`, which misses routes reached through `include()`. **Recount rather than
+trusting this line; it has now gone stale twice**, most recently reading 147/114
+when the resolver said 150/117. The workshop figure includes the root-level
+routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 
-### Workshop App (114 routes)
+### Workshop App (117 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -457,7 +474,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (99 HTML Files)
+## 7. TEMPLATE STRUCTURE (104 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -467,7 +484,7 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 76 files
+### Workshop Templates (`workshop/templates/workshop/`) — 81 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -706,9 +723,14 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 
 ---
 
-## 13. TEST SUITE (38 Files / see CLAUDE.md for the live count)
+## 13. TEST SUITE (39 files · 956 tests)
 
-### Workshop Tests — `workshop/tests/` package (33 files)
+*Counted from the code on 2026-08-10 — file counts by listing the directories,
+the test total by building the suite with Django's own runner rather than by
+grepping `def test_`, which undercounts (947) because it cannot see tests
+inherited from shared base classes.*
+
+### Workshop Tests — `workshop/tests/` package (34 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -734,7 +756,7 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 | `test_password_reset.py` | Emailed OTP: hashing, expiry, attempt budget, throttling, identifier resolution, non-disclosure |
 | `test_login.py` | Two faces / one engine, multi-identifier sign-in, per-account + IP lockout, `?next=` open-redirect guard, 403 vs redirect |
 | `test_control_hub.py` | Owner-only gate on every hub section and action; owner unlock of locked staff accounts |
-| `test_notifications.py` | Fan-out, actor exclusion, audience-by-group, retention, feed RBAC, and all 8 event hooks |
+| `test_notifications.py` | Fan-out, actor exclusion, audience-by-group, retention, feed RBAC, and all **13** event hooks |
 | `test_push.py` | Service-worker root scope, subscribe/unsubscribe RBAC, CRITICAL-only dispatch, dead-endpoint reaping, and the guarantee that a failing push never breaks the feed |
 | `test_invoice.py` | Every rule in `workshop/invoice.py` a customer would notice: one parts list, category naming for warehouse draws, derived unit price, blank QTY, labour as one subtotal, nothing interactive on the paper |
 | `test_estimate.py` | Estimates: the printed sheet held in step with the invoice, isolation from job cards / stock / ledgers / DeletionLog, `EST-` numbering, the price-hint endpoint, and the screens' RBAC |
@@ -744,6 +766,7 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 | `test_fleet_cashbook_integrity.py` | Fleet Account + Cashbook invariants |
 | `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants |
 | `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants |
+| `test_ui_regressions.py` | Layout and markup invariants that a functional test cannot see — the double-render rule, a list row never nesting a `<button>` inside an `<a>`, and the drawer/Manage-pill coverage |
 
 ### Inventory Tests (5 files)
 
@@ -752,6 +775,8 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 | `tests.py` | Inventory CRUD + signal tests |
 | `test_signals.py` | Stock sync signals (advanced scenarios) |
 | `tests_suppliers.py` | Supplier shop models, signals, views, AJAX, edge cases |
+| `test_costing.py` | The weighted-average replay in `inventory/costing.py`: date ordering, negative stock, NULL-not-zero for an uncosted draw |
+| `test_supplier_costing.py` | Restock-bill cost attribution — pro-rata discount apportionment, an over-large discount dropped and reported, and re-costing when a bill's date or discount changes |
 
 Run with `python manage.py test workshop inventory` (or `workshop.tests.<file>` / `inventory.<file>` for a subset — see `CLAUDE.md`).
 
@@ -817,7 +842,7 @@ WorkshopOS (Titan)/
 │   ├── templates/workshop/     ← 68 HTML files
 │   ├── static/js/              ← script.js (formsets + service-worker registration),
 │   │                             estimate.js, spare_autofill.js, sound.js (outcome tones)
-│   ├── migrations/             ← 59 migrations
+│   ├── migrations/             ← 68 migrations
 │   └── tests/                  ← 34 test files (package, not flat files)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
@@ -829,8 +854,9 @@ WorkshopOS (Titan)/
 │   ├── admin.py                ← 8 admin registrations
 │   ├── apps.py                 ← Signal registration
 │   ├── templates/inventory/    ← 20 templates
-│   ├── migrations/             ← 7 migrations
-│   └── tests.py, test_signals.py, tests_suppliers.py ← 3 test files
+│   ├── migrations/             ← 8 migrations
+│   └── tests.py, tests_suppliers.py, test_signals.py,
+│       test_costing.py, test_supplier_costing.py ← 5 test files
 │
 ├── templates/                  ← Root Templates
 │   ├── 403.html                ← Custom Forbidden Error
