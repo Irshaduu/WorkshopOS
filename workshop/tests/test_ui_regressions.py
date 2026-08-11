@@ -472,10 +472,19 @@ class TheSilentActionsNowReportThemselvesTests(TestCase):
 
 class AConfirmationMakesItselfHeardTests(TestCase):
     """
-    Every "are you sure?" in this app is one of two things — a Bootstrap modal
-    or a native <dialog> — so two hooks in sound.js cover all of them, including
-    any added later. That is the same reasoning as driving the outcome tones off
-    the message tags instead of ~180 call sites.
+    Every "are you sure?" in this app is one of THREE things — a Bootstrap
+    modal, a native <dialog>, or a plain `window.confirm()` — so three hooks in
+    sound.js cover all of them, including any added later. That is the same
+    reasoning as driving the outcome tones off the message tags instead of ~180
+    call sites.
+
+    This docstring said "two" until 2026-08-11, and so did the code. The
+    `window.confirm()` sites were the ones nobody counted: they are inline
+    `onsubmit="return confirm(…)"` attributes rather than anything that looks
+    like a dialog, and there were sixteen of them against nineteen of the other
+    two kinds — so roughly half of every confirmation in the app asked its
+    question silently. The scan below is the guard, because the failure mode is
+    a *missing* hook, which nothing else can notice.
     """
 
     def _script(self):
@@ -490,6 +499,53 @@ class AConfirmationMakesItselfHeardTests(TestCase):
         self.assertIn('show.bs.modal', script)
         self.assertIn('showModal', script)
 
+    def test_it_hooks_window_confirm(self):
+        script = self._script()
+
+        self.assertIn('window.confirm', script)
+        # Called through, not replaced: these are `return confirm(…)` on a
+        # form's onsubmit, so swallowing the answer would silently submit or
+        # silently refuse to.
+        self.assertIn('nativeConfirm.apply', script)
+
+    def test_every_way_the_app_asks_a_question_is_hooked(self):
+        """
+        Scans the templates for the three known shapes and asserts sound.js
+        hooks each one it actually finds, so a hook cannot be dropped while
+        the markup that needs it is still there.
+
+        What it deliberately does NOT claim: a genuinely *fourth* way of asking
+        a question would not be in `shapes` and would pass unnoticed — the same
+        blind spot that let `window.confirm()` go unhooked. Nothing static can
+        close that; add the shape here when you add the dialog.
+        """
+        from django.conf import settings
+
+        shapes = {
+            # marker found in templates -> what sound.js must contain for it
+            'confirm(': 'window.confirm',
+            'showModal(': 'showModal',
+            'data-bs-toggle="modal"': 'show.bs.modal',
+        }
+        script = self._script()
+
+        roots = [settings.BASE_DIR / 'workshop', settings.BASE_DIR / 'inventory']
+        found = set()
+        for root in roots:
+            for path in root.rglob('*.html'):
+                text = path.read_text(encoding='utf-8', errors='replace')
+                for marker in shapes:
+                    if marker in text:
+                        found.add(marker)
+
+        self.assertTrue(found, 'no confirmation markup found — the scan is broken')
+        for marker in sorted(found):
+            self.assertIn(
+                shapes[marker], script,
+                f"templates ask questions via `{marker}` but sound.js does not "
+                f"hook it, so those confirmations are silent",
+            )
+
     def test_a_workspace_modal_is_not_treated_as_a_question(self):
         """
         Only the confirm dialogs sound. An "add a payment" form modal is a
@@ -500,3 +556,16 @@ class AConfirmationMakesItselfHeardTests(TestCase):
 
         self.assertIn('confirmActionModal', script)
         self.assertIn('data-sound-prompt', script)
+
+    def test_a_blocking_confirm_never_beeps_after_the_answer(self):
+        """
+        `window.confirm()` freezes the main thread, so a tone queued behind
+        `resume()`'s promise would land AFTER the question was answered — where
+        it reads as the outcome sound for the decision just made. Announcing
+        the wrong thing is worse than announcing nothing, so that one case
+        stays quiet and only resumes the context for next time.
+        """
+        script = self._script()
+
+        self.assertIn('function play(kind, blocking)', script)
+        self.assertIn("play('prompt', true)", script)

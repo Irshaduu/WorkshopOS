@@ -111,7 +111,17 @@
         prompt: function () { note(950, 0, 0.07, 0.03); }
     };
 
-    function play(kind) {
+    /*
+     * `blocking` says the caller is about to hand the main thread to something
+     * that will not give it back until the user answers — i.e. `window.confirm`.
+     * It changes only what happens on a SUSPENDED context: normally the tone is
+     * queued behind `resume()`'s promise, but a promise cannot settle while
+     * confirm() is up, so the beep would arrive *after* the answer, where it
+     * reads as the outcome sound for the decision just made. Announcing the
+     * wrong thing is worse than announcing nothing, so that case resumes for
+     * next time and stays quiet now.
+     */
+    function play(kind, blocking) {
         if (!enabled()) return;
         var tone = TONES[kind];
         if (!tone) return;
@@ -124,6 +134,10 @@
         // plain tab that has not been clicked yet — either way nothing here may
         // throw into the caller.
         if (ctx.state === 'suspended') {
+            if (blocking) {
+                ctx.resume().catch(function () { /* nothing to do, and nothing owed */ });
+                return;
+            }
             ctx.resume().then(tone).catch(function () { /* blocked — the banner is still on screen */ });
             return;
         }
@@ -167,13 +181,23 @@
     /*
      * "A confirmation just appeared."
      *
-     * Every destructive action in this app goes through one of two things: a
+     * Every destructive action in this app goes through one of THREE things: a
      * Bootstrap modal (the shared `confirmSubmit()` helper, the logout confirm,
-     * the delete confirms) or a native <dialog> (the invoice settle box and its
-     * large-discount gate). Hooking both HERE rather than at ~40 call sites is
-     * the same reasoning as driving the outcome tones off the message tags: the
-     * app already has exactly two ways of asking "are you sure?", so two hooks
-     * cover every one of them, including any added later.
+     * the delete confirms), a native <dialog> (the invoice settle box and its
+     * large-discount gate), or a plain `window.confirm()` (the `onsubmit="return
+     * confirm(…)"` forms — reactivating a shop, deleting an advance, marking a
+     * car completed, unlocking a settled bill, merging a master-list entry).
+     * Hooking all three HERE rather than at ~40 call sites is the same reasoning
+     * as driving the outcome tones off the message tags: the app has a fixed
+     * number of ways of asking "are you sure?", so a hook on each covers every
+     * one of them, including any added later.
+     *
+     * The third was missed when this was written — the comment said "exactly
+     * two" — and `window.confirm()` turned out to be 16 of the app's 35
+     * confirmations, so roughly half of them asked their question in silence.
+     * It is the oldest and plainest of the three, which is exactly why it was
+     * easy to overlook: nothing in a template reading `onsubmit="return
+     * confirm(…)"` looks like a dialog that needs wiring.
      *
      * This one fires on a real user gesture — the click that opened the dialog
      * — so unlike the outcome tones it is never blocked by the autoplay policy,
@@ -208,6 +232,27 @@
                 return original.apply(this, arguments);
             };
             proto.__soundWrapped = true;
+        }
+
+        // window.confirm(). Wrapped for the same reason and in the same shape
+        // as showModal above: there is no event to listen for, and the call
+        // sites are inline `onsubmit` attributes scattered across sixteen
+        // templates — which resolve `confirm` from the global at call time, so
+        // replacing it here reaches every one of them, including the two in
+        // shared .js files.
+        //
+        // `blocking` is passed because confirm() freezes the main thread until
+        // it is answered; see play() for what that changes. The return value is
+        // the native one, untouched — these sites are `return confirm(…)` on a
+        // form's onsubmit, so anything else here would silently submit or
+        // silently refuse to.
+        if (!window.__confirmSoundWrapped) {
+            var nativeConfirm = window.confirm;
+            window.confirm = function () {
+                try { play('prompt', true); } catch (e) { /* a beep may never block a question */ }
+                return nativeConfirm.apply(window, arguments);
+            };
+            window.__confirmSoundWrapped = true;
         }
     }
 

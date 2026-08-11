@@ -204,13 +204,10 @@ class SupplierShopViewTests(TestCase):
 
     def test_add_duplicate_shop_does_not_create(self):
         SupplierShop.objects.create(name='UniqueShop')
-        try:
-            with transaction.atomic():
-                response = self.client.post(
-                    reverse('add_supplier_shop'), {'name': 'UniqueShop'}
-                )
-        except Exception:
-            pass
+        response = self.client.post(
+            reverse('add_supplier_shop'), {'name': 'UniqueShop'}
+        )
+        self.assertEqual(response.status_code, 200)
         # Should still be exactly 1 shop with that name
         self.assertEqual(SupplierShop.objects.filter(name='UniqueShop').count(), 1)
 
@@ -683,3 +680,192 @@ class SupplierShopViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'ItemSupp Shop')
+
+
+class ADuplicateShopNameIsRefusedNotCrashedTests(TestCase):
+    """
+    AUD-0089 — adding a Supplies Shop under a name already in use returned a
+    500 instead of the "already exists" message the view was clearly written to
+    show. It happened 40 times before anyone connected the crash to the cause.
+
+    The mechanism is worth stating, because `try/except IntegrityError` around a
+    write reads as correct and is the natural thing to write again. A failed
+    statement leaves the database transaction unusable: the exception is caught,
+    but every query after it — `messages.error`, which writes to the session,
+    and the `render()` that follows — raises `TransactionManagementError`. So
+    the error was handled and the request died anyway, downstream of the
+    handling.
+
+    These tests run inside `TestCase`'s own atomic block, which is that same
+    condition, so a return to `create()`-inside-`except` fails here rather than
+    in production.
+    """
+
+    def setUp(self):
+        office, _ = Group.objects.get_or_create(name='Office')
+        user = User.objects.create_user(username='dup_tester', password='pass123')
+        user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='dup_tester', password='pass123')
+
+    def _add(self, name, **extra):
+        payload = {'name': name}
+        payload.update(extra)
+        return self.client.post(reverse('add_supplier_shop'), payload)
+
+    def _messages(self, response):
+        return ' '.join(str(m) for m in response.context['messages'])
+
+    def test_an_exact_duplicate_is_reported_not_a_500(self):
+        SupplierShop.objects.create(name='Kochi Auto Spares')
+
+        response = self._add('Kochi Auto Spares')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            SupplierShop.objects.filter(name='Kochi Auto Spares').count(), 1
+        )
+        self.assertIn('already exists', self._messages(response))
+
+    def test_a_case_variant_is_the_same_shop(self):
+        """
+        `unique=True` is case-sensitive on both databases, so this one never
+        raised at all — it quietly created a SECOND shop. Two shops mean two
+        ledgers, and the supplier's real balance is then split across a name
+        nobody is looking at.
+        """
+        SupplierShop.objects.create(name='Kochi Auto Spares')
+
+        response = self._add('kochi AUTO spares')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SupplierShop.objects.count(), 1)
+
+    def test_a_surrounding_space_is_the_same_shop(self):
+        SupplierShop.objects.create(name='Kochi Auto Spares')
+
+        self._add('  Kochi Auto Spares  ')
+
+        self.assertEqual(SupplierShop.objects.count(), 1)
+
+    def test_a_clash_with_an_ARCHIVED_shop_says_it_is_archived(self):
+        """
+        The plain message would name a shop that appears on no page the reader
+        can open — `supplier_shop_list` filters `is_active=True`. Reactivating
+        is also the right remedy, since the archived shop still holds the bills
+        and payments already recorded against that supplier.
+        """
+        SupplierShop.objects.create(name='Old Depot', is_active=False)
+
+        response = self._add('Old Depot')
+
+        self.assertIn('archived', self._messages(response).lower())
+        self.assertEqual(SupplierShop.objects.count(), 1)
+
+    def test_a_rejected_name_does_not_cost_the_phone_and_address(self):
+        SupplierShop.objects.create(name='Kochi Auto Spares')
+
+        response = self._add(
+            'Kochi Auto Spares', phone='9876543210', address='MG Road'
+        )
+
+        self.assertContains(response, '9876543210')
+        self.assertContains(response, 'MG Road')
+
+    def test_the_page_still_works_after_a_refusal(self):
+        """
+        The real symptom. The message was set and then the response that would
+        have carried it never rendered — so this asserts the whole request
+        completes, not merely that the write was refused.
+        """
+        SupplierShop.objects.create(name='Kochi Auto Spares')
+        self._add('Kochi Auto Spares')
+
+        following = self.client.get(reverse('supplier_shop_list'))
+        self.assertEqual(following.status_code, 200)
+        self.assertContains(following, 'Kochi Auto Spares')
+
+    def test_a_first_shop_is_still_created_normally(self):
+        response = self._add('Brand New Depot', phone='9', address='Road')
+
+        self.assertRedirects(response, reverse('supplier_shop_list'))
+        shop = SupplierShop.objects.get(name='Brand New Depot')
+        self.assertEqual(shop.phone, '9')
+
+    def test_a_blank_name_is_refused_without_writing_None(self):
+        """`name` is NOT NULL; the view used to write whatever POST held."""
+        response = self._add('   ')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SupplierShop.objects.count(), 0)
+
+
+class RenamingASupplierShopOntoAnotherIsRefusedTests(TestCase):
+    """
+    The same AUD-0089 crash reached through Edit, plus the two holes beside it:
+    a POST with no `name` key wrote `None` into a NOT NULL column, and an
+    untrimmed value made " Depot " a different shop from "Depot".
+
+    A collision is REFUSED here rather than merged, which is the opposite of
+    what the master lists do — and deliberately. Two spellings of "Oil Filter"
+    are one part; two Supplies Shops are two balances and two payment
+    histories, and merging them would move money between suppliers with no way
+    back.
+    """
+
+    def setUp(self):
+        office, _ = Group.objects.get_or_create(name='Office')
+        user = User.objects.create_user(username='rename_tester', password='pass123')
+        user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='rename_tester', password='pass123')
+        self.a = SupplierShop.objects.create(name='Depot A')
+        self.b = SupplierShop.objects.create(name='Depot B')
+
+    def _edit(self, shop, name):
+        return self.client.post(
+            reverse('edit_supplier_shop', args=[shop.id]),
+            {'name': name, 'phone': '', 'address': ''},
+        )
+
+    def test_renaming_onto_another_shop_is_reported_not_a_500(self):
+        response = self._edit(self.a, 'Depot B')
+
+        self.assertEqual(response.status_code, 200)
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.name, 'Depot A')
+
+    def test_a_case_variant_of_another_shop_is_refused_too(self):
+        self._edit(self.a, 'depot b')
+
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.name, 'Depot A')
+
+    def test_resaving_a_shop_under_its_own_name_is_not_a_collision(self):
+        """The exclude(pk=…) — otherwise a shop could never be edited at all."""
+        response = self._edit(self.a, 'Depot A')
+
+        self.assertRedirects(
+            response, reverse('supplier_shop_detail', args=[self.a.id])
+        )
+
+    def test_recasing_a_shops_own_name_is_allowed(self):
+        self._edit(self.a, 'DEPOT A')
+
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.name, 'DEPOT A')
+
+    def test_a_name_is_trimmed_on_the_way_in(self):
+        self._edit(self.a, '  Depot Z  ')
+
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.name, 'Depot Z')
+
+    def test_a_post_with_no_name_leaves_the_shop_alone(self):
+        response = self.client.post(
+            reverse('edit_supplier_shop', args=[self.a.id]), {'phone': '123'}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.name, 'Depot A')

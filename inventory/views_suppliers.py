@@ -66,20 +66,89 @@ def deactivated_supplier_shop_list(request):
     )
     return render(request, 'inventory/suppliers/shop_list.html', {'shops': shops, 'is_active_list': False})
 
+def _supplier_name_clash(name, exclude_pk=None):
+    """The shop already using `name`, ignoring case — or None.
+
+    `SupplierShop.name` is `unique=True`, which in both PostgreSQL and SQLite is
+    CASE-SENSITIVE, so the column happily holds "Kochi Auto" and "kochi auto" as
+    two shops. That is the same defect the master lists carried until they were
+    given `__iexact` checks (see CLAUDE.md), and it matters more here than a
+    duplicate brand name would: two shops mean two ledgers, so half the bills
+    for one supplier land against a name nobody is watching, and the balance the
+    workshop reads as owed is wrong by whatever went to the other spelling.
+
+    Archived shops are included on purpose. An archived shop still holds its
+    bills and payments and can be reactivated, so letting a second shop take its
+    name would produce exactly the split ledger this exists to prevent — and the
+    unique constraint would refuse the insert anyway, which is how this whole
+    view used to 500.
+    """
+    match = SupplierShop.objects.filter(name__iexact=name)
+    if exclude_pk is not None:
+        match = match.exclude(pk=exclude_pk)
+    return match.first()
+
+
+def _duplicate_message(existing):
+    """Why the name was refused — including whether the holder is archived."""
+    if existing.is_active:
+        return f"A shop named '{existing.name}' already exists."
+    # Without this the message names a shop that is on no page the reader can
+    # see, since supplier_shop_list filters is_active=True.
+    return (
+        f"'{existing.name}' already exists but is archived. Reactivate it from "
+        f"Supplies Shops → Deactivated rather than creating a second one — the "
+        f"bills and payments already recorded against it belong to that shop."
+    )
+
+
 @office_required
 def add_supplier_shop(request):
+    """
+    Create a Supplies Shop.
+
+    AUD-0089. This used to `create()` inside `try/except IntegrityError`, which
+    is the documented Django trap: a failed statement leaves the transaction
+    unusable, so catching the error is not enough — the very next query raises
+    `TransactionManagementError`. The `except` branch here ran `messages.error`
+    and then `render()`, both of which query, so a duplicate shop name produced
+    a 500 *after* being caught, and the tidy "already exists" message was never
+    seen by anyone. It happened 40 times.
+
+    Checking first is the fix, and it is what the equivalent spare-shop view
+    (`workshop.views.spare_shop.spare_shop_create`) has always done. The
+    `IntegrityError` backstop is kept for the race between the check and the
+    insert, but it is now wrapped in `transaction.atomic()` so what breaks is a
+    savepoint and not the request.
+    """
+    name = (request.POST.get('name') or '').strip()
+    phone = (request.POST.get('phone') or '').strip()
+    address = (request.POST.get('address') or '').strip()
+
     if request.method == 'POST':
-        name = request.POST.get('name')
-        phone = request.POST.get('phone')
-        address = request.POST.get('address')
-        if name:
-            try:
-                SupplierShop.objects.create(name=name, phone=phone, address=address)
-                messages.success(request, f"Shop '{name}' added successfully.")
-                return redirect('supplier_shop_list')
-            except IntegrityError:
-                messages.error(request, f"A shop with the name '{name}' already exists.")
-    return render(request, 'inventory/suppliers/add_shop.html')
+        if not name:
+            messages.error(request, "Shop name cannot be empty.")
+        else:
+            existing = _supplier_name_clash(name)
+            if existing:
+                messages.error(request, _duplicate_message(existing))
+            else:
+                try:
+                    with transaction.atomic():
+                        SupplierShop.objects.create(
+                            name=name, phone=phone or None, address=address or None
+                        )
+                except IntegrityError:
+                    messages.error(request, f"A shop named '{name}' already exists.")
+                else:
+                    messages.success(request, f"Shop '{name}' added successfully.")
+                    return redirect('supplier_shop_list')
+
+    # Hand back what was typed. The form used to re-render empty, so a rejected
+    # name cost the phone number and address as well.
+    return render(request, 'inventory/suppliers/add_shop.html', {
+        'name': name, 'phone': phone, 'address': address,
+    })
 
 @office_required
 def supplier_shop_detail(request, shop_id):
@@ -200,17 +269,51 @@ def supplier_shop_detail(request, shop_id):
 
 @office_required
 def edit_supplier_shop(request, shop_id):
+    """
+    Rename a Supplies Shop, or correct its phone / address.
+
+    Same AUD-0089 shape as `add_supplier_shop` above — renaming onto an existing
+    name broke the transaction and 500'd the page — with two more holes closed
+    while here: a POST without a `name` field wrote `None` into a NOT NULL
+    column, and an untrimmed name meant " Kochi Auto " and "Kochi Auto" were two
+    shops that looked identical on screen.
+
+    A rename is deliberately REFUSED on a collision rather than merged. The
+    master lists merge, because two spellings of "Oil Filter" are one part; two
+    Supplies Shops are two accounts with two balances and two payment histories,
+    and combining them would move money between suppliers with no way back.
+    """
     shop = get_object_or_404(SupplierShop, pk=shop_id)
+
     if request.method == 'POST':
-        shop.name = request.POST.get('name')
-        shop.phone = request.POST.get('phone')
-        shop.address = request.POST.get('address')
-        try:
-            shop.save()
-            messages.success(request, f"Shop '{shop.name}' updated.")
-            return redirect('supplier_shop_detail', shop_id=shop.id)
-        except IntegrityError:
-            messages.error(request, f"A shop with the name '{shop.name}' already exists.")
+        name = (request.POST.get('name') or '').strip()
+        phone = (request.POST.get('phone') or '').strip()
+        address = (request.POST.get('address') or '').strip()
+
+        if not name:
+            messages.error(request, "Shop name cannot be empty.")
+        else:
+            existing = _supplier_name_clash(name, exclude_pk=shop.pk)
+            if existing:
+                messages.error(request, _duplicate_message(existing))
+            else:
+                shop.name = name
+                shop.phone = phone or None
+                shop.address = address or None
+                try:
+                    with transaction.atomic():
+                        shop.save()
+                except IntegrityError:
+                    messages.error(request, f"A shop named '{name}' already exists.")
+                else:
+                    messages.success(request, f"Shop '{shop.name}' updated.")
+                    return redirect('supplier_shop_detail', shop_id=shop.id)
+
+        # Falling through re-renders the form. `shop` still carries what was
+        # typed, which is what the reader wants to correct — and it was never
+        # saved, so nothing is persisted by showing it.
+        shop.name = name or shop.name
+
     return render(request, 'inventory/suppliers/edit_shop.html', {'shop': shop})
 
 @office_required

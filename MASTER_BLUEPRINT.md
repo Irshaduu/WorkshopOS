@@ -872,4 +872,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(recounted 2026-08-10 — every figure here had drifted)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 38 Test Files · 76 Migrations (68 workshop + 8 inventory)
+> **Total** *(recounted 2026-08-10 — every figure here had drifted; test-file count corrected and test total added 2026-08-11)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 39 Test Files (1000 tests) · 76 Migrations (68 workshop + 8 inventory)

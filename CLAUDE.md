@@ -1462,12 +1462,29 @@ about to correct one of these, you are about to break the business:
   installed PWA** — so it is reliable on the owners' phones and the Floor
   tablet, and the first outcome in a plain browser tab may be silent. That is
   a missing nicety, never a missing fact: the banner is on screen either way.
-  **Extended 2026-08-10 with a fourth tone, `prompt`, on the two ways this app
+  **Extended 2026-08-10 with a fourth tone, `prompt`, on the ways this app
   asks a question** — a Bootstrap modal (`show.bs.modal`, which bubbles, so one
-  document listener catches every one) and a native `<dialog>` (no bubbling
-  open event, so `showModal` is wrapped once on the prototype). Two hooks cover
-  every confirmation in the app including any added later, same reasoning as
-  the message tags. It is **gated to questions**: `confirmActionModal`, the
+  document listener catches every one), a native `<dialog>` (no bubbling
+  open event, so `showModal` is wrapped once on the prototype), and — added
+  2026-08-11 — plain **`window.confirm()`**, wrapped the same way. Those hooks
+  cover every confirmation in the app including any added later, same reasoning
+  as the message tags. **The third was missed for a day and it was half the
+  app.** The original note here said "the two ways", and the `confirm()` sites
+  are `onsubmit="return confirm(…)"` attributes across sixteen templates —
+  nothing about that markup looks like a dialog needing wiring — against
+  nineteen of the other two kinds, so roughly half of every confirmation asked
+  its question in silence. `test_every_way_the_app_asks_a_question_is_hooked`
+  now scans the templates for all three shapes and fails if sound.js does not
+  hook one it finds, because a *missing* hook is invisible to every other kind
+  of test. One trap in the wrapper: `window.confirm()` **freezes the main
+  thread** until it is answered, so `play()`'s usual `resume().then(tone)` path
+  cannot settle and the beep would arrive *after* the decision, where it reads
+  as the outcome sound for it. `play(kind, blocking)` therefore resumes for
+  next time and stays quiet now — announcing the wrong thing is worse than
+  announcing nothing. The native return value is passed straight through; these
+  are `return confirm(…)` on a form's onsubmit, so anything else would silently
+  submit or silently refuse to.
+  It is **gated to questions**: `confirmActionModal`, the
   logout confirm, and anything carrying `data-sound-prompt`. A plain "add a
   payment" form modal is a *workspace* and stays silent — a tone every time a
   modal opened is noise, and noise is how the tones that matter stop being
@@ -1530,6 +1547,33 @@ about to correct one of these, you are about to break the business:
   filename would only pass for as long as static hashing stayed broken. The
   `?v=` query strings in `base.html` are now belt-and-braces rather than the
   mechanism; leave them, but the hash is what actually busts the cache.
+
+- **Every app icon is GENERATED from one file, and the padding differs by
+  purpose.** Added 2026-08-11, `scratchpad/build_app_icons.py`. The owner
+  supplies one piece of artwork —
+  `static/images/icons/app_icon_source.png` — and the five PNGs plus
+  `favicon.ico` beside it are derived from it; none of them is hand-edited, and
+  a new mark means replacing the source and re-running the script. Two things
+  it does that a resize would not, both load-bearing.
+  (a) **It crops to the ink first.** The supplied file sits in a lot of empty
+  canvas, and scaled as-is to 32px the mark would be a dozen pixels adrift in a
+  white square — which is the failure the icon it replaced already had (a
+  *photograph* of the wordmark on a concrete wall, unreadable below 128px, and
+  off-centre).
+  (b) **It pads by purpose.** The 192 and 512 are declared
+  `"purpose": "any maskable"` in `manifest.json`, so Android crops them to the
+  launcher's shape and only the central 80% is guaranteed — those get the mark
+  at **76%** of the canvas. A favicon is never masked and is fighting for
+  legibility at 16px, so it gets **92%**; apple-touch sits between at 84%.
+  Consequence worth knowing: **do not show a maskable icon raw.** The PWA
+  install banner used `icon-192.png` in a 42px box and rendered a small mark
+  adrift in white; it uses `icon-180.png`, the un-inset one, for that reason.
+  The background is forced to pure white — the supplied file is near-white but
+  not white, the same thing the printed letterhead's artwork needed, and a
+  253-grey square is visible as a faint box against a white browser tab.
+  Re-run `collectstatic` after regenerating, per the entry above: the filenames
+  do not change, but the content hashes do, so without it every page links the
+  old artwork.
 
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
@@ -1604,6 +1648,31 @@ section it belongs to.
   1055 > modal-backdrop 1050 > offcanvas 1045 > offcanvas-backdrop 1040. A second logout
   control anywhere would reinstate the one-tap sign-out this prevents, which is why
   `LogoutConfirmationTests` asserts the page contains exactly one `action="/logout/"`.
+- **A panel that covers the screen has no way out, and both of them did.**
+  Changed 2026-08-11 on the owner's report. The drawer was
+  `min(88vw, 360px)` and the notification sheet was capped at
+  `100vh - nav - 24px` (89%) — so on a phone each one was effectively a
+  full-screen takeover. Both already close on a backdrop tap; neither left
+  anywhere to put a thumb, which is the whole reason the backdrop exists.
+  The drawer is now `clamp(240px, 70vw, 340px)` and the sheet
+  `75vh - (everything below it)`, i.e. **exactly 25vh of live backdrop above**
+  — measured at 25.0% on a 393×852 phone, and a synthetic tap in that strip
+  verified as reaching `#notifBackdrop` and closing the panel.
+  Two rules worth keeping. **The exposed strip is expressed as a subtraction
+  from 75vh, never as a bare `66vh`**, so it stays a quarter of the screen as
+  `--nav-h` or the safe-area inset change — the same reason the bar's height is
+  a variable and not a number repeated in five places. And **the drawer's width
+  and its type size are one decision, not two**: the owner asked for both a
+  narrower drawer *and* bigger controls, which pull against each other. The
+  arithmetic that reconciles them: the longest label ("Analysis & Reports")
+  renders 138px at 1.02rem, the row spends 108px on padding / 38px icon tile /
+  gaps / chevron, so **246px is the width at which the last label stops fitting
+  on one line**. 70vw clears it from 360px up (252px, 5px spare); the 240px
+  floor is what stops a 320px screen wrapping four labels. Grow the type or
+  shrink the width past that and rows start wrapping — ugly, not broken, since
+  nothing here truncates. Row height went 50→56px and the icon tile 36→38px in
+  the same change; the horizontal padding came *down* 10→9px, which is where
+  the pixels came from.
 
 ## Commands
 
@@ -1616,7 +1685,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (39 test files, 956 tests, ~23-55 min; always uses SQLite, see below)
+# Run full test suite (39 test files, 1000 tests, ~23-55 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -1702,7 +1771,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 956 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 1000 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -1899,7 +1968,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (34 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 39 files, **956 tests, all passing** (run in full 2026-08-10; the figures here had gone stale three times before, so re-count rather than trusting this line). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35 **and 41 on the same machine on 2026-08-10**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (34 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 39 files, **1000 tests, all passing** (run in full 2026-08-11; the figures here had gone stale four times before, so re-count rather than trusting this line — the "956" this replaces was already 26 short of the truth *before* that session's 18 were added). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, **41 on the same machine on 2026-08-10 and 42 on 2026-08-11**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with
