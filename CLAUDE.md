@@ -1575,6 +1575,113 @@ about to correct one of these, you are about to break the business:
   do not change, but the content hashes do, so without it every page links the
   old artwork.
 
+- **The Live Report is TWO audiences on one page, and the operations board at
+  the top is Office and Owner only.** Added 2026-08-12, on the owner's
+  instruction. `/jobcards/live-report/` is the screen an owner opens on a
+  phone to see the workshop without ringing anybody, so it now leads with a
+  board — who is holding which car, which parts are travelling, which parts
+  nobody has ordered — above the existing detailed list, renamed from "Mini
+  Report" to **"Live Jobs"**. The view stays `@staff_required`; the board is
+  gated inside it on `is_office_or_owner`, and is **not assembled at all** for
+  Floor rather than merely hidden, because the amber and red boxes name spare
+  shops and ordering state and Floor is shown neither anywhere else in the
+  app. Guarded by `TheBoardIsOfficeAndOwnerOnlyTests`. Five rules hold it up.
+  (a) **Only a SHOP part is ever chased.** A warehouse draw
+  (`source='INVENTORY'`) came off the shelf already fitted, so its `status`
+  column means nothing — the same deliberate rule the Live Jobs card already
+  followed by badging draws "Stock". Listing one as waiting would send
+  somebody after a part that is already on the car, and the live data has
+  exactly that row: an INVENTORY spare sitting at `PENDING`. Rows on a
+  completed or deleted card are out too (a stale PENDING on a delivered car is
+  work nobody is going to do), as are spares with no job card — every row here
+  opens a job card, and an unassigned spare has none to open.
+  (b) **The board deliberately ignores `q` and `status`.** Those still narrow
+  Live Jobs, as they always have. The board answers "what is the state of the
+  workshop right now", and a half-filtered answer to that is worse than no
+  answer. Consequence worth knowing: **any test of the search filter on this
+  page must scope itself to the Live Jobs list**, or it silently stops testing
+  anything — the board names every active car whatever was searched for. That
+  is what `test_financial_report_exhaustive_filters` now does.
+  (c) **The "Not assigned" group's position is decided in Python, never by
+  `order_by('lead_mechanic__name')`.** PostgreSQL sorts NULL last on an
+  ascending sort and SQLite sorts it first, so a database ordering would put
+  that group at a different end of the page in the tests than in production.
+  (d) **A mechanic holding no car is not listed** — the owner's call: every
+  name on the board has work under it, which is what keeps it short.
+  (e) **Every Live Jobs section is capped at TEN rows with the remainder
+  named, and the cap is PER SECTION, not per card.** `SECTION_ROW_CAP` in
+  `views/dashboard.py`, applied there and **never with `|slice:":10"` in the
+  template** — a cap in the markup and a remainder computed from a constant are
+  two versions of one rule, free to disagree, and they would disagree as a
+  "+3 more" beside eleven visible rows. Parts are what forced it: a rebuild in
+  the live data carries 91, which rendered one card 3,314px tall and pushed
+  every other car off the phone. Capping is safe *here* and would not be on a
+  money list: there is no total above these rows for the hidden ones to fall
+  out of, the exact number left is printed rather than implied, the section
+  heading still reports the true total so the two add back up, and every hidden
+  row is on the job card that the card already opens.
+  **The page's shape was then set by the owner over 2026-08-12, and every
+  choice below is theirs, not a default.**
+  *The Live Jobs card is FOUR sections* — Customer Concerns, Job Performed,
+  Inventory Items, Spare Parts — in the order the work happens. The last two
+  used to be one "Parts" list, and splitting them is what makes the badges
+  mean something: only a bought-in part has an ordering state anyone can act
+  on, and every warehouse draw used to carry an identical "STOCK" badge that
+  distinguished nothing from nothing. So two sections carry a badge and two
+  carry a bullet, which is the honest split rather than an inconsistency — a
+  job performed is in the list *because* it was done, and a draw came off the
+  shelf already fitted. **The printed invoice still merges both routes into one
+  PART NAME list and that rule is untouched**: a customer has no interest in
+  which shelf a part came off, an owner reading the floor does.
+  An empty section is omitted entirely rather than printing "none" — four
+  headings with two apologies under them, on every card, is noise multiplied by
+  the length of the list; a card with nothing in any of the four says so once.
+  *Mechanics are PANELS in a grid* (`.lr-crews` / `.lr-crew`), each name
+  heading a column of that person's cars, **four across on a laptop, three on a
+  tablet, two on a phone**, with `align-items: stretch` so panels on one row
+  end level. A bare column with a rule beside it was tried first and read as
+  clutter: a rule is only as tall as its column, so three mechanics holding
+  three, two and one car drew three vertical lines of three different lengths
+  and nothing lined up with anything. **A filled panel has no length to
+  disagree about.** The column count is fixed per breakpoint rather than
+  `auto-fill`, because the owner asked for a specific rhythm — four names to a
+  row, the fifth wrapping underneath.
+  *The car's name is the big word*, with the registration and the age sharing
+  one very small line under it.
+  *There is ONE age wording on the page* — `New`, `1d`, `213d`, from
+  `_age_label()`. There were briefly two (a long "213 days" for the roomier
+  Live Jobs card) and the owner collapsed them: the same fact worded two ways
+  on one screen invites being read as two different facts. Day zero is **New**,
+  not "Today", because the line answers how long the car has been here rather
+  than what today's date is. The clock glyph in front of it is gone — an icon
+  that explains nothing is one more thing to step over on a page built for
+  scanning.
+  *In the Live Jobs lists the STATUS leads the row and the wording follows.*
+  What is scanned down those lists is state, not prose: a column of badges all
+  starting at the same x reads in one sweep, where badges ragged-right against
+  sentences of different lengths have to be hunted line by line.
+  **`.status-badge`'s `min-width` is what holds that column straight** —
+  without it "FIXED" and "RECEIVED" start their text at two different places
+  and the whole point is lost.
+  *The two spare boxes are SQUARE and their rows carry no card of their own*:
+  the tint of the box is the row background, ruled off with a hairline, so each
+  box reads as one block of colour. A white card floating on amber made every
+  row a separate object, when the meaning is "these all belong to the same
+  problem". Note the consequence, deliberate and the owner's to change:
+  **"On the floor" keeps its rounded corners and white cards while the two
+  below it are square** — the instruction named those two boxes.
+  *"Not assigned" is RED* in both halves of the page — the board column and the
+  Live Jobs chip — because it is the one label here asking for a decision, and
+  a colour that meant urgent above and neutral below would mean nothing.
+  *The badges are ONE traffic light* — red not started, amber under way, green
+  done. `.status-working` and `.status-ordered` therefore **share a single
+  declaration**, as do `.status-fixed` and `.status-received`: each pair means
+  the same thing about a different kind of row, and two hand-written ambers
+  would drift apart. ORDERED was blue until the owner changed it on
+  2026-08-12; the amber it now uses is the "On the way" box's own, so a part
+  waiting on a supplier reads the same colour wherever it is named on this
+  page.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
 variables, the rollback, and what to do when both owners are locked out.
@@ -1685,7 +1792,7 @@ $env:DJANGO_ENV = "development"
 # Run dev server
 python manage.py runserver
 
-# Run full test suite (39 test files, 1000 tests, ~23-55 min; always uses SQLite, see below)
+# Run full test suite (40 test files, 1042 tests, ~23-65 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
 # Run a single test file / class / method
@@ -1771,7 +1878,7 @@ while it's cheap to fix rather than on go-live day.
 
 - **Tests always use SQLite, whatever `USE_SQLITE` says.** The test runner
   CREATEs and DROPs a whole database — not something to point at hosted
-  Postgres — and 1000 tests at ~75 ms per round-trip would take hours. There is
+  Postgres — and 1,042 tests at ~75 ms per round-trip would take hours. There is
   deliberately no flag to remember and no way to run the suite against live data
   by accident (`development.py` keys off `sys.argv[1] == 'test'`).
 - **Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through
@@ -1968,7 +2075,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (34 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 39 files, **1000 tests, all passing** (run in full 2026-08-11; the figures here had gone stale four times before, so re-count rather than trusting this line — the "956" this replaces was already 26 short of the truth *before* that session's 18 were added). Expect the full suite to take **20-55 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, **41 on the same machine on 2026-08-10 and 42 on 2026-08-11**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (35 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 40 files, **1,042 tests, all passing** (run in full 2026-08-12; the figures here had gone stale four times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-65 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and **63 on 2026-08-12**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

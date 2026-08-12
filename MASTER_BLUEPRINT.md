@@ -241,7 +241,7 @@ routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 | **HOME** | `/` | `home` | Staff |
 | | `/jobcards/create/` | `jobcard_create` | Staff |
 | **JOBS** | `/jobcards/` | `jobcard_list` | Office |
-| | `/jobcards/live-report/` | `live_report` | Staff |
+| | `/jobcards/live-report/` | `live_report` | Staff (operations board inside it: Office/Owner) |
 | | `/jobcards/<pk>/` | `jobcard_detail` | Staff |
 | | `/jobcards/<pk>/edit/` | `jobcard_edit` | Staff |
 | | `/jobcards/<pk>/delete/` | `jobcard_delete` | Office |
@@ -723,14 +723,15 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 
 ---
 
-## 13. TEST SUITE (39 files · 956 tests)
+## 13. TEST SUITE (40 files · 1,042 tests)
 
-*Counted from the code on 2026-08-10 — file counts by listing the directories,
-the test total by building the suite with Django's own runner rather than by
-grepping `def test_`, which undercounts (947) because it cannot see tests
-inherited from shared base classes.*
+*Recounted 2026-08-12 — file counts by listing the directories, the test total
+by building the suite with Django's own runner
+(`DiscoverRunner().build_suite([...]).countTestCases()`) rather than by grepping
+`def test_`, which undercounts because it cannot see tests inherited from shared
+base classes.*
 
-### Workshop Tests — `workshop/tests/` package (34 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (35 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -767,6 +768,7 @@ inherited from shared base classes.*
 | `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants |
 | `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants |
 | `test_ui_regressions.py` | Layout and markup invariants that a functional test cannot see — the double-render rule, a list row never nesting a `<button>` inside an `<a>`, and the drawer/Manage-pill coverage |
+| `test_live_report.py` | The Live Report's two audiences: the Office/Owner operations board never assembled for Floor, cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), and each box's count matching the rows beneath it |
 
 ### Inventory Tests (5 files)
 
@@ -872,4 +874,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(recounted 2026-08-10 — every figure here had drifted; test-file count corrected and test total added 2026-08-11)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 39 Test Files (1000 tests) · 76 Migrations (68 workshop + 8 inventory)
+> **Total** *(recounted 2026-08-10 — every figure here had drifted; test-file count corrected and test total added 2026-08-11)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 40 Test Files (1,042 tests) · 76 Migrations (68 workshop + 8 inventory)

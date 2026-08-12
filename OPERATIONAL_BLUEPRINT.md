@@ -88,7 +88,7 @@ graph TD
    - View Dashboard (active cars on floor)
    - Create new Job Cards
    - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Total Labour included, is Office/Owner only and is enforced on the server)
-   - View Live Report (quick scroll of all jobs)
+   - View Live Report — the "Live Jobs" cards only; the operations board above them (who is holding which car, and the two parts-waiting boxes) is Office/Owner, since it names spare shops and ordering state
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
 ```
@@ -640,8 +640,45 @@ JOB LIST
   Searchable, Paginated (45 per page), AJAX live search
 
 LIVE REPORT
-  Shows: Quick overview of all jobs for floor workers
-  Minimal info, fast scroll, search + status filter
+  Shows: The live state of the workshop, read on a phone. Two stacked parts
+         with two different audiences.
+
+  Operations board (Office / Owner only)
+    ON THE FLOOR    Mechanics as panels — four names across on a laptop, three
+                    on a tablet, two on a phone, wrapping to a second row for
+                    the fifth, all panels on a row ending level — with that
+                    person's cars listed beneath their name and a "Not
+                    assigned" panel last, in red. A card is the car's name in
+                    large type, then
+                    its registration and how long it has been in — New, 9d,
+                    213d — or ON HOLD, on one small line, with a stripe and
+                    wash in the car's own colour. A mechanic holding nothing
+                    is not listed. Tap a car to open its job card.
+    ON THE WAY      Amber box: parts ordered from a spare shop and still
+                    travelling. Part name, then car · registration · shop.
+    NOT ORDERED YET Red box: parts nobody has ordered yet. Same shape.
+                    Both boxes are square, and their rows sit directly on the
+                    box's colour rather than on white cards of their own.
+    Both boxes list SHOP purchases only — a warehouse draw came off the shelf
+    already fitted and has no ordering workflow to wait on — and only for cars
+    still in the workshop.
+
+  Live Jobs (Floor / Office / Owner)
+    The detailed card per active car: make, model, registration, the mechanic
+    on it, how long it has been in, whether it is on hold, and progress across
+    the customer's concerns — then FOUR sections, in the order the work
+    happens:
+       CUSTOMER CONCERNS  what the customer complained of, each with its state
+       JOB PERFORMED      what was done (descriptions only; no money here)
+       INVENTORY ITEMS    parts drawn off our own shelf
+       SPARE PARTS        parts bought in, each with its ordering state
+    Each section shows ten rows and then counts the remainder; an empty
+    section is left out. The STATUS badge leads the row in the two sections
+    that have one, so the states read as a single column.
+
+  Search + status filter narrow Live Jobs only; the board always reports the
+  whole workshop.
+  Rules in: workshop/views/dashboard.py — see CLAUDE.md "Deliberate decisions"
 
 COMPLETED LIST
   Shows: Cars that have been picked up

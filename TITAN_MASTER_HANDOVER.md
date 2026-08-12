@@ -13,7 +13,7 @@
 
 **WorkshopOS** is engineered for a single premium automotive workshop — appointment-driven, high-value vehicles, not high-volume throughput. That distinction matters: the system is built to be fast and correct for a small, hands-on team, not to demonstrate generic "web scale."
 
-- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **39 files / 956 tests** (recounted 2026-08-10; re-count rather than trusting this line) covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, the owner profit engine, and the email transport behind password reset.
+- **The Standard**: Functional integrity across all mission-critical operations. The system is backed by a test suite of **40 files / 1,042 tests** (recounted 2026-08-12; re-count rather than trusting this line) covering security, views, signals, financial logic, cashbook operations, spare-shop management, salary settlement, the owner profit engine, and the email transport behind password reset.
 
 ---
 

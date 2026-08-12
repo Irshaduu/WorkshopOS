@@ -141,7 +141,7 @@ Exact model/route/template counts live in [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRI
 
 ## 🛡️ Reliability, Performance & Security
 
-WorkshopOS is backed by an automated test suite (**39 files, 956 tests**, counted 2026-08-10) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
+WorkshopOS is backed by an automated test suite (**40 files, 1,042 tests**, counted 2026-08-12) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
 
 ## 🛠️ Operational Tooling
 - **Database Backups** — `python manage.py backup_db` follows whichever database is active: `pg_dump` for PostgreSQL, a file copy for SQLite, keeping the 14 most recent. **On Railway it writes into the container's ephemeral filesystem, so the file does not survive the next deploy** — see [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) §6 for the backup procedure that actually persists.

@@ -138,22 +138,33 @@ class WorkshopViewTests(TestCase):
         self.assertFalse(JobCardSpareItem.objects.filter(pk=spare.id).exists())
 
     def test_financial_report_exhaustive_filters(self):
-        # 1. Access without filters
+        """
+        `q` / `status` narrow the LIVE JOBS list.
+
+        Every assertion here is scoped to that list rather than to the whole
+        page, because the operations board above it deliberately ignores both
+        parameters: it reports the state of the workshop right now, and a
+        half-filtered answer to that question is worse than no answer. Asserting
+        against the whole page would silently stop testing the filter — the
+        board names every active car whatever is searched for.
+        """
         url = reverse('live_report')
         # live_report only shows completed=False (active) jobs, so create one that is active
         paid_job = JobCard.objects.create(registration_number='PAID001', admitted_date=timezone.now().date(), completed=False, payment_status='PAID')
-        
-        # 2. Search filter
-        response = self.client.get(url, {'q': 'PAID001'})
-        self.assertContains(response, 'PAID001')
-        
+
+        def live_jobs(response):
+            # The heading markup, not the bare class name — that also appears
+            # in the page's own stylesheet, which would split too early.
+            return response.content.decode().split('<div class="lr-jobs-head">', 1)[1]
+
+        # 1. Search filter
+        self.assertIn('PAID001', live_jobs(self.client.get(url, {'q': 'PAID001'})))
+
         # 2. Payment Status filter
-        response = self.client.get(url, {'status': 'PAID'})
-        self.assertContains(response, 'PAID001')
-        
+        self.assertIn('PAID001', live_jobs(self.client.get(url, {'status': 'PAID'})))
+
         # 3. Empty filter
-        response = self.client.get(url, {'q': 'NOBODY'})
-        self.assertNotContains(response, 'PAID001')
+        self.assertNotIn('PAID001', live_jobs(self.client.get(url, {'q': 'NOBODY'})))
 
     def test_management_master_lists(self):
         # We need OWNER access for these typically
