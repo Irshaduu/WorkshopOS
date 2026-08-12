@@ -45,7 +45,7 @@ class SecurityHardeningTests(TestCase):
         # The original version of this test posted 'sahad_test', a username that
         # does not exist in setUp — so it only ever exercised the IP counter.
         # Account lockout needs a real target, so it uses the account setUp made.
-        url = reverse('admin_login')
+        url = reverse('login')
         target = self.user
 
         for _ in range(AccountLockout.MAX_FAILURES):
@@ -83,7 +83,7 @@ class SecurityHardeningTests(TestCase):
         """
         Verify that a successful login resets the failure counter for that IP.
         """
-        url = reverse('admin_login')
+        url = reverse('login')
         
         # 1. Record some failures
         FailedAttempt.objects.create(ip_address=self.test_ip, failures=3)
@@ -103,7 +103,7 @@ class SecurityHardeningTests(TestCase):
         Verify that an Owner can now log in directly with their password,
         bypassing the 2FA OTP step entirely.
         """
-        url = reverse('admin_login')
+        url = reverse('login')
         
         # 1. Login with correct owner credentials
         response = self.client.post(url, {
@@ -115,7 +115,7 @@ class SecurityHardeningTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context['user'].is_authenticated)
         # Verify it didn't stay on a login page
-        self.assertNotIn('admin_login', response.request['PATH_INFO'])
+        self.assertNotIn('login', response.request['PATH_INFO'])
 
     def test_session_revocation_integrity(self):
         """Verify that revoking a UserSession actually blocks access to the app."""

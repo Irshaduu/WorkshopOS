@@ -127,7 +127,7 @@ class TemplateCommentSyntaxTests(TestCase):
         """
         from django.urls import reverse
 
-        for name in ('login', 'admin_login', 'owner_forgot_password'):
+        for name in ('login', 'owner_forgot_password'):
             with self.subTest(page=name):
                 html = self.client.get(reverse(name)).content.decode()
                 for marker in ('{#', '#}', '{% comment %}', '{% endcomment %}'):

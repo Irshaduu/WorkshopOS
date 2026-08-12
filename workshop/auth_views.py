@@ -113,6 +113,10 @@ def resolve_user_by_identifier(identifier):
 
     Tried in order: exact username, then email (case-insensitive), then the last
     10 digits of a mobile number so stored and typed formats need not agree.
+
+    This is the **recovery-side** resolver and stays deliberately permissive. The
+    sign-in form goes through `resolve_login_identifier`, which wraps this and
+    narrows owner accounts to their email address.
     """
     identifier = (identifier or '').strip()
     if not identifier:
@@ -133,6 +137,57 @@ def resolve_user_by_identifier(identifier):
             return profiles.first().user
 
     return None
+
+
+def is_owner_account(user):
+    """Owner by group or by superuser flag — the same pair every RBAC check uses."""
+    return user.is_superuser or user.groups.filter(name='Owner').exists()
+
+
+def resolve_login_identifier(identifier):
+    """
+    Resolve an identifier for SIGNING IN — deliberately stricter than resolving
+    one for password recovery.
+
+    **An owner account may be named only by its email address here.** Username
+    and mobile still resolve for Office and Floor, and still resolve everywhere
+    in the reset flow.
+
+    *Why owners are narrowed.* `resolve_user_by_identifier` accepts the last ten
+    digits of a mobile number, so the workshop's own published phone number was a
+    valid owner identifier — it is on the website, on business cards and on
+    Google Maps — and a first-name username is barely better. An email is no more
+    secret than either, but a personal address is far less *published*, and this
+    is the one form where being named carries two costs: it is where guessing
+    happens, and it is where five wrong tries lock the account. Anyone who could
+    name an owner could lock that owner out on demand, repeatedly, for free.
+
+    *Why the reset flow is NOT narrowed.* It answers identically whether or not an
+    account exists, carries its own two throttles, and delivers only to the
+    address already on the account — so accepting a username there hands an
+    attacker nothing, while refusing it would strand an owner who remembers their
+    username but not which address is on file. Recovery paths should be generous
+    about identifying you; authentication paths should not. The first fix in this
+    same round of work was a recovery path that dead-ended, and narrowing a second
+    one would be that same mistake wearing a security hat.
+
+    *An owner with no email is deliberately exempt.* Nothing here may produce an
+    account nobody can reach: with no address there is no email to sign in with
+    **and** no `can_reset_password`, so the rule would be a permanent lockout with
+    no self-service way back. Only an owner can clear an owner's email (`/admin/`
+    is unreachable by design), so the exemption is not a lever an attacker can
+    pull.
+    """
+    user = resolve_user_by_identifier(identifier)
+    if user is None:
+        return None
+
+    email = (user.email or '').strip()
+    if email and is_owner_account(user):
+        if (identifier or '').strip().lower() != email.lower():
+            return None
+
+    return user
 
 
 def can_reset_password(user):
@@ -202,27 +257,34 @@ def send_reset_code_email(user, code):
 
 
 # ============================================================
-# Login — one engine, two faces
+# Login — one door
 # ============================================================
 #
-# `/login/` (staff) and `/admin-login/` (owner) are the same view with a
-# different heading. The separation is presentational: owners think of these as
-# two doors, and the owner face is the only one that offers Forgot Password
-# because only owners carry an email.
+# There used to be two full views, and the cost showed: the staff view rejected
+# a valid owner password with a fake "Invalid credentials" (a lie that bought
+# nothing, since the owner door was one link away), and the two drifted on which
+# lockout they applied. They were collapsed into one view behind two *faces* —
+# `/login/` and `/admin-login/`, differing only in heading and accent.
 #
-# What is emphatically *not* duplicated is the authentication itself — one
-# identifier resolver, one lockout, one code path. There used to be two full
-# views, and the cost showed: the staff view rejected a valid owner password
-# with a fake "Invalid credentials" (a lie that bought nothing, since the owner
-# door was one link away), and the two drifted on which lockout they applied.
-# Same lesson as the nav rebuild in CLAUDE.md — two copies of one thing diverge.
+# The faces are gone too, as of 2026-08-12. They protected nothing, because
+# either one accepted any role; what they did was publish the org chart to
+# anyone who typed the address. "Admin Sign In" at a fixed URL announces that
+# privileged accounts exist and where their door is, and the staff face named
+# the tiers outright in its placeholder ("Office/Floor username"). Neither is a
+# secret worth having, but neither is worth handing over either.
 #
-# Either face accepts any role. Whoever signs in lands on the dashboard their
-# role renders.
-FACE_TEMPLATES = {
-    'owner': 'workshop/auth/admin_login.html',
-    'staff': 'workshop/auth/login.html',
-}
+# Two smaller things went with them. `Forgot?` used to appear only on the owner
+# face while the nav bar links to `/login/`, so an owner who arrived the ordinary
+# way had no recovery route on screen; it is now on the one door, and leaks
+# nothing, because step 1 of the reset already answers identically whether or not
+# an account exists. And the two faces had already drifted — different field
+# labels, different placeholders — which is the same lesson as the nav rebuild in
+# CLAUDE.md: two copies of one thing diverge.
+#
+# Obscurity is not a control here and must not be treated as one. The controls
+# are the password, the two lockouts, HTTPS and the RBAC decorators. This just
+# stops the front door drawing a map.
+LOGIN_TEMPLATE = 'workshop/auth/login.html'
 
 
 def _safe_next(request):
@@ -246,15 +308,16 @@ def _safe_next(request):
     return None
 
 
-def login_view(request, face='staff'):
+def login_view(request):
     """
-    Sign in with a username, email address, or mobile number.
+    Sign in. Office and Floor by username, email or mobile; **owners by their
+    email address only** — see `resolve_login_identifier`.
 
     Failures are counted twice over: against the account (5 tries, the precise
     instrument) and against the IP (20, a backstop). See `AccountLockout` for
     why the account is the unit that matters in a workshop behind one connection.
     """
-    template = FACE_TEMPLATES.get(face, FACE_TEMPLATES['staff'])
+    template = LOGIN_TEMPLATE
 
     if request.user.is_authenticated:
         return redirect('home')
@@ -267,7 +330,7 @@ def login_view(request, face='staff'):
         identifier = request.POST.get('username', '').strip()
         password = request.POST.get('password', '')
 
-        account = resolve_user_by_identifier(identifier)
+        account = resolve_login_identifier(identifier)
 
         if account is not None:
             locked_for = AccountLockout.minutes_remaining(account)
@@ -285,13 +348,22 @@ def login_view(request, face='staff'):
                 )
                 return render(request, template, AUTH_PAGE)
 
-        # Authenticate against the resolved username so email and mobile work.
-        # When nothing resolved we still call authenticate() with the raw input:
-        # Django's ModelBackend hashes a dummy password for unknown users, so
-        # the response time does not reveal which identifiers exist.
+        # Authenticate against the RESOLVED username, so email and mobile work.
+        #
+        # When nothing resolved, pass an empty username — never the raw input.
+        # This is load-bearing, not tidying: Django's ModelBackend looks accounts
+        # up **by username**, so falling back to the typed text would hand an
+        # owner's username straight to the backend and sign them in on it,
+        # silently undoing the whole of `resolve_login_identifier`. The refusal
+        # has to be enforced here as well as there, because these two lines are
+        # the only thing standing between a refused identifier and a valid login.
+        #
+        # Timing is unchanged either way: `''` matches no account, and ModelBackend
+        # hashes a dummy password whenever the lookup misses, so the response time
+        # still does not reveal which identifiers exist.
         user = authenticate(
             request,
-            username=account.username if account else identifier,
+            username=account.username if account else '',
             password=password,
         )
 
@@ -723,6 +795,31 @@ def owner_reset_password_view(request):
             used_at=timezone.now()
         )
 
+        # Lift the sign-in lockout. This is the whole reason the reset exists:
+        # owners cannot be unlocked from Control Hub (`manage_unlock_account`
+        # refuses them by design), so the emailed code is a locked-out owner's
+        # only self-service route back — and it used to dead-end. The lock is
+        # keyed to the account, not the password, so it survived the reset: the
+        # owner read "Password changed. Please sign in with your new password",
+        # typed it, and was told "This account is locked after too many failed
+        # attempts."
+        #
+        # That reads as the reset having failed, and the natural next move makes
+        # it worse — request another code, against a budget of three an hour,
+        # until `RESET_CODE_LIMIT` fires a CRITICAL alert at both owners over
+        # somebody recovering their own account correctly.
+        #
+        # Safe to clear here: the lock exists to stop guessing, and holding the
+        # registered mailbox plus setting a new password answers that far more
+        # strongly than waiting out fifteen minutes does.
+        #
+        # The IP backstop (`FailedAttempt`) is deliberately NOT cleared. Its
+        # message names the network rather than the account, so it does not
+        # contradict the reset the way this one did, it clears itself on the same
+        # timer, and wiping it would erase the record of a spray against every
+        # other account behind that connection.
+        AccountLockout.clear(user)
+
         # A reset is how a locked-out owner recovers, so every existing session
         # has to die — a stolen one must not survive the recovery.
         _terminate_all_sessions(user)
@@ -748,7 +845,7 @@ def owner_reset_password_view(request):
         request.session.cycle_key()
 
         messages.success(request, "Password changed. Please sign in with your new password.")
-        return redirect('admin_login')
+        return redirect('login')
 
     return _reset_page(request)
 

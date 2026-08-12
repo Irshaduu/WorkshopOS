@@ -185,8 +185,8 @@ Superusers pass every check regardless of group membership. For the human-readab
 
 | Feature | Implementation |
 |---------|---------------|
-| **Staff Login** | `/login/` — staff face of the shared `login_view`. Username, email, **or** mobile + password. Accepts **any** role; the old owner-blocking was removed 2026-07-28 |
-| **Owner Login** | `/admin-login/` — owner face of the *same* view. Identical authentication; differs only by heading, accent colour, and the Forgot Password link |
+| **Login** | `/login/` — the one door, for every role. Office/Floor by username; **Owners by email address only** (`resolve_login_identifier`, 2026-08-12). The owner-blocking was removed 2026-07-28; the separate `/admin-login/` face was merged away 2026-08-12 |
+| **Legacy owner door** | `/admin-login/` — now a `RedirectView` to `/login/`, carrying `?next=` across. Kept for the owners' bookmarks and existing `reverse('admin_login')` calls |
 | **IP Lockout** | 5 failures → 15 min block via `FailedAttempt`, keyed on `REMOTE_ADDR` only |
 | **Security Alerts** | On every login → a `LOGIN` notification to the *other* owners, read from the nav bell. Replaced the Twilio/Telegram broadcast on 2026-07-29 |
 | **Change Password** | `/change-password/` — signed-in Owner sets a new password. No email. Entry point is the drawer account panel; Office/Floor have no self-service path (owners manage those from Control Hub) |
@@ -309,8 +309,8 @@ routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 | | `/estimates/<pk>/` | `estimate_print` | Office |
 | | `/estimates/<pk>/edit/` | `estimate_edit` | Office |
 | | `/estimates/<pk>/delete/` | `estimate_delete` | Office |
-| **AUTH** | `/login/` | `login_view` (face=staff) | Public |
-| | `/admin-login/` | `login_view` (face=owner) | Public |
+| **AUTH** | `/login/` | `login_view` | Public |
+| | `/admin-login/` | `RedirectView` → `login` | Public |
 | | `/change-password/` | `change_password_view` | Owner |
 | | `/forgot-password/` | `owner_forgot_password_view` | Public |
 | | `/reset-password/` | `owner_reset_password_view` | Public |
@@ -493,7 +493,7 @@ stateDiagram-v2
 | `/analysis/` | `profit.html` | The protected Profit page: Turnover − Expenses = Profit, monthly trend, expense split, position |
 | `/analysis/` | `insights.html` | Deep Analysis shell — six AJAX-loaded accordion sections |
 | `/analysis/sections/` | `mechanics.html`, `spares.html`, `vehicles.html`, `fleet.html`, `shops.html`, `operations.html` (6) | One partial per Insights section, each rendered by `analysis_insight_section` |
-| `/auth/` | `login.html`, `admin_login.html`, `forgot_password.html`, `reset_password.html`, `otp_verify.html` | 5 auth screens |
+| `/auth/` | `base_auth.html`, `login.html`, `forgot_password.html`, `reset_password.html`, `change_password.html` | 5 files — the shared shell plus 4 screens. `admin_login.html` was deleted 2026-08-12 when the two login faces merged; `otp_verify.html` had already gone with the SMS 2FA removal |
 | `/dashboard/` | `dashboard_home.html` | Main floor dashboard with active jobs |
 | `/jobcard/` | 23 files: CRUD (`jobcard_form/detail/list/confirm_delete`), `job_list_partial`, `live_report`, pending/paid bills + partials, bulk payer detail/panel/trash + bulk_payments + partial, audits (`audit_high_discounts`, `audit_deleted_bulk_payers`), unified trash + 4 tab partials | Job, payment, audit & trash screens |
 | `/completed/` | `completed_list.html`, `completed_list_partial.html` | 2 completed-jobs screens |

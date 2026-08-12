@@ -64,10 +64,16 @@ class ControlHubAccessTests(TestCase):
         self.assertEqual(self.client.get(reverse('manage_dashboard')).status_code, 403)
 
     def test_anonymous_is_sent_to_sign_in(self):
+        """
+        To `/login/`, the one door. This used to assert `/admin-login/`, which
+        was the second face — probing an owner URL while signed out announced
+        that a separate admin door existed.
+        """
         response = self.client.get(reverse('manage_dashboard'))
 
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/admin-login/', response.url)
+        self.assertIn(reverse('login'), response.url)
+        self.assertNotIn('/admin-login/', response.url)
 
     def test_office_cannot_create_an_account(self):
         self.client.login(username='officestaff', password=PASSWORD)

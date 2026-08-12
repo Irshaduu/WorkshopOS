@@ -1,6 +1,6 @@
 from django.urls import path
 from django.contrib.auth import views as django_auth_views
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, RedirectView
 from . import views
 from . import auth_views
 from . import management_views
@@ -138,11 +138,21 @@ urlpatterns = [
     # ------------------
     # AUTH: LOGIN/LOGOUT
     # ------------------
-    # Two faces, one engine. Both URL names are kept so bookmarks, the
-    # decorators' login_url values, and every reverse() call keep working —
-    # only the heading and the Forgot Password link differ between them.
-    path('login/', auth_views.login_view, {'face': 'staff'}, name='login'),
-    path('admin-login/', auth_views.login_view, {'face': 'owner'}, name='admin_login'),
+    # ONE door. `/admin-login/` used to be a second face on the same view — same
+    # authentication, same lockouts, only the heading and the accent differed —
+    # so it protected nothing (either face accepted any role) while publishing
+    # the org chart to anyone who typed the address: privileged accounts exist,
+    # and here is their door. The staff face went further and named the tiers in
+    # its placeholder ("Office/Floor username").
+    #
+    # The URL *name* is kept because the owners' bookmarks and existing
+    # `reverse()` calls point at it. `query_string=True` carries `?next=` across
+    # the hop, so an old bookmark that a decorator appended a destination to
+    # still lands where it was going.
+    path('login/', auth_views.login_view, name='login'),
+    path('admin-login/',
+         RedirectView.as_view(pattern_name='login', query_string=True),
+         name='admin_login'),
     path('change-password/', auth_views.change_password_view, name='change_password'),
     path('forgot-password/', auth_views.owner_forgot_password_view, name='owner_forgot_password'),
     path('reset-password/', auth_views.owner_reset_password_view, name='owner_reset_password'),

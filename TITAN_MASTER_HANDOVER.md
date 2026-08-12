@@ -29,10 +29,13 @@
 - **Integrity Check**: `workshop/tests/test_login.py` (24 tests) and `workshop/tests/tests.py`.
   *Note for developers: tests must call `FailedAttempt.objects.all().delete()` in `setUp` to prevent cross-test contamination.*
 
-### 1b. Login — one engine, two faces (rebuilt 2026-07-28)
-- `/login/` (staff) and `/admin-login/` (owner) are **the same view** with a different heading, accent colour, and Forgot Password link. The separation is presentational; the authentication path, identifier resolver and both lockouts are shared. Two full views had already drifted once.
-- **Either face accepts any role.** The old fake "Invalid credentials" shown to owners on the staff face is gone — the owner door was one button away, so it protected nothing while guaranteeing a confusing support call.
+### 1b. Login — one door (rebuilt 2026-07-28, merged to one face 2026-08-12)
+- **`/login/` is the only sign-in page, and any role uses it.** It reads `Sign In` / `Identifier` and names no roles. `/admin-login/` redirects to it, kept alive for the owners' bookmarks.
+- There were two faces — a blue "Staff Sign In" and a red "Admin Sign In" on the same view. They **gated nothing**, since either accepted any role; they only announced to anyone who typed the address that privileged accounts exist and where their door is. The staff face went further and named the lower tiers in its placeholder. See CLAUDE.md → "Signed-out pages" for the full reasoning and what must not be re-added.
+- **Forgot Password is on that one door**, having previously rendered only on the owner face — while the nav bar links to `/login/`, so an owner arriving the ordinary way had no recovery route on screen.
+- The old fake "Invalid credentials" shown to owners on the staff face is long gone — the owner door was one button away, so it protected nothing while guaranteeing a confusing support call.
 - **Sign in with username, email, or mobile.** `resolve_user_by_identifier` tries each in order and **fails closed** if more than one account matches.
+- **Owners sign in by their email address only** (2026-08-12). A mobile number resolves by its last ten digits, so the workshop's published phone was a valid owner identifier — and being nameable at this form is what lets someone lock an owner out five tries at a time. Office and Floor still use their usernames; the password-reset flow still accepts any identifier, on purpose. **Tell the owners this**: typing a username gets "Invalid credentials", which cannot be worded more helpfully without confirming the account exists.
 - **RBAC now returns 403, not a login redirect, for signed-in users.** Anonymous visitors still get the sign-in page with `?next=` (validated against open redirects by `_safe_next`). A signed-in user lacking the role gets `templates/403.html`. Both cases used to redirect to a login form, so an Office user opening an Owner page saw a sign-in screen while already signed in.
 
 ### 1c. Notifications — in-app feed (added 2026-07-29)

@@ -46,7 +46,7 @@ var OFFLINE_PAGE =
     'justify-content:center;text-align:center;padding:24px}' +
     'h1{font-size:1.1rem;margin:0 0 8px}p{color:#64748b;font-size:0.9rem;margin:0}</style>' +
     '<div><h1>No connection</h1><p>Formula D needs the network. ' +
-    'Check the wifi and try again.</p></div>';
+    'Check your network and refresh.</p></div>';
 
 self.addEventListener('fetch', function (event) {
     if (event.request.mode !== 'navigate') {

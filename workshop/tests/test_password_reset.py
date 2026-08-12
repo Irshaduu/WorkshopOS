@@ -30,7 +30,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from workshop.auth_views import resolve_user_by_identifier, can_reset_password
-from workshop.models import PasswordResetOTP, UserProfile, UserSession, FailedAttempt
+from workshop.models import (
+    AccountLockout, PasswordResetOTP, UserProfile, UserSession, FailedAttempt,
+)
 
 OLD_PASSWORD = 'old-owner-password-1'
 NEW_PASSWORD = 'Str0ngPass!2026'
@@ -309,7 +311,7 @@ class ResetFlowTests(TestCase):
 
         self.owner.refresh_from_db()
         self.assertTrue(self.owner.check_password(NEW_PASSWORD))
-        self.assertRedirects(response, reverse('admin_login'), fetch_redirect_response=False)
+        self.assertRedirects(response, reverse('login'), fetch_redirect_response=False)
 
     def test_a_completed_reset_alerts_the_other_owner(self):
         """
@@ -443,6 +445,65 @@ class ResetFlowTests(TestCase):
 
         self.assertFalse(Session.objects.filter(session_key=stolen.session_key).exists())
         self.assertFalse(UserSession.objects.filter(user=self.owner).exists())
+
+    def test_a_locked_out_owner_can_sign_in_straight_after_resetting(self):
+        """
+        The reset is a locked-out owner's ONLY self-service route back —
+        `manage_unlock_account` refuses Owner accounts by design. The lockout is
+        keyed to the account rather than the password, so it used to survive the
+        reset: the owner was told "Password changed. Please sign in with your new
+        password", did exactly that, and was answered "This account is locked
+        after too many failed attempts."
+
+        That reads as the reset having failed, and the obvious next move — ask
+        for another code — burns a budget of three an hour until
+        `RESET_CODE_LIMIT` alarms both owners over somebody correctly recovering
+        their own account.
+        """
+        login_url = reverse('login')
+        # By email, not username: an owner is nameable only by their address at
+        # the sign-in form (`resolve_login_identifier`). Posting the username
+        # here would resolve to nothing, record no failures, and leave the
+        # precondition below asserting a lockout that was never created.
+        email = self.owner.email
+        for _ in range(AccountLockout.MAX_FAILURES):
+            self.client.post(login_url, {'username': email, 'password': 'wrong'})
+        self.assertTrue(
+            AccountLockout.minutes_remaining(self.owner),
+            "precondition: the account should be locked before the reset",
+        )
+
+        self._request_code()
+        self.client.post(self.reset_url, {
+            'otp': self._latest_code(),
+            'new_password': NEW_PASSWORD, 'confirm_password': NEW_PASSWORD,
+        })
+
+        self.assertEqual(AccountLockout.minutes_remaining(self.owner), 0)
+
+        self.client.post(login_url, {'username': email, 'password': NEW_PASSWORD})
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.owner.pk))
+
+    def test_the_reset_does_not_wipe_the_network_wide_failure_count(self):
+        """
+        The IP backstop is deliberately left alone. Its message names the
+        network, not the account, so it never contradicts the reset the way the
+        account lock did; it clears itself on the same timer; and wiping it would
+        erase the record of a spray against every other account behind the same
+        connection.
+        """
+        for _ in range(3):
+            self.client.post(reverse('login'),
+                             {'username': self.owner.email, 'password': 'wrong'})
+        before = FailedAttempt.objects.get().failures
+
+        self._request_code()
+        self.client.post(self.reset_url, {
+            'otp': self._latest_code(),
+            'new_password': NEW_PASSWORD, 'confirm_password': NEW_PASSWORD,
+        })
+
+        self.assertEqual(FailedAttempt.objects.get().failures, before)
 
     def test_step_two_cannot_be_opened_directly(self):
         response = self.client.get(self.reset_url)

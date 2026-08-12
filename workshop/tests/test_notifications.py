@@ -474,7 +474,7 @@ class EventHookTests(TestCase):
         Otherwise an attacker could fill the owners' feed at will and bury
         anything real underneath it.
         """
-        url = reverse('admin_login')
+        url = reverse('login')
         for _ in range(AccountLockout.MAX_FAILURES + 4):
             self.client.post(url, {'username': 'officestaff', 'password': 'wrong'})
 
@@ -484,7 +484,7 @@ class EventHookTests(TestCase):
 
     def test_lockout_of_staff_links_where_it_can_be_unlocked(self):
         for _ in range(AccountLockout.MAX_FAILURES):
-            self.client.post(reverse('admin_login'),
+            self.client.post(reverse('login'),
                              {'username': 'officestaff', 'password': 'wrong'})
 
         note = Notification.objects.filter(event='ACCOUNT_LOCKED').first()
@@ -500,7 +500,7 @@ class EventHookTests(TestCase):
         the section that answers what an owner lockout actually raises.
         """
         for _ in range(AccountLockout.MAX_FAILURES):
-            self.client.post(reverse('admin_login'),
+            self.client.post(reverse('login'),
                              {'username': 'Sahad', 'password': 'wrong'})
 
         note = Notification.objects.filter(event='ACCOUNT_LOCKED').first()
@@ -509,7 +509,7 @@ class EventHookTests(TestCase):
         self.assertIn('cannot be unlocked', note.body)
 
     def test_successful_login_notifies_the_other_owner(self):
-        self.client.post(reverse('admin_login'), {'username': 'Sahad', 'password': PASSWORD})
+        self.client.post(reverse('login'), {'username': 'Sahad', 'password': PASSWORD})
 
         logins = Notification.objects.filter(event='LOGIN')
         self.assertEqual(list(logins.values_list('recipient__username', flat=True)), ['Rijas'])

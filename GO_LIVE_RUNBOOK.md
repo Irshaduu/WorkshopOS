@@ -185,6 +185,53 @@ certificate is issued automatically; it can take a few minutes.
 sends the `preload` directive, which is inert unless you submit it — submitting
 would force HTTPS on the WordPress site too and could break it.
 
+### 2.5 Cloudflare in front of the app ☐
+
+**This is the single most effective security measure on the list, and it costs
+nothing.** The app is a private business system with five known users sitting on
+the public internet. Every in-app control — the lockout, the password rules —
+fights the guesser *after* they have reached Django. Cloudflare stops them
+arriving. Nothing in the application changes.
+
+Do this **after** §2.2–2.4 are verified, not before. Moving nameservers while
+also waiting on Resend's SPF/DKIM verification is two variables at once, and you
+will not know which one is failing. Cloudflare imports the existing records when
+you add the domain, so the order costs nothing.
+
+- ☐ Add `formuladservice.in` to Cloudflare (free plan)
+- ☐ **Check the imported record list against the §2.1 screenshots, line by
+  line.** The WordPress site on the root domain rides on these too — an import
+  that quietly dropped a record takes the business's public website down, not
+  just the app.
+- ☐ Change the nameservers at the registrar, wait for Cloudflare to report Active
+- ☐ Confirm the WordPress site still loads, before touching anything else
+- ☐ SSL/TLS mode → **Full (strict)**
+- ☐ `app` record → proxy **ON** (orange cloud)
+- ☐ Security → Bot Fight Mode → on
+- ☐ Rate limiting rule: path contains `/login`, 10 requests per minute per IP
+
+Then the four things that actually bite:
+
+- ☐ **`https://app.formuladservice.in` still loads.** If you get an infinite
+  redirect loop, SSL/TLS mode is on *Flexible* — Cloudflare talks HTTP to
+  Railway, Django's `SECURE_SSL_REDIRECT` sends it back to HTTPS, forever. Full
+  (strict) is the fix.
+- ☐ **Sign in and read the IP in the resulting login notification.** It must be a
+  real public address. If it is a Cloudflare IP, or the same constant on every
+  sign-in, then `get_client_ip` in `workshop/auth_views.py` is reading the
+  proxy — and `FailedAttempt` is now counting *everybody's* failures into one
+  row, so 20 fumbles across all four devices would lock out the whole workshop.
+  The fix is to read `CF-Connecting-IP`, which is safe **only** because
+  Cloudflare overwrites that header on every request; never trust
+  `X-Forwarded-For` here, which is why the function ignores it today.
+- ☐ **Check this before Cloudflare too**, at §1.4 — Railway has its own edge, so
+  this may already be true today and Cloudflare would only be inheriting it.
+- ☐ Push notifications still arrive (the origin has not changed, so they should)
+
+**Do not** turn on "Under Attack" mode or a country restriction as a default.
+Both will lock out an owner travelling, at a moment when you are the only person
+who can lift it.
+
 ---
 
 ## Part 3 — The day
@@ -223,6 +270,15 @@ The developer test addresses must not survive into production — password reset
 codes go to `User.email`, so a stale address points account recovery at a
 mailbox the owners do not read.
 
+**Since 2026-08-12 that address is also how an owner SIGNS IN.** Owner accounts
+resolve by email only, never by username or mobile (`resolve_login_identifier`).
+So `set_owner_email` is no longer a change to where recovery mail goes — it
+changes the owner's login identifier, and the old one stops working the moment
+it runs. Two consequences: run it *before* handing the app over rather than
+after, and tell each owner the exact address they now type. An owner who types
+their username gets "Invalid credentials", which reads as a wrong password and
+cannot be worded any more helpfully without confirming the account exists.
+
 ```bash
 python manage.py set_owner_email <username> <real@address>        # dry run
 python manage.py set_owner_email <username> <real@address> --yes
@@ -232,6 +288,26 @@ python manage.py sync_owner_identity --yes
 
 - ☐ Both owners' emails are their real ones
 - ☐ `sync_owner_identity` reports both in the Owner group, `is_staff=False`
+
+**Then the two things worth more than every control in the codebase.**
+
+The lockout allows roughly 480 guesses a day against a known account (5 tries,
+15-minute lock, repeat). Against a long random password that is meaningless
+forever. Against `formulad2026` it is a few days. `MinimumLengthValidator`
+defaults to 8 characters and `CommonPasswordValidator` only blocks Django's
+stock list — neither would refuse that password. **No amount of lockout tuning
+substitutes for this, and a strong password makes the lockout question moot.**
+
+And because reset codes go to `User.email`, an owner's inbox can already set
+their password. Whoever holds that mailbox holds the workshop's books.
+
+- ☐ Each owner's password is long and random, or a four-word passphrase — not
+  the workshop name, a year, or a phone number
+- ☐ Each owner's password is stored in their phone's password manager, not on
+  paper and not in a chat
+- ☐ **2-Step Verification is on for both owners' email accounts.** If Gmail, the
+  same App Password screen used for `EMAIL_HOST_PASSWORD` in development is
+  behind it.
 
 ### 3.4 Prove password reset works ☐
 

@@ -83,11 +83,19 @@ class AuthFlowTests(TestCase):
         Mobile resolution moved from .env (`OWNER_n_MOBILE`) to
         `UserProfile.mobile_number` — identity lives in the database now, so a
         third owner needs no redeploy.
+
+        This still passes after owners were narrowed to email-only sign-in
+        (2026-08-12) for a reason worth stating rather than leaving to luck:
+        `self.owner` here carries **no email**, and an owner with no address is
+        deliberately exempt, since the rule would otherwise make the account
+        unreachable and unrecoverable at once. Give this fixture an email and the
+        test will fail — correctly. `OwnersSignInByEmailOnlyTests` in
+        `test_login.py` covers the narrowed path.
         """
         UserProfile.objects.create(user=self.owner, mobile_number='+919567494933')
 
         self.client.post(
-            reverse('admin_login'),
+            reverse('login'),
             {'username': '9567494933', 'password': 'ownerpassword'},
         )
 

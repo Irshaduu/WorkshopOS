@@ -661,8 +661,10 @@ class SupplierShopViewTests(TestCase):
         unauthenticated_client = Client()
         response = unauthenticated_client.get(reverse('supplier_shop_list'))
         self.assertEqual(response.status_code, 302)
-        # Supplier module is Office/Owner now → admin login gate
-        self.assertIn('/admin-login/', response.url)
+        # One sign-in page for every role. This asserted '/admin-login/' until
+        # 2026-08-12: Office/Owner pages used to bounce to a separate admin door,
+        # which is what told anyone probing a protected URL that one existed.
+        self.assertIn('/login/', response.url)
 
     def test_restock_select_no_session_redirects(self):
         shop = SupplierShop.objects.create(name='NoSession Shop')

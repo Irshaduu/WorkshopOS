@@ -1,15 +1,33 @@
 {% extends 'workshop/auth/base_auth.html' %}
 
 {% comment %}
-Staff face. Same view, same authentication, same lockouts as the owner face —
-only the accent and the copy differ, and Forgot Password is absent because
-Office and Floor accounts carry no email.
+The one door, for every role. There were two — a blue "Staff Sign In" and a red
+"Admin Sign In" — on the same view, with the same authentication and the same
+lockouts. See the comment above `LOGIN_TEMPLATE` in `auth_views.py` for why they
+were collapsed; the short version is that the split protected nothing and
+published the org chart.
+
+Deliberately says as little as it can while still being usable:
+
+  - "Sign In", never "Admin" or "Staff" — no hint that tiers exist
+  - "Identifier", never "Office/Floor username" — the old staff placeholder
+    named the two lower roles outright
+  - no link to another door, because there isn't one
+
+Red accent (`#dc2626`) is the brand mark's own colour — the same red as the
+letterhead on the printed invoice and the owner badge in the drawer.
+
+`Forgot?` belongs here even though only owner accounts can complete a reset
+(`can_reset_password`). Step 1 of that flow answers identically whether or not an
+account exists, so offering it to everyone discloses nothing, and hiding it was
+worse than useless: the nav bar links here, so an owner arriving the ordinary way
+previously had no recovery route anywhere on screen.
 {% endcomment %}
 
-{% block title %}Staff Login{% endblock %}
+{% block title %}Sign In{% endblock %}
 
-{% block auth_accent %}#2563eb{% endblock %}
-{% block auth_heading %}Staff Sign In{% endblock %}
+{% block auth_accent %}#dc2626{% endblock %}
+{% block auth_heading %}Sign In{% endblock %}
 {% block auth_subtitle %}{% endblock %}
 {% block auth_action %}{% url 'login' %}{% endblock %}
 {% block auth_button %}Sign In{% endblock %}
@@ -17,24 +35,19 @@ Office and Floor accounts carry no email.
 {% block auth_fields %}
     <div class="auth-field">
         <div class="auth-field-head">
-            <label class="auth-label" for="id_username">Username</label>
+            <label class="auth-label" for="id_login_username">Identifier</label>
         </div>
-        <input type="text" id="id_username" name="username" class="auth-input"
-               placeholder="Office/Floor username" autocomplete="username"
+        <input type="text" id="id_login_username" name="username" class="auth-input"
+               placeholder="Enter your identifier" autocomplete="username"
                autocapitalize="none" spellcheck="false" required autofocus>
     </div>
 
     <div class="auth-field">
         <div class="auth-field-head">
-            <label class="auth-label" for="id_password">Password</label>
+            <label class="auth-label" for="id_login_password">Password</label>
+            <a class="auth-link" href="{% url 'owner_forgot_password' %}">Forgot?</a>
         </div>
-        <input type="password" id="id_password" name="password" class="auth-input"
+        <input type="password" id="id_login_password" name="password" class="auth-input"
                placeholder="••••••••" autocomplete="current-password" required>
     </div>
-{% endblock %}
-
-{% block auth_switch %}
-    <a href="{% url 'admin_login' %}" class="auth-switch">
-        <i class="bi bi-shield-lock"></i> Admin sign in
-    </a>
 {% endblock %}

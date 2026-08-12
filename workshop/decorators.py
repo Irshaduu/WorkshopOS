@@ -52,8 +52,13 @@ def _role_required(test_func, login_url):
 
 # `redirect_field_name` is accepted and ignored — it exists so the historical
 # call signature keeps working. The field name is always Django's default
-# ("next"), which is what the login templates post back.
-def owner_required(function=None, redirect_field_name=None, login_url='/admin-login/'):
+# ("next"), which is what the login template posts back.
+#
+# All three send anonymous visitors to `/login/`. Owner and Office pages used to
+# bounce to `/admin-login/`, which still works as a redirect but costs a second
+# hop — and, more to the point, told anyone who probed an owner URL that a
+# separate admin door existed. There is one door now.
+def owner_required(function=None, redirect_field_name=None, login_url='/login/'):
     """Owner (or superuser) only."""
     actual_decorator = _role_required(is_owner, login_url)
     if function:
@@ -61,7 +66,7 @@ def owner_required(function=None, redirect_field_name=None, login_url='/admin-lo
     return actual_decorator
 
 
-def office_required(function=None, redirect_field_name=None, login_url='/admin-login/'):
+def office_required(function=None, redirect_field_name=None, login_url='/login/'):
     """Office staff and Owners — financial and invoicing surfaces."""
     actual_decorator = _role_required(is_office_or_owner, login_url)
     if function:

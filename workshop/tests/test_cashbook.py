@@ -39,7 +39,8 @@ class CashbookTests(TestCase):
         # Unauthenticated
         response = self.client.get(reverse('cashbook'))
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.url.startswith('/admin-login/'))
+        # '/admin-login/' until 2026-08-12, when the two login faces merged.
+        self.assertTrue(response.url.startswith('/login/'))
         
         # Floor user — signed in but wrong role, so 403 rather than a redirect.
         # This used to bounce to the login form, which looks identical to being
