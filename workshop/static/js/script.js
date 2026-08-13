@@ -243,6 +243,13 @@ document.addEventListener('DOMContentLoaded', function () {
                             }
                             suggestionsBox.innerHTML = '';
                             recalcRow(row);
+                            // Picking a product fills the search box, the hidden
+                            // id and (via recalcRow) possibly the price — all by
+                            // assigning `.value`, which fires no event. The job
+                            // card form exposes this so it can drop the "empty"
+                            // hairlines on the row and start warning about
+                            // unsaved work. Absent on every other page.
+                            if (window.jcFormTouched) window.jcFormTouched();
                         });
                         suggestionsBox.appendChild(opt);
                     });

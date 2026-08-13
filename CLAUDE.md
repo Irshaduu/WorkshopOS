@@ -1932,6 +1932,359 @@ about to correct one of these, you are about to break the business:
   waiting on a supplier reads the same colour wherever it is named on this
   page.
 
+- **On the Job Card, an EMPTY box wears a hairline and a CHANGED box wears an
+  amber edge — two marks, two different facts, and neither may move the
+  page.** Added 2026-08-13 on the owner's instruction. The scope was argued
+  and the owner chose the wide one knowingly: **every** empty box is marked
+  except the ones carrying **`jc-optional`**. The exemption is declared on the
+  **widget in forms.py**, not as a list of names in the template's script — one
+  mechanism, sitting where somebody adding a field will see it. Exempt today:
+  **Customer Name, Contact Number, the Internal note** (this workshop fills
+  them on a minority of cards, so a mark would be permanent, and a mark that is
+  always on is a mark nobody reads) and a **SHOP spare's Qty** (added
+  2026-08-13 on the owner's instruction — nothing refuses a save without it,
+  and the live data is full of rows that never had one).
+  **The two spare DATES are NOT exempt, and are marked as a PAIR.** They were
+  briefly exempt alongside the quantity and the owner reversed it the same day:
+  a spare is finished when it has been ordered **and** received, so the chip
+  stays marked until both are filled — half-filled is still incomplete, not
+  half-done. The mark sits on the **chip**, because that is what is on screen;
+  the two inputs inside the panel are swept like any other box, which is what
+  says *which* of the two is missing once it is open. One control cannot carry
+  two facts, so it does not try to. Guarded by
+  `ADatePairIsOnlyDoneWhenBothAreInTests`.
+  **The INVENTORY quantity is deliberately NOT exempt while the spare one is**,
+  and that asymmetry is the rule working: the same word carries two different
+  obligations — a warehouse draw is refused without a quantity, because that is
+  the number leaving the shelf — so the mark follows the obligation, not the
+  label. Guarded by
+  `test_an_inventory_quantity_is_still_marked_when_a_spare_one_is_not`.
+  Four rules hold it up.
+  (a) **It is border COLOUR only** (`#eda9a9`, replacing Bootstrap's own 1px
+  `#dee2e6`), so an unfilled box is a slightly warmer outline rather than an
+  error. That restraint is the entire reason it can be applied this widely:
+  measured, an ordinary edit carries **68 marks on a card with 12 spares**, and
+  at any louder weight that is a page-long alarm. A border *width*, a padding
+  or a margin here would reflow the parts tables as you type — the trap
+  `.inventory-stock-hint` already exists to avoid.
+  (b) **It is NOT the error state.** `.jc-row-invalid` paints a row's
+  background and is what a refused save looks like, so the two cannot be
+  confused.
+  (c) **A settled card wears none** — the Financial Lock disables every box on
+  a PAID record and an empty box on a closed one is nothing anybody will fill.
+  Done as `.jc-empty:disabled` in CSS, deliberately, because the lock is
+  applied on a `setTimeout(…, 100)` and script reading that state would race
+  it.
+  (d) **The amber `.jc-changed` edge is `box-shadow: inset`**, painted inside
+  the box the browser already laid out. Three marks hang off one class on the
+  body (`jc-dirty`) so they cannot disagree: that edge, the **sticky header
+  turning amber**, and a note on the Save button — plus a `beforeunload`
+  prompt. **The header tint is the signal that carries, not the pill**, and
+  that ordering was forced by measurement: on a 375px phone the title had 150px
+  for 240px of "Editing: Audi A4 KL 10 AA 1919" and was *already* truncating,
+  and adding a 79px pill to that flex row cut it to 63px — "Editing:" and
+  nothing. That is the Spare Shop header rule again (a header gives up its
+  actions before it gives up its name), so the **wording is held back until
+  576px** and a background colour, which occupies no width at all, does the job
+  below it. It needs `!important` because the header sets its background inline
+  alongside the car-colour rail. **`dirty` is cleared only on a submit that was not prevented** —
+  the Financial Lock and the Inventory guard both cancel, and clearing the
+  warning on a submit that never left would drop it on the one card still
+  needing it. Two places fill boxes in script and therefore fire no event:
+  `importSpare()` and the colour picker, both of which call
+  `window.jcFormTouched()`. Guarded by `workshop/tests/test_jobcard_form_ux.py`.
+
+- **The Job Card's blank-row DELETE flags are RECOMPUTED on every submit, not
+  latched.** Fixed 2026-08-13, found while adding the guard below. The four
+  passes that mark an empty concern / spare / draw / job for deletion only ever
+  set `checked = true`, and a submit can be cancelled *after* they have run —
+  the Financial Lock's own handler does exactly that. So a row left blank on a
+  refused attempt stayed marked, and typing into that row and saving dropped
+  what had just been typed. They now assign `checked = !value.trim()`, which is
+  the only version that survives a cancelled submit; nothing else in the form
+  ever ticks a DELETE box (they are all rendered inside `d-none`), so
+  recomputing from the row itself is safe.
+
+- **A warehouse draw with no quantity is refused in the browser by a SCRIPT
+  guard, never by `required`.** Added 2026-08-13. `InventoryDrawForm.clean`
+  already refuses it on the server and that stays the real rule; this only
+  saves the round trip. The `required` attribute cannot express "only once a
+  product has been picked" and breaks badly twice here: it blocks the **submit
+  event**, and the handler that marks blank rows for deletion lives in that
+  event — so a card carrying one untouched blank row would refuse to submit
+  with nothing on screen — and a `required` control the browser cannot focus
+  (`#empty-inventory-form` is in the document, inside `d-none`) makes Chrome
+  abandon the submit **silently**. The guard runs on `document` in the
+  **capture** phase and calls `stopPropagation()`, so a refused submit never
+  reaches the DELETE-marking handlers at all. It names the product, not the row
+  number, exactly as `_collect_problems` does server-side.
+
+- **The Job Card shows the car's colour as a RAIL, not a wash — and the
+  Internal note never leaves the workshop.** Added 2026-08-13. A full-page tint
+  in the car's colour was built first, at the same 8% alpha `.cp-card` and
+  `.lr-car` use, and the owner had it removed: on a form this long it sat behind
+  every section for several screens, which is a lot of colour to carry for a
+  fact the header rail and the colour dot beside the registration already state.
+  What remains is `.jc-head::before`, one strip at the top, driven by
+  `--jc-accent` on `#jcColour`. Both documented exceptions travel with it: a
+  WHITE car's rail is outlined, and a car with **no colour recorded gets a
+  hatched rail** rather than a slate one, because "nobody wrote it down" is a
+  different fact from "this car is grey". The shared picker **dispatches
+  `carcolour:change`** rather than letting each page reach into it — setting
+  `.value` in script fires no event, and the Estimate uses the identical control
+  and wants none of this. `JobCard.notes` mirrors `Estimate.notes` field for
+  field; it is unprintable by construction (`invoice.py` and the invoice
+  template both read named fields) and
+  `test_the_internal_note_never_reaches_the_customer` keeps it so against the
+  day somebody adds a generic field loop. It is **not** price-locked, so Floor
+  may write one — that is the point of the box.
+
+- **Three pieces of Job Card text were removed, and one of them moved rather
+  than went.** 2026-08-13. The "Job Performed" column heading sat under a card
+  titled "Jobs (Labour)" over a single column whose boxes are placeholdered
+  "Job Performed" — a heading earns its place by telling one column from
+  another. "Ordered from a spare shop" restated a section that has a Shop
+  column, a Status and two dates. **The Inventory subtitle is the one to be
+  careful about**: the fact it carried is real and recorded above — the picker
+  searches *categories* as well as products — and it now lives only in that
+  box's own placeholder, "Search by product or type (e.g. Engine Oil)", three
+  inches lower and at the moment somebody is about to type. **That placeholder
+  is load-bearing now.** Shorten it and the explanation has to come back
+  somewhere; `test_the_inventory_box_still_says_it_searches_by_type` fails if
+  it goes.
+
+- **The two spare DATES share one cell, and the column order follows the order
+  the row is filled.** 2026-08-13, on the owner's instruction: Part Name · ⋮ ·
+  Qty · Status · Shop · Dates · Shop Price · Customer Price, money last. The
+  dates were two full-width columns costing a **measured 357px** of a table
+  that already scrolls sideways on the Floor tablet, and they are blank on most
+  rows because `spare_autofill.js` fills them from the Status dropdown — they
+  are derived far more often than typed. They were first stacked in one cell
+  (154px, but +24px of row height); on the owner's instruction they became **one
+  CHIP reading `22/07 – 29/07`** that opens a small panel holding both. Final
+  measurements: the cell is **148px** and the row is back to **55px**, the
+  height the two-column version had — so the chip bought back the width *and*
+  the height the stack had cost. A missing half prints an ellipsis
+  (`22/07 – …`) so the chip always says which date you have; neither prints
+  "Add dates". Showing only the date matching the current status was considered
+  and dropped: correcting an ordered date on an already-received row would then
+  need the box revealing first.
+  **The panel is `position: fixed`, and that is two decisions in one.**
+  (a) It is out of flow, so opening it cannot move a row — verified: table,
+  row and page heights are byte-identical open and shut, which was the owner's
+  requirement. (b) It is the only position that **escapes the clip**: the panel
+  sits in a `<td>` inside `.table-responsive`, which is `overflow-x: auto`, and
+  an absolutely-positioned panel in there is cut off invisibly and only
+  sometimes — the `.cb-list` trap this file already records an afternoon for.
+  Proven rather than assumed, twice: nothing between that cell and the root
+  creates a containing block (no `transform`/`filter`/`will-change`/`contain`),
+  checked *before* building; and on a 375px phone the panel hangs 8px past the
+  scroller's right edge while `elementFromPoint` still returns its inputs.
+  Three smaller things travel with it. The **inputs are unchanged form fields**
+  with their names, inside the form — a hidden input still submits its value,
+  so only where the boxes are *shown* changed and nothing about the data did.
+  Everything is **delegated off `document`**, so a row added by "+ Add Spare"
+  works with nothing re-initialised — all three of the cloning traps recorded
+  above live in per-element wiring, and this section has none. And every button
+  in it is **`type="button"`**: a bare `<button>` inside a form submits it, so
+  one wrong and looking at a date saves the card.
+  **Column order is safe to change and the reason
+  is worth knowing** — every script touching these rows resolves fields by a
+  row-scoped `querySelector` on the field NAME (`spare_autofill.js`,
+  `importSpare`), never by cell position. What is *not* safe is dropping a cell:
+  an absent formset field saves as blank, which is how the archived-shop bug
+  erased a purchase from a ledger. **`#empty-spare-form` must be reordered in
+  the same edit** — it is cloned by script.js and would otherwise lay an added
+  row one column adrift of its header; nothing in the browser would say so, so
+  `test_the_added_row_template_matches_the_live_rows` says it here.
+
+- **Every Job Card section announces itself the same way, and the primary
+  action says which act it is.** Added 2026-08-13 on the owner's instruction.
+  Six sections now share one heading shape — a tinted glyph tile, the name, the
+  action on the right (`.jc-sec-head`) — where there had been six hand-rolled
+  flex rows whose only common element was a blue `<h6>`. **The Customer block
+  had no heading at all**, so scrolling the form you counted "Vehicle Details …
+  (something) … Customer Concerns", and the unnamed block was the one people
+  were least sure they had filled in.
+  **The band is ONE colour, `#2a70da` — the nav bar's own gradient sampled at
+  84%**, so it is a colour the page already wears at the top rather than a new
+  one. A six-step **ramp** down that gradient was built first, on the owner's
+  idea (each section a step further left, so the colour said how far down the
+  form you were), and the owner looked at it and chose one flat colour. The
+  reasoning is worth keeping even though the ramp is gone: **the sections are
+  not a scale of anything** — a car's concerns are not "more" than its vehicle
+  details — so six shades invited being read as a ranking, and the darkest drew
+  the eye hardest at the bottom of the form where the least urgent sections
+  live. It is a literal rather than `color-mix()` because that is Safari 16.2+
+  and the owners read this on iPhones;
+  `test_the_band_colour_comes_from_the_nav_bar` fails if the nav stops change,
+  which is the reminder to resample it.
+  Two things follow from filling the band, both about staying legible rather
+  than taste. **Everything on a band is white or translucent white** — a control
+  tuned for one band colour disappears on another, which is exactly what
+  `btn-outline-primary` did to the Add buttons; translucent white takes its
+  contrast from whatever is behind it, so it survives the band being recoloured
+  again. **The symbol keeps a tile** (`rgba(255,255,255,.20)`) so it stays an
+  object rather than dissolving into the band.
+  **The heading is 1.18rem/700, and the reason CHANGED — do not re-derive the
+  old one.** Under the ramp the lightest step measured 4.02:1 against white,
+  under the 4.5:1 normal text needs, and the size was what dragged it into
+  WCAG's large-text rule (3:1). At `#2a70da` the contrast is **4.74:1**, which
+  clears AA at any size, so the size is now purely a comfort choice on a long
+  form. Recorded so nobody finds the big heading, assumes it is load-bearing
+  for contrast, and is afraid to touch it — or shrinks it and quietly
+  reintroduces a problem that no longer exists.
+  **The field labels are 600**, on the owner's instruction, at the colour and
+  size they already had — weight is the only axis touched. They sit above boxes
+  whose placeholders are deliberately quiet (see the top of `jobcard_form.html`),
+  and at 400 the label and the hint read as the same kind of text. Not 700:
+  the band above them is already 700 and they would compete with it.
+  **Below 576px the Add button gives up its WORD, not the section its NAME.**
+  Measured on a 375px phone: "Customer Concerns" needed 169px and had 134,
+  because "+ Add Concern" was taking 124. Icon-only it is 44×44 (`min-width`
+  as well as `min-height` — a target is only as big as its smaller side) and
+  every one carries an `aria-label`, this codebase's rule for anything that can
+  become icon-only. Same call the Spare Shop header records: a header gives up
+  its actions before it gives up its name.
+  **The submit button is AMBER on an edit and GREEN on a create, and neither
+  carries a shadow.** Settled 2026-08-13 over three passes, and the reasoning
+  is worth keeping because the first two looked right. `btn-primary` blue put
+  the one control that matters most into a page that is now mostly blue, so it
+  stopped being the loudest thing on it. A deeper navy (`--nav-blue-1`) was
+  tried next and the owner rejected it: it solved the problem by being a
+  *darker blue* and still read as one more blue thing. **Amber is the only
+  colour on this page already about your changes** — the header goes amber, the
+  pill is amber, every box you touched wears an amber edge — so the button that
+  commits them wearing it is the page agreeing with itself. Amber forces DARK
+  text and that is not optional: white on `#f59e0b` measures 2.2:1, `#1e293b`
+  on it measures 6.81:1. Both colours come from **one `--jc-action`** read by
+  the big button and the sticky one, so the two can never drift apart. Shadows
+  were removed on the owner's instruction — the border light says "unsaved"
+  now, and a drop shadow under it was a second, duller copy of the same
+  message. The **"You have unsaved changes" line went with them**: it was a
+  third copy of that fact and the only one that changed the button's *height*
+  when it appeared.
+
+  **The feedback is built for a FINGER, not a pointer**, on the owner's
+  correction: these sections are worked on the Floor tablet, where hover is
+  wrong twice over — it never fires on a touch screen, and where it does fire
+  it **sticks**, so the last button tapped sits there looking half-pressed
+  until something else is tapped. Every hover rule is therefore behind
+  **`@media (hover: hover)`** and reaches a mouse only. What a finger gets is
+  **`:active`** (fires on touch, releases with the finger) as a real squash —
+  `scale(.94)` and a filled-in background, not the token 0.97 and 1px shadow a
+  pointer would need, because it has to read at arm's length. The browser's own
+  grey tap flash is replaced via `-webkit-tap-highlight-color`, or it fights
+  the `:active` paint and lands a beat later.
+  **An added row announces itself**, which is the other half of the same
+  problem: the "+ Add" button is at the top of its section and the new row
+  lands at the bottom of a list that may already be below the fold, so the only
+  evidence of a tap was a scrollbar changing length. The row flashes
+  (`jc-rowin`, a `background-color` keyframe — paint, so nothing moves) and is
+  brought into view with `block: 'nearest'`, which scrolls nothing when it is
+  already visible. `void row.offsetWidth` is needed to restart the animation on
+  a second press; re-adding a class an element already carries does nothing.
+  **A light SWEEPS across a pressed button**, on the owner's request for a
+  sliding effect — a `translateX` on a pseudo-element, composited, costing no
+  layout. It is **fired by a class on `pointerdown`, never by `:active`**: a tap
+  releases in about 80ms and takes `:active` with it, so an animation hung off
+  `:active` is cut off halfway on the exact device this is for.
+  **While there is unsaved work, a light TRAVELS THE BUTTON'S BORDER** — the
+  owner's idea, replacing a pulsing glow, "looks like the button has life". It
+  is better than a pulse for a stateable reason: a pulse changes the button's
+  apparent SIZE, so the eye keeps being pulled back to something growing and
+  shrinking; a light running the edge is movement with no change of weight. It
+  is **WHITE**, not amber — the edit button is amber now, so an amber light on
+  it would be invisible, and white reads on the green create button too, so one
+  gradient serves both. The `--jc-orbit` ANGLE turns, not the element:
+  rotating the element would turn the ring with it and skew a wide rectangle.
+  It is confined to the border by a `padding` + two-mask pair; without that the
+  gradient washes across the button's face. **Built as progressive
+  enhancement** — the ring needs `mask-composite` (Safari 15.4+) and a
+  registered `@property` (Safari 16.4+), so a still white 2px INSET outline is
+  declared unconditionally and the `@supports` block clears it where the ring
+  can actually be drawn. An old browser loses the animation and still says
+  "unsaved"; it never shows a broken ring and never shows nothing.
+  **This is the ONLY looping animation on the page** (besides `jc-spin`, which
+  sits on an element that is `display: none` until a save is in flight). An
+  idle shimmer is noise on a screen staff work all day and costs battery on the
+  tablet; this one is temporary, the person can end it, and it stops the moment
+  the card is saved.
+  Everything animates `transform`, `box-shadow` or `background-color` — all
+  composited or paint-only, so a control reacting to a press can never nudge
+  the form under the finger aiming at it. `prefers-reduced-motion` drops the
+  sweep and the glow entirely and **keeps the colour**, because the colour is
+  the feedback and both motions have a still equivalent already on screen.
+  **One press makes one job card**: the button goes to "Saving…" and then
+  disables, and `disabled` is set in a **`setTimeout(0)`, never inline** —
+  disabling a submit button from inside its own submit handler cancels the
+  submission in some browsers. The button carries no `name`, so dropping it
+  from the payload costs nothing. Add buttons and the date chip are **38px, and
+  44px under `@media (hover: none)`** — keyed on input method rather than a
+  width breakpoint, because it is the finger that decides how big a target must
+  be and the Floor tablet is wider than plenty of laptops.
+
+- **The sticky save button is INSIDE the form, and is absent until there is
+  something to save.** Added 2026-08-13 on the owner's request for a round
+  button in the bottom-right so nobody has to scroll to the foot of a form
+  several screens long, with the big button kept. Three things hold it up.
+  (a) **Inside the `<form>`, which is an integrity matter and not a layout
+  one.** The Financial Lock disables controls with `form.querySelectorAll(…)`,
+  so a floating button outside the form would be the one control the lock never
+  reached — a settled, locked job card, saveable from a button in the corner.
+  Inside, it is disabled with everything else for free (verified: the lock's own
+  selector matches it).
+  (b) **It is not there unless the card is dirty.** The owner's condition was
+  "no interruption to the total job card view", and the answer to that is not a
+  smaller button — it is a button that is absent. It appears the moment
+  something is typed and leaves when the card is saved, so it is never in the
+  way of anybody with nothing to save and can never be pressed pointlessly.
+  (c) **It clears the phone's bottom nav.** On ≤640px the bar renders at the
+  BOTTOM, so a plain `bottom: 24px` would put this on top of it; the offset is
+  `calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px)`, both variables, so
+  it follows the bar if that ever changes. Measured on a 375×812 phone: 15px
+  clear. Stacking is **1020 — under the nav (1030) and under the date panel
+  (1035)**: it must never cover navigation, and never cover a popover somebody
+  opened deliberately. Both doors are disabled together on submit, or a second
+  tap posts the card twice — two job cards for one car on the create page.
+  Guarded by `TheStickySaveTests`.
+
+- **Customer Details is FOLDED SHUT, because this workshop mostly does not
+  record one.** Added 2026-08-13 on the owner's explanation of how the business
+  runs: Owner 1 deals with customers personally and keeps those relationships
+  himself, so **the workshop identifies a car by its registration, not by whose
+  it is.** Most job cards carry no name and no number, and three permanently
+  empty boxes between Vehicle Details and Customer Concerns are three boxes
+  everybody scrolls past on every card. Nothing was removed and nothing was made
+  harder — the same three fields, one tap away — and it is the same judgement
+  that already exempts all three from the empty-box hairline: a box nobody is
+  expected to fill should not be nagging, and should not be taking the screen
+  either.
+  It is a **native `<details>`**, not a JavaScript panel: nothing to wire, so
+  nothing to get wrong, and keyboard plus screen-reader behaviour for free. The
+  load-bearing fact is that **a closed `<details>` still SUBMITS the inputs
+  inside it** — `display: none` has never stopped a form control posting — so
+  folding changed what is on screen and nothing about what is stored;
+  `test_a_closed_section_still_saves_what_is_typed_into_it` is the guard, and if
+  it fails every customer name in the workshop is being wiped on save.
+  **It opens itself whenever there is anything to see**: a card that HAS a name,
+  a number or a note renders open, and so does one whose refused save put an
+  error on one of those fields — otherwise the message hides behind a summary
+  nobody thought to click, and the page says "not saved" while showing nothing
+  wrong. Collapsed-by-default is only right while the section is genuinely
+  empty.
+
+- **`jobcard_form.html` closes its `<form>` before its wrappers, and that
+  ordering is load-bearing.** Fixed 2026-08-13 (was AUD-0093). Two `</div>`s
+  used to sit above the submit block: the HTML parser pops `<form>` when an
+  ancestor `<div>` closes, so the Save button ended up a **sibling** of the
+  form rather than inside it. It still submitted — the parser's form-element
+  pointer associates a control created while a form is open — and *that* is
+  what made it a trap rather than a bug: nothing looked wrong, while
+  `form.querySelectorAll(...)` silently skipped everything past that point. It
+  cost nothing until the empty-box sweep was added, which would have missed any
+  control placed there. Guarded by `TheFormIsWellFormedTests`.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
 variables, the rollback, and what to do when both owners are locked out.
@@ -2338,7 +2691,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (38 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 43 files, **1,140 tests** (re-counted 2026-08-12 after `test_settlement_preflight.py`, `test_car_profiles.py` and `test_staff_login_alert.py` were added; the figures here had gone stale four times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-69 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and **69 on 2026-08-12**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (39 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 44 files, **1,217 tests** (re-counted 2026-08-13 after `test_jobcard_form_ux.py` was added; the figures here had gone stale four times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-69 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and **69 on 2026-08-12**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

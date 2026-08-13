@@ -264,6 +264,13 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
             'mileage',
             'customer_name',
             'customer_contact',
+            # For the workshop, not the customer — see JobCard.notes. Sits with
+            # the customer boxes because that is where the thing being noted
+            # usually comes from, and it is one of the three fields deliberately
+            # exempt from the "unfilled box wears a hairline" rule: most cards
+            # have nothing to say here and a permanent red line on an empty box
+            # nobody is meant to fill is how the colour stops being read.
+            'notes',
             'lead_mechanic',
             'car_color',
             'car_color_other',
@@ -273,6 +280,13 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
             # that on the server, because a hidden input is still a posted one).
             'labour_amount',
         ]
+        labels = {
+            # Says out loud what the box is for. The Estimate's identical field
+            # is labelled the same way, deliberately: the two documents reach
+            # one customer days apart and an "internal" box that means something
+            # different on each would be the one place a private line leaks.
+            'notes': 'Internal note (never printed)',
+        }
         widgets = {
             'admitted_date': forms.DateInput(attrs={'type': 'date'}),
             'labour_amount': forms.TextInput(attrs={
@@ -293,11 +307,30 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
                 'autocapitalize': 'characters'
             }),
             'mileage': forms.TextInput(attrs={
-                'placeholder': 'e.g. 50000 or 50k',
+                # The workshop's own wording, on the owner's instruction. Staff
+                # read the figure off the instrument cluster, so the hint names
+                # where to look rather than restating the format.
+                'placeholder': 'Meter 00001',
                 'inputmode': 'numeric'
             }),
+            # ---- `jc-optional`: no hairline when empty -------------------
+            # The marker for "nobody has filled this in" is opt-OUT, and the
+            # opt-out is declared here, on the field, rather than as a list of
+            # names in the template's script. One mechanism, and it sits where
+            # somebody adding a field will see it.
+            #
+            # These three are blank on most cards by the nature of the business —
+            # this workshop takes a name and number on a minority of jobs — so a
+            # mark on them would be permanent, and a mark that is always on is a
+            # mark nobody reads.
+            'customer_name': forms.TextInput(attrs={'class': 'jc-optional'}),
             'customer_contact': forms.NumberInput(attrs={
-                # numeric keypad
+                'class': 'jc-optional',   # numeric keypad comes from the widget
+            }),
+            'notes': forms.TextInput(attrs={
+                'class': 'jc-optional',
+                'placeholder': 'Only the workshop sees this',
+                'maxlength': '255',
             }),
             'car_color_other': forms.TextInput(attrs={
                 'placeholder': 'Specify "Other" color...',
@@ -583,8 +616,15 @@ JobCardSpareFormSet = inlineformset_factory(
             'autocomplete': 'off',
             'placeholder': 'Part Name',
         }),
+        # `jc-optional` — no hairline when empty, on the owner's instruction.
+        # A SHOP spare's quantity is genuinely optional: nothing refuses a save
+        # without it, and the live data is full of rows that never had one. The
+        # INVENTORY quantity deliberately keeps its mark, because there it is
+        # required the moment a product is picked (it is the number that comes
+        # off the shelf) and the save is refused without it. Same word, two
+        # different obligations — and the mark follows the obligation.
         'quantity': forms.TextInput(attrs={
-            'class': 'form-control text-center',
+            'class': 'form-control text-center jc-optional',
             'placeholder': 'Qty'
         }),
         'shop_name': forms.Select(attrs={
@@ -603,13 +643,27 @@ JobCardSpareFormSet = inlineformset_factory(
             'class': 'form-control text-end fw-bold',
             'placeholder': 'Price (₹)'
         }),
+        # Both dates live behind ONE chip in the Dates column — see
+        # `.jc-date-pop` in jobcard_form.html. They stay real, always-posting
+        # inputs; only where they are *shown* changed. Full size rather than
+        # `-sm`, because inside the popover there is room and the Floor tablet
+        # wants the 38px tap target.
+        #
+        # NOT `jc-optional`, on the owner's instruction (2026-08-13): a spare
+        # part is only finished when it has been ordered AND received, so the
+        # pair stays marked until BOTH are filled — half-filled is still
+        # incomplete. The mark is carried by the CHIP, since that is what is on
+        # screen; these two show their own hairline inside the panel, which is
+        # what says WHICH of the two is missing once it is open.
         'ordered_date': forms.DateInput(attrs={
             'type': 'date',
-            'class': 'form-control ordered-date'
+            'class': 'form-control ordered-date',
+            'aria-label': 'Ordered date',
         }),
         'received_date': forms.DateInput(attrs={
             'type': 'date',
-            'class': 'form-control received-date'
+            'class': 'form-control received-date',
+            'aria-label': 'Received date',
         }),
     }
 )

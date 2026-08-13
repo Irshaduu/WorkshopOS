@@ -150,6 +150,21 @@ Three things about the mechanism, none of them obvious:
             colorDots.forEach(d => d.classList.remove('active'));
             const selectedDot = document.querySelector('.color-dot-item[data-value="' + val + '"]');
             if (selectedDot) selectedDot.classList.add('active');
+
+            // Say what was picked, rather than letting each page reach in here.
+            //
+            // Setting `.value` on a field in script fires NO event, so a page
+            // that wants to react to the colour — the Job Card washes its whole
+            // background in it — has nothing to listen for otherwise, and the
+            // alternative is this shared include growing a branch per caller.
+            //
+            // `hex` is whatever the source gave: the swatches report a computed
+            // `rgb(220, 38, 38)` and the native picker reports `#dc2626`.
+            // Normalising is the listener's job, because only the listener knows
+            // what form it needs.
+            document.dispatchEvent(new CustomEvent('carcolour:change', {
+                detail: { value: val, hex: hex }
+            }));
         }
 
         if (hiddenColorInput.value) {

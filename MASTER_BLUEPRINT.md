@@ -119,7 +119,7 @@ erDiagram
 | 11 | **SparePart** | name (unique), created_at | Master list for autocomplete |
 | 12 | **ConcernSolution** | concern (text), created_at | Knowledge base for autocomplete |
 | 13 | **SpareShop** | name (unique), phone, address, is_trashed | Master list of spare parts suppliers |
-| 14 | **JobCard** | bill_number, dates, vehicle info, customer, financials, status flags | **Core entity** — full lifecycle |
+| 14 | **JobCard** | bill_number, dates, vehicle info, customer, **notes**, financials, status flags | **Core entity** — full lifecycle. `notes` (added 2026-08-13, migration `0069_jobcard_notes`) is an internal line for the workshop, declared field-for-field like `Estimate.notes` and **never printed** on the invoice. |
 | 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
 | 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking | Per-job parts, both routes. `source` records which route and is **never inferred** — added 2026-07-30 with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only |
 | 17 | **JobCardLabourItem** | job_card (FK), job_description, ~~amount~~ | What was done. A DESCRIPTION, not a price — the charge for all the work is `JobCard.labour_amount`. `amount` is dormant (pre-2026-08-04 per-line column, summed into the card by migration 0066, no longer written or read). |

@@ -909,6 +909,22 @@ class JobCard(CarColourMixin, models.Model):
     customer_name = models.CharField(max_length=150, db_index=True, blank=True, null=True)
     customer_contact = models.CharField(max_length=20, blank=True, null=True)
 
+    # A line for the workshop's own eyes — "customer says the noise only happens
+    # cold", "do not wash, owner is fussy". Declared exactly like
+    # `Estimate.notes`: same length, same `blank=True` with no `null`, so the two
+    # internal-note boxes behave identically and neither can be NULL-or-empty
+    # depending on which screen wrote it.
+    #
+    # It is NOT printed, and nothing has to be done to keep it that way:
+    # `workshop/invoice.py` builds the customer documents from named fields and
+    # the template reads named fields, so a column nobody references cannot leak
+    # onto a bill. `test_the_internal_note_never_reaches_the_customer` pins that
+    # against the day somebody adds a generic field loop.
+    notes = models.CharField(
+        max_length=255, blank=True,
+        help_text="Internal note — never printed on the customer's bill"
+    )
+
     # Assignment
     lead_mechanic = models.ForeignKey(Mechanic, on_delete=models.SET_NULL, null=True, blank=True, related_name='job_cards', help_text="The main mechanic assigned to this job")
     bulk_payer = models.ForeignKey('BulkPayer', on_delete=models.SET_NULL, null=True, blank=True, related_name='job_cards', help_text="Assigned bulk payer")

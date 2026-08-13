@@ -100,27 +100,889 @@
        declaration in forms.py. Marking the ROW is also more useful here: on the
        parts tables the failing box is one of eight in a line. */
     .jc-row-invalid { background: #fdf2f2 !important; }
+
+    /* ==========================================================
+       THE CAR WEARS ITS OWN COLOUR, BEHIND THE WHOLE FORM
+       ==========================================================
+       The same wash `.cp-card`, `.cd-hero` and `.lr-car` use, at the SAME 8%
+       alpha (`14` as a hex suffix). Copying the alpha rather than picking a new
+       one is the point: a car you can see has to look the same on every screen
+       that shows it, and a second, stronger wash invented here would make this
+       page disagree with Car Profiles about one Red car.
+
+       It is a FIXED layer at z-index -1, not a background on any element:
+       nothing here can move a control, take a click, or change the height of a
+       form that is already several screens long. `body` carries a background
+       COLOUR only (base.html), so a negative z-index paints above that and
+       below every card.
+
+       Both documented exceptions come with it. A car with NO colour recorded
+       gets no wash at all — a slate tint would say "this car is grey", which is
+       a different fact from "nobody wrote it down" — which also means a brand
+       new job card starts clean and takes on its colour as soon as one is
+       picked. And a WHITE car's rail is outlined, or it vanishes against the
+       header it sits on. */
+    /* The rail down the sticky header, from the same CAR_COLOR_HEX map the
+       dashboard stripe, the estimate rows and Car Profiles read. */
+    .jc-head {
+        position: relative;
+        overflow: hidden;
+    }
+    .jc-head::before {
+        content: '';
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 5px;
+        background: var(--jc-accent, var(--color-primary));
+    }
+    .jc-head--white::before {
+        box-shadow: inset -1px 0 0 var(--color-border), inset 1px 0 0 var(--color-border);
+    }
+    .jc-head--unset::before {
+        background: repeating-linear-gradient(-45deg, #e2e8f0 0 3px, #f8fafc 3px 8px);
+    }
+
+    /* ==========================================================
+       AN EMPTY BOX WEARS A HAIRLINE, AND LOSES IT THE MOMENT IT IS FILLED
+       ==========================================================
+       Border COLOUR only — Bootstrap already draws a 1px border on every
+       control, so this recolours the line that is there rather than adding one.
+       No width change (nothing shifts), no fill, no glow: at a glance down the
+       form the unfilled boxes read as a slightly warmer outline, not as a page
+       full of errors. That distinction is the whole reason it can be applied
+       this widely.
+
+       Three boxes are exempt and stay neutral however empty they are —
+       Customer Name, Contact Number and the Internal note. This workshop takes
+       a name and a number on a minority of cards, so marking them would put a
+       permanent mark on boxes nobody is expected to fill, and a mark that is
+       always on is a mark nobody reads.
+
+       It is NOT an error state. `.jc-row-invalid` above is what a refused save
+       looks like, and it paints the row's background, so the two can never be
+       mistaken for each other. */
+    .jc-empty,
+    select.jc-empty { border-color: #eda9a9 !important; }
+
+    /* A settled card is disabled by the Financial Lock, and an empty box on one
+       is nothing anybody is going to fill in — the record is closed. Dropped in
+       CSS rather than by teaching the sweep about the lock, because the lock is
+       applied on a timer (`setTimeout(…, 100)` below) and anything reading that
+       state in script would be racing it. */
+    .jc-empty:disabled { border-color: var(--color-border) !important; }
+
+    /* ==========================================================
+       WHAT YOU TYPED, STILL UNSAVED
+       ==========================================================
+       Two signals for one fact, because they answer different questions. The
+       inset edge on the control answers "where did I change something" while
+       you are looking at the box; the pill in the sticky header answers "is
+       there anything to save at all" from anywhere on a form several screens
+       long, which is the one that stops a card being abandoned half-typed.
+
+       `box-shadow: inset` rather than a border or a left margin — it paints
+       inside the existing box, so a marked control is exactly the same size as
+       an unmarked one and the row cannot shift as you type. Amber, not red:
+       nothing is wrong, it just is not saved yet. */
+    .jc-changed { box-shadow: inset 3px 0 0 0 #f59e0b !important; }
+
+    /* The header itself goes amber, at EVERY width, and this is the signal that
+       actually carries — the pill below is the wording on top of it.
+
+       It has to be the header rather than only a pill because the header is a
+       fixed-width race that the car's NAME must not lose. Measured on a 375px
+       phone: the title had 150px for 240px of "Editing: Audi A4 KL 10 AA 1919"
+       and was already truncating; adding a 79px pill to that flex row cut it to
+       63px, i.e. to "Editing:" and nothing — the same failure the Spare Shop
+       header entry in CLAUDE.md records, where the actions were made to give way
+       before the name. A background colour occupies no width at all, so it
+       cannot take a pixel from anything.
+
+       `!important` because the header sets its background inline (it carries the
+       card's colour rail alongside), and an inline style outranks a class. */
+    .jc-dirty #jcHead {
+        background-color: #fef6e0 !important;
+        box-shadow: inset 0 -2px 0 #fcd34d, 0 .125rem .25rem rgba(0,0,0,.075);
+    }
+
+    .jc-dirty-pill {
+        display: none;
+        align-items: center;
+        gap: 0.35rem;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        border-radius: 999px;
+        padding: 0.1rem 0.6rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    /* The words, only where there is room for them without the name paying.
+       Below 576px the amber header above and the note on the Save button carry
+       it between them — one of them is always on screen, since the header is
+       sticky and the button is where you end up. */
+    @media (min-width: 576px) {
+        .jc-dirty .jc-dirty-pill { display: inline-flex; }
+    }
+
+    .jc-dirty-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #f59e0b;
+        flex: 0 0 auto;
+    }
+
+    /* The submit button says it too, for the one case the pill cannot cover:
+       somebody scrolled to the bottom, where the header is behind them. */
+    /* ==========================================================
+       THE TWO SPARE DATES SHARE ONE CELL
+       ==========================================================
+       They were two full-width columns costing ~300px of a table that already
+       scrolls sideways on the Floor tablet, and they are blank on most rows —
+       `spare_autofill.js` fills them from the Status dropdown, so they are
+       derived far more often than they are typed. Stacked at the small size the
+       pair costs ~150px instead, which buys back a column's worth of scroll for
+       about 28px of row height.
+
+       Both stay real, visible, always-editable inputs. Revealing only the one
+       that matches the current status was considered and dropped: correcting an
+       ordered date on an already-received row would then need the box revealing
+       first, which is logic on the busiest form in the app. */
+    .jc-dates { min-width: 132px; }
+
+    /* The chip. What the column shows when nobody is editing it: one line
+       reading "22/07 → 29/07", or the half of it that exists, or an invitation
+       when neither does. A `type="button"` — inside a form, a bare <button>
+       submits it. */
+    .jc-date-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        width: 100%;
+        min-height: 38px;              /* the Floor tablet's tap target */
+        padding: 0.25rem 0.5rem;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: var(--color-card);
+        color: var(--color-text);
+        font-size: 0.78rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        cursor: pointer;
+        /* Paint and transform only. Never `transition: all` on a control in
+           this codebase — CLAUDE.md records the afternoon that cost. */
+        transition: border-color .15s ease, background-color .15s ease;
+    }
+    .jc-date-chip:hover { border-color: var(--color-primary); }
+    .jc-date-chip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+    .jc-date-chip .bi { color: var(--color-text-muted); font-size: 0.85rem; }
+    .jc-date-chip--empty { color: var(--color-text-muted); }
+    .jc-date-chip[aria-expanded="true"] {
+        border-color: var(--color-primary);
+        background: var(--color-primary-light);
+    }
+
+    /* ==========================================================
+       THE POPOVER IS `position: fixed`, AND THAT IS THE WHOLE TRICK
+       ==========================================================
+       It lives inside a `<td>` inside `.table-responsive`, which is
+       `overflow-x: auto` — the exact shape that clips an absolutely-positioned
+       panel, invisibly and only sometimes, which is the `.cb-list` trap
+       CLAUDE.md already records an afternoon for. `fixed` is not clipped by an
+       ancestor's overflow at all; it is only trapped by an ancestor with a
+       `transform` / `filter` / `will-change` / `contain`, and there is none
+       between this cell and the root — measured, not assumed, before this was
+       built.
+
+       Being fixed also means it does not participate in layout, so opening it
+       cannot move a single row of the job card. That was the requirement.
+
+       The inputs inside it are the REAL form fields and post exactly as before;
+       a hidden panel still submits its values. Nothing about the data changed —
+       only where the boxes are shown. */
+    .jc-date-pop {
+        position: fixed;
+        z-index: 1035;                 /* over the sticky header (100), under
+                                          Bootstrap's modals (1055) */
+        width: 226px;
+        padding: 0.7rem;
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, .16);
+    }
+    .jc-date-pop[hidden] { display: none; }
+    .jc-date-pop label {
+        display: block;
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: var(--color-text-muted);
+        margin-bottom: 0.15rem;
+    }
+    .jc-date-pop .jc-date-field + .jc-date-field { margin-top: 0.55rem; }
+    .jc-date-pop input[type="date"] { font-size: 0.82rem; }
+    .jc-date-done {
+        width: 100%;
+        margin-top: 0.7rem;
+        min-height: 34px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--color-primary);
+        color: #fff;
+        font-size: 0.78rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    /* ==========================================================
+       SECTION HEADINGS — one shape, five sections
+       ==========================================================
+       They were five hand-rolled `d-flex` headers whose only common element was
+       a blue `<h6>`, and the Customer block had no heading at all — so the eye
+       had nothing to count down the page by. One rule now: a tinted glyph tile,
+       the name, the action on the right. The glyph is what makes a section
+       findable while scrolling a form this long; the tile is what stops the
+       glyph reading as decoration on the text beside it. */
+    .jc-sec-head {
+        /* The band's colour, and the note below says where it comes from and
+           why it is one colour rather than six. Kept as a variable because the
+           Add button's pressed state paints its text in it. */
+        --jc-band: #2a70da;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        background: var(--jc-band);
+        padding: 0.7rem 1rem;
+        border-bottom: 0;
+    }
+    .jc-sec-title {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        min-width: 0;                 /* lets the name truncate, not overflow */
+    }
+    /* ==========================================================
+       ONE BAND COLOUR, TAKEN FROM THE NAV BAR
+       ==========================================================
+       `#2a70da` is the nav bar's own gradient sampled at 84% — the bar is
+       `linear-gradient(90deg, #10275c 0%, #1e4fb8 45%, #2f7de8 100%)`
+       (`--nav-blue-*` in base.html), so this is the colour the page already
+       wears at the top, not a new one.
+
+       A RAMP was built first, on the owner's idea: each section a step further
+       left along that gradient, so the colour said how far down the form you
+       were. It worked and it was measured, and the owner looked at it and chose
+       one flat colour instead — which is the better call on this page. The
+       sections are not a scale of anything; a car's concerns are not "more"
+       than its vehicle details. Six shades invited being read as a ranking, and
+       the darkest bands drew the eye hardest at the bottom of the form where
+       the least urgent sections live.
+
+       One colour also removes the constraint the ramp imposed: its lightest
+       step measured 4.02:1 against white, under the 4.5:1 normal text needs,
+       which is why the heading had to be pushed past 18.66px to reach WCAG's
+       large-text rule. At 84% the contrast is **4.74:1**, which clears AA at
+       any size — so the heading size below is now a comfort choice rather than
+       a contrast requirement, and it is kept because it reads better.
+
+       EVERYTHING ON THE BAND IS WHITE OR TRANSLUCENT WHITE. That was needed
+       when the band could be dark navy and it is kept now: the Add buttons
+       carried `btn-outline-primary`, which is blue on blue and barely visible
+       here either. Translucent white takes its contrast from whatever is
+       behind it, so it survives the band colour being changed again.
+
+       `test_the_band_colour_comes_from_the_nav_bar` fails if the nav's stops
+       change, which is the reminder to resample this one. */
+
+    /* The symbol keeps its tile so it stays an object rather than dissolving
+       into the band — a bare white glyph on blue reads as part of the text.
+       Translucent white, so one rule works on all six steps. */
+    .jc-sec-icon {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, .20);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .28);
+        color: #fff;
+        font-size: 1rem;
+    }
+
+    /* The Add buttons live ON the band now, so they cannot stay
+       `btn-outline-primary`. Specificity beats Bootstrap's own `.btn-outline-*`
+       without `!important` by naming both. */
+    .jc-sec-head .jc-add,
+    .jc-sec-head .jc-add:focus {
+        color: #fff;
+        border-color: rgba(255, 255, 255, .55);
+        background: rgba(255, 255, 255, .14);
+    }
+    .jc-sec-head .jc-add:active {
+        background: #fff;
+        border-color: #fff;
+        color: var(--jc-band, var(--color-primary));
+    }
+    @media (hover: hover) {
+        .jc-sec-head .jc-add:hover {
+            background: rgba(255, 255, 255, .26);
+            border-color: #fff;
+            color: #fff;
+        }
+    }
+    /* The sweep on a band button is white light, not blue. */
+    .jc-sec-head .jc-add::after {
+        background: linear-gradient(100deg,
+                    transparent 25%, rgba(255, 255, 255, .40) 50%, transparent 75%);
+    }
+    /* ==========================================================
+       THE FIELD LABELS
+       ==========================================================
+       Car Brand, Car Model, Registration Number and the rest, on the owner's
+       instruction: bold, at the SAME colour and size they already had. They
+       were `form-label small text-muted` at weight 400 — which, above a box
+       whose placeholder is deliberately quiet (see the top of this file), left
+       the label and the hint reading as the same kind of text. Weight is the
+       one axis that separates them without touching either of the two things
+       the owner asked to keep.
+
+       600, not 700: these labels sit above every box on the busiest form in
+       the app, and the section band above them is already 700. At 700 the
+       labels compete with the band for the same voice; at 600 they read as
+       bold against the 400 default and stay subordinate to the heading. */
+    #jobcardForm .form-label { font-weight: 600; }
+
+    .jc-sec-name {
+        margin: 0;
+        /* 18.9px, up from 0.95rem — and the exact size is load-bearing, not
+           taste. White on the FIRST band measures 4.02:1, which is under the
+           4.5:1 that normal-size text needs. Rather than darken that band —
+           which would stop it being the nav bar's right corner, the whole point
+           of the ramp — the text is lifted past 18.66px bold, where the
+           requirement becomes 3:1 and 4.02 clears it comfortably. Every band
+           below is 4.7:1 and up, so this is decided entirely by the lightest.
+           Bigger section headings suit a filled band anyway. */
+        font-size: 1.18rem;
+        font-weight: 700;
+        color: #fff;
+        letter-spacing: -0.01em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* ==========================================================
+       A FOLDED SECTION
+       ==========================================================
+       A native `<details>`, styled to be indistinguishable from the headings
+       beside it except for the chevron — the only difference anybody needs to
+       notice is that this one opens. The default triangle marker is removed in
+       both engines' spellings; missing either leaves a stray glyph in front of
+       the icon tile on one browser and not the other. */
+    .jc-fold > summary { cursor: pointer; list-style: none; }
+    .jc-fold > summary::-webkit-details-marker { display: none; }
+    .jc-fold > summary:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+
+    /* Says the quiet part out loud: this is not a box anybody has forgotten.
+       Same reasoning that exempts these three fields from the hairline. */
+    .jc-fold-note {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        /* On the band, like everything else on it. */
+        color: #fff;
+        background: rgba(255, 255, 255, .22);
+        border-radius: 999px;
+        padding: 1px 8px;
+        flex: 0 0 auto;
+    }
+
+    /* Rotation only — a transform, so opening a section cannot reflow the
+       header it sits in. */
+    .jc-fold-chevron {
+        color: #fff;
+        transition: transform .15s ease;
+        flex: 0 0 auto;
+    }
+    .jc-fold[open] > summary .jc-fold-chevron { transform: rotate(180deg); }
+
+    /* ==========================================================
+       BUTTON FEEDBACK — built for a FINGER, not a mouse pointer
+       ==========================================================
+       These four sections are worked on the Floor tablet, so hover is the wrong
+       thing to design around twice over: it never fires on a touch screen, and
+       where it does fire it STICKS — a tapped button keeps its hover paint
+       until something else is tapped, so the last button pressed sits there
+       looking half-pressed. Every hover rule below is therefore behind
+       `@media (hover: hover)` and reaches a mouse only.
+
+       What a finger actually gets is `:active`, which fires on touch and
+       releases with the finger, plus — for the Add buttons — a mark on the row
+       that appeared, because on a tablet the button is at the top of the
+       section and the new row is below the fold.
+
+       Everything animates `transform`, `box-shadow` or `background-color`. All
+       three are composited or paint-only: they cannot reflow, so a control
+       reacting to a press can never nudge the form under the finger aiming at
+       it. A width, padding or margin animation here would. */
+    .jc-add {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        /* 38px matches every form control on the page, so the header's button
+           and the boxes under it are the same height. `btn-sm` alone rendered
+           31px — under the ~44px touch target CLAUDE.md sets for the Floor
+           tablet, which is the device these four buttons are actually tapped
+           on. */
+        min-height: 38px;
+        padding-inline: 0.7rem;
+        white-space: nowrap;
+        transition: transform .12s ease, box-shadow .12s ease,
+                    background-color .12s ease, color .12s ease;
+    }
+
+    /* A touch device gets the full target. Keyed on `hover: none` rather than a
+       width breakpoint: it is the input method that decides how big a target
+       needs to be, and the Floor tablet is wider than plenty of laptops. */
+    @media (hover: none) {
+        .jc-add { min-height: 44px; }
+        .jc-date-chip { min-height: 44px; }
+    }
+
+    /* Below 576px the Add button gives up its WORD, not the section its NAME.
+       Measured on a 375px phone: "Customer Concerns" needs 169px and had 134,
+       because "＋ Add Concern" was taking 124. The glyph alone is 44px and a
+       "+" in a section header says what it does; the name is the one thing on
+       the band that cannot be guessed, so it is the one thing that keeps its
+       space. This is the same call the Spare Shop header records — a header
+       gives up its actions before it gives up its name.
+
+       `aria-label` on the button carries the wording for anyone who cannot see
+       the glyph, which is this codebase's rule for any control that can become
+       icon-only. */
+    @media (max-width: 575.98px) {
+        .jc-add-label { display: none; }
+        /* `min-width` as well as the `min-height` the touch query already sets:
+           dropping the word left a 32px-wide button, and a target is only as
+           big as its smaller side. */
+        .jc-add {
+            padding-inline: 0.5rem;
+            min-width: 44px;
+            justify-content: center;
+            gap: 0;
+        }
+    }
+    /* The press. Fires under a finger and under a mouse alike, and it is the
+       ONLY feedback a tablet gets before the row appears — so it is a real
+       squash (0.94) rather than the token 0.97 a pointer would need, and it
+       fills in, which reads at arm's length where a 1px shadow does not. */
+    .jc-add:active {
+        transform: scale(.94);
+        background-color: var(--color-primary);
+        color: #fff;
+        box-shadow: none;
+    }
+
+    /* Mouse only — see the note above about sticky hover on a touch screen. */
+    @media (hover: hover) {
+        .jc-add:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(37, 99, 235, .18); }
+    }
+
+    /* The row that just appeared, marked where the eye is not. Tapping "+ Add
+       Spare" on a tablet adds a row below the fold and the button is at the top
+       of the section, so without this the strongest signal that anything
+       happened is a scrollbar changing length. `background-color` is paint —
+       the row does not move, it just lights up and fades. */
+    @keyframes jc-rowin {
+        from { background-color: rgba(37, 99, 235, .18); }
+        to   { background-color: transparent; }
+    }
+    .jc-row-new { animation: jc-rowin 1.1s ease-out; }
+
+    /* ==========================================================
+       THE PRIMARY ACTION IS THE DARKEST THING ON THE PAGE
+       ==========================================================
+       On an edit, `btn-primary` blue put the Save button in a page that is now
+       mostly blue — a blue nav, six blue bands, a blue sticky button — and the
+       one control that matters most stopped being the loudest. It is
+       `--nav-blue-1` (#10275c) instead: the nav bar's own left corner, so it is
+       not a new hue and carries no new meaning, and it is far darker than the
+       #2a70da bands, which makes it the heaviest element on screen.
+
+       Every other colour on this page is already spoken for, which is why the
+       answer is a darker blue rather than a different one: **amber** is the
+       unsaved language (header, pill, field edges), **red** is the Financial
+       Lock and every delete, **green** is a NEW card, and **#2a70da** is a
+       section band. A fifth hue would have to mean something, and this button
+       does not mean anything new — it commits what is already on screen.
+
+       Set through `--jc-action` rather than a Bootstrap colour class, so the
+       big button and the sticky one cannot end up different colours: one
+       variable, two users. */
+    .jc-submit,
+    .jc-fab {
+        /* EDIT — amber, on the owner's instruction. It was the nav bar's deep
+           navy, which solved the "everything is blue" problem by being a
+           darker blue and still read as one more blue thing. Amber is the only
+           colour on this page that is already about *your changes* — the
+           header goes amber, the pill is amber, every box you touched wears an
+           amber edge — so the button that commits them wearing it is the page
+           agreeing with itself.
+           Amber needs DARK text: white on #f59e0b is 2.2:1 and unreadable,
+           `#1e293b` on it is 6.9:1. */
+        --jc-action: #f59e0b;
+        --jc-action-hi: #d97706;
+        --jc-action-ink: #1e293b;
+    }
+    .jc-submit--new,
+    .jc-fab--new {
+        --jc-action: #16a34a;         /* create — something comes into existence */
+        --jc-action-hi: #15803d;
+        --jc-action-ink: #fff;
+    }
+
+    /* NO SHADOW on either button, on the owner's instruction. The border light
+       below is what says "unsaved" now; a drop shadow underneath it was a
+       second, duller version of the same message, and it made the buttons look
+       like they were floating off a page nothing else floats off. */
+    .jc-submit {
+        position: relative;
+        background: var(--jc-action);
+        border-color: var(--jc-action);
+        color: var(--jc-action-ink);
+        box-shadow: none;
+        transition: transform .12s ease, background-color .12s ease, filter .12s ease;
+    }
+    .jc-submit:active:not(:disabled) { transform: scale(.985); }
+    @media (hover: hover) {
+        .jc-submit:hover:not(:disabled) {
+            transform: translateY(-1px);
+            background: var(--jc-action-hi);
+            border-color: var(--jc-action-hi);
+            color: var(--jc-action-ink);
+        }
+    }
+
+    /* ==========================================================
+       THE SWEEP — a light travelling across the button, on PRESS only
+       ==========================================================
+       The owner asked for a sliding effect and glowing buttons, and this is the
+       version that is safe on a form people work all day.
+
+       It is a `transform: translateX` on a pseudo-element: composited on the
+       GPU, so it costs no layout and no repaint of anything around it, and it
+       cannot move the button or the rows near it. `overflow: hidden` keeps the
+       light inside the button's own corners.
+
+       **Fired by a CLASS, not by `:active`.** A tap releases in ~80ms and
+       `:active` goes with it, so an animation hung off `:active` is cut off
+       halfway on the exact device this is for. The class is added on
+       `pointerdown` and removed on `animationend`, so the sweep always
+       completes however briefly the finger was down.
+
+       What was deliberately NOT built: an idle loop. A button that shimmers on
+       its own is noise on a screen staff stare at for hours, and it costs
+       battery on the Floor tablet for nothing. The one exception is below. */
+    /* `overflow: hidden` keeps both the sweep and the border light inside the
+       button's own corners. The sticky button is in this list too — the press
+       handler already covered it, but it had no `::after` to animate, so the
+       one control most likely to be tapped was the one with no press feedback. */
+    .jc-add, .jc-submit, .jc-fab { overflow: hidden; position: relative; }
+    .jc-add::after, .jc-submit::after, .jc-fab::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(100deg,
+                    transparent 25%, rgba(255, 255, 255, .38) 50%, transparent 75%);
+        transform: translateX(-110%);
+    }
+    .jc-sweep::after { animation: jc-sweep .55s ease-out; }
+    @keyframes jc-sweep {
+        from { transform: translateX(-110%); }
+        to   { transform: translateX(110%); }
+    }
+    /* The Add buttons are outlined, so a white sweep barely registers on them;
+       theirs is the brand blue instead. */
+    .jc-add::after {
+        background: linear-gradient(100deg,
+                    transparent 25%, rgba(37, 99, 235, .22) 50%, transparent 75%);
+    }
+
+    /* ==========================================================
+       THE ONE LOOP THAT EARNS ITS PLACE
+       ==========================================================
+       The Save button breathes ONLY while there is unsaved work — a state that
+       is temporary, that the person can end, and that is worth their attention
+       precisely because leaving this page loses it. It stops the moment the
+       card is saved, so it can never become wallpaper.
+
+       `box-shadow` only: paint, never layout. Slow and shallow on purpose — a
+       fast or wide pulse on the screen where money is entered is a distraction,
+       not a signal. Colour-matched, so the green Save glows green. */
+    /* ==========================================================
+       UNSAVED: A LIGHT TRAVELS THE BUTTON'S BORDER
+       ==========================================================
+       The owner's idea, replacing a pulsing shadow — "looks like the button has
+       life". It is better than the pulse for a reason worth stating: a pulse
+       changes the button's apparent SIZE, so at the bottom of a long form the
+       eye keeps being pulled back to something growing and shrinking. A light
+       running the edge is movement without any change of weight.
+
+       AMBER, because unsaved work is amber everywhere else on this page — the
+       sticky header goes amber, the pill is amber, every box you touched wears
+       an amber edge. It is also why the light is not the button's own colour: a
+       green light on the green create button would just be the button
+       breathing, and would say nothing.
+
+       Built as PROGRESSIVE ENHANCEMENT, and that is the load-bearing part. The
+       ring needs `mask-composite` (Safari 15.4+) and a registered `@property`
+       for the angle to interpolate (Safari 16.4+). Both are likely on the
+       owners' phones and neither is guaranteed, so the amber halo below is
+       declared unconditionally and the light is added on top only where it can
+       actually be drawn. An old browser loses the animation and still says
+       "unsaved"; it never shows a broken ring and never shows nothing. */
+    @property --jc-orbit {
+        syntax: '<angle>';
+        initial-value: 0deg;
+        inherits: false;
+    }
+    @keyframes jc-orbit { to { --jc-orbit: 360deg; } }
+
+    /* The floor for a browser that cannot draw the ring: a still 2px outline in
+       the same white the light is made of. No shadow — the owner asked for
+       none — so this is an inset, which paints inside the button and therefore
+       cannot change its size either.
+
+       It matters that SOMETHING is here. The ring needs `mask-composite`
+       (Safari 15.4+) and a registered `@property` for the angle to interpolate
+       (Safari 16.4+); both are likely on the owners' phones and neither is
+       guaranteed, and a browser without them would otherwise show no unsaved
+       signal on the button at all. */
+    .jc-dirty .jc-submit:not(:disabled),
+    .jc-dirty .jc-fab:not(:disabled) {
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .75);
+    }
+
+    @supports ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
+        /* The ring replaces the static outline where it can be drawn. */
+        .jc-dirty .jc-submit:not(:disabled),
+        .jc-dirty .jc-fab:not(:disabled) { box-shadow: none; }
+
+        .jc-dirty .jc-submit:not(:disabled)::before,
+        .jc-dirty .jc-fab:not(:disabled)::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            /* The two masks cancel everything but a 2px ring at the edge, which
+               is what confines the gradient to the BORDER instead of washing
+               it across the button's face. */
+            padding: 2px;
+            /* WHITE, not amber. The edit button is amber now, so an amber
+               light on it would be invisible — and white reads on the green
+               create button just as well, so one gradient serves both. The
+               "unsaved" meaning is still carried in amber by the header, the
+               pill and every box you touched; this is the movement. */
+            background: conic-gradient(from var(--jc-orbit),
+                        transparent 0 56%,
+                        rgba(255, 255, 255, .35) 68%,
+                        rgba(255, 255, 255, .85) 80%,
+                        #fff 87%,
+                        rgba(255, 255, 255, .35) 94%,
+                        transparent 100%);
+            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            -webkit-mask-composite: xor;
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask-composite: exclude;
+            /* The ANGLE turns, not the element — rotating the element would
+               turn the ring with it and skew a wide rectangle. */
+            animation: jc-orbit 2.8s linear infinite;
+            pointer-events: none;
+        }
+    }
+
+    /* ==========================================================
+       THE STICKY SAVE — present only when there is something to save
+       ==========================================================
+       The owner's ask: a round button in the bottom-right so nobody has to
+       scroll to the foot of a form several screens long, with the big button
+       kept. The condition was "no interruption to the total job card view", and
+       the answer to that is not a smaller button — it is **showing it only
+       while the card is dirty**. A button that is always there is permanent
+       furniture over the form; one that appears the moment you type and leaves
+       when you save is never in the way of anybody who has nothing to save.
+       It also cannot be pressed pointlessly, because there is nothing to
+       write when it is not on screen.
+
+       Three things about where it sits are load-bearing.
+
+       (a) **It is INSIDE the `<form>`**, which is not cosmetic. The Financial
+       Lock disables controls with `form.querySelectorAll(...)`, so a floating
+       button outside the form would be the one control the lock never reached —
+       a settled, locked job card, saveable from a button in the corner. Being
+       inside means it is disabled with everything else, for free.
+
+       (b) **It clears the phone's nav bar.** On ≤640px that bar renders at the
+       BOTTOM of the screen (see base.html), so a plain `bottom: 24px` would put
+       this button on top of it. Offset by `--nav-h` plus the iPhone home-
+       indicator inset, both of which are already variables, so this follows the
+       bar if it ever changes height.
+
+       (c) **z-index 1020: under the nav (1030) and under the date panel
+       (1035).** It must never cover navigation, and it must never cover a
+       popover the person opened deliberately. */
+    .jc-fab {
+        display: none;
+        position: fixed;
+        right: 18px;
+        bottom: 24px;
+        z-index: 1020;
+        width: 58px;
+        height: 58px;
+        border: 0;
+        border-radius: 50%;
+        /* Same `--jc-action` the big button reads, so the two can never end up
+           different colours. */
+        background: var(--jc-action);
+        color: var(--jc-action-ink);
+        font-size: 1.5rem;
+        align-items: center;
+        justify-content: center;
+        /* No shadow, like the big button — see the note there. */
+        box-shadow: none;
+        transition: transform .12s ease, background-color .12s ease;
+    }
+    /* BOTH animations on one declaration. They were on two rules, and the more
+       specific one silently replaced the other — `animation` is a single
+       property, not a list you can add to from elsewhere, so the entrance was
+       being thrown away by the glow. */
+    /* Only the entrance lives here now. The unsaved signal moved to the border
+       light on `::before`, which is a separate property and cannot be clobbered
+       by this one — the reason the two had to share a declaration is gone. */
+    .jc-dirty .jc-fab { display: inline-flex; animation: jc-fab-in .18s ease-out; }
+    .jc-fab:active { transform: scale(.92); }
+    @media (hover: hover) {
+        .jc-fab:hover {
+            transform: translateY(-2px);
+            background: var(--jc-action-hi);
+        }
+    }
+    @keyframes jc-fab-in {
+        from { transform: scale(.6); opacity: 0; }
+        to   { transform: scale(1); opacity: 1; }
+    }
+    /* Above the bottom bar on a phone, and above the home indicator with it. */
+    @media (max-width: 640px) {
+        .jc-fab { bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 16px); }
+    }
+
+    /* The browser's own grey tap flash fights the `:active` paint above and
+       lands a beat later. Ours replaces it. */
+    .jc-add, .jc-submit, .jc-date-chip, .jc-fold > summary {
+        -webkit-tap-highlight-color: rgba(37, 99, 235, .12);
+    }
+    .jc-date-chip:active { background: var(--color-primary-light); border-color: var(--color-primary); }
+
+    /* Creating a card and correcting one still look different — green against
+       the deep navy above — but both colours now come from `--jc-action`,
+       declared once and read by the big button and the sticky one alike. The
+       glyph and the wording carry the difference too; colour is never the only
+       carrier of it. */
+
+    /* The submitting state. It exists to stop a second press creating a second
+       job card, so it must be visible enough that nobody presses again. */
+    .jc-submit:disabled { filter: saturate(.6); cursor: progress; }
+    .jc-submit .jc-spin { display: none; }
+    .jc-submit.is-working .jc-spin { display: inline-block; }
+    .jc-submit.is-working .jc-submit-icon { display: none; }
+    .jc-spin {
+        width: 15px;
+        height: 15px;
+        border: 2px solid rgba(255, 255, 255, .45);
+        border-top-color: #fff;
+        border-radius: 50%;
+        vertical-align: -2px;
+        animation: jc-spin .7s linear infinite;
+    }
+    @keyframes jc-spin { to { transform: rotate(360deg); } }
+
+    /* Somebody who has asked not to see motion gets none of it. */
+    @media (prefers-reduced-motion: reduce) {
+        .jc-add, .jc-submit, .jc-fold-chevron { transition: none; }
+        .jc-add:hover, .jc-add:active,
+        .jc-submit:hover, .jc-submit:active { transform: none; }
+        /* The sweep and the travelling border light are the two purely-motion
+           signals here, and both have a still equivalent already on screen: the
+           press still fills in, and the unsaved state still shows an amber
+           header, a pill, a line on the button and the amber halo — the light
+           stops moving, the halo does not go away. */
+        .jc-sweep::after { animation: none; }
+        .jc-dirty .jc-submit:not(:disabled)::before,
+        .jc-dirty .jc-fab:not(:disabled)::before { animation: none; }
+        .jc-dirty .jc-fab { animation: none; }
+        .jc-fab:hover, .jc-fab:active { transform: none; }
+        /* The colour still changes — that is the feedback. Only the movement
+           goes, and the row flash becomes a single quiet step rather than a
+           fade. */
+        .jc-row-new { animation: none; background-color: rgba(37, 99, 235, .10); }
+        .jc-spin { animation-duration: 2s; }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+{% comment %}
+The car's own colour, read by `.jc-head` — the rail down the sticky header. Set
+on a wrapper rather than on the header itself so the picker has exactly one
+place to update when a colour is chosen.
+
+A full-page WASH in the car's colour was built here and removed on the owner's
+instruction: on a form this long the tint was behind every section for several
+screens, which is a lot of colour to carry for a fact the header rail and the
+colour dot beside the registration already state. The rail stays because it is
+one strip at the top, not the whole screen.
+
+Empty on a card with no colour recorded, which keeps the documented rule: a
+hatched rail is "nobody wrote it down", and a slate one would be "this car is
+grey".
+{% endcomment %}
+<div id="jcColour"{% if jobcard.car_color %} style="--jc-accent: {{ jobcard.get_car_color_hex }};"{% endif %}>
 <div class="row justify-content-center">
     <div class="col-lg-18">
 
         <!-- Fixed Compact Header -->
-        <div class="position-sticky shadow-sm"
-            style="top: var(--sticky-top); z-index: 100; padding: 0.25rem 1rem; border-radius: 0 0 8px 8px; margin-bottom: 1rem; background-color: var(--color-primary-light);">
-            <div class="d-flex justify-content-between align-items-center">
+        <div class="position-sticky shadow-sm jc-head{% if jobcard.car_color == 'White' %} jc-head--white{% endif %}{% if not jobcard.car_color %} jc-head--unset{% endif %}"
+            id="jcHead"
+            style="top: var(--sticky-top); z-index: 100; padding: 0.25rem 1rem 0.25rem 1.1rem; border-radius: 0 0 8px 8px; margin-bottom: 1rem; background-color: var(--color-primary-light);">
+            <div class="d-flex justify-content-between align-items-center gap-2">
                 {% if is_edit %}
                 <span class="text-truncate" style="font-size: 0.9rem;">
                     <span class="text-primary fw-bold">Editing:</span>
-                    <span id="header-color-dot" class="d-inline-block rounded-circle me-1" 
+                    <span id="header-color-dot" class="d-inline-block rounded-circle me-1"
                           style="width: 12px; height: 12px; background-color: {{ jobcard.get_car_color_hex }}; vertical-align: middle; border: 1px solid rgba(0,0,0,0.1);"></span>
                     <strong>{{ jobcard.brand_name }} {{ jobcard.model_name }}</strong>
                     <span class="text-primary fw-bold ms-2">{{ jobcard.registration_number }}</span>
                 </span>
-                
-                <div class="d-flex gap-2">
+
+                <div class="d-flex gap-2 align-items-center flex-shrink-0">
+                    {% comment %}
+                    Only ever visible once something has actually been typed —
+                    `.jc-dirty-pill` is display:none until `jc-dirty` lands on
+                    the body. It sits in the sticky header on purpose: that is
+                    the one strip of this page still on screen wherever you have
+                    scrolled to.
+                    {% endcomment %}
+                    <span class="jc-dirty-pill"><span class="jc-dirty-dot"></span>Unsaved</span>
                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                     <a href="{% url 'car_profile_detail' jobcard.registration_number %}"
                         class="btn btn-sm btn-outline-primary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">
@@ -134,7 +996,7 @@
                 </div>
                 {% else %}
                 <strong style="font-size: 0.9rem;">New Job Card</strong>
-                <span></span>
+                <span class="jc-dirty-pill"><span class="jc-dirty-dot"></span>Unsaved</span>
                 {% endif %}
             </div>
         </div>
@@ -259,8 +1121,11 @@
             <!-- SECTION 1: VEHICLE & DATES -->
             <!-- ========================================== -->
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-white py-3">
-                    <h6 class="mb-0 text-primary fw-bold">Vehicle Details</h6>
+                <div class="card-header jc-sec-head">
+                    <div class="jc-sec-title">
+                        <span class="jc-sec-icon"><i class="bi bi-car-front-fill"></i></span>
+                        <h6 class="jc-sec-name">Vehicle Details</h6>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
@@ -351,7 +1216,47 @@
             <!-- ========================================== -->
             <!-- SECTION 2: CUSTOMER INFO -->
             <!-- ========================================== -->
-            <div class="card shadow-sm mb-4 border-0">
+            {% comment %}
+            ==================================================================
+            CUSTOMER DETAILS — folded away, because this workshop rarely fills it
+            ==================================================================
+            On the owner's instruction, and the reason is how the business
+            actually runs: Owner 1 deals with customers personally and keeps
+            those relationships himself, so the workshop identifies a car by its
+            REGISTRATION, not by whose it is. Most job cards therefore carry no
+            name and no number at all — and a block of three permanently empty
+            boxes sitting between Vehicle Details and Customer Concerns is three
+            boxes everybody scrolls past on every card.
+
+            Nothing was removed and nothing was made harder: the same three
+            fields, in the same order, one tap away. This is the same judgement
+            that already exempts all three from the empty-box hairline — a box
+            nobody is expected to fill should not be nagging, and it should not
+            be taking up the screen either.
+
+            It is a native `<details>`, not a JavaScript panel. No wiring to get
+            wrong, keyboard and screen-reader behaviour for free, and — the part
+            that matters — a closed `<details>` still SUBMITS the inputs inside
+            it, because `display: none` has never stopped a form control
+            posting. Folding it changed what is on screen and nothing else.
+
+            **It opens itself whenever there is anything to see.** A card that
+            HAS a customer name shows it, and a refused save that put an error on
+            one of these fields opens so the message is not hidden behind a
+            summary nobody thought to click. Collapsed-by-default is only right
+            while the section is genuinely empty.
+            ==================================================================
+            {% endcomment %}
+            <details class="card shadow-sm mb-4 border-0 jc-fold"
+                     {% if form.customer_name.value or form.customer_contact.value or form.notes.value or form.customer_name.errors or form.customer_contact.errors or form.notes.errors %}open{% endif %}>
+                <summary class="card-header jc-sec-head jc-fold-head">
+                    <div class="jc-sec-title">
+                        <span class="jc-sec-icon"><i class="bi bi-person-vcard-fill"></i></span>
+                        <h6 class="jc-sec-name">Customer Details</h6>
+                        <span class="jc-fold-note">optional</span>
+                    </div>
+                    <i class="bi bi-chevron-down jc-fold-chevron"></i>
+                </summary>
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-12 col-sm-6">
@@ -366,20 +1271,48 @@
 {% if form.customer_contact.errors %}<div class="text-danger small mt-1">{{ form.customer_contact.errors|join:", " }}</div>{% endif %}
 
                         </div>
+
+                        {% comment %}
+                        The workshop's own line — "noise only when cold", "owner
+                        is fussy, do not wash". Full width under the two customer
+                        boxes rather than beside one of them: it is a sentence,
+                        not a value, and half a row is not enough of it to read
+                        back later.
+
+                        The label says "never printed" out loud because that is
+                        the only thing anyone needs to trust before writing
+                        something frank in it. It is true by construction —
+                        `workshop/invoice.py` and the invoice template both read
+                        named fields, so a column nobody references cannot reach
+                        a customer — and `test_the_internal_note_never_reaches_the_customer`
+                        keeps it true.
+                        {% endcomment %}
+                        <div class="col-12">
+                            <label for="{{ form.notes.id_for_label }}" class="form-label small text-muted">
+                                <i class="bi bi-sticky"></i> Internal note
+                                <span class="text-secondary fw-normal">— never printed on the bill</span>
+                            </label>
+                            {{ form.notes }}
+{% if form.notes.errors %}<div class="text-danger small mt-1">{{ form.notes.errors|join:", " }}</div>{% endif %}
+
+                        </div>
                     </div>
 
                 </div>
-            </div>
+            </details>
 
 
             <!-- ========================================== -->
             <!-- SECTION 3: CONCERNS (Dynamic Formset) -->
             <!-- ========================================== -->
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 text-primary fw-bold">Customer Concerns</h6>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="add-concern-btn">
-                        + Add Concern
+                <div class="card-header jc-sec-head">
+                    <div class="jc-sec-title">
+                        <span class="jc-sec-icon"><i class="bi bi-chat-left-text-fill"></i></span>
+                        <h6 class="jc-sec-name">Customer Concerns</h6>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary jc-add flex-shrink-0" id="add-concern-btn" aria-label="Add Concern">
+                        <i class="bi bi-plus-lg"></i><span class="jc-add-label">Add Concern</span>
                     </button>
                 </div>
                 <div class="card-body p-0">
@@ -427,19 +1360,30 @@
             pins it server-side regardless — the template is not the guard.
             {% endcomment %}
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 text-primary fw-bold">Jobs (Labour)</h6>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="add-labour-btn">
-                        + Add Job
+                <div class="card-header jc-sec-head">
+                    <div class="jc-sec-title">
+                        <span class="jc-sec-icon"><i class="bi bi-tools"></i></span>
+                        <h6 class="jc-sec-name">Jobs (Labour)</h6>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary jc-add flex-shrink-0" id="add-labour-btn" aria-label="Add Job">
+                        <i class="bi bi-plus-lg"></i><span class="jc-add-label">Add Job</span>
                     </button>
                 </div>
 
                 <div class="card-body p-0">
                     <div class="swipe-container">
-                        <!-- HEADER -->
-                        <div class="swipe-row swipe-header">
-                            <div class="swipe-cell col-job">Job Performed</div>
-                        </div>
+                        {% comment %}
+                        No column heading here. It read "Job Performed" directly
+                        under a card titled "Jobs (Labour)", over a single column
+                        whose own boxes are placeholdered "Job Performed" — the
+                        same words three times in 60px of vertical space. A
+                        heading earns its place by telling one column from
+                        another, and there is only one column.
+
+                        Inventory Items and Spare Parts keep theirs: four and
+                        seven columns respectively, where the heading is the only
+                        thing saying which box is the price and which is the qty.
+                        {% endcomment %}
 
                         <!-- LIST -->
                         {{ labour_formset.management_form }}
@@ -495,18 +1439,29 @@
             makes a draw survive a product being renamed.
             {% endcomment %}
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-0 text-primary fw-bold">Inventory Items</h6>
-                        {% comment %}
-                        Says the new thing out loud. The picker matches category
-                        names as well as product names, so "Engine Oil" finds
-                        Liqui Moly and Castrol — nobody would guess that from a
-                        box labelled "Search stock", and the alternative they
-                        reach for is typing the generic name in full and
-                        wondering why nothing appears.
-                        {% endcomment %}
-                        <small class="text-muted" style="font-size: 0.72rem;">Taken from workshop stock — search by product or by type</small>
+                <div class="card-header jc-sec-head">
+                    {% comment %}
+                    The subtitle that used to sit here — "Taken from workshop
+                    stock — search by product or by type" — is gone, and the fact
+                    it existed to state is NOT lost.
+
+                    That fact is a real one and CLAUDE.md records why it matters:
+                    the picker matches category names as well as product names,
+                    so "Engine Oil" finds Liqui Moly and Castrol, and nobody
+                    would guess that from a box labelled "Search stock". But the
+                    box's own placeholder already says it — "Search by product or
+                    type (e.g. Engine Oil)" — three inches lower and at the exact
+                    moment somebody is about to type. Saying it twice made the
+                    section header two lines tall on every card, including the
+                    many that carry no inventory at all.
+
+                    If that placeholder is ever shortened, this explanation has
+                    to come back somewhere. It is the placeholder that is now
+                    load-bearing.
+                    {% endcomment %}
+                    <div class="jc-sec-title">
+                        <span class="jc-sec-icon"><i class="bi bi-box-seam-fill"></i></span>
+                        <h6 class="jc-sec-name">Inventory Items</h6>
                     </div>
                     {% comment %}
                     There was a "Stock" link here opening the Inventory list in a
@@ -517,11 +1472,9 @@
                     occasion someone wants the stock list; leaving it cost the
                     card. Same for the Spare Shops link below.
                     {% endcomment %}
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="add-inventory-btn">
-                            + Add Item
-                        </button>
-                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary jc-add flex-shrink-0" id="add-inventory-btn" aria-label="Add Item">
+                        <i class="bi bi-plus-lg"></i><span class="jc-add-label">Add Item</span>
+                    </button>
                 </div>
 
                 <div class="card-body p-0">
@@ -599,10 +1552,16 @@
             <!-- SECTION 6: SPARE PARTS (from a spare shop) -->
             <!-- ========================================== -->
             <div class="card shadow-sm mb-4 border-0">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-0 text-primary fw-bold">Spare Parts</h6>
-                        <small class="text-muted" style="font-size: 0.72rem;">Ordered from a spare shop</small>
+                <div class="card-header jc-sec-head">
+                    {% comment %}
+                    "Ordered from a spare shop" stated nothing the row does not:
+                    the section has a Shop column, an ordering Status and two
+                    ordering dates. Unlike the Inventory subtitle above, it was
+                    not standing in for a rule anybody could miss.
+                    {% endcomment %}
+                    <div class="jc-sec-title">
+                        <span class="jc-sec-icon"><i class="bi bi-nut-fill"></i></span>
+                        <h6 class="jc-sec-name">Spare Parts</h6>
                     </div>
                     {% comment %}
                     The "Shops" link that used to sit here opened a new window —
@@ -610,11 +1569,9 @@
                     the wrong thing to do to somebody mid-job-card in an
                     installed app.
                     {% endcomment %}
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="add-spare-btn">
-                            + Add Spare
-                        </button>
-                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary jc-add flex-shrink-0" id="add-spare-btn" aria-label="Add Spare">
+                        <i class="bi bi-plus-lg"></i><span class="jc-add-label">Add Spare</span>
+                    </button>
                 </div>
 
                 <div class="card-body p-0">
@@ -624,15 +1581,35 @@
 
                         <!-- Standard HTML Table -->
                         <table class="table table-borderless align-middle mb-0" style="min-height: 80px;">
+                            {% comment %}
+                            Column order, on the owner's instruction: Part Name ·
+                            ⋮ · Qty · Status · Shop · Dates · Shop Price ·
+                            Customer Price. It follows the order the row is
+                            actually filled in — what the part is, how many, where
+                            it has got to, who it came from — with the money last,
+                            where Office picks the row up afterwards. The Shop
+                            moved up from between the dates and the prices; the
+                            two date columns collapsed into one.
+
+                            Nothing here is load-bearing for behaviour, and that
+                            is worth knowing before moving it again: every script
+                            that touches these rows resolves its fields with a
+                            row-scoped `querySelector` on the field NAME
+                            (`spare_autofill.js`, `importSpare`), never by cell
+                            position. Only the two hidden-for-Floor branches have
+                            to keep pace, because a field that stops being
+                            rendered saves as blank.
+                            {% endcomment %}
                             <thead class="table-premium-header text-muted small text-uppercase">
                                 <tr class="border-bottom">
                                     <th class="ps-3 col-part" style="min-width: 200px;">Part Name</th>
                                     <th class="text-center col-qty">Qty</th>
                                     <th class="col-status">Status</th>
-                                    <th class="col-date">Ordered</th>
-                                    <th class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">Received</th>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <th class="col-shop" style="min-width: 150px;">Shop</th>
+                                    {% endif %}
+                                    <th class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}" style="min-width: 138px;">Dates</th>
+                                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <th class="col-price text-nowrap">Shop Price (₹)</th>
                                     <th class="col-price pe-4 text-nowrap">Customer Price (₹)</th>
                                     {% endif %}
@@ -681,12 +1658,6 @@
                                     <td class="col-status">
                                         {{ s_form.status }}
                                     </td>
-                                    <td class="col-date">
-                                        {{ s_form.ordered_date }}
-                                    </td>
-                                    <td class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
-                                        {{ s_form.received_date }}
-                                    </td>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <td class="col-shop" style="min-width: 150px;">
                                         <select name="{{ s_form.shop_name.html_name }}"
@@ -701,6 +1672,50 @@
                                             {% endfor %}
                                         </select>
                                     </td>
+                                    {% endif %}
+                                    {% comment %}
+                                    ONE chip, both dates behind it.
+
+                                    The chip reads "22/07 → 29/07" (or whichever
+                                    half exists) and opens a small panel holding
+                                    the two real inputs. Those inputs never leave
+                                    the form and post exactly as they always did —
+                                    a hidden input still submits its value — so
+                                    nothing about the DATA changed here, only
+                                    where the boxes are shown.
+
+                                    The panel is `position: fixed`, which is what
+                                    keeps the promise that opening it cannot
+                                    disturb the job card: a fixed element is out
+                                    of the layout entirely, so no row moves and
+                                    the table does not grow. It is also the only
+                                    position that escapes `.table-responsive`'s
+                                    `overflow-x: auto` — an absolutely-positioned
+                                    panel in here would be clipped, invisibly and
+                                    only sometimes, which is the `.cb-list` trap
+                                    CLAUDE.md already records.
+                                    {% endcomment %}
+                                    <td class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
+                                        <div class="jc-dates">
+                                            <button type="button" class="jc-date-chip"
+                                                    aria-haspopup="dialog" aria-expanded="false">
+                                                <i class="bi bi-calendar-range"></i>
+                                                <span class="jc-date-chip-text"></span>
+                                            </button>
+                                            <div class="jc-date-pop" hidden role="dialog" aria-label="Ordered and received dates">
+                                                <div class="jc-date-field">
+                                                    <label for="{{ s_form.ordered_date.id_for_label }}">Ordered</label>
+                                                    {{ s_form.ordered_date }}
+                                                </div>
+                                                <div class="jc-date-field">
+                                                    <label for="{{ s_form.received_date.id_for_label }}">Received</label>
+                                                    {{ s_form.received_date }}
+                                                </div>
+                                                <button type="button" class="jc-date-done">Done</button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <td class="col-price">
                                         {{ s_form.unit_price }}
                                     </td>
@@ -726,17 +1741,57 @@
                     </div>
                 </div>
             </div>
-    </div>
-</div>
 
 <!-- SUBMIT -->
 <div class="d-grid gap-2 mb-5">
-    <button type="submit" class="btn btn-primary btn-lg py-3 fw-bold">
-        {% if is_edit %}Update Job Card{% else %}Save Job Card{% endif %}
+    {% comment %}
+    Creating a job card and correcting one are different acts, so the button is
+    not the same button: NEW is green with a "start a card" glyph, EDIT is
+    amber with a save glyph. Two carriers, not one — colour alone is never
+    enough on its own.
+
+    A "You have unsaved changes" line used to sit under the label and was
+    removed on the owner's instruction. It was the third place saying the same
+    thing (the header goes amber, the pill says Unsaved, the border light
+    runs), and it was the only one of the three that changed the button's
+    HEIGHT when it appeared.
+
+    The press feedback is `transform` only — composited, so a button reacting
+    to a press can never reflow the form under somebody's finger.
+    {% endcomment %}
+    <button type="submit"
+            class="btn btn-lg py-3 fw-bold jc-submit{% if not is_edit %} jc-submit--new{% endif %}">
+        <i class="bi {% if is_edit %}bi-save{% else %}bi-clipboard-plus{% endif %} jc-submit-icon me-1"></i>
+        <span class="jc-spin me-1" aria-hidden="true"></span>
+        <span class="jc-submit-label">{% if is_edit %}Update Job Card{% else %}Save Job Card{% endif %}</span>
     </button>
 </div>
 
+{% comment %}
+The sticky save. Inside the form deliberately — see `.jc-fab` for why that is a
+lock-integrity matter and not a layout one. It appears only once something has
+been typed, which is what keeps it out of the way of the job card.
+{% endcomment %}
+<button type="submit"
+        class="jc-fab{% if not is_edit %} jc-fab--new{% endif %}"
+        aria-label="{% if is_edit %}Update job card{% else %}Save job card{% endif %}"
+        title="{% if is_edit %}Update job card{% else %}Save job card{% endif %}">
+    <i class="bi bi-check-lg"></i>
+</button>
+
 </form>
+{% comment %}
+These two used to sit ABOVE the submit block, which closed the form early: the
+HTML parser pops `<form>` when it closes an ancestor `<div>`, so the Save button
+ended up a sibling of the form rather than inside it. It still submitted — the
+parser's form-element pointer associates a control created while a form is open
+— so nothing was visibly broken, which is exactly what made it a trap: any
+`form.querySelectorAll(...)` silently skipped everything past that point. Logged
+as AUD-0093 and closed here. Verified afterwards: `form.contains(submitButton)`
+is now true, and the column width is unchanged at every breakpoint.
+{% endcomment %}
+    </div>
+</div>
 
 <!-- UNASSIGN FORMS (Outside main form) -->
 {% for s_form in spare_formset %}
@@ -823,17 +1878,15 @@
                         </div>
                     </div>
                 </td>
+                {% comment %}
+                Cell order must MATCH the live rows above, or an added row lays
+                out one column adrift of the header it sits under.
+                {% endcomment %}
                 <td class="col-qty">
                     {{ spare_formset.empty_form.quantity }}
                 </td>
                 <td class="col-status">
                     {{ spare_formset.empty_form.status }}
-                </td>
-                <td class="col-date">
-                    {{ spare_formset.empty_form.ordered_date }}
-                </td>
-                <td class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
-                    {{ spare_formset.empty_form.received_date }}
                 </td>
                 {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                 <td class="col-shop">
@@ -846,6 +1899,28 @@
                         {% endfor %}
                     </select>
                 </td>
+                {% endif %}
+                <td class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
+                    <div class="jc-dates">
+                        <button type="button" class="jc-date-chip"
+                                aria-haspopup="dialog" aria-expanded="false">
+                            <i class="bi bi-calendar-range"></i>
+                            <span class="jc-date-chip-text"></span>
+                        </button>
+                        <div class="jc-date-pop" hidden role="dialog" aria-label="Ordered and received dates">
+                            <div class="jc-date-field">
+                                <label>Ordered</label>
+                                {{ spare_formset.empty_form.ordered_date }}
+                            </div>
+                            <div class="jc-date-field">
+                                <label>Received</label>
+                                {{ spare_formset.empty_form.received_date }}
+                            </div>
+                            <button type="button" class="jc-date-done">Done</button>
+                        </div>
+                    </div>
+                </td>
+                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                 <td class="col-price">
                     {{ spare_formset.empty_form.unit_price }}
                 </td>
@@ -901,47 +1976,62 @@
         // AUTO-DELETE EMPTY ROWS ON SUBMIT
         // ==========================================
 
+        {% comment %}
+        A blank row is not a row — decided fresh on every submit.
+
+        Each of these four assigns `checked = <the row is blank>`, and the
+        two-way part is a fix, not a tidy-up. They used to only ever SET the box
+        to true, and a submit can be cancelled after they have run: the Financial
+        Lock's own handler is registered below this one and calls
+        preventDefault(), and so does the Inventory guard added beside it. So a
+        blank row marked for deletion on a refused attempt stayed marked — and if
+        somebody then typed into that row and saved, the row was dropped with
+        what they had just typed in it. Nothing else in this form ever ticks a
+        DELETE box (they are all rendered inside `d-none`), so recomputing the
+        answer from the row itself is safe and is the only version that survives
+        a cancelled submit.
+        {% endcomment %}
         const jobcardForm = document.getElementById('jobcardForm');
         if (jobcardForm) {
             jobcardForm.addEventListener('submit', function (e) {
-                // Mark empty concern rows for deletion
+                // Concerns — keyed on the concern text.
                 document.querySelectorAll('#concern-list .concern-row').forEach(row => {
                     const textInput = row.querySelector('input[type="text"]');
                     const deleteCheckbox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
-                    if (textInput && deleteCheckbox && !textInput.value.trim()) {
-                        deleteCheckbox.checked = true;
+                    if (textInput && deleteCheckbox) {
+                        deleteCheckbox.checked = !textInput.value.trim();
                     }
                 });
 
-                // Mark empty spare rows for deletion
+                // Spare parts — keyed on the part name.
                 document.querySelectorAll('#spare-list .spare-row').forEach(row => {
                     const partInput = row.querySelector('input[name$="-spare_part_name"]');
                     const deleteCheckbox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
-                    if (partInput && deleteCheckbox && !partInput.value.trim()) {
-                        deleteCheckbox.checked = true;
+                    if (partInput && deleteCheckbox) {
+                        deleteCheckbox.checked = !partInput.value.trim();
                     }
                 });
 
                 {% comment %}
-                Mark empty inventory rows for deletion. Keyed on the hidden item id,
-                not the visible search box: a row where someone typed a few letters
-                and never picked a product has text but no product, and must be
-                dropped rather than rejected as a validation error.
+                Inventory — keyed on the hidden item id, not the visible search
+                box: a row where someone typed a few letters and never picked a
+                product has text but no product, and must be dropped rather than
+                rejected as a validation error.
                 {% endcomment %}
                 document.querySelectorAll('#inventory-list .inventory-row').forEach(row => {
                     const itemId = row.querySelector('.inventory-item-id');
                     const deleteCheckbox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
-                    if (itemId && deleteCheckbox && !itemId.value.trim()) {
-                        deleteCheckbox.checked = true;
+                    if (itemId && deleteCheckbox) {
+                        deleteCheckbox.checked = !itemId.value.trim();
                     }
                 });
 
-                // Mark empty labour rows for deletion
+                // Jobs — keyed on the description.
                 document.querySelectorAll('#labour-list .swipe-row').forEach(row => {
                     const jobInput = row.querySelector('input[name$="-job_description"]');
                     const deleteCheckbox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
-                    if (jobInput && deleteCheckbox && !jobInput.value.trim()) {
-                        deleteCheckbox.checked = true;
+                    if (jobInput && deleteCheckbox) {
+                        deleteCheckbox.checked = !jobInput.value.trim();
                     }
                 });
             });
@@ -1326,12 +2416,467 @@
 
     // Close Modal
     bootstrap.Modal.getInstance(document.getElementById('importUnassignedModal')).hide();
-    
+
+    // Every box above was filled by assigning `.value`, which fires no event —
+    // so without this the row would still be wearing its "empty" hairlines and
+    // the form would not know it had anything to save.
+    if (window.jcFormTouched) window.jcFormTouched();
+
     // Add visual feedback
     targetSpareRow.style.transition = 'background-color 0.5s';
     targetSpareRow.style.backgroundColor = 'rgba(74, 222, 128, 0.2)';
     setTimeout(() => { targetSpareRow.style.backgroundColor = ''; }, 1000);
   }
+</script>
+
+{% comment %}
+================================================================================
+THREE THINGS THAT WATCH THE FORM BEING FILLED IN
+================================================================================
+All three in one closure because they share one question — "what is in this
+box?" — and answering it twice would let a box read as empty for the hairline
+and filled for the guard.
+{% endcomment %}
+<script>
+(function () {
+    'use strict';
+
+    var form = document.getElementById('jobcardForm');
+    if (!form) return;
+
+    // ==========================================================
+    // WHAT COUNTS AS A BOX, AND WHAT COUNTS AS EMPTY
+    // ==========================================================
+    // The hairline is opt-OUT, and the opt-out is `jc-optional`, declared on
+    // the widget in forms.py — one mechanism, sitting next to the field it
+    // exempts rather than as a list of names over here that a new field would
+    // have to be remembered into. Exempt today: Customer Name, Contact Number,
+    // the Internal note, and a SPARE part's Qty and two dates.
+    //
+    // Note the Inventory quantity is deliberately NOT exempt while the spare
+    // one is. The same word carries two different obligations: a warehouse draw
+    // is refused without a quantity (it is the number that leaves the shelf), a
+    // shop spare is not. The mark follows the obligation, not the label.
+    function isBox(el) {
+        if (!el || !el.tagName) return false;
+        var tag = el.tagName;
+        if (tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') return false;
+        if (tag === 'INPUT') {
+            var t = (el.type || '').toLowerCase();
+            // Hidden inputs carry ids, DELETE flags, management-form counts and
+            // the colour choice — none of them a box anyone fills in.
+            if (t === 'hidden' || t === 'checkbox' || t === 'radio' ||
+                t === 'color' || t === 'button' || t === 'submit') return false;
+        }
+        if (el.classList.contains('jc-optional')) return false;
+        // Floor's price cells and the colour picker's real fields are rendered
+        // inside `d-none` so they still POST. Nothing in there is on screen, so
+        // nothing in there can be marked.
+        return !el.closest('.d-none');
+    }
+
+    function refresh(el) {
+        if (!isBox(el)) return;
+        el.classList.toggle('jc-empty', !String(el.value == null ? '' : el.value).trim());
+    }
+
+    function refreshAll() {
+        var boxes = form.querySelectorAll('input, select, textarea');
+        for (var i = 0; i < boxes.length; i++) refresh(boxes[i]);
+    }
+
+    // ==========================================================
+    // UNSAVED CHANGES
+    // ==========================================================
+    var dirty = false;
+
+    function markDirty(el) {
+        if (!dirty) {
+            dirty = true;
+            document.body.classList.add('jc-dirty');
+        }
+        if (el && isBox(el)) el.classList.add('jc-changed');
+    }
+
+    // `input` fires per keystroke — touch only the box being typed in.
+    form.addEventListener('input', function (e) {
+        refresh(e.target);
+        markDirty(e.target);
+    });
+
+    // `change` is rare (a select, a date, a blur), and it is the one that can
+    // move a box OTHER than the one that fired it: picking RECEIVED on a spare
+    // makes `spare_autofill.js` write today into that row's date. A full sweep
+    // is what stops that date keeping a hairline it no longer deserves.
+    form.addEventListener('change', function (e) {
+        markDirty(e.target);
+        refreshAll();
+        // The date chip too. `spare_autofill.js` writes today into a row's date
+        // when its Status moves to ORDERED or RECEIVED, and that assignment
+        // fires no event of its own — but the status change that caused it does,
+        // and it bubbles to here.
+        refreshChips();
+    });
+
+    // A value written by script fires no event, so the two places that fill
+    // boxes for you say so themselves: the colour picker (below) and
+    // `importSpare()`, which calls this. Import fills both dates, so the chip
+    // has to be relabelled with them.
+    window.jcFormTouched = function () {
+        markDirty();
+        refreshAll();
+        refreshChips();
+    };
+
+    // The four "+ Add" buttons hand back a row of empty boxes, which should
+    // wear their hairlines immediately rather than waiting to be typed in.
+    // setTimeout(0) rather than ordering this against script.js's own click
+    // handler: the row is appended synchronously, so any macrotask sees it.
+    // The four "+ Add" buttons. Two jobs on each press: sweep the new row's
+    // empty boxes, and SHOW the person the row that appeared.
+    //
+    // That second half is for the tablet. The button is at the top of its
+    // section and the row lands at the bottom of a list that may already be
+    // below the fold, so without it the only evidence a tap registered is a
+    // scrollbar changing length. `block: 'nearest'` scrolls nothing when the
+    // row is already visible.
+    //
+    // setTimeout(0) rather than ordering this against script.js's own click
+    // handler: the row is appended synchronously, so any macrotask sees it.
+    [['add-concern-btn', 'concern-list'],
+     ['add-spare-btn', 'spare-list'],
+     ['add-labour-btn', 'labour-list'],
+     ['add-inventory-btn', 'inventory-list']]
+        .forEach(function (pair) {
+            var btn = document.getElementById(pair[0]);
+            var list = document.getElementById(pair[1]);
+            if (!btn || !list) return;
+            btn.addEventListener('click', function () {
+                setTimeout(function () {
+                    refreshAll();
+                    refreshChips();
+                    var row = list.lastElementChild;
+                    if (!row) return;
+                    // Restart the animation if the button is pressed twice in a
+                    // row — re-adding a class the element already has does not.
+                    row.classList.remove('jc-row-new');
+                    void row.offsetWidth;
+                    row.classList.add('jc-row-new');
+                    row.addEventListener('animationend', function () {
+                        row.classList.remove('jc-row-new');
+                    }, { once: true });
+                    row.scrollIntoView({ block: 'nearest' });
+                }, 0);
+            });
+        });
+
+    // Leaving with something typed and not saved. This form is the longest in
+    // the app and the easiest to wander off from — the header alone offers
+    // Profile and Invoice links — so the browser's own prompt is the last thing
+    // between a half-filled card and nothing.
+    window.addEventListener('beforeunload', function (e) {
+        if (!dirty) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+
+    // Registered in the LAST script block on the page, so among the form's own
+    // submit listeners this one runs last and can see whether any of the
+    // earlier ones refused: the Financial Lock cancels a locked record, and the
+    // Inventory guard below cancels a row with no quantity. Clearing `dirty` on
+    // a submit that never left would drop the warning on the one card that
+    // still needs it.
+    form.addEventListener('submit', function (e) {
+        if (!e.defaultPrevented) dirty = false;
+    });
+
+    // ==========================================================
+    // A DRAWN PART MUST SAY HOW MANY
+    // ==========================================================
+    // `InventoryDrawForm.clean` already refuses this on the server, and that
+    // stays the real rule — this only saves the round trip, exactly as the
+    // browser's own `required` does for Car Brand and Registration.
+    //
+    // It is deliberately NOT the `required` attribute, which cannot express
+    // "only once a product has been picked" and breaks badly in two ways here.
+    // `required` blocks the `submit` EVENT, and the handler that marks blank
+    // rows for deletion lives in that event — so a card carrying one untouched
+    // blank row would refuse to submit with nothing on screen. And a `required`
+    // control the browser cannot focus (the `#empty-inventory-form` template is
+    // in the document, inside `d-none`) makes Chrome abandon the submit
+    // silently. A guard in script has neither failure and gives a better
+    // message than the browser's bubble.
+    //
+    // Capture on `document`, so it runs before the form's own listeners and can
+    // stop them: a refused submit must not leave DELETE boxes ticked behind it.
+    document.addEventListener('submit', function (e) {
+        if (e.target !== form) return;
+        // A locked record is the Financial Lock's refusal to give, not ours.
+        if (form.getAttribute('data-locked') === 'true') return;
+
+        var bad = [];
+        var rows = form.querySelectorAll('#inventory-list .inventory-row');
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            var itemId = row.querySelector('.inventory-item-id');
+            var qty = row.querySelector('input[name$="-quantity"]');
+            var search = row.querySelector('.inventory-item-search');
+            row.classList.remove('jc-row-invalid');
+            if (!itemId || !qty) continue;
+            if (itemId.value.trim() && !String(qty.value || '').trim()) {
+                bad.push({
+                    row: row,
+                    qty: qty,
+                    name: (search && search.value.trim()) || ('row ' + (i + 1))
+                });
+            }
+        }
+
+        var box = document.getElementById('jcClientErrors');
+        if (!bad.length) {
+            if (box) box.remove();
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'jcClientErrors';
+            box.className = 'jc-errors';
+            box.tabIndex = -1;
+            form.prepend(box);
+        }
+        var list = '';
+        for (var j = 0; j < bad.length; j++) {
+            bad[j].row.classList.add('jc-row-invalid');
+            list += '<li><span class="jc-err-where">Inventory item · ' +
+                bad[j].name.replace(/[<>&]/g, '') +
+                '</span> — how many were taken off the shelf?</li>';
+        }
+        box.innerHTML =
+            '<div class="jc-errors-title">Not saved — ' + bad.length +
+            ' inventory row' + (bad.length === 1 ? '' : 's') +
+            ' still need' + (bad.length === 1 ? 's' : '') + ' a quantity</div>' +
+            '<ul>' + list + '</ul>';
+
+        // Take them to the box, not to the notice: the notice is at the top of
+        // a form several screens long and the row is wherever it is.
+        bad[0].row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        bad[0].qty.focus({ preventScroll: true });
+    }, true);
+
+    // ==========================================================
+    // THE CAR'S COLOUR, LIVE
+    // ==========================================================
+    // The header rail is one custom property on #jcColour, so repainting it is
+    // one assignment. The picker is a shared include and announces its choice
+    // rather than reaching in here.
+    var colourHost = document.getElementById('jcColour');
+    var colourHead = document.getElementById('jcHead');
+
+    function toHex(colour) {
+        if (!colour) return null;
+        // The swatches report `rgb(220, 38, 38)` (a computed style); the native
+        // picker reports `#dc2626`. Both have to end up as one form.
+        var m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(colour);
+        if (m) {
+            return '#' + [m[1], m[2], m[3]].map(function (n) {
+                return ('0' + parseInt(n, 10).toString(16)).slice(-2);
+            }).join('');
+        }
+        return /^#[0-9a-f]{6}$/i.test(colour) ? colour : null;
+    }
+
+    document.addEventListener('carcolour:change', function (e) {
+        var detail = e.detail || {};
+        var hex = toHex(detail.hex);
+        markDirty();
+        if (!colourHost || !hex) return;
+        colourHost.style.setProperty('--jc-accent', hex);
+        if (colourHead) {
+            // A colour has been recorded now, whatever it is — so the hatched
+            // "nobody wrote it down" rail goes, and White gets its outline or
+            // the rail disappears into the header behind it.
+            colourHead.classList.remove('jc-head--unset');
+            colourHead.classList.toggle('jc-head--white', detail.value === 'White');
+        }
+    });
+
+    // ==========================================================
+    // THE DATE CHIP
+    // ==========================================================
+    // One line in the column, both dates behind it. Everything here is
+    // DELEGATED off `document` — no per-row wiring at all — which is what makes
+    // a row added by "+ Add Spare" work with nothing re-initialised. All three
+    // of the cloning traps CLAUDE.md records live in per-element setup; this
+    // section simply has none to get wrong.
+
+    function dayMonth(value) {           // '2026-07-22' -> '22/07'
+        if (!value) return '';
+        var parts = value.split('-');
+        return parts.length === 3 ? parts[2] + '/' + parts[1] : '';
+    }
+
+    function refreshChips() {
+        // `document`, not `form`: the `#empty-spare-form` template lives
+        // outside the form and is cloned on "+ Add Spare", so its chip has to
+        // be labelled too or an added row opens reading nothing.
+        var cells = document.querySelectorAll('.jc-dates');
+        for (var i = 0; i < cells.length; i++) {
+            var cell = cells[i];
+            var text = cell.querySelector('.jc-date-chip-text');
+            if (!text) continue;
+            var ordered = dayMonth((cell.querySelector('.ordered-date') || {}).value);
+            var received = dayMonth((cell.querySelector('.received-date') || {}).value);
+            var chip = cell.querySelector('.jc-date-chip');
+            var blank = !ordered && !received;
+            // A missing half prints an ellipsis rather than being dropped, so
+            // the chip always says WHICH date is the one you have.
+            text.textContent = blank ? 'Add dates'
+                                     : (ordered || '…') + ' – ' + (received || '…');
+            if (!chip) continue;
+            chip.classList.toggle('jc-date-chip--empty', blank);
+            // The hairline clears only when BOTH dates are in, on the owner's
+            // instruction: a spare is finished when it has been ordered AND
+            // received, so one of the two is still incomplete rather than
+            // half-done. The two inputs inside the panel carry their own marks,
+            // which is what says which of them is the one missing.
+            chip.classList.toggle('jc-empty', !(ordered && received));
+        }
+    }
+
+    var openDates = null;
+
+    function placePop(chip, pop) {
+        pop.hidden = false;                       // must be laid out to measure
+        var r = chip.getBoundingClientRect();
+        var w = pop.offsetWidth, h = pop.offsetHeight;
+        // Flip above the chip when there is no room below, then CLAMP to the
+        // viewport — the same thing Popper does for a dropdown, in eight lines,
+        // and without the dependency this codebase has a rule against.
+        //
+        // The clamp is not belt-and-braces on the flip: a chip taller than the
+        // space either side of it (a short phone in landscape, the keyboard
+        // up) satisfies neither branch, and without the clamp the panel is
+        // placed off screen with no way to reach it.
+        var left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+        var top = r.bottom + 6;
+        if (top + h > window.innerHeight - 8) top = r.top - h - 6;
+        top = Math.min(Math.max(8, top), Math.max(8, window.innerHeight - h - 8));
+        pop.style.left = left + 'px';
+        pop.style.top = top + 'px';
+    }
+
+    function closeDates() {
+        if (!openDates) return;
+        openDates.pop.hidden = true;
+        openDates.chip.setAttribute('aria-expanded', 'false');
+        openDates = null;
+    }
+
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest) return;
+        var chip = e.target.closest('.jc-date-chip');
+        if (chip) {
+            var pop = chip.parentElement.querySelector('.jc-date-pop');
+            var reopening = openDates && openDates.chip === chip;
+            closeDates();
+            if (!reopening && pop) {
+                // `nearest` on both axes: if the chip is already fully visible
+                // this scrolls nothing at all, and if it is half off the side of
+                // the table it brings just that chip in rather than jumping the
+                // page. A panel is positioned against the chip, so the chip has
+                // to be somewhere a person can see before it is placed.
+                chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                openDates = { chip: chip, pop: pop };
+                placePop(chip, pop);
+                chip.setAttribute('aria-expanded', 'true');
+            }
+            return;
+        }
+        if (e.target.closest('.jc-date-done')) { closeDates(); return; }
+        // Anywhere else, as long as it is not inside the open panel.
+        if (openDates && !e.target.closest('.jc-date-pop')) closeDates();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeDates();
+    });
+
+    // The sweep. Delegated, so it covers a button in a row added later, and
+    // driven from `pointerdown` rather than `:active` — a tap releases in about
+    // 80ms and takes `:active` with it, which would cut the animation off
+    // halfway on the very device this is for. `pointerdown` fires for touch,
+    // mouse and pen alike, so there is one code path rather than three.
+    document.addEventListener('pointerdown', function (e) {
+        if (!e.target.closest) return;
+        var btn = e.target.closest('.jc-add, .jc-submit, .jc-fab');
+        if (!btn || btn.disabled) return;
+        btn.classList.remove('jc-sweep');
+        void btn.offsetWidth;               // restart it on a rapid second tap
+        btn.classList.add('jc-sweep');
+        btn.addEventListener('animationend', function () {
+            btn.classList.remove('jc-sweep');
+        }, { once: true });
+    });
+
+    // The panel is `fixed`, so it is pinned to the viewport rather than to the
+    // chip — it has to be told when the chip moves. Capture on scroll, because
+    // the move that matters most is the TABLE's own sideways scroll, and that
+    // does not bubble.
+    function followChip() { if (openDates) placePop(openDates.chip, openDates.pop); }
+    window.addEventListener('scroll', followChip, true);
+    window.addEventListener('resize', followChip);
+
+    // A Bootstrap modal opening over an open panel (the status-revert dialog
+    // lives in these same rows) would leave it stranded on top of the backdrop.
+    document.addEventListener('show.bs.modal', closeDates);
+
+    // ==========================================================
+    // ONE PRESS, ONE JOB CARD
+    // ==========================================================
+    // A slow save on workshop wifi invites a second press, and on the create
+    // page a second POST is a second job card for the same car. The button says
+    // it is working and then stops accepting presses.
+    //
+    // `disabled` is set in a `setTimeout(0)`, NOT inline: disabling a submit
+    // button from inside its own submit handler cancels the submission in some
+    // browsers. Deferring it by a task lets the browser start the POST first.
+    // The button carries no `name`, so removing it from the payload costs
+    // nothing.
+    form.addEventListener('submit', function (e) {
+        if (e.defaultPrevented) return;
+        var btn = form.querySelector('.jc-submit');
+        var fab = form.querySelector('.jc-fab');
+        if (btn) {
+            btn.classList.add('is-working');
+            var label = btn.querySelector('.jc-submit-label');
+            if (label) label.textContent = {% if is_edit %}'Updating…'{% else %}'Saving…'{% endif %};
+        }
+        // BOTH doors, whichever was pressed: the sticky button submits the same
+        // form, so leaving it live would let a second tap post the card twice —
+        // which on the create page is two job cards for one car.
+        setTimeout(function () {
+            if (btn) btn.disabled = true;
+            if (fab) fab.disabled = true;
+        }, 0);
+    });
+
+    // First pass, and it MUST wait for DOMContentLoaded rather than running as
+    // this script is parsed. `clearZeroInputs()` and `cleanQuantityInputs()` in
+    // the block above both rewrite values, and both run on DOMContentLoaded —
+    // which fires after every inline script on the page. Sweeping at parse time
+    // would therefore read "0.00" in a price box that is about to be emptied,
+    // leave it unmarked, and the hairline would be a whole page out of date
+    // until something else was typed. Listeners registered later fire later, and
+    // this is the last block on the page.
+    document.addEventListener('DOMContentLoaded', function () {
+        refreshAll();
+        refreshChips();
+    });
+}());
 </script>
 
 {% if problems %}
@@ -1356,5 +2901,8 @@
   }());
 </script>
 {% endif %}
+
+{% comment %} Closes #jcColour, opened at the top of this block. {% endcomment %}
+</div>
 
 {% endblock %}
