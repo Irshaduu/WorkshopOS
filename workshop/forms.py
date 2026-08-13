@@ -414,6 +414,12 @@ class ShopSpareFormSet(SourceScopedSpareFormSet):
 class InventoryDrawFormSet(SourceScopedSpareFormSet):
     spare_source = JobCardSpareItem.SOURCE_INVENTORY
 
+    def get_queryset(self):
+        # The row prints "38 in stock" under each product, so every saved row
+        # needs its Item. Without this the section costs one query per row to
+        # render that line — a rebuild carrying twenty draws would pay twenty.
+        return super().get_queryset().select_related('item')
+
 
 class InventoryDrawForm(forms.ModelForm):
     """
@@ -455,6 +461,72 @@ class InventoryDrawForm(forms.ModelForm):
         from inventory.models import Item
         self.fields['item'].queryset = Item.objects.select_related('category')
 
+    def picked_item(self):
+        """
+        The stock product this row currently stands for, or None.
+
+        Exists because the visible search box is NOT a form field — it posts
+        nothing, and the hidden `item` pk is the whole of the row's identity. So
+        when a save is rejected and the page re-renders, something has to put
+        the product's *name* back into that box. It used to be rendered from
+        `instance.spare_part_name`, which is blank on a row that was never
+        saved: the pk survived in the hidden input while the box beside it came
+        back empty, so a rejected job card showed a row that looked like nobody
+        had chosen anything and invited being filled in a second time.
+
+        Resolved from `cleaned_data` first, which costs no query — full_clean
+        has already turned the pk into an Item by the time the template runs on
+        the error path. The raw-data fallback covers a row that failed before
+        that (`item` invalid, so cleaned_data has no entry for it).
+        """
+        if hasattr(self, '_picked_item'):
+            return self._picked_item
+
+        item = None
+        if self.is_bound:
+            item = (getattr(self, 'cleaned_data', None) or {}).get('item')
+            if item is None:
+                raw = (self.data.get(self.add_prefix('item')) or '').strip()
+                if raw:
+                    try:
+                        item = self.fields['item'].queryset.filter(pk=raw).first()
+                    except (ValueError, TypeError):
+                        item = None
+        elif self.instance.pk:
+            item = self.instance.item
+
+        self._picked_item = item
+        return item
+
+    @property
+    def search_value(self):
+        """What the visible product box shows. Falls back to the stored name so
+        a draw whose product was somehow detached still reads as something."""
+        item = self.picked_item()
+        if item is not None:
+            return item.name
+        return self.instance.spare_part_name or ''
+
+    @property
+    def stock_display(self):
+        """"38", not "38.00" — one shared rule with the `qty` filter and the
+        picker's own suggestions, so one product cannot read three ways."""
+        from .templatetags.custom_filters import clean_qty
+
+        item = self.picked_item()
+        if item is None:
+            return ''
+        return str(clean_qty(item.current_stock))
+
+    @property
+    def stock_is_short(self):
+        """Zero or negative — shown in red. Never hidden and never blocking:
+        negative stock is legitimate here (a draw awaiting its supplier bill),
+        and refusing to record a part already off the shelf would only make the
+        system disagree with the workshop."""
+        item = self.picked_item()
+        return item is not None and item.current_stock <= 0
+
     def clean(self):
         cleaned = super().clean()
         item = cleaned.get('item')
@@ -465,11 +537,36 @@ class InventoryDrawForm(forms.ModelForm):
         # otherwise save as a nameless, stockless line on the customer's bill.
         if row_has_content and not item:
             raise forms.ValidationError(
-                "Choose the product from the suggestions — inventory items can't be typed in freely."
+                "Pick the product from the suggestions list — an inventory item "
+                "cannot be typed in by hand, because the draw has to be linked to "
+                "the actual product to take it off the shelf."
             )
         if item and cleaned.get('quantity') in (None, ''):
-            self.add_error('quantity', "Enter how many were taken.")
+            self.add_error(
+                'quantity',
+                f"How many {item.name} were taken? This is the number that comes "
+                f"off the shelf, so it cannot be left empty.",
+            )
         return cleaned
+
+    def row_label(self):
+        """
+        How this row is named in the error summary at the top of the page.
+
+        The summary is the only thing an owner reads before scrolling, and
+        "Inventory item 3" is useless on a card with eleven draws. Naming the
+        product is what makes the message actionable; the position is the
+        fallback for a row that has not chosen one yet.
+        """
+        item = self.picked_item()
+        if item is not None:
+            return item.name
+        # `prefix` is "inventory-0"; the person counting rows on screen starts
+        # at one.
+        try:
+            return f"row {int(self.prefix.rsplit('-', 1)[-1]) + 1}"
+        except (AttributeError, ValueError):
+            return "a row"
 
 
 JobCardSpareFormSet = inlineformset_factory(

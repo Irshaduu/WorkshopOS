@@ -124,9 +124,9 @@ def mark_completed(request, pk):
     """
     if request.method == 'POST':
         jobcard = get_object_or_404(JobCard, pk=pk)
-        jobcard.completed = True
-        jobcard.completed_date = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
-        jobcard.save()
+        # One implementation, shared with "Complete & settle" on the invoice —
+        # see JobCard.mark_completed for why the date must not be re-stamped.
+        jobcard.mark_completed()
         # This said NOTHING before — the card simply vanished off the Floor
         # board and the page reloaded, which on a tablet is indistinguishable
         # from a mis-tap that did nothing. Every other action in the app

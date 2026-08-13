@@ -295,6 +295,93 @@ class FloorSeesNoPricesTests(InventorySectionBase):
         self.assertContains(resp, '>Customer Price (₹)</th>')
 
 
+class ARefusedSaveSaysWhatIsWrongTests(InventorySectionBase):
+    """
+    A job card that will not save has to say so, name what, and keep what was
+    typed.
+
+    All three were missing on the Inventory section specifically, and the reason
+    they were missing together is that the error summary at the top of
+    `jobcard_form.html` listed four formsets and this was the fifth. So a blank
+    Qty on a warehouse draw refused the save with no banner, no sound, and one
+    line of 0.72rem red text inside a horizontally scrolling table several
+    screens down — from the front, indistinguishable from the Save button doing
+    nothing at all.
+    """
+
+    def _blank_qty(self):
+        return self.edit(**{
+            'inventory-TOTAL_FORMS': '1',
+            'inventory-0-item': str(self.item.pk),
+            'inventory-0-quantity': '',
+        })
+
+    def test_the_page_says_it_was_not_saved(self):
+        body = self._blank_qty().content.decode()
+        self.assertIn('Not saved', body)
+
+    def test_a_message_is_raised_so_the_banner_and_the_sound_fire(self):
+        """
+        sound.js plays its error tone off the message tag, and base.html is the
+        only thing that renders a banner — so a refusal with no message is a
+        refusal nobody hears and, at the bottom of a long form, nobody sees.
+        """
+        resp = self._blank_qty()
+        texts = [str(m) for m in resp.context['messages']]
+        self.assertTrue(texts, "a refused save must raise a message")
+        self.assertTrue(any('not saved' in t.lower() for t in texts), texts)
+
+    def test_the_summary_names_the_product_and_the_field(self):
+        """
+        "Check Spares section for errors" is what this replaced: true, and
+        useless on a card carrying eleven parts. The row is named by what it
+        holds, which is the thing you can go and find.
+        """
+        body = self._blank_qty().content.decode()
+        self.assertIn('Inventory item · Engine Oil 5W30', body)
+        self.assertIn('How many Engine Oil 5W30 were taken?', body)
+
+    def test_the_picked_product_is_still_in_the_box_afterwards(self):
+        """
+        The visible search box posts nothing — the hidden `item` pk is the row's
+        whole identity — so the box has to be re-rendered from the posted
+        choice. It used to render `instance.spare_part_name`, which is blank on
+        a row that was never saved: the pk survived while the box beside it came
+        back empty, so the row looked untouched and got filled in twice.
+        """
+        body = self._blank_qty().content.decode()
+        self.assertIn('value="Engine Oil 5W30"', body)
+
+    def test_a_row_that_never_chose_a_product_is_named_by_its_position(self):
+        body = self.edit(**{
+            'inventory-TOTAL_FORMS': '1',
+            'inventory-0-item': '',
+            'inventory-0-quantity': '3',
+            'inventory-0-total_price': '900',
+        }).content.decode()
+        self.assertIn('Inventory item · row 1', body)
+
+    def test_the_stock_line_reserves_its_space_whether_or_not_it_has_text(self):
+        """
+        Choosing a product wrote a line of text into an empty div, so the row —
+        and everything under it — jumped. On a tablet the box you were aiming at
+        has moved by the time your finger lands. The text still comes and goes;
+        the space it occupies must not.
+        """
+        body = self.client.get(reverse('jobcard_edit', args=[self.job.pk])).content.decode()
+        self.assertIn('.inventory-stock-hint', body)
+        self.assertIn('min-height', body[body.index('.inventory-stock-hint'):][:400])
+
+    def test_a_saved_draw_shows_its_stock_without_being_re_picked(self):
+        JobCardSpareItem.objects.create(
+            job_card=self.job, source=INVENTORY, item=self.item,
+            spare_part_name='Engine Oil 5W30', quantity=D('1'), total_price=D('600'))
+        body = self.client.get(reverse('jobcard_edit', args=[self.job.pk])).content.decode()
+        # 19 = 20 on the shelf minus the 1 this draw just took.
+        self.assertIn('19 in stock', body)
+        self.assertNotIn('19.00 in stock', body)
+
+
 class PickerEndpointTests(InventorySectionBase):
     def test_it_returns_the_id_so_the_draw_can_be_linked_by_fk(self):
         resp = self.client.get(reverse('autocomplete_inventory_items'), {'q': 'engine'})
@@ -303,7 +390,20 @@ class PickerEndpointTests(InventorySectionBase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['id'], self.item.pk)
         self.assertEqual(rows[0]['name'], 'Engine Oil 5W30')
-        self.assertEqual(rows[0]['stock'], '20.00')
+        # "20", not "20.00". The figure is printed straight onto the screen
+        # beside the product and under the box once picked, so it goes over the
+        # wire already in the form a person reads — the same rule the `qty`
+        # template filter applies to every other quantity in the app. This
+        # assertion used to read '20.00'; it was pinning the raw Decimal
+        # serialization, which is what put "38.00 in stock" on the job card.
+        self.assertEqual(rows[0]['stock'], '20')
+
+    def test_a_fractional_stock_keeps_its_fraction(self):
+        """Stripping trailing zeros must not round: 1.5 L is not 2 L."""
+        self.item.current_stock = D('1.50')
+        self.item.save()
+        rows = self.client.get(reverse('autocomplete_inventory_items'), {'q': 'engine'}).json()
+        self.assertEqual(rows[0]['stock'], '1.5')
 
     def test_an_overdrawn_product_is_still_offered(self):
         """Hiding it would block recording a part already physically taken."""
@@ -311,7 +411,49 @@ class PickerEndpointTests(InventorySectionBase):
         self.item.save()
         rows = self.client.get(reverse('autocomplete_inventory_items'), {'q': 'engine'}).json()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]['stock'], '-3.00')
+        self.assertEqual(rows[0]['stock'], '-3')
+
+    def test_searching_a_category_returns_the_products_inside_it(self):
+        """
+        Typing what a part IS finds the SKUs that are it.
+
+        The bill names a warehouse draw by its category ("Engine Oil"), so that
+        is the word in everyone's head — but the job card must record the
+        branded product, because that is what moves stock and carries the cost.
+        Matching product names alone meant searching "Oils" returned nothing,
+        and the obvious next move is to create a product called "Oils", which
+        puts a generic name on the shelf as a fake SKU.
+        """
+        rows = self.client.get(
+            reverse('autocomplete_inventory_items'), {'q': 'Oils'}
+        ).json()
+        self.assertEqual([r['name'] for r in rows], ['Engine Oil 5W30'])
+        self.assertEqual(rows[0]['category'], 'Oils')
+
+    def test_a_category_is_never_itself_an_option(self):
+        """
+        The search reaches products THROUGH a category; it never offers the
+        category as something to pick. Every row returned carries a real
+        product id, so nothing selectable can be a category.
+        """
+        rows = self.client.get(
+            reverse('autocomplete_inventory_items'), {'q': 'Oils'}
+        ).json()
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertTrue(Item.objects.filter(pk=row['id']).exists())
+            self.assertNotEqual(row['name'], 'Oils')
+
+    def test_a_product_matching_on_both_name_and_category_is_offered_once(self):
+        """An OR across the category join would otherwise duplicate the row."""
+        oil = Category.objects.create(name='Engine Oil')
+        Item.objects.create(category=oil, name='Engine Oil Liqui Moly',
+                            average_stock=D('5'), current_stock=D('5'))
+        rows = self.client.get(
+            reverse('autocomplete_inventory_items'), {'q': 'Engine Oil'}
+        ).json()
+        names = [r['name'] for r in rows]
+        self.assertEqual(len(names), len(set(names)))
 
     def test_the_spare_autocomplete_no_longer_offers_stock_products(self):
         """Warehouse products have their own picker; mixing them was the old bug."""

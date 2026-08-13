@@ -2,90 +2,733 @@
 {% load static %}
 {% load custom_filters %}
 
-{% block title %}{{ car_info.registration }} - Bills{% endblock %}
+{% block title %}{{ car_info.registration }} · Car Profile{% endblock %}
 
 {% block content %}
-<div class="container-fluid px-3 py-3">
-    <!-- Header -->
-    <div class="mb-3">
-        <a href="{% url 'car_profile_list' %}" class="text-decoration-none" style="color: var(--color-primary);">
-            ← Back to Cars
-        </a>
-    </div>
+<div class="cd-page">
 
-    <!-- Car Info -->
-    <div class="card mb-3" style="background: var(--color-surface); border: 1px solid var(--color-border);">
-        <div class="card-body">
-            <h4 style="color: var(--color-text);">{{ car_info.brand }} {{ car_info.model }}</h4>
-            <p class="mb-1">
-                <span class="badge bg-primary fs-6">{{ car_info.registration }}</span>
-            </p>
-            <p class="mb-0" style="color: var(--color-text-muted);">
-                Owner: {{ car_info.customer|default:"Not specified" }}
-            </p>
-        </div>
-    </div>
+    <a href="{% url 'car_profile_list' %}" class="cd-back">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+        All cars
+    </a>
 
-    <!-- Bills List -->
-    <h5 style="color: var(--color-text);" class="mb-3">📄 Bill History ({{ bills|length }})</h5>
-
-    {% for bill in bills %}
-    <div class="card mb-2" 
-         onclick="window.location='{% url 'jobcard_detail' bill.pk %}'"
-         style="background: var(--color-surface); border: 1px solid var(--color-border); cursor: pointer; {% if forloop.first %}border-left: 5px solid #28a745;{% else %}border-left: 5px solid #dc3545; opacity: 0.85;{% endif %}">
-        <div class="card-body py-2 px-3">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <div class="mb-1 d-flex align-items-center gap-2">
-                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-1" style="font-size: 0.65rem;">
-                            #{{ bill.visit_number }}
-                        </span>
-                        {% if forloop.first %}
-                        <span class="badge bg-success text-white px-2 py-1" style="font-size: 0.7rem; font-weight: 600;">Latest</span>
-                        {% endif %}
-                    </div>
-                    
-                    <strong style="color: var(--color-text);">
-                        {{ bill.bill_number|default:"Pending" }}
-                    </strong>
-                    
-                    <!-- Security Indicators -->
-                    {% if bill.payment_status == 'PAID' %}
-                        <span class="ms-1" title="Billed & Finalized (Hard-Locked)">🔴</span>
-                    {% elif bill.completed %}
-                        <span class="ms-1" title="Completed (Soft-Locked)">🟡</span>
-                    {% else %}
-                        <span class="ms-1" title="Active Service (Editable)">🟢</span>
-                    {% endif %}
-
-                    <span class="badge {% if bill.completed %}bg-success{% else %}bg-warning text-dark{% endif %} ms-2" style="font-size: 0.7rem;">
-                        {% if bill.completed %}Completed{% else %}Active{% endif %}
-                    </span>
-                    <br>
-                    <small style="color: var(--color-text-muted);">
-                        {{ bill.admitted_date|date:"d M Y" }}
-                        {% if bill.concerns.count > 0 %}
-                        · {{ bill.concerns.first.concern_text|truncatewords:5 }}
-                        {% endif %}
-                    </small>
-                </div>
-                <div class="d-flex gap-2">
-                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" %}
-                    <a href="{% url 'invoice_view' bill.pk %}?back={{ request.get_full_path|urlencode }}"
-                       class="btn btn-primary btn-sm"
-                       onclick="event.stopPropagation();"
-                       style="font-size: 0.75rem;">
-                        <i class="bi bi-receipt"></i> Invoice
-                    </a>
+    {% comment %}
+    ==================================================================
+    THE CAR
+    ==================================================================
+    This page used to open with the make, the plate and the owner's name, and
+    nothing else — every other question an owner brings to it ("how often does
+    this car come in?", "have they paid?", "is it here now?") meant reading down
+    the list and adding up. Those are three numbers and one flag; they belong at
+    the top, and they come from a database aggregate over the WHOLE history, not
+    from the rows below, which are paginated.
+    ================================================================== {% endcomment %}
+    {% comment %}
+    The car's own colour: a rail down the edge and an 8% wash across the card,
+    identical in technique and alpha to `.lr-car` on the Live Report so one Red
+    car is one red on every screen. Two exceptions carried over with it — a
+    WHITE car's rail is outlined or it vanishes, and a car with NO colour
+    recorded gets a hatched rail and no wash at all, because a slate tint would
+    say "this car is grey" rather than "nobody wrote it down".
+    {% endcomment %}
+    <header class="cd-hero{% if not car_info.has_color %} cd-hero--unset{% elif car_info.is_white %} cd-hero--white{% endif %}"
+            style="--cd-accent: {{ car_info.color_hex }}; --cd-shade: {{ car_info.color_hex }}14;">
+        <div class="cd-hero-main">
+            <div class="cd-identity">
+                <h1 class="cd-name">
+                    {% if car_info.brand or car_info.model %}{{ car_info.brand }} {{ car_info.model }}{% else %}{{ car_info.registration }}{% endif %}
+                </h1>
+                <div class="cd-sub">
+                    <span class="cd-plate">{{ car_info.registration }}</span>
+                    {% comment %}
+                    The colour is the rail down the left edge, and it is not
+                    also spelled out here. Printing "Red" beside a red bar is
+                    the same fact twice, and it took a slot in a row where every
+                    other chip carries something the rail cannot say.
+                    {% endcomment %}
+                    {% if car_info.mileage %}<span class="cd-chip">{{ car_info.mileage }} km</span>{% endif %}
+                    {% if car_info.on_floor %}
+                    <span class="cd-chip cd-chip-live"><i></i>In the workshop</span>
                     {% endif %}
                 </div>
             </div>
+
+            {% comment %}
+            The owner. Their number is a `tel:` link — this page is opened on a
+            phone to ring somebody about their car, and re-typing ten digits off
+            a screen is the whole of the friction that stops it happening.
+            {% endcomment %}
+            {% if car_info.customer or car_info.contact %}
+            <div class="cd-owner">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 1.5c-2.7 0-5 1.4-5 3.1V14h10v-1.4c0-1.7-2.3-3.1-5-3.1z"/></svg>
+                <div>
+                    <span class="cd-owner-name">{{ car_info.customer|default:"Owner not recorded" }}</span>
+                    {% if car_info.contact %}
+                    <a class="cd-owner-tel" href="tel:{{ car_info.contact }}">{{ car_info.contact }}</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </div>
+
+        <dl class="cd-stats">
+            <div class="cd-stat">
+                <dt>Visits</dt>
+                <dd>{{ car_info.visits }}</dd>
+            </div>
+            <div class="cd-stat cd-stat-date">
+                <dt>Last in</dt>
+                <dd>{{ car_info.last_visit|date:"d M Y"|default:"—" }}</dd>
+            </div>
+
+            {% comment %}
+            GROSS PROFIT — owner only, and deliberately not highlighted.
+
+            It is the labour charge (which carries no direct cost) plus the
+            margin on both part routes, and it is BEFORE wages, rent, power and
+            every other overhead — this workshop attributes none of those to a
+            car, because labour is quoted whole with no hours recorded, so
+            there is nothing to apportion by. Measured against the current data
+            it runs ~13 points above the workshop's real margin, and that gap
+            widens as payroll grows.
+
+            Hence "Gross profit" and not "Profit": the word *gross* is the
+            warning, and `analysis_engine.build_profit_report` remains the one
+            true profit figure in this app. It is `None` for anyone who is not
+            an owner, so this tile is gated on the value itself rather than on a
+            second role check that could fall out of step with the view's.
+            {% endcomment %}
+            {% if car_info.gross_profit is not None %}
+            <div class="cd-stat cd-stat-gp"
+                 title="Parts and labour margin. Before wages, rent and other overheads — the Profit page is the true figure.">
+                <dt>Gross profit</dt>
+                <dd>₹{{ car_info.gross_profit|inr }}{% if car_info.gross_profit_pct %}<span class="cd-pct">{{ car_info.gross_profit_pct|floatformat:0 }}%</span>{% endif %}</dd>
+            </div>
+            {% endif %}
+            <div class="cd-stat">
+                {% comment %}
+                "Billed to date" was the first wording and the owner could not
+                tell what it meant. "Total billed" reads as a plain sum and sits
+                parallel with VISITS and LAST IN beside it.
+
+                Not "Total spent": that is the customer's side of the same
+                number and it is wrong on exactly the cars that matter — an
+                unpaid bill has been billed and not spent. When there IS an
+                unpaid part, the "Still owed" tile appears next to this one, so
+                the pair reads without ambiguity.
+
+                The figure is `total_bill_amount − discount_amount` summed over
+                every visit, which is the Profit page's own definition of
+                revenue — a discount is money never earned, not an expense.
+                {% endcomment %}
+                <dt>Total billed</dt>
+                <dd>₹{{ car_info.billed|inr }}</dd>
+            </div>
+            {% if car_info.outstanding > 0 %}
+            <div class="cd-stat cd-stat-due">
+                <dt>Still owed</dt>
+                <dd>₹{{ car_info.outstanding|inr }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+
+        {% comment %}
+        The one way the figure above can be wrong without looking wrong.
+        `SPARE_COST` counts a missing `unit_price` as ₹0, so a part nobody
+        costed reads as FREE and pushes the gross profit up silently. Expect it
+        at go-live, on opening stock counted onto the shelf before any supplier
+        bill exists. Said plainly and quietly, in the same grey as everything
+        else here — it is a caveat on a number, not an alarm.
+        {% endcomment %}
+        {% if car_info.uncosted_parts %}
+        <p class="cd-caveat">
+            {{ car_info.uncosted_parts }} part{{ car_info.uncosted_parts|pluralize }} on this car
+            {{ car_info.uncosted_parts|pluralize:"has,have" }} no cost recorded, so the gross profit above is higher than the real one.
+        </p>
+        {% endif %}
+    </header>
+
+    {% comment %}
+    ==================================================================
+    THE VISITS
+    ==================================================================
+    One row per job card, newest first, each one a link to that card. The row is
+    a <div> with a `.stretched-link` inside it, NOT an <a> wrapped round the
+    contents — an anchor may not contain interactive content, and browsers do
+    not forgive it quietly: the parser closes the anchor and reopens it around
+    what follows, which on the Estimates list produced four anchor elements per
+    row and split the grid four ways. Django renders the markup verbatim, so
+    nothing server-side notices and the page looks almost right.
+    ================================================================== {% endcomment %}
+    <h2 class="cd-section">
+        Visit history
+        <span class="cd-section-count">{{ car_info.visits }}</span>
+    </h2>
+
+    <div class="cd-list">
+        {% for bill in bills %}
+        <div class="cd-visit{% if bill.completed %} is-done{% endif %}">
+            <div class="cd-visit-no">#{{ bill.visit_number }}</div>
+
+            <div class="cd-visit-body">
+                <div class="cd-visit-top">
+                    <a class="cd-visit-link stretched-link" href="{% url 'jobcard_detail' bill.pk %}">
+                        {{ bill.bill_number|default:"Not billed yet" }}
+                    </a>
+
+                    {% comment %}
+                    Two facts, two badges, never merged. "Completed" is about the
+                    car (has it left?), the payment status is about the money —
+                    a completed car can be unpaid and a paid car can still be on
+                    the ramp, and one combined label would have to lie about one
+                    of them.
+                    {% endcomment %}
+                    {% if not bill.completed %}
+                    <span class="cd-badge cd-badge-open">On the floor</span>
+                    {% endif %}
+                    {% if bill.payment_status == 'PAID' %}
+                    <span class="cd-badge cd-badge-paid">Paid</span>
+                    {% elif bill.payment_status == 'BULK_PAID' %}
+                    <span class="cd-badge cd-badge-paid">Fleet paid</span>
+                    {% elif bill.payment_status == 'PARTIAL' %}
+                    <span class="cd-badge cd-badge-part">Part paid</span>
+                    {% elif bill.total_bill_amount > 0 %}
+                    <span class="cd-badge cd-badge-due">Unpaid</span>
+                    {% endif %}
+                </div>
+
+                <div class="cd-visit-meta">
+                    <span>{{ bill.admitted_date|date:"d M Y" }}</span>
+                    {% if bill.lead_mechanic %}<span>· {{ bill.lead_mechanic.name }}</span>{% endif %}
+                    {% if bill.mileage %}<span>· {{ bill.mileage }} km</span>{% endif %}
+                </div>
+
+                {% comment %}
+                The first concern used to print here, truncated, with a
+                "+4 more". It was the only free-text line in the list and it
+                made every row a different height while answering a question
+                nobody asks of a history — you scan this for WHEN and HOW MUCH,
+                and the concerns are one tap away on the card itself.
+                {% endcomment %}
+            </div>
+
+            {% comment %}
+            The amount, and nothing else. There was an Invoice button here on
+            every row; the job card it opens carries its own Invoice link, so
+            this was a second door to the same place — one that cost a column of
+            width on a phone, forced the row to reflow below 520px, and needed
+            its own z-index to stay clickable above the row-wide link. Removing
+            it makes the row a single target with a single meaning: tap it to
+            open that visit.
+            {% endcomment %}
+            <div class="cd-visit-right">
+                {% if bill.total_bill_amount > 0 %}
+                <div class="cd-amount">₹{{ bill.total_bill_amount|inr }}</div>
+                {% else %}
+                <div class="cd-amount cd-amount-none">Not priced</div>
+                {% endif %}
+
+                {% comment %}
+                This visit's own gross profit, under the bill. Owner only, and
+                deliberately quiet — small, grey, no colour, no weight. It is a
+                figure to glance at while reading the history, not the thing the
+                row is about; the bill above it stays the loudest number.
+
+                It costs the row no height: the body beside it is already two
+                lines, so this second line sits inside the space the row
+                occupied anyway.
+                {% endcomment %}
+                {% if show_profit and bill.gross_profit is not None %}
+                <div class="cd-gp" title="Gross profit — before wages and overheads">
+                    ₹{{ bill.gross_profit|inr }}<span class="cd-gp-word"> gross</span>{% if bill.gross_profit_pct %} · {{ bill.gross_profit_pct|floatformat:0 }}%{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% empty %}
+        <div class="cd-empty">No visits recorded for this car.</div>
+        {% endfor %}
     </div>
-    {% empty %}
-    <div class="text-center py-4" style="color: var(--color-text-muted);">
-        <p>No bills for this car.</p>
-    </div>
-    {% endfor %}
+
+    {% if page_obj.has_other_pages %}
+    <nav class="cd-pager" aria-label="Pages">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}" rel="prev">&laquo; Newer</a>
+        {% endif %}
+        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}" rel="next">Older &raquo;</a>
+        {% endif %}
+    </nav>
+    {% endif %}
 </div>
+
+<style>
+    /* ==================================================================
+       ONE CAR
+       ==================================================================
+       Read on a phone more than anywhere else — an owner looking a car up
+       between other things — so the hero stacks, the numbers sit in a row that
+       wraps rather than a table that scrolls, and nothing here needs a
+       horizontal swipe at 320px. */
+    .cd-page {
+        padding: 0.85rem 0.9rem 2.5rem;
+        max-width: 1100px;
+        margin: 0 auto;
+    }
+
+    .cd-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-height: 36px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        text-decoration: none;
+        margin-bottom: 0.6rem;
+    }
+
+    .cd-back svg { width: 13px; height: 13px; }
+    .cd-back:hover { color: var(--color-primary); }
+
+    /* ---------- hero ---------- */
+    .cd-hero {
+        position: relative;
+        background: var(--color-card);
+        /* Same wash and the same 8% alpha as `.lr-car` on the Live Report and
+           `.cp-card` on the list before it — one Red car, one red, everywhere. */
+        background-image: linear-gradient(var(--cd-shade), var(--cd-shade));
+        border: 1px solid var(--color-border);
+        border-radius: 16px;
+        padding: 1.05rem 1.05rem 0.9rem 1.2rem;
+        overflow: hidden;
+        margin-bottom: 1.3rem;
+    }
+
+    /* The rail, from the same CAR_COLOR_HEX map the job card, the dashboard
+       stripe and the estimate rows read. */
+    .cd-hero::before {
+        content: '';
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 6px;
+        background: var(--cd-accent, var(--color-primary));
+    }
+
+    .cd-hero--white::before {
+        box-shadow: inset -1px 0 0 var(--color-border), inset 1px 0 0 var(--color-border);
+    }
+
+    .cd-hero--unset { background-image: none; }
+    .cd-hero--unset::before {
+        background: repeating-linear-gradient(-45deg, #e2e8f0 0 3px, #f8fafc 3px 8px);
+    }
+
+    /* The tiles sit ON the wash, so they need their own ground or they take the
+       tint twice and read as a different colour from the card around them. */
+    .cd-hero .cd-stat { background: rgba(255, 255, 255, 0.72); }
+
+    .cd-hero-main {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.9rem;
+        margin-bottom: 1rem;
+    }
+
+    .cd-identity { min-width: 0; }
+
+    .cd-name {
+        margin: 0 0 0.45rem;
+        font-size: 1.35rem;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        line-height: 1.15;
+        color: var(--color-text);
+        word-break: break-word;
+    }
+
+    .cd-sub {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .cd-plate {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        color: #fff;
+        background: var(--color-text);
+        border-radius: 7px;
+        padding: 0.2rem 0.55rem;
+        white-space: nowrap;
+    }
+
+    .cd-chip {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        background: var(--color-border-light);
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        padding: 0.15rem 0.5rem;
+        white-space: nowrap;
+    }
+
+    .cd-chip-live {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.32rem;
+        color: #15803d;
+        background: #f0fdf4;
+        border-color: #bbf7d0;
+    }
+
+    .cd-chip-live i {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: #22c55e;
+    }
+
+    .cd-owner {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        min-width: 0;
+    }
+
+    .cd-owner svg { width: 15px; height: 15px; margin-top: 2px; color: var(--color-text-muted); flex: none; }
+    .cd-owner-name { display: block; font-size: 0.88rem; font-weight: 600; color: var(--color-text); }
+
+    /* 44px of tappable height on a link people ring from. */
+    .cd-owner-tel {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--color-primary);
+        text-decoration: none;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* ---------- the numbers ---------- */
+    .cd-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0;
+        padding-top: 0.9rem;
+        border-top: 1px dashed var(--color-border);
+    }
+
+    /* ---- tile widths are PROPORTIONAL, never content-driven ----
+       "Visits: 1" does not deserve the same width as ₹20,75,361, so the grow
+       factors differ: a narrow box for a small fact, wide ones for money.
+
+       Fixed proportions rather than letting each box size to its contents,
+       which is the tempting version and the wrong one: a car billed ₹500 and a
+       car billed ₹1,25,000 would then lay their tiles out differently, so the
+       boxes move between cars and the eye has to find them again each time.
+       These weights give the same arrangement on every car. */
+    .cd-stat {
+        /* Money tiles share whatever is left. */
+        flex: 1 1 128px;
+        min-width: 0;
+        background: var(--color-hover);
+        border: 1px solid var(--color-border-light);
+        border-radius: 11px;
+        padding: 0.5rem 0.7rem;
+    }
+
+    /* The two tiles whose contents CANNOT vary get a fixed, smaller width:
+       a visit count is one to three digits and a date is always "03 Jul 2026".
+       Fixing them is safe precisely because their width is not a function of
+       the data — where the money tiles ARE, which is why those flex instead.
+       Sizing every tile to its contents would have been the tempting version
+       and the wrong one: a car billed ₹500 and one billed ₹1,25,000 would lay
+       the row out differently, so the boxes move between cars. */
+    .cd-stats > .cd-stat:first-child { flex: 0 0 92px; }    /* Visits */
+    .cd-stat-date { flex: 0 0 132px; }                      /* a date */
+
+    .cd-stat dt {
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: var(--color-text-muted);
+        margin-bottom: 0.15rem;
+    }
+
+    .cd-stat dd {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: var(--color-text);
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .cd-stat-date dd { font-size: 0.92rem; }
+
+    /* Gross profit is NOT highlighted. It sits in the same grey tile as the
+       others, at the same weight — an owner's figure to glance at, not the
+       headline. The percentage rides on the same line, smaller and muted, so
+       the tile stays two lines like its neighbours and the row of tiles keeps
+       one height. */
+    .cd-stat-gp .cd-pct {
+        margin-left: 0.35rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        letter-spacing: 0;
+    }
+
+    /* Money still owed is the one figure here that asks for an action, so it is
+       the one that is coloured. It is also only RENDERED when there is some —
+       a "Still owed ₹0" tile on every settled car is a number nobody needs,
+       repeated forty times. */
+    .cd-stat-due {
+        background: #fef2f2;
+        border-color: #fecaca;
+    }
+    .cd-stat-due dt { color: #b91c1c; }
+    .cd-stat-due dd { color: #b91c1c; }
+
+    .cd-caveat {
+        margin: 0.6rem 0 0;
+        font-size: 0.7rem;
+        line-height: 1.4;
+        color: var(--color-text-muted);
+    }
+
+    /* ---------- visits ---------- */
+    .cd-section {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin: 0 0 0.7rem;
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: var(--color-text);
+    }
+
+    .cd-section-count {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--color-primary);
+        background: var(--color-primary-light);
+        border-radius: 999px;
+        padding: 0.12rem 0.5rem;
+    }
+
+    /* NOT `overflow: hidden`, however much the rounded corners want it — the
+       same trap `.cb-list` documents. Nothing in this list opens a dropdown
+       today, but the corners are rounded on the first and last child instead so
+       that adding one later cannot clip it invisibly. */
+    .cd-list {
+        border: 1px solid var(--color-border);
+        border-radius: 14px;
+        background: var(--color-card);
+    }
+
+    .cd-list > :first-child { border-radius: 14px 14px 0 0; }
+    .cd-list > :last-child  { border-radius: 0 0 14px 14px; }
+    .cd-list > :only-child  { border-radius: 14px; }
+
+    .cd-visit {
+        position: relative;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.7rem;
+        padding: 0.75rem 0.85rem;
+        border-bottom: 1px solid var(--color-border-light);
+        transition: background-color .15s ease;
+    }
+
+    .cd-visit:last-child { border-bottom: none; }
+    .cd-visit:hover { background: var(--color-hover); }
+
+    .cd-visit-no {
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--color-text-muted);
+        background: var(--color-border-light);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* The most recent visit is the one being asked about most of the time. */
+    .cd-visit:first-child .cd-visit-no {
+        color: #fff;
+        background: var(--color-primary);
+    }
+
+    .cd-visit-body { flex: 1 1 auto; min-width: 0; }
+
+    .cd-visit-top {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem;
+        margin-bottom: 0.15rem;
+    }
+
+    .cd-visit-link {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--color-text);
+        text-decoration: none;
+    }
+
+    /* The row-wide hit area. `::after` covers the whole row at z-index 1; the
+       Invoice button below sits at z-index 2 and keeps its own clicks. */
+    .stretched-link::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+    }
+
+    .cd-badge {
+        font-size: 0.63rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        border-radius: 999px;
+        padding: 0.1rem 0.45rem;
+        white-space: nowrap;
+        border: 1px solid transparent;
+    }
+
+    .cd-badge-open { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+    .cd-badge-paid { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
+    .cd-badge-part { color: #b45309; background: #fff7ed; border-color: #fed7aa; }
+    .cd-badge-due  { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+
+    .cd-visit-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        font-size: 0.74rem;
+        color: var(--color-text-muted);
+    }
+
+    /* The bill, and under it the owner's gross-profit line. Neither carries a
+       link of its own, so this needs no z-index — the row-wide stretched link
+       owns every click in here. */
+    .cd-visit-right {
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        justify-content: center;
+        text-align: right;
+    }
+
+    .cd-amount {
+        font-size: 0.92rem;
+        font-weight: 800;
+        color: var(--color-text);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    /* "Not priced", never ₹0 — the same distinction the printed sheet makes
+       between a part with no price and one given away. */
+    .cd-amount-none {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+    }
+
+    /* This visit's gross profit. Grey, light, small — everything about it says
+       "secondary". The bill above stays the number the row is about. */
+    .cd-gp {
+        margin-top: 0.1rem;
+        font-size: 0.68rem;
+        font-weight: 500;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .cd-empty {
+        padding: 2rem 1rem;
+        text-align: center;
+        color: var(--color-text-muted);
+        font-size: 0.85rem;
+    }
+
+    .cd-pager {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-top: 1.3rem;
+    }
+
+    .cd-pager a, .cd-pager span {
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+        padding: 0 0.85rem;
+        border-radius: 10px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid var(--color-border);
+        background: var(--color-card);
+        color: var(--color-primary);
+    }
+
+    .cd-pager span { color: var(--color-text-muted); border-color: transparent; background: transparent; }
+
+    /* ---------- phone ---------- */
+    @media (max-width: 520px) {
+        .cd-name { font-size: 1.15rem; }
+
+        /* Two tiles a row rather than five squeezed ones. `1 1 calc(50% - …)`
+           and not `grid`, so an odd number of tiles — three for Office, or four
+           on a car with nothing outstanding — fills the last row instead of
+           leaving a hole.
+
+           The fixed widths above are overridden here: at 375px a 92px tile
+           beside a 132px one leaves a third of the row empty, and the point of
+           the different widths was to stop small facts taking big boxes on a
+           wide screen, not to strand space on a narrow one. */
+        .cd-stat,
+        .cd-stats > .cd-stat:first-child,
+        .cd-stat-date { flex: 1 1 calc(50% - 0.25rem); }
+
+        /* The row NO LONGER reflows on a phone. It used to wrap the amount and
+           the Invoice button onto a third line, because the right-hand column
+           was taking a third of a 360px screen from the one string that
+           identifies the visit. With the button gone the amount is short enough
+           to stay on the line, and the row keeps its two-line shape at every
+           width — which is what makes a list scannable down. */
+        .cd-amount { font-size: 0.86rem; }
+
+        /* A thumb, not a mouse — this is rung from a phone. */
+        .cd-owner-tel { min-height: 40px; }
+
+        /* The word "gross" comes off on a phone. The line is `nowrap`, so
+           every character it carries widens the right column and takes that
+           width from the bill number and badges beside it — measured at +24px
+           of row height, because those badges then wrap. The tile above still
+           says "Gross profit" and the title attribute still spells it out, so
+           nothing is lost but 35px. */
+        .cd-gp-word { display: none; }
+    }
+</style>
 {% endblock %}

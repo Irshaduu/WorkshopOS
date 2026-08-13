@@ -62,6 +62,145 @@ def _resolvable_shops(spares):
 PRICE_FIELDS = ('unit_price', 'total_price', 'customer_rate')
 
 
+def _row_where(section_name, row_form, position):
+    """
+    How one failing row is named at the top of the page.
+
+    A row that knows what it is says so — `InventoryDrawForm.row_label()`
+    returns the product name — because "Inventory item · Castrol Edge" is
+    something you can go and find, while "Inventory item 7" means counting rows.
+    Everything else falls back to its position, which is still better than the
+    section alone.
+    """
+    labeller = getattr(row_form, 'row_label', None)
+    if callable(labeller):
+        # A middot, not a dash: the template already joins `where` and `what`
+        # with an em-dash, and two of them in one line ("Inventory item — Liqui
+        # Moly — Quantity: …") reads as three unrelated fragments.
+        return f"{section_name} · {labeller()}"
+    return f"{section_name} {position}"
+
+
+def _collect_problems(form, formsets):
+    """
+    Every reason this job card was refused, as flat ("where", "what") pairs.
+
+    Assembled here rather than by walking the formsets in the template, because
+    the template version had rotted in three separate ways and each was
+    invisible to the test suite:
+
+      * It never mentioned `inventory_formset` at all. A warehouse draw saved
+        with a blank Qty is refused by `InventoryDrawForm.clean`, so the page
+        came back unsaved with **no banner, no message and no sound** — the only
+        sign was one line of small red text several screens down, inside a
+        horizontally scrolling table. From the front it looked like the Save
+        button had done nothing.
+      * What it did print was "Check Spares section for errors", which repeats
+        what the person already knows (something is wrong) and withholds the
+        only part they need (what, and in which row).
+      * It carried a leftover debugging loop that printed Django's raw error
+        dict — `Labour Error - job_description: <ul class="errorlist">…` — onto
+        the screen of whoever hit it.
+
+    Reads `formset.forms` rather than `formset.errors` so a row can be named by
+    what it holds; both have already been validated by the time this runs, so
+    neither costs anything extra.
+    """
+    problems = []
+
+    for field in form:
+        for error in field.errors:
+            problems.append((field.label or 'Job card', error))
+    for error in form.non_field_errors():
+        problems.append(('Job card', error))
+
+    for section_name, formset in formsets:
+        for error in formset.non_form_errors():
+            problems.append((section_name, error))
+        for position, row_form in enumerate(formset.forms, start=1):
+            if not row_form.errors:
+                continue
+            where = _row_where(section_name, row_form, position)
+            for field in row_form:
+                for error in field.errors:
+                    label = field.label or field.name
+                    problems.append((where, f"{label}: {error}"))
+            for error in row_form.non_field_errors():
+                problems.append((where, error))
+
+    return problems
+
+
+def _problems_for(request, form, concern_formset, labour_formset,
+                  inventory_formset, spare_formset, subject):
+    """
+    Collect the problems AND say so where the eye already is.
+
+    Both views call this rather than listing the four section names each — two
+    copies of those labels would be free to drift, and they would drift into a
+    page that names the same section two different ways depending on whether you
+    were creating or editing.
+
+    The message matters as much as the list: base.html renders messages at the
+    top of every page and sound.js plays its error tone off the message tag, so
+    a refusal with no message is a refusal nobody hears and, at the bottom of a
+    form this long, nobody sees either.
+
+    Named in the order the sections appear on the page, so the list reads as a
+    route down it.
+    """
+    problems = _collect_problems(form, [
+        ('Customer concern', concern_formset),
+        ('Job', labour_formset),
+        ('Inventory item', inventory_formset),
+        ('Spare part', spare_formset),
+    ])
+    if problems:
+        count = len(problems)
+        messages.error(
+            request,
+            f"{subject} not saved — {count} thing{'s' if count != 1 else ''} "
+            f"still need{'' if count != 1 else 's'} fixing. Nothing was lost; "
+            f"what you typed is still on the form."
+        )
+    return problems
+
+
+def _form_context(request, *, form, concern_formset, spare_formset,
+                  inventory_formset, labour_formset, jobcard=None, problems=None):
+    """
+    The one context every render of the job-card form goes through.
+
+    There were three of these — create, edit, and the duplicate-registration
+    refusal — and they had drifted apart. The refusal path passed **no
+    `spare_shops`**, so every spare row's shop `<select>` re-rendered holding
+    nothing but "-- Shop --". Correct the registration number, press save, and
+    each of those selects posts an empty value; the resolution pass then clears
+    the FK and the purchase disappears off that shop's ledger. That is exactly
+    the failure the archived-shop rule (`_shop_options`) exists to prevent,
+    reached through a different door — and it needed no archived shop and no
+    unusual data, only a customer bringing a car back before the last card on it
+    was closed.
+
+    One builder means a fourth render cannot reintroduce it.
+    """
+    return {
+        'form': form,
+        'concern_formset': concern_formset,
+        'spare_formset': spare_formset,
+        'inventory_formset': inventory_formset,
+        'labour_formset': labour_formset,
+        'jobcard': jobcard,
+        'is_edit': jobcard is not None,
+        'next_url': request.GET.get('next'),
+        'spare_shops': _shop_options(jobcard),
+        'unassigned_spares': JobCardSpareItem.objects.filter(
+            job_card__isnull=True
+        ).select_related('shop').order_by('-ordered_date'),
+        'problems': problems or [],
+    }
+
+
 def _reconcile_settled_bill(jobcard):
     """
     Make the payment state honest again after an unlocked edit moved the bill on
@@ -204,14 +343,18 @@ def jobcard_create(request):
                 inventory_formset = JobCardInventoryFormSet(parts_data, prefix='inventory')
                 labour_formset = JobCardLabourFormSet(request.POST, prefix='labours')
 
-                return render(request, 'workshop/jobcard/jobcard_form.html', {
-                    'form': form,
-                    'concern_formset': concern_formset,
-                    'spare_formset': spare_formset,
-                    'inventory_formset': inventory_formset,
-                    'labour_formset': labour_formset,
-                    'is_edit': False,
-                })
+                return render(
+                    request,
+                    'workshop/jobcard/jobcard_form.html',
+                    _form_context(
+                        request,
+                        form=form,
+                        concern_formset=concern_formset,
+                        spare_formset=spare_formset,
+                        inventory_formset=inventory_formset,
+                        labour_formset=labour_formset,
+                    ),
+                )
 
             # Formsets initialization for standard save
             concern_formset = JobCardConcernFormSet(request.POST, prefix='concerns')
@@ -335,17 +478,26 @@ def jobcard_create(request):
         inventory_formset = JobCardInventoryFormSet(prefix='inventory')
         labour_formset = JobCardLabourFormSet(prefix='labours')
 
-    context = {
-        'form': form,
-        'concern_formset': concern_formset,
-        'spare_formset': spare_formset,
-        'inventory_formset': inventory_formset,
-        'labour_formset': labour_formset,
-        'is_edit': False,
-        'spare_shops': _shop_options(),
-        'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
-    }
-    return render(request, 'workshop/jobcard/jobcard_form.html', context)
+    # Reaching here after a POST means nothing was saved.
+    problems = []
+    if request.method == 'POST':
+        problems = _problems_for(
+            request, form, concern_formset, labour_formset,
+            inventory_formset, spare_formset, subject='Job card')
+
+    return render(
+        request,
+        'workshop/jobcard/jobcard_form.html',
+        _form_context(
+            request,
+            form=form,
+            concern_formset=concern_formset,
+            spare_formset=spare_formset,
+            inventory_formset=inventory_formset,
+            labour_formset=labour_formset,
+            problems=problems,
+        ),
+    )
 
 
 @office_required
@@ -453,18 +605,19 @@ def jobcard_edit(request, pk):
                     f'{vehicle_info} ({registration}) already has a different active job card '
                     f'(not yet Completed). Complete or trash that job card first.'
                 )
-                return render(request, 'workshop/jobcard/jobcard_form.html', {
-                    'form': form,
-                    'concern_formset': concern_formset,
-                    'spare_formset': spare_formset,
-                    'inventory_formset': inventory_formset,
-                    'labour_formset': labour_formset,
-                    'jobcard': jobcard,
-                    'is_edit': True,
-                    'next_url': request.GET.get('next'),
-                    'spare_shops': _shop_options(jobcard),
-                    'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
-                })
+                return render(
+                    request,
+                    'workshop/jobcard/jobcard_form.html',
+                    _form_context(
+                        request,
+                        form=form,
+                        concern_formset=concern_formset,
+                        spare_formset=spare_formset,
+                        inventory_formset=inventory_formset,
+                        labour_formset=labour_formset,
+                        jobcard=jobcard,
+                    ),
+                )
 
             # AUD-0014: Wrap all formset saves in a single atomic transaction.
             with transaction.atomic():
@@ -584,19 +737,28 @@ def jobcard_edit(request, pk):
         inventory_formset = JobCardInventoryFormSet(instance=jobcard, prefix='inventory')
         labour_formset = JobCardLabourFormSet(instance=jobcard, prefix='labours')
 
-    context = {
-        'form': form,
-        'concern_formset': concern_formset,
-        'spare_formset': spare_formset,
-        'inventory_formset': inventory_formset,
-        'labour_formset': labour_formset,
-        'jobcard': jobcard,
-        'is_edit': True,
-        'next_url': request.GET.get('next'),
-        'spare_shops': _shop_options(jobcard),
-        'unassigned_spares': JobCardSpareItem.objects.filter(job_card__isnull=True).select_related('shop').order_by('-ordered_date'),
-    }
-    return render(request, 'workshop/jobcard/jobcard_form.html', context)
+    # See jobcard_create: arriving here on a POST means nothing was written.
+    problems = []
+    if request.method == 'POST':
+        problems = _problems_for(
+            request, form, concern_formset, labour_formset,
+            inventory_formset, spare_formset,
+            subject=jobcard.registration_number)
+
+    return render(
+        request,
+        'workshop/jobcard/jobcard_form.html',
+        _form_context(
+            request,
+            form=form,
+            concern_formset=concern_formset,
+            spare_formset=spare_formset,
+            inventory_formset=inventory_formset,
+            labour_formset=labour_formset,
+            jobcard=jobcard,
+            problems=problems,
+        ),
+    )
 
 
 @office_required

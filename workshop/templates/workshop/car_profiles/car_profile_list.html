@@ -4,102 +4,458 @@
 {% block title %}Car Profiles{% endblock %}
 
 {% block content %}
-<div class="container-fluid px-3 py-3">
-    <!-- Header with Tiny Search -->
-    <div class="d-flex justify-content-between align-items-center mb-3 gap-3">
-        <h6 class="mb-0 text-primary fw-bold flex-shrink-0" style="font-size: 0.85rem;">
-            <i class="bi bi-car-front"></i> Car Profiles ({{ page_obj.paginator.count }})
-        </h6>
-        
-        <!-- Search Bar (Super Tiny Pattern) -->
-        <form id="carSearchForm" class="d-flex flex-grow-1" style="max-width: 500px;">
-            <!-- Text Search -->
-            <div class="position-relative flex-grow-1">
-                <button type="submit" class="btn btn-link position-absolute top-50 start-0 translate-middle-y p-0 ms-2 text-muted" style="z-index: 5; border: none; text-decoration: none;">
-                    <i class="bi bi-search" style="font-size: 0.8rem;"></i>
-                </button>
-                <input type="text" name="q" id="carSearchInput" value="{{ search_query|default:'' }}" 
-                       placeholder="Search Reg, Owner, Brand, Model..." 
-                       class="form-control form-control-sm ps-4 rounded-pill border-0 shadow-sm"
-                       style="font-size: 0.85rem; height: 32px; background: var(--color-card);"
-                       autocomplete="off">
-            </div>
-        </form>
+<div class="cp-page">
+
+    {% comment %}
+    ==================================================================
+    HEADER — title on its own line, search under it, on a phone
+    ==================================================================
+    It was one flex row at every width, so on a phone the title and a search box
+    with a five-word placeholder competed for ~360px and both lost: the count
+    was pushed against the left edge and the placeholder truncated to "Search
+    Reg, Own…". They are two different jobs — the title says where you are, the
+    search is what you came to do — and neither is improved by being half as
+    wide.
+
+    This is the OPPOSITE call from the Estimates header, deliberately. There the
+    thing beside the title is a fixed, short "New Estimate" button, and dropping
+    it to its own row pushed the first card below the fold for no gain. A search
+    box is not a button: it is used by typing into it, it wants the full width
+    at the moment it is used, and it is the reason this page is open.
+    ================================================================== {% endcomment %}
+    <div class="cp-head">
+        <div class="cp-head-title">
+            <h1 class="cp-title">
+                <i class="bi bi-car-front-fill title-icon"></i>
+                Car Profiles
+                <span class="cp-count-pill" id="cpCount">{{ page_obj.paginator.count }}</span>
+            </h1>
+        </div>
+
+        {% comment %}
+        Deliberately the SAME control as the one on Completed — same pill, same
+        0.8rem type, same inset `bi-search` glyph, same focus ring. Those two
+        pages are opened one after the other all day and a search box that
+        changes shape between them reads as two different products.
+
+        The value comes from `q`. The template used to read `search_query`,
+        which this view has never passed — so the box came back empty after
+        every search and, worse, the pagination links below carried the same
+        dead name, meaning page 2 of a search silently returned page 2 of
+        EVERYTHING.
+        {% endcomment %}
+        <div class="cp-controls">
+            <form id="carSearchForm" class="cp-search-wrap" role="search">
+                <i class="bi bi-search search-icon"></i>
+                <input type="text" name="q" id="carSearchInput" value="{{ q|default:'' }}"
+                       class="cp-search-input"
+                       placeholder="Search reg, owner, brand, model…"
+                       aria-label="Search cars"
+                       autocomplete="off" enterkeyhint="search">
+            </form>
+        </div>
     </div>
 
-    <!-- Car List Container (AJAX Target) -->
-    <div id="car-list-container" class="position-relative">
+    <div id="car-list-container">
         {% include 'workshop/car_profiles/car_list_partial.html' %}
     </div>
 </div>
 
 <style>
-    /* Premium Car Card Styling */
-    .car-card {
-        display: block;
-        background: var(--color-card);
-        border: 1px solid var(--color-border);
-        border-radius: 16px;
-        padding: 1.25rem;
-        text-decoration: none;
-        color: inherit;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        height: 100%;
+    /* ==================================================================
+       CAR PROFILES
+       ==================================================================
+       Three devices, three jobs: Office scans it on a laptop, Floor taps it on
+       a tablet, an owner looks a car up on a phone. So the grid is fluid, every
+       tap target clears 44px, and the row that matters most on a phone — the
+       one telling you the car is in the workshop right now — is a colour, not a
+       word to read. */
+    .cp-page {
+        padding: 0.85rem 0.9rem 2.5rem;
+        max-width: 1400px;
+        margin: 0 auto;
     }
 
-    .car-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 24px var(--color-shadow) !important;
-        border-color: var(--color-primary);
-        text-decoration: none;
-        color: inherit;
+    /* ---------- header ----------
+       Two rows on a phone, one row on anything wider. Mobile-first: the column
+       is the default and the row is the override, so the narrow case cannot be
+       broken by forgetting a media query.
+
+       On a phone the title and a search box with a five-word placeholder would
+       compete for ~360px and both lose — the count is pushed against the edge
+       and the placeholder truncates. Above 768px there is room for both, and
+       giving the search a line of its own there would push the first card down
+       for nothing. */
+    .cp-head {
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+        margin-bottom: 1rem;
     }
 
-    .car-name {
-        color: var(--color-primary);
-        font-size: 1.1rem;
-        font-weight: 700;
-        letter-spacing: -0.5px;
-        line-height: 1.3;
-        word-break: break-word;
+    .cp-head-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
     }
 
-    /* Empty State Match Jobs Card */
-    .empty-state i {
-        font-size: 4rem;
-        opacity: 0.15;
-        color: var(--color-primary);
-    }
-
-    /* Mobile Adjustments */
-    @media (max-width: 768px) {
-        .car-card {
-            padding: 1rem;
+    @media (min-width: 768px) {
+        .cp-head {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1.2rem;
         }
+        /* The title keeps what it needs and the search takes the rest, up to
+           its own 520px ceiling — a 900px-wide text box beside a short title
+           reads as a mistake. */
+        .cp-head-title { flex: 0 0 auto; }
+        .cp-controls { flex: 1 1 auto; justify-content: flex-end; }
     }
+
+    /* Title and count pill mirror `.del-page-title` / `.del-count-pill` on
+       Completed, in this page's own blue rather than that page's green. */
+    .cp-title {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--color-text);
+        letter-spacing: -0.02em;
+        min-width: 0;
+    }
+
+    .cp-title .title-icon { color: var(--color-primary); }
+
+    .cp-count-pill {
+        flex: none;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        background: rgba(37, 99, 235, 0.1);
+        color: var(--color-primary);
+        padding: 2px 8px;
+        border-radius: 20px;
+        border: 1px solid rgba(37, 99, 235, 0.2);
+        align-self: center;
+    }
+
+    /* ---------- search: the same control as Completed ----------
+       Values copied deliberately from `.del-search-*` in completed_list.html
+       rather than approximated. The two pages are opened one after the other
+       all day, and a search box that changes shape between them reads as two
+       different products. If that one is restyled, restyle this with it. */
+    .cp-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .cp-search-wrap {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+        max-width: 520px;
+    }
+
+    .cp-search-wrap .search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--color-text-muted);
+        font-size: 0.75rem;
+        pointer-events: none;
+    }
+
+    .cp-search-input {
+        width: 100%;
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        background: var(--color-card);
+        font-size: 0.8rem;
+        color: var(--color-text);
+        padding: 7px 14px 7px 32px;
+        outline: none;
+        /* Paint only. Never `transition: all` on a form control in this
+           codebase — CLAUDE.md records the afternoon that cost. */
+        transition: border-color 0.15s, box-shadow 0.15s;
+        box-shadow: 0 1px 3px var(--color-shadow);
+    }
+
+    .cp-search-input:focus {
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .cp-search-input::placeholder { color: var(--color-text-muted); }
+
+    /* ---------- the grid ---------- */
+    .cp-grid {
+        display: grid;
+        gap: 0.7rem;
+        grid-template-columns: 1fr;
+        /* Rows stretch to the tallest card in them, so a car with a long owner
+           name does not leave the card beside it floating with a gap under it. */
+        align-items: stretch;
+    }
+
+    @media (min-width: 560px)  { .cp-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 992px)  { .cp-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (min-width: 1400px) { .cp-grid { grid-template-columns: repeat(4, 1fr); } }
+
+    /* ---------- one car ---------- */
+    .cp-card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        background: var(--color-card);
+        /* The car's own colour, washed across the card. Same technique and the
+           same alpha (`14` = 8%) as `.lr-car` on the Live Report, so one Red
+           car is one red everywhere — a second, stronger wash invented here
+           would make the two screens disagree about a car you can see. */
+        background-image: linear-gradient(var(--cp-shade), var(--cp-shade));
+        border: 1px solid var(--color-border);
+        border-radius: 14px;
+        padding: 0.85rem 0.9rem 0.75rem 1.05rem;
+        overflow: hidden;             /* keeps the rail inside the radius */
+        text-decoration: none;
+        color: inherit;
+        transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+    }
+
+    /* The rail. Same CAR_COLOR_HEX map the Live Report, the dashboard stripe
+       and the estimate rows read. */
+    .cp-card::before {
+        content: '';
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 5px;
+        background: var(--cp-accent, var(--color-primary));
+    }
+
+    /* A white car's rail would vanish against the card, so it is outlined. */
+    .cp-card--white::before {
+        box-shadow: inset -1px 0 0 var(--color-border), inset 1px 0 0 var(--color-border);
+    }
+
+    /* No colour recorded: the rail hatches rather than pretending to be grey
+       paint, and there is NO wash — a slate tint would say "this car is grey",
+       which is a different fact from "nobody wrote it down". */
+    .cp-card--unset { background-image: none; }
+    .cp-card--unset::before {
+        background: repeating-linear-gradient(-45deg, #e2e8f0 0 3px, #f8fafc 3px 8px);
+    }
+
+    .cp-card:hover {
+        border-color: var(--color-primary);
+        box-shadow: 0 6px 18px rgba(15, 23, 42, .07);
+        transform: translateY(-2px);
+        color: inherit;
+    }
+
+    .cp-card:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+    }
+
+    .cp-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+
+    /* The headline. Brand + model, else the plate — there is always exactly one
+       big line, so the eye has the same anchor on every card and a car recorded
+       without a make never leaves a hole where the name should be. */
+    .cp-name {
+        margin: 0;
+        font-size: 0.98rem;
+        font-weight: 700;
+        line-height: 1.25;
+        color: var(--color-text);
+        letter-spacing: -0.015em;
+        /* Two lines, then ellipsis. One line truncated "Mercedes-Benz E-Cla…"
+           on a phone; unbounded, a long name made one card in a row twice the
+           height of its neighbours. */
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    /* In the workshop right now. A dot, not a word: it has to be readable at a
+       glance down a grid of forty, and this is the only thing on the card that
+       changes from day to day. */
+    .cp-live {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.63rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: #15803d;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 999px;
+        padding: 0.12rem 0.45rem;
+        white-space: nowrap;
+    }
+
+    .cp-live i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #22c55e;
+    }
+
+    .cp-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    /* The plate. Never truncated and never wrapped — it is the one string on
+       the card that has to be read exactly, because it is what people search
+       by and what the car is actually called. */
+    .cp-plate {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: .06em;
+        color: var(--color-text);
+        background: var(--color-border-light);
+        border: 1px solid var(--color-border);
+        border-radius: 7px;
+        padding: 0.1rem 0.42rem;
+        white-space: nowrap;
+    }
+
+    .cp-visits {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+    }
+
+    .cp-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        margin-top: auto;             /* pins the footer to the bottom, so the
+                                         dividers line up across a row */
+        padding-top: 0.5rem;
+        border-top: 1px dashed var(--color-border);
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        min-width: 0;
+    }
+
+    .cp-owner {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .cp-date { flex: none; font-variant-numeric: tabular-nums; }
+    .cp-foot svg { width: 12px; height: 12px; flex: none; opacity: .65; }
+
+    /* ---------- empty & pagination ---------- */
+    .cp-empty {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: var(--color-text-muted);
+    }
+
+    .cp-empty svg {
+        width: 44px;
+        height: 44px;
+        opacity: .18;
+        color: var(--color-primary);
+        margin-bottom: 0.6rem;
+    }
+
+    .cp-empty h2 { font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0 0 .3rem; }
+    .cp-empty p  { font-size: .85rem; margin: 0 0 1rem; }
+
+    .cp-empty a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 40px;
+        padding: 0 1rem;
+        border: 1px solid var(--color-border);
+        border-radius: 10px;
+        background: var(--color-card);
+        color: var(--color-primary);
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .cp-pager {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-top: 1.4rem;
+    }
+
+    .cp-pager a, .cp-pager span {
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+        padding: 0 0.85rem;
+        border-radius: 10px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid var(--color-border);
+        background: var(--color-card);
+        color: var(--color-primary);
+    }
+
+    .cp-pager span { color: var(--color-text-muted); border-color: transparent; background: transparent; }
+    .cp-pager a:hover { background: var(--color-primary-light); }
+
+    #car-list-container { transition: opacity .15s ease; }
 </style>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const searchInput = document.getElementById('carSearchInput');
-    const searchForm = document.getElementById('carSearchForm');
-    const container = document.getElementById('car-list-container');
+    const searchForm  = document.getElementById('carSearchForm');
+    const container   = document.getElementById('car-list-container');
+    if (!searchInput || !container) return;
+
     let timeout = null;
     let seq = 0;
 
     function performSearch(event) {
         if (event && event.type === 'submit') event.preventDefault();
         const query = searchInput.value.trim();
-        
+
         if (timeout) clearTimeout(timeout);
-        
         const delay = (event && event.type === 'submit') ? 0 : 300;
-        
+
         timeout = setTimeout(() => {
             const url = new URL(window.location.href);
             url.searchParams.set('q', query);
             url.searchParams.set('page', '1');
-            
+
             container.style.opacity = '0.5';
 
             // Responses do not necessarily arrive in the order they were sent,
@@ -111,23 +467,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(response => response.text())
                 .then(html => {
                     if (mine !== seq) return;
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const newContent = doc.getElementById('car-list-container') || doc.body;
-                    
-                    if (newContent) {
-                        container.innerHTML = newContent.innerHTML;
-                        
-                        // Update the count in the header
-                        const newCountEl = doc.getElementById('car-count-data');
-                        if (newCountEl) {
-                            const newCount = newCountEl.getAttribute('data-count');
-                            const countHeader = document.querySelector('h6 i.bi-car-front').parentElement;
-                            if (countHeader) {
-                                countHeader.innerHTML = `<i class="bi bi-car-front"></i> Car Profiles (${newCount})`;
-                            }
-                        }
-                    }
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+                    const fresh = doc.getElementById('car-list-container') || doc.body;
+                    container.innerHTML = fresh.innerHTML;
+
+                    // The count rides in the partial on a hidden element, so it
+                    // can never be recomputed from the rows on screen — which
+                    // would report the page size, not the number of cars.
+                    const data = doc.getElementById('car-count-data');
+                    const badge = document.getElementById('cpCount');
+                    if (data && badge) badge.textContent = data.getAttribute('data-count');
+
                     container.style.opacity = '1';
                     window.history.pushState({}, '', url);
                 })
@@ -138,8 +488,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }, delay);
     }
 
-    if (searchInput) searchInput.addEventListener('input', performSearch);
-    if (searchForm) searchForm.addEventListener('submit', performSearch);
+    searchInput.addEventListener('input', performSearch);
+    searchForm.addEventListener('submit', performSearch);
 });
 </script>
 {% endblock %}

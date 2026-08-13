@@ -11,6 +11,7 @@ from ..models import JobCard, JobCardLabourItem, JobCardSpareItem
 from ..decorators import office_required
 from ..invoice import build_invoice
 from ..notifications import notify
+from ..settlement import settlement_readiness
 
 
 def _safe_back(request):
@@ -57,6 +58,10 @@ def invoice_view(request, pk):
                 'spares',
                 queryset=JobCardSpareItem.objects.select_related('item__category').order_by('pk'),
             ),
+            # The settle dialog's pre-flight reads these. Prefetched here rather
+            # than left to the template so a card carrying three concerns does
+            # not cost three queries to ask one question.
+            'concerns',
         ),
         pk=pk,
     )
@@ -65,6 +70,10 @@ def invoice_view(request, pk):
     context.update({
         'jobcard': jobcard,
         'back_url': _safe_back(request),
+        # What is still unfilled, for the confirmation in front of Settle Bill.
+        # Screen only, like `high_discount_threshold` below — none of it reaches
+        # paper, and `build_invoice` deliberately knows nothing about it.
+        'readiness': settlement_readiness(jobcard),
         # Screen only — the settle dialog warns past this figure. Passed from
         # the model rather than written into the template so the confirmation,
         # the HIGH_DISCOUNT alert below and `audit_high_discounts` cannot come
@@ -110,6 +119,24 @@ def update_bill_status(request, pk):
             return redirect('invoice_view', pk=pk)
             
         method = request.POST.get('payment_method', 'CASH')
+
+        # "Complete & settle" — the one gap the settle dialog can close from
+        # where it stands. Taking a customer's money for a car the board still
+        # shows as being worked on is a contradiction, and the alternative was
+        # to send Office to another screen, complete it there, and come back to
+        # a payment they had already agreed at the counter.
+        #
+        # Done BEFORE the money moves and outside any condition on it: if the
+        # settlement below were to fail, a card that was genuinely finished is
+        # still correctly marked finished. It cannot fire by accident — the
+        # field is only set by that button — and `mark_completed` is a no-op on
+        # a card that is already completed, so a re-settlement never moves the
+        # date the car was actually handed over.
+        if request.POST.get('complete_card') == 'true' and jobcard.mark_completed():
+            messages.success(
+                request,
+                f"{jobcard.registration_number} marked completed."
+            )
 
         jobcard.received_amount = received
         jobcard.payment_method = method

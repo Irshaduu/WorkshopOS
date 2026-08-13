@@ -1,10 +1,12 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.db.models import Q
 from django.http import JsonResponse
 
 from ..models import CarBrand, CarModel, SparePart, ConcernSolution, JobCardSpareItem
 from ..decorators import staff_required, office_required
 from ..invoice import effective_quantity
+from ..templatetags.custom_filters import clean_qty
 
 
 @staff_required
@@ -68,6 +70,26 @@ def autocomplete_inventory_items(request):
     bill — and such products are still offered. Hiding them would block recording
     a part that has physically already been taken, which is the whole reason
     negative stock is allowed.
+
+    **The CATEGORY is searchable, the category is never selectable.** Typing
+    "Engine Oil" returns the products inside it — Liqui Moly, Castrol — not a
+    row saying "Engine Oil". Those are the two halves of one rule and both are
+    needed:
+
+      * A person thinks in the generic term, because that is the word the
+        customer uses and the word the printed bill uses (a warehouse draw is
+        billed under its category — see `part_display_name`). Matching product
+        names only meant searching "Engine Oil" returned nothing at all, and the
+        obvious next move is to create a *product* called "Engine Oil", which
+        puts the generic name on the shelf as a fake SKU and makes the bill read
+        the same either way.
+      * What the job card must record is the branded SKU, because that is what
+        moves stock and carries the cost. So the category can lead you to the
+        product; it can never be the answer.
+
+    `distinct()` because a product could match on both its own name and its
+    category's ("Engine Oil 5W-30" inside "Engine Oil"), and an OR across a join
+    would then offer it twice.
     """
     from inventory.models import Item
 
@@ -76,8 +98,10 @@ def autocomplete_inventory_items(request):
         return JsonResponse([], safe=False)
 
     items = (
-        Item.objects.filter(name__icontains=q)
+        Item.objects
+        .filter(Q(name__icontains=q) | Q(category__name__icontains=q))
         .select_related('category')
+        .distinct()
         .order_by('-usage_count', 'name')[:10]
     )
     return JsonResponse([
@@ -85,7 +109,11 @@ def autocomplete_inventory_items(request):
             "id": it.pk,
             "name": it.name,
             "category": it.category.name,
-            "stock": str(it.current_stock),
+            # Printed on screen beside the product, so it goes over the wire in
+            # the form a person reads: "38", never "38.00". The same rule the
+            # `qty` template filter applies everywhere else a quantity is shown
+            # — imported rather than restated, so the two cannot drift.
+            "stock": str(clean_qty(it.current_stock)),
             "cost": str(it.avg_cost),
         }
         for it in items

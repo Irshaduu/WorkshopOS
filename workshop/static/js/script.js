@@ -170,7 +170,14 @@ document.addEventListener('DOMContentLoaded', function () {
             // makes a half-edited name fail validation instead of silently keeping
             // the previously chosen product and drawing the wrong stock.
             hiddenId.value = '';
-            if (stockHint) stockHint.textContent = '';
+            // Clear the RED with the text. Leaving the class behind meant the
+            // next product picked into this row inherited the previous one's
+            // out-of-stock colour until something else toggled it.
+            if (stockHint) {
+                stockHint.textContent = '';
+                stockHint.classList.remove('text-danger');
+                stockHint.classList.add('text-muted');
+            }
 
             const query = this.value;
             if (timeout) clearTimeout(timeout);
@@ -192,6 +199,24 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(r => r.json())
                 .then(data => {
                     suggestionsBox.innerHTML = '';
+
+                    // Say so, rather than showing nothing. An empty dropdown is
+                    // indistinguishable from a request that has not come back
+                    // yet, and this box is the one control on the form where
+                    // typing is NOT how you enter a value — so silence invites
+                    // exactly the wrong conclusion, that the name just has to be
+                    // typed out in full.
+                    if (!data.length) {
+                        const none = document.createElement('div');
+                        none.classList.add('list-group-item', 'py-2', 'text-muted');
+                        none.style.fontSize = '0.78rem';
+                        none.textContent =
+                            'No stock product matches that. Products are added under ' +
+                            'Inventory → Supplier → Add Product.';
+                        suggestionsBox.appendChild(none);
+                        return;
+                    }
+
                     data.forEach(item => {
                         const opt = document.createElement('a');
                         opt.classList.add('list-group-item', 'list-group-item-action', 'py-2');
@@ -214,6 +239,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             if (stockHint) {
                                 stockHint.textContent = `${item.stock} in stock`;
                                 stockHint.classList.toggle('text-danger', stock <= 0);
+                                stockHint.classList.toggle('text-muted', stock > 0);
                             }
                             suggestionsBox.innerHTML = '';
                             recalcRow(row);

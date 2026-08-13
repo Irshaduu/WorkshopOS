@@ -41,6 +41,65 @@
     input:focus::placeholder {
         color: #d3dae3;
     }
+
+    /* ==========================================================
+       THE STOCK LINE RESERVES ITS SPACE, EMPTY OR NOT
+       ==========================================================
+       It sits under the Inventory product box and is written by the picker the
+       moment a product is chosen. It used to be an empty div — zero height with
+       nothing in it, one line high with something — so choosing a product made
+       that row, and everything below it, jump. On a tablet mid-job-card the box
+       you were aiming at has moved by the time your finger lands.
+
+       Height only. The text still appears and disappears; what does not change
+       is how much room it occupies, which is the whole fix. Same reasoning as
+       any reserved-space rule: a layout must not depend on whether a value has
+       arrived yet. */
+    .inventory-stock-hint {
+        font-size: 0.72rem;
+        line-height: 1.15rem;
+        min-height: 1.15rem;
+    }
+
+    /* Every box in an Inventory row starts at the same y.
+       The Item cell is the tall one — it carries the stock line underneath —
+       so with the cells vertically centred the Item box floated above the Qty
+       and price boxes beside it by half that line's height. Top-aligning the
+       cells lines the four boxes up and lets the stock line hang below, which
+       is the only place it can go without moving something. */
+    .inventory-table > tbody > tr > td { vertical-align: top; }
+
+    /* ==========================================================
+       ERROR SUMMARY — the one thing read before scrolling
+       ==========================================================
+       A rejected job card re-renders the whole page, and this form is long
+       enough that the field which failed is usually off screen. The summary is
+       what says so; the outline is what finds it once you get there. */
+    .jc-errors {
+        border: 1px solid #f5c2c7;
+        background: #fdf2f2;
+        border-left: 4px solid #dc2626;
+        border-radius: 10px;
+        padding: 0.85rem 1rem;
+        margin-bottom: 1.25rem;
+    }
+    .jc-errors-title {
+        font-weight: 700;
+        color: #b42318;
+        font-size: 0.92rem;
+        margin-bottom: 0.4rem;
+    }
+    .jc-errors ul { margin: 0; padding-left: 1.1rem; }
+    .jc-errors li { font-size: 0.84rem; color: #7a271a; margin-bottom: 0.15rem; }
+    .jc-errors li:last-child { margin-bottom: 0; }
+    .jc-errors .jc-err-where { font-weight: 600; }
+
+    /* The field itself. Bootstrap's own .is-invalid is not used because these
+       controls are rendered by Django widgets carrying their own class list,
+       and a server-side class would have to be threaded through every widget
+       declaration in forms.py. Marking the ROW is also more useful here: on the
+       parts tables the failing box is one of eight in a line. */
+    .jc-row-invalid { background: #fdf2f2 !important; }
 </style>
 {% endblock %}
 
@@ -174,34 +233,24 @@
             {% csrf_token %}
             <input type="hidden" name="financial_unlock" id="financial_unlock_field" value="false">
 
-            {% if form.errors or concern_formset.errors or spare_formset.errors or labour_formset.errors %}
-            <div class="alert alert-danger">
-                <strong>Please correct the errors below:</strong>
-                <ul>
-                    {% for field in form %}
-                    {% for error in field.errors %}
-                    <li>{{ field.label }}: {{ error }}</li>
-                    {% endfor %}
-                    {% endfor %}
-                    {% for error in form.non_field_errors %}
-                    <li>{{ error }}</li>
-                    {% endfor %}
+            {% comment %}
+            Everything that stopped this card saving, in one place, named.
 
-                    <!-- Formset Errors Generic Check -->
-                    {% if concern_formset.errors %}<li>Check Concerns section for errors.</li>{% endif %}
-                    {% if spare_formset.errors %}<li>Check Spares section for errors.</li>{% endif %}
-                    {% if labour_formset.errors %}
-                    <li>Check Jobs (Labour) section for errors.</li>
-                    <!-- Debugging Labour Errors -->
-                    {% for dict in labour_formset.errors %}
-                    {% for key, value in dict.items %}
-                    <li>Labour Error - {{ key }}: {{ value }}</li>
+            The list is built by `_collect_problems` in views/jobcard.py rather
+            than by walking the formsets here — see that function for what the
+            template version was getting wrong (the Inventory section was absent
+            from it entirely, so a blank Qty on a warehouse draw refused the save
+            with nothing at all on screen to say why).
+            {% endcomment %}
+            {% if problems %}
+            <div class="jc-errors" id="jcErrors" tabindex="-1">
+                <div class="jc-errors-title">
+                    Not saved — {{ problems|length }} thing{{ problems|length|pluralize }} to fix
+                </div>
+                <ul>
+                    {% for where, what in problems %}
+                    <li><span class="jc-err-where">{{ where }}</span> — {{ what }}</li>
                     {% endfor %}
-                    {% endfor %}
-                    {% for error in labour_formset.non_form_errors %}
-                    <li>Labour Generic: {{ error }}</li>
-                    {% endfor %}
-                    {% endif %}
                 </ul>
             </div>
             {% endif %}
@@ -337,13 +386,14 @@
                     {{ concern_formset.management_form }}
                     <div id="concern-list" class="list-group list-group-flush">
                         {% for c_form in concern_formset %}
-                        <div class="list-group-item concern-row">
+                        <div class="list-group-item concern-row{% if c_form.errors %} jc-row-invalid{% endif %}">
                             {{ c_form.id }}
                             <div class="d-none">{{ c_form.DELETE }}</div>
                             <div class="d-flex gap-2">
                                 <div class="flex-grow-1">
                                     {{ c_form.concern_text }}
                                     <div class="list-group autocomplete-suggestions"></div>
+                                    {% if c_form.errors %}<div class="text-danger" style="font-size: 0.72rem;">{% for field in c_form %}{% for error in field.errors %}{{ error }} {% endfor %}{% endfor %}{% for error in c_form.non_field_errors %}{{ error }} {% endfor %}</div>{% endif %}
                                 </div>
                                 <div style="width: 130px;">
                                     {{ c_form.status }}
@@ -395,11 +445,12 @@
                         {{ labour_formset.management_form }}
                         <div id="labour-list">
                             {% for l_form in labour_formset %}
-                            <div class="swipe-row">
+                            <div class="swipe-row{% if l_form.errors %} jc-row-invalid{% endif %}">
                                 {{ l_form.id }}
                                 <div class="d-none">{{ l_form.DELETE }}</div>
                                 <div class="swipe-cell col-job">
                                     {{ l_form.job_description }}
+                                    {% if l_form.job_description.errors %}<div class="text-danger" style="font-size: 0.72rem;">{{ l_form.job_description.errors.0 }}</div>{% endif %}
                                 </div>
                             </div>
                             {% endfor %}
@@ -447,7 +498,15 @@
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="mb-0 text-primary fw-bold">Inventory Items</h6>
-                        <small class="text-muted" style="font-size: 0.72rem;">Taken from workshop stock</small>
+                        {% comment %}
+                        Says the new thing out loud. The picker matches category
+                        names as well as product names, so "Engine Oil" finds
+                        Liqui Moly and Castrol — nobody would guess that from a
+                        box labelled "Search stock", and the alternative they
+                        reach for is typing the generic name in full and
+                        wondering why nothing appears.
+                        {% endcomment %}
+                        <small class="text-muted" style="font-size: 0.72rem;">Taken from workshop stock — search by product or by type</small>
                     </div>
                     {% comment %}
                     There was a "Stock" link here opening the Inventory list in a
@@ -468,7 +527,16 @@
                 <div class="card-body p-0">
                     <div class="table-responsive pb-2">
                         {{ inventory_formset.management_form }}
-                        <table class="table table-borderless align-middle mb-0" style="min-height: 80px;">
+                        {% comment %}
+                        No `align-middle` on THIS table, unlike Spare Parts.
+                        The Item cell is taller than its neighbours — it carries
+                        the stock line under the box — so centring every cell
+                        vertically lifted the Item box above the Qty and price
+                        boxes beside it, by exactly half the height of that line.
+                        Top-aligning makes all four boxes start at the same y and
+                        lets the stock line hang below, which is where it belongs.
+                        {% endcomment %}
+                        <table class="table table-borderless mb-0 inventory-table" style="min-height: 80px;">
                             <thead class="table-premium-header text-muted small text-uppercase">
                                 <tr class="border-bottom">
                                     <th class="ps-3" style="min-width: 240px;">Item</th>
@@ -481,16 +549,24 @@
                             </thead>
                             <tbody id="inventory-list">
                                 {% for i_form in inventory_formset %}
-                                <tr class="inventory-row border-bottom">
+                                <tr class="inventory-row border-bottom{% if i_form.errors %} jc-row-invalid{% endif %}">
                                     <td class="ps-3">
                                         {{ i_form.id }}
                                         <div class="d-none">{{ i_form.DELETE }}</div>
                                         {{ i_form.item }}
+                                        {% comment %}
+                                        The value comes from `search_value`, not
+                                        from the stored name. On a rejected save
+                                        a NEW row has no stored name, so the box
+                                        came back empty while the hidden pk beside
+                                        it still held the choice — the row looked
+                                        unfilled and got filled again.
+                                        {% endcomment %}
                                         <input type="text" class="form-control inventory-item-search"
-                                               autocomplete="off" placeholder="Search stock..."
-                                               value="{{ i_form.instance.spare_part_name|default:'' }}">
+                                               autocomplete="off" placeholder="Search by product or type (e.g. Engine Oil)"
+                                               value="{{ i_form.search_value }}">
                                         <div class="list-group autocomplete-suggestions"></div>
-                                        <div class="inventory-stock-hint text-muted" style="font-size: 0.72rem;"></div>
+                                        <div class="inventory-stock-hint {% if i_form.stock_is_short %}text-danger{% else %}text-muted{% endif %}">{% if i_form.stock_display %}{{ i_form.stock_display }} in stock{% endif %}</div>
                                         {% if i_form.item.errors %}<div class="text-danger" style="font-size: 0.72rem;">{{ i_form.item.errors.0 }}</div>{% endif %}
                                         {% if i_form.non_field_errors %}<div class="text-danger" style="font-size: 0.72rem;">{{ i_form.non_field_errors.0 }}</div>{% endif %}
                                     </td>
@@ -564,7 +640,7 @@
                             </thead>
                             <tbody id="spare-list">
                                 {% for s_form in spare_formset %}
-                                <tr class="spare-row border-bottom" data-original-status="{{ s_form.instance.status }}">
+                                <tr class="spare-row border-bottom{% if s_form.errors %} jc-row-invalid{% endif %}" data-original-status="{{ s_form.instance.status }}">
                                     <td class="ps-3 col-part" style="min-width: 300px;">
                                         <div class="d-flex align-items-center gap-1">
                                             <div class="flex-grow-1">
@@ -572,6 +648,16 @@
                                                 <div class="d-none">{{ s_form.DELETE }}</div>
                                                 {{ s_form.spare_part_name }}
                                                 <div class="list-group autocomplete-suggestions"></div>
+                                                {% comment %}
+                                                Every error on this row, gathered
+                                                under the first column. The other
+                                                seven columns are narrow and some
+                                                are hidden from Floor, so a
+                                                message attached to whichever one
+                                                failed could land off the side of
+                                                a horizontally scrolling table.
+                                                {% endcomment %}
+                                                {% if s_form.errors %}<div class="text-danger" style="font-size: 0.72rem;">{% for field in s_form %}{% for error in field.errors %}{{ field.label }}: {{ error }} {% endfor %}{% endfor %}{% for error in s_form.non_field_errors %}{{ error }} {% endfor %}</div>{% endif %}
                                             </div>
                                             {% if s_form.instance.pk and s_form.instance.shop_id %}
                                             <div class="dropdown">
@@ -690,9 +776,9 @@
                     <div class="d-none">{{ inventory_formset.empty_form.DELETE }}</div>
                     {{ inventory_formset.empty_form.item }}
                     <input type="text" class="form-control inventory-item-search"
-                           autocomplete="off" placeholder="Search stock...">
+                           autocomplete="off" placeholder="Search by product or type (e.g. Engine Oil)">
                     <div class="list-group autocomplete-suggestions"></div>
-                    <div class="inventory-stock-hint text-muted" style="font-size: 0.72rem;"></div>
+                    <div class="inventory-stock-hint text-muted"></div>
                 </td>
                 <td class="text-center {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
                     {{ inventory_formset.empty_form.quantity }}
@@ -1247,5 +1333,28 @@
     setTimeout(() => { targetSpareRow.style.backgroundColor = ''; }, 1000);
   }
 </script>
+
+{% if problems %}
+<script>
+  // A refused save re-renders a form that is several screens long, and the
+  // browser restores the scroll position — so on the Inventory section, which
+  // is near the bottom, the summary at the top was simply never seen. Put it in
+  // front of the person instead of waiting for them to find it.
+  //
+  // Deliberately not `autofocus`: focus lands the caret in a box and on a
+  // tablet raises the keyboard over the very list being read. Scroll, then
+  // focus the summary itself (tabindex="-1"), which is what a screen reader
+  // needs to announce it and what puts the next Tab at the top of the form.
+  (function () {
+    'use strict';
+    var box = document.getElementById('jcErrors');
+    if (!box) return;
+    window.addEventListener('load', function () {
+      box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      box.focus({ preventScroll: true });
+    });
+  }());
+</script>
+{% endif %}
 
 {% endblock %}

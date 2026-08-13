@@ -36,6 +36,19 @@ INFO = Notification.SEVERITY_INFO
 # event key -> (title, severity, audience)
 EVENTS = {
     'LOGIN':            ("Someone signed in",        INFO,     AUDIENCE_OWNERS),
+    # A STAFF sign-in — Office or Floor — is the same fact as LOGIN above at a
+    # different tier, and the split exists so this file states the rule rather
+    # than hiding it in a severity argument at the call site: *an owner signing
+    # in is routine, somebody else signing in is not*. Owners already know when
+    # they sign in themselves and the other owner is excluded as the actor, so
+    # LOGIN buzzing a phone would only ever announce the co-owner's ordinary
+    # working day. A staff account is different — it is used on shared devices
+    # on the shop floor, and it is the one the owners cannot see being used.
+    #
+    # Volume is why this is safe to make CRITICAL: SESSION_COOKIE_AGE is 40
+    # days, so a signed-in tablet stays signed in and this fires on a genuinely
+    # new session, not on every shift.
+    'STAFF_LOGIN':      ("Staff signed in",          CRITICAL, AUDIENCE_OWNERS),
     'ACCOUNT_LOCKED':   ("Account locked",           CRITICAL, AUDIENCE_OWNERS),
     # The system announced every routine sign-in and stayed silent for the one
     # event that means an account changed hands. A reset also terminates every

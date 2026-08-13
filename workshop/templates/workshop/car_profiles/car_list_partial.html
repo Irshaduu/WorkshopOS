@@ -1,89 +1,91 @@
-<div id="car-count-data" data-count="{{ page_obj.paginator.count }}" style="display:none;"></div>
+{% comment %}
+The count travels with the rows, not with the header, so a search can never
+leave the two disagreeing — and it is the paginator's total, never the number of
+cards rendered, which is the page size.
+{% endcomment %}
+<div id="car-count-data" data-count="{{ page_obj.paginator.count }}" hidden></div>
 
 {% if car_profiles %}
-<div class="row g-3">
+<div class="cp-grid">
     {% for car in car_profiles %}
-    <div class="col-12 col-md-6 col-lg-4">
-        <a href="{% url 'car_profile_detail' car.registration %}" class="car-card shadow-sm h-100 d-flex flex-column"
-           style="border-left: 6px solid {{ car.color_hex|default:'var(--color-primary)' }};">
-            
-            <!-- Top Section: Name and Plate -->
-            <div class="flex-grow-1">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <h6 class="car-name mb-0 text-dark fw-bold" style="font-size: 1.1rem; letter-spacing: -0.5px;">
-                        {{ car.brand }} {{ car.model }}
-                    </h6>
-                </div>
-                
-                <div class="mb-2">
-                    <span class="badge bg-light text-dark border px-2 py-1" style="font-size: 0.85rem; letter-spacing: 1px;">
-                        {{ car.registration }}
-                    </span>
-                    <span class="badge bg-light text-success border px-2 py-1 ms-1" style="font-size: 0.75rem;">
-                        <i class="bi bi-arrow-repeat me-1"></i>{{ car.total_visits }} visit{{ car.total_visits|pluralize }}
-                    </span>
-                </div>
-            </div>
+    {% comment %}
+    `--cp-shade` is the paint colour at 8% alpha — the hex+alpha suffix trick
+    `.lr-car` uses on the Live Report, at the identical `14` so the two screens
+    cannot come to show one car as two different reds.
+    {% endcomment %}
+    <a href="{% url 'car_profile_detail' car.registration %}"
+       class="cp-card{% if not car.has_color %} cp-card--unset{% elif car.is_white %} cp-card--white{% endif %}"
+       style="--cp-accent: {{ car.color_hex }}; --cp-shade: {{ car.color_hex }}14;"
+       title="{% if car.color_name %}{{ car.color_name }}{% endif %}">
 
-            <!-- Dotted Separator -->
-            <div style="border-top: 1px dashed var(--color-border); margin: 0.75rem 0;"></div>
+        <div class="cp-top">
+            {% comment %}
+            Always exactly one headline. Brand + model when the car has them,
+            otherwise the plate — a job card can legitimately be recorded with
+            neither make nor model, and a blank line where the name goes reads
+            as a broken row rather than as missing data.
+            {% endcomment %}
+            <h2 class="cp-name">
+                {% if car.brand or car.model %}{{ car.brand }} {{ car.model }}{% else %}{{ car.registration }}{% endif %}
+            </h2>
+            {% if car.on_floor %}
+            <span class="cp-live" title="This car has an open job card"><i></i>In</span>
+            {% endif %}
+        </div>
 
-            <!-- Bottom Section: Owner and Date -->
-            <div class="d-flex justify-content-between align-items-center text-muted" style="font-size: 0.8rem; font-weight: 500;">
-                <div class="d-flex align-items-center gap-1 text-truncate" style="max-width: 50%;">
-                    <i class="bi bi-person" style="opacity: 0.7;"></i>
-                    <span class="text-truncate">{{ car.customer|default:"&mdash;" }}</span>
-                </div>
-                <div class="d-flex align-items-center gap-1">
-                    <i class="bi bi-calendar3" style="opacity: 0.7;"></i>
-                    <span>{{ car.latest_date|date:"d M Y"|default:"-" }}</span>
-                </div>
-            </div>
-        </a>
-    </div>
+        <div class="cp-meta">
+            <span class="cp-plate">{{ car.registration }}</span>
+            <span class="cp-visits">{{ car.total_visits }} visit{{ car.total_visits|pluralize }}</span>
+        </div>
+
+        <div class="cp-foot">
+            {% comment %}
+            Nothing blank is announced. A car with no customer name prints
+            nothing rather than "No owner" — a row carrying two grey apologies
+            looks broken, and the name is on the job card either way.
+            {% endcomment %}
+            {% if car.customer %}
+            <span class="cp-owner" title="{{ car.customer }}">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 1.5c-2.7 0-5 1.4-5 3.1V14h10v-1.4c0-1.7-2.3-3.1-5-3.1z"/></svg>
+                {{ car.customer }}
+            </span>
+            {% else %}
+            <span></span>
+            {% endif %}
+            <span class="cp-date">{{ car.latest_date|date:"d M Y" }}</span>
+        </div>
+    </a>
     {% endfor %}
 </div>
 
-<!-- Pagination Controls -->
 {% if page_obj.has_other_pages %}
-<div class="mt-4 d-flex justify-content-center">
-    <nav>
-        <ul class="pagination pagination-sm mb-5 shadow-sm">
-            {% if page_obj.has_previous %}
-            <li class="page-item">
-                <a class="page-link text-primary" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if brand_filter %}&brand={{ brand_filter }}{% endif %}">&laquo; Prev</a>
-            </li>
-            {% else %}
-            <li class="page-item disabled"><span class="page-link">&laquo; Prev</span></li>
-            {% endif %}
-            
-            <li class="page-item disabled"><span class="page-link text-muted fw-bold">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
-            
-            {% if page_obj.has_next %}
-            <li class="page-item">
-                <a class="page-link text-primary" href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if brand_filter %}&brand={{ brand_filter }}{% endif %}">Next &raquo;</a>
-            </li>
-            {% else %}
-            <li class="page-item disabled"><span class="page-link">Next &raquo;</span></li>
-            {% endif %}
-        </ul>
-    </nav>
-</div>
+{% comment %}
+Every link carries `q`. It used to carry `search_query`, a name this view has
+never passed — so page 2 of a search quietly returned page 2 of every car in the
+workshop, which looks like results rather than like a bug.
+{% endcomment %}
+<nav class="cp-pager" aria-label="Pages">
+    {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}" rel="prev">&laquo; Prev</a>
+    {% endif %}
+    <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}" rel="next">Next &raquo;</a>
+    {% endif %}
+</nav>
 {% endif %}
 
 {% else %}
-<div class="empty-state py-5 text-center">
-    {% if search_query or brand_filter %}
-        <i class="bi bi-search mb-3 d-block" style="font-size: 3rem; color: var(--color-text-muted); opacity: 0.3;"></i>
-        <h5 class="text-muted fw-bold">No matching cars found</h5>
-        <p class="text-muted small">Try adjusting your filters or search query.</p>
-        <a href="{% url 'car_profile_list' %}" class="btn btn-sm btn-outline-primary rounded-pill px-4 mt-2">
-            Clear Filters
-        </a>
+<div class="cp-empty">
+    {% if q %}
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11.7 10.3a5 5 0 1 0-1.4 1.4l3 3a1 1 0 0 0 1.4-1.4l-3-3zM7 10.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+        <h2>No car matches “{{ q }}”</h2>
+        <p>Search by number plate, owner, brand or model.</p>
+        <a href="{% url 'car_profile_list' %}">Show all cars</a>
     {% else %}
-        <i class="bi bi-inbox mb-3 d-block" style="font-size: 3rem; color: var(--color-text-muted); opacity: 0.3;"></i>
-        <h5 class="text-muted fw-bold">No cars found</h5>
-        <p class="text-muted small">Cars will appear here after creating job cards.</p>
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.2 4.6A1.5 1.5 0 0 1 4.6 3.6h6.8a1.5 1.5 0 0 1 1.4 1l.9 2.5h.3a1 1 0 0 1 1 1v1.3a1 1 0 0 1-1 1H13v.9a1 1 0 0 1-1 1h-.6a1 1 0 0 1-1-1v-.9H5.6v.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-.9h-.9a1 1 0 0 1-1-1V8.1a1 1 0 0 1 1-1h.3l.8-2.5z"/></svg>
+        <h2>No cars yet</h2>
+        <p>A car appears here the first time a job card is created for it.</p>
     {% endif %}
 </div>
 {% endif %}

@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib import messages
-from .decorators import owner_required
+from .decorators import owner_required, is_owner
 from django.contrib.auth.models import User
 from datetime import timedelta
 from django.utils import timezone
@@ -21,6 +21,24 @@ logger = logging.getLogger(__name__)
 # "+91 95674 94933", "+919567494933" and "9567494933" all reduce to the same
 # 10 digits. Used by resolve_user_by_identifier.
 # ============================================================
+def _role_label(user):
+    """
+    " (Office)" / " (Floor)" for a sign-in alert, or '' when there is nothing to
+    add.
+
+    The alert lands on a phone as a one-line push, so the role has to travel
+    with the username: "amal signed in" tells an owner nothing about whether
+    that account can see money. Returns an empty string rather than "(Staff)"
+    for an account in no group — inventing a role would be worse than omitting
+    one, and such an account is itself the anomaly worth noticing.
+    """
+    names = set(user.groups.values_list('name', flat=True))
+    for role in ('Owner', 'Office', 'Floor'):
+        if role in names:
+            return f" ({role})"
+    return ""
+
+
 def normalize_phone(phone_str):
     """
     Normalizes a phone number to its last 10 digits for consistent lookup.
@@ -373,9 +391,19 @@ def login_view(request):
             AccountLockout.clear(user)
 
             device = UserSession.get_device_name(request.META.get('HTTP_USER_AGENT', ''))
+            # Which of the two sign-in events this is. An owner signing in is
+            # routine and stays in the bell (INFO); Office or Floor signing in
+            # pushes to the owners' phones, because a staff account lives on
+            # shared shop-floor devices and its use is the thing the owners
+            # cannot otherwise see. `notify()` already excludes the actor, so an
+            # owner never buzzes themselves either way.
+            #
+            # Read from `is_owner` rather than a fresh group query so this can
+            # never disagree with what the RBAC decorators consider an owner.
+            role = _role_label(user)
             notify(
-                'LOGIN',
-                f"{user.username} signed in — {device} · {get_client_ip(request)}",
+                'LOGIN' if is_owner(user) else 'STAFF_LOGIN',
+                f"{user.username}{role} signed in — {device} · {get_client_ip(request)}",
                 actor=user,
                 url=reverse('manage_dashboard') + '?section=security',
             )

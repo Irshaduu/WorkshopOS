@@ -1072,6 +1072,40 @@ class JobCard(CarColourMixin, models.Model):
             if self.bulk_payer_id:
                 self.bulk_payer.update_totals()
 
+    def mark_completed(self):
+        """
+        Move this card off the workshop floor. Returns True if it moved.
+
+        One implementation because there are now two doors into it — the
+        Completed button on the board, and "Complete & settle" in the settle
+        dialog, which exists because taking a customer's money for a car the
+        system still shows as being worked on is a contradiction the person at
+        the counter should be able to resolve without leaving the page.
+
+        Idempotent on purpose: the second door can be reached on a card that is
+        already completed (a re-settlement, a corrected amount), and re-stamping
+        `completed_date` there would move the day the car was finished to the
+        day somebody edited a figure — and that date is what the Completed list
+        filters and sorts on.
+
+        `localdate()`, never `date.today()`: the server can run in UTC while the
+        workshop works in IST, and near midnight the two disagree about which
+        day it is.
+
+        A PLAIN `save()`, deliberately, not `update_fields=[...]`. This model's
+        `save()` calls `clean()` to normalise the registration, brand and model,
+        and assigns `bill_number` when there is none — with `update_fields` all
+        three would still be computed and then silently not written, because
+        they are not in the list. Narrowing the write here would save nothing
+        and would make this the one path that quietly skips them.
+        """
+        if self.completed:
+            return False
+        self.completed = True
+        self.completed_date = timezone.localdate()
+        self.save()
+        return True
+
     @classmethod
     def get_active_conflict(cls, registration_number, exclude_pk=None):
         """

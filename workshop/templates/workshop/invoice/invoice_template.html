@@ -840,6 +840,204 @@
 
         .cg-body p:last-child { margin-bottom: 0; }
 
+        /* ==================================================================
+           PRE-FLIGHT — what is not filled in, said before the money moves
+           ==================================================================
+           Settling is the last thing that happens to a job card and the only
+           irreversible one: the card is marked PAID, whatever was not handed
+           over becomes a permanent discount, and the Financial Lock then stands
+           between the card and anyone correcting it. So every box that was
+           going to be filled has to be filled BEFORE this, and this is the last
+           moment anyone is looking.
+
+           It never blocks. Two of the three buttons go forward. The workshop
+           settles at the counter with the customer standing there, and a
+           checklist that refused to let them pay would be worked around within
+           a week — by not opening this screen until afterwards, which loses the
+           check entirely.
+
+           It also does not appear on a card with nothing to report: the settle
+           button opens the payment box directly, exactly as it always did.
+           A confirmation that fires when nothing is wrong is a confirmation
+           nobody reads by the third time. */
+        dialog.preflight {
+            width: min(460px, calc(100vw - 32px));
+            padding: 0;
+            border: none;
+            border-radius: 14px;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, .3);
+        }
+
+        dialog.preflight::backdrop { background: rgba(15, 23, 42, .5); }
+
+        .pf-head {
+            background: #b45309;
+            color: #fff;
+            padding: 16px 20px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        /* Sized so the WORST card does not scroll. Measured on a 375x812
+           phone with every gap present — flag, six rows, thirteen chips — at
+           483px of content; a plain `56vh` cap cut 28px off it, which hides
+           the last row behind a scrollbar on exactly the card that most needs
+           reading.
+
+           Expressed as a subtraction as well as a fraction, because the head
+           (53px) and the four stacked buttons (235px) do NOT shrink with the
+           viewport: on a short phone a bare `62vh` would push the buttons off
+           the bottom. Whichever bound is tighter wins. */
+        .pf-body {
+            padding: 16px 20px 18px;
+            max-height: min(62vh, calc(100vh - 330px));
+            overflow-y: auto;
+        }
+
+        /* The uncompleted card, set apart from the list below it. It is not one
+           more unfilled box — it is a contradiction (money taken for a car the
+           board still shows as in the workshop) and it is the one item here
+           with a fix that can be applied from this screen.
+
+           NO tinted panel. A filled box around it made it the loudest thing on
+           a dialog that is mostly a checklist, and it pushed the list itself
+           below the fold. The icon and the weight carry it; a rule separates
+           it. */
+        .pf-flag {
+            display: flex;
+            gap: 9px;
+            align-items: flex-start;
+            padding-bottom: 13px;
+            margin-bottom: 13px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .pf-flag > svg {
+            width: 17px;
+            height: 17px;
+            flex: none;
+            margin-top: 1px;
+            color: #d97706;
+        }
+
+        .pf-flag strong {
+            display: block;
+            font-size: 14px;
+            font-weight: 700;
+            color: #92400e;
+            line-height: 1.3;
+        }
+
+        .pf-flag span {
+            font-size: 12.5px;
+            color: #64748b;
+        }
+
+        .pf-title {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+
+        .pf-n {
+            display: inline-grid;
+            place-items: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 999px;
+            background: #fee2e2;
+            color: #b91c1c;
+            font-size: 11px;
+            letter-spacing: 0;
+        }
+
+        .pf-list { list-style: none; margin: 0; padding: 0; }
+
+        /* One line per thing. The dot is a marker, not a bullet character —
+           it stays put while the label wraps, so a two-line row still reads as
+           one item. */
+        .pf-list li {
+            position: relative;
+            padding: 7px 0 7px 15px;
+        }
+
+        .pf-list li::before {
+            content: '';
+            position: absolute;
+            left: 1px;
+            top: 14px;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #cbd5e1;
+        }
+
+        .pf-label {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        /* The specifics, as chips. Five of these read in one sweep where five
+           sentences do not, and they wrap without ever pushing the buttons off
+           a phone. */
+        .pf-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 5px;
+        }
+
+        .pf-tags em {
+            font-style: normal;
+            font-size: 11px;
+            font-weight: 600;
+            color: #b45309;
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 5px;
+            padding: 2px 6px;
+            white-space: nowrap;
+        }
+
+        /* Four buttons will not sit on one line on a phone at any sensible
+           size, and squeezing them produces four ambiguous stubs on the screen
+           where money is agreed. They stack — `column-reverse`, so the primary
+           action (last in the DOM, rightmost on a laptop) paints at the TOP,
+           under the thumb, with Cancel furthest from it. See the note beside
+           the buttons: the DOM order serves both layouts and must not be
+           shuffled. */
+        .pf-foot {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 20px;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        @media (max-width: 520px) {
+            .pf-foot { flex-direction: column-reverse; }
+            .pf-foot .btn { width: 100%; justify-content: center; }
+        }
+
+        /* Carried into the payment box, so the decision made a tap ago is still
+           on screen when the amount is typed. */
+        .pay-note {
+            margin: -8px 0 16px;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #b45309;
+        }
+
         @media (max-width: 640px) {
             .bar {
                 gap: 6px;
@@ -894,7 +1092,12 @@
             Settle on Fleet Account
         </a>
         {% elif request.user|has_group:"Office" or request.user|has_group:"Owner" %}
-        <button type="button" class="btn btn-money" onclick="document.getElementById('payDialog').showModal()">
+        {% comment %}
+        Opens the PRE-FLIGHT when there is something unfilled or the car is still
+        on the floor, and the payment box directly when there is not — see
+        `openSettle()` below and `settlement_readiness()` for what counts.
+        {% endcomment %}
+        <button type="button" class="btn btn-money" id="settleBtn">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v1.4H9.3c.5.4.9.9 1.1 1.6H12v1.4h-1.5c-.2 1.7-1.6 2.9-3.5 3l3.9 4.2V15H9.1L4.7 10v-1.6h1.7c1.4 0 2.3-.5 2.5-1.6H4V5.4h4.8C8.5 4.6 7.7 4.2 6.4 4.2H4V2z"/></svg>
             Settle Bill
         </button>
@@ -1134,13 +1337,104 @@
     {% endcomment %}
     {% if not jobcard.bulk_payer %}
     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" %}
+    {% comment %}
+    =====================================================================
+    PRE-FLIGHT — shown before the payment box, only when it has something
+    to say. `readiness` comes from workshop/settlement.py.
+    =====================================================================
+    {% endcomment %}
+    {% if readiness.needs_confirmation %}
+    <dialog class="preflight no-print" id="preflightDialog" aria-labelledby="pfHead">
+        <div class="pf-head" id="pfHead">Before you settle</div>
+        <div class="pf-body">
+            {% comment %}
+            Read in the two seconds between agreeing a price and taking the
+            money, so it is built to be SCANNED. One line per thing, the short
+            phrase in bold, and the specifics as chips beside it. No prose:
+            an earlier version explained each gap in a sentence, and four
+            paragraphs on the screen where somebody is standing at a counter
+            with a customer is the same as saying nothing.
+            {% endcomment %}
+            {% if not readiness.is_completed %}
+            <div class="pf-flag">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.9.9 0 0 1 .78.45l6.1 10.6a.9.9 0 0 1-.78 1.35H1.9a.9.9 0 0 1-.78-1.35l6.1-10.6A.9.9 0 0 1 8 1.5zm0 3.7a.75.75 0 0 0-.75.82l.3 3.1a.45.45 0 0 0 .9 0l.3-3.1A.75.75 0 0 0 8 5.2zm0 5.5a.85.85 0 1 0 0 1.7.85.85 0 0 0 0-1.7z"/></svg>
+                <div>
+                    <strong>Not marked Completed</strong>
+                    {% comment %}
+                    The make is optional on a job card, so the separator is
+                    conditional — "· KL 10 AA 1919" with a dangling dot reads as
+                    something that failed to load.
+                    {% endcomment %}
+                    <span>{% if jobcard.brand_name or jobcard.model_name %}{{ jobcard.brand_name }} {{ jobcard.model_name }} · {% endif %}{{ jobcard.registration_number }}</span>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if readiness.gaps %}
+            <div class="pf-title">
+                Not filled in
+                <span class="pf-n">{{ readiness.gaps|length }}</span>
+            </div>
+            <ul class="pf-list">
+                {% for gap in readiness.gaps %}
+                <li>
+                    <span class="pf-label">{{ gap.label }}</span>
+                    {% if gap.tags %}
+                    <span class="pf-tags">
+                        {% for tag in gap.tags %}<em>{{ tag }}</em>{% endfor %}
+                    </span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+        <div class="pf-foot">
+            <button type="button" class="btn btn-ghost" id="pfCancel">Cancel</button>
+            <a class="btn btn-edit" href="{% url 'jobcard_edit' jobcard.pk %}">Open job card</a>
+            {% if not readiness.is_completed %}
+            {% comment %}
+            Order is load-bearing, and it inverts. On a wide screen this row
+            reads left to right weakest → strongest, the same shape as the
+            toolbar at the top of this page. On a phone `.pf-foot` becomes
+            `column-reverse`, so the LAST child paints at the TOP — which puts
+            the primary action under the thumb and Cancel furthest from it.
+            Swapping these two buttons breaks both at once.
+
+            "Complete & settle" is the one gap this screen can close from where
+            it stands: it sets the hidden `complete_card` field, which
+            `update_bill_status` reads.
+            {% endcomment %}
+            <button type="button" class="btn btn-ghost" id="pfContinue">Settle without completing</button>
+            <button type="button" class="btn btn-primary" id="pfCompleteSettle">Complete &amp; settle</button>
+            {% else %}
+            <button type="button" class="btn btn-primary" id="pfContinue">Continue settling</button>
+            {% endif %}
+        </div>
+    </dialog>
+    {% endif %}
+
     <dialog class="pay no-print" id="payDialog">
         <form action="{% url 'update_bill_status' jobcard.pk %}" method="POST">
             {% csrf_token %}
+            {% comment %}
+            Set to "true" only by "Complete & settle" above. A plain settlement
+            posts "false" and changes nothing about the card's completion.
+            {% endcomment %}
+            <input type="hidden" name="complete_card" id="completeCardField" value="false">
             <div class="pay-head">Settle Bill — {{ jobcard.registration_number }}</div>
             <div class="pay-body">
                 <label for="pay_total">Bill grand total</label>
                 <p class="pay-total" id="pay_total">₹ {{ grand_total|inr_exact }}</p>
+
+                {% comment %}
+                Carried through from the pre-flight so the decision made a tap
+                ago is still on screen while the amount is typed. Hidden until
+                that button is pressed.
+                {% endcomment %}
+                <p class="pay-note" id="payNote" hidden>
+                    {{ jobcard.registration_number }} will also be marked Completed.
+                </p>
 
                 <label for="received_amount">Received amount (Cash / UPI / Transfer)</label>
                 {% comment %}
@@ -1257,6 +1551,74 @@
         }());
 
         {% if not jobcard.bulk_payer %}{% if request.user|has_group:"Office" or request.user|has_group:"Owner" %}
+        // ==============================================================
+        // Pre-flight — what is unfilled, said before the money moves
+        // ==============================================================
+        //
+        // The settle button no longer opens the payment box directly. It goes
+        // through here, which shows the pre-flight when there is something to
+        // report and the payment box straight away when there is not — the
+        // "when there is not" half is as load-bearing as the other: a dialog
+        // that appears on every settlement, most of them fine, is one people
+        // learn to dismiss without reading, and then it is not protecting the
+        // settlements that were not fine.
+        (function () {
+            'use strict';
+
+            var settleBtn = document.getElementById('settleBtn');
+            var payDialog = document.getElementById('payDialog');
+            var preflight = document.getElementById('preflightDialog');
+            var noteField = document.getElementById('completeCardField');
+            var note = document.getElementById('payNote');
+            if (!settleBtn || !payDialog) return;
+
+            function openPay(alsoComplete) {
+                if (noteField) noteField.value = alsoComplete ? 'true' : 'false';
+                if (note) note.hidden = !alsoComplete;
+                payDialog.showModal();
+                // The amount arrives pre-filled with the grand total, which is
+                // right most of the time and wrong exactly when it matters. Select
+                // it so typing a different figure replaces it rather than
+                // appending to it.
+                var input = document.getElementById('received_amount');
+                if (input) { input.focus(); input.select(); }
+            }
+
+            settleBtn.addEventListener('click', function () {
+                // `preflight` only exists in the DOM when the server found
+                // something to report, so its absence IS the "nothing to say"
+                // case — the decision is made once, in Python, and the markup
+                // cannot come to disagree with it.
+                if (preflight) {
+                    preflight.showModal();
+                    return;
+                }
+                openPay(false);
+            });
+
+            if (preflight) {
+                document.getElementById('pfCancel').addEventListener('click', function () {
+                    preflight.close();
+                });
+
+                var continueBtn = document.getElementById('pfContinue');
+                if (continueBtn) {
+                    continueBtn.addEventListener('click', function () {
+                        preflight.close();
+                        openPay(false);
+                    });
+                }
+
+                var completeBtn = document.getElementById('pfCompleteSettle');
+                if (completeBtn) {
+                    completeBtn.addEventListener('click', function () {
+                        preflight.close();
+                        openPay(true);
+                    });
+                }
+            }
+        }());
+
         // ==============================================================
         // Settlement — say what the shortfall becomes, before it becomes it
         // ==============================================================

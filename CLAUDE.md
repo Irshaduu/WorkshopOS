@@ -36,6 +36,39 @@ about to correct one of these, you are about to break the business:
   keeping them free text, and a great deal of correctness to gain. Spare-shop rows stay
   free text.
 
+- **The Inventory picker SEARCHES categories and never OFFERS them.** Added
+  2026-08-12, and it is the other half of the invoice rule above. Typing
+  "Engine Oil" in the Job Card's Inventory box returns the products inside that
+  category — Liqui Moly, Castrol — and every row it returns is a real `Item`
+  with a real pk. Both halves are load-bearing. A person thinks in the generic
+  term, because that is the word the customer uses *and the word the bill
+  prints*; matching `Item.name` alone meant searching "Engine Oil" returned
+  nothing at all, and the obvious next move is to create a **product** called
+  "Engine Oil", which puts a generic name on the shelf as a fake SKU and makes
+  the printed bill read identically whichever way it was recorded. What the job
+  card must store is the branded SKU, because that is what moves stock and
+  carries the cost. So the category can lead you to the product; it can never
+  be the answer. `distinct()` is required — an OR across the category join
+  offers a product matching on both its own name and its category's twice.
+  Guarded by `test_searching_a_category_returns_the_products_inside_it` and
+  `test_a_category_is_never_itself_an_option`.
+  Two smaller rules landed with it. **Stock crosses the wire already formatted**
+  — `clean_qty`, the same filter every other quantity in the app goes through,
+  so one product cannot read "38" on one screen and "38.00" on another. And
+  **the stock line under the box reserves its height whether or not it has
+  text**: it was an empty `div`, so choosing a product wrote a line into it and
+  the row — with everything below it — jumped, which on a tablet means the box
+  you were aiming at has moved by the time your finger lands.
+  **The Inventory table carries NO `align-middle`, unlike Spare Parts, and that
+  is the fix for the second half of the same complaint.** The Item cell is
+  taller than its neighbours because it holds that stock line, so centring
+  every cell vertically lifted the Item box above the Qty and price boxes
+  beside it by half the line's height — visibly out of line on a row of four
+  identical controls. `.inventory-table > tbody > tr > td { vertical-align:
+  top; }` starts all four at the same y (measured: 0px spread) and lets the
+  stock line hang below, which is the only place it can go without moving
+  something else.
+
 - **A job-card spare's route is stored in `source`, never inferred. Do not reintroduce
   name matching.** Added 2026-07-30. A part reaches a car either from a spare shop
   (`source='SHOP'`, the ordering workflow and shop ledger apply) or off the warehouse
@@ -644,6 +677,73 @@ about to correct one of these, you are about to break the business:
   be an IntegrityError rather than a message) and refuses a negative outright
   rather than clamping. Guarded by `TheLabourChargeLivesOnTheCardTests` and
   `LabourPrintsAsOneSubtotalTests`.
+
+- **Settling asks what is still unfilled — and it NEVER blocks, and it never
+  fires on a clean card.** Added 2026-08-12, `workshop/settlement.py`. Settling
+  is the last thing that happens to a job card and the only irreversible one: a
+  walk-in has exactly one payment event, so the moment a figure is typed the
+  card is PAID, the shortfall becomes a permanent discount, and the Financial
+  Lock stands between the card and anyone correcting it. `settlement_gaps()`
+  lists what nobody filled in — mechanic, mileage, unfixed concerns, work listed
+  but not priced, parts with no customer price, and (shop parts only) not
+  received, missing dates, no shop, no shop price. Four rules hold it up.
+  (a) **It never blocks.** Two of the three buttons go forward. The workshop
+  settles at the counter with the customer standing there, and a checklist that
+  refused to let them pay would be worked around inside a week — by not opening
+  this screen until afterwards, which loses the check entirely.
+  (b) **It is not rendered at all when there is nothing to say**, and the settle
+  button reads *its absence from the DOM* to decide. Same reasoning as the
+  large-discount gate and the master-list merge confirmation: a dialog that
+  appears on every settlement, most of them fine, is one people learn to dismiss
+  without reading, and then it is not protecting the settlements that were not
+  fine.
+  (c) **A warehouse draw is never chased for a shop's fields.** The `source`
+  rule again — a draw came off the shelf already fitted, so it has no shop, no
+  order and no arrival, and its `status` column is meaningless. Reporting a
+  problem that cannot exist and cannot be fixed is precisely how a checklist
+  teaches people to click past it. The one check spanning both routes is the
+  customer price, because that is the figure that bills whichever shelf the part
+  came off.
+  (d) **A card with no job lines is NOT nagged about labour.** ₹0 labour is the
+  correct answer on a parts-only bill; the gap is reported only when work was
+  *recorded* and left unpriced.
+  **It is a CHECKLIST, not prose — labels and chips, no sentences, no tinted
+  boxes.** Rewritten 2026-08-12 on the owner's instruction after the first
+  build explained each gap in a sentence: every sentence was true and the whole
+  thing was four paragraphs deep, which on the one screen where somebody is
+  standing at a counter with a customer is the same as saying nothing. `Gap`
+  therefore carries a short `label` ("No mechanic assigned", "Spare parts") and
+  a tuple of `tags` — the chips naming exactly what is missing. Three
+  consequences. **The parts checks are GROUPED into one row per section**, not
+  one row per check: five lines all beginning "Spare parts" is five times the
+  height for the one fact that the parts section is unfinished, and it buries
+  the rows above it, which are about something else. **A concern is named by
+  its STATUS, never its wording** — `concern_text` is a TextField staff write
+  sentences into, and quoting one costs three lines while still describing only
+  one of them; the chips read "1 Pending", "2 Working". And **the uncompleted
+  flag has no filled panel behind it** — a tinted box made it the loudest thing
+  on a dialog that is mostly a list, and pushed the list below the fold. The
+  body's `max-height` is `min(62vh, calc(100vh - 330px))`, sized so the worst
+  card measured (six rows, thirteen chips, 483px) does not scroll on a 375×812
+  phone; it is a subtraction as well as a fraction because the head and the
+  four stacked buttons do not shrink with the viewport. `test_a_label_is_a_
+  phrase_not_a_sentence` keeps prose out.
+  **The four buttons' DOM order serves both layouts at once and must not be
+  shuffled**: left-to-right weakest→strongest on a laptop, and `column-reverse`
+  on a phone so the primary paints at the TOP under the thumb with Cancel
+  furthest away. Verified at 375×667 and 375×812.
+  **An uncompleted card is kept apart from the list, with its own button.** It
+  is not one more unfilled box — it is a contradiction (money taken for a car
+  the board still shows as being worked on) and it is the only item here fixable
+  from this screen. "Complete & settle" posts `complete_card=true`, which
+  `update_bill_status` reads. That runs **before** the money moves and outside
+  any condition on it, so a card that is genuinely finished stays marked
+  finished even if the settlement then fails; and `JobCard.mark_completed()` is
+  a **no-op on an already-completed card**, deliberately, because
+  `completed_date` is what the Completed list filters and sorts on and a
+  re-settlement weeks later must not restamp the day the car was handed over.
+  That method is now the one implementation, shared with the Completed button.
+  Guarded by `workshop/tests/test_settlement_preflight.py`.
 
 - **The printed invoice is NOT a transcription of the job card, and the four
   differences are rules.** Added 2026-08-04, `workshop/invoice.py`. The bill is
@@ -1263,6 +1363,156 @@ about to correct one of these, you are about to break the business:
   with it sent the owner back to the mail app on a phone for a mistake they had already
   fixed. The code is single-use, expiring, and already in their inbox, so echoing it
   reveals nothing. The two password fields are deliberately not echoed.
+
+- **A refused job card says so, names what, and keeps what was typed — and the
+  list is built in PYTHON.** Added 2026-08-12, `_collect_problems` in
+  `views/jobcard.py`. The error summary at the top of `jobcard_form.html`
+  enumerated four formsets by hand and the Inventory section was the fifth, so a
+  warehouse draw saved with a blank Qty was refused with **no banner, no
+  message and no sound** — the only sign was one line of 0.72rem red text
+  several screens down inside a horizontally scrolling table. From the front
+  that is indistinguishable from the Save button doing nothing. What it *did*
+  print was "Check Spares section for errors" (which withholds the only part
+  anyone needs) plus a leftover debugging loop that rendered Django's raw error
+  dict onto the page. Three rules now: the list is assembled in the view, so a
+  new section cannot be forgotten in markup; each row is named by **what it
+  holds** (`InventoryDrawForm.row_label()` → the product), because "Inventory
+  item 7" means counting rows on a card with eleven draws; and a `messages.error`
+  is raised, which is what makes the banner appear and what plays the error tone
+  (sound.js reads the message tag).
+  **The visible product box is re-rendered from the POSTED choice, never from
+  `instance.spare_part_name`.** That box is not a form field — it posts nothing,
+  and the hidden `item` pk is the row's whole identity — so on a rejected save a
+  NEW row came back with the pk intact and the box beside it empty, i.e. looking
+  untouched, and got filled in a second time. `InventoryDrawForm.search_value`
+  resolves it from `cleaned_data` (no query on the normal path).
+  **There is now ONE `_form_context()` for every render of the form**, and
+  building it closed a live data-loss path: the duplicate-registration refusal
+  passed **no `spare_shops`**, so every spare row's shop `<select>` re-rendered
+  holding only "-- Shop --". Correct the registration, press save, and each
+  select posts blank, the resolution pass clears the FK, and the purchase
+  disappears off that shop's ledger. Same failure the archived-shop rule exists
+  to prevent, reached through a different door, and needing nothing unusual —
+  only a customer bringing a car back before the last card on it was closed.
+  Guarded by `ARefusedSaveSaysWhatIsWrongTests`.
+
+- **Car Profiles: the header stacks, the totals come from the DATABASE, and the
+  list is paginated.** Added 2026-08-12. Three real defects sat under the
+  redesign. The list template read **`search_query`**, a name this view has
+  never passed — so the search box came back empty after every search *and* the
+  pagination links carried the same dead name, meaning page 2 of a search
+  silently returned page 2 of every car in the workshop. The detail view loaded
+  a car's **entire** history with no pager and then asked the template for
+  `bill.concerns.count` and `.first`, two queries per row. And the summary
+  figures are now a single aggregate over the whole history rather than a total
+  of the rows on screen — with a pager, anything summed from the page would
+  quietly start describing "this page" while labelled "this car", the same
+  reasoning that replaced the Cashbook's `LIST_CAP`. "Billed to date" is
+  `total_bill_amount − discount_amount`, **the Profit page's own definition of
+  revenue**, because a second definition of "what this customer has paid us" is
+  the one an owner would end up quoting at the counter.
+  On the header: **one row from 768px up, two rows below it** — the owner's
+  instruction, and mobile-first so the narrow case cannot be broken by
+  forgetting a media query. On a phone the title and a search box with a
+  five-word placeholder compete for ~360px and both lose (the count is pushed
+  against the edge, the placeholder truncates); above 768px there is room for
+  both and giving the search its own line there would push the first card down
+  for nothing. A visit row is a `<div>` with a `.stretched-link`, never an
+  `<a>` wrapped round other controls — see the Estimates entry for what
+  browsers do to that markup.
+  **The search box is deliberately the SAME control as Completed's** — the
+  values in `.cp-search-*` are copied from `.del-search-*`, not approximated,
+  and were verified equal on all ten computed properties in a browser. Those
+  two pages are opened one after the other all day and a search box that
+  changes shape between them reads as two different products. If Completed is
+  restyled, restyle this with it; `TheSearchLooksLikeCompletedsTests` fails
+  either way round.
+  Three things the page deliberately does NOT carry, all removed 2026-08-12 on
+  the owner's instruction. **The colour is worn, not written** — "Red" printed
+  beside a red bar is the same fact twice, in a row where every other chip says
+  something the rail cannot. **The first concern no longer previews in each
+  visit row**: it was the only free-text line in the list, so it made every row
+  a different height, and a history is scanned for *when* and *how much* — the
+  concerns are one tap away on the card. Dropping it removed the only reason
+  the view prefetched that relation. And **a visit row has no Invoice button**:
+  the job card it opens carries its own, so it was a second door to the same
+  place, costing a column of width on a phone, forcing the row to reflow below
+  520px, and needing its own z-index to stay clickable above the row-wide link.
+  The row is one target with one meaning now, and it stays two lines tall at
+  every width (92px on a phone, down from 186px).
+  **The car wears its own colour on both screens — the SAME wash `.lr-car`
+  uses on the Live Report, at the identical `14` (8%) alpha.** Added 2026-08-12
+  on the owner's suggestion. A rail down the edge plus
+  `background-image: linear-gradient(var(--shade), var(--shade))` over the card
+  colour. Copying the alpha rather than picking a new one is the point: a car
+  you can see has to look the same on every screen that shows it, and a second
+  stronger wash invented here would make two pages disagree about one Red car.
+  **Both exceptions come with it, and both are load-bearing**: a WHITE car's
+  rail is outlined (`inset` box-shadow) or it vanishes against the card, and a
+  car with **no colour recorded gets a hatched rail and NO wash at all** — a
+  slate tint would say "this car is grey", which is a different fact from
+  "nobody wrote it down". One extra rule the Live Report does not need: the
+  hero's stat tiles sit *on* the wash, so they carry their own
+  `rgba(255,255,255,.72)` ground or they take the tint twice and read as a
+  different colour from the card around them.
+  **The headline figure is "Total billed"**, not "Billed to date" (unreadable
+  at a glance) and deliberately not "Total spent" — that is the customer's side
+  of the same number and it is wrong on exactly the cars that matter, since an
+  unpaid bill has been billed and not spent. When there is an unpaid part the
+  "Still owed" tile appears beside it, so the pair reads without ambiguity.
+
+- **"GROSS PROFIT" on a car profile is GROSS, and the word is the whole
+  safety of it.** Added 2026-08-12 on the owner's request for a per-car profit
+  figure. It is `revenue − parts cost` — the labour charge (which carries no
+  direct cost of its own) plus the margin on both part routes — and it is
+  **before wages, rent, power and every other overhead**, because this workshop
+  attributes none of those to a car: labour is quoted whole with no hours
+  recorded, so there is nothing to apportion by. Measured over the current
+  data it reads **45.0% where the business actually makes 31.8%**, and that gap
+  *widens* as payroll grows (the seed carries only ₹14L of wages across 13
+  settled months). So "Profit" was refused as a label and "Gross profit" chosen
+  — the standard accounting term, understood by any owner, with *gross* doing
+  the warning. `analysis_engine.build_profit_report` remains the one true
+  profit figure in this app. Guarded by `test_it_is_never_called_plain_profit`.
+  Four rules hold it up.
+  (a) **BOTH part routes are costed, and that is NOT the double-count rule
+  being broken.** That rule governs the workshop-wide Profit page, where a
+  warehouse draw must never be charged again because a Supplies Shop restock
+  bill already paid for it. The question here is a different one — what did
+  *this car* cost us — and a part off the shelf cost what the shelf paid for
+  it. Nothing is being added to a total that already contains the restock
+  bills.
+  (b) **`SPARE_COST` is imported from `analysis_engine`, never restated.** It
+  is the app's one definition of what a spare cost, shared with the Profit page
+  and `SpareShop.update_totals()`; a second copy would be a second answer on
+  the screen an owner reads to judge a customer.
+  (c) **It says so when its cost side is incomplete.** `SPARE_COST` counts a
+  missing `unit_price` as ₹0, so an uncosted part reads as *free* and pushes
+  the figure UP — the one way it can be wrong without looking wrong, and
+  CLAUDE.md already warns to expect exactly that at go-live on opening stock.
+  The count of such parts is aggregated alongside the cost and printed as a
+  quiet caveat under the tiles; a fully-costed car says nothing, because a
+  caveat on every car is a caveat nobody reads.
+  (d) **Owner only, and not computed at all for anyone else** — `None` from the
+  view, so the two aggregates never run and the template gates on the value
+  rather than on a second role check free to fall out of step. This is the only
+  place in the app where a per-car *cost* appears, and Office is shown the
+  workshop's cost side nowhere else.
+  **It is deliberately not highlighted**: the same grey tile as its
+  neighbours, and on each visit row a small muted line under the bill. The bill
+  stays the loudest number in the row. On a phone the word "gross" is dropped
+  from that line (the tile above still says it) — the line is `nowrap`, so
+  every character widens the right-hand column and takes it from the bill
+  number and badges, measured at +24px of row height because those badges then
+  wrap.
+  **Tile widths are PROPORTIONAL, and the two fixed ones are fixed for a
+  reason**: a visit count and a date cannot vary in width, so they get 92px and
+  132px and stop taking a money-sized box for a small fact; the money tiles
+  flex because their width *is* a function of the data. Sizing every tile to
+  its contents is the tempting version and the wrong one — a car billed ₹500
+  and one billed ₹1,25,000 would lay the row out differently, so the boxes move
+  between cars. Verified at 3, 4 and 5 tiles (Office, no balance, owner) and on
+  a 375px phone, where they drop to two per row.
 
 - **The frontend is server-rendered Django templates with page-scoped inline
   JavaScript, and there is no build step. This is the settled architecture, not
@@ -1935,7 +2185,7 @@ Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_H
 ### App boundaries
 - **`workshop/`** — job cards, billing, bulk payers, spare shops, cashbook, auth, owner analytics, deletion history, master data (brands/models/spares/concerns).
   - `views/` is a package (17 modules: `audits`, `autocomplete`, `billing`, `bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`, `estimate`, `jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `push`, `salary_advance`, `spare_shop`). `views/__init__.py` re-exports everything so `from . import views; views.some_function` and existing URL wiring keep working — when adding a view, add it to both its module and the `__init__.py` re-export list.
-  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py`. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section, and `master_data.py` likewise holds no views: it is the one implementation of the master-list rename/merge rule, shared by `views/master_lists.py` and `cleanup_views.py` (see "Deliberate decisions" for why that sharing is load-bearing). **`invoice.py` is the third of these** — no views, no HTTP: it is the one answer to "what does the customer see?", so a second printing surface (a PDF export, a reprint from Paid Bills) cannot grow its own slightly-different version. It owns **both** customer documents — `build_invoice()` and `build_estimate()`, sharing every rule between them (see "Deliberate decisions"). `views/billing.py` and `views/estimate.py` resolve the record and render; neither contains any arithmetic.
+  - `analysis_views.py`, `analysis_engine.py`, `auth_views.py`, `cashbook_views.py`, `cleanup_views.py`, `management_views.py`, `settlement.py` are standalone top-level modules (not part of the `views/` package), imported directly in `urls.py` (or, for the pure ones, by the views that need them). **`settlement.py` holds no views either** — it is the one answer to "what is still unfilled before this bill should be settled?", read by the settle dialog on the invoice; see "Deliberate decisions" for the four rules it enforces. `analysis_engine.py` holds no views at all — it is the pure money math behind the Analysis section, and `master_data.py` likewise holds no views: it is the one implementation of the master-list rename/merge rule, shared by `views/master_lists.py` and `cleanup_views.py` (see "Deliberate decisions" for why that sharing is load-bearing). **`invoice.py` is the third of these** — no views, no HTTP: it is the one answer to "what does the customer see?", so a second printing surface (a PDF export, a reprint from Paid Bills) cannot grow its own slightly-different version. It owns **both** customer documents — `build_invoice()` and `build_estimate()`, sharing every rule between them (see "Deliberate decisions"). `views/billing.py` and `views/estimate.py` resolve the record and render; neither contains any arithmetic.
   - `decorators.py` defines the RBAC decorators (`owner_required`, `office_required`, `staff_required`) built on three Django auth Groups: **Owner**, **Office**, **Floor**. Superusers pass every check. Use these decorators on any new view instead of rolling custom permission checks.
   - `middleware.py` (`SessionTrackingMiddleware`) updates `UserSession` (device/IP/last-activity) on every authenticated request, throttled to a 5-minute cooldown per session.
 - **`inventory/`** — stock items/categories and supplier shops (`views.py` for core inventory, `views_suppliers.py` for the supplier-shop module). Stock levels are kept in sync with workshop activity purely via Django signals in `signals.py` — there is no direct view-to-view coupling between the two apps for stock changes.
@@ -1949,7 +2199,8 @@ Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_H
 Split into `formulad_workshop/settings/{base,development,production}.py`. `__init__.py` picks one via `DJANGO_ENV` — there is no fallback default, so forgetting to set it fails loudly rather than silently using the wrong DB. The PostgreSQL and SQLite connection dicts are built by `postgres_db()` / `sqlite_db()` in `base.py` and shared by both environments; they used to be duplicated per file, which is how a connection setting gets fixed in one and left broken in the other.
 
 ### Notifications — one catalogue, one entry point
-The whole event list lives in **`workshop/notifications.py`**. Add an event to `EVENTS`, then call `notify()` from the single place it happens — **never** `Notification.objects.create()` in a view. With **17 call sites spread across 8 modules** (recounted 2026-08-10; `EVENTS` itself now holds **13** events, 9 CRITICAL and 4 INFO), that file is the only way to answer "what does this thing notify about?" without grepping.
+The whole event list lives in **`workshop/notifications.py`**. Add an event to `EVENTS`, then call `notify()` from the single place it happens — **never** `Notification.objects.create()` in a view. With **17 call sites spread across 8 modules** (recounted 2026-08-10; `EVENTS` itself now holds **14** events, 10 CRITICAL and 4 INFO, after `STAFF_LOGIN` was added 2026-08-12), that file is the only way to answer "what does this thing notify about?" without grepping.
+- **An OFFICE or FLOOR sign-in pushes; an OWNER sign-in does not.** Added 2026-08-12 on the owner's instruction. `LOGIN` (INFO) and `STAFF_LOGIN` (CRITICAL) are the same fact at two tiers, and the split lives in `EVENTS` rather than in a severity argument at the call site so that this file states the rule. The reasoning: `notify()` already excludes the actor, so making `LOGIN` critical would only ever buzz one owner about the other owner's ordinary working day — which is exactly how a critical list stops being read. A staff account is different: it is used on shared shop-floor devices and it is the one the owners cannot see being used. Volume is what makes it safe — `SESSION_COOKIE_AGE` is 40 days, so a signed-in tablet stays signed in and this fires on a genuinely new session, not every shift. The body carries the role (`amal (Office)`) because the alert arrives as one line on a lock screen and a bare username does not say whether that account can see money. Guarded by `workshop/tests/test_staff_login_alert.py`.
 - **Fanned out per recipient**, so the unread count is one indexed query. **No FK to the subject** — most events announce a *deletion*, and a FK would cascade the notification away with the thing it was about; `object_type`/`object_id` plus a frozen label in `body` is the same discipline as `DeletionLog.snapshot`.
 - **`DeletionLog.record()` is the deletion hook.** Every permanent delete already funnels through it, so one call covers all eleven entity types and any added later. Don't scatter equivalent `notify()` calls into individual delete views.
 - **Owners only, and the actor never hears about their own action.** Floor gets nothing — a notification a mechanic can't act on trains everyone to ignore the bell. The bell in `base.html` is Owner-gated to match; widen the gate and the audience together or you get a bell that can never fill.
@@ -2087,7 +2338,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (35 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 40 files, **1,056 tests, all passing** (run in full 2026-08-12; the figures here had gone stale four times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-69 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and **69 on 2026-08-12**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (38 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 43 files, **1,140 tests** (re-counted 2026-08-12 after `test_settlement_preflight.py`, `test_car_profiles.py` and `test_staff_login_alert.py` were added; the figures here had gone stale four times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-69 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and **69 on 2026-08-12**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with
