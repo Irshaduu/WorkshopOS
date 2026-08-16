@@ -123,27 +123,65 @@
     }
 
     /* ── Vehicle Card ───────────────────────────── */
+    {% comment %}
+    ── Polish pass, 2026-08-16 ──────────────────────────────────────────
+    Content and structure untouched, on the owner's instruction. Four things
+    changed, and each is a reason rather than a preference:
+
+    1. THE CAR'S COLOUR IS STATED TWICE, NOT THREE TIMES. It was the 10px
+       stripe, an 8% wash across the card, AND a 20% coloured halo behind it.
+       The halo was the weakest of the three and the only one that read as a
+       rendering artifact — a red glow around a white card looks like something
+       failing to paint, and down a list of 45 cards it turns the gaps between
+       them into colour. The stripe says it loudly, the wash says it quietly,
+       and the glow now appears only under a POINTER, where it reads as the
+       card lifting rather than as part of its identity.
+
+    2. HOVER IS BEHIND `@media (hover: hover)`. This board is worked on the
+       Floor tablet all day, where hover is wrong twice over: it never fires on
+       a touch screen, and where it does fire it STICKS — the last card tapped
+       sits raised and shadowed until something else is tapped, which reads as
+       a card that is still loading. Same rule the job card's own buttons
+       follow.
+
+    3. `:active` DOES SOMETHING AGAIN. It was an empty rule with the comment
+       "Feedback removed to prevent blinking" — so tapping a card gave nothing
+       at all on the one device where it is always tapped. The blinking came
+       from moving the card; a press that only changes PAINT cannot blink,
+       so this settles it down 0.5% and deepens the ground instead.
+
+    4. IT ANIMATES ONLY PAINT AND TRANSFORM. Both are composited, so a card
+       reacting to a finger can never nudge the list under it.
+    {% endcomment %}
     .job-card {
         position: relative;
         background: #ffffff;
         background-image: linear-gradient(var(--card-shade, transparent), var(--card-shade, transparent));
         border-radius: 12px;
         cursor: pointer;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04), 
-                    0 0 10px var(--card-glow, transparent); /* Ambient Glow Support */
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
         border: 1px solid var(--pit-border, #e2e8f0);
         display: flex;
         transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+        /* The browser's own grey tap flash lands a beat later than the
+           `:active` paint below and fights it. */
+        -webkit-tap-highlight-color: transparent;
     }
 
-    .job-card:hover {
-        border-color: #cbd5e1;
-        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.09), 0 0 14px var(--card-glow, transparent);
-        transform: translateY(-1px);
+    @media (hover: hover) {
+        .job-card:hover {
+            border-color: #cbd5e1;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.09), 0 0 12px var(--card-glow, transparent);
+            transform: translateY(-1px);
+        }
     }
 
+    /* What a FINGER gets. Fires on touch, releases with the finger, and moves
+       nothing that anything else is resting on. */
     .job-card:active {
-        /* Feedback removed to prevent blinking */
+        transform: scale(.995);
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.10);
+        border-color: #cbd5e1;
     }
 
     /* ── Left colour stripe — TITAN WIDE IDENTITY ─────────────────────── */
@@ -186,8 +224,11 @@
         min-width: 0;
     }
 
+    /* Even top and bottom. It was 0.9 over 0.75, so every card sat very
+       slightly high in its own box — invisible on one and a rhythm that is
+       fractionally off down a list of forty-five. */
     .card-body-inner {
-        padding: 0.9rem 1rem 0.75rem;
+        padding: 0.9rem 1rem 0.85rem;
         display: flex;
         flex-direction: column;
         gap: 0.55rem;
@@ -239,14 +280,21 @@
         flex-shrink: 0;
     }
     .status-dot-sm.active { background: #16a34a; }
+    {% comment %}
+    The hold dot no longer BLINKS (2026-08-16). It was a 2s infinite loop, one
+    per held card, on the screen the workshop looks at most — and the same
+    reasoning the job card already records applies here: an idle animation is
+    noise on a board staff work all day, it costs battery on the Floor tablet,
+    and it draws the eye to the same fact over and over.
+
+    Nothing is lost. "Hold" is already said three times over — the pill's word,
+    the pill's red ground and this dot's colour — so the blink was the fourth
+    telling of something that was never ambiguous. A soft ring gives it presence
+    at rest instead, which is what a blink was reaching for.
+    {% endcomment %}
     .status-dot-sm.hold   {
         background: #dc2626;
-        animation: blink 2s infinite;
-    }
-
-    @keyframes blink {
-        0%, 100% { opacity: 1; }
-        50%       { opacity: 0.4; }
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
     }
 
     /* ── Rows 2 & 3: Grid Layout ── */
@@ -265,7 +313,13 @@
         flex: 1;
     }
 
-    /* Row 2: Reg Badge */
+    {% comment %}
+    Row 2: the plate. Kept exactly as it was in size, weight and tracking — it
+    reads as a number plate and that is the point. Only the EDGE softened: a
+    #cbd5e1 border around a near-white fill is a darker line than the card's own
+    border, so the plate outranked the card it sits on. The fill takes over the
+    job of separating it, which is what a printed plate does anyway.
+    {% endcomment %}
     .reg-badge {
         display: inline-flex;
         font-size: 0.76rem;
@@ -273,8 +327,8 @@
         letter-spacing: 0.08em;
         text-transform: uppercase;
         padding: 2px 8px;
-        background: #f1f5f9;
-        border: 1px solid #cbd5e1;
+        background: #eef2f7;
+        border: 1px solid #dde5ee;
         border-radius: 5px;
         color: #1e293b;
         white-space: nowrap;
@@ -289,11 +343,18 @@
         flex-wrap: wrap;
     }
 
+    {% comment %}
+    Row 3 is two facts side by side, and they are not equal: WHO has the car is
+    what an owner scans for, how long it has been in is context for it. The age
+    was the one with a filled grey block behind it, so it was winning — and the
+    mechanic's name, with no chip at all, read as its caption. Lightening the
+    pill puts them the right way round without moving either.
+    {% endcomment %}
     .age-pill {
         font-size: 0.7rem;
         font-weight: 700;
-        color: #475569;
-        background: #e2e8f0;
+        color: #64748b;
+        background: #f1f5f9;
         padding: 1.5px 6.5px;
         border-radius: 4px;
         white-space: nowrap;
@@ -402,10 +463,16 @@
         border-bottom-left-radius: 12px;
         border-bottom-right-radius: 12px;
     }
-    .live-drawer-toggle:hover {
-        background: #f1f5f9;
-        color: #0f172a;
+    @media (hover: hover) {
+        .live-drawer-toggle:hover {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
     }
+    /* A full-width bar that gives nothing back on a tap reads as not having
+       registered it — and this one is pressed on every card. */
+    .live-drawer-toggle:active { background: #e2e8f0; color: #0f172a; }
+    .live-drawer-toggle { -webkit-tap-highlight-color: transparent; }
     .live-drawer-toggle .toggle-icon {
         font-size: 0.85rem;
         transition: transform 0.2s ease;
@@ -529,21 +596,44 @@
     }
 
     /* ── 3-dot menu button ──────────────────────── */
+    {% comment %}
+    The ⋮ was a 20x24px target on a board worked with a thumb — under half the
+    ~44px this codebase requires of anything Floor taps, and it sits beside the
+    card's own click area, so a near miss opens the job card instead of the
+    menu. Sized by INPUT METHOD rather than by screen width, because it is the
+    finger that decides how big a target must be and the Floor tablet is wider
+    than plenty of laptops. `min-width` as well as `min-height`: a target is
+    only as big as its smaller side.
+
+    The glyph does not grow with the box. It is a quiet control that should stay
+    quiet — what changes is how much of the screen answers a tap.
+    {% endcomment %}
     .dot-menu-btn {
         background: none;
         border: none;
         color: #94a3b8;
-        padding: 4px 6px;
-        border-radius: 6px;
+        min-width: 34px;
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
         cursor: pointer;
         line-height: 1;
         transition: background 0.15s, color 0.15s;
         flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
     }
 
-    .dot-menu-btn:hover {
-        background: #f1f5f9;
-        color: var(--pit-steel);
+    @media (hover: none) {
+        .dot-menu-btn { min-width: 44px; min-height: 44px; }
+    }
+
+    @media (hover: hover) {
+        .dot-menu-btn:hover {
+            background: #f1f5f9;
+            color: var(--pit-steel);
+        }
     }
 
     .dot-menu-btn:active {
@@ -623,6 +713,24 @@
         .stat-value { font-size: 1.7rem; }
         .car-name   { font-size: 1.05rem; }
         .btn-report { font-size: 0.75rem; padding: 0.4rem 0.8rem; }
+    }
+
+    {% comment %}
+    Nothing on this board is animation for its own sake any more — the one
+    infinite loop is gone — so this only covers the press and lift feedback.
+    Both have a still equivalent already on screen (a border and a ground), so
+    dropping the motion loses no information at all.
+    {% endcomment %}
+    @media (prefers-reduced-motion: reduce) {
+        .job-card,
+        .live-drawer-toggle,
+        .dot-menu-btn,
+        .live-drawer-toggle .toggle-icon,
+        .progress-ring-svg circle {
+            transition: none;
+        }
+        .job-card:hover,
+        .job-card:active { transform: none; }
     }
 </style>
 {% endblock %}

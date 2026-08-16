@@ -372,14 +372,39 @@ class ARefusedSaveSaysWhatIsWrongTests(InventorySectionBase):
         self.assertIn('.inventory-stock-hint', body)
         self.assertIn('min-height', body[body.index('.inventory-stock-hint'):][:400])
 
-    def test_a_saved_draw_shows_its_stock_without_being_re_picked(self):
+    def test_a_SAVED_draw_no_longer_carries_a_stock_line(self):
+        """
+        INVERTED on 2026-08-16, on the owner's instruction. This used to assert
+        the opposite — that a saved row still printed "19 in stock".
+
+        The count answers exactly one question, "is there enough on the shelf to
+        take?", and that is asked at the moment of choosing and never again. On
+        a card reopened weeks later it is a number describing TODAY's shelf
+        beside a part fitted long ago, printed once per row — noise at best, and
+        on a card with eleven draws it is eleven lines of it.
+
+        Nothing is lost at the moment it matters: the picker still writes the
+        line the instant a product is chosen, on a new row or when an existing
+        row's product is changed.
+        """
         JobCardSpareItem.objects.create(
             job_card=self.job, source=INVENTORY, item=self.item,
             spare_part_name='Engine Oil 5W30', quantity=D('1'), total_price=D('600'))
         body = self.client.get(reverse('jobcard_edit', args=[self.job.pk])).content.decode()
-        # 19 = 20 on the shelf minus the 1 this draw just took.
-        self.assertIn('19 in stock', body)
-        self.assertNotIn('19.00 in stock', body)
+        self.assertNotIn('in stock', body)
+
+    def test_the_empty_line_still_reserves_its_height_on_a_saved_row(self):
+        """
+        The half that must NOT change with it. The div stays, empty, because the
+        picker writes into it the moment a product is chosen — and a div that
+        appears when it is written to is a row that jumps under the finger
+        aiming at it.
+        """
+        JobCardSpareItem.objects.create(
+            job_card=self.job, source=INVENTORY, item=self.item,
+            spare_part_name='Engine Oil 5W30', quantity=D('1'), total_price=D('600'))
+        body = self.client.get(reverse('jobcard_edit', args=[self.job.pk])).content.decode()
+        self.assertIn('class="inventory-stock-hint', body)
 
 
 class PickerEndpointTests(InventorySectionBase):

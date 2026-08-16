@@ -194,7 +194,14 @@ class JobCardViewsTestCase(TestCase):
         self.assertRedirects(response, reverse('jobcard_edit', args=[self.job.pk]))
 
         self.job.refresh_from_db()
-        self.assertEqual(self.job.customer_name, 'John Edited')
+        # The probe is the CAR, not the customer. This client signs in as FLOOR,
+        # and since 2026-08-16 the customer's name and number are Office/Owner
+        # only — not rendered for Floor, and pinned to the stored value in
+        # `_floor_locked_data` so a crafted POST cannot move them. Asserting
+        # `customer_name` here would be asserting the hole is still open.
+        self.assertEqual(self.job.car_color, 'White')
+        # …and the rule itself, said out loud rather than left as a silent gap.
+        self.assertEqual(self.job.customer_name, 'John')
         # Auto-learning: new concern should appear in master list
         self.assertTrue(ConcernSolution.objects.filter(concern='New Brake Issue').exists())
 
@@ -307,7 +314,9 @@ class JobCardViewsTestCase(TestCase):
 
         self.job.refresh_from_db()
         self.assertEqual(self.job.lead_mechanic_id, self.mechanic.id)
-        self.assertEqual(self.job.customer_name, 'John Edited')
+        # Proof the save really happened, read off a field Floor may set — see
+        # `test_jobcard_edit_post_success` for why it is not the customer.
+        self.assertEqual(self.job.car_color, 'White')
 
     def test_invoice_view_access_control(self):
         """Floor-only user must not reach the invoice view."""

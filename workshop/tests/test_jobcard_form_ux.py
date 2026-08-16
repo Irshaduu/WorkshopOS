@@ -75,6 +75,19 @@ class JobCardFormBase(TestCase):
     def rendered(self):
         return self.client.get(reverse('jobcard_edit', args=[self.job.pk])).content.decode()
 
+    def floor_client(self):
+        """A signed-in Floor client — the role several sections render
+        differently for."""
+        floor = User.objects.create_user(username='flr-view', password='pw')
+        floor.groups.add(self.floor_group)
+        client = Client()
+        client.login(username='flr-view', password='pw')
+        return client
+
+    def rendered_as_floor(self):
+        return self.floor_client().get(
+            reverse('jobcard_edit', args=[self.job.pk])).content.decode()
+
     @staticmethod
     def source():
         with open(FORM_TEMPLATE, encoding='utf-8') as fh:
@@ -177,19 +190,46 @@ class TheInternalNoteIsForTheWorkshopOnlyTests(JobCardFormBase):
         self.assertEqual(page.status_code, 200)
         self.assertNotIn(secret, page.content.decode())
 
-    def test_it_is_labelled_as_never_printed_where_it_is_typed(self):
+    def test_the_label_no_longer_spells_out_that_it_is_not_printed(self):
         """
-        The promise has to be on screen beside the box. Somebody deciding
-        whether to write something candid is not going to go and read the model.
+        INVERTED on 2026-08-16, on the owner's instruction. The label used to
+        read "Internal note — never printed on the bill", and the clause was
+        doing real work: it is what somebody deciding whether to write something
+        candid would look for.
+
+        It came off because "Internal" already says it, and that clause was the
+        longest label on the longest form in the app. The GUARANTEE is untouched
+        and is the test above this one — it is enforced by construction, not by
+        a sentence on a label.
         """
         html = self.rendered()
-        self.assertIn('never printed', html)
+        self.assertIn('Internal note', html)
+        self.assertNotIn('never printed on the bill', html)
+
+    def test_the_box_grows_with_what_is_in_it(self):
+        """
+        One row when empty — which is most cards — and as many as the note needs
+        when it is not. It was a single-line <input>, so a two-sentence note
+        could only be read by scrolling sideways through it.
+
+        Asserted on the TEXTAREA, because that is the half that works without
+        JavaScript; `autoGrow()` is the improvement on top and cannot be reached
+        from here.
+        """
+        import re
+        html = self.rendered()
+        match = re.search(r'<textarea[^>]*name="notes"[^>]*>', html)
+        self.assertIsNotNone(match, 'the internal note is not a textarea')
+        tag = match.group(0)
+        self.assertIn('jc-grow', tag)
+        self.assertIn('rows="1"', tag)
+        self.assertIn('maxlength="255"', tag)
 
     def test_floor_may_write_one(self):
         """
         It carries no money, so it is not price-locked — a mechanic noting what
         the customer said at handover is the point of the box. Contrast the
-        price fields, which `_price_locked_data` pins for Floor.
+        price fields, which `_floor_locked_data` pins for Floor.
         """
         floor = User.objects.create_user(username='flr', password='pw')
         floor.groups.add(self.floor_group)
@@ -219,8 +259,8 @@ class CustomerDetailsIsFoldedAwayTests(JobCardFormBase):
         at = html.index('class="card shadow-sm mb-4 border-0 jc-fold"')
         return html[html.rindex('<details', 0, at):html.index('</summary>', at)]
 
-    def test_it_is_named_customer_details(self):
-        self.assertIn('Customer Details', self.fold())
+    def test_it_is_named_for_what_it_holds(self):
+        self.assertIn('Customer &amp; Notes', self.fold())
 
     def test_a_card_with_no_customer_opens_closed(self):
         self.job.customer_name = ''
@@ -403,7 +443,7 @@ class TheSpareRowKeepsEveryFieldItPostsTests(JobCardFormBase):
         the page looks right and the money goes.
 
         The complementary half — that a Floor POST cannot *change* those
-        values — is `_price_locked_data`, covered in test_jobcard_inventory_section.
+        values — is `_floor_locked_data`, covered in test_jobcard_inventory_section.
         """
         floor = User.objects.create_user(username='flr2', password='pw')
         floor.groups.add(self.floor_group)
@@ -628,7 +668,7 @@ class EverySectionAnnouncesItselfTheSameWayTests(JobCardFormBase):
     #: a form this long.
     SECTIONS = [
         ('Vehicle Details', 'bi-car-front-fill'),
-        ('Customer Details', 'bi-person-vcard-fill'),
+        ('Customer &amp; Notes', 'bi-person-vcard-fill'),
         ('Customer Concerns', 'bi-chat-left-text-fill'),
         ('Job Performed', 'bi-tools'),
         ('Inventory Items', 'bi-box-seam-fill'),
@@ -646,7 +686,19 @@ class EverySectionAnnouncesItselfTheSameWayTests(JobCardFormBase):
                          [(n, i) for n, i in self.SECTIONS])
 
     def test_the_customer_block_is_no_longer_the_unnamed_one(self):
-        self.assertIn('>Customer Details</h6>', self.rendered())
+        self.assertIn('>Customer &amp; Notes</h6>', self.rendered())
+
+    def test_floor_gets_the_same_shape_with_a_different_name(self):
+        """
+        Floor is not shown the customer's name or number, so that section holds
+        only the internal note — and it is NAMED for what it holds. A heading
+        reading "Customer Details" over a box that says nothing about the
+        customer is the page misdescribing itself.
+        """
+        html = self.rendered_as_floor()
+
+        self.assertIn('>Workshop Note</h6>', html)
+        self.assertNotIn('>Customer &amp; Notes</h6>', html)
 
     #: The nav bar's own gradient sampled at 84% — the bar is
     #: `linear-gradient(90deg, #10275c 0%, #1e4fb8 45%, #2f7de8 100%)`.
@@ -1422,3 +1474,113 @@ class ALockedRecordLooksLockedTests(JobCardFormBase):
         rule = self.rule('#jobcardForm[data-locked="true"] .jc-sec-name::after {')
         self.assertIn('content: "LOCKED"', rule)
         self.assertNotIn('font-family: "bootstrap-icons"', rule)
+
+
+class WhoTheCustomerIsIsOfficeOnlyTests(JobCardFormBase):
+    """
+    Added 2026-08-16 on the owner's instruction.
+
+    The customer's NAME and NUMBER are Office and Owner only, and it is the same
+    reasoning that folded the section away in the first place: Owner 1 keeps
+    those relationships himself, and the workshop identifies a car by its
+    registration. A mechanic never needs to know whose car it is — and this form
+    was the only screen that would have told them, since the invoice, Car
+    Profiles and the Fleet pages are all `@office_required` already.
+
+    The INTERNAL NOTE stays open to everybody. It is about the car, not the
+    customer ("noise only when cold", "do not wash"), and the mechanic is
+    usually the one who finds out.
+    """
+
+    def test_office_sees_both_boxes(self):
+        html = self.rendered()
+        self.assertIn('name="customer_name"', html)
+        self.assertIn('name="customer_contact"', html)
+
+    def test_floor_sees_neither_box_nor_the_stored_value(self):
+        """
+        Not merely hidden. A `d-none` cell would still put the customer's phone
+        number in HTML a mechanic can read — the same reason the Live Report's
+        board is not built for Floor rather than hidden from it.
+        """
+        html = self.rendered_as_floor()
+
+        self.assertNotIn('name="customer_name"', html)
+        self.assertNotIn('name="customer_contact"', html)
+        self.assertNotIn('John', html)
+        self.assertNotIn('1234567890', html)
+
+    def test_floor_still_gets_the_note(self):
+        self.assertIn('name="notes"', self.rendered_as_floor())
+
+    def test_a_crafted_post_from_floor_cannot_rename_the_customer(self):
+        """
+        Hiding the box is presentation; this is the control. Exactly the shape
+        of AUD-0081 — the price fields were hidden in the template for a year
+        while a raw POST rewrote them — so the pinning lives in
+        `_floor_locked_data` beside them.
+        """
+        client = self.floor_client()
+        client.post(reverse('jobcard_edit', args=[self.job.pk]),
+                    self.payload(customer_name='Somebody Else',
+                                 customer_contact='9999999999'))
+
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.customer_name, 'John')
+        self.assertEqual(self.job.customer_contact, '1234567890')
+
+    def test_a_crafted_post_from_floor_cannot_ERASE_the_customer_either(self):
+        """
+        The other direction, and the one a blunt "drop the key" fix would miss:
+        an absent field on a ModelForm leaves the stored value alone, but a
+        field posted EMPTY overwrites it with blank.
+        """
+        client = self.floor_client()
+        client.post(reverse('jobcard_edit', args=[self.job.pk]),
+                    self.payload(customer_name='', customer_contact=''))
+
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.customer_name, 'John')
+        self.assertEqual(self.job.customer_contact, '1234567890')
+
+    def test_floor_creating_a_card_simply_records_no_customer(self):
+        """
+        A new card has nothing stored to preserve, so the pin is blank rather
+        than a refusal — Floor opens the job, Office adds the customer if there
+        is one.
+        """
+        client = self.floor_client()
+        payload = self.payload(registration_number='KL09ZZ0001',
+                               customer_name='Invented', customer_contact='9000000000')
+        client.post(reverse('jobcard_create'), payload)
+
+        card = JobCard.objects.get(registration_number='KL09ZZ0001')
+        self.assertFalse(card.customer_name)
+        self.assertFalse(card.customer_contact)
+
+    def test_office_is_unaffected(self):
+        self.edit(customer_name='Rashid', customer_contact='9876500000')
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.customer_name, 'Rashid')
+        self.assertEqual(self.job.customer_contact, '9876500000')
+
+    def test_the_read_only_view_of_a_card_is_gated_the_same_way(self):
+        """
+        The rule has to hold wherever the customer is SHOWN, not only where they
+        are typed. `jobcard_detail` is `@staff_required` — Floor legitimately
+        reads a card there — and it printed the name and number with no gate at
+        all, so hiding them on the form alone would have moved the door rather
+        than closing it. Every other screen that names a customer (the invoice,
+        Car Profiles, Job Cards, Completed, Paid Bills, the Fleet pages) is
+        `@office_required` already.
+        """
+        detail = reverse('jobcard_detail', args=[self.job.pk])
+
+        office = self.client.get(detail).content.decode()
+        self.assertIn('John', office)
+        self.assertIn('1234567890', office)
+
+        floor = self.floor_client().get(detail).content.decode()
+        self.assertEqual(floor.count('Customer Name'), 0)
+        self.assertNotIn('John', floor)
+        self.assertNotIn('1234567890', floor)

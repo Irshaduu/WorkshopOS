@@ -172,9 +172,19 @@ View Job Card - {{ jobcard.registration_number }}
             </div>
         </div>
 
-        <!-- ========================================== -->
-        <!-- SECTION 2: CUSTOMER INFO -->
-        <!-- ========================================== -->
+        {% comment %}
+        ==========================================
+        SECTION 2: CUSTOMER INFO — Office and Owner only
+        ==========================================
+        Added 2026-08-16, with the same gate on the job-card FORM. Who the
+        customer is belongs to Owner 1, who keeps those relationships himself;
+        the workshop identifies a car by its registration. Every other screen
+        that names a customer — the invoice, Car Profiles, the Fleet pages — is
+        `@office_required` already, so this page (which is `@staff_required`,
+        because Floor legitimately reads a card here) was the one door left
+        open. The gate mirrors the form's rather than being invented here.
+        {% endcomment %}
+        {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
         <div class="card shadow-sm mb-4 border-0">
             <div class="card-body">
                 <div class="row g-4">
@@ -189,6 +199,7 @@ View Job Card - {{ jobcard.registration_number }}
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <!-- ========================================== -->
         <!-- SECTION 3: CUSTOMER CONCERNS -->

@@ -149,15 +149,21 @@ class ALongCardIsCappedAndSaysSoTests(BoardBase):
         """
         `_capped()` is one implementation taking the cap as an argument. It was
         briefly two functions of the same name, and the later one silently
-        shadowed the earlier — the home board took the Live Report's 10 while
+        shadowed the earlier — the home board took the Live Report's cap while
         every comment on the page said 25, and nothing on screen would have
         shown it because the remainder line stayed arithmetically correct.
+
+        The OTHER board changed on 2026-08-16: Live Jobs and its
+        `SECTION_ROW_CAP` were deleted, and the second caller is now the Live
+        Report's "Billed but not filled" container at `UNFILLED_ROW_CAP` (8).
+        The invariant is unchanged and is what this test is for — two callers,
+        two different numbers, one function.
         """
-        from workshop.views.dashboard import SECTION_ROW_CAP, _capped
-        self.assertNotEqual(HOME_SECTION_ROW_CAP, SECTION_ROW_CAP)
+        from workshop.views.dashboard import UNFILLED_ROW_CAP, _capped
+        self.assertNotEqual(HOME_SECTION_ROW_CAP, UNFILLED_ROW_CAP)
         rows = list(range(30))
         self.assertEqual(_capped(rows, HOME_SECTION_ROW_CAP), (rows[:25], 5))
-        self.assertEqual(_capped(rows, SECTION_ROW_CAP), (rows[:10], 20))
+        self.assertEqual(_capped(rows, UNFILLED_ROW_CAP), (rows[:8], 22))
 
 
 class FloorsDrawerIsCoveredTooTests(BoardBase):

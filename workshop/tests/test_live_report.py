@@ -1,11 +1,11 @@
 """
 The Live Report — the screen an owner opens on a phone to see the workshop.
 
-Two audiences on one page. The operations board at the top (who is holding
-which car, which parts are travelling, which parts nobody has ordered) is
-Office and Owner only; "Live Jobs" underneath is for all three roles. The
-tests here pin the split, the two rules that decide which parts get chased,
-and the counts that sit above each box.
+Office and Owner only, whole page. It answers three questions in the order they
+get asked: what has already been billed with boxes nobody filled in, who is
+holding which car, and which parts are travelling or unordered. The tests here
+pin the role gate, the rule that decides which parts get chased, the rule that
+decides which bills get chased, and the counts that sit above each box.
 """
 
 import re
@@ -58,11 +58,20 @@ class LiveReportTestCase(TestCase):
         )
 
 
-class TheBoardIsOfficeAndOwnerOnlyTests(LiveReportTestCase):
+class ThePageIsOfficeAndOwnerOnlyTests(LiveReportTestCase):
     """
-    Floor is shown no supplier name and no ordering state anywhere else in the
-    app, and this board is mostly both. The gate is in the view — a template-only
-    hide would still put the shop names in the HTML a mechanic can read.
+    The WHOLE page, not just the board inside it.
+
+    It used to be `@staff_required` with the board gated internally, because
+    "Live Jobs" underneath was for all three roles. That list has gone — the
+    home page's car cards do the same job better, and are where Floor already
+    works — so everything left on this page is supplier names, ordering state
+    and money-side gaps, none of which Floor is shown anywhere else in the app.
+
+    The gate is the decorator, so a mechanic gets 403 rather than a page with
+    the shop names sitting in HTML they can read. The nav pill has always been
+    gated `is_owner or is_office`; the two now agree, which is the rule
+    `InvoiceLinkVisibilityTests` exists to enforce.
     """
 
     def setUp(self):
@@ -84,28 +93,17 @@ class TheBoardIsOfficeAndOwnerOnlyTests(LiveReportTestCase):
                 self.assertIn('Not ordered yet', page)
                 self.assertIn('Kochi Auto Spares', page)
 
-    def test_floor_gets_the_page_but_not_the_board(self):
-        page = self._page(self.floor)
-
-        # Live Jobs is still theirs.
-        self.assertIn('Live Jobs', page)
-        self.assertIn('KL01AA1111', page)
-
-        # The board, and the supplier it names, are not.
-        self.assertNotIn('On the floor', page)
-        self.assertNotIn('On the way', page)
-        self.assertNotIn('Not ordered yet', page)
-        self.assertNotIn('Kochi Auto Spares', page)
-
-    def test_the_view_does_not_even_build_the_board_for_floor(self):
-        """Not merely hidden — never assembled, so nothing can leak it later."""
+    def test_floor_is_refused_the_page_outright(self):
         self.client.force_login(self.floor)
-        context = self.client.get(self.url).context
+        self.assertEqual(self.client.get(self.url).status_code, 403)
 
-        self.assertFalse(context['can_see_ops'])
-        self.assertEqual(list(context['mechanic_groups']), [])
-        self.assertEqual(list(context['ordered_spares']), [])
-        self.assertEqual(list(context['pending_spares']), [])
+    def test_a_signed_out_visitor_is_sent_to_sign_in(self):
+        """403 is for a signed-in user with the wrong role; anonymous gets the
+        door, carrying ?next= so the page is reachable after signing in."""
+        self.client.logout()
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response['Location'])
 
 
 class TheFloorIsGroupedByWhoIsHoldingTheCarTests(LiveReportTestCase):
@@ -168,17 +166,17 @@ class TheFloorIsGroupedByWhoIsHoldingTheCarTests(LiveReportTestCase):
         self.assertNotIn('KL01BB2222', page)
         self.assertNotIn('KL01CC3333', page)
 
-    def test_the_board_ignores_the_search_box(self):
+    def test_nothing_on_the_page_is_narrowed_by_a_query_string(self):
         """
-        `q` narrows Live Jobs, as it always has. The board answers "what is the
-        state of the workshop right now", and a half-filtered answer to that
-        question is worse than no answer.
+        There is no search box here and a crafted `?q=` must not invent one.
+        The page answers "what is the state of the workshop right now", and a
+        half-filtered answer to that question is worse than no answer.
         """
         self._car('KL01AA1111', mechanic=self.rafeeq, brand_name='Toyota')
         self._car('KL01CC3333', mechanic=self.anas, brand_name='Honda')
 
         self.client.force_login(self.owner)
-        context = self.client.get(self.url, {'q': 'Toyota'}).context
+        context = self.client.get(self.url, {'q': 'Toyota', 'status': 'PAID'}).context
 
         self.assertEqual(context['floor_count'], 2)
         self.assertEqual(sorted(g['name'] for g in context['mechanic_groups']), ['Anas', 'Rafeeq'])
@@ -276,7 +274,7 @@ class OnlyAPartWithAnOrderingWorkflowIsChasedTests(LiveReportTestCase):
         page = self._page(self.owner)
         target = reverse('jobcard_edit', args=[self.car.pk])
 
-        # One link per box, plus the car on the floor board and its Live Jobs card.
+        # One link per box, plus the car on the floor board.
         self.assertGreaterEqual(page.count(f'href="{target}?next=mini"'), 3)
 
 
@@ -338,11 +336,12 @@ class TheCountAboveABoxIsTheRowsBeneathItTests(LiveReportTestCase):
 
         self.assertIn('>4 in workshop<', self._page(self.owner))
 
-    def test_the_heading_counts_the_workshop_not_the_filtered_list(self):
+    def test_the_heading_counts_the_workshop_whatever_is_in_the_url(self):
         """
-        `q` narrows the Live Jobs list beneath it. A heading that followed the
-        search would read "1 in workshop" with three more cars on the ramp —
-        the one number on this page that would simply be untrue.
+        The heading counts the WORKSHOP. Nothing on this page is filtered, and a
+        crafted query string must not make it read "1 in workshop" with three
+        more cars on the ramp — that would be the one number here that is simply
+        untrue.
         """
         self._car('KL01AA1111', brand_name='Toyota')
         self._car('KL01BB2222', brand_name='Honda')
@@ -352,15 +351,6 @@ class TheCountAboveABoxIsTheRowsBeneathItTests(LiveReportTestCase):
         page = self.client.get(self.url, {'q': 'Toyota'}).content.decode()
 
         self.assertIn('>3 in workshop<', page)
-        # …and the list underneath really did narrow.
-        self.assertEqual(page.count('<div class="live-rail">'), 1)
-
-    def test_floor_sees_the_same_workshop_count(self):
-        """The board is not built for Floor, but the heading still counts."""
-        for n in range(3):
-            self._car(f'KL01A{n:04d}')
-
-        self.assertIn('>3 in workshop<', self._page(self.floor))
 
 
 class ACarOnTheBoardLeadsWithItsNameTests(LiveReportTestCase):
@@ -432,224 +422,3 @@ class ACarOnTheBoardLeadsWithItsNameTests(LiveReportTestCase):
         self.assertEqual(crews.count('class="lr-crew '), 5)
         for name in names:
             self.assertIn(f'>{name}</span>', crews)
-
-
-class TheCardIsFourSectionsTests(LiveReportTestCase):
-    """
-    What the customer complained of, what we did, what came off our own shelf,
-    what we bought in. Four questions, four sections, in that order.
-
-    The last two used to be one "Parts" list. They are split because only a
-    bought-in part has an ordering state anybody can act on — every warehouse
-    draw carried an identical "STOCK" badge that distinguished nothing from
-    nothing. The PRINTED INVOICE still merges both routes into one list, and
-    that is a different rule for a different reader; nothing here touches it.
-    """
-
-    SECTIONS = ('Customer Concerns', 'Job Performed', 'Inventory Items', 'Spare Parts')
-
-    def setUp(self):
-        super().setUp()
-        self.car = self._car('KL01AA1111')
-        self.stock = Item.objects.create(
-            category=Category.objects.create(name='Engine Oil'),
-            name='Castrol Edge 5W-30', current_stock=100,
-        )
-
-    def _fill(self, concerns=1, labours=1, stock=1, shop=1):
-        for n in range(concerns):
-            self.car.concerns.create(concern_text=f'Concern {n}', status='PENDING')
-        for n in range(labours):
-            self.car.labours.create(job_description=f'Job done {n}')
-        for n in range(stock):
-            JobCardSpareItem.objects.create(
-                job_card=self.car, source=JobCardSpareItem.SOURCE_INVENTORY,
-                item=self.stock, quantity=1, spare_part_name=f'Drawn part {n}',
-            )
-        for n in range(shop):
-            JobCardSpareItem.objects.create(
-                job_card=self.car, source=JobCardSpareItem.SOURCE_SHOP,
-                spare_part_name=f'Bought part {n}', status='ORDERED',
-            )
-
-    def _card(self, user=None):
-        page = self._page(user or self.floor)
-        return page.split('<div class="live-body">', 1)[1]
-
-    def _titles(self, card):
-        return re.findall(r'<div class="section-title">\s*<span>([^<]+)</span>', card)
-
-    def test_all_four_sections_appear_in_order(self):
-        self._fill()
-
-        self.assertEqual(self._titles(self._card()), list(self.SECTIONS))
-
-    def test_a_drawn_part_and_a_bought_part_land_in_different_sections(self):
-        self._fill(concerns=0, labours=0)
-        card = self._card()
-
-        stock_block = card.split('Inventory Items', 1)[1].split('Spare Parts', 1)[0]
-        shop_block = card.split('Spare Parts', 1)[1]
-
-        self.assertIn('Drawn part 0', stock_block)
-        self.assertNotIn('Bought part 0', stock_block)
-        self.assertIn('Bought part 0', shop_block)
-        self.assertNotIn('Drawn part 0', shop_block)
-
-    def test_a_drawn_part_carries_no_badge(self):
-        """Every warehouse draw was badged "STOCK" — the same word on every
-        row, which distinguishes nothing. The section heading says it once."""
-        self._fill(concerns=0, labours=0, shop=0)
-        card = self._card()
-
-        self.assertNotIn('>Stock<', card)
-        self.assertIn('item-row--plain', card)
-
-    def test_a_bought_part_keeps_its_ordering_badge(self):
-        self._fill(concerns=0, labours=0, stock=0)
-
-        self.assertIn('status-ordered', self._card())
-
-    def test_the_job_performed_section_reads_the_descriptions(self):
-        self._fill(concerns=0, stock=0, shop=0)
-
-        self.assertIn('Job done 0', self._card())
-
-    def test_an_empty_section_is_left_out_altogether(self):
-        """Four headings with "none" under two of them, on every card, is noise
-        multiplied by the length of the list."""
-        self._fill(labours=0, stock=0)
-
-        self.assertEqual(self._titles(self._card()), ['Customer Concerns', 'Spare Parts'])
-
-    def test_a_card_with_nothing_on_it_says_so_once(self):
-        card = self._card()
-
-        self.assertEqual(self._titles(card), [])
-        self.assertIn('Nothing recorded on this card yet', card)
-
-
-class EverySectionStopsAtTenRowsTests(LiveReportTestCase):
-    """
-    Capping is safe on these lists and would not be on a money list: no total
-    sits above them for the hidden rows to fall out of, the exact number left
-    is printed rather than implied, and every one of them is on the job card
-    that the row already opens.
-    """
-
-    def setUp(self):
-        super().setUp()
-        self.car = self._car('KL01AA1111')
-
-    def _card(self):
-        return self._page(self.floor).split('<div class="live-body">', 1)[1]
-
-    def test_exactly_ten_is_not_truncated(self):
-        for n in range(10):
-            self.car.labours.create(job_description=f'Job {n}')
-
-        card = self._card()
-
-        self.assertEqual(card.count('<div class="item-row item-row--plain">'), 10)
-        self.assertNotIn('item-more', card)
-
-    def test_the_eleventh_row_becomes_a_counted_remainder(self):
-        for n in range(23):
-            self.car.concerns.create(concern_text=f'Concern {n}', status='PENDING')
-
-        card = self._card()
-
-        self.assertEqual(card.count('<div class="item-row">'), 10)
-        self.assertIn('+13 more — open the card', card)
-        # The heading still reports the true total, so the count and the
-        # remainder can be added back to it.
-        self.assertIn('<span class="section-count">23</span>', card)
-
-    def test_the_cap_is_per_section_not_per_card(self):
-        for n in range(12):
-            self.car.concerns.create(concern_text=f'Concern {n}', status='PENDING')
-            self.car.labours.create(job_description=f'Job {n}')
-
-        card = self._card()
-
-        self.assertEqual(card.count('+2 more — open the card'), 2)
-
-
-class ALiveJobCardSaysWhoHasItAndWhatIsWrongTests(LiveReportTestCase):
-
-    def test_the_card_names_the_mechanic(self):
-        self._car('KL01AA1111', mechanic=Mechanic.objects.create(name='Rafeeq'))
-
-        page = _text(self._page(self.floor))
-
-        self.assertIn('Rafeeq', page)
-
-    def test_a_car_nobody_is_on_says_so_rather_than_leaving_a_gap(self):
-        self._car('KL01AA1111', mechanic=None)
-
-        self.assertIn('Not assigned', _text(self._page(self.floor)))
-
-    def test_the_card_carries_the_customers_concerns(self):
-        car = self._car('KL01AA1111')
-        car.concerns.create(concern_text='AC not cooling', status='WORKING')
-        car.concerns.create(concern_text='Brake noise', status='FIXED')
-
-        page = _text(self._page(self.floor))
-
-        self.assertIn('Customer Concerns', page)
-        self.assertIn('AC not cooling', page)
-        self.assertIn('Brake noise', page)
-        self.assertRegex(page, r'1/2\s+fixed')
-
-    def test_how_long_the_car_has_been_in_is_on_the_card(self):
-        from django.utils import timezone
-        today = timezone.localdate()
-
-        self._car('KL01AA1111', admitted_date=today)
-        self._car('KL01BB2222', admitted_date=today - timedelta(days=1))
-        self._car('KL01CC3333', admitted_date=today - timedelta(days=5))
-
-        page = self._page(self.floor)
-
-        for age in ('New', '1d', '5d'):
-            self.assertIn(f'<span class="live-chip-text">{age}</span>', page)
-
-    def test_the_age_carries_no_icon(self):
-        """
-        "213d" beside a mechanic's name is already unmistakably a duration.
-        The clock glyph that used to sit in front of it explained nothing and
-        was one more thing to step over on a page built for scanning.
-        """
-        self._car('KL01AA1111')
-
-        page = self._page(self.floor)
-        # The age chip specifically — `bi-clock` is used elsewhere in the shell,
-        # so a whole-page search would be asserting somebody else's markup.
-        chip = page.split('<span class="live-chip" title=', 1)[1].split('</span>\n', 1)[0]
-
-        self.assertNotIn('<i ', chip)
-        self.assertIn('live-chip-text', chip)
-
-    def test_the_status_leads_the_row_and_the_wording_follows(self):
-        """
-        What is scanned down these lists is state, not prose. The badge is
-        first so a column of them can be read in one sweep.
-        """
-        car = self._car('KL01AA1111')
-        car.concerns.create(concern_text='AC not cooling', status='WORKING')
-
-        page = self._page(self.floor)
-        row = page.split('<div class="item-row">', 1)[1].split('</div>', 1)[0]
-
-        self.assertLess(row.index('status-badge'), row.index('item-text'))
-
-    def test_a_stopped_car_says_so(self):
-        self._car('KL01AA1111', on_hold=True)
-
-        self.assertIn('On hold', _text(self._page(self.floor)))
-
-    def test_the_page_is_titled_live_jobs_not_mini_report(self):
-        page = self._page(self.floor)
-
-        self.assertIn('Live Jobs', page)
-        self.assertNotIn('Mini Report', page)

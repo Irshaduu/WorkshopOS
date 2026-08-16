@@ -527,6 +527,26 @@
     .jc-fold[open] > summary .jc-fold-chevron { transform: rotate(180deg); color: #0f172a; }
 
     /* ==========================================================
+       THE INTERNAL NOTE GROWS WITH WHAT IS IN IT
+       ==========================================================
+       One row when it is empty — which is most cards, because this workshop
+       identifies a car by its registration and writes a note only when there is
+       something to say — and as many rows as the note actually needs when there
+       is. It was a single-line <input>, so a two-sentence note could only be
+       read by scrolling sideways through a box the width of a phone.
+
+       `resize: vertical` is the state WITHOUT JavaScript: a plain one-row
+       textarea somebody can drag. `autoGrow()` below takes over on load, sets
+       `overflow: hidden` itself and sizes the box, so nothing here depends on
+       the script arriving — it only gets better when it does. Same progressive
+       -enhancement shape as the save button's travelling light. */
+    textarea.jc-grow {
+        resize: vertical;
+        min-height: calc(1.5em + 0.75rem + 2px);   /* Bootstrap's own input height */
+        line-height: 1.5;
+    }
+
+    /* ==========================================================
        BUTTON FEEDBACK — built for a FINGER, not a mouse pointer
        ==========================================================
        These four sections are worked on the Floor tablet, so hover is the wrong
@@ -1326,12 +1346,40 @@ grey".
             while the section is genuinely empty.
             ==================================================================
             {% endcomment %}
+            {% comment %}
+            WHO SEES WHAT — added 2026-08-16 on the owner's instruction.
+
+            The customer's NAME and NUMBER are Office and Owner only. That is
+            the same reasoning that folded this section away in the first place:
+            Owner 1 keeps those relationships himself, and the workshop
+            identifies a car by its registration. A mechanic never needs to know
+            whose car it is, and this is the only screen that would have told
+            them — the invoice, Car Profiles and the Fleet pages are all
+            @office_required already.
+
+            The INTERNAL NOTE stays open to everybody. It is about the car, not
+            the customer ("noise only when cold", "owner is fussy, do not wash"),
+            and the mechanic is usually the one who finds out.
+
+            So the section holds different things for the two audiences and is
+            NAMED differently for each — a heading reading "Customer Details"
+            over a box that says nothing about the customer is the page
+            misdescribing itself.
+
+            The two fields are simply not rendered for Floor. That is safe here
+            and would not be in a formset: an absent field on a ModelForm leaves
+            the stored value alone, whereas an absent formset field saves as
+            blank and wipes the row. A crafted POST is answered separately, in
+            `_floor_locked_data` — hiding a box is presentation, pinning the
+            value is the control.
+            {% endcomment %}
+            {% if can_see_customer %}
             <details class="card shadow-sm mb-4 border-0 jc-fold"
                      {% if form.customer_name.value or form.customer_contact.value or form.notes.value or form.customer_name.errors or form.customer_contact.errors or form.notes.errors %}open{% endif %}>
                 <summary class="card-header jc-sec-head jc-fold-head">
                     <div class="jc-sec-title">
                         <span class="jc-sec-icon"><i class="bi bi-person-vcard-fill"></i></span>
-                        <h6 class="jc-sec-name">Customer Details</h6>
+                        <h6 class="jc-sec-name">Customer &amp; Notes</h6>
                         <span class="jc-fold-note">optional</span>
                     </div>
                     <i class="bi bi-chevron-down jc-fold-chevron"></i>
@@ -1352,24 +1400,23 @@ grey".
                         </div>
 
                         {% comment %}
-                        The workshop's own line — "noise only when cold", "owner
-                        is fussy, do not wash". Full width under the two customer
-                        boxes rather than beside one of them: it is a sentence,
-                        not a value, and half a row is not enough of it to read
-                        back later.
+                        The workshop's own line. Full width under the two
+                        customer boxes rather than beside one of them: it is a
+                        sentence, not a value, and half a row is not enough of it
+                        to read back later.
 
-                        The label says "never printed" out loud because that is
-                        the only thing anyone needs to trust before writing
-                        something frank in it. It is true by construction —
+                        "— never printed on the bill" was removed on the owner's
+                        instruction. The fact is still true by construction —
                         `workshop/invoice.py` and the invoice template both read
                         named fields, so a column nobody references cannot reach
-                        a customer — and `test_the_internal_note_never_reaches_the_customer`
-                        keeps it true.
+                        a customer, and
+                        `test_the_internal_note_never_reaches_the_customer` keeps
+                        it that way — but "Internal" already says it, and the
+                        clause was the longest label on the form.
                         {% endcomment %}
                         <div class="col-12">
                             <label for="{{ form.notes.id_for_label }}" class="form-label small text-muted">
                                 <i class="bi bi-sticky"></i> Internal note
-                                <span class="text-secondary fw-normal">— never printed on the bill</span>
                             </label>
                             {{ form.notes }}
 {% if form.notes.errors %}<div class="text-danger small mt-1">{{ form.notes.errors|join:", " }}</div>{% endif %}
@@ -1379,6 +1426,35 @@ grey".
 
                 </div>
             </details>
+            {% else %}
+            {% comment %}
+            Floor's half of the same section: the note alone, named for what it
+            actually contains.
+            {% endcomment %}
+            <details class="card shadow-sm mb-4 border-0 jc-fold"
+                     {% if form.notes.value or form.notes.errors %}open{% endif %}>
+                <summary class="card-header jc-sec-head jc-fold-head">
+                    <div class="jc-sec-title">
+                        <span class="jc-sec-icon"><i class="bi bi-sticky-fill"></i></span>
+                        <h6 class="jc-sec-name">Workshop Note</h6>
+                        <span class="jc-fold-note">optional</span>
+                    </div>
+                    <i class="bi bi-chevron-down jc-fold-chevron"></i>
+                </summary>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label for="{{ form.notes.id_for_label }}" class="form-label small text-muted">
+                                <i class="bi bi-sticky"></i> Anything worth recording about this car
+                            </label>
+                            {{ form.notes }}
+{% if form.notes.errors %}<div class="text-danger small mt-1">{{ form.notes.errors|join:", " }}</div>{% endif %}
+
+                        </div>
+                    </div>
+                </div>
+            </details>
+            {% endif %}
 
 
             <!-- ========================================== -->
@@ -1478,6 +1554,34 @@ grey".
                             </div>
                             {% endfor %}
                         </div>
+
+                        {% comment %}
+                        ==========================================================
+                        WHAT WAS DONE, SUGGESTED FROM WHAT WAS FITTED
+                        ==========================================================
+                        Nearly every job line in this workshop is a part on this
+                        same card plus a verb: "Engine Oil replaced", "Wheel
+                        Bearing replaced", "Brake Disc refurbished". So the
+                        suggestions are built from the card's OWN parts rather
+                        than from a master list — the mechanic fitted these exact
+                        things, the whole line arrives in one pick, and there is
+                        no separate taxonomy to keep in step with anything.
+
+                        A native <datalist>, filled by `buildJobLineOptions()`
+                        below, for the reason the Estimate's part names already
+                        use one: nothing to wire, so a job row added after page
+                        load gets the same list with nothing re-initialised.
+                        Empty here on purpose — it is rebuilt the moment a Job
+                        Performed box is focused, so it always describes the
+                        parts on the card as they stand right now, including
+                        ones typed in this session and never saved.
+
+                        It suggests and never fills. A job with no part behind it
+                        ("Road test", "Wash and polish") is typed exactly as it
+                        always was, and a browser that ignores datalists loses
+                        nothing at all.
+                        {% endcomment %}
+                        <datalist id="jobLineOptions"></datalist>
                     </div>
                 </div>
 
@@ -1581,7 +1685,22 @@ grey".
                             </thead>
                             <tbody id="inventory-list">
                                 {% for i_form in inventory_formset %}
-                                <tr class="inventory-row border-bottom{% if i_form.errors %} jc-row-invalid{% endif %}">
+                                {% comment %}
+                                `data-category` is what this draw is called
+                                OUTSIDE the warehouse — "Engine Oil", not
+                                "Castrol Edge 5W-30". It feeds the Job Performed
+                                suggestions, and it comes from
+                                `invoice.item_display_name`, the same rule that
+                                names the part on the printed bill: a job line
+                                reading "Engine Oil replaced" beside a part line
+                                reading "Castrol Edge 5W-30" would be one
+                                document contradicting itself. The picker
+                                refreshes the attribute when a product is
+                                chosen, so a row filled in this session is
+                                covered too.
+                                {% endcomment %}
+                                <tr class="inventory-row border-bottom{% if i_form.errors %} jc-row-invalid{% endif %}"
+                                    data-category="{{ i_form.part_category }}">
                                     <td class="ps-3">
                                         {{ i_form.id }}
                                         <div class="d-none">{{ i_form.DELETE }}</div>
@@ -1904,7 +2023,16 @@ is now true, and the column width is unchanged at every breakpoint.
 <div class="d-none">
     <table>
         <tbody id="empty-inventory-form">
-            <tr class="inventory-row border-bottom">
+            {% comment %}
+            `data-category` starts EMPTY on the template row and is written by
+            the picker the moment a product is chosen — an added row has nothing
+            to be named by until then, and it must never inherit the previous
+            row's category by being cloned from a live one. (This is the same
+            template that taught us never to track state in a `data-*` attribute
+            a clone can inherit; an attribute the picker overwrites on every
+            pick is safe, one that means "already wired" is not.)
+            {% endcomment %}
+            <tr class="inventory-row border-bottom" data-category="">
                 <td class="ps-3">
                     {{ inventory_formset.empty_form.id }}
                     <div class="d-none">{{ inventory_formset.empty_form.DELETE }}</div>
@@ -2050,6 +2178,153 @@ is now true, and the column width is unchanged at every breakpoint.
 
         // Run on page load
         clearZeroInputs();
+
+        // ==========================================
+        // THE INTERNAL NOTE GROWS WITH WHAT IS IN IT
+        // ==========================================
+        // One row empty, as many as the note needs when it is not. The CSS
+        // above is the no-JavaScript state (a draggable one-row textarea);
+        // everything here is the improvement on top of it, which is why
+        // `overflow` and `resize` are set from script rather than declared —
+        // a page whose script never arrived must not be left with a box that
+        // clips its own text.
+        (function () {
+            const boxes = document.querySelectorAll('textarea.jc-grow');
+            if (!boxes.length) return;
+
+            function autoGrow(el) {
+                // A textarea inside a CLOSED <details> is display:none, so
+                // scrollHeight reads 0 — sizing it there would collapse the box
+                // to nothing the moment somebody opened the fold. `offsetParent`
+                // is the cheap test for "is this laid out at all".
+                if (!el.offsetParent) return;
+                el.style.height = 'auto';
+                el.style.height = el.scrollHeight + 'px';
+            }
+
+            boxes.forEach(function (el) {
+                el.style.overflowY = 'hidden';
+                el.style.resize = 'none';
+                el.addEventListener('input', function () { autoGrow(el); });
+                autoGrow(el);
+            });
+
+            // Opening the fold is the first moment the box has a height worth
+            // measuring — on a card with a note, that is also the first moment
+            // anybody sees it, so it has to be sized then rather than on load.
+            document.querySelectorAll('details.jc-fold').forEach(function (fold) {
+                fold.addEventListener('toggle', function () {
+                    if (fold.open) fold.querySelectorAll('textarea.jc-grow').forEach(autoGrow);
+                });
+            });
+        })();
+
+        // ==========================================
+        // JOB PERFORMED — SUGGESTED FROM THE PARTS ON THIS CARD
+        // ==========================================
+        // "Engine Oil replaced", "Wheel Bearing replaced", "Brake Disc
+        // refurbished" — a part on this same card, plus a verb. So the list is
+        // built from the card's own two parts sections rather than from a
+        // master list: the mechanic fitted these exact things, the whole line
+        // arrives in one pick, and there is no separate taxonomy to keep in
+        // step with anything.
+        (function () {
+            const list = document.getElementById('jobLineOptions');
+            if (!list) return;
+
+            // In the order the workshop actually uses them, which the owner
+            // measured: replaced ~70%, then the rest at 7-8% each. The order
+            // matters because a datalist keeps document order for whatever
+            // survives filtering — so opening the list cold shows one line per
+            // part, all "replaced", before any variant of anything.
+            //
+            // Lower case, matching how the workshop writes them ("Engine Oil
+            // replaced"). Reword them here and every row follows; this is the
+            // only place they exist.
+            const VERBS = [
+                'replaced',
+                'removed and installed',
+                'refurbished',
+                'inspected',
+                'repaired'
+            ];
+
+            // A guard, not a design constraint. A rebuild in the live data
+            // carries 91 spares; deduped that is far fewer distinct names, but
+            // the cross product is what lands in the DOM and 40 x 5 is already
+            // more than anyone scrolls.
+            const PART_CAP = 40;
+
+            function partNames() {
+                const seen = new Map();   // lower-cased -> as written
+
+                function add(name) {
+                    const text = (name || '').trim();
+                    if (!text) return;
+                    const key = text.toLowerCase();
+                    if (!seen.has(key)) seen.set(key, text);
+                }
+
+                // A warehouse draw is named by its CATEGORY — "Engine Oil", not
+                // "Castrol Edge 5W-30" — which is also how the printed bill
+                // names it. `data-category` is written by the server for saved
+                // rows and refreshed by the picker for one chosen just now.
+                document.querySelectorAll('#inventory-list .inventory-row').forEach(function (row) {
+                    if (isMarkedForDeletion(row)) return;
+                    add(row.dataset.category);
+                });
+
+                // A shop spare keeps the free text Office typed, exactly as the
+                // bill prints it.
+                document.querySelectorAll('#spare-list .spare-row').forEach(function (row) {
+                    if (isMarkedForDeletion(row)) return;
+                    const box = row.querySelector('.autocomplete-spare');
+                    if (box) add(box.value);
+                });
+
+                return [...seen.values()].slice(0, PART_CAP);
+            }
+
+            // A row on its way out has nothing to suggest. Rows are hidden
+            // rather than removed (Django reads a formset by contiguous index),
+            // so the DELETE box is the only honest test of whether a row is
+            // still part of the card.
+            function isMarkedForDeletion(row) {
+                const box = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+                return !!(box && box.checked);
+            }
+
+            function buildJobLineOptions() {
+                const parts = partNames();
+                if (!parts.length) { list.innerHTML = ''; return; }
+
+                const frag = document.createDocumentFragment();
+                VERBS.forEach(function (verb) {
+                    parts.forEach(function (part) {
+                        const opt = document.createElement('option');
+                        opt.value = part + ' ' + verb;
+                        frag.appendChild(opt);
+                    });
+                });
+                list.innerHTML = '';
+                list.appendChild(frag);
+            }
+
+            // Rebuilt when a Job Performed box is FOCUSED, which is the one
+            // moment the list is about to be used and therefore the one moment
+            // it has to be current. Delegated on `document`, so this covers a
+            // row added later with nothing to re-initialise — and it needs no
+            // event from the picker or the spare autocomplete, which is the
+            // coupling that would otherwise have to be maintained in three
+            // places.
+            document.addEventListener('focusin', function (e) {
+                if (e.target.matches && e.target.matches('input.job-desc')) {
+                    buildJobLineOptions();
+                }
+            });
+
+            buildJobLineOptions();
+        })();
 
         // ==========================================
         // AUTO-DELETE EMPTY ROWS ON SUBMIT

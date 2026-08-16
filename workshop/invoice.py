@@ -88,6 +88,27 @@ def effective_quantity(quantity):
     return quantity
 
 
+def item_display_name(item):
+    """
+    What a stock PRODUCT is called outside the warehouse — its category.
+
+    `Item.name` is the branded SKU the workshop buys ("Castrol Edge 5W-30");
+    `Category.name` is what it is ("Engine Oil"). Naming the brand on a document
+    the workshop hands out also publishes its supply chain, so everything
+    customer-facing uses the category.
+
+    Split out of `part_display_name` on 2026-08-16 so the Job Card's "Job
+    Performed" suggestions can reach the same rule from a bare `Item` — that box
+    prints on the same invoice as the part it describes, and "Engine Oil
+    replaced" beside a part line reading "Castrol Edge 5W-30" would be the one
+    document contradicting itself. One rule, two entry points; never two rules.
+
+    Returns '' when there is no usable category, so callers can fall back.
+    """
+    category = getattr(item, 'category', None) if item is not None else None
+    return category.name if category and category.name else ''
+
+
 def part_display_name(spare):
     """
     What this part is called on the customer's bill.
@@ -99,9 +120,9 @@ def part_display_name(spare):
     for.
     """
     if spare.source == JobCardSpareItem.SOURCE_INVENTORY and spare.item_id:
-        category = getattr(spare.item, 'category', None)
-        if category and category.name:
-            return category.name
+        name = item_display_name(spare.item)
+        if name:
+            return name
     return spare.spare_part_name or ''
 
 

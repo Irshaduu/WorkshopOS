@@ -36,14 +36,21 @@ class DashboardViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'workshop/jobcard/live_report.html')
 
-    def test_live_report_with_search_and_status_filter(self):
-        """Live report should support q and status query params."""
+    def test_live_report_ignores_a_crafted_query_string(self):
+        """
+        The page carries no search box and reads no `q`/`status` — it answers
+        "what is the state of the workshop right now", and a half-filtered
+        answer to that is worse than no answer. A leftover query string in a
+        bookmark must still render the whole page rather than 500.
+        """
         url = reverse('live_report')
-        response = self.client.get(url, {'q': 'Toyota', 'status': 'PENDING'})
-        self.assertEqual(response.status_code, 200)
-
-        response = self.client.get(url, {'q': 'Toyota', 'status': 'PAID'})
-        self.assertEqual(response.status_code, 200)
+        for params in ({'q': 'Toyota', 'status': 'PENDING'},
+                       {'q': 'Toyota', 'status': 'PAID'},
+                       {'page': 'not-a-number'}):
+            with self.subTest(params=params):
+                response = self.client.get(url, params)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'in workshop')
 
     def test_jobcard_list_standard_and_ajax(self):
         """Jobcard list should work for both standard and AJAX requests."""

@@ -11,8 +11,16 @@
     is sized for that first: one column, no horizontal scroll, no table, and
     nothing that needs a second read to understand.
 
-    Three tinted boxes carry the meaning, so the colour is the first thing the
+    Office and Owner only. The "Live Jobs" list that used to sit under all of
+    this — the one part of the page Floor could reach — has gone: the home
+    page's car cards, and the live details that open inside them, do that job
+    better and are where Floor already works. What is left is supplier names,
+    ordering state and money-side gaps, none of which Floor is shown anywhere
+    else in the app.
+
+    Four tinted boxes carry the meaning, so the colour is the first thing the
     eye lands on and the words only confirm it:
+      red      bills already settled with boxes nobody filled in
       neutral  what is on the floor and who is holding it
       amber    parts ordered and on their way
       red      parts nobody has ordered yet
@@ -53,7 +61,7 @@
         white-space: nowrap;
     }
 
-    /* ── The three boxes ──────────────────────────────────────── */
+    /* ── The boxes ────────────────────────────────────────────── */
     .lr-box {
         border-radius: 14px;
         border: 1px solid var(--color-border);
@@ -107,16 +115,172 @@
     }
 
     {% comment %}
-    Mechanics are COLUMNS, not a stacked list: each name heads a column with
-    that person's cars under it, four across on a laptop, wrapping to a second
-    row for the fifth mechanic onward. It answers "who is on what" in one
-    downward glance per person rather than one long scroll for everybody.
+    ══ BILLED BUT NOT FILLED ══════════════════════════════════════
 
-    The column count is not hard-coded — `auto-fill` with a 150px floor gives 4
-    across at the 800px content width and 2 on a phone, so the same rule serves
-    the laptop, the tablet and the owners' phones. `align-items: start` stops a
-    mechanic holding one car from being stretched to match the one holding four.
+    The critical box, and the reason it leads the page. Everything below it is
+    about work still in progress, where an empty box is simply a box nobody has
+    got to yet. These cards have been BILLED: the money moved, the card went
+    PAID, whatever was not handed over became a permanent discount, and the
+    Financial Lock now stands between the card and anyone correcting it. An
+    empty box here is a hole in the books, not a task.
+
+    What counts as unfilled is `workshop/settlement.py` — the same function the
+    settle dialog reads before the money moves. One rule, asked at two moments:
+    "you are about to skip this" and "you skipped this".
+
+    The shape repeats all the way down: a NAME, and small red chips saying what
+    is missing from it. The card's own boxes (mileage, mechanic, labour) have no
+    name to hang off, so they are chips alone under the registration.
     {% endcomment %}
+    .lr-bill {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        padding: 12px 4px;
+        transition: background-color 0.15s ease;
+    }
+    .lr-box--red .lr-bill + .lr-bill { border-top: 1px solid rgba(220, 38, 38, 0.18); }
+    .lr-bill:hover { background: rgba(220, 38, 38, 0.07); }
+
+    {% comment %}
+    The NAME and the billed state share the top line; the plate sits under them
+    in small type. That is the same shape `.lr-car` uses on the board below, so
+    a car reads the same way in both halves of the page.
+
+    It is not the first arrangement. Name + plate + badge all on one line fits a
+    short make and does not fit "Toyota Fortuner · KL 07 BQ 3321 · Part paid" at
+    375px — the badge dropped to a line of its own, so one row was two lines
+    tall and its neighbour three, which down a list is the raggedness the eye
+    catches first and it carries no meaning. Truncating the name instead was
+    the other option and is worse: the make is the one thing the row is for.
+    The plate never truncates either; it simply gets its own line, and the name
+    is free to wrap.
+    {% endcomment %}
+    .lr-bill-head {
+        display: flex;
+        align-items: flex-start;
+        flex-wrap: nowrap;
+        gap: 8px;
+    }
+    .lr-bill-car {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        flex: 1 1 auto;
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: var(--color-text);
+        line-height: 1.25;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+    .lr-bill-sub {
+        display: block;
+        padding-left: 17px;   /* clears the colour dot, so the plate lines up
+                                 with the name above it rather than the rail */
+        margin-bottom: 7px;
+    }
+    /* The car wears its own colour here as a dot rather than a rail — these
+       rows have no card of their own to run a rail down, and the dot is the
+       same identity cue the two boxes below already use. */
+    .lr-bill-dot {
+        width: 10px; height: 10px;
+        flex-shrink: 0;
+        background: var(--stripe);
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+    }
+    .lr-bill-reg {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: var(--color-text-muted);
+    }
+    /* The billed status, because "which of these did we actually take money
+       for" is the first thing asked about a row on this list. */
+    .lr-bill-paid {
+        flex-shrink: 0;
+        font-size: 0.62rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 2px 7px;
+        border-radius: 4px;
+        white-space: nowrap;
+        background: rgba(21, 128, 61, 0.10);
+        color: #15803d;
+        border: 1px solid rgba(21, 128, 61, 0.22);
+    }
+    /* PARTIAL is a Fleet card still being collected — money is still owed, so
+       it must not wear the same green as a closed one. */
+    .lr-bill-paid--partial {
+        background: rgba(245, 158, 11, 0.16);
+        color: var(--lr-amber);
+        border-color: rgba(217, 119, 6, 0.30);
+    }
+
+    .lr-miss { display: flex; flex-wrap: wrap; gap: 4px; }
+    /* A chip carries a WHITE ground, not a tint: it is sitting on the box's own
+       red wash, and a red-on-red chip is a smudge rather than a mark. */
+    .lr-miss em {
+        font-style: normal;
+        font-size: 0.66rem;
+        font-weight: 700;
+        color: var(--lr-red);
+        background: #fff;
+        border: 1px solid rgba(220, 38, 38, 0.35);
+        border-radius: 4px;
+        padding: 2px 7px;
+        white-space: nowrap;
+    }
+
+    {% comment %}
+    Everything inside `.lr-bill` is a <span>, because the whole block is one
+    <a>: a row here opens the job card and there is nothing else to press, so
+    one link around the lot is one target with one meaning. Spans are inline by
+    default, hence the explicit `display: block` — a missing one collapses a
+    section onto the line above it.
+    {% endcomment %}
+    .lr-bill-sec { display: block; margin-top: 11px; }
+    .lr-bill-sec-name {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.62rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--color-text-muted);
+        padding-bottom: 3px;
+        margin-bottom: 6px;
+        border-bottom: 1px solid rgba(220, 38, 38, 0.16);
+    }
+    .lr-bill-sec-n { margin-left: auto; opacity: 0.8; letter-spacing: 0; }
+
+    .lr-bill-row { display: block; }
+    .lr-bill-row + .lr-bill-row { margin-top: 8px; }
+    /* A concern is free text staff write sentences into, so it is clamped in
+       CSS rather than shortened in Python — the stored wording is never what
+       gets cut, and two lines is enough to know which concern this is. */
+    .lr-bill-row-name {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--color-text);
+        line-height: 1.3;
+        margin-bottom: 4px;
+    }
+    .lr-bill-more {
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--lr-red);
+        opacity: 0.85;
+        padding-top: 7px;
+    }
+
     {% comment %}
     Each mechanic is a PANEL, not a bare column with a rule beside it. The
     rule was tried first and read as clutter: a panel's rule is only as tall as
@@ -260,11 +424,12 @@
     {% comment %}
     ── A part we are waiting on ──────────────────────────────────
 
-    These two boxes are SQUARE and their rows carry no card of their own —
-    the tint of the box is the background, so each box reads as one block of
-    colour with the parts ruled off inside it. A white card floating on amber
-    made every row a separate object to look at; the meaning here is "these
-    all belong to the same problem", and one unbroken colour says that.
+    These boxes are SQUARE and their rows carry no card of their own — the tint
+    of the box is the row background, ruled off with a hairline, so each box
+    reads as one block of colour. A white card floating on amber made every row
+    a separate object to look at; the meaning is "these all belong to the same
+    problem", and one unbroken colour says that. The billed box above follows
+    the same rule for the same reason.
     {% endcomment %}
     .lr-box--amber, .lr-box--red { border-radius: 0; }
     .lr-spare {
@@ -321,230 +486,6 @@
     .lr-spare-noshop { font-style: italic; opacity: 0.8; }
     .lr-spare-sep { opacity: 0.4; }
 
-    /* ── Live Jobs — the full card, for every role ────────────── */
-    .lr-jobs-head {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin: 1.4rem 0 0.75rem;
-    }
-    .lr-jobs-title {
-        margin: 0;
-        font-size: 0.78rem;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--color-text-muted);
-        display: flex;
-        align-items: center;
-        gap: 7px;
-    }
-
-    .live-card {
-        display: flex;
-        align-items: stretch;
-        background: var(--color-card);
-        border: 1px solid var(--color-border);
-        border-radius: 12px;
-        overflow: hidden;
-        margin-bottom: 0.75rem;
-        box-shadow: 0 1px 3px var(--color-shadow);
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .live-card:hover { border-color: var(--color-primary); box-shadow: 0 6px 14px var(--color-shadow); }
-    .live-rail { width: 8px; flex-shrink: 0; background: var(--stripe); }
-    .live-card--white .live-rail { box-shadow: inset -1px 0 0 var(--color-border), inset 1px 0 0 var(--color-border); }
-    .live-card--unset .live-rail {
-        background: repeating-linear-gradient(-45deg, #e2e8f0 0 3px, #f8fafc 3px 8px);
-    }
-    .live-body { flex: 1; min-width: 0; padding: 0.8rem 0.9rem 0.85rem; }
-
-    .live-identity {
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: 4px 8px;
-        margin-bottom: 6px;
-    }
-    .live-car-name {
-        font-size: 1rem;
-        font-weight: 800;
-        color: var(--color-text);
-        line-height: 1.2;
-        min-width: 0;
-    }
-    .reg-tag {
-        background: var(--color-primary-light);
-        color: var(--color-primary);
-        padding: 2px 8px;
-        border-radius: 5px;
-        font-weight: 800;
-        font-size: 0.78rem;
-        letter-spacing: 0.04em;
-        border: 1px solid rgba(37, 99, 235, 0.22);
-        white-space: nowrap;
-    }
-
-    {% comment %}
-    The meta strip answers the three things asked at a glance: who has it, how
-    long it has been here, and whether it is stopped. Nothing blank is
-    announced — a card with no mechanic says "Not assigned", which is a fact,
-    but a card that is simply not on hold says nothing at all.
-    {% endcomment %}
-    .live-meta {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 5px 6px;
-        margin-bottom: 9px;
-    }
-    .live-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 0.74rem;
-        font-weight: 700;
-        padding: 3px 8px;
-        border-radius: 6px;
-        background: var(--color-border-light);
-        color: var(--color-text-muted);
-        max-width: 100%;
-        min-width: 0;
-    }
-    .live-chip .bi { font-size: 0.78rem; opacity: 0.8; }
-    .live-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .live-chip--mech { background: rgba(37, 99, 235, 0.08); color: #1d4ed8; }
-    /* Red here too, so "Not assigned" means the same thing in both halves of
-       the page rather than reading as urgent on the board and neutral below. */
-    .live-chip--none { font-style: italic; background: rgba(220, 38, 38, 0.10); color: var(--lr-red); }
-    .live-chip--hold { background: rgba(245, 158, 11, 0.14); color: var(--lr-amber); }
-
-    /* Progress — its own full-width line under the identity, never squeezed
-       between the name and the right edge the way it used to be. */
-    .live-progress { margin-bottom: 10px; }
-    .live-progress-meta {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.7rem;
-        font-weight: 700;
-        color: var(--color-text-muted);
-        margin-bottom: 4px;
-        letter-spacing: 0.03em;
-    }
-    .progress-bar-bg {
-        height: 6px;
-        background: var(--color-border-light);
-        border-radius: 10px;
-        overflow: hidden;
-    }
-    .progress-bar-fill { height: 100%; border-radius: 10px; transition: width 0.6s ease; }
-    .progress-blue { background: #3b82f6; }
-    .progress-orange { background: #f59e0b; }
-    .progress-green { background: #10b981; }
-
-    {% comment %}
-    Four sections on one card, so each one has to announce itself: a ruled
-    heading with the row count on the right. The rule is what stops the card
-    reading as one long undifferentiated list when it is scrolled past at
-    speed.
-    {% endcomment %}
-    .section-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.68rem;
-        text-transform: uppercase;
-        font-weight: 800;
-        color: var(--color-text-muted);
-        letter-spacing: 0.08em;
-        margin-bottom: 5px;
-        padding-bottom: 4px;
-        border-bottom: 1px solid var(--color-border);
-    }
-    .section-count {
-        margin-left: auto;
-        font-weight: 800;
-        opacity: 0.7;
-        letter-spacing: 0;
-    }
-    .live-block + .live-block { margin-top: 13px; }
-
-    {% comment %}
-    The STATUS leads the row and the wording follows it. The owner's reason:
-    what is being scanned down this list is state, not prose — a column of
-    badges all starting at the same x can be read in one sweep, whereas badges
-    ragged-right against sentences of different lengths have to be hunted for
-    one line at a time. `min-width` on the badge is what holds that column
-    straight; without it "FIXED" and "RECEIVED" start the text at two
-    different places.
-    {% endcomment %}
-    .item-row {
-        display: flex;
-        justify-content: flex-start;
-        align-items: center;
-        gap: 10px;
-        padding: 5px 0;
-        border-bottom: 1px dashed var(--color-border-light);
-    }
-    .item-row:last-child { border-bottom: none; }
-    .item-text { font-size: 0.86rem; color: var(--color-text); min-width: 0; line-height: 1.3; }
-    .item-qty { font-size: 0.78rem; font-weight: 700; color: var(--color-text-muted); }
-
-    {% comment %}
-    Job Performed and Inventory Items carry no badge — a job is in the list
-    because it was done, and a warehouse draw came off the shelf already
-    fitted. Neither has a state anybody can act on, and the identical "STOCK"
-    badge every draw used to carry distinguished nothing from nothing.
-
-    They get a bullet instead, which keeps the LEFT EDGE of all four sections
-    flush: a badge or a dot always starts at the same x, and only the wording
-    after it is indented differently. An empty 78px badge slot would have kept
-    the wording aligned too, at the cost of a hole down two whole sections.
-    {% endcomment %}
-    .item-mark {
-        flex-shrink: 0;
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--color-text-muted);
-        opacity: 0.45;
-    }
-    .item-row--plain { gap: 9px; }
-    .item-none { font-size: 0.8rem; color: var(--color-text-muted); opacity: 0.8; padding: 3px 0; }
-    .item-more {
-        font-size: 0.76rem;
-        font-weight: 700;
-        color: var(--color-primary);
-        padding: 6px 0 1px;
-    }
-
-    .status-badge {
-        flex-shrink: 0;
-        min-width: 78px;      /* holds the badge column straight — see .item-row */
-        text-align: center;
-        font-size: 0.66rem;
-        padding: 3px 7px;
-        border-radius: 5px;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-        white-space: nowrap;
-    }
-    {% comment %}
-    One traffic light across both badged sections: red is not started, amber is
-    under way, green is done. WORKING and ORDERED therefore share a rule rather
-    than each carrying their own amber — they mean the same thing about two
-    different kinds of row, and two hand-written ambers would drift. The amber
-    is the "On the way" box's, so a part reads the same colour wherever it is
-    named on this page.
-    {% endcomment %}
-    .status-pending  { background: rgba(220, 53, 69, 0.10); color: #b91c1c; border: 1px solid rgba(220, 53, 69, 0.20); }
-    .status-working,
-    .status-ordered  { background: rgba(245, 158, 11, 0.14); color: var(--lr-amber); border: 1px solid rgba(217, 119, 6, 0.30); }
-    .status-fixed,
-    .status-received { background: rgba(40, 167, 69, 0.10); color: #15803d; border: 1px solid rgba(40, 167, 69, 0.20); }
-
     /* Below 360px two mechanic columns leave ~140px each, which starts
        breaking model names across three lines — one column reads better than
        a narrow pair. */
@@ -561,337 +502,275 @@
     <span class="lr-page-count">{{ floor_count }} in workshop</span>
 </div>
 
-{% if can_see_ops %}
 {% comment %}
-Office and Owner only. Floor is shown no supplier name and no ordering state
-anywhere else in the app, and this board is mostly both.
+── Billed, and something on it was never filled in ──────────────
+
+First on the page, because it is the only box here describing money that has
+already moved. Everything below it is work in progress, where an empty box is a
+task; here it is a hole in the books.
 {% endcomment %}
+<section class="lr-box lr-box--red">
+    <div class="lr-box-head">
+        <span class="lr-box-title"><i class="bi bi-clipboard-x-fill"></i> Billed but not filled</span>
+        <span class="lr-box-count">{{ unfilled_count }}</span>
+    </div>
 
-    {# ── Who is holding which car ───────────────────────────── #}
-    <section class="lr-box">
-        <div class="lr-box-head">
-            <span class="lr-box-title"><i class="bi bi-people-fill"></i> On the floor</span>
-            <span class="lr-box-count">{{ floor_count }}</span>
-        </div>
+    {% for job in unfilled_cards %}
+    {% with color=job.get_car_color_hex|default:'#94a3b8' u=job.unfilled %}
+    <a href="{% url 'jobcard_edit' job.pk %}?next=mini" class="lr-bill">
 
-        {% if mechanic_groups %}
-        <div class="lr-crews">
-            {% for crew in mechanic_groups %}
-            <div class="lr-crew {% if crew.unassigned %}lr-crew--none{% endif %}">
-                <div class="lr-crew-name">
-                    <i class="bi {% if crew.unassigned %}bi-person-dash{% else %}bi-person-fill{% endif %}"></i>
-                    <span class="lr-crew-who">{{ crew.name }}</span>
-                    <span class="lr-crew-count">{{ crew.jobs|length }}</span>
-                </div>
-                <div class="lr-cars">
-                    {% for job in crew.jobs %}
-                    {% with color=job.get_car_color_hex|default:'#94a3b8' %}
-                    <a href="{% url 'jobcard_edit' job.pk %}?next=mini"
-                       class="lr-car
-                              {% if not job.car_color %}lr-car--unset
-                              {% elif job.car_color == 'White' %}lr-car--white{% endif %}"
-                       style="--stripe: {{ color }}; --shade: {{ color }}14;"
-                       title="{{ job.brand_name }} {{ job.model_name }} — {{ job.get_car_color_display }}">
-                        <span class="lr-car-rail"></span>
-                        <span class="lr-car-body">
-                            {% comment %}
-                            The registration is what identifies the car; the make
-                            is how it is recognised. A card carrying neither make
-                            nor model prints no line at all rather than an empty
-                            one — a blank row reads as something failing to load.
-                            {% endcomment %}
-                            {% if job.brand_name or job.model_name %}
-                            <span class="lr-car-name">{{ job.brand_name }} {{ job.model_name }}</span>
-                            {% endif %}
-                            <span class="lr-car-sub">
-                                <span class="lr-car-reg">{{ job.registration_number }}</span>
-                                {% if job.on_hold %}
-                                <span class="lr-car-hold">On hold</span>
-                                {% else %}
-                                <span class="lr-car-age">{{ job.age_label }}</span>
-                                {% endif %}
-                            </span>
-                        </span>
-                    </a>
-                    {% endwith %}
-                    {% endfor %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="lr-empty">No cars on the floor right now.</div>
-        {% endif %}
-    </section>
-
-    {# ── Parts ordered, still travelling ────────────────────── #}
-    <section class="lr-box lr-box--amber">
-        <div class="lr-box-head">
-            <span class="lr-box-title"><i class="bi bi-truck"></i> On the way</span>
-            <span class="lr-box-count">{{ ordered_spares|length }}</span>
-        </div>
-
-        {% for spare in ordered_spares %}
-        {% with color=spare.job_card.get_car_color_hex|default:'#94a3b8' %}
-        <a href="{% url 'jobcard_edit' spare.job_card_id %}?next=mini" class="lr-spare">
-            <span class="lr-spare-name">
-                {{ spare.spare_part_name|default:"Unnamed part" }}{% if spare.quantity %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
+        <span class="lr-bill-head">
+            <span class="lr-bill-car">
+                <span class="lr-bill-dot" style="--stripe: {{ color }};"></span>
+                {% comment %}
+                A card carrying neither make nor model prints its registration
+                as the headline instead — the same rule the Estimates list
+                follows. There is always exactly one big line, never a blank
+                where one should be.
+                {% endcomment %}
+                {% if job.brand_name or job.model_name %}
+                {{ job.brand_name }} {{ job.model_name }}
+                {% else %}{{ job.registration_number }}{% endif %}
             </span>
             {% comment %}
-            The car comes before its plate: the make is what an owner reads
-            first when placing which job this is, and the registration is the
-            confirmation. Both small — the part's name is the headline here.
+            The billed state, in the SHORT wording — "PAID", not
+            `get_payment_status_display`'s "Fully Paid". Two reasons, and they
+            are the invoice's own: that phrasing was written for the office
+            screens and reads as a claim rather than a state, and "Partially
+            Paid" is long enough to push the badge onto a line of its own,
+            which left one row two lines tall and its neighbour three.
             {% endcomment %}
-            <span class="lr-spare-meta">
-                <span class="lr-spare-car">
-                    <span class="lr-spare-dot" style="--stripe: {{ color }};"></span>
-                    {% if spare.job_card.brand_name or spare.job_card.model_name %}
-                    {{ spare.job_card.brand_name }} {{ spare.job_card.model_name }}
-                    {% else %}{{ spare.job_card.registration_number }}{% endif %}
-                </span>
-                {% if spare.job_card.brand_name or spare.job_card.model_name %}
-                <span class="lr-spare-sep">&middot;</span>
-                <span class="lr-spare-reg">{{ spare.job_card.registration_number }}</span>
-                {% endif %}
-                <span class="lr-spare-sep">&middot;</span>
-                <span class="lr-spare-shop">
-                    <i class="bi bi-shop"></i>
-                    {% if spare.shop %}{{ spare.shop.name }}
-                    {% elif spare.shop_name %}{{ spare.shop_name }}
-                    {% else %}<span class="lr-spare-noshop">no shop recorded</span>{% endif %}
-                </span>
+            <span class="lr-bill-paid {% if job.payment_status == 'PARTIAL' %}lr-bill-paid--partial{% endif %}">
+                {% if job.payment_status == 'PARTIAL' %}Part paid
+                {% elif job.payment_status == 'BULK_PAID' %}Fleet paid
+                {% else %}Paid{% endif %}
             </span>
-        </a>
-        {% endwith %}
-        {% empty %}
-        <div class="lr-empty">Nothing on the way.</div>
-        {% endfor %}
-    </section>
+        </span>
 
-    {# ── Parts nobody has ordered yet ───────────────────────── #}
-    <section class="lr-box lr-box--red">
-        <div class="lr-box-head">
-            <span class="lr-box-title"><i class="bi bi-exclamation-triangle-fill"></i> Not ordered yet</span>
-            <span class="lr-box-count">{{ pending_spares|length }}</span>
-        </div>
+        {% comment %}
+        The plate, under the name. Printed only when the headline is the make —
+        a card carrying neither make nor model already IS its registration, and
+        saying it twice is a line of nothing.
+        {% endcomment %}
+        {% if job.brand_name or job.model_name %}
+        <span class="lr-bill-sub"><span class="lr-bill-reg">{{ job.registration_number }}</span></span>
+        {% endif %}
 
-        {% for spare in pending_spares %}
-        {% with color=spare.job_card.get_car_color_hex|default:'#94a3b8' %}
-        <a href="{% url 'jobcard_edit' spare.job_card_id %}?next=mini" class="lr-spare">
-            <span class="lr-spare-name">
-                {{ spare.spare_part_name|default:"Unnamed part" }}{% if spare.quantity %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
+        {% comment %}
+        The card's own boxes — mileage, mechanic, the labour charge. They belong
+        to the whole card rather than to any one row, so they are chips alone,
+        directly under the registration.
+        {% endcomment %}
+        {% if u.card %}
+        <span class="lr-miss">{% for tag in u.card %}<em>{{ tag }}</em>{% endfor %}</span>
+        {% endif %}
+
+        {% if u.concerns %}
+        <span class="lr-bill-sec">
+            <span class="lr-bill-sec-name">
+                Customer Concerns
+                <span class="lr-bill-sec-n">{{ u.concerns|length }}</span>
             </span>
-            <span class="lr-spare-meta">
-                <span class="lr-spare-car">
-                    <span class="lr-spare-dot" style="--stripe: {{ color }};"></span>
-                    {% if spare.job_card.brand_name or spare.job_card.model_name %}
-                    {{ spare.job_card.brand_name }} {{ spare.job_card.model_name }}
-                    {% else %}{{ spare.job_card.registration_number }}{% endif %}
-                </span>
-                {% if spare.job_card.brand_name or spare.job_card.model_name %}
-                <span class="lr-spare-sep">&middot;</span>
-                <span class="lr-spare-reg">{{ spare.job_card.registration_number }}</span>
-                {% endif %}
-                {% comment %}
-                A pending part usually has no shop yet — that is the normal
-                state, not a gap worth announcing, so nothing is printed for it
-                here. The amber box says "no shop recorded" because there a
-                missing shop means the ledger will have nowhere to land.
-                {% endcomment %}
-                {% if spare.shop or spare.shop_name %}
-                <span class="lr-spare-sep">&middot;</span>
-                <span class="lr-spare-shop">
-                    <i class="bi bi-shop"></i>
-                    {% if spare.shop %}{{ spare.shop.name }}{% else %}{{ spare.shop_name }}{% endif %}
-                </span>
-                {% endif %}
+            {% for concern in job.uf_concerns %}
+            <span class="lr-bill-row">
+                <span class="lr-bill-row-name">{{ concern.text|default:"Concern" }}</span>
+                <span class="lr-miss"><em>{{ concern.status }}</em></span>
             </span>
-        </a>
-        {% endwith %}
-        {% empty %}
-        <div class="lr-empty">Every part is ordered.</div>
-        {% endfor %}
-    </section>
-{% endif %}
+            {% endfor %}
+            {% if job.uf_concerns_more %}
+            <span class="lr-bill-more">+{{ job.uf_concerns_more }} more — open the card</span>
+            {% endif %}
+        </span>
+        {% endif %}
 
-{# ── Live Jobs — the full card, Floor + Office + Owner ─────── #}
-<div class="lr-jobs-head">
-    <h6 class="lr-jobs-title"><i class="bi bi-card-list"></i> Live Jobs</h6>
-    <span class="lr-box-count">{{ page_obj.paginator.count }}</span>
-</div>
+        {% if u.inventory %}
+        <span class="lr-bill-sec">
+            <span class="lr-bill-sec-name">
+                Inventory Items
+                <span class="lr-bill-sec-n">{{ u.inventory|length }}</span>
+            </span>
+            {% for part in job.uf_inventory %}
+            <span class="lr-bill-row">
+                <span class="lr-bill-row-name">{{ part.name }}</span>
+                <span class="lr-miss">{% for tag in part.tags %}<em>{{ tag }}</em>{% endfor %}</span>
+            </span>
+            {% endfor %}
+            {% if job.uf_inventory_more %}
+            <span class="lr-bill-more">+{{ job.uf_inventory_more }} more — open the card</span>
+            {% endif %}
+        </span>
+        {% endif %}
 
-{% if active_jobs %}
-        {% for job in active_jobs %}
-        {% with color=job.get_car_color_hex|default:'#94a3b8' %}
-        <a href="{% url 'jobcard_edit' job.pk %}?next=mini" class="text-decoration-none text-reset">
-            <div class="live-card
-                        {% if not job.car_color %}live-card--unset
-                        {% elif job.car_color == 'White' %}live-card--white{% endif %}"
-                 style="--stripe: {{ color }};">
-                <div class="live-rail"></div>
-                <div class="live-body">
+        {% if u.spares %}
+        <span class="lr-bill-sec">
+            <span class="lr-bill-sec-name">
+                Spare Parts
+                <span class="lr-bill-sec-n">{{ u.spares|length }}</span>
+            </span>
+            {% for part in job.uf_spares %}
+            <span class="lr-bill-row">
+                <span class="lr-bill-row-name">{{ part.name }}</span>
+                <span class="lr-miss">{% for tag in part.tags %}<em>{{ tag }}</em>{% endfor %}</span>
+            </span>
+            {% endfor %}
+            {% if job.uf_spares_more %}
+            <span class="lr-bill-more">+{{ job.uf_spares_more }} more — open the card</span>
+            {% endif %}
+        </span>
+        {% endif %}
 
-                    <div class="live-identity">
-                        <span class="live-car-name">{{ job.brand_name }} {{ job.model_name }}</span>
-                        <span class="reg-tag">{{ job.registration_number }}</span>
-                    </div>
+    </a>
+    {% endwith %}
+    {% empty %}
+    <div class="lr-empty">Every billed card is filled in.</div>
+    {% endfor %}
+</section>
 
-                    <div class="live-meta">
-                        <span class="live-chip live-chip--mech {% if not job.lead_mechanic %}live-chip--none{% endif %}">
-                            <i class="bi bi-person-fill"></i>
-                            <span class="live-chip-text">{{ job.lead_mechanic.name|default:"Not assigned" }}</span>
-                        </span>
-                        {% comment %}
-                        No clock glyph: "213d" beside a mechanic's name is
-                        already unmistakably a duration, and an icon that
-                        explains nothing is one more thing for the eye to
-                        step over on a page built for scanning.
-                        {% endcomment %}
-                        <span class="live-chip" title="Admitted {{ job.admitted_date|date:'d M Y' }}">
-                            <span class="live-chip-text">{{ job.age_label }}</span>
-                        </span>
-                        {% if job.on_hold %}
-                        <span class="live-chip live-chip--hold">
-                            <i class="bi bi-pause-circle-fill"></i>
-                            <span class="live-chip-text">On hold</span>
-                        </span>
-                        {% endif %}
-                    </div>
+{% include 'workshop/includes/pagination.html' %}
 
-                    {% if job.total_concerns > 0 %}
-                    {% widthratio job.fixed_concerns job.total_concerns 100 as percent %}
-                    {% with p=percent|add:"0" %}
-                    <div class="live-progress">
-                        <div class="live-progress-meta">
-                            <span>Progress</span>
-                            <span>{{ job.fixed_concerns }}/{{ job.total_concerns }} fixed</span>
-                        </div>
-                        <div class="progress-bar-bg">
-                            <div class="progress-bar-fill
-                                {% if p == 100 %}progress-green
-                                {% elif p >= 50 %}progress-blue
-                                {% else %}progress-orange{% endif %}"
-                                style="width: {{ percent }}%;"></div>
-                        </div>
-                    </div>
-                    {% endwith %}
-                    {% endif %}
-
-                    {% comment %}
-                    FOUR sections, in the order the work actually happens: what
-                    the customer complained of, what we did about it, what came
-                    off our own shelf, what we had to buy in.
-
-                    Two of them carry a state badge and two do not, and that is
-                    the honest split rather than an inconsistency. A concern is
-                    pending/working/fixed and a bought-in part is
-                    pending/ordered/received — both are things somebody can act
-                    on. A job performed has no state (it is in the list because
-                    it was done) and a warehouse draw has none either (it came
-                    off the shelf already fitted). Those two used to share the
-                    parts list, where every draw carried an identical "STOCK"
-                    badge that distinguished nothing from nothing.
-
-                    An empty section is omitted entirely. Every section is
-                    capped at ten rows with the remainder counted — see
-                    `SECTION_ROW_CAP`, which is applied in the view so the cap
-                    and the "+N more" beside it cannot drift apart.
-                    {% endcomment %}
-
-                    {% if job.concerns_shown %}
-                    <div class="live-block">
-                        <div class="section-title">
-                            <span>Customer Concerns</span>
-                            <span class="section-count">{{ job.concerns_total }}</span>
-                        </div>
-                        {% for concern in job.concerns_shown %}
-                        <div class="item-row">
-                            <span class="status-badge
-                                {% if concern.status == 'PENDING' %}status-pending
-                                {% elif concern.status == 'WORKING' %}status-working
-                                {% else %}status-fixed{% endif %}">
-                                {{ concern.get_status_display }}
-                            </span>
-                            <span class="item-text">{{ concern.concern_text }}</span>
-                        </div>
-                        {% endfor %}
-                        {% if job.concerns_more %}
-                        <div class="item-more">+{{ job.concerns_more }} more — open the card</div>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-
-                    {% if job.labours_shown %}
-                    <div class="live-block">
-                        <div class="section-title">
-                            <span>Job Performed</span>
-                            <span class="section-count">{{ job.labours_total }}</span>
-                        </div>
-                        {% for labour in job.labours_shown %}
-                        <div class="item-row item-row--plain">
-                            <span class="item-mark"></span>
-                            <span class="item-text">{{ labour.job_description }}</span>
-                        </div>
-                        {% endfor %}
-                        {% if job.labours_more %}
-                        <div class="item-more">+{{ job.labours_more }} more — open the card</div>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-
-                    {% if job.stock_shown %}
-                    <div class="live-block">
-                        <div class="section-title">
-                            <span>Inventory Items</span>
-                            <span class="section-count">{{ job.stock_total }}</span>
-                        </div>
-                        {% for spare in job.stock_shown %}
-                        <div class="item-row item-row--plain">
-                            <span class="item-mark"></span>
-                            <span class="item-text">{{ spare.spare_part_name }}{% if spare.quantity %} <span class="item-qty">&times;{{ spare.quantity|clean_qty }}</span>{% endif %}</span>
-                        </div>
-                        {% endfor %}
-                        {% if job.stock_more %}
-                        <div class="item-more">+{{ job.stock_more }} more — open the card</div>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-
-                    {% if job.shop_shown %}
-                    <div class="live-block">
-                        <div class="section-title">
-                            <span>Spare Parts</span>
-                            <span class="section-count">{{ job.shop_total }}</span>
-                        </div>
-                        {% for spare in job.shop_shown %}
-                        <div class="item-row">
-                            <span class="status-badge
-                                {% if spare.status == 'PENDING' %}status-pending
-                                {% elif spare.status == 'ORDERED' %}status-ordered
-                                {% else %}status-received{% endif %}">
-                                {{ spare.get_status_display }}
-                            </span>
-                            <span class="item-text">{{ spare.spare_part_name }}{% if spare.quantity %} <span class="item-qty">&times;{{ spare.quantity|clean_qty }}</span>{% endif %}</span>
-                        </div>
-                        {% endfor %}
-                        {% if job.shop_more %}
-                        <div class="item-more">+{{ job.shop_more }} more — open the card</div>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-
-                    {% if not job.has_any_detail %}
-                    <div class="item-none">Nothing recorded on this card yet</div>
-                    {% endif %}
-
-                </div>
-            </div>
-        </a>
-        {% endwith %}
-        {% endfor %}
-{% else %}
-    <div class="alert alert-info">
-        <i class="bi bi-info-circle me-2"></i> No active vehicles on the floor.
+{# ── Who is holding which car ───────────────────────────── #}
+<section class="lr-box">
+    <div class="lr-box-head">
+        <span class="lr-box-title"><i class="bi bi-people-fill"></i> On the floor</span>
+        <span class="lr-box-count">{{ floor_count }}</span>
     </div>
-{% endif %}
+
+    {% if mechanic_groups %}
+    <div class="lr-crews">
+        {% for crew in mechanic_groups %}
+        <div class="lr-crew {% if crew.unassigned %}lr-crew--none{% endif %}">
+            <div class="lr-crew-name">
+                <i class="bi {% if crew.unassigned %}bi-person-dash{% else %}bi-person-fill{% endif %}"></i>
+                <span class="lr-crew-who">{{ crew.name }}</span>
+                <span class="lr-crew-count">{{ crew.jobs|length }}</span>
+            </div>
+            <div class="lr-cars">
+                {% for job in crew.jobs %}
+                {% with color=job.get_car_color_hex|default:'#94a3b8' %}
+                <a href="{% url 'jobcard_edit' job.pk %}?next=mini"
+                   class="lr-car
+                          {% if not job.car_color %}lr-car--unset
+                          {% elif job.car_color == 'White' %}lr-car--white{% endif %}"
+                   style="--stripe: {{ color }}; --shade: {{ color }}14;"
+                   title="{{ job.brand_name }} {{ job.model_name }} — {{ job.get_car_color_display }}">
+                    <span class="lr-car-rail"></span>
+                    <span class="lr-car-body">
+                        {% comment %}
+                        The registration is what identifies the car; the make
+                        is how it is recognised. A card carrying neither make
+                        nor model prints no line at all rather than an empty
+                        one — a blank row reads as something failing to load.
+                        {% endcomment %}
+                        {% if job.brand_name or job.model_name %}
+                        <span class="lr-car-name">{{ job.brand_name }} {{ job.model_name }}</span>
+                        {% endif %}
+                        <span class="lr-car-sub">
+                            <span class="lr-car-reg">{{ job.registration_number }}</span>
+                            {% if job.on_hold %}
+                            <span class="lr-car-hold">On hold</span>
+                            {% else %}
+                            <span class="lr-car-age">{{ job.age_label }}</span>
+                            {% endif %}
+                        </span>
+                    </span>
+                </a>
+                {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="lr-empty">No cars on the floor right now.</div>
+    {% endif %}
+</section>
+
+{# ── Parts ordered, still travelling ────────────────────── #}
+<section class="lr-box lr-box--amber">
+    <div class="lr-box-head">
+        <span class="lr-box-title"><i class="bi bi-truck"></i> On the way</span>
+        <span class="lr-box-count">{{ ordered_spares|length }}</span>
+    </div>
+
+    {% for spare in ordered_spares %}
+    {% with color=spare.job_card.get_car_color_hex|default:'#94a3b8' %}
+    <a href="{% url 'jobcard_edit' spare.job_card_id %}?next=mini" class="lr-spare">
+        <span class="lr-spare-name">
+            {{ spare.spare_part_name|default:"Unnamed part" }}{% if spare.quantity %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
+        </span>
+        {% comment %}
+        The car comes before its plate: the make is what an owner reads
+        first when placing which job this is, and the registration is the
+        confirmation. Both small — the part's name is the headline here.
+        {% endcomment %}
+        <span class="lr-spare-meta">
+            <span class="lr-spare-car">
+                <span class="lr-spare-dot" style="--stripe: {{ color }};"></span>
+                {% if spare.job_card.brand_name or spare.job_card.model_name %}
+                {{ spare.job_card.brand_name }} {{ spare.job_card.model_name }}
+                {% else %}{{ spare.job_card.registration_number }}{% endif %}
+            </span>
+            {% if spare.job_card.brand_name or spare.job_card.model_name %}
+            <span class="lr-spare-sep">&middot;</span>
+            <span class="lr-spare-reg">{{ spare.job_card.registration_number }}</span>
+            {% endif %}
+            <span class="lr-spare-sep">&middot;</span>
+            <span class="lr-spare-shop">
+                <i class="bi bi-shop"></i>
+                {% if spare.shop %}{{ spare.shop.name }}
+                {% elif spare.shop_name %}{{ spare.shop_name }}
+                {% else %}<span class="lr-spare-noshop">no shop recorded</span>{% endif %}
+            </span>
+        </span>
+    </a>
+    {% endwith %}
+    {% empty %}
+    <div class="lr-empty">Nothing on the way.</div>
+    {% endfor %}
+</section>
+
+{# ── Parts nobody has ordered yet ───────────────────────── #}
+<section class="lr-box lr-box--red">
+    <div class="lr-box-head">
+        <span class="lr-box-title"><i class="bi bi-exclamation-triangle-fill"></i> Not ordered yet</span>
+        <span class="lr-box-count">{{ pending_spares|length }}</span>
+    </div>
+
+    {% for spare in pending_spares %}
+    {% with color=spare.job_card.get_car_color_hex|default:'#94a3b8' %}
+    <a href="{% url 'jobcard_edit' spare.job_card_id %}?next=mini" class="lr-spare">
+        <span class="lr-spare-name">
+            {{ spare.spare_part_name|default:"Unnamed part" }}{% if spare.quantity %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
+        </span>
+        <span class="lr-spare-meta">
+            <span class="lr-spare-car">
+                <span class="lr-spare-dot" style="--stripe: {{ color }};"></span>
+                {% if spare.job_card.brand_name or spare.job_card.model_name %}
+                {{ spare.job_card.brand_name }} {{ spare.job_card.model_name }}
+                {% else %}{{ spare.job_card.registration_number }}{% endif %}
+            </span>
+            {% if spare.job_card.brand_name or spare.job_card.model_name %}
+            <span class="lr-spare-sep">&middot;</span>
+            <span class="lr-spare-reg">{{ spare.job_card.registration_number }}</span>
+            {% endif %}
+            {% comment %}
+            A pending part usually has no shop yet — that is the normal
+            state, not a gap worth announcing, so nothing is printed for it
+            here. The amber box says "no shop recorded" because there a
+            missing shop means the ledger will have nowhere to land.
+            {% endcomment %}
+            {% if spare.shop or spare.shop_name %}
+            <span class="lr-spare-sep">&middot;</span>
+            <span class="lr-spare-shop">
+                <i class="bi bi-shop"></i>
+                {% if spare.shop %}{{ spare.shop.name }}{% else %}{{ spare.shop_name }}{% endif %}
+            </span>
+            {% endif %}
+        </span>
+    </a>
+    {% endwith %}
+    {% empty %}
+    <div class="lr-empty">Every part is ordered.</div>
+    {% endfor %}
+</section>
 {% endblock %}

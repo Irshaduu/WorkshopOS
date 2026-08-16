@@ -734,7 +734,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (35 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (45 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -771,7 +771,10 @@ base classes.*
 | `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants |
 | `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants |
 | `test_ui_regressions.py` | Layout and markup invariants that a functional test cannot see — the double-render rule, a list row never nesting a `<button>` inside an `<a>`, and the drawer/Manage-pill coverage |
-| `test_live_report.py` | The Live Report's two audiences: the Office/Owner operations board never assembled for Floor, cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), and each box's count matching the rows beneath it |
+| `test_live_report.py` | The Live Report, Office/Owner only since 2026-08-16 (Floor 403s, and "Live Jobs" is gone): cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), each box's count matching the rows beneath it, and nothing on the page narrowed by a query string |
+| `test_billed_but_not_filled.py` | The critical container at the top of the Live Report: which billed cards are chased (PAID / FLEET PAID / PART PAID, never an unbilled or deleted one), what it says is missing on each, the two spare dates as ONE chip, a warehouse draw chased only for its customer price, and the DB narrowing never disagreeing with `settlement.unfilled` |
+| `test_spare_dates.py` | A part cannot arrive before it was ordered — the pair rule itself, the job card refusing it (which it never used to), and both screens reading the one implementation in `workshop/spare_dates.py` |
+| `test_job_line_suggestions.py` | "Job Performed" suggested from the parts already on the card: the datalist, every box pointing at it, a warehouse draw offered by its CATEGORY through the invoice's own rule, and the verbs declared in exactly one place |
 
 ### Inventory Tests (5 files)
 
@@ -822,6 +825,8 @@ WorkshopOS (Titan)/
 │   ├── analysis_views.py       ← Owner Profit + Insights views
 │   ├── analysis_engine.py      ← All Analysis money math (pure functions, no HTML)
 │   ├── invoice.py              ← What BOTH customer documents show — build_invoice + build_estimate (pure functions, no views)
+│   ├── settlement.py           ← What is still UNFILLED on a job card — read by the settle dialog and the Live Report's chase list (pure, no views)
+│   ├── spare_dates.py          ← The ordered/received pair rule, shared by the job card and the Unassigned Spares hub (pure, no views)
 │   ├── auth_views.py           ← Auth views + helpers
 │   ├── management_views.py     ← Management views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook views (standalone ledger)
@@ -877,4 +882,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(recounted 2026-08-10 — every figure here had drifted; test-file count corrected and test total added 2026-08-11; test figures re-counted 2026-08-16)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 47 Test Files (1,307 tests) · 76 Migrations (68 workshop + 8 inventory)
+> **Total** *(recounted 2026-08-10 — every figure here had drifted; test-file count corrected and test total added 2026-08-11; test figures re-counted 2026-08-16)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 50 Test Files (1,350 tests) · 76 Migrations (68 workshop + 8 inventory)

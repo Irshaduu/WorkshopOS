@@ -1,11 +1,15 @@
 from django.utils import timezone
 
 from django.shortcuts import render
-from django.db.models import Count, Q, F
+from django.db.models import Count, Exists, OuterRef, Q, F, Value
+from django.db.models.functions import Coalesce, Trim
 from django.core.paginator import Paginator
 
-from ..models import JobCard, JobCardSpareItem
-from ..decorators import staff_required, is_office_or_owner
+from ..models import (
+    JobCard, JobCardConcern, JobCardLabourItem, JobCardSpareItem,
+)
+from ..decorators import office_required, staff_required
+from ..settlement import unfilled
 
 
 @staff_required
@@ -151,54 +155,6 @@ def _stamp_age(jobs, today):
         job.age_label = _age_label(days)
 
 
-#: How many rows a Live Jobs section shows before it says how many are left.
-#: Per SECTION, not per card — a card with 12 concerns and 40 spares shows 10
-#: of each. The tail is never lost: it is on the job card the row already opens.
-SECTION_ROW_CAP = 10
-
-
-def _card_sections(jobs):
-    """Attach each Live Jobs card's four sections, already capped.
-
-    Capped HERE rather than with `|slice:":10"` in the template so the number
-    lives in exactly one place — a cap in the markup and a remainder computed
-    from a constant are two versions of one rule, free to disagree, and they
-    would disagree as a "+3 more" beside eleven visible rows.
-
-    The four sections are four different questions: what the customer
-    complained of, what we did, what came off our own shelf, and what we bought
-    in. The last two used to be one "Parts" list; they are split because only a
-    shop part has an ordering state anyone can act on — every warehouse draw
-    carried an identical "STOCK" badge that distinguished nothing.
-
-    Note this is the LIVE REPORT only. The printed invoice deliberately merges
-    both routes into one PART NAME list — a customer has no interest in which
-    shelf a part came off — and that rule is untouched by this one.
-    """
-    for job in jobs:
-        stock, shop = [], []
-        for spare in job.spares.all():
-            (stock if spare.source == JobCardSpareItem.SOURCE_INVENTORY else shop).append(spare)
-
-        concerns = list(job.concerns.all())
-        labours = list(job.labours.all())
-
-        job.concerns_shown, job.concerns_more = _capped(concerns, SECTION_ROW_CAP)
-        job.labours_shown, job.labours_more = _capped(labours, SECTION_ROW_CAP)
-        job.stock_shown, job.stock_more = _capped(stock, SECTION_ROW_CAP)
-        job.shop_shown, job.shop_more = _capped(shop, SECTION_ROW_CAP)
-
-        job.concerns_total = len(concerns)
-        job.labours_total = len(labours)
-        job.stock_total = len(stock)
-        job.shop_total = len(shop)
-
-        # An empty section is not rendered at all — four headings with "none"
-        # under two of them, on every card, is noise multiplied by the list.
-        # A card with nothing in any of them says so once, instead.
-        job.has_any_detail = bool(concerns or labours or stock or shop)
-
-
 def _floor_by_mechanic(jobs):
     """Active cards grouped by the mechanic holding them, unassigned cars last.
 
@@ -230,117 +186,188 @@ def _floor_by_mechanic(jobs):
     return groups
 
 
-@staff_required
+#: A card that has been BILLED. Money has moved, so the Financial Lock is now
+#: standing between the card and anyone correcting it — which is exactly what
+#: makes an unfilled box on one of these worth chasing.
+#:
+#: PARTIAL is in the list deliberately. For a walk-in it never occurs (a
+#: part-paid walk-in books the shortfall as a discount and is marked PAID — the
+#: deliberate rule in CLAUDE.md), so every PARTIAL here is a Fleet card that has
+#: been invoiced and is still being collected. That has been billed.
+BILLED_STATUSES = ('PAID', 'BULK_PAID', 'PARTIAL')
+
+#: Rows shown per section on one "Billed but not filled" card before the rest
+#: are counted into a "+N more" line. Small on purpose: this container is read
+#: to decide which car to walk over to, and a rebuild in the live data carries
+#: 91 spares. Safe here for the usual reason — no total sits above these rows,
+#: the exact remainder is printed rather than implied, the section heading still
+#: reports the true count, and every hidden row is on the job card the header
+#: already opens.
+UNFILLED_ROW_CAP = 8
+
+
+def _billed_but_unfilled():
+    """Billed job cards that still have an empty box somewhere, newest first.
+
+    The narrowing is done in the DATABASE and the detail in Python, which is two
+    readings of one rule — so they are kept deliberately in step:
+
+      * every clause below is an exact mirror of a check in
+        `workshop.settlement.unfilled`, including `Trim` on the mileage, so the
+        queryset is neither wider nor narrower than the truth;
+      * and `live_report` still drops any card whose computed gaps come back
+        empty, so if they ever DO drift the page can only show fewer cards —
+        never a card with an empty red box under it, which is the failure that
+        would teach an owner to stop reading this container.
+
+    `settlement.unfilled` is the authority. This is an index lookup in front of
+    it, not a second opinion.
+    """
+    unfixed_concern = (
+        JobCardConcern.objects.filter(job_card=OuterRef('pk')).exclude(status='FIXED')
+    )
+    has_labour_line = JobCardLabourItem.objects.filter(job_card=OuterRef('pk'))
+    holey_shop_part = JobCardSpareItem.objects.filter(
+        job_card=OuterRef('pk'), source=JobCardSpareItem.SOURCE_SHOP,
+    ).filter(
+        Q(shop__isnull=True)
+        | Q(ordered_date__isnull=True) | Q(received_date__isnull=True)
+        | Q(unit_price__isnull=True) | Q(total_price__isnull=True)
+    )
+    unpriced_draw = JobCardSpareItem.objects.filter(
+        job_card=OuterRef('pk'),
+        source=JobCardSpareItem.SOURCE_INVENTORY,
+        total_price__isnull=True,
+    )
+
+    return (
+        JobCard.objects
+        .filter(is_deleted=False, payment_status__in=BILLED_STATUSES)
+        .annotate(
+            # Coalesce first: TRIM(NULL) is NULL, so a card that never had a
+            # mileage would otherwise match no clause at all.
+            _mileage=Trim(Coalesce('mileage', Value(''))),
+            _has_labour_line=Exists(has_labour_line),
+            _unfixed_concern=Exists(unfixed_concern),
+            _holey_shop_part=Exists(holey_shop_part),
+            _unpriced_draw=Exists(unpriced_draw),
+            # One ordering key for cards that reached PAID (which stamps
+            # `paid_date`) and cards still at PARTIAL (which does not). Newest
+            # first: a bill settled this morning is the one still fresh enough
+            # for somebody to remember what belongs in the empty box.
+            _settled_at=Coalesce('paid_date', 'updated_at'),
+        )
+        .filter(
+            Q(_mileage='')
+            | Q(lead_mechanic__isnull=True)
+            | Q(_has_labour_line=True, labour_amount__lte=0)
+            | Q(_unfixed_concern=True)
+            | Q(_holey_shop_part=True)
+            | Q(_unpriced_draw=True)
+        )
+        .select_related('lead_mechanic')
+        .prefetch_related('concerns', 'labours', 'spares')
+        .order_by('-_settled_at', '-pk')
+    )
+
+
+def _attach_unfilled(jobs):
+    """Compute each card's gaps, cap the long sections, drop anything clean.
+
+    Returns the rows to render. A card whose gaps come back empty is dropped
+    rather than printed with nothing under it — see `_billed_but_unfilled` for
+    why that guard exists at all.
+    """
+    rows = []
+    for job in jobs:
+        holes = unfilled(job)
+        if not holes:
+            continue
+        job.unfilled = holes
+        job.uf_concerns, job.uf_concerns_more = _capped(list(holes.concerns), UNFILLED_ROW_CAP)
+        job.uf_inventory, job.uf_inventory_more = _capped(list(holes.inventory), UNFILLED_ROW_CAP)
+        job.uf_spares, job.uf_spares_more = _capped(list(holes.spares), UNFILLED_ROW_CAP)
+        rows.append(job)
+    return rows
+
+
+@office_required
 def live_report(request):
     """
-    SECTION 2.1: LIVE REPORT - Quick scroll for all roles.
-    Shows active jobs, concerns, and spares status.
+    The Live Report — the workshop's state, for the two roles that act on it.
 
-    Two audiences on one page, and the split is deliberate:
+    Office and Owner only. It was `@staff_required` with the board gated inside
+    it, because "Live Jobs" underneath was for everybody; that list has gone —
+    the home page's own car cards, and the live details inside them, do that job
+    better and are where Floor already works. What is left is entirely supplier
+    names, ordering state and money-side gaps, none of which Floor is shown
+    anywhere else in the app. The nav pill has always been gated `is_owner or
+    is_office`, so the template gate and the decorator now agree.
 
-      * the operations board at the top — who is holding which car, which
-        parts are on the way, which parts nobody has ordered yet — is
-        Office and Owner only, matching every other screen where a spare
-        shop is named. Floor is shown no supplier and no ordering state
-        anywhere else in the app.
-      * "Live Jobs" underneath is for all three roles, unchanged in reach.
+    Three questions, in the order an owner asks them:
 
-    The board is deliberately NOT narrowed by `q`/`status`. Those filter the
-    Live Jobs list, as they always have; the board answers "what is the state
-    of the workshop right now", and a half-filtered answer to that question is
-    worse than no answer.
+      1. what has already been BILLED with holes in it — the critical one,
+         because settling is what closed the door on correcting it;
+      2. who is holding which car;
+      3. which parts are travelling, and which nobody has ordered.
+
+    None of this is narrowed by a search box, deliberately. The page answers
+    "what is the state of the workshop right now", and a half-filtered answer
+    to that is worse than no answer.
     """
-    # Search and Filter support (Titan Exhaustive)
-    q = request.GET.get('q', '').strip()
-    status = request.GET.get('status', '').strip()
-
     today = timezone.localdate()
-    can_see_ops = is_office_or_owner(request.user)
 
     on_the_floor = JobCard.objects.filter(is_deleted=False, completed=False)
 
-    # The figure in the page heading, for every role. It counts the WORKSHOP,
-    # never the filtered list beneath it — a heading reading "3 in workshop"
-    # because somebody left a search in the URL would be the one number on the
-    # page that is simply untrue.
+    # The figure in the page heading. It counts the WORKSHOP, never a filtered
+    # list — a heading reading "3 in workshop" because somebody left a query in
+    # the URL would be the one number on the page that is simply untrue.
     floor_count = on_the_floor.count()
 
-    mechanic_groups = []
-    ordered_spares = []
-    pending_spares = []
+    floor_jobs = list(
+        on_the_floor
+        .select_related('lead_mechanic')
+        # Longest-standing car first: on a live board the car that has been
+        # here the longest is the one worth looking at.
+        .order_by('admitted_date', 'pk')
+    )
+    _stamp_age(floor_jobs, today)
+    mechanic_groups = _floor_by_mechanic(floor_jobs)
 
-    if can_see_ops:
-        floor_jobs = list(
-            on_the_floor
-            .select_related('lead_mechanic')
-            # Longest-standing car first: on a live board the car that has been
-            # here the longest is the one worth looking at.
-            .order_by('admitted_date', 'pk')
+    # Only SHOP parts carry an ordering workflow. A warehouse draw
+    # (source=INVENTORY) came off the shelf already fitted, so its status
+    # column means nothing — listing one as "waiting" would send someone
+    # chasing a part that is already on the car.
+    awaited = (
+        JobCardSpareItem.objects
+        .filter(
+            source=JobCardSpareItem.SOURCE_SHOP,
+            job_card__isnull=False,
+            job_card__is_deleted=False,
+            job_card__completed=False,
         )
-        _stamp_age(floor_jobs, today)
-        mechanic_groups = _floor_by_mechanic(floor_jobs)
-
-        # Only SHOP parts carry an ordering workflow. A warehouse draw
-        # (source=INVENTORY) came off the shelf already fitted, so its status
-        # column means nothing — listing one as "waiting" would send someone
-        # chasing a part that is already on the car.
-        awaited = (
-            JobCardSpareItem.objects
-            .filter(
-                source=JobCardSpareItem.SOURCE_SHOP,
-                job_card__isnull=False,
-                job_card__is_deleted=False,
-                job_card__completed=False,
-            )
-            .select_related('job_card', 'shop')
-        )
-        ordered_spares = list(
-            awaited.filter(status='ORDERED')
-            .order_by(F('ordered_date').asc(nulls_last=True), 'pk')
-        )
-        pending_spares = list(
-            awaited.filter(status='PENDING')
-            .order_by('job_card__admitted_date', 'pk')
-        )
-
-    # Same population as the board above, chained off the one definition of
-    # "in the workshop" rather than a second copy of that filter — the two are
-    # the same claim, and a later change to one of them would otherwise put a
-    # different number in the heading from the list underneath it.
-    active_jobs = on_the_floor.select_related('lead_mechanic').prefetch_related('concerns', 'spares', 'labours').annotate(
-        total_concerns=Count('concerns'),
-        fixed_concerns=Count('concerns', filter=Q(concerns__status='FIXED'))
+        .select_related('job_card', 'shop')
+    )
+    ordered_spares = list(
+        awaited.filter(status='ORDERED')
+        .order_by(F('ordered_date').asc(nulls_last=True), 'pk')
+    )
+    pending_spares = list(
+        awaited.filter(status='PENDING')
+        .order_by('job_card__admitted_date', 'pk')
     )
 
-    if q:
-        for word in q.split():
-            active_jobs = active_jobs.filter(
-                Q(registration_number__icontains=word) |
-                Q(bill_number__icontains=word) |
-                Q(brand_name__icontains=word) |
-                Q(model_name__icontains=word)
-            )
-            
-    if status == 'PAID':
-        active_jobs = active_jobs.filter(payment_status='PAID')
-    elif status == 'PENDING':
-        active_jobs = active_jobs.filter(payment_status='PENDING')
-
-    active_jobs = active_jobs.order_by('-updated_at')
-    
-    # Pagination (prevents performance degradation at scale)
-    paginator = Paginator(active_jobs, 45)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    _stamp_age(page_obj.object_list, today)
-    _card_sections(page_obj.object_list)
+    # Paginated rather than windowed by date. This is a queue to be worked
+    # down, not a period report: the heading carries the true total so an owner
+    # can see the size of it, and nothing is hidden behind a filter that would
+    # have to be widened to find the oldest — and worst — cards.
+    page_obj = Paginator(_billed_but_unfilled(), 45).get_page(request.GET.get('page'))
+    unfilled_cards = _attach_unfilled(page_obj.object_list)
 
     return render(request, 'workshop/jobcard/live_report.html', {
-        'active_jobs': page_obj,
         'page_obj': page_obj,
-        'q': q,
-        'status_filter': status,
-        'can_see_ops': can_see_ops,
+        'unfilled_cards': unfilled_cards,
+        'unfilled_count': page_obj.paginator.count,
         'mechanic_groups': mechanic_groups,
         'floor_count': floor_count,
         'ordered_spares': ordered_spares,

@@ -19,6 +19,7 @@ from .models import (
     JobCardLabourItem,
     Mechanic,
 )
+from .spare_dates import pair_problem
 
 # =============================================================================
 # MIXINS & WIDGETS
@@ -276,7 +277,7 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
             'car_color_other',
             # One charge for all the work — see JobCard.labour_amount. Rendered
             # inside the Jobs section, not with the vehicle details, and only for
-            # Office/Owner (the template gates it; `_price_locked_data` enforces
+            # Office/Owner (the template gates it; `_floor_locked_data` enforces
             # that on the server, because a hidden input is still a posted one).
             'labour_amount',
         ]
@@ -323,9 +324,26 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
             'customer_contact': forms.NumberInput(attrs={
                 'class': 'jc-optional',   # numeric keypad comes from the widget
             }),
-            'notes': forms.TextInput(attrs={
-                'class': 'jc-optional',
+            # A TEXTAREA that starts one row tall and grows with what is in it
+            # (2026-08-16, on the owner's instruction). It was a single-line
+            # TextInput, so a note longer than the box could only ever be read
+            # by scrolling sideways through it — and the workshop's notes are
+            # sentences, sometimes two.
+            #
+            # `rows=1` rather than a taller default: most cards carry no note at
+            # all, and three empty rows on the longest form in the app is three
+            # rows everybody scrolls past. `jc-grow` is what `autoGrow()` in
+            # jobcard_form.html watches; without the script it is still a
+            # perfectly usable one-row textarea that scrolls, so nothing here
+            # depends on JavaScript arriving.
+            #
+            # `maxlength` still matches the column, and a textarea accepts
+            # newlines a CharField stores happily — `fit_text` bounds are
+            # unchanged either way.
+            'notes': forms.Textarea(attrs={
+                'class': 'jc-optional jc-grow',
                 'maxlength': '255',
+                'rows': 1,
             }),
             'car_color_other': forms.TextInput(),
         }
@@ -538,14 +556,51 @@ class InventoryDrawForm(forms.ModelForm):
 
     @property
     def stock_display(self):
-        """"38", not "38.00" — one shared rule with the `qty` filter and the
-        picker's own suggestions, so one product cannot read three ways."""
+        """
+        The shelf count under the product box — while the part is being PICKED,
+        and not afterwards.
+
+        "38", not "38.00": one shared rule with the `qty` filter and the
+        picker's own suggestions, so one product cannot read three ways.
+
+        **A row that is already saved returns nothing** (2026-08-16, on the
+        owner's instruction). The count answers one question — "is there enough
+        on the shelf to take?" — which is asked at the moment of choosing and
+        never again. On a card reopened weeks later it is a number describing
+        TODAY's shelf beside a part fitted long ago, printed once per row, which
+        is noise at best and misleading at worst. The picker still writes the
+        line the instant a product is chosen, on a new row or when an existing
+        row's product is changed, so nothing is lost at the moment it matters.
+
+        The empty line still reserves its height — see `.inventory-stock-hint`.
+        A div that appears when the picker writes into it is a row that jumps
+        under the finger aiming at it.
+        """
         from .templatetags.custom_filters import clean_qty
+
+        if self.instance and self.instance.pk:
+            return ''
 
         item = self.picked_item()
         if item is None:
             return ''
         return str(clean_qty(item.current_stock))
+
+    @property
+    def part_category(self):
+        """
+        What this draw is called outside the warehouse — for the Job Performed
+        suggestions, which read it off the row.
+
+        Goes through `invoice.item_display_name`, the SAME rule the printed bill
+        uses to name a warehouse draw, rather than reaching for
+        `item.category.name` here. Both end up on one document: a job line
+        reading "Engine Oil replaced" beside a part line reading "Castrol Edge
+        5W-30" is the invoice contradicting itself, and two copies of the rule
+        is how that happens.
+        """
+        from .invoice import item_display_name
+        return item_display_name(self.picked_item())
 
     @property
     def stock_is_short(self):
@@ -598,9 +653,61 @@ class InventoryDrawForm(forms.ModelForm):
             return "a row"
 
 
+class ShopSpareRowForm(forms.ModelForm):
+    """
+    One bought-in spare, with the two dates checked as a PAIR.
+
+    Nothing else on this row needs a form of its own — the widgets come from the
+    factory below — but the ordered/received pair does, because it is the one
+    mistake neither box can catch alone: a part that arrived before it was
+    ordered. The Unassigned Spares hub has refused that since it was built; the
+    job card, where most spares are actually entered, did not, so "ordered 2026,
+    received 2025" saved and then read as time travel on the shop's ledger.
+
+    The rule itself is `workshop/spare_dates.pair_problem`, shared with that hub
+    rather than restated here — two answers to "is this pair the right way
+    round" would disagree exactly where it matters.
+    """
+
+    def clean(self):
+        cleaned = super().clean()
+
+        # A row being deleted is not worth arguing with — the blank-row sweep
+        # ticks DELETE on rows nobody filled in, and refusing one of those would
+        # block a save over a row that is on its way out.
+        if cleaned.get('DELETE'):
+            return cleaned
+
+        problem = pair_problem(cleaned.get('ordered_date'), cleaned.get('received_date'))
+        if problem:
+            # On `received_date`, not as a non-field error: that is the box the
+            # person is nearly always correcting, and the field-level message is
+            # what puts the hairline on the right input inside the date panel.
+            self.add_error('received_date', problem)
+        return cleaned
+
+    def row_label(self):
+        """How this row is named in the error summary at the top of the page.
+
+        The same contract as `InventoryDrawForm.row_label` — name the PART, not
+        the row number, because "Spare 7" means counting rows on a card with
+        eleven of them.
+        """
+        name = (self.data.get('%s-spare_part_name' % self.prefix)
+                if self.is_bound else None) or getattr(self.instance, 'spare_part_name', '')
+        name = (name or '').strip()
+        if name:
+            return name
+        try:
+            return "row %d" % (int(self.prefix.rsplit('-', 1)[-1]) + 1)
+        except (AttributeError, ValueError):
+            return "a row"
+
+
 JobCardSpareFormSet = inlineformset_factory(
     JobCard,
     JobCardSpareItem,
+    form=ShopSpareRowForm,
     formset=ShopSpareFormSet,
     fields=['spare_part_name', 'quantity', 'shop_name', 'status', 'unit_price', 'total_price', 'ordered_date', 'received_date'],
     extra=0,
@@ -683,7 +790,7 @@ JobCardInventoryFormSet = inlineformset_factory(
 # Dropping it also closes a hole rather than opening one. The per-line amount
 # used to be rendered for Floor inside a `d-none` cell (same reason the spare
 # price fields are — an absent field saves as blank and wipes what Office
-# entered), but `_price_locked_data` only ever rewrote the `spares` and
+# entered), but `_floor_locked_data` only ever rewrote the `spares` and
 # `inventory` prefixes. So a Floor login POSTing `labours-0-amount=1` could
 # rewrite the labour charge, exactly the defect AUD-0081 fixed for parts. A
 # field that does not exist cannot be posted.
@@ -695,9 +802,22 @@ JobCardLabourFormSet = inlineformset_factory(
     can_delete=True,
     validate_min=False,
     widgets={
+        # `list=` points at the <datalist> the job-card form builds from the
+        # parts already on this card — "Engine Oil replaced", "Wheel Bearing
+        # refurbished". A native datalist, deliberately, for the reason the
+        # Estimate's part names already use one: it needs no wiring, so a row
+        # added AFTER page load gets the same suggestions with nothing to
+        # re-initialise, and none of `script.js`'s three documented cloning
+        # traps can be reintroduced here.
+        #
+        # It suggests and never fills: the box is ordinary free text, a job with
+        # no part behind it is typed as it always was, and a browser that
+        # ignores datalists loses nothing.
         'job_description': forms.TextInput(attrs={
-            'class': 'form-control',
+            'class': 'form-control job-desc',
             'placeholder': 'Job Performed',
+            'list': 'jobLineOptions',
+            'autocomplete': 'off',
         }),
     }
 )

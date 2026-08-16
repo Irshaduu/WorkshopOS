@@ -14,6 +14,7 @@ from django.urls import reverse
 from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
 from ..decorators import office_required, owner_required, staff_required, is_office_or_owner
 from ..notifications import notify
+from ..spare_dates import pair_problem
 
 
 @office_required
@@ -580,13 +581,13 @@ def _clean_spare_dates(raw_ordered, raw_received, blank_is_today):
     if err:
         return None, None, err
 
-    today = timezone.localdate()
-    if ordered and ordered > today:
-        return None, None, "Ordered date cannot be in the future."
-    if received and received > today:
-        return None, None, "Received date cannot be in the future."
-    if ordered and received and received < ordered:
-        return None, None, "Received date cannot be before the ordered date."
+    # The pair rule itself lives in `workshop/spare_dates.py`, shared with the
+    # job card's own spare rows — those are the same two boxes, and the same
+    # mistake, on the screen where most spares are actually entered. Parsing
+    # stays here because only this caller receives raw POST text.
+    problem = pair_problem(ordered, received)
+    if problem:
+        return None, None, problem
 
     return ordered, received, None
 
@@ -852,7 +853,7 @@ def unassigned_spare_add(request):
     cost anywhere in this app, and a hidden input is one crafted POST away from
     writing one. `PRICE_NOT_SUPPLIED` stores NULL — unpriced, not free — which
     Office fills in from the shop's bill later. This is the same server-side
-    half the job card's `_price_locked_data` exists for (AUD-0081).
+    half the job card's `_floor_locked_data` exists for (AUD-0081).
     """
     if request.method != 'POST':
         return redirect('unassigned_spares_hub')

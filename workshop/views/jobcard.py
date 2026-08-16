@@ -61,6 +61,12 @@ def _resolvable_shops(spares):
 # Fields on a job-card part that only Office/Owner may set.
 PRICE_FIELDS = ('unit_price', 'total_price', 'customer_rate')
 
+# Fields on the job CARD itself that only Office/Owner may set — who the customer
+# is, as opposed to what was done to the car. `labour_amount` belongs to the same
+# rule and is handled separately in `_floor_locked_data`, because its stored
+# default is a Decimal rather than a string.
+OFFICE_ONLY_CARD_FIELDS = ('customer_name', 'customer_contact')
+
 
 def _row_where(section_name, row_form, position):
     """
@@ -192,6 +198,12 @@ def _form_context(request, *, form, concern_formset, spare_formset,
         'labour_formset': labour_formset,
         'jobcard': jobcard,
         'is_edit': jobcard is not None,
+        # Whether to render the customer's name and number at all. Resolved
+        # ONCE here rather than as a `has_group` test in the template, so the
+        # gate and `_floor_locked_data`'s pinning read the same rule — a
+        # template asking the question its own way is how a hidden box and an
+        # unprotected field come to disagree.
+        'can_see_customer': is_office_or_owner(request.user),
         'next_url': request.GET.get('next'),
         'spare_shops': _shop_options(jobcard),
         'unassigned_spares': JobCardSpareItem.objects.filter(
@@ -255,9 +267,16 @@ def _reconcile_settled_bill(jobcard):
     return False
 
 
-def _price_locked_data(request, jobcard=None):
+def _floor_locked_data(request, jobcard=None):
     """
-    POST data with every price forced back to whatever is already stored.
+    POST data with every Office-only field forced back to what is already stored.
+
+    Renamed from `_price_locked_data` on 2026-08-16, when the customer's name and
+    number joined the prices behind the same gate. The rule it enforces was never
+    about money as such: **a field Floor cannot see on any screen must be a field
+    Floor cannot post from any screen.** A helper called "price locked" that also
+    pins a phone number is precisely the drift this codebase keeps records to
+    avoid.
 
     Prices are hidden from Floor in the template, but the inputs are still
     rendered — inside a `d-none` cell — because leaving them out would make the
@@ -266,16 +285,23 @@ def _price_locked_data(request, jobcard=None):
     ₹1, and the same hole existed in the Spare Parts section long before the
     Inventory one was added.
 
-    Dropping the fields is not an option (it wipes them), so each is overwritten
-    with the value on the existing row: a crafted POST simply has no effect. Rows
-    with no stored counterpart get blank, since a Floor user has no prices to
-    preserve on a part they are adding.
+    Dropping a FORMSET field is not an option (it wipes the row), so each is
+    overwritten with the value on the existing row: a crafted POST simply has no
+    effect. Rows with no stored counterpart get blank, since a Floor user has no
+    prices to preserve on a part they are adding.
 
-    Covers THREE surfaces, and the third is not a formset: `labour_amount` is the
-    whole labour charge and lives on the job card itself, so the returned data
-    must be what binds `JobCardForm` too — not only the parts formsets. A price
-    that Floor cannot see on any screen must be a price Floor cannot post from
-    any screen.
+    Three groups, and only the first is a formset:
+
+      1. the per-part prices, in the `spares` and `inventory` prefixes;
+      2. `labour_amount`, the whole labour charge, which lives on the job card;
+      3. `customer_name` / `customer_contact`, which live there too.
+
+    Groups 2 and 3 are fields on the CARD, so the returned data has to be what
+    binds `JobCardForm` as well as the formsets — binding the form from raw
+    `request.POST` would leave exactly those unprotected. Unlike a formset field
+    they can also safely be left out of the template for Floor: an absent field
+    on a ModelForm leaves the stored value alone, which is why the template omits
+    them and this only has to answer a crafted payload.
 
     Office and Owner get `request.POST` untouched.
     """
@@ -302,6 +328,16 @@ def _price_locked_data(request, jobcard=None):
     # it is pinned at zero — a Floor user opening a job records what was done and
     # Office prices it afterwards.
     data['labour_amount'] = str(jobcard.labour_amount if jobcard is not None else Decimal('0'))
+
+    # The customer's name and number. Owner 1 keeps those relationships himself
+    # and the workshop identifies a car by its registration, so this is who the
+    # customer IS rather than what was done to the car — Office and Owner only,
+    # the same reach as the invoice that carries it. Pinned to the stored value,
+    # blank on a new card, so a crafted POST can neither invent a customer nor
+    # erase one.
+    for field in OFFICE_ONLY_CARD_FIELDS:
+        stored = getattr(jobcard, field, None) if jobcard is not None else None
+        data[field] = stored or ''
     return data
 
 
@@ -317,7 +353,7 @@ def jobcard_create(request):
         # One locked copy of the POST binds BOTH the card and its parts — the
         # labour charge is a field on the card, so binding the form from raw
         # request.POST would leave that one price unprotected.
-        parts_data = _price_locked_data(request)
+        parts_data = _floor_locked_data(request)
         form = JobCardForm(parts_data)
 
         if form.is_valid():
@@ -582,7 +618,7 @@ def jobcard_edit(request, pk):
 
         # See jobcard_create: one locked copy binds the card and its parts alike,
         # because `labour_amount` is a price that sits on the card.
-        parts_data = _price_locked_data(request, jobcard)
+        parts_data = _floor_locked_data(request, jobcard)
         form = JobCardForm(parts_data, instance=jobcard)
         concern_formset = JobCardConcernFormSet(request.POST, instance=jobcard, prefix='concerns')
         spare_formset = JobCardSpareFormSet(parts_data, instance=jobcard, prefix='spares')

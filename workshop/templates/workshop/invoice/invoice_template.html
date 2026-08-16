@@ -870,6 +870,23 @@
 
         dialog.preflight::backdrop { background: rgba(15, 23, 42, .5); }
 
+        /* TWO frames, one dialog, and the colour is the first thing read.
+
+           AMBER is a question. The card is fine — everything is filled in — and
+           the only thing to say is that nobody has marked the car Completed.
+           That is a contradiction worth pausing on, not a fault in the data,
+           and it has a button on this screen that fixes it.
+
+           RED is a warning. Something is genuinely unfilled, and settling is
+           what closes the door on correcting it: the card goes PAID and the
+           Financial Lock stands between it and anyone who notices later.
+
+           `readiness.is_critical` decides, in Python, so the frame and the body
+           can never come to disagree about which of the two this is. Both
+           states still go forward — see the buttons. */
+        dialog.preflight { border-top: 4px solid #b45309; }
+        dialog.preflight.pf-critical { border-top-color: #b91c1c; }
+
         .pf-head {
             background: #b45309;
             color: #fff;
@@ -877,6 +894,8 @@
             font-size: 16px;
             font-weight: 700;
         }
+
+        .pf-critical .pf-head { background: #b91c1c; }
 
         /* Sized so the WORST card does not scroll. Measured on a 375x812
            phone with every gap present — flag, six rows, thirteen chips — at
@@ -958,53 +977,69 @@
             letter-spacing: 0;
         }
 
-        .pf-list { list-style: none; margin: 0; padding: 0; }
+        /* ── What is unfilled ─────────────────────────────────────────────
+           Everything below is ONE shape repeated: a name, and red chips under
+           it naming what is missing. The card's own gaps (mileage, mechanic,
+           labour) have no name to hang off, so they are the chips alone.
 
-        /* One line per thing. The dot is a marker, not a bullet character —
-           it stays put while the label wraps, so a two-line row still reads as
-           one item. */
-        .pf-list li {
-            position: relative;
-            padding: 7px 0 7px 15px;
-        }
-
-        .pf-list li::before {
-            content: '';
-            position: absolute;
-            left: 1px;
-            top: 14px;
-            width: 5px;
-            height: 5px;
-            border-radius: 50%;
-            background: #cbd5e1;
-        }
-
-        .pf-label {
-            font-size: 13.5px;
-            font-weight: 600;
-            color: #1e293b;
-        }
-
-        /* The specifics, as chips. Five of these read in one sweep where five
-           sentences do not, and they wrap without ever pushing the buttons off
-           a phone. */
-        .pf-tags {
+           The same shape is drawn by the "Billed but not filled" container on
+           the Live Report, from the same `workshop/settlement.py` data. The
+           two are deliberately separate MARKUP — this page loads nothing from
+           anywhere and carries its own stylesheet inline, so an include would
+           still need the classes declared twice — but never separate RULES.
+           `workshop/tests/test_settlement_preflight.py` asserts both surfaces
+           read the one function. */
+        .pf-chips {
             display: flex;
             flex-wrap: wrap;
-            gap: 4px;
-            margin-top: 5px;
+            gap: 5px;
         }
 
-        .pf-tags em {
+        /* Red, because every one of these is a box nobody filled in. They are
+           chips rather than sentences because five chips read in one sweep
+           where five sentences do not, and they wrap without ever pushing the
+           buttons off a phone. */
+        .pf-chips em {
             font-style: normal;
             font-size: 11px;
-            font-weight: 600;
-            color: #b45309;
-            background: #fffbeb;
-            border: 1px solid #fde68a;
+            font-weight: 700;
+            color: #b91c1c;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
             border-radius: 5px;
-            padding: 2px 6px;
+            padding: 2px 7px;
             white-space: nowrap;
+        }
+
+        .pf-sec { margin-top: 13px; }
+
+        .pf-sec-name {
+            font-size: 10.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: #94a3b8;
+            padding-bottom: 4px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .pf-row + .pf-row { margin-top: 8px; }
+
+        /* A concern is free text staff write sentences into, so the name is
+           clamped in CSS rather than truncated in Python — the stored wording
+           is never what gets shortened, and two lines is enough to recognise
+           which concern this is. */
+        .pf-row-name {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e293b;
+            line-height: 1.35;
+            margin-bottom: 4px;
         }
 
         /* Four buttons will not sit on one line on a phone at any sensible
@@ -1344,16 +1379,23 @@
     =====================================================================
     {% endcomment %}
     {% if readiness.needs_confirmation %}
-    <dialog class="preflight no-print" id="preflightDialog" aria-labelledby="pfHead">
+    {% comment %}
+    The frame is AMBER when the only thing to say is that the car has not been
+    marked Completed — a question, with its own button on this screen — and RED
+    the moment anything is actually unfilled, because settling is what closes
+    the door on correcting it. `is_critical` decides in Python so the frame and
+    the body cannot disagree.
+    {% endcomment %}
+    <dialog class="preflight no-print{% if readiness.is_critical %} pf-critical{% endif %}"
+            id="preflightDialog" aria-labelledby="pfHead">
         <div class="pf-head" id="pfHead">Before you settle</div>
         <div class="pf-body">
             {% comment %}
             Read in the two seconds between agreeing a price and taking the
-            money, so it is built to be SCANNED. One line per thing, the short
-            phrase in bold, and the specifics as chips beside it. No prose:
-            an earlier version explained each gap in a sentence, and four
-            paragraphs on the screen where somebody is standing at a counter
-            with a customer is the same as saying nothing.
+            money, so it is built to be SCANNED. Chips, not prose: an earlier
+            version explained each gap in a sentence, and four paragraphs on the
+            screen where somebody is standing at a counter with a customer is
+            the same as saying nothing.
             {% endcomment %}
             {% if not readiness.is_completed %}
             <div class="pf-flag">
@@ -1370,24 +1412,59 @@
             </div>
             {% endif %}
 
-            {% if readiness.gaps %}
+            {% with u=readiness.unfilled %}
+            {% if u %}
             <div class="pf-title">
                 Not filled in
-                <span class="pf-n">{{ readiness.gaps|length }}</span>
+                <span class="pf-n">{{ u.count }}</span>
             </div>
-            <ul class="pf-list">
-                {% for gap in readiness.gaps %}
-                <li>
-                    <span class="pf-label">{{ gap.label }}</span>
-                    {% if gap.tags %}
-                    <span class="pf-tags">
-                        {% for tag in gap.tags %}<em>{{ tag }}</em>{% endfor %}
-                    </span>
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
+
+            {% comment %}
+            The card's own boxes have no name to hang off — mileage, mechanic
+            and the labour charge belong to the whole card — so they are the
+            chips alone, on one wrapping row.
+            {% endcomment %}
+            {% if u.card %}
+            <div class="pf-chips">{% for tag in u.card %}<em>{{ tag }}</em>{% endfor %}</div>
             {% endif %}
+
+            {% if u.concerns %}
+            <div class="pf-sec">
+                <div class="pf-sec-name">Customer Concerns</div>
+                {% for concern in u.concerns %}
+                <div class="pf-row">
+                    <div class="pf-row-name">{{ concern.text|default:"Concern" }}</div>
+                    <div class="pf-chips"><em>{{ concern.status }}</em></div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if u.inventory %}
+            <div class="pf-sec">
+                <div class="pf-sec-name">Inventory Items</div>
+                {% for part in u.inventory %}
+                <div class="pf-row">
+                    <div class="pf-row-name">{{ part.name }}</div>
+                    <div class="pf-chips">{% for tag in part.tags %}<em>{{ tag }}</em>{% endfor %}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if u.spares %}
+            <div class="pf-sec">
+                <div class="pf-sec-name">Spare Parts</div>
+                {% for part in u.spares %}
+                <div class="pf-row">
+                    <div class="pf-row-name">{{ part.name }}</div>
+                    <div class="pf-chips">{% for tag in part.tags %}<em>{{ tag }}</em>{% endfor %}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endif %}
+            {% endwith %}
         </div>
         <div class="pf-foot">
             <button type="button" class="btn btn-ghost" id="pfCancel">Cancel</button>

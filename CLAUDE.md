@@ -1825,17 +1825,91 @@ about to correct one of these, you are about to break the business:
   do not change, but the content hashes do, so without it every page links the
   old artwork.
 
-- **The Live Report is TWO audiences on one page, and the operations board at
-  the top is Office and Owner only.** Added 2026-08-12, on the owner's
-  instruction. `/jobcards/live-report/` is the screen an owner opens on a
-  phone to see the workshop without ringing anybody, so it now leads with a
-  board — who is holding which car, which parts are travelling, which parts
-  nobody has ordered — above the existing detailed list, renamed from "Mini
-  Report" to **"Live Jobs"**. The view stays `@staff_required`; the board is
-  gated inside it on `is_office_or_owner`, and is **not assembled at all** for
-  Floor rather than merely hidden, because the amber and red boxes name spare
-  shops and ordering state and Floor is shown neither anywhere else in the
-  app. Guarded by `TheBoardIsOfficeAndOwnerOnlyTests`. Five rules hold it up.
+- **"BILLED BUT NOT FILLED" leads the Live Report, and it reads the SAME
+  function the settle dialog does.** Added 2026-08-16 on the owner's
+  instruction. Every other box on that page is about work in progress, where an
+  empty box is a task nobody has got to yet. These cards have been billed: the
+  money moved, the card went PAID, the shortfall became a permanent discount,
+  and the Financial Lock now stands between the card and anyone correcting it.
+  An empty box on one of those is a hole in the books, so it goes first.
+  **`workshop/settlement.py` is the one implementation and is now read at two
+  moments** — "you are about to skip this" by the settle dialog, "you skipped
+  this" by this container. A second copy would drift, and it would drift
+  exactly where it matters: a card the dialog waved through turning up on the
+  chase list, or the reverse. `unfilled(jobcard)` returns the grouped
+  structure both surfaces draw — the card's own chips (Mileage / Mechanic /
+  Job Amount), then a row per unfixed concern, per unpriced draw, per shop
+  spare. `settlement_gaps()` and its flat `Gap(key, label, tags)` are gone.
+  Six rules.
+  (a) **BILLED is `PAID`, `BULK_PAID` and `PARTIAL`.** PARTIAL never happens to
+  a walk-in (the shortfall becomes a discount and the card goes straight to
+  PAID), so every one here is a Fleet card that has been invoiced and is still
+  being collected — which has been billed. It wears amber rather than the
+  settled green, because money is still owed.
+  (b) **The narrowing is in the DATABASE and the detail in Python, and they are
+  kept in step deliberately.** `_billed_but_unfilled()` is an index lookup in
+  front of `settlement.unfilled`, never a second opinion — every clause mirrors
+  a check in it, `Trim` included, and `Coalesce` runs first because
+  `TRIM(NULL)` is NULL and a card that never had a mileage would otherwise
+  match nothing. The view still drops any card whose computed gaps come back
+  empty, so a drift can only ever show FEWER cards — never an empty red box,
+  which is how an owner learns to stop reading a warning.
+  (c) **The two spare DATES are ONE chip.** A part is finished when it has been
+  ordered *and* received, so half-filled is still incomplete; which of the two
+  is missing is answered by opening the date panel on the card. The old flat
+  list's separate "Not received" chip went with it — status without dates and
+  dates without status are the same fact, and `spare_autofill.js` derives one
+  from the other anyway.
+  (d) **A concern is now named by its WORDING as well as its status**, which
+  reverses the old dialog's rule. There, quoting a TextField cost three lines
+  of a dialog read in two seconds. Here somebody is deciding which car to walk
+  over to, and the wording is the whole point. Both surfaces clamp it in CSS,
+  so the stored text is never what gets shortened.
+  (e) **`count` is in CHIPS, not rows** — a spare missing four things is four
+  problems, and that number is what says whether this is a typo or a card
+  nobody filled in.
+  (f) **Paginated, not windowed by date.** It is a queue to be worked down; the
+  heading carries the true total so the size of it is visible, and nothing is
+  hidden behind a filter that would have to be widened to find the oldest and
+  worst cards. Sections cap at `UNFILLED_ROW_CAP` (8) with the remainder named.
+  Guarded by `workshop/tests/test_billed_but_not_filled.py`.
+
+- **The settle dialog is AMBER for a question and RED for a warning.** Added
+  2026-08-16 with the above. An uncompleted card on its own is a contradiction
+  worth pausing on — the data is fine, and the button beside it fixes the one
+  thing wrong — so it keeps the amber frame it always had. The moment anything
+  is actually *unfilled* the frame turns red, because settling is what closes
+  the door on correcting it. `readiness['is_critical']` decides in Python, so
+  the frame and the body cannot come to disagree about which of the two this
+  is; red outranks amber when both apply. Neither state blocks — two of the
+  three buttons still go forward. **Note for any test of this:** `.pf-critical`
+  is also a rule in the invoice's own inline stylesheet, present on every
+  render, so assert on the rendered `<dialog>` tag — the same trap
+  `ThePaidStampAppearsOnlyOnceSettledTests` records for `.paid-box`.
+
+- **The Live Report is Office and Owner only, whole page — "Live Jobs" is
+  gone.** Rewritten 2026-08-16 on the owner's instruction; the entry below is
+  what remains true of the 2026-08-12 build. The detailed per-card list under
+  the board was removed because the home page's own car cards, and the live
+  details that open inside them, do that job better and are where Floor already
+  works. With it went the only part of the page Floor could reach, so
+  `live_report` is now `@office_required` rather than `@staff_required` with
+  the board gated internally — everything left is supplier names, ordering
+  state and money-side gaps, none of which Floor is shown anywhere else in the
+  app. The nav pill was always gated `is_owner or is_office`, so the template
+  gate and the decorator now agree, which is the `InvoiceLinkVisibilityTests`
+  rule. The `q`/`status` filters went with the list; nothing on the page is
+  narrowed by anything, and `test_financial_report_exhaustive_filters` is
+  inverted to say so rather than deleted. `SECTION_ROW_CAP` and
+  `_card_sections()` are deleted; `_capped()` stays, shared with the home
+  board.
+
+- **The Live Report's operations board is Office and Owner only.** Added
+  2026-08-12, on the owner's instruction; the role gate has since moved to the
+  whole page (see above), and everything below still governs the board itself.
+  `/jobcards/live-report/` is the screen an owner opens on a phone to see the
+  workshop without ringing anybody: who is holding which car, which parts are
+  travelling, which parts nobody has ordered. Five rules hold it up.
   (a) **Only a SHOP part is ever chased.** A warehouse draw
   (`source='INVENTORY'`) came off the shelf already fitted, so its `status`
   column means nothing — the same deliberate rule the Live Jobs card already
@@ -1845,34 +1919,36 @@ about to correct one of these, you are about to break the business:
   completed or deleted card are out too (a stale PENDING on a delivered car is
   work nobody is going to do), as are spares with no job card — every row here
   opens a job card, and an unassigned spare has none to open.
-  (b) **The board deliberately ignores `q` and `status`.** Those still narrow
-  Live Jobs, as they always have. The board answers "what is the state of the
-  workshop right now", and a half-filtered answer to that is worse than no
-  answer. Consequence worth knowing: **any test of the search filter on this
-  page must scope itself to the Live Jobs list**, or it silently stops testing
-  anything — the board names every active car whatever was searched for. That
-  is what `test_financial_report_exhaustive_filters` now does.
+  (b) **The board ignores every query parameter**, and since 2026-08-16 so does
+  the rest of the page — `q`/`status` were read only by the Live Jobs list and
+  went with it. The reasoning is unchanged and is why they were never widened
+  to the board: it answers "what is the state of the workshop right now", and a
+  half-filtered answer to that is worse than no answer.
   (c) **The "Not assigned" group's position is decided in Python, never by
   `order_by('lead_mechanic__name')`.** PostgreSQL sorts NULL last on an
   ascending sort and SQLite sorts it first, so a database ordering would put
   that group at a different end of the page in the tests than in production.
   (d) **A mechanic holding no car is not listed** — the owner's call: every
   name on the board has work under it, which is what keeps it short.
-  (e) **Every Live Jobs section is capped at TEN rows with the remainder
-  named, and the cap is PER SECTION, not per card.** `SECTION_ROW_CAP` in
-  `views/dashboard.py`, applied there and **never with `|slice:":10"` in the
-  template** — a cap in the markup and a remainder computed from a constant are
-  two versions of one rule, free to disagree, and they would disagree as a
-  "+3 more" beside eleven visible rows. Parts are what forced it: a rebuild in
-  the live data carries 91, which rendered one card 3,314px tall and pushed
-  every other car off the phone. Capping is safe *here* and would not be on a
-  money list: there is no total above these rows for the hidden ones to fall
-  out of, the exact number left is printed rather than implied, the section
-  heading still reports the true total so the two add back up, and every hidden
-  row is on the job card that the card already opens.
+  (e) **A capped section names its remainder, and the cap lives in the VIEW.**
+  `SECTION_ROW_CAP` is gone with the Live Jobs list, but the rule outlived it —
+  `HOME_SECTION_ROW_CAP` (25) and `UNFILLED_ROW_CAP` (8) both follow it, through
+  the one shared `_capped()`. **Never `|slice:":10"` in the template:** a cap in
+  the markup and a remainder computed from a constant are two versions of one
+  rule, free to disagree, and they would disagree as a "+3 more" beside eleven
+  visible rows. Parts are what forced it: a rebuild in the live data carries 91,
+  which rendered one card 3,314px tall and pushed every other car off the phone.
+  Capping is safe on these lists and would not be on a money list: no total sits
+  above the rows for the hidden ones to fall out of, the exact number left is
+  printed rather than implied, the section heading still reports the true total
+  so the two add back up, and every hidden row is on the job card the row
+  already opens.
   **The page's shape was then set by the owner over 2026-08-12, and every
-  choice below is theirs, not a default.**
-  *The Live Jobs card is FOUR sections* — Customer Concerns, Job Performed,
+  choice below is theirs, not a default.** The Live Jobs card itself was
+  removed on 2026-08-16 (see above); its four-section rule is kept here because
+  **the home page's live-details drawer follows it exactly**, and that is now
+  where it lives.
+  *The card is FOUR sections* — Customer Concerns, Job Performed,
   Inventory Items, Spare Parts — in the order the work happens. The last two
   used to be one "Parts" list, and splitting them is what makes the badges
   mean something: only a bought-in part has an ordering state anyone can act
@@ -2274,6 +2350,130 @@ about to correct one of these, you are about to break the business:
   wrong. Collapsed-by-default is only right while the section is genuinely
   empty.
 
+- **WHO THE CUSTOMER IS is Office and Owner only; the INTERNAL NOTE is open to
+  everybody.** Added 2026-08-16 on the owner's instruction, and it is the entry
+  above taken one step further: the workshop identifies a car by its
+  registration because Owner 1 deals with customers personally and keeps those
+  relationships himself, so a mechanic never needs to know whose car it is. The
+  job-card form was the only screen that would have told them — the invoice,
+  Car Profiles, Job Cards, Completed, Paid Bills and the Fleet pages are all
+  `@office_required` already, and **`jobcard_detail` was the one leak, since it
+  is `@staff_required` and printed both fields with no gate**; it now carries
+  the same gate the form does.
+  The note stays open because it is about the CAR, not the customer ("noise
+  only when cold", "do not wash") and the mechanic is usually the one who finds
+  out. So the section holds different things for the two audiences and is
+  **named differently for each** — "Customer & Notes" for Office and Owner,
+  "Workshop Note" for Floor. A heading reading "Customer Details" over a box
+  that says nothing about the customer is the page misdescribing itself.
+  Three things are load-bearing.
+  (a) **The two fields are simply NOT RENDERED for Floor**, which is safe here
+  and would not be in a formset: an absent field on a ModelForm leaves the
+  stored value alone, whereas an absent formset field saves as blank and wipes
+  the row. That is the same asymmetry the hidden price inputs exist for.
+  (b) **A crafted POST is answered separately, and it has to be.** Hiding a box
+  is presentation; `_floor_locked_data` pinning the stored value is the
+  control. Both directions matter — a payload can invent a customer *or* erase
+  one, and only pinning (rather than dropping the key) stops the second.
+  (c) **`_price_locked_data` was renamed `_floor_locked_data`.** The rule it
+  enforces was never about money: *a field Floor cannot see on any screen must
+  be a field Floor cannot post from any screen.* A helper called "price locked"
+  that also pins a phone number is precisely the drift this file exists to
+  prevent. `OFFICE_ONLY_CARD_FIELDS` names the two. Guarded by
+  `WhoTheCustomerIsIsOfficeOnlyTests`.
+
+- **The internal note is a TEXTAREA that grows, and its label no longer says
+  "never printed".** Added 2026-08-16. It was a single-line `TextInput`, so a
+  two-sentence note — which is what the workshop actually writes — could only
+  be read by scrolling sideways through it. `rows=1` rather than a taller
+  default, because most cards carry no note and three empty rows on the longest
+  form in the app is three rows everybody scrolls past.
+  **Built as progressive enhancement, the same shape as the save button's
+  travelling light**: the CSS declares a draggable one-row textarea, and
+  `autoGrow()` sets `overflow: hidden`, drops `resize` and sizes the box only
+  once it runs. A page whose script never arrived is never left with a box that
+  clips its own text. One trap: a textarea inside a CLOSED `<details>` is
+  `display: none`, so `scrollHeight` reads 0 and sizing it there collapses the
+  box the moment the fold is opened — hence the `offsetParent` guard and the
+  `toggle` listener.
+  **"— never printed on the bill" came off the label**, on the owner's
+  instruction: "Internal" already says it, and that clause was the longest
+  label on the form. The GUARANTEE is untouched and was never the label's job —
+  `invoice.py` and the invoice template both read named fields, so a column
+  nobody references cannot print, and
+  `test_the_internal_note_never_reaches_the_customer` is what enforces it.
+  *The Estimate's identical note box is deliberately NOT changed in the same
+  edit* — it is a short quotation line, not a running record, and the two forms
+  are only required to agree about the label and the placeholder rule.
+
+- **"Job Performed" is suggested from the parts already on THIS card.** Added
+  2026-08-16, answering the owner's question about auto-filling it. Nearly
+  every job line in this workshop is a part on the same card plus a verb —
+  "Engine Oil replaced", "Wheel Bearing replaced", "Brake Disc refurbished" —
+  so the source is the card's own two parts sections, not a master list. The
+  mechanic fitted these exact things, the whole line arrives in one pick, and
+  there is no second taxonomy to keep in step with anything. Four rules.
+  (a) **A native `<datalist>`, for the reason the Estimate's part names already
+  use one**: nothing to wire, so a job row added *after* page load gets the same
+  list with nothing re-initialised — and none of `script.js`'s three documented
+  cloning traps can be reintroduced. It suggests and never fills: a job with no
+  part behind it ("Road test") is typed exactly as before, and a browser that
+  ignores datalists loses nothing.
+  (b) **A warehouse draw is offered by its CATEGORY, never its branded SKU** —
+  "Engine Oil", not "Castrol Edge 5W-30" — through `invoice.item_display_name`,
+  which `part_display_name` also calls. That split was made for this: both
+  strings end up on ONE document, so a job line naming the brand beside a part
+  line naming the category is the invoice contradicting itself, and it publishes
+  the supply chain into the bargain. A shop spare keeps its free text.
+  (c) **The list is rebuilt on FOCUS of a Job Performed box**, delegated on
+  `document`. That is the one moment it is about to be used and therefore the
+  one moment it has to be current — and it needs no event from the inventory
+  picker or the spare autocomplete, which would be coupling to maintain in
+  three places. `data-category` on an inventory row is written by the server for
+  saved rows and refreshed by the picker for one chosen just now; it starts
+  EMPTY on `#empty-inventory-form`, so a cloned row can never inherit the
+  previous row's category.
+  (d) **The verbs exist in exactly one place**, ordered by the owner's own
+  measurement — replaced ~70%, then removed-and-installed, refurbished,
+  inspected, repaired at 7-8% each. The order is load-bearing: a datalist keeps
+  document order for whatever survives filtering, so opening it cold shows one
+  "replaced" line per part before any variant of anything. Guarded by
+  `workshop/tests/test_job_line_suggestions.py`, which asserts everything the
+  server owes the script — nothing in this suite executes JavaScript.
+
+- **The Inventory row's "38 in stock" line is shown while PICKING and not
+  afterwards.** Added 2026-08-16 on the owner's instruction, inverting
+  `test_a_saved_draw_shows_its_stock_without_being_re_picked`. The count answers
+  one question — is there enough on the shelf to take — asked at the moment of
+  choosing and never again. On a card reopened weeks later it is a number about
+  TODAY's shelf beside a part fitted long ago, printed once per row, which on a
+  card with eleven draws is eleven lines of noise. `stock_display` returns ''
+  for a row with a pk; the picker still writes the line the instant a product is
+  chosen, on a new row or when an existing row's product is changed.
+  **The empty div still reserves its height** — that rule is untouched and is
+  the whole reason the div stays: a line that appears when it is written to is a
+  row that jumps under the finger aiming at it.
+
+- **A part cannot arrive before it was ordered, and the rule lives in
+  `workshop/spare_dates.py`.** Added 2026-08-16, on the owner's report
+  ("Ordered date 2026, Received date 2025 editing allowing"). Two dates on one
+  row, and exactly one mistake the pair can express that neither date can
+  express alone. It was already refused on the Unassigned Spares hub and was
+  **not** checked on the job card — which is where most spares are actually
+  entered. `pair_problem(ordered, received)` is now the one implementation, and
+  `_clean_spare_dates` calls it after parsing rather than restating it; two
+  answers to "is this pair the right way round" would disagree exactly where it
+  matters, on a supplier's ledger. Three things worth knowing: **half a pair is
+  never wrong** (ordered-and-not-yet-arrived is the normal mid-workflow state,
+  and an empty pair is chased by "Billed but not filled" instead); a **future**
+  date is refused too, because it is far more often a mistyped year than a plan
+  and this workshop has no forward-ordering workflow; and the error is attached
+  to `received_date` rather than raised as a non-field error, so the hairline
+  lands on the box being corrected. `ShopSpareRowForm` also gained the
+  `row_label()` contract, so the error summary names the PART rather than "row
+  7". A row marked DELETE is not argued with. Guarded by
+  `workshop/tests/test_spare_dates.py`.
+
 - **`jobcard_form.html` closes its `<form>` before its wrappers, and that
   ordering is load-bearing.** Fixed 2026-08-13 (was AUD-0093). Two `</div>`s
   used to sit above the submit block: the HTML parser pops `<form>` when an
@@ -2439,6 +2639,45 @@ about to correct one of these, you are about to break the business:
   removed again, because a second copy of a palette is two things free to
   disagree. This applies to any measurement of a transitioned property on this
   codebase's forms, not just the lock.
+
+- **The dashboard car card is worked with a THUMB, and its polish pass follows
+  from that.** Added 2026-08-16, on the owner's request to polish without
+  changing content or structure. Four changes, each a reason rather than a
+  preference.
+  (a) **The car's colour is stated twice, not three times.** It was the 10px
+  stripe, an 8% wash across the card and a 20% coloured halo behind it. The
+  halo was the weakest of the three and the only one that read as a rendering
+  artifact — a red glow around a white card looks like something failing to
+  paint, and down a list of 45 it turns the gaps between cards into colour. It
+  now appears only under a POINTER, where it reads as the card lifting.
+  (b) **Hover is behind `@media (hover: hover)`.** This board is worked on the
+  Floor tablet all day, where hover never fires on touch and, where it does,
+  STICKS — the last card tapped sat raised and shadowed until something else
+  was tapped, which reads as a card still loading. Same rule the job card's own
+  buttons follow.
+  (c) **`:active` does something again.** It was an empty rule with the comment
+  "Feedback removed to prevent blinking", so tapping a card gave nothing at all
+  on the one device where it is always tapped. The blinking came from moving
+  the card; a press that changes only paint plus a 0.5% settle cannot blink.
+  (d) **The hold dot no longer BLINKS.** A 2s infinite loop per held card, on
+  the screen the workshop looks at most — the same reasoning the job card
+  records: an idle animation is noise on a board staff work all day and costs
+  battery on the tablet. Nothing is lost, because "on hold" was already said
+  three times over (the pill's word, its red ground, the dot's colour); a soft
+  ring gives it presence at rest instead. That was the page's only looping
+  animation, so `prefers-reduced-motion` now only has the press and lift to
+  turn off, and both have a still equivalent already on screen.
+  Two smaller ones: the **⋮ grew from a ~20×24px target to 34px, and 44px under
+  `@media (hover: none)`** — keyed on input method rather than screen width,
+  because it is the finger that decides, and it sits beside the card's own
+  click area so a near miss opened the job card instead of the menu; and the
+  **reg badge's border was softened** because `#cbd5e1` around a near-white
+  fill is a darker line than the card's own border, so the plate outranked the
+  card it sits on. *Known and left alone:* `.car-name` truncates, so "Land
+  Rover Range Rover Sport" clips on a 375px phone. Wrapping it is the Live
+  Report's answer, and it would make the row height vary down the list — which
+  is the raggedness this codebase avoids elsewhere. Raise it as a design call,
+  not a bug fix.
 
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
@@ -2866,7 +3105,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (42 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 47 files, **1,307 tests** (re-counted 2026-08-16 after `test_unassigned_spares.py`, `test_floor_board.py` and `test_paid_bills_rbac.py` were added; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, and **79 on 2026-08-16**, which is the clearest evidence that the spread is load-dependent rather than meaningful; that last one had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (45 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 50 files, **1,350 tests** (re-counted 2026-08-16 after `test_billed_but_not_filled.py`, `test_spare_dates.py` and `test_job_line_suggestions.py` were added; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, and 79 and **63 on 2026-08-16**, which is the clearest evidence that the spread is load-dependent rather than meaningful; that last one had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

@@ -1023,7 +1023,7 @@ class TheLabourChargeLivesOnTheCardTests(InvoiceTestCase):
     def test_the_job_line_form_has_no_amount_field(self):
         """
         Not cosmetic: while `labours-N-amount` existed it was rendered hidden for
-        Floor and `_price_locked_data` never covered the `labours` prefix, so a
+        Floor and `_floor_locked_data` never covered the `labours` prefix, so a
         Floor login could POST it. A field that does not exist cannot be posted.
         """
         from workshop.forms import JobCardLabourFormSet

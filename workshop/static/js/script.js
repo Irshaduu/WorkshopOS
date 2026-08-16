@@ -236,6 +236,13 @@ document.addEventListener('DOMContentLoaded', function () {
                             e.preventDefault();
                             input.value = item.name;
                             hiddenId.value = item.id;
+                            // What this draw is called outside the warehouse.
+                            // The visible box holds the branded SKU; the Job
+                            // Performed suggestions want the CATEGORY, which is
+                            // also what the printed bill names the part by. The
+                            // server renders this attribute for saved rows —
+                            // this keeps it current for a row picked now.
+                            if (row) row.dataset.category = item.category || '';
                             if (stockHint) {
                                 stockHint.textContent = `${item.stock} in stock`;
                                 stockHint.classList.toggle('text-danger', stock <= 0);

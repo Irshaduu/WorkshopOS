@@ -137,34 +137,29 @@ class WorkshopViewTests(TestCase):
         self.client.post(url, data)
         self.assertFalse(JobCardSpareItem.objects.filter(pk=spare.id).exists())
 
-    def test_financial_report_exhaustive_filters(self):
+    def test_the_live_report_has_no_filters_left_to_honour(self):
         """
-        `q` / `status` narrow the LIVE JOBS list.
+        This used to assert that `q` / `status` narrowed the Live Jobs list.
+        That list has gone — the home page's car cards do the same job better,
+        and are where Floor already works — and with it went the only filtered
+        thing on the page.
 
-        Every assertion here is scoped to that list rather than to the whole
-        page, because the operations board above it deliberately ignores both
-        parameters: it reports the state of the workshop right now, and a
-        half-filtered answer to that question is worse than no answer. Asserting
-        against the whole page would silently stop testing the filter — the
-        board names every active car whatever is searched for.
+        The test is INVERTED rather than deleted: what matters now is that a
+        crafted query string cannot make the page report less than the whole
+        workshop. Every remaining box answers "what is the state of the
+        workshop right now", and a half-filtered answer to that is worse than
+        no answer.
         """
         url = reverse('live_report')
-        # live_report only shows completed=False (active) jobs, so create one that is active
-        paid_job = JobCard.objects.create(registration_number='PAID001', admitted_date=timezone.now().date(), completed=False, payment_status='PAID')
+        JobCard.objects.create(
+            registration_number='PAID001', admitted_date=timezone.now().date(),
+            completed=False, payment_status='PAID')
 
-        def live_jobs(response):
-            # The heading markup, not the bare class name — that also appears
-            # in the page's own stylesheet, which would split too early.
-            return response.content.decode().split('<div class="lr-jobs-head">', 1)[1]
-
-        # 1. Search filter
-        self.assertIn('PAID001', live_jobs(self.client.get(url, {'q': 'PAID001'})))
-
-        # 2. Payment Status filter
-        self.assertIn('PAID001', live_jobs(self.client.get(url, {'status': 'PAID'})))
-
-        # 3. Empty filter
-        self.assertNotIn('PAID001', live_jobs(self.client.get(url, {'q': 'NOBODY'})))
+        for params in ({}, {'q': 'NOBODY'}, {'status': 'PENDING'}):
+            with self.subTest(params=params):
+                page = self.client.get(url, params).content.decode()
+                self.assertIn('PAID001', page)
+                self.assertIn('>2 in workshop<', page)
 
     def test_management_master_lists(self):
         # We need OWNER access for these typically

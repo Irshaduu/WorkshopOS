@@ -24,7 +24,12 @@ from workshop.models import (
     JobCard, JobCardConcern, JobCardLabourItem, JobCardSpareItem, Mechanic,
     SpareShop,
 )
-from workshop.settlement import settlement_gaps, settlement_readiness
+from workshop.settlement import settlement_readiness, unfilled
+
+#: The rendered <dialog> tag, never the bare class name. `.pf-critical` is also
+#: a rule in the page's own stylesheet, which is present on EVERY render — the
+#: same trap `ThePaidStampAppearsOnlyOnceSettledTests` records for `.paid-box`.
+CRITICAL_TAG = 'class="preflight no-print pf-critical"'
 
 SHOP = JobCardSpareItem.SOURCE_SHOP
 INVENTORY = JobCardSpareItem.SOURCE_INVENTORY
@@ -77,7 +82,7 @@ class NothingToSayMeansNoDialogTests(PreflightBase):
     """
 
     def test_a_complete_card_reports_no_gaps(self):
-        self.assertEqual(settlement_gaps(self.a_clean_card()), [])
+        self.assertFalse(unfilled(self.a_clean_card()))
 
     def test_a_complete_card_needs_no_confirmation(self):
         readiness = settlement_readiness(self.a_clean_card())
@@ -111,7 +116,7 @@ class ItNeverBlocksTests(PreflightBase):
             registration_number='KL11AJ9999', customer_name='Rahim',
             customer_contact='9567494933', total_bill_amount=D('1000'),
         )
-        self.assertTrue(settlement_gaps(card) or not card.completed)
+        self.assertTrue(unfilled(card) or not card.completed)
 
         resp = self.client.post(
             reverse('update_bill_status', args=[card.pk]),
@@ -131,39 +136,49 @@ class ItNeverBlocksTests(PreflightBase):
 
 
 class WhatItChecksTests(PreflightBase):
-    def gap_keys(self, card):
-        return {gap.key for gap in settlement_gaps(card)}
+    """
+    The checks themselves, read off the one structure both surfaces draw:
+    the card's own chips, then a row per concern, per draw and per spare.
+    """
+
+    def card_chips(self, card):
+        return unfilled(card).card
 
     def test_a_missing_mechanic_is_reported(self):
         card = self.a_clean_card()
         card.lead_mechanic = None
         card.save()
-        self.assertIn('mechanic', self.gap_keys(card))
+        self.assertIn('Mechanic', self.card_chips(card))
 
     def test_a_missing_mileage_is_reported(self):
         card = self.a_clean_card()
         card.mileage = '   '
         card.save()
-        self.assertIn('mileage', self.gap_keys(card))
+        self.assertIn('Mileage', self.card_chips(card))
 
-    def test_an_unfixed_concern_is_reported_by_its_STATUS_not_its_wording(self):
+    def test_an_unfixed_concern_is_named_AND_carries_its_status(self):
         """
-        `concern_text` is a TextField and staff write sentences into it. Quoting
-        one costs three lines of a dialog read in two seconds and still only
-        describes one of them; the status is the thing being asked about.
+        This reverses an earlier decision, on the owner's redesign. The dialog
+        used to name concerns by status alone ("1 Working") because quoting a
+        TextField cost three lines. Both surfaces now show the wording — it is
+        what tells you WHICH concern — and clamp it in CSS, so the stored text
+        is never what gets shortened.
         """
         card = self.a_clean_card()
         card.concerns.update(status='WORKING')
-        gaps = {g.key: g for g in settlement_gaps(card)}
-        self.assertIn('concerns', gaps)
-        self.assertEqual(gaps['concerns'].tags, ('1 Working',))
-        self.assertNotIn('Brake noise', gaps['concerns'].label)
+        concerns = unfilled(card).concerns
+        self.assertEqual(len(concerns), 1)
+        self.assertEqual(concerns[0].text, 'Brake noise')
+        self.assertEqual(concerns[0].status, 'Working')
+
+    def test_a_fixed_concern_is_not_reported(self):
+        self.assertEqual(unfilled(self.a_clean_card()).concerns, ())
 
     def test_work_listed_but_not_priced_is_reported(self):
         card = self.a_clean_card()
         card.labour_amount = D('0')
         card.save()
-        self.assertIn('labour', self.gap_keys(card))
+        self.assertIn('Job Amount', self.card_chips(card))
 
     def test_a_parts_only_card_is_not_nagged_about_labour(self):
         """
@@ -175,65 +190,103 @@ class WhatItChecksTests(PreflightBase):
         card.labours.all().delete()
         card.labour_amount = D('0')
         card.save()
-        self.assertNotIn('labour', self.gap_keys(card))
+        self.assertNotIn('Job Amount', self.card_chips(card))
 
     def spare_tags(self, card):
-        gaps = {g.key: g for g in settlement_gaps(card)}
-        return gaps['spares'].tags if 'spares' in gaps else ()
+        spares = unfilled(card).spares
+        return spares[0].tags if spares else ()
 
     def test_a_part_with_no_customer_price_is_reported(self):
         card = self.a_clean_card()
         card.spares.update(total_price=None)
-        self.assertIn('No customer price', self.spare_tags(card))
+        self.assertIn('Customer Price', self.spare_tags(card))
 
-    def test_a_spare_not_yet_received_is_reported(self):
-        card = self.a_clean_card()
-        card.spares.update(status='ORDERED')
-        self.assertIn('Not received', self.spare_tags(card))
-
-    def test_missing_order_dates_are_reported(self):
-        card = self.a_clean_card()
-        card.spares.update(received_date=None)
-        self.assertIn('No received date', self.spare_tags(card))
-
-    def test_a_spare_with_no_shop_is_reported(self):
-        card = self.a_clean_card()
-        card.spares.update(shop=None)
-        self.assertIn('No shop', self.spare_tags(card))
-
-    def test_a_spare_with_no_shop_price_is_reported(self):
+    def test_a_part_with_no_shop_price_is_reported(self):
         card = self.a_clean_card()
         card.spares.update(unit_price=None)
-        self.assertIn('No shop price', self.spare_tags(card))
+        self.assertIn('Shop Price', self.spare_tags(card))
 
-    def test_everything_wrong_with_the_parts_is_ONE_row_of_chips(self):
+    def test_a_part_with_no_shop_is_reported(self):
+        card = self.a_clean_card()
+        card.spares.update(shop=None)
+        self.assertIn('Shop', self.spare_tags(card))
+
+    def test_the_two_dates_are_chased_as_ONE_chip(self):
         """
-        Five separate lines all beginning "Spare parts" is five times the height
-        for one fact — that the parts section is unfinished — and it buries the
-        rows above it, which are about something else entirely. Chips read in
-        one sweep and wrap without pushing the buttons off a phone.
+        A spare is finished when it has been ordered AND received, so a
+        half-filled pair is still incomplete and gets the same single chip.
+        Which of the two is missing is answered by opening the date panel on the
+        job card, not by a second chip here.
         """
+        for missing in ('ordered_date', 'received_date'):
+            with self.subTest(missing=missing):
+                card = self.a_clean_card()
+                card.spares.update(**{missing: None})
+                self.assertEqual(list(self.spare_tags(card)).count('Dates'), 1)
+
+    def test_a_part_carries_its_OWN_name_and_its_OWN_chips(self):
+        """
+        One row per part, not one row for "Spare parts" with every problem on
+        the card mixed into it. Two parts wrong in two different ways used to
+        collapse into a single line of six chips describing neither of them.
+        """
+        card = self.a_clean_card()
+        card.spares.update(shop=None)
+        JobCardSpareItem.objects.create(
+            job_card=card, source=SHOP, spare_part_name='Oil Filter',
+            quantity=D('1'), status='RECEIVED', shop=self.shop,
+            ordered_date=date.today(), received_date=date.today(),
+            unit_price=D('300'), total_price=None)
+
+        spares = {part.name: part.tags for part in unfilled(card).spares}
+
+        self.assertEqual(spares['Brake Pad'], ('Shop',))
+        self.assertEqual(spares['Oil Filter'], ('Customer Price',))
+
+    def test_a_part_missing_everything_carries_every_chip(self):
         card = self.a_clean_card()
         card.spares.update(shop=None, ordered_date=None, received_date=None,
                            status='PENDING', unit_price=None, total_price=None)
-        gaps = [g for g in settlement_gaps(card) if g.key == 'spares']
-        self.assertEqual(len(gaps), 1)
-        self.assertEqual(len(gaps[0].tags), 6)
+        self.assertEqual(
+            self.spare_tags(card),
+            ('Shop', 'Dates', 'Shop Price', 'Customer Price'))
 
-    def test_a_label_is_a_phrase_not_a_sentence(self):
+    def test_a_chip_is_a_label_not_a_sentence(self):
         """
         The whole dialog is scanned, not read. Anything long enough to be prose
-        here defeats it — so nothing has a full stop and nothing runs on.
+        here defeats it — so nothing has a full stop and nothing runs on. The
+        concern wording is exempt: it is the customer's words, and clamping it
+        is the template's job.
         """
         card = self.a_clean_card()
         card.lead_mechanic = None
         card.mileage = ''
         card.save()
-        for gap in settlement_gaps(card):
-            self.assertNotIn('.', gap.label, gap.label)
-            self.assertLess(len(gap.label), 40, gap.label)
-            for tag in gap.tags:
-                self.assertLess(len(tag), 24, tag)
+        card.spares.update(shop=None, unit_price=None)
+
+        holes = unfilled(card)
+        chips = list(holes.card)
+        for part in holes.spares + holes.inventory:
+            chips.extend(part.tags)
+
+        self.assertTrue(chips)
+        for chip in chips:
+            self.assertNotIn('.', chip, chip)
+            self.assertLess(len(chip), 24, chip)
+
+    def test_the_count_is_in_chips_not_rows(self):
+        """
+        A spare missing four things is four problems, not one. The headline
+        number is what tells an owner whether this is a typo or a card nobody
+        filled in at all.
+        """
+        card = self.a_clean_card()
+        card.mileage = ''
+        card.save()
+        card.spares.update(shop=None, ordered_date=None, received_date=None,
+                           unit_price=None, total_price=None)
+
+        self.assertEqual(unfilled(card).count, 5)
 
 
 class AWarehouseDrawIsNotChasedTests(PreflightBase):
@@ -260,13 +313,17 @@ class AWarehouseDrawIsNotChasedTests(PreflightBase):
 
     def test_a_draw_raises_none_of_the_shop_workflow_chips(self):
         card = self.draw_card(status='PENDING')
-        self.assertNotIn('spares', {g.key for g in settlement_gaps(card)})
+        self.assertEqual(unfilled(card).spares, ())
 
     def test_a_draw_with_no_customer_price_IS_reported(self):
         card = self.draw_card(total_price=None)
-        gaps = {g.key: g for g in settlement_gaps(card)}
-        self.assertIn('inventory', gaps)
-        self.assertEqual(gaps['inventory'].tags, ('No customer price',))
+        drawn = unfilled(card).inventory
+        self.assertEqual(len(drawn), 1)
+        self.assertEqual(drawn[0].name, 'Liqui Moly 5W-30')
+        self.assertEqual(drawn[0].tags, ('Customer Price',))
+
+    def test_a_priced_draw_is_not_reported_at_all(self):
+        self.assertFalse(unfilled(self.draw_card(status='PENDING')))
 
 
 class CompleteAndSettleTests(PreflightBase):
@@ -288,7 +345,7 @@ class CompleteAndSettleTests(PreflightBase):
     def test_an_uncompleted_card_alone_triggers_the_dialog(self):
         card = self.open_card()
         readiness = settlement_readiness(card)
-        self.assertEqual(readiness['gaps'], [])
+        self.assertFalse(readiness['unfilled'])
         self.assertTrue(readiness['needs_confirmation'])
 
     def test_the_dialog_offers_complete_and_settle(self):
@@ -334,3 +391,116 @@ class CompleteAndSettleTests(PreflightBase):
         self.assertFalse(card.mark_completed())
         card.refresh_from_db()
         self.assertEqual(card.completed_date, original)
+
+
+class TheFrameSaysWhichKindOfPauseThisIsTests(PreflightBase):
+    """
+    Two states, two colours, on the owner's instruction.
+
+    AMBER is a question. Everything on the card is filled in and the only thing
+    to say is that nobody has marked the car Completed — a contradiction worth
+    pausing on, not a fault in the data, and one this screen can fix with the
+    button beside it.
+
+    RED is a warning. Something is genuinely unfilled, and settling is what
+    closes the door on correcting it: the card goes PAID, the shortfall becomes
+    a permanent discount, and the Financial Lock stands between it and anyone
+    who notices later.
+
+    `is_critical` decides in Python so the frame and the body cannot come to
+    disagree about which of the two this is.
+    """
+
+    def test_only_uncompleted_is_a_question_and_stays_amber(self):
+        card = self.a_clean_card()
+        card.completed = False
+        card.save()
+
+        readiness = settlement_readiness(card)
+        self.assertTrue(readiness['needs_confirmation'])
+        self.assertFalse(readiness['is_critical'])
+        self.assertNotIn(CRITICAL_TAG, self.page(card))
+
+    def test_anything_unfilled_turns_the_frame_red(self):
+        card = self.a_clean_card()
+        card.mileage = ''
+        card.save()
+
+        self.assertTrue(settlement_readiness(card)['is_critical'])
+        self.assertIn(CRITICAL_TAG, self.page(card))
+
+    def test_an_unfilled_card_that_is_ALSO_uncompleted_is_red(self):
+        """Red outranks amber: the unfilled boxes are the part that cannot be
+        put right afterwards."""
+        card = self.a_clean_card()
+        card.mileage = ''
+        card.completed = False
+        card.save()
+
+        self.assertTrue(settlement_readiness(card)['is_critical'])
+        self.assertIn(CRITICAL_TAG, self.page(card))
+
+    def test_a_clean_card_renders_no_dialog_of_either_colour(self):
+        self.assertNotIn('id="preflightDialog"', self.page(self.a_clean_card()))
+
+
+class TheDialogAndTheChaseListSayTheSameThingTests(PreflightBase):
+    """
+    The settle dialog asks "you are about to skip this"; the Live Report's
+    "Billed but not filled" container asks "you skipped this". They are two
+    moments of one rule, so there is one implementation of it — a second copy
+    would drift exactly where it matters, as a card the dialog waved through
+    turning up on the chase list, or the reverse.
+
+    These tests assert the SHARED READING rather than either surface's markup:
+    both call `settlement.unfilled`, and both render the chip wordings it names.
+    """
+
+    def a_holey_card(self):
+        card = self.a_clean_card()
+        card.mileage = ''
+        card.save()
+        card.spares.update(shop=None, unit_price=None)
+        return card
+
+    def test_both_surfaces_read_one_function(self):
+        """
+        Not a style check. If either view ever grows its own idea of "unfilled",
+        this is what fails — and the failure it prevents is silent, because both
+        pages would still render perfectly well while disagreeing.
+        """
+        import workshop.settlement as settlement
+        import workshop.views.billing as billing
+        import workshop.views.dashboard as dashboard
+
+        self.assertIs(dashboard.unfilled, settlement.unfilled)
+        self.assertIs(billing.settlement_readiness, settlement.settlement_readiness)
+
+    def test_the_dialog_and_the_chase_list_agree_on_one_card(self):
+        card = self.a_holey_card()
+
+        self.assertEqual(settlement_readiness(card)['unfilled'], unfilled(card))
+
+    def test_the_dialog_prints_the_chip_wordings_the_module_names(self):
+        card = self.a_holey_card()
+        holes = unfilled(card)
+        body = self.page(card)
+
+        chips = list(holes.card)
+        for part in holes.spares + holes.inventory:
+            chips.extend(part.tags)
+
+        self.assertTrue(chips)
+        for chip in chips:
+            self.assertIn('<em>%s</em>' % chip, body)
+
+    def test_the_dialog_names_the_part_each_chip_belongs_to(self):
+        """
+        One row per part, so "Shop Price" is attached to the part that is
+        missing it rather than floating over the whole section.
+        """
+        card = self.a_holey_card()
+        body = self.page(card)
+
+        self.assertIn('Brake Pad', body)
+        self.assertIn('Spare Parts', body)
