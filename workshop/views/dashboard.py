@@ -17,7 +17,11 @@ def home(request):
     """
     # Get only non-completed job cards (where completed=False)
     # Optimized with select_related and prefetch_related for 1M+ records
-    active_jobcards = JobCard.objects.filter(completed=False, is_deleted=False).select_related('lead_mechanic').prefetch_related('concerns').annotate(
+    active_jobcards = JobCard.objects.filter(
+        completed=False, is_deleted=False
+    ).select_related('lead_mechanic').prefetch_related(
+        'concerns', 'labours', 'spares', 'spares__item', 'spares__shop'
+    ).annotate(
         total_concerns=Count('concerns'),
         fixed_concerns=Count('concerns', filter=Q(concerns__status='FIXED'))
     ).order_by('-updated_at', '-pk')
@@ -39,14 +43,83 @@ def home(request):
     paginator = Paginator(active_jobcards, 45)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+
+    today = timezone.localdate()
+    _attach_home_live_details(page_obj.object_list, today)
     
     return render(request, 'workshop/dashboard/dashboard_home.html', {
         'active_jobcards': page_obj, # Pass page_obj as active_jobcards
         'completed_count': completed_count,
         'pending_bills_count': pending_bills_count,
         'page_obj': page_obj,
-        'today': timezone.localdate(),  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
+        'today': today,  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
     })
+
+
+#: Rows shown per section inside one card's drawer before the rest are summed
+#: into a "+N more" line. Chosen at 25 on the owner's instruction — this page is
+#: for taking in the whole floor at a glance, so it is deliberately generous
+#: where the Live Report's own `SECTION_ROW_CAP` is 10.
+#:
+#: A cap is needed at all because a rebuild in the live data carries 91 spares,
+#: and 45 cards on a page multiply whatever one card costs. It is safe HERE and
+#: would not be on a money list: no total sits above these rows for the hidden
+#: ones to fall out of, the exact number left is printed rather than implied,
+#: the heading still reports the true count so the two add back up, and every
+#: hidden row is on the job card the card already opens.
+HOME_SECTION_ROW_CAP = 25
+
+
+def _capped(rows, cap):
+    """`(rows_to_show, how_many_were_left_out)` — ONE implementation, two callers.
+
+    The home board and the Live Report cap at different numbers (25 and 10) for
+    different reasons, but they cap the same way. Two functions doing this were
+    written and the second silently shadowed the first — the home board took the
+    Live Report's 10 while every comment said 25, which nothing on the page
+    would have shown because the remainder line was still arithmetically
+    correct. Hence one function and an explicit cap at each call site.
+
+    Never `|slice:":25"` in a template: a cap in the markup and a remainder
+    computed from a constant are two versions of one rule, free to disagree,
+    and they would disagree as a "+3 more" beside twenty-six visible rows.
+    """
+    return rows[:cap], max(0, len(rows) - cap)
+
+
+def _attach_home_live_details(jobs, today):
+    """Attach the age label and the four live-detail sections to each card.
+
+    Read off the prefetched relations rather than re-queried per card — the
+    queryset prefetches concerns, labours and spares (with their item and shop),
+    so this loop costs no further queries however many cards are on the page.
+    """
+    for job in jobs:
+        days = (today - job.admitted_date).days if job.admitted_date else None
+        job.age_label = _age_label(days)
+
+        concerns = list(job.concerns.all())
+        labours = list(job.labours.all())
+        stock = []
+        shop = []
+        for spare in job.spares.all():
+            # `source`, never a guess from the name — the deliberate rule in
+            # CLAUDE.md. A draw came off the shelf already fitted; a shop part
+            # has an ordering state somebody can act on.
+            if spare.source == JobCardSpareItem.SOURCE_INVENTORY:
+                stock.append(spare)
+            else:
+                shop.append(spare)
+
+        job.concern_total, job.labour_total = len(concerns), len(labours)
+        job.stock_total, job.shop_total = len(stock), len(shop)
+
+        job.all_concerns, job.concerns_more = _capped(concerns, HOME_SECTION_ROW_CAP)
+        job.all_labours, job.labours_more = _capped(labours, HOME_SECTION_ROW_CAP)
+        job.all_stock, job.stock_more = _capped(stock, HOME_SECTION_ROW_CAP)
+        job.all_shop, job.shop_more = _capped(shop, HOME_SECTION_ROW_CAP)
+
+        job.has_any_live_detail = bool(concerns or labours or stock or shop)
 
 
 def _age_label(days):
@@ -84,11 +157,6 @@ def _stamp_age(jobs, today):
 SECTION_ROW_CAP = 10
 
 
-def _capped(rows):
-    """(the first SECTION_ROW_CAP rows, how many were left over)."""
-    return rows[:SECTION_ROW_CAP], max(0, len(rows) - SECTION_ROW_CAP)
-
-
 def _card_sections(jobs):
     """Attach each Live Jobs card's four sections, already capped.
 
@@ -115,10 +183,10 @@ def _card_sections(jobs):
         concerns = list(job.concerns.all())
         labours = list(job.labours.all())
 
-        job.concerns_shown, job.concerns_more = _capped(concerns)
-        job.labours_shown, job.labours_more = _capped(labours)
-        job.stock_shown, job.stock_more = _capped(stock)
-        job.shop_shown, job.shop_more = _capped(shop)
+        job.concerns_shown, job.concerns_more = _capped(concerns, SECTION_ROW_CAP)
+        job.labours_shown, job.labours_more = _capped(labours, SECTION_ROW_CAP)
+        job.stock_shown, job.stock_more = _capped(stock, SECTION_ROW_CAP)
+        job.shop_shown, job.shop_more = _capped(shop, SECTION_ROW_CAP)
 
         job.concerns_total = len(concerns)
         job.labours_total = len(labours)

@@ -106,6 +106,19 @@ def clean_qty(value):
 
 # Backwards/forwards-friendly alias
 register.filter('qty', clean_qty)
+
+
+@register.filter
+def gt(value, arg):
+    """Returns True if value > arg (supports Decimal, float, int, str)"""
+    try:
+        if value is None or value == "":
+            return False
+        return float(value) > float(arg)
+    except (ValueError, TypeError):
+        return False
+
+
 def _to_decimal(value):
     """Best-effort Decimal, or None if the value isn't numeric."""
     if value is None or value == "":

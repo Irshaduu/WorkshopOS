@@ -12,7 +12,7 @@ from django.core.paginator import Paginator
 from django.urls import reverse
 
 from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
-from ..decorators import office_required, owner_required
+from ..decorators import office_required, owner_required, staff_required, is_office_or_owner
 from ..notifications import notify
 
 
@@ -188,9 +188,16 @@ def spare_shop_detail(request, pk):
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
         end_date_str   = request.GET.get('end_date', '')
+        # Parsed, not handed to the ORM as text — an unparseable string raises
+        # in `get_prep_value`, i.e. a 500 from a hand-edited URL.
         if start_date_str and end_date_str:
-            items_qs   = items_qs.filter(_date_q(gte=start_date_str, lte=end_date_str))
-            payment_qs = payment_qs.filter(created_at__date__gte=start_date_str, created_at__date__lte=end_date_str)
+            try:
+                sd, ed = date.fromisoformat(start_date_str), date.fromisoformat(end_date_str)
+            except ValueError:
+                sd = ed = None
+            if sd and ed:
+                items_qs   = items_qs.filter(_date_q(gte=sd, lte=ed))
+                payment_qs = payment_qs.filter(created_at__date__gte=sd, created_at__date__lte=ed)
     # filter_type == 'all' → no date filter applied
 
 
@@ -449,12 +456,19 @@ def spare_shop_print(request, pk):
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
         end_date_str   = request.GET.get('end_date', '')
+        # Parsed, not handed to the ORM as text — an unparseable string raises
+        # in `get_prep_value`, i.e. a 500 from a hand-edited URL.
         if start_date_str and end_date_str:
-            items_qs   = items_qs.filter(_date_q(gte=start_date_str, lte=end_date_str))
-            payment_qs = payment_qs.filter(
-                created_at__date__gte=start_date_str,
-                created_at__date__lte=end_date_str
-            )
+            try:
+                sd, ed = date.fromisoformat(start_date_str), date.fromisoformat(end_date_str)
+            except ValueError:
+                sd = ed = None
+            if sd and ed:
+                items_qs   = items_qs.filter(_date_q(gte=sd, lte=ed))
+                payment_qs = payment_qs.filter(
+                    created_at__date__gte=sd,
+                    created_at__date__lte=ed,
+                )
     # Legacy aliases for any old bookmarked print URLs
     elif filter_type == 'month':
         sd = today - timedelta(days=30)
@@ -514,7 +528,71 @@ MAX_UNIT_PRICE = Decimal('99999999.99')
 MAX_QUANTITY = Decimal('999999.99')
 
 
-def _build_unassigned_spare(shop, name, raw_price, raw_qty):
+#: Sentinel for "this caller has no price to give" — distinct from a blank box.
+#: Floor never sees a price field, so its adds arrive with this and store NULL.
+PRICE_NOT_SUPPLIED = object()
+
+
+def _clean_spare_dates(raw_ordered, raw_received, blank_is_today):
+    """
+    Resolve the ordered/received pair for an unassigned spare.
+
+    Returns `(ordered, received, error_message)` — the error is set on exactly
+    the inputs a person cannot have meant, and nothing is quietly substituted
+    for them. Three rules, matching the price and quantity checks beside it:
+
+    * unparseable is REFUSED, never turned into today. Both boxes are
+      `<input type="date">`, which posts either an ISO date or nothing, so
+      anything else here is a crafted POST — and silently stamping today onto
+      one writes a date nobody chose onto a supplier's ledger.
+    * a date in the FUTURE is refused. These rows are created `RECEIVED`; a
+      part cannot have arrived on a day that has not come. Same reasoning as
+      `_parse_money`'s future-advance refusal.
+    * received before ordered is refused — that is the pair the wrong way round,
+      and it is the one mistake the two boxes together can express.
+
+    `blank_is_today` is what separates creating from editing. On create both
+    boxes arrive pre-filled with today and an empty one means "the usual", so
+    today is the honest answer. On edit an empty box means the person cleared
+    it, and clearing has to be allowed to stick.
+    """
+    fallback = timezone.localdate() if blank_is_today else None
+
+    def one(raw, label):
+        if raw is None:
+            return fallback, None
+        if isinstance(raw, datetime):
+            return raw.date(), None
+        if isinstance(raw, date):
+            return raw, None
+        text = str(raw).strip()
+        if not text:
+            return fallback, None
+        try:
+            return date.fromisoformat(text), None
+        except ValueError:
+            return None, f"{label} is not a valid date."
+
+    ordered, err = one(raw_ordered, "Ordered date")
+    if err:
+        return None, None, err
+    received, err = one(raw_received, "Received date")
+    if err:
+        return None, None, err
+
+    today = timezone.localdate()
+    if ordered and ordered > today:
+        return None, None, "Ordered date cannot be in the future."
+    if received and received > today:
+        return None, None, "Received date cannot be in the future."
+    if ordered and received and received < ordered:
+        return None, None, "Received date cannot be before the ordered date."
+
+    return ordered, received, None
+
+
+def _build_unassigned_spare(shop, name, raw_price, raw_qty,
+                            ordered_date=None, received_date=None):
     """
     Validate and create one unassigned spare on a shop's ledger.
 
@@ -525,6 +603,13 @@ def _build_unassigned_spare(shop, name, raw_price, raw_qty):
     appear to owe the workshop), a negative or zero quantity, and an oversized
     price that corrupted the ledger. Any second screen that offered "add" would
     have inherited all of it, so the rules live here rather than in a view.
+
+    `raw_price=PRICE_NOT_SUPPLIED` stores NULL rather than zero, and the
+    difference is the documented one: zero means the part was free, NULL means
+    nobody has priced it yet. That is the Floor case — a mechanic records the
+    part that arrived, and Office fills the figure in when the shop's bill is
+    keyed. `SpareShop.update_totals()` coalesces NULL to 0, so an unpriced row
+    adds nothing to what the shop is owed until it is priced.
     """
     if shop is None:
         return None, "Choose which shop this was bought from."
@@ -536,31 +621,44 @@ def _build_unassigned_spare(shop, name, raw_price, raw_qty):
         return None, "Item name cannot be empty."
     name = name[:100]          # matches the column; silently truncating beats a 500
 
+    # A price nobody supplied and a price box left empty are the same fact —
+    # this part has not been priced yet — and both store NULL. Zero is reserved
+    # for a part genuinely given away, which is a different thing to record.
+    # `SpareShop.update_totals()` coalesces NULL to 0, so an unpriced row adds
+    # nothing to the shop's balance until somebody prices it.
+    price_unknown = raw_price is PRICE_NOT_SUPPLIED or not str(raw_price or '').strip()
     try:
-        price = Decimal(str(raw_price).strip()) if str(raw_price).strip() else Decimal('0')
+        price = None if price_unknown else Decimal(str(raw_price).strip())
         qty = Decimal(str(raw_qty).strip()) if str(raw_qty).strip() else Decimal('1')
     except (InvalidOperation, ValueError, TypeError):
         return None, "Price and quantity must be numbers."
 
-    if price < 0:
-        return None, "Price cannot be negative — that would show the shop owing the workshop."
+    if price is not None:
+        if price < 0:
+            return None, "Price cannot be negative — that would show the shop owing the workshop."
+        if price > MAX_UNIT_PRICE:
+            return None, f"Price is too large (limit ₹{MAX_UNIT_PRICE:,})."
     if qty <= 0:
         return None, "Quantity must be more than zero."
-    if price > MAX_UNIT_PRICE:
-        return None, f"Price is too large (limit ₹{MAX_UNIT_PRICE:,})."
     if qty > MAX_QUANTITY:
         return None, f"Quantity is too large (limit {MAX_QUANTITY:,})."
+
+    ord_date, rec_date, date_error = _clean_spare_dates(
+        ordered_date, received_date, blank_is_today=True
+    )
+    if date_error:
+        return None, date_error
 
     item = JobCardSpareItem.objects.create(
         job_card=None,
         shop=shop,
         source=JobCardSpareItem.SOURCE_SHOP,
         spare_part_name=name,
-        unit_price=price.quantize(Decimal('0.01')),
+        unit_price=None if price is None else price.quantize(Decimal('0.01')),
         quantity=qty.quantize(Decimal('0.01')),
         status='RECEIVED',
-        ordered_date=timezone.localdate(),
-        received_date=timezone.localdate(),
+        ordered_date=ord_date,
+        received_date=rec_date,
     )
     return item, None
 
@@ -579,6 +677,8 @@ def spare_shop_add_unassigned(request, pk):
             request.POST.get('spare_part_name'),
             request.POST.get('unit_price', '0'),
             request.POST.get('quantity', '1'),
+            ordered_date=request.POST.get('ordered_date'),
+            received_date=request.POST.get('received_date'),
         )
         if error:
             messages.error(request, error)
@@ -625,32 +725,66 @@ def spare_shop_unassign_item(request, item_pk):
 
 @office_required
 def spare_shop_update_item_price(request, item_pk):
-    """POST: Update unit_price and quantity of an item directly from the shop ledger."""
+    """
+    POST: correct one row's cost and quantity from the shop ledger.
+
+    Bounded by the same limits `_build_unassigned_spare` and
+    `unassigned_spare_edit` apply, and for the same reason: a value past
+    `max_digits` is written and then every later read of that shop's ledger
+    raises `InvalidOperation` while aggregating it, which leaves the shop's page
+    permanently un-openable. This was the last door into these rows that did not
+    go through those rules — it took a negative price (making the shop appear to
+    owe the workshop), a zero quantity and an oversized figure alike.
+
+    Unlike the Hub's own edit this one may touch a row already fitted to a car,
+    because the shop ledger lists both. It still only moves what the workshop
+    PAID (`unit_price`); the customer's figure is `total_price` and is not
+    reachable from here.
+    """
     item = get_object_or_404(JobCardSpareItem, pk=item_pk)
     shop_id = item.shop_id
-    if request.method == 'POST':
-        price = request.POST.get('unit_price')
-        qty = request.POST.get('quantity')
-        
-        updated = False
-        try:
-            from decimal import Decimal, InvalidOperation
-            if price is not None and price != '':
-                item.unit_price = Decimal(price)
-                updated = True
-            if qty is not None and qty != '':
-                item.quantity = Decimal(qty)
-                updated = True
-                
-            if updated:
-                item.save()
-                messages.success(request, f"Updated pricing for '{item.spare_part_name}'.")
-        except (InvalidOperation, ValueError, TypeError):
-            messages.error(request, "Invalid number format for price or quantity.")
-            
-    if shop_id:
-        return redirect('spare_shop_detail', pk=shop_id)
-    return redirect('home')
+
+    def done(message=None, error=False):
+        if message:
+            (messages.error if error else messages.success)(request, message)
+        if shop_id:
+            return redirect('spare_shop_detail', pk=shop_id)
+        return redirect('home')
+
+    if request.method != 'POST':
+        return done()
+
+    raw_price = request.POST.get('unit_price')
+    raw_qty = request.POST.get('quantity')
+
+    try:
+        # Blank means "leave it alone" here, not "clear it" — this form posts
+        # only the field being corrected.
+        price = Decimal(raw_price.strip()) if (raw_price or '').strip() else None
+        qty = Decimal(raw_qty.strip()) if (raw_qty or '').strip() else None
+    except (InvalidOperation, ValueError, TypeError):
+        return done("Price and quantity must be numbers.", error=True)
+
+    if price is None and qty is None:
+        return done()
+
+    if price is not None:
+        if price < 0:
+            return done("Price cannot be negative — that would show the shop "
+                        "owing the workshop.", error=True)
+        if price > MAX_UNIT_PRICE:
+            return done(f"Price is too large (limit ₹{MAX_UNIT_PRICE:,}).", error=True)
+        item.unit_price = price.quantize(Decimal('0.01'))
+
+    if qty is not None:
+        if qty <= 0:
+            return done("Quantity must be more than zero.", error=True)
+        if qty > MAX_QUANTITY:
+            return done(f"Quantity is too large (limit {MAX_QUANTITY:,}).", error=True)
+        item.quantity = qty.quantize(Decimal('0.01'))
+
+    item.save()
+    return done(f"Updated pricing for '{item.spare_part_name}'.")
 
 
 
@@ -698,7 +832,7 @@ def spare_shop_delete_unassigned(request, item_pk):
     return redirect('unassigned_spares_hub')
 
 
-@office_required
+@staff_required
 def unassigned_spare_add(request):
     """
     POST from the Unassigned Hub: record a shop purchase without opening that
@@ -711,6 +845,14 @@ def unassigned_spare_add(request):
     The shop is REQUIRED. A row with no job card *and* no shop would be filtered
     out of this Hub (which lists `shop__isnull=False`), absent from every shop
     ledger, and unreachable by the only delete there is — invisible money.
+
+    FLOOR MAY ADD, AND THE PRICE IS STRIPPED HERE, not merely hidden in the
+    template. The mechanic is who receives the part, so recording it at that
+    moment is the only way the ledger is not a day behind; but Floor is shown no
+    cost anywhere in this app, and a hidden input is one crafted POST away from
+    writing one. `PRICE_NOT_SUPPLIED` stores NULL — unpriced, not free — which
+    Office fills in from the shop's bill later. This is the same server-side
+    half the job card's `_price_locked_data` exists for (AUD-0081).
     """
     if request.method != 'POST':
         return redirect('unassigned_spares_hub')
@@ -720,11 +862,18 @@ def unassigned_spare_add(request):
     if raw_shop.isdigit():
         shop = SpareShop.objects.filter(pk=int(raw_shop), is_trashed=False).first()
 
+    if is_office_or_owner(request.user):
+        raw_price = request.POST.get('unit_price', '0')
+    else:
+        raw_price = PRICE_NOT_SUPPLIED
+
     item, error = _build_unassigned_spare(
         shop,
         request.POST.get('spare_part_name'),
-        request.POST.get('unit_price', '0'),
+        raw_price,
         request.POST.get('quantity', '1'),
+        ordered_date=request.POST.get('ordered_date'),
+        received_date=request.POST.get('received_date'),
     )
     if error:
         messages.error(request, error)
@@ -734,22 +883,138 @@ def unassigned_spare_add(request):
 
 
 @office_required
+@transaction.atomic
+def unassigned_spare_edit(request, item_pk):
+    """
+    POST: correct an UNASSIGNED spare — shop, name, quantity, price and the two
+    dates. Office and Owner only: this rewrites what a supplier is owed.
+
+    Every rule `_build_unassigned_spare` applies on create is applied again
+    here, because an edit can reach exactly the same bad states a create can and
+    this row is money. The price bounds are the column's (an oversized value is
+    written and then breaks every later read of that shop's ledger), a negative
+    price would show the shop owing the workshop, and the dates go through the
+    same `_clean_spare_dates` pair check — with `blank_is_today=False`, because
+    clearing a date here is a deliberate act rather than "the usual".
+
+    AN ARCHIVED SHOP THIS ROW ALREADY POINTS AT STAYS RESOLVABLE. Only active
+    shops may be moved TO, but the row's own shop is accepted whatever its
+    state — the same rule as `_resolvable_shops()` on the job card, and for the
+    same reason: an archived shop must keep the purchases already booked
+    against it, so correcting a typo in the part name cannot be the thing that
+    silently moves that debt to whichever shop happened to be first in the list.
+    """
+    item = get_object_or_404(
+        JobCardSpareItem.objects.select_related('shop'),
+        pk=item_pk, job_card__isnull=True,
+    )
+    if request.method != 'POST':
+        return redirect('unassigned_spares_hub')
+
+    def refuse(message):
+        messages.error(request, message)
+        return redirect('unassigned_spares_hub')
+
+    raw_shop = (request.POST.get('shop') or '').strip()
+    shop = None
+    if raw_shop.isdigit():
+        shop_pk = int(raw_shop)
+        shop = SpareShop.objects.filter(pk=shop_pk, is_trashed=False).first()
+        if shop is None and item.shop_id == shop_pk:
+            shop = item.shop          # its own archived shop — keeps its debt
+    if shop is None:
+        return refuse("Choose which shop this was bought from.")
+
+    name = (request.POST.get('spare_part_name') or '').strip()
+    if not name:
+        return refuse("Item name cannot be empty.")
+    name = name[:100]
+
+    try:
+        raw_price = request.POST.get('unit_price', '')
+        raw_qty = request.POST.get('quantity', '1')
+        # Blank clears the price back to "not yet known" rather than asserting
+        # the part was free — the same distinction a Floor-recorded row starts
+        # life in, and the one `SpareShop.update_totals()` coalesces to zero.
+        price = Decimal(str(raw_price).strip()) if str(raw_price).strip() else None
+        qty = Decimal(str(raw_qty).strip()) if str(raw_qty).strip() else Decimal('1')
+    except (InvalidOperation, ValueError, TypeError):
+        return refuse("Price and quantity must be numbers.")
+
+    if price is not None:
+        if price < 0:
+            return refuse("Price cannot be negative — that would show the shop owing the workshop.")
+        if price > MAX_UNIT_PRICE:
+            return refuse(f"Price is too large (limit ₹{MAX_UNIT_PRICE:,}).")
+    if qty <= 0:
+        return refuse("Quantity must be more than zero.")
+    if qty > MAX_QUANTITY:
+        return refuse(f"Quantity is too large (limit {MAX_QUANTITY:,}).")
+
+    ord_date, rec_date, date_error = _clean_spare_dates(
+        request.POST.get('ordered_date'),
+        request.POST.get('received_date'),
+        blank_is_today=False,
+    )
+    if date_error:
+        return refuse(date_error)
+
+    previous_shop = item.shop
+    item.shop = shop
+    item.spare_part_name = name
+    item.unit_price = None if price is None else price.quantize(Decimal('0.01'))
+    item.quantity = qty.quantize(Decimal('0.01'))
+    item.ordered_date = ord_date
+    item.received_date = rec_date
+    # JobCardSpareItem.save() snapshots the previous shop_id and refreshes both
+    # ledgers itself (AUD-0080), so moving a row between shops is already
+    # accounted for on both sides — nothing further is needed here.
+    item.save()
+
+    messages.success(request, f"Updated '{item.spare_part_name}'.")
+    return redirect('unassigned_spares_hub')
+
+
+@staff_required
 def unassigned_spares_hub(request):
     """
-    Dedicated hub for viewing and managing all Unassigned Spares.
+    Every shop purchase not yet fitted to a car, grouped by shop.
+
+    OPEN TO FLOOR, add-only. A mechanic takes delivery of a part, so letting
+    them record it is what keeps the ledger same-day; but Floor is shown no cost
+    anywhere in this app, so `can_see_prices` drops the price column, the price
+    box and the ledger figures, and `can_manage` drops Edit and Delete. Both are
+    resolved here and only read in the template — the server halves are the
+    decorators on `unassigned_spare_edit` / `spare_shop_delete_unassigned` and
+    the price strip in `unassigned_spare_add`, so hiding a control here is
+    presentation, never the control itself.
+
+    ROWS ON ARCHIVED SHOPS ARE STILL LISTED. Archiving hides a shop from the
+    pickers; it must not hide what is owed to it, or that debt is reachable from
+    no screen at all. The group carries an "Archived" badge and takes no new
+    purchases, while its existing rows stay editable — see
+    `unassigned_spare_edit`.
+
+    No job-card list here: a spare is put ON a car from the car's own Spare
+    Parts section ("Import from Unassigned"), which is the one place that also
+    sets the price and quantity the customer is billed.
     """
+    can_manage = is_office_or_owner(request.user)
+
     unassigned_items = (
         JobCardSpareItem.objects
         .filter(job_card__isnull=True, shop__isnull=False)
         .select_related('shop')
-        .order_by('shop__name', '-ordered_date')
+        .order_by('shop__name', '-ordered_date', '-pk')
     )
-    # No job-card list here: a spare is put ON a car from the car's own Spare
-    # Parts section ("Import from Unassigned"), which is the one place that also
-    # sets the price and quantity the customer is billed. This page previously
-    # queried 200 job cards for a picker the template never rendered.
+
     return render(request, 'workshop/spare_shops/unassigned_hub.html', {
         'unassigned_items': unassigned_items,
-        # Active shops only: a purchase cannot be booked against an archived shop.
+        'item_count': unassigned_items.count(),
+        # Active shops only: a purchase cannot be booked against an archived one.
+        # The edit modal re-adds a row's own archived shop client-side so it
+        # round-trips; this list is what may be chosen fresh.
         'shops': SpareShop.objects.filter(is_trashed=False).order_by('name'),
+        'can_manage': can_manage,
+        'can_see_prices': can_manage,
     })

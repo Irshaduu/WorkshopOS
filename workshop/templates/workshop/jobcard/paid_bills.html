@@ -55,6 +55,21 @@
     }
     .pb-page-title .title-icon { color: var(--pb-green); }
 
+    .pb-count-pill {
+        font-family: var(--font-body);
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        background: rgba(22, 163, 74, 0.1);
+        color: var(--pb-green);
+        padding: 2px 8px;
+        border-radius: 20px;
+        border: 1px solid rgba(22, 163, 74, 0.2);
+        align-self: center;
+        margin-left: 4px;
+    }
+
     .pb-total-block {
         display: flex;
         flex-direction: column;
@@ -218,9 +233,30 @@
         <div class="pb-page-title">
             <i class="bi bi-check-circle-fill title-icon"></i>
             Paid Bills
+            {% if not is_owner_user %}
+                <span class="pb-count-pill" id="paidCountPill">
+                    Last 7 Days <span id="pbCountVal">{{ total_count }}</span>
+                </span>
+            {% else %}
+                <span class="pb-count-pill" id="paidCountPill">
+                    <span id="pbFilterPillLabel">
+                        {% if filter_type == 'today' %}Today
+                        {% elif filter_type == 'this_week' %}This Week
+                        {% elif filter_type == 'this_month' %}This Month
+                        {% elif filter_type == 'this_year' %}This Year
+                        {% elif filter_type == 'last_week' %}Last Week
+                        {% elif filter_type == 'last_month' %}Last Month
+                        {% elif filter_type == 'last_year' %}Last Year
+                        {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
+                        {% else %}Today{% endif %}
+                    </span>
+                    <span id="pbCountVal">{{ total_count }}</span>
+                </span>
+            {% endif %}
         </div>
 
-        <!-- Total collected stat -->
+        <!-- Total collected stat (Owner only) -->
+        {% if is_owner_user and total_collected is not None %}
         <div class="pb-total-block">
             <span class="pb-total-label" id="pbTotalLabel">Total Collected
                 {% if filter_type == 'today' %}Today
@@ -236,6 +272,7 @@
             </span>
             <span class="pb-total-amount">₹{{ total_collected|floatformat:2 }}</span>
         </div>
+        {% endif %}
     </div>
 
     <!-- Controls: Search + Date Filter -->
@@ -248,7 +285,8 @@
                    value="{{ q }}" autocomplete="off">
         </form>
 
-        <!-- Date range filter dropdown -->
+        {% if is_owner_user %}
+        <!-- Date range filter dropdown (Owner only) -->
         <div class="dropdown">
             <button id="pbFilterDropdownBtn" class="pb-filter-btn" type="button"
                     data-bs-toggle="dropdown">
@@ -314,6 +352,29 @@
                 </li>
             </ul>
         </div>
+        {% endif %}
+
+        {% comment %}
+        Owner only, mirroring `audit_high_discounts`' own decorator. Paid Bills
+        is Office-visible; the discount audit is not — it reads as what the
+        workshop settled for against what it billed. A menu entry Office can see
+        but not open is worse than no entry at all.
+        {% endcomment %}
+        {% if is_owner_user %}
+        <!-- 3-dot menu (Owner only) -->
+        <div class="dropdown d-flex align-items-center">
+            <button class="btn btn-link text-muted p-0 border-0 shadow-none" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;">
+                <i class="bi bi-three-dots-vertical" style="font-size: 1.2rem;"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius: 12px; font-family: var(--font-body); font-size: 0.85rem; font-weight: 600;">
+                <li>
+                    <a class="dropdown-item py-2 text-danger" href="{% url 'audit_high_discounts' %}">
+                        <i class="bi bi-tags-fill me-2"></i> High Discount Bills
+                    </a>
+                </li>
+            </ul>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -340,8 +401,8 @@ document.addEventListener('DOMContentLoaded', function () {
         url.searchParams.set('page', page);
 
         if (currentFilter === 'custom') {
-            const s = document.getElementById('pb_start_date').value;
-            const e = document.getElementById('pb_end_date').value;
+            const s = document.getElementById('pb_start_date')?.value;
+            const e = document.getElementById('pb_end_date')?.value;
             if (s) url.searchParams.set('start_date', s);
             if (e) url.searchParams.set('end_date', e);
         } else {
@@ -349,18 +410,19 @@ document.addEventListener('DOMContentLoaded', function () {
             url.searchParams.delete('end_date');
         }
 
-        // Update filter label in button
+        // Update filter label in button & count pill
         const labelMap = {
-            today:      'Today',
-            this_week:  'This Week',
-            this_month: 'This Month',
-            this_year:  'This Year',
-            last_week:  'Last Week',
-            last_month: 'Last Month',
-            last_year:  'Last Year',
-            all:        'All Time',
+            today:       'Today',
+            this_week:   'This Week',
+            this_month:  'This Month',
+            this_year:   'This Year',
+            last_week:   'Last Week',
+            last_month:  'Last Month',
+            last_year:   'Last Year',
+            all:         'All Time',
         };
         const label = document.getElementById('pbFilterLabel');
+        const filterPill = document.getElementById('pbFilterPillLabel');
         const totalLabel = document.getElementById('pbTotalLabel');
         let labelText;
         if (currentFilter === 'custom') {
@@ -371,14 +433,12 @@ document.addEventListener('DOMContentLoaded', function () {
             labelText = labelMap[currentFilter] || 'All Time';
         }
         if (label) label.textContent = labelText;
+        if (filterPill) filterPill.textContent = labelText;
         if (totalLabel) totalLabel.textContent = 'Total Collected ' + labelText;
 
         const delay = (event && event.type === 'submit') ? 0 : 300;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-            // Responses do not necessarily arrive in the order they were sent,
-            // so each carries its request number and a stale one is dropped —
-            // otherwise a slow reply for "KL" lands after the one for "KL 10".
             const mine = ++seq;
             fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(res => res.text())
@@ -386,11 +446,18 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (mine !== seq) return;
                     resultsContainer.innerHTML = html;
                     window.history.pushState({}, '', url);
-                    // Sync total collected from hidden data carrier in partial
+                    // Sync count and total collected from hidden data carrier in partial
                     const sync = resultsContainer.querySelector('#pbSyncData');
                     if (sync) {
+                        const countVal = document.getElementById('pbCountVal');
+                        if (countVal && sync.dataset.count !== undefined) {
+                            countVal.textContent = sync.dataset.count;
+                        }
                         const totalEl = document.querySelector('.pb-total-amount');
-                        if (totalEl) totalEl.textContent = '₹' + parseFloat(sync.dataset.total).toFixed(2);
+                        if (totalEl && sync.dataset.total) {
+                            const val = parseFloat(sync.dataset.total);
+                            if (!isNaN(val)) totalEl.textContent = '₹' + val.toFixed(2);
+                        }
                     }
                 })
                 .catch(err => console.error('Search error:', err));

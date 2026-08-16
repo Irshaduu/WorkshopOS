@@ -55,8 +55,8 @@ graph TD
    Can do EVERYTHING below + these exclusive actions:
    - Access Owner Analysis & Reports: the **Profit** page (Turnover − Expenses = Profit, filtered by month/year/custom — what profit distribution is decided from) and, from it, the **Deep Analysis** page (mechanics, spares, vehicles, fleet, shops, operations).
    - Delete a whole month's salary settlement (Office can create and correct one, only an Owner can un-record it)
-   - View Paid Bills Dashboard (fully settled jobs and revenue filters)
-   - View Financial Audits (High Discounts)
+   - View the Paid Bills Dashboard over ANY period, with the grand Total Collected (Office sees the last 7 days and no grand total)
+   - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
    - Monitor all active login sessions
    - Remotely revoke any staff access
@@ -69,12 +69,12 @@ graph TD
    - View full Job Card List with search
    - Delete job cards (permanent + logged; blocked if the card still holds spares, jobs, a labour charge, or a payment)
    - Deactivate / reactivate Spare Shops & Fleet Accounts; delete (reverse + log) Fleet/Shop payments
-   - Mark cars as Completed / Undo completion
+   - Undo a completion (marking one completed is Floor's too, since the mechanic is who knows the car is finished; undoing can put a second active card on the floor for one registration, so it stays here)
    - View and Generate Invoices
    - Update payment status and amounts
    - Manage Bulk Payers (create, transfer bills, process cascade payments)
    - View Pending Bills dashboard
-   - Manage Spare Shops (create, edit, pay, view ledger, print)
+   - Manage Spare Shops (create, edit, pay, view ledger, print) and edit or delete rows in the Unassigned Spares Hub
    - Manage Master Lists (Brands, Models, Spares, Concerns)
    - View Car Profiles (vehicle history)
    - Create/Delete/Reset passwords for staff accounts
@@ -91,6 +91,8 @@ graph TD
    - View Live Report — the "Live Jobs" cards only; the operations board above them (who is holding which car, and the two parts-waiting boxes) is Office/Owner, since it names spare shops and ordering state
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
+   - Put a car On Hold / take it off hold, and Mark it Completed
+   - Record a purchase in the **Unassigned Spares Hub** — add only. No price box is shown and none is stored (the row is saved unpriced, and Office fills the figure in from the shop's bill); existing rows cannot be edited or deleted, and no price on the page is visible to Floor
 ```
 
 ---
@@ -497,11 +499,17 @@ SPARE SHOP (Supplier)
    │     Each payment is stored as a ledger record
    │     Owner can reverse any payment
    │
-   ├── Unassigned Spares Hub:
+   ├── Unassigned Spares Hub  (FLOOR can reach this one — add only):
    │     Add legacy stock/balances not linked to any job card
    │     Items can be moved from job cards to Unassigned
    │     Original vehicle info is preserved when unassigning
    │     Unassigned items can be imported into new job cards
+   │     Grouped by shop; an ARCHIVED shop's rows stay listed (badged) and
+   │       keep their shop when edited — archiving hides a shop from the
+   │       pickers, never what is owed to it
+   │     A row with no price is "Not priced", not ₹0 — Office fills the
+   │       figure in when the shop's bill is keyed
+   │     Floor: no price column, no price box, no edit, no delete
    │
    └── Print/Export (shop ledger printable view)
 ```
@@ -633,7 +641,12 @@ DELETION HISTORY (/deletion-history/) — Owner only, READ-ONLY
 MAIN DASHBOARD (home)
   Shows: All ACTIVE cars currently on the floor
   Cards: Reg, Brand/Model, Color dot, Mechanic, Completion %
-  Actions: Create Job, Mark Completed, Toggle Hold
+  Actions: Create Job, Mark Completed, Toggle Hold (all three are Floor's too)
+           View Invoice — Office/Owner only, mirroring invoice_view's decorator
+  Drawer:  Concerns / Jobs Performed / Inventory Items / Spare Parts, each
+           capped at 25 rows with the remainder named ("+7 more on the job
+           card"). The heading keeps the true count, so the two add back up.
+           Floor is shown no shop name and no price in it.
 
 JOB LIST
   Shows: ALL job cards (active + completed, not trash)

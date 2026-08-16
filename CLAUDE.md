@@ -2285,6 +2285,161 @@ about to correct one of these, you are about to break the business:
   cost nothing until the empty-box sweep was added, which would have missed any
   control placed there. Guarded by `TheFormIsWellFormedTests`.
 
+- **UNASSIGNED SPARES is open to FLOOR, add-only — and the price is stripped on
+  the SERVER, not hidden in the template.** Added 2026-08-16 on the owner's
+  instruction. The mechanic is who takes delivery of a part, so letting them
+  record it is the only way the shop ledger is not a day behind; but Floor is
+  shown cost nowhere else in this app. So `unassigned_spares_hub` is
+  `@staff_required` and resolves `can_manage` / `can_see_prices` once, while
+  `unassigned_spare_edit` and `spare_shop_delete_unassigned` stay
+  `@office_required` — Floor adds and never changes what is already there.
+  The half that matters is in `unassigned_spare_add`: for a non-Office user it
+  passes **`PRICE_NOT_SUPPLIED`** instead of reading `unit_price` at all, so a
+  crafted POST carrying a price writes nothing. Hiding the box is presentation;
+  this is the control. Exactly the shape of AUD-0081, and
+  `test_a_crafted_price_from_floor_is_ignored` is the guard.
+  **An unpriced row stores NULL, never 0** — the same distinction the warehouse
+  draw rule already makes: zero says the shop gave the part away and would
+  settle the ledger at a figure nobody agreed, NULL says nobody has priced it
+  yet. `SpareShop.update_totals()` coalesces NULL to 0, so an unpriced row adds
+  nothing to the balance until Office fills the figure in from the shop's bill.
+  Blank in Office's own price box means the same thing, on both the add and the
+  edit path, so there is one rule rather than one per door.
+  **An ARCHIVED shop's rows stay listed, stay editable, and keep their shop.**
+  Archiving hides a shop from the pickers; it must never hide what is owed to
+  it, or that debt is reachable from no screen at all. The group carries an
+  "Archived" badge, takes no new purchase, and `unassigned_spare_edit` resolves
+  an active shop **or the row's own shop whatever its state** — the same rule as
+  `_resolvable_shops()` on the job card, and for the same reason: correcting a
+  typo in a part name must not be the thing that walks that purchase onto
+  another shop's ledger. The edit modal re-adds that archived shop as an option
+  client-side so the select round-trips.
+  **Two dates, checked as a pair.** `_clean_spare_dates()` refuses what nobody
+  can have meant — unparseable (never silently stamped with today: both boxes
+  are `type=date`, so anything else is a crafted POST and writing a date nobody
+  chose onto a supplier's ledger is worse than refusing), a date in the future
+  (these rows are created RECEIVED), and received-before-ordered. `blank_is_today`
+  separates the two doors: on ADD an empty box means "the usual" because it
+  arrives pre-filled with today, on EDIT it means somebody cleared it and that
+  has to stick.
+  **Layout: one horizontal scroller for the add form, and two inline buttons
+  rather than a ⋮ menu.** Stacked, the form is seven full-width rows on a phone
+  and the Save button lands below the fold; scrolling sideways is also the
+  gesture staff already use on the Job Card's Spare Parts table, which is the
+  screen this one sits beside in their day. And a Bootstrap dropdown inside a
+  horizontal scroller is **clipped** — `overflow-x: auto` computes `overflow-y`
+  to `auto` too and Popper cannot escape a clipping ancestor, the `.cb-list`
+  trap again — so the row actions are two buttons, which is also one tap instead
+  of two on the tablet. Delete still opens a confirmation. Guarded by
+  `workshop/tests/test_unassigned_spares.py`.
+
+- **PAID BILLS is Office-visible with a 7-day window; the HIGH DISCOUNT AUDIT is
+  not.** Changed 2026-08-16. Office settles bills, so it needs to look one up
+  and check what was taken for it — a few days' worth, not the year's. The
+  window is enforced in `paid_bills_list`, **not** by hiding the filter
+  dropdown: `?filter=all` is one URL edit away, so the template only decides
+  whether to render a control the view already refuses to honour. The bills
+  inside the window are shown in full, per-card amounts included; what is
+  withheld from Office is the **grand total**, which is a business figure rather
+  than a settlement one — say that plainly rather than calling it revenue
+  concealment, because seven days of bills can be added up by hand.
+  `audit_high_discounts` stays **`@owner_required`** (AUD-0041). It reads as what
+  the workshop settled for against what it billed — the compensating control for
+  the part-paid-books-a-discount rule — and it was briefly widened to Office by
+  an outside change that deleted the line saying why. Its entry in the Paid
+  Bills ⋮ menu is gated to match, because a door Office can see but not open is
+  worse than no door. Guarded by `workshop/tests/test_paid_bills_rbac.py`.
+
+- **FLOOR may put a card on hold and mark it completed. It may not UNDO a
+  completion.** Added 2026-08-16 on the owner's instruction. Both buttons had
+  been rendered for Floor all along while `toggle_hold` and `mark_completed`
+  were `@office_required`, so pressing either gave a mechanic a 403 on the one
+  screen they use all day — the template gate and the decorator disagreeing,
+  which is the `InvoiceLinkVisibilityTests` rule in the other direction. Both
+  are now `@staff_required`: neither moves money, and a hold is reversed by the
+  same button. `undo_completed` is deliberately **not** widened — it can put a
+  second active card on the floor for one registration and has to answer that
+  rule when it does. Guarded by `workshop/tests/test_floor_board.py`.
+
+- **The home board caps each drawer section at 25 rows, and `_capped()` is ONE
+  function taking the cap as an argument.** Added 2026-08-16. A cap is needed
+  because a rebuild in the live data carries **91 spares** and there are 45
+  cards to a page; 25 rather than the Live Report's 10 on the owner's
+  instruction, because this page is for taking in the whole floor at a glance.
+  Safe here and not on a money list: no total sits above these rows, the exact
+  remainder is printed rather than implied, the heading still reports the true
+  count so the two add back up, and every hidden row is on the job card the card
+  already opens.
+  **The two boards were briefly two `_capped()` functions of the same name in
+  one module, and the later silently shadowed the earlier** — so the home board
+  capped at the Live Report's 10 while every comment said 25, and nothing on
+  screen would have shown it, because the remainder line stayed arithmetically
+  correct. One function, an explicit cap per call site, and
+  `test_the_two_boards_do_not_share_one_cap_by_accident` pins it. As ever the
+  cap lives in the view and never as `|slice` in the template.
+
+- **THE CASHBOOK HEADLINE IS TWO FIGURES. There is no Net card.** Changed
+  2026-08-16 on the owner's instruction, replacing the earlier "Net is rendered
+  only when there IS income" rule. The workshop does not work out a cashbook
+  net — cash in is very rare, cash out is constant — and the netting off belongs
+  to the owner's Analysis section. Removing the card moves no money and hides
+  no data: the Profit page does **not** read this screen,
+  `analysis_engine.cashbook_income()` and `cashbook_expense()` aggregate the
+  entries themselves, and `cashbook_totals['net']` is still computed in the view.
+  What this page owes the business is that both sides are captured accurately,
+  which is what `BothSidesAreCollectedEvenThoughOnlyTwoAreShownTests` asserts.
+  The third card's CSS is deleted rather than left behind — dead rules for a
+  card nobody renders is how the next person concludes it belongs there.
+  `filter_label` now comes from the view: the window's name was written out
+  twice in `_stats.html`, once per figure, which is two copies of one fact free
+  to drift on the very headline whose job is to say which period the figures
+  describe.
+
+- **The vehicle and customer boxes carry NO placeholder.** Changed 2026-08-16 on
+  the owner's instruction, and it reverses the older "Meter 00001" note. Every
+  one of those boxes sits under a label that already names it, so the hint
+  restated the label in quieter type — a second line of text per box, on the
+  longest form in the app, for no fact. Both the Job Card and the Estimate strip
+  them, and they strip them in `__init__` from one list rather than widget by
+  widget, so the two forms cannot drift. The placeholders that survive earn it
+  by saying something a label cannot: the Inventory picker's "or type" (which is
+  load-bearing — see the entry above) and the money boxes' currency. Guarded by
+  `test_the_vehicle_and_customer_boxes_carry_no_placeholder`.
+
+- **A LOCKED job card has to LOOK locked.** Fixed 2026-08-16. The form grew a
+  soft-surface palette that painted every control `#f1f5f9` — and that was also
+  what a `:disabled` control was painted, so on a settled card the Financial
+  Lock disabled every field and none of them looked any different. The banner
+  said LOCKED while the form under it looked ready to type into: the one screen
+  where an edit is dangerous was the one screen giving no sign of it. Locked is
+  now its own palette (cooler fill, visible border, muted text, `not-allowed`),
+  deliberately further from the live state than the live state is from hover,
+  and `[readonly]` gets the same treatment because the settlement screen uses it
+  and it means the same thing to whoever is looking.
+  Two rules travel with it. The extra treatment is keyed on the form's own
+  **`data-locked`**, which `toggleRecordLock()` maintains — read in CSS rather
+  than in script because the lock is applied on a `setTimeout(…, 100)` and
+  script would race it, the same reason `.jc-empty:disabled` is a CSS rule. And
+  the state is restated on every section heading as the **word** "LOCKED", not
+  an icon-font glyph: a codepoint would depend on a stylesheet fetched from a
+  CDN, and this is not the screen to take that bet on. Note the trap that cost
+  two test failures — those rules re-use `.jc-sec-head` / `.jc-sec-icon`, so
+  they are declared at the FOOT of the stylesheet; a copy earlier in the file
+  is what several tests find first when they split on a selector. Guarded by
+  `ALockedRecordLooksLockedTests`.
+  **A running CSS TRANSITION outranks `!important` — it is the highest origin
+  in the cascade, above important-author.** `.form-control` transitions
+  `background-color` and `border-color`, so inspecting a locked card anywhere
+  that is not painting frames (a background tab, a headless snapshot, a
+  screenshot tool) reads those two properties as the LIVE colours while `color`
+  and `cursor` — not transitioned — read as the locked ones. It looks exactly
+  like an `!important` rule losing to nothing at all, and cost an hour on
+  2026-08-16. `element.style.transition = 'none'` and re-read; the locked values
+  appear. The wrong fix is a more specific duplicate rule — one was written and
+  removed again, because a second copy of a palette is two things free to
+  disagree. This applies to any measurement of a transitioned property on this
+  codebase's forms, not just the lock.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
 variables, the rollback, and what to do when both owners are locked out.
@@ -2317,8 +2472,20 @@ drawer (`#appDrawer`) behind the Manage/Menu button. There used to be a second,
 divergent mobile bottom nav; it was deleted because the two menus listed different
 things. **Don't add a second nav** — a new destination goes in the drawer, in the
 section it belongs to.
-- Top bar is deliberately minimal: Floor · New · Completed · Notifications · Manage
-  (Floor role gets Inventory instead of Completed/Notifications; the bell is Owner-only).
+- Top bar is deliberately minimal, and it carries a DIFFERENT set per role
+  (reordered 2026-08-16):
+  - **Owner / Office** — Admin · Completed · Report · Alerts · Manage. The bell
+    is Owner-only. There is no `+ New` here on purpose: Floor creates most job
+    cards, and Owner/Office reach the form from the `+ New` button in the home
+    page's own header. That is the owner's call, and it means **the only
+    `{% url 'jobcard_create' %}` in `base.html` is the Floor tab** — if that
+    button ever leaves the dashboard header, Owner and Office lose every
+    navigation route to a new card.
+  - **Floor** — Floor · New · Inventory · Menu.
+  Floor's drawer also carries **Unassigned Spares**, which is its only door into
+  the Spare Shops section (add-only, no prices — see the deliberate decision
+  above). `/spare-shops/` is already in `DRAWER_SECTION_PREFIXES`, so that link
+  lights the Manage button with no change there.
 - **On phones (≤640px) that same bar renders at the BOTTOM.** It is the one element,
   repositioned in a media query — not a second nav. The top edge is the hardest place
   on a phone for a thumb and every destination on the bar is tapped constantly. Five
@@ -2628,6 +2795,14 @@ Three consequences worth not rediscovering. **`Forgot?` moved onto the one door*
 - Never pass template variables through `|safe`; use `json_script` to hand data to JS (owner analytics dashboard is the reference implementation).
 - Use `timezone.localdate()`, never `date.today()`, for any "today"/date-range logic — the server can run in UTC while the business operates in IST (`TIME_ZONE = 'Asia/Kolkata'`), and `date.today()` silently returns the wrong calendar day near midnight IST. This is already the standard across `cashbook_views.py`, `completed.py`, `paid.py`, `spare_shop.py`, `views_suppliers.py`, and `analysis_views.py`.
 - List/ledger views with a time filter (Paid Bills, Completed, Spare Shop, Supplier Shop, Cashbook) use one shared calendar-aligned filter vocabulary: Today / This Week / This Month / This Year / Last Week / Last Month / Last Year / Custom range. Reuse this set for new filtered views instead of inventing a different one (e.g. a rolling `30d`/`365d` window).
+- **A custom range is PARSED before it reaches the ORM.** `date.fromisoformat()`
+  in a `try/except ValueError`, ignoring an unusable range rather than
+  filtering by it. Handed straight to a `__date__gte` lookup, a string like
+  `?start_date=abc` reaches `get_prep_value` and raises — a 500 from a
+  hand-edited URL. `cashbook_views._apply_date_filter` always did this; Paid
+  Bills, Completed, Spare Shop and the discount audit did not, and were brought
+  into line on 2026-08-16. The pickers are `type="date"`, so this only ever
+  fires on a crafted URL, but a 500 is a 500.
 
 ### Owner Analysis & Reports — rebuilt from scratch 2026-07-27
 The old zone/tab placeholder system is **gone** (views, `analysis_zone`, and all
@@ -2691,7 +2866,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (39 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 44 files, **1,217 tests** (re-counted 2026-08-13 after `test_jobcard_form_ux.py` was added; the figures here had gone stale four times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-69 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and **69 on 2026-08-12**, which is the clearest evidence that the spread is load-dependent rather than meaningful; a run at 40 minutes has not hung. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (42 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 47 files, **1,307 tests** (re-counted 2026-08-16 after `test_unassigned_spares.py`, `test_floor_board.py` and `test_paid_bills_rbac.py` were added; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, and **79 on 2026-08-16**, which is the clearest evidence that the spread is load-dependent rather than meaningful; that last one had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

@@ -68,6 +68,7 @@ urlpatterns = [
     path('spare-shops/<int:pk>/add-unassigned/', views.spare_shop_add_unassigned, name='spare_shop_add_unassigned'),
     path('spare-shops/items/<int:item_pk>/unassign/', views.spare_shop_unassign_item, name='spare_shop_unassign_item'),
     path('spare-shops/items/<int:item_pk>/update-price/', views.spare_shop_update_item_price, name='spare_shop_update_item_price'),
+    path('spare-shops/items/<int:item_pk>/edit/', views.unassigned_spare_edit, name='unassigned_spare_edit'),
     path('spare-shops/items/<int:item_pk>/delete/', views.spare_shop_delete_unassigned, name='spare_shop_delete_unassigned'),
     
     path('jobcards/<int:pk>/complete/', views.mark_completed, name='mark_completed'),

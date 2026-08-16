@@ -9,6 +9,7 @@
     :root {
         --font-display: 'Barlow Condensed', sans-serif;
         --font-body:    'Barlow', sans-serif;
+        --font-sans:    -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
     }
     .page-header {
         margin-bottom: 2rem;
@@ -27,8 +28,62 @@
     }
     .title-icon { color: #dc2626; }
     
+    /* ── Date range filter button ─────────────────── */
+    .audit-filter-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 14px;
+        border-radius: 999px;
+        background: #ffffff;
+        border: 1.5px solid var(--color-border);
+        color: var(--color-text);
+        font-family: var(--font-body);
+        font-size: 0.82rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .audit-filter-btn:hover {
+        border-color: #2563eb;
+        background: #f8fafc;
+    }
+    .audit-dropdown-menu {
+        border-radius: 14px;
+        border: 1px solid var(--color-border);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+        padding: 6px;
+        min-width: 180px;
+    }
+    .audit-dropdown-menu .dropdown-item {
+        border-radius: 8px;
+        font-family: var(--font-body);
+        font-size: 0.82rem;
+        font-weight: 600;
+        padding: 7px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-text);
+    }
+    .audit-dropdown-menu .dropdown-item:hover {
+        background: #f1f5f9;
+    }
+    .audit-dropdown-menu .dropdown-item.active {
+        background: rgba(37, 99, 235, 0.1);
+        color: #2563eb;
+        font-weight: 700;
+    }
+    .audit-dropdown-menu .item-icon {
+        font-size: 0.88rem;
+        opacity: 0.7;
+    }
+
     .audit-card {
-        background: #fff;
+        background-color: #fff;
         border-radius: 12px;
         border: 1px solid #e2e8f0;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
@@ -37,6 +92,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
     .audit-card:hover {
         box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
@@ -46,21 +102,24 @@
         flex-direction: column;
     }
     .car-name {
-        font-family: var(--font-display);
-        font-size: 1.25rem;
+        font-family: var(--font-sans);
+        font-size: 1.15rem;
         font-weight: 700;
-        color: #1e293b;
+        letter-spacing: -0.015em;
+        color: #0f172a;
+        line-height: 1.25;
     }
     .reg-number {
         font-family: var(--font-body);
         font-size: 0.85rem;
-        font-weight: 600;
-        color: #64748b;
+        font-weight: 700;
+        color: #475569;
         background: #f1f5f9;
         padding: 2px 8px;
-        border-radius: 4px;
+        border-radius: 6px;
         display: inline-block;
         margin-top: 4px;
+        border: 1px solid #e2e8f0;
     }
     .audit-right {
         text-align: right;
@@ -103,23 +162,73 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1 class="page-title">
-        <i class="bi bi-tags-fill title-icon"></i> High Discount Audit
-    </h1>
-    <p class="text-muted mt-2" style="font-family: var(--font-body);">Showing paid bills that gave away more than ₹{{ threshold|floatformat:0|intcomma }}.</p>
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+        <h1 class="page-title">
+            <i class="bi bi-tags-fill title-icon"></i> High Discount Audit
+        </h1>
+        <p class="text-muted mt-2 mb-0" style="font-family: var(--font-body);">Showing paid bills that gave away more than ₹{{ threshold|floatformat:0|intcomma }}.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <!-- Date range filter dropdown -->
+        <div class="dropdown">
+            <button id="auditFilterDropdownBtn" class="audit-filter-btn" type="button" data-bs-toggle="dropdown">
+                <i class="bi bi-funnel"></i>
+                <span id="auditFilterLabel">
+                    {% if filter_type == 'this_year' %}This Year
+                    {% elif filter_type == 'last_year' %}Last Year
+                    {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
+                    {% else %}This Year{% endif %}
+                </span>
+                <i class="bi bi-chevron-down"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end audit-dropdown-menu">
+                <li><a class="dropdown-item {% if filter_type == 'this_year' %}active{% endif %}" href="?filter=this_year">
+                    <i class="bi bi-calendar3 item-icon"></i>This Year
+                </a></li>
+                <li><a class="dropdown-item {% if filter_type == 'last_year' %}active{% endif %}" href="?filter=last_year">
+                    <i class="bi bi-calendar2 item-icon"></i>Last Year
+                </a></li>
+
+                <li><hr class="dropdown-divider"></li>
+                <li><a id="auditCustomRangeToggle" class="dropdown-item {% if filter_type == 'custom' %}active{% endif %}" href="#">
+                    <i class="bi bi-calendar-range item-icon"></i>Custom Range
+                </a></li>
+                <li id="auditCustomDatePicker"
+                    style="display: {% if filter_type == 'custom' %}block{% else %}none{% endif %};"
+                    onclick="event.stopPropagation()">
+                    <div class="px-2 pt-2 pb-1">
+                        <form method="get" class="d-flex flex-column gap-2">
+                            <input type="hidden" name="filter" value="custom">
+                            <label class="small text-muted mb-0" style="font-size:0.7rem; font-family: var(--font-body);">Start</label>
+                            <input type="date" name="start_date" id="audit_start_date" class="form-control form-control-sm" value="{{ start_date }}" required>
+                            <label class="small text-muted mb-0" style="font-size:0.7rem; font-family: var(--font-body);">End</label>
+                            <input type="date" name="end_date" id="audit_end_date" class="form-control form-control-sm" value="{{ end_date }}" required>
+                            <button type="submit" class="btn btn-primary btn-sm rounded-pill mt-1"
+                                    style="font-family: var(--font-body); font-weight: 600;">Apply</button>
+                        </form>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <a href="{% url 'paid_bills_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill d-inline-flex align-items-center gap-1" style="font-family: var(--font-body); font-weight: 600; height: 36px; padding: 0 14px;">
+            <i class="bi bi-arrow-left"></i> Back to Paid Bills
+        </a>
+    </div>
 </div>
 
 {% if bills %}
     <div class="row">
         {% for bill in bills %}
+        {% with color=bill.get_car_color_hex|default:'#475569' %}
         <div class="col-md-6 mb-3">
-            <div class="audit-card">
+            <div class="audit-card" style="--card-glow: {{ color }}22; --card-shade: {% if bill.car_color %}{{ color }}14{% else %}transparent{% endif %}; background-image: linear-gradient(var(--card-shade, transparent), var(--card-shade, transparent));">
                 <div class="audit-left">
                     <div class="car-name">{{ bill.brand_name }} {{ bill.model_name }}</div>
                     <div><span class="reg-number">{{ bill.registration_number }}</span></div>
-                    <div class="text-muted mt-2" style="font-size: 0.75rem;">
-                        Billed on: {{ bill.updated_at|date:"d M Y" }}
+                    <div class="text-muted mt-2" style="font-size: 0.75rem; font-family: var(--font-body);">
+                        Billed on: {{ bill.paid_date|default:bill.updated_at|date:"d M Y" }}
                     </div>
                 </div>
                 <div class="audit-right">
@@ -139,13 +248,28 @@
                 </div>
             </div>
         </div>
+        {% endwith %}
         {% endfor %}
     </div>
 {% else %}
     <div class="text-center py-5">
         <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
         <h4 class="mt-3" style="font-family: var(--font-display); font-weight: 700;">All Clear!</h4>
-        <p class="text-muted" style="font-family: var(--font-body);">No high discount bills found in the system.</p>
+        <p class="text-muted" style="font-family: var(--font-body);">No high discount bills found for this time period.</p>
     </div>
 {% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const customToggle = document.getElementById('auditCustomRangeToggle');
+    const customPicker = document.getElementById('auditCustomDatePicker');
+    if (customToggle && customPicker) {
+        customToggle.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            customPicker.style.display = (customPicker.style.display === 'none') ? 'block' : 'none';
+        });
+    }
+});
+</script>
 {% endblock %}

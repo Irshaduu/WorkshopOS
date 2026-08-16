@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -7,7 +7,7 @@ from django.db.models import Q
 from django.core.paginator import Paginator
 
 from ..models import JobCard
-from ..decorators import office_required
+from ..decorators import office_required, staff_required
 
 
 @office_required
@@ -84,11 +84,16 @@ def completed_list(request):
     elif filter_type == 'custom':
         start_date = request.GET.get('start_date', '')
         end_date   = request.GET.get('end_date', '')
+        # Parsed, not handed to the ORM as text — an unparseable string raises
+        # in `get_prep_value`, i.e. a 500 from a hand-edited URL.
         if start_date and end_date:
-            completed_jobcards = completed_jobcards.filter(
-                completed_date__gte=start_date,
-                completed_date__lte=end_date,
-            )
+            try:
+                completed_jobcards = completed_jobcards.filter(
+                    completed_date__gte=date.fromisoformat(start_date),
+                    completed_date__lte=date.fromisoformat(end_date),
+                )
+            except ValueError:
+                pass
     # filter_type == 'all' → no date filter applied
 
     # 5. Pagination
@@ -116,11 +121,23 @@ def completed_list(request):
     return render(request, 'workshop/completed/completed_list.html', context)
 
 
-@office_required
+@staff_required
 def mark_completed(request, pk):
     """
     Mark job card as completed.
     Auto-sets completed_date to today (actual completion date).
+
+    Floor as well as Office, on the owner's instruction (2026-08-16). The
+    mechanic is who knows the car is finished, and the two buttons on the Floor
+    board — this and `toggle_hold` — were rendered for them all along while both
+    views were `@office_required`, so pressing either gave a mechanic a 403 on
+    the one screen they use all day. Widening the view is the half that makes
+    the buttons work; the template gate already allowed them.
+
+    It moves no money and it is not a delete: the card leaves the board and the
+    Completed list can put it back. `undo_completed` stays Office/Owner because
+    it can resurrect a card onto the floor and has to answer the one-active-card
+    rule when it does.
     """
     if request.method == 'POST':
         jobcard = get_object_or_404(JobCard, pk=pk)
@@ -167,11 +184,15 @@ def undo_completed(request, pk):
     return redirect('completed_list')
 
 
-@office_required  # Only office/owner can toggle hold as it affects planning
+@staff_required
 def toggle_hold(request, pk):
     """
     Toggle the on_hold status of a job card.
     Used when waiting for parts or other delays.
+
+    Floor as well as Office — see `mark_completed` for why. Waiting on a part
+    is something the mechanic discovers first, and a hold is fully reversible
+    by the same button.
     """
     if request.method == 'POST':
         jobcard = get_object_or_404(JobCard, pk=pk)

@@ -7,12 +7,13 @@ is correct in a dict and missing from the paper is still a wrong invoice.
 """
 
 import re
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User, Group
 from django.test import TestCase, Client
 from django.urls import reverse
+from django.utils import timezone
 
 from inventory.models import Category, Item
 from workshop.invoice import (
@@ -1243,3 +1244,37 @@ class TheDiscountAuditListsByAmountTests(InvoiceTestCase):
 
         self.assertIn('3,500', page)
         self.assertNotIn('30%', page)
+
+    def test_time_range_filtering(self):
+        # Create a bill for last year
+        today = timezone.localdate()
+        last_year_date = today.replace(year=today.year - 1, month=6, day=15)
+        old_job = self._settled('KL01LASTYR', '50000.00', '6000.00')
+        old_job.paid_date = timezone.make_aware(timezone.datetime.combine(last_year_date, timezone.datetime.min.time()))
+        old_job.save()
+
+        # Create a bill for this year
+        this_year_date = today.replace(month=2, day=10)
+        curr_job = self._settled('KL01THISYR', '50000.00', '6000.00')
+        curr_job.paid_date = timezone.make_aware(timezone.datetime.combine(this_year_date, timezone.datetime.min.time()))
+        curr_job.save()
+
+        # 1. Default (this_year)
+        resp = self.client.get(reverse('audit_high_discounts'))
+        self.assertContains(resp, 'KL01THISYR')
+        self.assertNotContains(resp, 'KL01LASTYR')
+        self.assertContains(resp, 'This Year')
+        self.assertContains(resp, 'Last Year')
+        self.assertContains(resp, 'Custom Range')
+
+        # 2. Last year
+        resp_ly = self.client.get(reverse('audit_high_discounts') + '?filter=last_year')
+        self.assertContains(resp_ly, 'KL01LASTYR')
+        self.assertNotContains(resp_ly, 'KL01THISYR')
+
+        # 3. Custom range matching old_job
+        s_date = (last_year_date - timedelta(days=1)).strftime('%Y-%m-%d')
+        e_date = (last_year_date + timedelta(days=1)).strftime('%Y-%m-%d')
+        resp_custom = self.client.get(reverse('audit_high_discounts') + f'?filter=custom&start_date={s_date}&end_date={e_date}')
+        self.assertContains(resp_custom, 'KL01LASTYR')
+        self.assertNotContains(resp_custom, 'KL01THISYR')

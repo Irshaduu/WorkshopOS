@@ -130,43 +130,111 @@
        expenses. With no income in the period the Net card is not rendered at
        all (it would restate Money Out), so Out grows into the space. */
     .cb-stats {
-        display: grid; grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr));
-        gap: 10px; margin-bottom: 16px;
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 12px; margin-bottom: 16px;
     }
-    .cb-stats.is-out-only { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
     .cb-stat {
         position: relative; overflow: hidden;
         background: var(--color-card); border: 1px solid var(--color-border);
         border-radius: 14px; padding: 12px 14px 11px 16px;
         box-shadow: 0 1px 4px var(--color-shadow);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
     .cb-stat::before {
-        content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+        content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3.5px;
+        background: var(--color-border);
+        transition: background-color 0.2s ease;
     }
-    .cb-stat--in::before  { background: var(--cb-in); }
-    .cb-stat--out::before { background: var(--cb-out); }
-    .cb-stat--net::before { background: #334155; }
     .cb-stat-lbl {
         display: flex; align-items: center; gap: 5px;
         font-size: 0.64rem; font-weight: 800; text-transform: uppercase;
         letter-spacing: 0.07em; color: var(--color-text-muted); margin-bottom: 4px;
+        transition: color 0.2s ease;
     }
     .cb-stat-lbl i { font-size: 0.7rem; }
     .cb-stat-val {
         font-size: clamp(1.02rem, 3.6vw, 1.42rem); font-weight: 800; line-height: 1.15;
         font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
         word-break: break-word;
+        transition: color 0.2s ease;
     }
-    .cb-stat--in  .cb-stat-val { color: var(--cb-in); }
-    .cb-stat--out .cb-stat-val { color: var(--cb-out); }
-    .cb-stat--net .cb-stat-val { color: #0f172a; }
-    .cb-stat--net.is-neg .cb-stat-val { color: var(--cb-out); }
-    /* The page's headline figure, not one of three equals. */
+
+    /* ── Active State Sync with "Record an entry" (Money Out / Money In) ── */
+    /* When Record an entry is on "Money Out" (default): Money Out box is RED active, Money In is neutral off */
+    .cb-stats:not(.mode-in) .cb-stat--out,
+    .cb-stats.mode-out .cb-stat--out {
+        border-color: rgba(220, 38, 38, 0.35);
+        box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.08), 0 2px 6px rgba(220, 38, 38, 0.05);
+    }
+    .cb-stats:not(.mode-in) .cb-stat--out::before,
+    .cb-stats.mode-out .cb-stat--out::before {
+        background: var(--cb-out);
+    }
+    .cb-stats:not(.mode-in) .cb-stat--out .cb-stat-val,
+    .cb-stats.mode-out .cb-stat--out .cb-stat-val {
+        color: var(--cb-out);
+    }
+    .cb-stats:not(.mode-in) .cb-stat--out .cb-stat-lbl,
+    .cb-stats.mode-out .cb-stat--out .cb-stat-lbl {
+        color: #b91c1c;
+    }
+
+    .cb-stats:not(.mode-in) .cb-stat--in,
+    .cb-stats.mode-out .cb-stat--in {
+        border-color: var(--color-border);
+        box-shadow: 0 1px 4px var(--color-shadow);
+    }
+    .cb-stats:not(.mode-in) .cb-stat--in::before,
+    .cb-stats.mode-out .cb-stat--in::before {
+        background: var(--color-border);
+    }
+    .cb-stats:not(.mode-in) .cb-stat--in .cb-stat-val,
+    .cb-stats.mode-out .cb-stat--in .cb-stat-val {
+        color: var(--color-text-muted);
+        font-weight: 700;
+    }
+    .cb-stats:not(.mode-in) .cb-stat--in .cb-stat-lbl,
+    .cb-stats.mode-out .cb-stat--in .cb-stat-lbl {
+        color: var(--color-text-muted);
+    }
+
+    /* When Record an entry is on "Money In": Money In box is GREEN active, Money Out is neutral off */
+    .cb-stats.mode-in .cb-stat--in {
+        border-color: rgba(5, 150, 105, 0.35);
+        box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.08), 0 2px 6px rgba(5, 150, 105, 0.05);
+    }
+    .cb-stats.mode-in .cb-stat--in::before {
+        background: var(--cb-in);
+    }
+    .cb-stats.mode-in .cb-stat--in .cb-stat-val {
+        color: var(--cb-in);
+    }
+    .cb-stats.mode-in .cb-stat--in .cb-stat-lbl {
+        color: #047857;
+    }
+
+    .cb-stats.mode-in .cb-stat--out {
+        border-color: var(--color-border);
+        box-shadow: 0 1px 4px var(--color-shadow);
+    }
+    .cb-stats.mode-in .cb-stat--out::before {
+        background: var(--color-border);
+    }
+    .cb-stats.mode-in .cb-stat--out .cb-stat-val {
+        color: var(--color-text-muted);
+        font-weight: 700;
+    }
+    .cb-stats.mode-in .cb-stat--out .cb-stat-lbl {
+        color: var(--color-text-muted);
+    }
+
+    /* THE HEADLINE IS MONEY OUT AND MONEY IN, AND NOTHING ELSE, on the owner's
+       instruction (2026-08-16). The workshop does not work out a cashbook net;
+       the netting off belongs to the Analysis section, which aggregates the
+       entries itself. The third card's rules are removed rather than left
+       behind — dead CSS for a card nobody renders is how the next person
+       concludes it is meant to be there and puts it back. */
     .cb-stat--out .cb-stat-val { font-size: clamp(1.25rem, 4.4vw, 1.75rem); }
-    /* An empty income side is the normal state, so it recedes rather than
-       sitting there in green announcing a zero. */
-    .cb-stat--in.is-empty::before { background: var(--color-border); }
-    .cb-stat--in.is-empty .cb-stat-val { color: var(--color-text-muted); font-weight: 700; }
     .cb-stat-sub {
         font-size: 0.66rem; color: var(--color-text-muted); margin-top: 2px;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -174,30 +242,68 @@
 
     /* ── Add entry ───────────────────────────────────────────── */
     .cb-add {
-        background: var(--color-card); border: 1px solid var(--color-border);
+        background: var(--color-card); border: 1.5px solid rgba(220, 38, 38, 0.45);
         border-radius: 16px; padding: 13px 14px 14px;
-        box-shadow: 0 1px 4px var(--color-shadow); margin-bottom: 20px;
+        box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.1), 0 3px 12px rgba(220, 38, 38, 0.05), 0 1px 4px var(--color-shadow);
+        margin-bottom: 20px;
+        position: relative;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+    .cb-add.is-out {
+        border-color: rgba(220, 38, 38, 0.45);
+        box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.12), 0 3px 12px rgba(220, 38, 38, 0.06), 0 1px 4px var(--color-shadow);
+    }
+    .cb-add.is-out .cb-section-title i { color: var(--cb-out); }
+    .cb-add.is-out .cb-input:focus,
+    .cb-add.is-out .cb-select:focus,
+    .cb-add.is-out .cb-datebox:focus-within {
+        border-color: var(--cb-out);
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+    }
+    .cb-add.is-out .cb-seg-btn[data-type="EXPENSE"].is-active {
+        background: rgba(220, 38, 38, 0.1);
+        color: var(--cb-out);
+        box-shadow: 0 1px 3px rgba(220, 38, 38, 0.15);
+    }
+
+    .cb-add.is-in {
+        border-color: rgba(5, 150, 105, 0.45);
+        box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.12), 0 3px 12px rgba(5, 150, 105, 0.06), 0 1px 4px var(--color-shadow);
+    }
+    .cb-add.is-in .cb-section-title i { color: var(--cb-in); }
+    .cb-add.is-in .cb-input:focus,
+    .cb-add.is-in .cb-select:focus,
+    .cb-add.is-in .cb-datebox:focus-within {
+        border-color: var(--cb-in);
+        box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+    }
+    .cb-add.is-in .cb-seg-btn[data-type="INCOME"].is-active {
+        background: rgba(5, 150, 105, 0.1);
+        color: var(--cb-in);
+        box-shadow: 0 1px 3px rgba(5, 150, 105, 0.15);
+    }
+
     .cb-add-top {
         display: flex; align-items: center; justify-content: space-between;
-        gap: 10px; margin-bottom: 11px; flex-wrap: wrap;
+        gap: 8px; margin-bottom: 11px; flex-wrap: nowrap;
     }
     .cb-section-title {
         font-size: 0.82rem; font-weight: 800; text-transform: uppercase;
         letter-spacing: 0.06em; color: var(--color-text-muted); margin: 0;
-        display: flex; align-items: center; gap: 7px;
+        display: flex; align-items: center; gap: 7px; white-space: nowrap;
+        min-width: 0;
     }
-    .cb-section-title i { font-size: 0.86rem; color: var(--cb-accent); }
+    .cb-section-title i { font-size: 0.86rem; color: var(--cb-out); transition: color 0.2s ease; flex-shrink: 0; }
 
     .cb-seg {
         display: inline-flex; background: var(--color-border-light);
-        border-radius: 999px; padding: 3px; gap: 2px;
+        border-radius: 999px; padding: 3px; gap: 2px; flex-shrink: 0;
     }
     .cb-seg-btn {
         border: none; background: transparent; border-radius: 999px;
-        padding: 7px 15px; min-height: 34px; font-size: 0.78rem; font-weight: 700;
+        padding: 6px 13px; min-height: 32px; font-size: 0.76rem; font-weight: 700;
         color: var(--color-text-muted); cursor: pointer;
-        display: inline-flex; align-items: center; gap: 6px;
+        display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
         transition: background 0.15s, color 0.15s, box-shadow 0.15s;
     }
     .cb-seg-btn i { font-size: 0.75rem; }
@@ -206,13 +312,29 @@
     .cb-seg-btn[data-type="EXPENSE"].is-active { color: var(--cb-out); }
     .cb-seg-btn[data-type="INCOME"].is-active  { color: var(--cb-in); }
 
+    /* Scroll wrapper for single-row desktop layout on all devices */
+    .cb-add-scroll-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 2px;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0,0,0,0.15) transparent;
+    }
+    .cb-add-scroll-wrap::-webkit-scrollbar { height: 4px; }
+    .cb-add-scroll-wrap::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.15);
+        border-radius: 4px;
+    }
+    .cb-add-scroll-wrap::-webkit-scrollbar-track { background: transparent; }
+
     .cb-add-grid {
         display: grid; gap: 8px; align-items: center;
-        grid-template-columns: auto minmax(0, 1fr) 150px 138px auto;
+        grid-template-columns: 46px minmax(190px, 1fr) 105px 95px auto;
         grid-template-areas: "date name amt meth go";
+        min-width: 520px;
     }
     .cb-f-date { grid-area: date; }
-    .cb-f-name { grid-area: name; }
+    .cb-f-name { grid-area: name; position: relative; }
     .cb-f-amt  { grid-area: amt;  }
     .cb-f-meth { grid-area: meth; }
     .cb-f-go   { grid-area: go;   }
@@ -223,14 +345,61 @@
     .cb-input, .cb-select {
         width: 100%; min-height: 44px;
         border: 1px solid var(--color-border); border-radius: 10px;
-        padding: 9px 12px; font-size: 0.875rem; color: var(--color-text);
+        padding: 9px 11px; font-size: 0.86rem; color: var(--color-text);
         background: var(--color-card); outline: none; transition: border-color 0.15s, box-shadow 0.15s;
     }
     .cb-input:focus, .cb-select:focus {
         border-color: var(--cb-accent); box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
     }
-    .cb-input::placeholder { color: var(--color-text-muted); }
-    .cb-select { cursor: pointer; }
+    .cb-input::placeholder,
+    .cb-search-input::placeholder {
+        font-size: 0.76rem !important;
+        color: #94a3b8 !important;
+        opacity: 0.8 !important;
+        font-weight: 500;
+    }
+    .cb-select { cursor: pointer; padding-right: 20px; }
+
+    /* Autocomplete dropdown - exactly like Job Card floating suggestions */
+    .cb-autocomplete-suggestions {
+        position: fixed;
+        max-height: 220px;
+        overflow-y: auto;
+        z-index: 99999;
+        background: var(--color-card, #ffffff);
+        border: 1px solid var(--color-border, #e2e8f0);
+        border-radius: 12px;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 4px 10px rgba(0,0,0,0.08);
+        display: none;
+        padding: 4px;
+    }
+    .cb-autocomplete-suggestions.show { display: block; }
+    .cb-autocomplete-suggestions .cb-sug-item {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--color-text, #1e293b);
+        border-radius: 7px;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        text-align: left;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background 0.12s, color 0.12s;
+    }
+    .cb-autocomplete-suggestions .cb-sug-item:hover,
+    .cb-autocomplete-suggestions .cb-sug-item.is-selected {
+        background: rgba(16, 185, 129, 0.08);
+        color: #047857;
+    }
+    .cb-add.is-out .cb-autocomplete-suggestions .cb-sug-item:hover,
+    .cb-add.is-out .cb-autocomplete-suggestions .cb-sug-item.is-selected {
+        background: rgba(220, 38, 38, 0.08);
+        color: var(--cb-out);
+    }
 
     /* The date box. Small and first, because on almost every entry it is
        already right — today. It shows a calendar glyph and nothing else
@@ -493,40 +662,68 @@
     }
     .cb-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-    /* ── Tablet ──────────────────────────────────────────────── */
+    /* ── Tablet & Mobile ────────────────────────────────────── */
     @media (max-width: 900px) {
-        .cb-add-grid {
-            grid-template-columns: auto minmax(0, 1fr) 140px 130px;
-            grid-template-areas: "date name amt meth" "go go go go";
-        }
-        .cb-add-grid.show-note {
-            grid-template-areas: "date name amt meth" "note note note note" "go go go go";
-        }
-        /* The grid item is the wrapper, not the button — justify-self on the
-           button itself does nothing here. */
-        .cb-f-go { display: flex; justify-content: flex-end; }
-        .cb-submit { width: auto; min-width: 180px; }
+        .cb-submit { width: auto; min-width: 140px; }
     }
 
     /* ── Mobile ──────────────────────────────────────────────── */
     @media (max-width: 600px) {
         .cb-page-title { font-size: 1.3rem; }
-        /* Out gets the full width; In and Net share the row beneath it. When
-           there is no income, In takes the full width too rather than sitting
-           half-empty beside nothing. */
-        .cb-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .cb-stats.is-out-only { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .cb-stat--out { grid-column: 1 / -1; }
-        .cb-stats.is-out-only .cb-stat--in { grid-column: 1 / -1; }
-        .cb-add-grid {
-            grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
-            grid-template-areas: "date name name" "amt amt meth" "go go go";
+
+        /* Top statistics in a single row */
+        .cb-stats {
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 14px;
         }
-        .cb-add-grid.show-note {
-            grid-template-areas: "date name name" "amt amt meth" "note note note" "go go go";
+        .cb-stat {
+            padding: 10px 11px 9px 12px;
+            border-radius: 12px;
         }
-        .cb-f-go { display: block; }
-        .cb-submit { width: 100%; min-width: 0; }
+        .cb-stat-lbl {
+            font-size: 0.6rem;
+            letter-spacing: 0.05em;
+            margin-bottom: 2px;
+        }
+        .cb-stat-val {
+            font-size: 1.15rem;
+        }
+        .cb-stat--out .cb-stat-val {
+            font-size: 1.28rem;
+        }
+        .cb-stat-sub {
+            font-size: 0.62rem;
+            white-space: normal;
+            line-height: 1.2;
+        }
+
+        /* "Record an entry" Headline and Toggle buttons on same row */
+        .cb-add-top {
+            flex-wrap: nowrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .cb-section-title {
+            font-size: 0.74rem;
+            letter-spacing: 0.04em;
+        }
+        .cb-section-title i {
+            font-size: 0.78rem;
+        }
+        .cb-seg {
+            padding: 2px;
+            gap: 2px;
+        }
+        .cb-seg-btn {
+            padding: 4px 8px !important;
+            min-height: 28px !important;
+            font-size: 0.7rem !important;
+            gap: 3px;
+        }
+
         .cb-list-head { display: none; }
         .cb-row { grid-template-columns: 26px minmax(0, 1fr) auto 34px; gap: 8px; padding: 10px 11px; }
         .cb-row-ico { width: 24px; height: 24px; }
@@ -646,9 +843,11 @@
     <!-- ── HEADLINE FIGURES (swapped by AJAX) ─────────────────── -->
     {% include "workshop/cashbook/_stats.html" %}
 
+    {{ categories|json_script:"cbCategoriesJson" }}
+
     <!-- ── ADD ENTRY ──────────────────────────────────────────── -->
     <form id="cbAddForm" method="post" action="{% url 'manage_add_cashbook_entry' %}"
-          class="cb-add" autocomplete="off">
+          class="cb-add is-out" autocomplete="off">
         {% csrf_token %}
         <input type="hidden" name="entry_type" id="cbEntryType" value="EXPENSE">
 
@@ -664,48 +863,48 @@
             </div>
         </div>
 
-        <div class="cb-add-grid" id="cbAddGrid">
-            <div class="cb-f-date">
-                <span class="cb-datebox" id="cbDateBox" title="Date the money moved — defaults to today">
-                    <i class="bi bi-calendar-event"></i>
-                    <span class="cb-date-txt" id="cbDateTxt"></span>
-                    <input type="date" name="date" id="cbDate" value="{{ today_iso }}"
-                           max="{{ today_iso }}" required aria-label="Date the money moved">
-                </span>
-            </div>
+        <div class="cb-add-scroll-wrap">
+            <div class="cb-add-grid" id="cbAddGrid">
+                <div class="cb-f-date">
+                    <span class="cb-datebox" id="cbDateBox" title="Date the money moved — defaults to today">
+                        <i class="bi bi-calendar-event"></i>
+                        <span class="cb-date-txt" id="cbDateTxt"></span>
+                        <input type="date" name="date" id="cbDate" value="{{ today_iso }}"
+                               max="{{ today_iso }}" required aria-label="Date the money moved">
+                    </span>
+                </div>
 
-            <div class="cb-f-name">
-                <input type="text" name="category" id="cbName" class="cb-input" list="cbCategories"
-                       placeholder="What for? — Electricity, Rent, Courier…" maxlength="100"
-                       required aria-label="Entry name">
-                <datalist id="cbCategories">
-                    {% for c in categories %}<option value="{{ c }}"></option>{% endfor %}
-                </datalist>
-            </div>
+                <div class="cb-f-name">
+                    <input type="text" name="category" id="cbName" class="cb-input"
+                           placeholder="Add expense..." maxlength="100" autocomplete="off"
+                           required aria-label="Entry name">
+                    <div class="list-group cb-autocomplete-suggestions" id="cbCategorySuggestions"></div>
+                </div>
 
-            <div class="cb-f-amt">
-                <input type="number" name="amount" id="cbAmount" class="cb-input"
-                       placeholder="₹ Amount" step="0.01" min="0.01" required aria-label="Amount">
-            </div>
+                <div class="cb-f-amt">
+                    <input type="number" name="amount" id="cbAmount" class="cb-input"
+                           placeholder="₹ Amount" step="0.01" min="0.01" required aria-label="Amount">
+                </div>
 
-            <div class="cb-f-meth">
-                <select name="payment_method" id="cbMethod" class="cb-select" required aria-label="Payment method">
-                    <option value="CASH" selected>Cash</option>
-                    <option value="UPI">UPI</option>
-                    <option value="CARD">Card</option>
-                    <option value="TRANSFER">Bank Transfer</option>
-                </select>
-            </div>
+                <div class="cb-f-meth">
+                    <select name="payment_method" id="cbMethod" class="cb-select" required aria-label="Payment method">
+                        <option value="CASH" selected>Cash</option>
+                        <option value="UPI">UPI</option>
+                        <option value="CARD">Card</option>
+                        <option value="TRANSFER">Transfer</option>
+                    </select>
+                </div>
 
-            <div class="cb-f-note">
-                <input type="text" name="description" id="cbNote" class="cb-input"
-                       placeholder="Note (optional) — bill number, who it went to…" aria-label="Note">
-            </div>
+                <div class="cb-f-note">
+                    <input type="text" name="description" id="cbNote" class="cb-input"
+                           placeholder="Add note (optional)..." aria-label="Note">
+                </div>
 
-            <div class="cb-f-go">
-                <button type="button" class="cb-submit is-out" id="cbSubmitBtn">
-                    <i class="bi bi-plus-lg"></i> <span id="cbSubmitLabel">Add Expense</span>
-                </button>
+                <div class="cb-f-go">
+                    <button type="button" class="cb-submit is-out" id="cbSubmitBtn">
+                        <i class="bi bi-plus-lg"></i> <span id="cbSubmitLabel">Add Expense</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -907,7 +1106,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 ['cbStats', 'cbLedger'].forEach(id => {
                     const fresh = holder.querySelector('#' + id);
                     const live  = document.getElementById(id);
-                    if (fresh && live) live.replaceWith(fresh);
+                    if (fresh && live) {
+                        if (id === 'cbStats' && typeof entryType !== 'undefined' && entryType) {
+                            const isIncome = entryType.value === 'INCOME';
+                            fresh.classList.toggle('mode-in', isIncome);
+                            fresh.classList.toggle('mode-out', !isIncome);
+                        }
+                        live.replaceWith(fresh);
+                    }
                 });
                 window.history.replaceState({}, '', url);
                 // The pill lives in the header, outside both swapped regions,
@@ -991,9 +1197,15 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     /* ── Add form ───────────────────────────────────────────── */
+    const addForm     = document.getElementById('cbAddForm');
     const entryType   = document.getElementById('cbEntryType');
     const submitBtn   = document.getElementById('cbSubmitBtn');
     const submitLabel = document.getElementById('cbSubmitLabel');
+    const nameInput   = document.getElementById('cbName');
+    const categorySuggestions = document.getElementById('cbCategorySuggestions');
+
+    const catJsonEl = document.getElementById('cbCategoriesJson');
+    const allCategories = catJsonEl ? JSON.parse(catJsonEl.textContent || '[]') : [];
 
     document.querySelectorAll('.cb-seg-btn').forEach(btn => {
         btn.addEventListener('click', function () {
@@ -1007,11 +1219,113 @@ document.addEventListener('DOMContentLoaded', function () {
             entryType.value = isIncome ? 'INCOME' : 'EXPENSE';
             submitBtn.classList.toggle('is-in', isIncome);
             submitBtn.classList.toggle('is-out', !isIncome);
+            addForm.classList.toggle('is-in', isIncome);
+            addForm.classList.toggle('is-out', !isIncome);
+            const statsBox = document.getElementById('cbStats');
+            if (statsBox) {
+                statsBox.classList.toggle('mode-in', isIncome);
+                statsBox.classList.toggle('mode-out', !isIncome);
+            }
             submitLabel.textContent = isIncome ? 'Add Income' : 'Add Expense';
-            document.getElementById('cbName').placeholder = isIncome
-                ? 'What for? — Scrap sale, Black oil sale…'
-                : 'What for? — Electricity, Rent, Courier…';
+            nameInput.placeholder = isIncome ? 'Add income...' : 'Add expense...';
         });
+    });
+
+    /* ── Custom Autocomplete (Only shows when typing >= 1 char, like Job Card) ── */
+    let selectedSugIdx = -1;
+
+    function updateSuggestionsPosition() {
+        if (!categorySuggestions.classList.contains('show')) return;
+        const rect = nameInput.getBoundingClientRect();
+        categorySuggestions.style.top = (rect.bottom + 4) + 'px';
+        categorySuggestions.style.left = rect.left + 'px';
+        categorySuggestions.style.width = Math.max(rect.width, 220) + 'px';
+    }
+
+    function renderCategorySuggestions(val) {
+        selectedSugIdx = -1;
+        const q = (val || '').trim().toLowerCase();
+        // NEVER show suggestions without typing at least 1 letter!
+        if (q.length < 1) {
+            categorySuggestions.innerHTML = '';
+            categorySuggestions.classList.remove('show');
+            return;
+        }
+
+        const matches = allCategories.filter(c => c.toLowerCase().includes(q)).slice(0, 8);
+        if (!matches.length) {
+            categorySuggestions.innerHTML = '';
+            categorySuggestions.classList.remove('show');
+            return;
+        }
+
+        categorySuggestions.innerHTML = '';
+        matches.forEach((cat) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'cb-sug-item';
+            btn.textContent = cat;
+            btn.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                nameInput.value = cat;
+                categorySuggestions.innerHTML = '';
+                categorySuggestions.classList.remove('show');
+                document.getElementById('cbAmount').focus();
+            });
+            categorySuggestions.appendChild(btn);
+        });
+        categorySuggestions.classList.add('show');
+        updateSuggestionsPosition();
+    }
+
+    nameInput.addEventListener('input', function () {
+        renderCategorySuggestions(this.value);
+    });
+
+    nameInput.addEventListener('focus', function () {
+        if (this.value.trim().length >= 1) {
+            renderCategorySuggestions(this.value);
+        }
+    });
+
+    window.addEventListener('scroll', updateSuggestionsPosition, true);
+    window.addEventListener('resize', updateSuggestionsPosition);
+    const scrollWrap = document.querySelector('.cb-add-scroll-wrap');
+    if (scrollWrap) {
+        scrollWrap.addEventListener('scroll', updateSuggestionsPosition);
+    }
+
+    nameInput.addEventListener('keydown', function (e) {
+        const items = categorySuggestions.querySelectorAll('.cb-sug-item');
+        if (!items.length || !categorySuggestions.classList.contains('show')) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedSugIdx = (selectedSugIdx + 1) % items.length;
+            items.forEach((it, i) => it.classList.toggle('is-selected', i === selectedSugIdx));
+            items[selectedSugIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedSugIdx = (selectedSugIdx - 1 + items.length) % items.length;
+            items.forEach((it, i) => it.classList.toggle('is-selected', i === selectedSugIdx));
+            items[selectedSugIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter' && selectedSugIdx >= 0) {
+            e.preventDefault();
+            nameInput.value = items[selectedSugIdx].textContent;
+            categorySuggestions.innerHTML = '';
+            categorySuggestions.classList.remove('show');
+            document.getElementById('cbAmount').focus();
+        } else if (e.key === 'Escape') {
+            categorySuggestions.innerHTML = '';
+            categorySuggestions.classList.remove('show');
+        }
+    });
+
+    document.addEventListener('click', function (e) {
+        if (e.target !== nameInput && !categorySuggestions.contains(e.target)) {
+            categorySuggestions.innerHTML = '';
+            categorySuggestions.classList.remove('show');
+        }
     });
 
     // Note field is collapsed by default: most entries have none, and an empty
@@ -1062,7 +1376,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     /* ── Add confirmation ───────────────────────────────────── */
-    const addForm = document.getElementById('cbAddForm');
     function openAddConfirm() {
         if (!addForm.reportValidity()) return;
         const isIncome = entryType.value === 'INCOME';

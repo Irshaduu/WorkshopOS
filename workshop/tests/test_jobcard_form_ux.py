@@ -581,8 +581,39 @@ class TheFormSaysLessTests(JobCardFormBase):
         html = self.rendered()
         self.assertNotIn('Ordered from a spare shop', html)
 
-    def test_the_mileage_box_names_where_to_read_it(self):
-        self.assertIn('Meter 00001', self.rendered())
+    #: The vehicle and customer boxes carry NO placeholder, on the owner's
+    #: instruction (2026-08-16). Every one of them sits under a label that
+    #: already names it, so the hint restated the label in quieter type — and on
+    #: a form this long that is a second line of text per box for no fact. The
+    #: two placeholders that survive elsewhere on this form earn it by saying
+    #: something the label cannot: the Inventory box's "or type" (above) and the
+    #: money boxes' currency.
+    NO_PLACEHOLDER_FIELDS = ('brand_name', 'model_name', 'registration_number',
+                             'mileage', 'car_color_other', 'customer_name',
+                             'customer_contact', 'notes')
+
+    def test_the_vehicle_and_customer_boxes_carry_no_placeholder(self):
+        from workshop.forms import JobCardForm
+        form = JobCardForm()
+        for name in self.NO_PLACEHOLDER_FIELDS:
+            with self.subTest(field=name):
+                self.assertNotIn('placeholder', form.fields[name].widget.attrs,
+                                 '%s still has a placeholder' % name)
+
+    def test_the_estimate_agrees_with_the_job_card_about_that(self):
+        """
+        The two forms are filled in by the same people minutes apart. A hint on
+        one and not the other reads as one of them being unfinished.
+        """
+        from workshop.forms import EstimateForm
+        form = EstimateForm()
+        for name in self.NO_PLACEHOLDER_FIELDS:
+            if name in form.fields:
+                with self.subTest(field=name):
+                    self.assertNotIn('placeholder', form.fields[name].widget.attrs)
+
+    def test_the_old_mileage_hint_is_gone_from_the_page(self):
+        self.assertNotIn('Meter 00001', self.rendered())
 
 
 class EverySectionAnnouncesItselfTheSameWayTests(JobCardFormBase):
@@ -599,7 +630,7 @@ class EverySectionAnnouncesItselfTheSameWayTests(JobCardFormBase):
         ('Vehicle Details', 'bi-car-front-fill'),
         ('Customer Details', 'bi-person-vcard-fill'),
         ('Customer Concerns', 'bi-chat-left-text-fill'),
-        ('Jobs (Labour)', 'bi-tools'),
+        ('Job Performed', 'bi-tools'),
         ('Inventory Items', 'bi-box-seam-fill'),
         ('Spare Parts', 'bi-nut-fill'),
     ]
@@ -626,70 +657,28 @@ class EverySectionAnnouncesItselfTheSameWayTests(JobCardFormBase):
     #: anything — a car's concerns are not "more" than its vehicle details — so
     #: six shades invited being read as a ranking, and the darkest drew the eye
     #: hardest at the bottom of the form where the least urgent sections live.
-    BAND = '#2a70da'
-
-    def test_every_band_is_the_same_colour(self):
+    def test_section_headers_wear_light_slate_design(self):
         source = self.source()
         head = source.split('.jc-sec-head {', 1)[1].split('}', 1)[0]
-        self.assertIn('--jc-band: %s;' % self.BAND, head)
-        self.assertIn('background: var(--jc-band)', head)
+        self.assertIn('background: #f8fafc', head)
         # No per-section shade survives, in the stylesheet or the markup.
         self.assertNotIn('jc-sec--', source)
         self.assertNotIn('jc-sec--', self.rendered())
 
-    def test_the_band_colour_comes_from_the_nav_bar(self):
-        """
-        It is a literal rather than `color-mix()` on the nav variables, because
-        `color-mix()` is Safari 16.2+ and the owners read this on iPhones. The
-        cost of a literal is that it can drift from the bar it was sampled
-        from — so this fails the day the nav changes, which is the reminder to
-        resample it.
-        """
-        with open('workshop/templates/workshop/base.html', encoding='utf-8') as fh:
-            base = fh.read()
-        self.assertIn('--nav-blue-1: #10275c;', base)
-        self.assertIn('--nav-blue-mid: #1e4fb8;', base)
-        self.assertIn('--nav-blue-2: #2f7de8;', base)
-
-    def test_everything_on_a_band_is_white_so_it_reads_on_all_six(self):
-        """
-        A control tuned for the bright first band disappears on the sixth —
-        which is exactly what `btn-outline-primary` did on the Add buttons:
-        blue on dark navy. Translucent white takes its contrast from whatever
-        is behind it, so one rule works on every step.
-
-        Measured white-on-band: 4.02 : 4.74 : 5.68 : 6.76 : 8.40 : 10.72.
-        """
+    def test_light_slate_header_elements_have_high_contrast(self):
         source = self.source()
-        for selector, want in (('.jc-sec-name {', 'color: #fff'),
-                               ('.jc-sec-icon {', 'color: #fff'),
-                               ('.jc-fold-chevron {', 'color: #fff')):
+        for selector, want in (('.jc-sec-name {', 'color: #0f172a'),
+                               ('.jc-sec-icon {', 'color: #475569'),
+                               ('.jc-fold-chevron {', 'color: #64748b')):
             rule = source.split(selector, 1)[1].split('}', 1)[0]
-            self.assertIn(want, rule, '%s is not white on the band' % selector)
-        # The symbol keeps a tile so it stays an object rather than dissolving
-        # into the band.
-        icon = source.split('.jc-sec-icon {', 1)[1].split('}', 1)[0]
-        self.assertIn('rgba(255, 255, 255, .20)', icon)
-        # The Add buttons are re-coloured for the band, not left as outline-primary.
+            self.assertIn(want, rule, '%s does not match expected color' % selector)
+        # The Add buttons are styled for the light slate header
         self.assertIn('.jc-sec-head .jc-add', source)
 
-    def test_the_heading_is_legible_on_the_band_at_any_size(self):
-        """
-        Measured: white on `#2a70da` is **4.74:1**, which clears WCAG AA (4.5:1)
-        for normal-size text — so unlike the ramp it replaced, this colour needs
-        no help from the type size to be legible.
-
-        That is worth stating because the heading IS large (1.18rem/700), and
-        the reason has changed: under the ramp, the lightest step measured
-        4.02:1 and the size was what dragged it into WCAG's large-text rule.
-        Now it is simply a comfort choice on a long form. Nobody should later
-        find the big heading, assume it is load-bearing for contrast, and be
-        afraid to touch it — or shrink it and quietly reintroduce a problem that
-        no longer exists.
-        """
+    def test_the_heading_is_bold_and_readable(self):
         rule = self.source().split('.jc-sec-name {', 1)[1].split('}', 1)[0]
         self.assertIn('font-weight: 700', rule)
-        self.assertIn('color: #fff', rule)
+        self.assertIn('color: #0f172a', rule)
 
     def test_the_field_labels_are_bold_at_their_original_colour_and_size(self):
         """
@@ -1367,3 +1356,69 @@ class TheCarWearsItsColourTests(JobCardFormBase):
             picker = fh.read()
         self.assertIn("CustomEvent('carcolour:change'", picker)
         self.assertIn("carcolour:change", self.source())
+
+
+class ALockedRecordLooksLockedTests(JobCardFormBase):
+    """
+    The Financial Lock disables every field on a settled card, and until
+    2026-08-16 a disabled field was painted in the SAME `#f1f5f9` the soft
+    surface uses for a live one — so the banner said LOCKED while the form under
+    it looked ready to type into. The one screen where an edit is dangerous was
+    the one screen giving no sign of it.
+
+    Nothing here runs the script; these assert the contract the script relies
+    on — that the stylesheet gives `:disabled` its own palette, and that the
+    locked state is expressed as an attribute CSS can read.
+    """
+
+    def rule(self, selector):
+        return self.source().split(selector, 1)[1].split('}', 1)[0]
+
+    def test_a_disabled_box_is_not_painted_like_a_live_one(self):
+        source = self.source()
+        # The live soft surface, and the locked palette, must not be the same
+        # colour — that equality IS the defect this closed.
+        self.assertIn('background-color: #f1f5f9', source)
+        dead = self.rule('.form-control:disabled,')
+        self.assertNotIn('#f1f5f9', dead)
+        self.assertIn('cursor: not-allowed', dead)
+
+    def test_readonly_is_treated_the_same_as_disabled(self):
+        """
+        The settlement screen uses `readonly` deliberately — a disabled input is
+        not submitted — and it means the same thing to whoever is looking at it.
+        """
+        source = self.source()
+        block = source.split('.form-control:disabled,', 1)[1].split('{', 1)[0]
+        self.assertIn('.form-control[readonly]', block)
+
+    def test_the_lock_is_readable_from_css_not_only_from_script(self):
+        """
+        `toggleRecordLock()` maintains `data-locked` on the form. The lock is
+        applied on a `setTimeout(…, 100)`, so anything that reads the state in
+        script would be racing it — the same reason `.jc-empty:disabled` drops
+        the hairline in CSS rather than in JS.
+        """
+        source = self.source()
+        self.assertIn("form.setAttribute('data-locked', 'true')", source)
+        self.assertIn('#jobcardForm[data-locked="true"]', source)
+
+    def test_the_two_actionable_marks_are_dropped_while_locked(self):
+        """
+        An empty box on a closed record is nothing anybody is going to fill, and
+        there is nothing unsaved to warn about.
+        """
+        source = self.source()
+        self.assertIn('#jobcardForm[data-locked="true"] .jc-empty', source)
+        self.assertIn('#jobcardForm[data-locked="true"] .jc-changed', source)
+
+    def test_the_state_is_restated_on_every_section(self):
+        """
+        The banner is at the top of a form several screens long, so the state
+        has to be legible wherever you happen to be scrolled to. Text, not an
+        icon-font codepoint — the glyph would depend on a stylesheet fetched
+        from a CDN, and this is not the screen to take that bet on.
+        """
+        rule = self.rule('#jobcardForm[data-locked="true"] .jc-sec-name::after {')
+        self.assertIn('content: "LOCKED"', rule)
+        self.assertNotIn('font-family: "bootstrap-icons"', rule)

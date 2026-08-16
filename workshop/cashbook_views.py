@@ -38,6 +38,21 @@ TYPE_CHOICES = ('all', 'expense', 'income')
 FILTER_CHOICES = ('today', 'this_week', 'this_month', 'this_year',
                   'last_week', 'last_month', 'last_year', 'custom')
 
+# What the window is CALLED, resolved here rather than as an eight-branch
+# `{% if %}` in the template. It was written out twice in `_stats.html` — once
+# per figure — which is two copies of one fact, free to drift into describing
+# different periods on a headline whose whole job is to say which period the
+# two figures belong to.
+FILTER_LABELS = {
+    'today': 'Today',
+    'this_week': 'This Week',
+    'this_month': 'This Month',
+    'this_year': 'This Year',
+    'last_week': 'Last Week',
+    'last_month': 'Last Month',
+    'last_year': 'Last Year',
+}
+
 # Longest term worth sending to the database. The name it searches is 100
 # characters wide, so anything past that cannot match a category anyway.
 MAX_SEARCH_LEN = 100
@@ -193,6 +208,11 @@ def cashbook_view(request):
         'cashbook_totals': cashbook_totals,
         'type_counts': type_counts,
         'filter_type': filter_type,
+        'filter_label': (
+            f"{start_date_str} – {end_date_str}"
+            if filter_type == 'custom' and start_date_str and end_date_str
+            else FILTER_LABELS.get(filter_type, 'Custom')
+        ),
         'entry_type_filter': entry_type_filter,
         'q': q,
         'start_date': start_date_str,

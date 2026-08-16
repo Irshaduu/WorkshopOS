@@ -88,7 +88,8 @@
         align-self: center;
     }
 
-    /* Report Button */
+    /* +New Button */
+    .btn-new,
     .btn-report {
         display: inline-flex;
         align-items: center;
@@ -107,6 +108,7 @@
         transition: background 0.15s, color 0.15s;
     }
 
+    .btn-new:hover,
     .btn-report:hover {
         background: var(--pit-blue);
         color: #fff;
@@ -123,19 +125,21 @@
     /* ── Vehicle Card ───────────────────────────── */
     .job-card {
         position: relative;
-        background: #fff;
+        background: #ffffff;
+        background-image: linear-gradient(var(--card-shade, transparent), var(--card-shade, transparent));
         border-radius: 12px;
-        /* overflow: visible !important; Removed hidden to prevent dropdown clipping */
         cursor: pointer;
         box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04), 
                     0 0 10px var(--card-glow, transparent); /* Ambient Glow Support */
-        border: 1px solid var(--pit-border);
+        border: 1px solid var(--pit-border, #e2e8f0);
         display: flex;
-        /* transition: box-shadow 0.2s; /* Removed transform transition for zero-lag feel */
+        transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
     }
 
     .job-card:hover {
-        box-shadow: 0 4px 20px rgba(0,0,0,0.1), 0 0 12px var(--card-glow, transparent);
+        border-color: #cbd5e1;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.09), 0 0 14px var(--card-glow, transparent);
+        transform: translateY(-1px);
     }
 
     .job-card:active {
@@ -174,120 +178,59 @@
         box-shadow: inset -1px 0 0 #e2e8f0, inset 1px 0 0 #e2e8f0;
     }
 
-    /* ── Card Body ──────────────────────────────── */
-    .card-body-inner {
+    /* ── Card Main Structure ── */
+    .card-main-wrap {
         flex: 1;
-        padding: 0.95rem 1rem 0.9rem;
         display: flex;
         flex-direction: column;
-        gap: 0.65rem;
         min-width: 0;
     }
 
-    /* ── Card Top Row ───────────────────────────── */
+    .card-body-inner {
+        padding: 0.9rem 1rem 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        min-width: 0;
+    }
+
+    /* ── Row 1: Top Row ── */
     .card-top {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
+        align-items: center;
         gap: 0.5rem;
-    }
-
-    .card-identity {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
         min-width: 0;
-        flex: 1; /* Stretch to occupy middle space */
     }
 
     .car-name {
-        font-family: var(--font-display);
-        font-size: 1.25rem;
-        font-weight: 800;
-        letter-spacing: 0.3px;
-        color: var(--pit-track);
-        line-height: 1.1;
+        font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif);
+        font-size: 1.15rem;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--pit-track, #0f172a);
+        line-height: 1.25;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        flex: 1;
+        min-width: 0;
     }
 
-    .car-meta {
-        display: flex;
-        align-items: center;
-        justify-content: space-between; /* Split badges and status */
-        gap: 6px;
-        flex-wrap: wrap;
-    }
-
-    /* License plate badge */
-    .reg-badge {
-        font-family: var(--font-display);
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        padding: 2px 8px;
-        background: #f1f5f9;
-        border: 1px solid #cbd5e1;
-        border-radius: 4px;
-        color: var(--pit-steel);
-        white-space: nowrap;
-    }
-
-    /* Due date indicator */
-    .due-badge {
-        font-family: var(--font-display);
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        padding: 2px 8px;
-        border-radius: 4px;
-    }
-
-    /* Status pill */
-    .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-family: var(--font-body);
-        font-size: 0.65rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        padding: 2px 7px;
-        border-radius: 20px;
-    }
-
-    .status-pill.active {
-        background: rgba(34, 197, 128, 0.1); /* Updated to reflect the screenshot style */
-        color: #15803d;
-    }
-
-    /* Small Status Text for Car Name Line */
-    .car-status-small {
-        font-family: var(--font-body);
-        font-size: 0.62rem;
-        font-weight: 800; /* Bolder for racing aesthetic */
-        text-transform: uppercase;
-        letter-spacing: 0.8px; /* Premium letter-spacing nudge */
-        padding: 1.5px 7px;
-        border-radius: 4px;
-        margin-left: 6px;
-        margin-right: -2px; /* Nudge to align with column edge */
+    .status-pill-clean {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        vertical-align: middle;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 2px 8px;
+        border-radius: 999px;
+        white-space: nowrap;
     }
-    .car-status-small.active { background: rgba(22, 163, 74, 0.08); color: #16a34a; }
-    .car-status-small.hold   { background: rgba(220, 38, 38, 0.08); color: #dc2626; }
-
-    .status-pill.hold {
-        background: rgba(239, 68, 68, 0.1);
-        color: #dc2626;
-    }
+    .status-pill-clean.active { background: rgba(22, 163, 74, 0.09); color: #16a34a; }
+    .status-pill-clean.hold   { background: rgba(220, 38, 38, 0.09); color: #dc2626; }
 
     .status-dot-sm {
         width: 6px;
@@ -295,16 +238,294 @@
         border-radius: 50%;
         flex-shrink: 0;
     }
-
-    .status-dot-sm.active { background: var(--pit-green); }
+    .status-dot-sm.active { background: #16a34a; }
     .status-dot-sm.hold   {
-        background: var(--pit-red);
+        background: #dc2626;
         animation: blink 2s infinite;
     }
 
     @keyframes blink {
         0%, 100% { opacity: 1; }
         50%       { opacity: 0.4; }
+    }
+
+    /* ── Rows 2 & 3: Grid Layout ── */
+    .card-mid-grid {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .card-mid-left {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-width: 0;
+        flex: 1;
+    }
+
+    /* Row 2: Reg Badge */
+    .reg-badge {
+        display: inline-flex;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        border-radius: 5px;
+        color: #1e293b;
+        white-space: nowrap;
+        width: fit-content;
+    }
+
+    /* Row 3: Age & Mechanic */
+    .meta-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .age-pill {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #475569;
+        background: #e2e8f0;
+        padding: 1.5px 6.5px;
+        border-radius: 4px;
+        white-space: nowrap;
+    }
+
+    .mechanic-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #334155;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .mechanic-tag i { color: #64748b; font-size: 0.85rem; }
+
+    /* ── Rows 2 & 3: Right Circular Progress ── */
+    .card-mid-right {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .progress-ring-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .progress-ratio-box {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        line-height: 1.1;
+    }
+    .progress-ratio-num {
+        font-size: 0.95rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #0f172a;
+    }
+    .progress-ratio-lbl {
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #64748b;
+    }
+
+    .progress-ring-svg-box {
+        position: relative;
+        width: 44px;
+        height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .progress-ring-svg {
+        transform: rotate(0deg);
+    }
+    .progress-ring-svg circle {
+        transition: stroke-dashoffset 0.35s ease;
+    }
+    .progress-ring-svg .ring-bg { stroke: #e2e8f0; }
+    .progress-ring-svg .ring-100 { stroke: #16a34a; }
+    .progress-ring-svg .ring-high { stroke: #2563eb; }
+    .progress-ring-svg .ring-mid { stroke: #d97706; }
+    .progress-ring-svg .ring-low { stroke: #dc2626; }
+
+    .ring-text {
+        position: absolute;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+    }
+    .ring-text.text-100 { color: #16a34a; }
+    .ring-text.text-high { color: #2563eb; }
+    .ring-text.text-mid { color: #d97706; }
+    .ring-text.text-low { color: #dc2626; }
+
+    .no-concerns-badge {
+        font-size: 0.72rem;
+        font-weight: 600;
+        font-style: italic;
+        color: #94a3b8;
+    }
+
+    /* ── Dropdown Toggle Button ── */
+    .live-drawer-toggle {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: rgba(248, 250, 252, 0.85);
+        border: 0;
+        border-top: 1px solid var(--pit-border, #e2e8f0);
+        padding: 0.55rem 1rem;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #475569;
+        cursor: pointer;
+        transition: background-color 0.15s ease, color 0.15s ease;
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+    }
+    .live-drawer-toggle:hover {
+        background: #f1f5f9;
+        color: #0f172a;
+    }
+    .live-drawer-toggle .toggle-icon {
+        font-size: 0.85rem;
+        transition: transform 0.2s ease;
+    }
+    .job-card.drawer-open .live-drawer-toggle--top .toggle-icon {
+        transform: rotate(180deg);
+    }
+
+    /* ── Expandable Live Drawer ── */
+    .card-live-drawer {
+        display: none;
+        background: #f8fafc;
+        border-top: 1px solid var(--pit-border, #e2e8f0);
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+    }
+    .job-card.drawer-open .card-live-drawer {
+        display: block;
+    }
+
+    .live-drawer-inner {
+        padding: 0.75rem 0.85rem 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .drawer-sec {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .drawer-sec-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #0f172a;
+        background: #f8fafc;
+        padding: 0.45rem 0.75rem;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+    .drawer-sec-title i {
+        font-size: 0.95rem;
+    }
+    .drawer-list {
+        display: flex;
+        flex-direction: column;
+    }
+    .drawer-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0.45rem 0.75rem;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 0.92rem;
+    }
+    .drawer-item:last-child { border-bottom: 0; }
+    .drawer-item-text {
+        color: #0f172a;
+        font-size: 0.92rem;
+        font-weight: 400; /* Clean normal weight */
+        line-height: 1.35;
+        min-width: 0;
+        word-break: break-word;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .drawer-subtext {
+        font-size: 0.78rem;
+        font-weight: 400;
+        color: #64748b;
+        padding-left: 24px;
+    }
+
+    /* The tail of a long section. Quiet on purpose — it is a signpost to the
+       job card, not one of the rows. The heading above still carries the true
+       count, so this line is what makes the two add back up. */
+    .drawer-more {
+        font-size: 0.74rem;
+        font-weight: 600;
+        color: #64748b;
+        padding: 6px 0 2px 24px;
+        font-style: italic;
+    }
+
+    /* Clean Status Icons */
+    .status-icon-pending {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background-color: #dc2626;
+        margin-right: 4px;
+        margin-left: 3px;
+        flex-shrink: 0;
+    }
+    .status-icon-fixed {
+        color: #16a34a;
+        font-size: 1.05rem;
+        margin-right: 2px;
+        flex-shrink: 0;
+    }
+    .status-icon-working {
+        color: #d97706;
+        font-size: 1rem;
+        margin-right: 2px;
+        flex-shrink: 0;
+    }
+
+    .drawer-empty {
+        text-align: center;
+        padding: 1rem;
+        font-size: 0.85rem;
+        color: #94a3b8;
     }
 
     /* ── 3-dot menu button ──────────────────────── */
@@ -328,68 +549,6 @@
     .dot-menu-btn:active {
         background: var(--pit-blue);
         color: #fff;
-        /* transform: scale(0.92); Removed to prevent visual flicker/blink */
-    }
-
-    /* ── Progress Section ───────────────────────── */
-    .progress-section {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-    }
-
-    .progress-meta {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .progress-label {
-        font-family: var(--font-body);
-        font-size: 0.68rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #94a3b8;
-    }
-
-    .progress-pct {
-        font-family: var(--font-display);
-        font-size: 0.85rem;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-    }
-
-    .progress-pct.done-100  { color: var(--pit-green); }
-    .progress-pct.done-high { color: var(--pit-blue); }
-    .progress-pct.done-mid  { color: var(--pit-amber); }
-    .progress-pct.done-low  { color: var(--pit-red); }
-
-    /* Segmented fuel-gauge track */
-    .fuel-track {
-        display: flex;
-        gap: 3px;
-        align-items: center;
-        height: 8px;
-    }
-
-    .fuel-track .tick {
-        flex: 1;
-        height: 100%;
-        border-radius: 3px;
-        background: #e9ecef;
-    }
-
-    .fuel-track .tick.filled-100  { background: var(--pit-green); }
-    .fuel-track .tick.filled-high { background: var(--pit-blue); }
-    .fuel-track .tick.filled-mid  { background: var(--pit-amber); }
-    .fuel-track .tick.filled-low  { background: var(--pit-red); }
-
-    .no-concerns-tag {
-        font-family: var(--font-body);
-        font-size: 0.7rem;
-        font-style: italic;
-        color: #94a3b8;
     }
 
     /* ── Empty State ────────────────────────────── */
@@ -425,7 +584,7 @@
     /* ── Dropdown overrides ─────────────────────── */
     .pit-dropdown {
         position: relative;
-        z-index: 10; /* Lifts the interactive area */
+        z-index: 10;
     }
 
     .pit-dropdown .dropdown-menu {
@@ -434,10 +593,9 @@
         box-shadow: 0 8px 24px rgba(0,0,0,0.12);
         padding: 0.35rem 0;
         min-width: 160px;
-        z-index: 100; /* Ensures it floats above all other card content */
-        animation: none !important; /* Eliminate opening lag */
-        transition: none !important; /* Ensure instant appearance */
-        /* Safe boundary for static positioning */
+        z-index: 100;
+        animation: none !important;
+        transition: none !important;
         max-width: calc(100vw - 20px);
         margin-right: 2px !important;
     }
@@ -450,7 +608,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        transition: none !important; /* Snappy hover status */
+        transition: none !important;
     }
 
     .pit-dropdown .dropdown-item:hover          { background: #f8fafc; }
@@ -463,7 +621,7 @@
     /* Mobile compact */
     @media (max-width: 480px) {
         .stat-value { font-size: 1.7rem; }
-        .car-name   { font-size: 1.1rem; }
+        .car-name   { font-size: 1.05rem; }
         .btn-report { font-size: 0.75rem; padding: 0.4rem 0.8rem; }
     }
 </style>
@@ -475,17 +633,6 @@
 <div class="pit-header">
     <div class="pit-stats">
         <div class="stat-item">
-            {% comment %}
-            No `|default:` on either of these. `default` fires on any FALSY value,
-            and the one value both of these have to be able to print is 0 — an
-            empty workshop, or a day with nothing completed yet. The fallback it
-            used to reach for was `active_jobcards.count`, which is a `Page`, whose
-            `.count` is `Sequence.count(value)` — a method wanting an argument.
-            Django's variable resolver swallows that and substitutes
-            `string_if_invalid`, so an empty workshop printed a BLANK box where the
-            number should be. Both figures below are always integers; they need no
-            fallback at all.
-            {% endcomment %}
             <span class="stat-value">{{ page_obj.paginator.count }}</span>
             <span class="stat-label">In Workshop</span>
         </div>
@@ -495,8 +642,8 @@
             <span class="stat-label">Completed</span>
         </div>
     </div>
-    <a href="{% url 'live_report' %}" class="btn-report">
-        <i class="bi bi-clipboard-data"></i> Report
+    <a href="{% url 'jobcard_create' %}" class="btn-report">
+        <i class="bi bi-plus-lg"></i> New
     </a>
 </div>
 
@@ -506,140 +653,266 @@
     {% for job in active_jobcards %}
 
     <!-- Define high-performance variables once -->
-    {% with color=job.get_car_color_hex|default:'#475569' %}
-    <div class="job-card {% if job.on_hold %}on-hold-card{% endif %}" data-edit-url="{% url 'jobcard_edit' job.pk %}"
-         style="--card-glow: {{ color }}44;">
+    {% with color=job.get_car_color_hex %}
+    <div class="job-card {% if job.on_hold %}on-hold-card{% endif %}" data-card-id="{{ job.pk }}" data-edit-url="{% url 'jobcard_edit' job.pk %}"
+         style="{% if color and job.car_color != 'White' %}--card-shade: {{ color }}14; --card-glow: {{ color }}33; --stripe-color: {{ color }};{% elif job.car_color == 'White' %}--card-shade: rgba(241, 245, 249, 0.45); --stripe-color: #ffffff;{% else %}--stripe-color: #e2e8f0;{% endif %}">
 
         <!-- Left stripe — Rendered server-side for instant load -->
         <div class="card-stripe 
              {% if not job.car_color %}stripe-unset
              {% elif job.car_color == 'White' %}stripe-white
              {% endif %}"
-             style="--stripe-color: {{ color }};">
+             style="--stripe-color: {{ color|default:'#e2e8f0' }};">
         </div>
 
-        <!-- Main Body -->
-        <div class="card-body-inner">
-
-            <!-- Top Row -->
-            <div class="card-top">
-                <div class="card-identity">
+        <!-- Main Wrapper -->
+        <div class="card-main-wrap">
+            <div class="card-body-inner">
+                <!-- Row 1: Car Name + Status Dot + 3-Dot Menu -->
+                <div class="card-top">
                     <div class="car-name">
                         {{ job.brand_name }} {{ job.model_name }}
                     </div>
-                    <div class="car-meta d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="reg-badge">{{ job.registration_number }}</span>
-                            
-                            <!-- Restored Completion Due Date Badges -->
-                            {% if job.completed_date %}
-                                {% with d=job.completed_date %}
-                                <span class="due-badge 
-                                    {% if d < today %}bg-danger-subtle text-danger border border-danger-subtle
-                                    {% elif d == today %}bg-warning-subtle text-warning-emphasis border border-warning-subtle
-                                    {% elif d|is_tomorrow %}bg-info-subtle text-info-emphasis border border-info-subtle
-                                    {% else %}bg-light text-muted border{% endif %}"
-                                    title="{{ d|date:'D, d M' }}">
-                                    {% if d < today %}Overdue
-                                    {% elif d == today %}Today
-                                    {% elif d|is_tomorrow %}Tomorrow
-                                    {% else %}{{ d|date:"d M" }}{% endif %}
-                                </span>
-                                {% endwith %}
-                            {% endif %}
-                        </div>
-                        
-                        <span class="car-status-small {% if job.on_hold %}hold{% else %}active{% endif %}">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="status-pill-clean {% if job.on_hold %}hold{% else %}active{% endif %}">
                             <span class="status-dot-sm {% if job.on_hold %}hold{% else %}active{% endif %}"></span>
                             {% if job.on_hold %}Hold{% else %}Active{% endif %}
                         </span>
+
+                        <!-- 3-dot Menu -->
+                        <div class="dropdown pit-dropdown">
+                            <button class="dot-menu-btn" type="button"
+                                    data-bs-toggle="dropdown" 
+                                    data-bs-display="static"
+                                    aria-expanded="false">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                {% if user.is_authenticated %}
+                                <li>
+                                    <form method="post" action="{% url 'toggle_hold' job.pk %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit"
+                                                class="dropdown-item {% if job.on_hold %}text-success{% else %}text-warning{% endif %}">
+                                            <i class="bi {% if job.on_hold %}bi-play-circle{% else %}bi-pause-circle{% endif %}"></i>
+                                            {% if job.on_hold %}Mark Active{% else %}Put On Hold{% endif %}
+                                        </button>
+                                    </form>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <form method="post" action="{% url 'mark_completed' job.pk %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item text-success"
+                                                onclick="return confirm('Mark {{ job.registration_number }} as completed?');">
+                                            <i class="bi bi-check-circle"></i> Mark Completed
+                                        </button>
+                                    </form>
+                                </li>
+                                {% endif %}
+                                {% comment %}
+                                Billing, for the role whose job it is. This link
+                                is the reason `InvoiceLinkVisibilityTests`
+                                exists: it was once gated on `is_staff` — Django's
+                                admin flag, not a workshop role — which hid it
+                                from Office while `invoice_view` is
+                                @office_required. Removing it outright hides it
+                                from Office just as effectively, so the gate here
+                                mirrors the decorator and nothing else.
+                                {% endcomment %}
+                                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item text-info" href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}">
+                                        <i class="bi bi-receipt"></i> View Invoice
+                                    </a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </div>
                     </div>
                 </div>
 
-                <!-- 3-dot Menu -->
-                <div class="dropdown pit-dropdown">
-                    <button class="dot-menu-btn" type="button"
-                            data-bs-toggle="dropdown" 
-                            data-bs-display="static"
-                            aria-expanded="false">
-                        <i class="bi bi-three-dots-vertical"></i>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li>
-                            <a class="dropdown-item" href="{% url 'jobcard_detail' job.pk %}">
-                                <i class="bi bi-eye"></i> View Details
-                            </a>
-                        </li>
-                        {% if request.user|has_group:"Office" or request.user|has_group:"Owner" %}
-                        <li>
-                            <a class="dropdown-item text-info" href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}">
-                                <i class="bi bi-receipt"></i> View Invoice
-                            </a>
-                        </li>
-                        {% endif %}
-                        {% if user.is_authenticated %}
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <form method="post" action="{% url 'toggle_hold' job.pk %}" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit"
-                                        class="dropdown-item {% if job.on_hold %}text-success{% else %}text-warning{% endif %}">
-                                    <i class="bi {% if job.on_hold %}bi-play-circle{% else %}bi-pause-circle{% endif %}"></i>
-                                    {% if job.on_hold %}Mark Active{% else %}Put On Hold{% endif %}
-                                </button>
-                            </form>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <form method="post" action="{% url 'mark_completed' job.pk %}" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="dropdown-item text-success"
-                                        onclick="return confirm('Mark {{ job.registration_number }} as completed?');">
-                                    <i class="bi bi-check-circle"></i> Mark Completed
-                                </button>
-                            </form>
-                        </li>
-                        {% endif %}
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Progress Section — Unified with Model Logic -->
-            <div class="progress-section">
-                {% if job.total_concerns > 0 %}
-                    {% with p=job.get_completion_percentage %}
-                    <div class="progress-meta">
-                        <span class="progress-label">Mission Progress</span>
-                        <span class="progress-pct
-                            {% if p == 100 %}done-100
-                            {% elif p >= 60 %}done-high
-                            {% elif p >= 30 %}done-mid
-                            {% else %}done-low{% endif %}">
-                            {{ p }}%
-                        </span>
+                <!-- Rows 2 & 3 Flex Layout -->
+                <div class="card-mid-grid">
+                    <!-- Left: Row 2 (Reg) + Row 3 (Age & Mechanic) -->
+                    <div class="card-mid-left">
+                        <div class="reg-row">
+                            <span class="reg-badge">{{ job.registration_number }}</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="age-pill">{{ job.age_label|default:'New' }}</span>
+                            <span class="mechanic-tag">
+                                <i class="bi bi-person-gear"></i>
+                                {% if job.lead_mechanic %}{{ job.lead_mechanic.name }}{% else %}Unassigned{% endif %}
+                            </span>
+                        </div>
                     </div>
 
-                    <!-- 20-tick fuel gauge — Pre-filled for instant load -->
-                    <div class="fuel-track" data-progress="{{ p }}">
-                        {% for i in 20|get_range %}
-                            {% with limit=p|divide:5 %}
-                            <div class="tick 
-                                {% if i < limit %}
-                                    {% if p == 100 %}filled-100
-                                    {% elif p >= 60 %}filled-high
-                                    {% elif p >= 30 %}filled-mid
-                                    {% else %}filled-low{% endif %}
-                                {% endif %}">
+                    <!-- Right: Progress Ratio + Circle % Indicator (Spans Rows 2 & 3) -->
+                    <div class="card-mid-right">
+                        {% if job.total_concerns > 0 %}
+                            {% with p=job.get_completion_percentage %}
+                            <div class="progress-ring-wrap">
+                                <div class="progress-ratio-box">
+                                    <span class="progress-ratio-num">{{ job.fixed_concerns }}/{{ job.total_concerns }}</span>
+                                    <span class="progress-ratio-lbl">Done</span>
+                                </div>
+                                <div class="progress-ring-svg-box">
+                                    <svg class="progress-ring-svg" width="44" height="44" viewBox="0 0 44 44">
+                                        <circle class="ring-bg" cx="22" cy="22" r="18" fill="none" stroke-width="3.5"></circle>
+                                        <circle class="ring-fg {% if p == 100 %}ring-100{% elif p >= 60 %}ring-high{% elif p >= 30 %}ring-mid{% else %}ring-low{% endif %}"
+                                                cx="22" cy="22" r="18" fill="none" stroke-width="3.5"
+                                                stroke-dasharray="113.1"
+                                                stroke-dashoffset="calc(113.1 - (113.1 * {{ p }} / 100))"
+                                                stroke-linecap="round"
+                                                transform="rotate(-90 22 22)"></circle>
+                                    </svg>
+                                    <span class="ring-text {% if p == 100 %}text-100{% elif p >= 60 %}text-high{% elif p >= 30 %}text-mid{% else %}text-low{% endif %}">{{ p }}%</span>
+                                </div>
                             </div>
                             {% endwith %}
-                        {% endfor %}
+                        {% else %}
+                            <span class="no-concerns-badge">Awaiting tasks</span>
+                        {% endif %}
                     </div>
-                    {% endwith %}
-                {% else %}
-                    <span class="no-concerns-tag">Awaiting assignment...</span>
-                {% endif %}
+                </div>
             </div>
 
+            <!-- Top Dropdown Toggle Bar -->
+            <button type="button" class="live-drawer-toggle live-drawer-toggle--top" data-target="drawer-{{ job.pk }}">
+                <i class="bi bi-chevron-down toggle-icon"></i>
+                <span class="toggle-label">View Live Details</span>
+            </button>
+
+            {% comment %}
+            Each section is capped at `HOME_SECTION_ROW_CAP` (25) and names its
+            remainder. The heading still reports the TRUE total, so the visible
+            rows plus the "+N more" line always add back up to it — and every
+            hidden row is on the job card this card already opens.
+
+            The cap is applied in the view, never with `|slice` here: a cap in
+            the markup and a remainder computed from a constant are two versions
+            of one rule, free to disagree.
+            {% endcomment %}
+            <div class="card-live-drawer" id="drawer-{{ job.pk }}">
+                <div class="live-drawer-inner">
+                    {% if job.has_any_live_detail %}
+                        <!-- 1. Customer Concerns -->
+                        {% if job.all_concerns %}
+                        <div class="drawer-sec">
+                            <div class="drawer-sec-title">
+                                <i class="bi bi-exclamation-circle text-primary"></i> Customer Concerns ({{ job.concern_total }})
+                            </div>
+                            <div class="drawer-list">
+                                {% for c in job.all_concerns %}
+                                <div class="drawer-item">
+                                    <div class="drawer-item-text">
+                                        {% if c.status == 'FIXED' %}
+                                        <i class="bi bi-check-circle-fill status-icon-fixed"></i>
+                                        {% elif c.status == 'WORKING' %}
+                                        <i class="bi bi-clock-history status-icon-working"></i>
+                                        {% else %}
+                                        <span class="status-icon-pending"></span>
+                                        {% endif %}
+                                        <span>{{ c.concern_text }}</span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                {% if job.concerns_more %}
+                                <div class="drawer-more">+{{ job.concerns_more }} more on the job card</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- 2. Job Performed -->
+                        {% if job.all_labours %}
+                        <div class="drawer-sec">
+                            <div class="drawer-sec-title">
+                                <i class="bi bi-tools text-primary"></i> Job Performed ({{ job.labour_total }})
+                            </div>
+                            <div class="drawer-list">
+                                {% for l in job.all_labours %}
+                                <div class="drawer-item">
+                                    <div class="drawer-item-text">
+                                        <i class="bi bi-check-circle-fill status-icon-fixed"></i>
+                                        <span>{{ l.job_description }}</span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                {% if job.labours_more %}
+                                <div class="drawer-more">+{{ job.labours_more }} more on the job card</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- 3. Inventory Items -->
+                        {% if job.all_stock %}
+                        <div class="drawer-sec">
+                            <div class="drawer-sec-title">
+                                <i class="bi bi-box-seam text-info"></i> Inventory Items ({{ job.stock_total }})
+                            </div>
+                            <div class="drawer-list">
+                                {% for s in job.all_stock %}
+                                <div class="drawer-item">
+                                    <div class="drawer-item-text">
+                                        <i class="bi bi-check-circle-fill status-icon-fixed"></i>
+                                        <span>{{ s.spare_part_name }}{% if s.quantity|gt:1 %} <span class="text-muted" style="font-size: 0.72rem;">(Qty: {{ s.quantity|clean_qty }})</span>{% endif %}</span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                {% if job.stock_more %}
+                                <div class="drawer-more">+{{ job.stock_more }} more on the job card</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- 4. Spare Parts -->
+                        {% if job.all_shop %}
+                        <div class="drawer-sec">
+                            <div class="drawer-sec-title">
+                                <i class="bi bi-gear-wide-connected text-warning"></i> Spare Parts ({{ job.shop_total }})
+                            </div>
+                            <div class="drawer-list">
+                                {% for s in job.all_shop %}
+                                <div class="drawer-item flex-column align-items-start gap-0 py-1">
+                                    <div class="drawer-item-text w-100">
+                                        {% if s.status == 'RECEIVED' %}
+                                        <i class="bi bi-check-circle-fill status-icon-fixed"></i>
+                                        {% elif s.status == 'ORDERED' %}
+                                        <i class="bi bi-clock-history status-icon-working"></i>
+                                        {% else %}
+                                        <span class="status-icon-pending"></span>
+                                        {% endif %}
+                                        <span>{{ s.spare_part_name }}</span>
+                                    </div>
+                                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                                    <div class="drawer-subtext">
+                                        Shop: {% if s.shop %}{{ s.shop.name }}{% elif s.shop_name %}{{ s.shop_name }}{% else %}Unassigned{% endif %}{% if s.quantity|gt:1 %} • Qty: {{ s.quantity|clean_qty }}{% endif %}
+                                    </div>
+                                    {% elif s.quantity|gt:1 %}
+                                    <div class="drawer-subtext">
+                                        Qty: {{ s.quantity|clean_qty }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                                {% if job.shop_more %}
+                                <div class="drawer-more">+{{ job.shop_more }} more on the job card</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="drawer-empty">
+                            <i class="bi bi-inbox text-muted"></i> No tasks or spare parts recorded yet.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
     {% endwith %}
@@ -664,16 +937,42 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── Quick-Fire Dropdown (Stop Propagation) ─ */
     document.querySelectorAll('.dot-menu-btn').forEach(function (btn) {
         btn.addEventListener('click', function (e) {
-            e.stopPropagation(); // Cuts the wire to parent card lag
+            e.stopPropagation();
+        });
+    });
+
+    /* ── Live Drawer Toggle ──────────────────────── */
+    document.querySelectorAll('.live-drawer-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation(); // Prevents card edit redirect
+            const card = this.closest('.job-card');
+            if (!card) return;
+            const isOpen = card.classList.toggle('drawer-open');
+            
+            // Update labels on both top and bottom buttons for this card
+            const topBtn = card.querySelector('.live-drawer-toggle--top');
+            if (topBtn) {
+                const label = topBtn.querySelector('.toggle-label');
+                if (label) label.textContent = isOpen ? 'Hide Live Details' : 'View Live Details';
+            }
+        });
+    });
+
+    /* ── Prevent card click inside drawer ────────── */
+    document.querySelectorAll('.card-live-drawer').forEach(function (drawer) {
+        drawer.addEventListener('click', function (e) {
+            e.stopPropagation(); // Prevents card navigation when clicking items inside drawer
         });
     });
 
     /* ── Card click → edit page ─────────────────── */
     document.querySelectorAll('.job-card').forEach(function (card) {
         card.addEventListener('click', function (e) {
-            // Dropdown/button safety
+            // Dropdown/button/drawer safety
             if (e.target.closest('.dropdown-menu') ||
                 e.target.closest('[data-bs-toggle="dropdown"]') ||
+                e.target.closest('.live-drawer-toggle') ||
+                e.target.closest('.card-live-drawer') ||
                 e.target.closest('button') ||
                 e.target.closest('form')) {
                 return;

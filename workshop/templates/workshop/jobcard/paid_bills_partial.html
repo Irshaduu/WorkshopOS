@@ -1,6 +1,6 @@
 {% load custom_filters %}
 {# Hidden data carrier — JS reads this to sync the total collected in the page header #}
-<span id="pbSyncData" data-total="{{ total_collected|floatformat:2 }}" data-count="{{ total_count }}" hidden></span>
+<span id="pbSyncData" data-total="{% if is_owner_user and total_collected is not None %}{{ total_collected|floatformat:2 }}{% endif %}" data-count="{{ total_count }}" hidden></span>
 
 <style>
     :root {
@@ -13,6 +13,7 @@
     /* ── Paid Card ─────────────────────────────────── */
     .pb-card {
         background: var(--color-card);
+        background-image: linear-gradient(var(--card-shade, transparent), var(--card-shade, transparent));
         border-radius: 12px;
         border: 1px solid var(--color-border);
         box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04);
@@ -22,7 +23,7 @@
         text-decoration: none;
         color: inherit;
         height: 100%;
-        transition: box-shadow 0.2s;
+        transition: box-shadow 0.2s, border-color 0.2s;
     }
     .pb-card:hover {
         box-shadow: 0 4px 20px rgba(0,0,0,0.1);
@@ -88,12 +89,12 @@
 
     /* Vehicle name */
     .pb-vehicle {
-        font-family: var(--font-display);
-        font-size: 1.3rem;
-        font-weight: 800;
-        letter-spacing: 0.2px;
-        color: var(--color-text);
-        line-height: 1.1;
+        font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif);
+        font-size: 1.15rem;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--color-text, #0f172a);
+        line-height: 1.25;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -237,7 +238,7 @@
     {% with color=job.get_car_color_hex|default:'#475569' %}
     <div class="col-12 col-md-6 col-lg-4">
         <a href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}" class="pb-card"
-           style="--card-glow: {{ color }}22;">
+           style="--card-glow: {{ color }}22; --card-shade: {% if job.car_color %}{{ color }}14{% else %}transparent{% endif %};">
 
             <!-- Left stripe -->
             <div class="pb-stripe

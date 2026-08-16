@@ -379,11 +379,27 @@ class AddUnassignedValidationTests(SpareFlowBase):
         self.assertIsNone(item)
         self.assertIn('Choose which shop', error)
 
-    def test_a_blank_price_defaults_to_zero_and_is_allowed(self):
-        """A legacy balance line with no price recorded is legitimate."""
+    def test_a_blank_price_means_NOT_PRICED_and_is_allowed(self):
+        """
+        A legacy balance line with no price recorded is legitimate, and it
+        stores NULL rather than zero: zero says the shop gave the part away,
+        NULL says nobody has priced it yet. `SpareShop.update_totals()`
+        coalesces NULL to 0, so an unpriced row adds nothing to the balance
+        either way — the difference is what the row MEANS when somebody comes
+        to price it, and it is the same distinction a Floor-recorded row starts
+        life in.
+        """
         self.add(unit_price='')
         self.assertEqual(self.rows(), 1)
+        row = JobCardSpareItem.objects.get(job_card__isnull=True)
+        self.assertIsNone(row.unit_price)
         self.assertEqual(self.owed(), D('0.00'))
+
+    def test_an_explicit_zero_still_means_free(self):
+        """The other half of the rule above — 0 is a price somebody chose."""
+        self.add(unit_price='0')
+        row = JobCardSpareItem.objects.get(job_card__isnull=True)
+        self.assertEqual(row.unit_price, D('0.00'))
 
     def test_the_row_is_created_as_a_shop_purchase(self):
         self.add()
@@ -467,3 +483,45 @@ class AddingFromTheHubTests(SpareFlowBase):
                          {'reason': 'mistake'})
         self.assertEqual(self.rows().count(), 0)
         self.assertEqual(self.owed(), D('0.00'))
+
+    def test_adding_with_custom_dates(self):
+        from datetime import date
+        self.add(ordered_date='2026-08-10', received_date='2026-08-12')
+        row = self.rows().get()
+        self.assertEqual(row.ordered_date, date(2026, 8, 10))
+        self.assertEqual(row.received_date, date(2026, 8, 12))
+
+    def test_editing_an_unassigned_spare(self):
+        from datetime import date
+        self.add(spare_part_name='Old Part', unit_price='500', quantity='1')
+        row = self.rows().get()
+
+        shop2 = SpareShop.objects.create(name='Second Shop')
+
+        resp = self.client.post(
+            reverse('unassigned_spare_edit', args=[row.pk]),
+            {
+                'shop': str(shop2.pk),
+                'spare_part_name': 'New Part',
+                'unit_price': '800',
+                'quantity': '3',
+                'ordered_date': '2026-08-01',
+                'received_date': '2026-08-05',
+            },
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        row.refresh_from_db()
+        self.assertEqual(row.shop_id, shop2.pk)
+        self.assertEqual(row.spare_part_name, 'New Part')
+        self.assertEqual(row.unit_price, D('800.00'))
+        self.assertEqual(row.quantity, D('3.00'))
+        self.assertEqual(row.ordered_date, date(2026, 8, 1))
+        self.assertEqual(row.received_date, date(2026, 8, 5))
+
+        # Check that shop totals reflect the move
+        self.assertEqual(self.owed(), D('0.00'))
+        shop2.refresh_from_db()
+        self.assertEqual(shop2.total_purchased_amount, D('2400.00'))
+        self.assertEqual(shop2.get_pending_balance, D('2400.00'))
+

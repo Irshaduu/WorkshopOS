@@ -1071,19 +1071,11 @@
                href="{% url 'home' %}"
                aria-label="{% if is_owner %}Admin{% elif is_office %}Office{% else %}Floor{% endif %}"
                title="{% if is_owner %}Admin{% elif is_office %}Office{% else %}Floor{% endif %}">
-                <span class="nav-btn-icon-group">
-                    {% if p == '/jobcards/live-report/' %}<i class="bi bi-chevron-left"></i>{% endif %}
-                    <i class="bi bi-house-door{% if p == '/' %}-fill{% endif %}"></i>
-                </span>
+                <i class="bi bi-house-door{% if p == '/' %}-fill{% endif %}"></i>
                 <span class="nav-label">{% if is_owner %}Admin{% elif is_office %}Office{% else %}Floor{% endif %}</span>
             </a>
 
             {% if user.is_authenticated %}
-
-            <!-- New job card -->
-            <a class="nav-btn{% if p == '/jobcards/create/' %} active{% endif %}" href="{% url 'jobcard_create' %}">
-                <i class="bi bi-plus-circle{% if p == '/jobcards/create/' %}-fill{% endif %}"></i><span class="nav-label">New</span>
-            </a>
 
             {% if is_owner or is_office %}
             <!-- Completed (Office / Owner) -->
@@ -1091,9 +1083,18 @@
                href="{% url 'completed_list' %}" aria-label="Completed" title="Completed">
                 <i class="bi bi-check-circle{% if p|slice:':11' == '/completed/' %}-fill{% endif %}"></i><span class="nav-label">Completed</span>
             </a>
-            {% endif %}
 
-            {% if is_floor and not is_office and not is_owner %}
+            <!-- Report (Office / Owner) -->
+            <a class="nav-btn{% if p == '/jobcards/live-report/' %} active{% endif %}"
+               href="{% url 'live_report' %}" aria-label="Report" title="Live Report">
+                <i class="bi bi-clipboard-data{% if p == '/jobcards/live-report/' %}-fill{% endif %}"></i><span class="nav-label">Report</span>
+            </a>
+            {% else %}
+            <!-- New job card (Floor) -->
+            <a class="nav-btn{% if p == '/jobcards/create/' %} active{% endif %}" href="{% url 'jobcard_create' %}">
+                <i class="bi bi-plus-circle{% if p == '/jobcards/create/' %}-fill{% endif %}"></i><span class="nav-label">New</span>
+            </a>
+
             <!-- Inventory (Floor's own quick link) -->
             <a class="nav-btn{% if p|slice:':11' == '/inventory/' %} active{% endif %}"
                href="{% url 'inventory_list' %}" aria-label="Inventory" title="Inventory">
@@ -1267,13 +1268,11 @@ widen this and the audience together.
                     Pending Bills
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
-                {% if is_owner %}
                 <a class="drawer-link accent-green{% if p|slice:':12' == '/paid-bills/' %} active{% endif %}" href="{% url 'paid_bills_list' %}">
                     <span class="drawer-ico"><i class="bi bi-check-circle-fill"></i></span>
                     Paid Bills
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
-                {% endif %}
                 <a class="drawer-link accent-amber{% if p|slice:':15' == '/salary-advance' %} active{% endif %}" href="{% url 'salary_advance_home' %}">
                     <span class="drawer-ico"><i class="bi bi-cash-coin"></i></span>
                     Salary &amp; Advance
@@ -1354,6 +1353,20 @@ widen this and the audience together.
                 <a class="drawer-link accent-slate{% if p|slice:':19' == '/inventory/history/' %} active{% endif %}" href="{% url 'inventory_history' %}">
                     <span class="drawer-ico"><i class="bi bi-clock-history"></i></span>
                     Stock History
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+
+                {% comment %}
+                Floor's only route into Spare Shops, and deliberately the only
+                one: the Hub is add-only for them (no prices, no edit, no
+                delete), while `spare_shop_list` and every shop ledger stay
+                Office/Owner. A mechanic takes delivery of the part, so
+                recording it at that moment is what keeps the ledger same-day.
+                {% endcomment %}
+                <div class="drawer-label">Spares</div>
+                <a class="drawer-link accent-amber{% if p|slice:':24' == '/spare-shops/unassigned/' %} active{% endif %}" href="{% url 'unassigned_spares_hub' %}">
+                    <span class="drawer-ico"><i class="bi bi-box-seam"></i></span>
+                    Unassigned Spares
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
 

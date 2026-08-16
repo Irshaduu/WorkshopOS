@@ -9,6 +9,7 @@
     /* ── Pending Card ────────────────────────────── */
     .pp-card {
         background: var(--color-card);
+        background-image: linear-gradient(var(--card-shade, transparent), var(--card-shade, transparent));
         border-radius: 12px;
         border: 1px solid var(--color-border);
         box-shadow: 0 1px 4px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04);
@@ -18,7 +19,7 @@
         text-decoration: none;
         color: inherit;
         height: 100%;
-        transition: box-shadow 0.2s;
+        transition: box-shadow 0.2s, border-color 0.2s;
         /* No overflow:hidden — prevents dropdown clipping */
     }
 
@@ -89,12 +90,12 @@
 
     /* Vehicle name */
     .pp-vehicle {
-        font-family: var(--font-display);
-        font-size: 1.3rem; /* Slightly larger for impact */
-        font-weight: 800;
-        letter-spacing: 0.2px;
-        color: var(--color-text);
-        line-height: 1.1;
+        font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif);
+        font-size: 1.15rem;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--color-text, #0f172a);
+        line-height: 1.25;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -216,7 +217,7 @@
     {% with color=job.get_car_color_hex|default:'#475569' %}
     <div class="col-12 col-md-6 col-lg-4">
         <a href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}" class="pp-card"
-           style="--card-glow: {{ color }}22;">
+           style="--card-glow: {{ color }}22; --card-shade: {% if job.car_color %}{{ color }}14{% else %}transparent{% endif %};">
 
             <!-- Left stripe — car colour, same logic as floor dashboard -->
             <div class="pp-stripe
@@ -246,7 +247,7 @@
                             <li>
                                 <button type="button" class="dropdown-item py-2 text-primary"
                                         onclick="openMoveToBulkModal('{{ job.pk }}', '{{ job.registration_number }}', '{{ job.brand_name|escapejs }} {{ job.model_name|escapejs }}', '{{ job.bill_number|escapejs }}')">
-                                    <i class="bi bi-box-arrow-in-right me-2"></i> Move to Bulk Bill
+                                    <i class="bi bi-box-arrow-in-right me-2"></i> Move to Fleet Account
                                 </button>
                             </li>
                         </ul>

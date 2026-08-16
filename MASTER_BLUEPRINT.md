@@ -246,14 +246,14 @@ routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 | | `/jobcards/<pk>/edit/` | `jobcard_edit` | Staff |
 | | `/jobcards/<pk>/delete/` | `jobcard_delete` | Office |
 | **COMPLETED** | `/completed/` | `completed_list` | Office |
-| | `/jobcards/<pk>/complete/` | `mark_completed` | Office |
+| | `/jobcards/<pk>/complete/` | `mark_completed` | Floor + Office + Owner |
 | | `/jobcards/<pk>/undo-complete/` | `undo_completed` | Office |
-| | `/jobcards/<pk>/toggle-hold/` | `toggle_hold` | Office |
+| | `/jobcards/<pk>/toggle-hold/` | `toggle_hold` | Floor + Office + Owner |
 | | `/jobcards/<pk>/update-bill/` | `update_bill_status` | Office |
 | **DELETION HISTORY** | `/deletion-history/` | `deletion_history_list` (read-only) | Owner |
 | | `/deletion-history/<pk>/` | `deletion_history_detail` (read-only) | Owner |
 | **PENDING PAYMENTS** | `/pending-payments/` | `pending_payments_list` | Office |
-| **PAID BILLS** | `/paid-bills/` | `paid_bills_list` | Owner |
+| **PAID BILLS** | `/paid-bills/` | `paid_bills_list` | Office (last 7 days, no grand total) + Owner (full) |
 | **BULK PAYERS ("Fleet Account" in UI)** | `/pending-payments/bulk-payers/` | `bulk_payer_list` | Office |
 | | `/pending-payments/bulk-payers/create/` | `bulk_payer_create` | Office |
 | | `/pending-payments/bulk-payers/<pk>/` | `bulk_payer_detail` | Office |
@@ -267,7 +267,8 @@ routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 | **AUDITS** | `/audits/high-discounts/` | `audit_high_discounts` | Owner |
 | **SPARE SHOPS** | `/spare-shops/` | `spare_shop_list` | Office |
 | | `/spare-shops/create/` | `spare_shop_create` | Office |
-| | `/spare-shops/unassigned/` | `unassigned_spares_hub` | Office |
+| | `/spare-shops/unassigned/` | `unassigned_spares_hub` | Floor (add-only, no prices) + Office + Owner |
+| | `/spare-shops/unassigned/add/` | `unassigned_spare_add` (strips price for Floor) | Floor + Office + Owner |
 | | `/spare-shops/<pk>/` | `spare_shop_detail` | Office |
 | | `/spare-shops/<pk>/edit/` | `spare_shop_edit` | Office |
 | | `/spare-shops/<pk>/pay/` | `spare_shop_pay` | Office |
@@ -279,6 +280,8 @@ routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 | | `/spare-shops/<pk>/add-unassigned/` | `spare_shop_add_unassigned` | Office |
 | | `/spare-shops/items/<item_pk>/unassign/` | `spare_shop_unassign_item` | Office |
 | | `/spare-shops/items/<item_pk>/update-price/` | `spare_shop_update_item_price` | Office |
+| | `/spare-shops/items/<item_pk>/edit/` | `unassigned_spare_edit` | Office |
+| | `/spare-shops/items/<item_pk>/delete/` | `spare_shop_delete_unassigned` (log + hard-delete) | Office |
 | **MASTER LISTS** | `/master-lists/` | `master_lists_home` | Office |
 | | `/master-lists/brands/` | `brand_list` | Office |
 | | `/master-lists/brands/add/` | `brand_create` | Office |
@@ -874,4 +877,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(recounted 2026-08-10 — every figure here had drifted; test-file count corrected and test total added 2026-08-11)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 40 Test Files (1,042 tests) · 76 Migrations (68 workshop + 8 inventory)
+> **Total** *(recounted 2026-08-10 — every figure here had drifted; test-file count corrected and test total added 2026-08-11; test figures re-counted 2026-08-16)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 47 Test Files (1,307 tests) · 76 Migrations (68 workshop + 8 inventory)

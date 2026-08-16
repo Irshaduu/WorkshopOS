@@ -307,10 +307,6 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
                 'autocapitalize': 'characters'
             }),
             'mileage': forms.TextInput(attrs={
-                # The workshop's own wording, on the owner's instruction. Staff
-                # read the figure off the instrument cluster, so the hint names
-                # where to look rather than restating the format.
-                'placeholder': 'Meter 00001',
                 'inputmode': 'numeric'
             }),
             # ---- `jc-optional`: no hairline when empty -------------------
@@ -329,16 +325,16 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
             }),
             'notes': forms.TextInput(attrs={
                 'class': 'jc-optional',
-                'placeholder': 'Only the workshop sees this',
                 'maxlength': '255',
             }),
-            'car_color_other': forms.TextInput(attrs={
-                'placeholder': 'Specify "Other" color...',
-            }),
+            'car_color_other': forms.TextInput(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        for f in ('brand_name', 'model_name', 'registration_number', 'mileage', 'car_color_other', 'customer_name', 'customer_contact', 'notes'):
+            if f in self.fields:
+                self.fields[f].widget.attrs.pop('placeholder', None)
         eligible_ids = list(
             Mechanic.objects.filter(
                 is_active=True, role__in=Mechanic.JOBCARD_ELIGIBLE_ROLES
@@ -476,7 +472,7 @@ class InventoryDrawForm(forms.ModelForm):
                 'placeholder': 'Qty',
             }),
             'customer_rate': forms.TextInput(attrs={
-                'class': 'form-control text-end inventory-rate',
+                'class': 'form-control text-end inventory-rate jc-optional',
                 'placeholder': 'Unit Price (₹)',
             }),
             'total_price': forms.TextInput(attrs={
@@ -615,6 +611,7 @@ JobCardSpareFormSet = inlineformset_factory(
             'class': 'form-control autocomplete-spare',
             'autocomplete': 'off',
             'placeholder': 'Part Name',
+            'style': 'min-width: 280px;',
         }),
         # `jc-optional` — no hairline when empty, on the owner's instruction.
         # A SHOP spare's quantity is genuinely optional: nothing refuses a save
@@ -629,7 +626,7 @@ JobCardSpareFormSet = inlineformset_factory(
         }),
         'shop_name': forms.Select(attrs={
             'class': 'form-select form-select-sm shop-name-select',
-            'style': 'min-width: 130px;',
+            'style': 'min-width: 200px;',
         }),
         'status': forms.Select(attrs={
             'class': 'form-select form-select-sm status-dropdown',
@@ -779,41 +776,35 @@ class EstimateForm(BootstrapFormMixin, forms.ModelForm):
             'brand_name': forms.TextInput(attrs={
                 'autocomplete': 'off',
                 'class': 'autocomplete-brand',
-                'placeholder': 'e.g. Toyota',
             }),
             'model_name': forms.TextInput(attrs={
                 'autocomplete': 'off',
                 'class': 'autocomplete-model',
-                'placeholder': 'e.g. Corolla',
             }),
             'registration_number': forms.TextInput(attrs={
                 'style': 'text-transform: uppercase;',
                 'autocapitalize': 'characters',
-                'placeholder': 'e.g. KL 10 AB 1234',
             }),
             'mileage': forms.TextInput(attrs={
-                'placeholder': 'e.g. 50000 or 50k',
                 'inputmode': 'numeric',
             }),
             'customer_contact': forms.TextInput(attrs={
                 'inputmode': 'tel',
-                'placeholder': 'Phone (optional)',
             }),
             'labour_amount': forms.TextInput(attrs={
                 'class': 'form-control text-end fw-bold',
                 'inputmode': 'decimal',
                 'placeholder': 'Total Amount',
             }),
-            'notes': forms.TextInput(attrs={
-                'placeholder': 'Only you see this',
-            }),
-            'car_color_other': forms.TextInput(attrs={
-                'placeholder': 'Specify "Other" colour…',
-            }),
+            'notes': forms.TextInput(),
+            'car_color_other': forms.TextInput(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        for f in ('brand_name', 'model_name', 'registration_number', 'mileage', 'car_color_other', 'customer_name', 'customer_contact', 'notes'):
+            if f in self.fields:
+                self.fields[f].widget.attrs.pop('placeholder', None)
         # Total Labour is the box Office types into on almost every estimate.
         # Left alone it arrives holding `0` on a new quote and `8500.00` on an
         # edit — both of which have to be deleted before a figure can be typed.
@@ -1012,13 +1003,8 @@ class EstimatePartLineForm(forms.ModelForm):
         return cleaned
 
 
-# `extra=3` on both, unlike the job card's `extra=0` + "Add row" button. The
-# paper form these replace opens with a block of empty lines and Office fills
-# down it, so a new estimate that showed nothing until you pressed Add would be
-# slower than the pad it is meant to replace. Django skips an extra row that was
-# never touched (`has_changed()`), so unused ones cost nothing and save nothing.
-# The Add button is still there for a long quote.
-ESTIMATE_BLANK_ROWS = 3
+# `extra=0` on both, matching the job card's dynamic "Add row" flow.
+ESTIMATE_BLANK_ROWS = 0
 
 EstimateJobFormSet = inlineformset_factory(
     Estimate,

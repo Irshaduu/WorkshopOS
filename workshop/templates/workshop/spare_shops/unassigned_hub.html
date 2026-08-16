@@ -1,173 +1,991 @@
 {% extends 'workshop/base.html' %}
+{% load static %}
 {% load custom_filters %}
-{% load humanize %}
 
-{% block title %}Unassigned Spares Hub{% endblock %}
+{% block title %}Unassigned Spares{% endblock %}
+
+{% comment %}
+UNASSIGNED SPARES — parts bought from a shop and not yet fitted to a car.
+
+TWO AUDIENCES ON ONE PAGE, and the split is resolved in the view
+(`can_manage` / `can_see_prices`), never inferred from groups here.
+
+  Office / Owner — everything: the price column, the price box, Edit, Delete.
+  Floor          — add only. No price is shown and no price box is rendered,
+                   because Floor is shown cost nowhere else in this app; and
+                   the row they add stores a NULL price, which Office fills in
+                   when the shop's bill is keyed.
+
+Hiding a control here is presentation and nothing more. The real halves are the
+decorators on `unassigned_spare_edit` and `spare_shop_delete_unassigned`, and
+the `PRICE_NOT_SUPPLIED` strip in `unassigned_spare_add` — a hidden input is one
+crafted POST away from writing a price, which is AUD-0081 all over again.
+
+TWO LAYOUT RULES WORTH NOT REDISCOVERING.
+
+(a) The add form is ONE horizontal scroller, not a grid that stacks. On a phone
+    a stacked version is seven full-width rows — the Save button lands well
+    below the fold and the whole form has to be scrolled past to reach the list
+    underneath it. Scrolling sideways is also the gesture staff already use on
+    the Job Card's Spare Parts table, which is the screen this one sits beside
+    in their day. One structure serves every width: it simply does not need to
+    scroll on a laptop.
+
+(b) The row actions are two inline BUTTONS, not a ⋮ dropdown. A dropdown inside
+    a horizontal scroller is clipped — `overflow-x: auto` computes `overflow-y`
+    to `auto` as well, and Popper cannot escape a clipping ancestor, which is
+    the trap `.cb-list` already cost an afternoon for. Two buttons also take one
+    tap instead of two on the tablet. Delete still opens a confirmation, so the
+    destructive action is no closer than it was.
+{% endcomment %}
+
+{% block extra_css %}
+<style>
+  /* ── Header ─────────────────────────────────────────────── */
+  .ua-head {
+    background: linear-gradient(135deg, #3730a3 0%, #1e1b4b 100%);
+    border-radius: 16px;
+    padding: 1.15rem 1.35rem;
+    margin-bottom: 1.25rem;
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(30, 27, 75, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  /* The title gives up nothing; the count pill is what shrinks. Same rule the
+     Spare Shop header follows — a header gives up its actions before its name. */
+  .ua-head-text { min-width: 0; }
+  .ua-head h1 {
+    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif);
+    font-size: 1.22rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .ua-head p {
+    margin: 0.2rem 0 0;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.78);
+  }
+  .ua-count {
+    flex: 0 0 auto;
+    background: #fff;
+    color: #1e1b4b;
+    border-radius: 999px;
+    padding: 0.32rem 0.85rem;
+    font-weight: 800;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .ua-back {
+    color: var(--color-text-muted, #64748b);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ua-back:hover { color: var(--color-primary, #4f46e5); }
+
+  /* ── Add a Purchase ─────────────────────────────────────── */
+  /* `overflow: visible` — the datalist-style suggestion box hangs out of it. */
+  .ua-add {
+    background: var(--color-card, #fff);
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    margin-bottom: 1.5rem;
+    overflow: visible;
+  }
+  .ua-add-head {
+    padding: 0.85rem 1.1rem;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-radius: 14px;
+    background: transparent;
+    transition: background-color 0.15s ease;
+  }
+  @media (hover: hover) {
+    .ua-add-head:hover { background: rgba(79, 70, 229, 0.035); }
+  }
+  .ua-add-head:active { background: rgba(79, 70, 229, 0.07); }
+  .ua-add-title { min-width: 0; }
+  .ua-add-title h2 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-text, #1e293b);
+    margin: 0;
+  }
+  .ua-add-title span {
+    font-size: 0.74rem;
+    color: var(--color-text-muted, #64748b);
+  }
+  .ua-add-mark {
+    flex: 0 0 auto;
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    background: rgba(79, 70, 229, 0.1);
+    color: #4338ca;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+  }
+  .ua-add-toggle {
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-text, #1e293b);
+    border-radius: 999px;
+    padding: 6px 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    background: var(--color-bg, #f8fafc);
+    /* Paint only. `transition: all` here would animate the flex sizing, which
+       is what pinned the Cashbook chips at content width for an afternoon. */
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .ua-add-head[aria-expanded="true"] .ua-add-toggle {
+    background: rgba(79, 70, 229, 0.1);
+    color: #4338ca;
+    border-color: rgba(79, 70, 229, 0.25);
+  }
+  .ua-add-chev { font-size: 0.7rem; transition: transform 0.2s ease; }
+  .ua-add-head[aria-expanded="true"] .ua-add-chev { transform: rotate(180deg); }
+
+  .ua-add-body { padding: 0 1.1rem 1.1rem; }
+
+  /* (a) above. Two behaviours, one structure:
+       ≥768px — the fields WRAP, so the whole form is visible with no scrollbar.
+                It has to wrap rather than sit on one line because
+                `.main-content` is capped at 800px app-wide (the Analysis page
+                is the only exception), so "desktop" here is a 767px column and
+                seven controls do not fit across it at a usable size.
+       <768px — one line, scrolled sideways, which is the gesture staff already
+                use on the Job Card's Spare Parts table. Stacked, this is seven
+                full-width rows and the Save button lands below the fold. */
+  .ua-form-scroll {
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--color-border-light, #f1f5f9);
+  }
+  .ua-form-row {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+  }
+  .ua-field { position: relative; }
+  .ua-field label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted, #64748b);
+    margin-bottom: 4px;
+    white-space: nowrap;
+  }
+  .ua-field .req { color: #dc2626; }
+  /* Bases chosen so the wrap falls where it reads: what the part IS on the
+     first line, when it moved on the second. The two dates are a pair and must
+     never be split across lines by a stray growth rule. */
+  .ua-f-shop  { flex: 1 1 180px; }
+  .ua-f-name  { flex: 2 1 230px; }
+  .ua-f-qty   { flex: 0 0 78px; }
+  .ua-f-price { flex: 0 0 118px; }
+  .ua-f-date  { flex: 1 1 150px; }
+  .ua-field .form-control,
+  .ua-field .form-select {
+    height: 42px;
+    border-radius: 9px;
+    font-size: 0.88rem;
+    width: 100%;
+  }
+  .ua-save {
+    flex: 0 0 auto;
+    height: 42px;
+    border-radius: 9px;
+    font-weight: 700;
+    font-size: 0.86rem;
+    padding: 0 1.15rem;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── Shop group ─────────────────────────────────────────── */
+  /* No `overflow: hidden`: the corners are rounded on the children instead, so
+     nothing inside can ever be clipped by the card. */
+  .ua-shop {
+    background: var(--color-card, #fff);
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    margin-bottom: 1.15rem;
+  }
+  .ua-shop-head {
+    padding: 0.8rem 1.1rem;
+    background: rgba(15, 23, 42, 0.02);
+    border-bottom: 1px solid var(--color-border-light, #f1f5f9);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .ua-shop-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-text, #1e293b);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .ua-shop-name span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ua-shop-name:hover { color: var(--color-primary, #2563eb); }
+  .ua-badge {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .ua-badge-count { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+  .ua-badge-archived { background: #fff7ed; color: #b45309; border: 1px solid #fed7aa; }
+
+  .ua-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
+  }
+  .ua-scroll::-webkit-scrollbar { height: 6px; }
+  .ua-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+  .ua-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+
+  .ua-table { width: 100%; margin: 0; border-collapse: collapse; }
+  .ua-table th {
+    font-size: 0.66rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted, #64748b);
+    padding: 9px 14px;
+    background: var(--color-bg, #f8fafc);
+    border-bottom: 1px solid var(--color-border, #e2e8f0);
+    white-space: nowrap;
+    text-align: left;
+  }
+  .ua-table td {
+    padding: 11px 14px;
+    font-size: 0.86rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--color-border-light, #f1f5f9);
+    white-space: nowrap;
+  }
+  .ua-table tr:last-child td { border-bottom: none; }
+  @media (hover: hover) {
+    .ua-table tbody tr:hover td { background: rgba(79, 70, 229, 0.02); }
+  }
+  .ua-col-name { min-width: 230px; white-space: normal; }
+  .ua-part { font-weight: 700; color: var(--color-text, #1e293b); }
+  .ua-for {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.73rem;
+    color: var(--color-text-muted, #64748b);
+    margin-top: 2px;
+  }
+  .ua-num { text-align: right; }
+  .ua-money { font-weight: 700; color: var(--color-text, #1e293b); }
+  .ua-none { color: #94a3b8; }
+
+  .ua-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    background: #f1f5f9;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    white-space: nowrap;
+  }
+
+  /* (b) above: inline buttons, no popup to be clipped. */
+  .ua-acts { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+  .ua-act {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    background: #fff;
+    color: var(--color-text-muted, #64748b);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+  /* Hover is a mouse-only affordance: on a touch screen it never fires, and
+     where it does fire it STICKS on the last thing tapped. `:active` is what a
+     finger gets, and it is a real squash so it reads at arm's length. */
+  @media (hover: hover) {
+    .ua-act:hover { background: #f8fafc; border-color: #cbd5e1; color: #1e293b; }
+    .ua-act-del:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
+  }
+  .ua-act:active { transform: scale(.92); background: #f1f5f9; }
+  .ua-act-del:active { background: #fee2e2; }
+  .ua-act:focus-visible { outline: 2px solid var(--color-primary, #2563eb); outline-offset: 1px; }
+
+  /* ── Suggestions ────────────────────────────────────────────
+     `position: fixed`, placed by script, and that is NOT a preference.
+
+     The add form's box sits inside `.ua-form-scroll`, which is
+     `overflow-x: auto` — and `overflow-x: auto` computes `overflow-y` to
+     `auto` as well, so an absolutely-positioned panel in there is clipped and
+     the scroller grows a vertical scrollbar instead. That is the same trap
+     `.cb-list` cost an afternoon for and the reason the Job Card's date panel
+     is fixed. Fixed positioning escapes every clipping ancestor, so one rule
+     serves both the scrolling form and the modal.
+
+     Checked before building, as that entry says to: nothing between these
+     boxes and the root creates a containing block — no `transform`, `filter`,
+     `will-change` or `contain` — so `fixed` really is viewport-relative here. */
+  .ua-sugs {
+    position: fixed;
+    z-index: 1080;                 /* over a Bootstrap modal (1055) */
+    max-height: 210px;
+    overflow-y: auto;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+    border: 1px solid var(--color-border, #e2e8f0);
+    background: #fff;
+    display: none;
+  }
+  .ua-sugs.is-open { display: block; }
+  .ua-sug {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: none;
+    font-size: 0.84rem;
+    padding: 8px 12px;
+    color: var(--color-text, #1e293b);
+    cursor: pointer;
+  }
+  .ua-sug + .ua-sug { border-top: 1px solid #f1f5f9; }
+  .ua-sug:hover, .ua-sug.is-active { background: #f1f5f9; }
+
+  /* ── Empty ──────────────────────────────────────────────── */
+  .ua-empty {
+    background: var(--color-card, #fff);
+    border: 1px dashed var(--color-border, #e2e8f0);
+    border-radius: 14px;
+    padding: 2.6rem 1.25rem;
+    text-align: center;
+    color: var(--color-text-muted, #64748b);
+  }
+  .ua-empty i { font-size: 1.9rem; color: #cbd5e1; display: block; margin-bottom: 0.6rem; }
+
+  /* A finger needs a bigger target than a pointer does, and the Floor tablet is
+     wider than plenty of laptops — so this is keyed on input method, not width. */
+  @media (hover: none) {
+    .ua-act { width: 40px; height: 40px; }
+    .ua-add-toggle { padding: 8px 14px; }
+  }
+  /* The phone half of (a): one line, scrolled sideways. `max-content` on the
+     row is what stops the fields shrinking to fit instead of overflowing. */
+  @media (max-width: 767.98px) {
+    .ua-form-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 0.35rem;
+    }
+    .ua-form-scroll::-webkit-scrollbar { height: 6px; }
+    .ua-form-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+    .ua-form-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+    .ua-form-row { flex-wrap: nowrap; min-width: max-content; }
+    .ua-form-row > * { flex: 0 0 auto; }
+    .ua-f-shop  { width: 170px; }
+    .ua-f-name  { width: 220px; }
+    .ua-f-qty   { width: 78px; }
+    .ua-f-price { width: 118px; }
+    .ua-f-date  { width: 150px; }
+  }
+
+  @media (max-width: 575.98px) {
+    .ua-head { padding: 1rem; border-radius: 12px; }
+    .ua-head h1 { font-size: 1.05rem; }
+    .ua-add-body { padding: 0 0.85rem 0.95rem; }
+    .ua-add-head { padding: 0.75rem 0.85rem; }
+    /* The one-line subtitle goes; the toggle KEEPS its word. Measured at 375px:
+       the heading needs ~150px and the toggle ~70px against 343px of usable
+       row, so there is no competition to resolve — and a bare chevron beside
+       "Add a Purchase" reads as decoration rather than the control that opens
+       it. This is the Spare Shop header rule the other way up: nothing is
+       giving anything up here, so nothing should. */
+    .ua-add-title span { display: none; }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<style>
-  .hub-header {
-    background: linear-gradient(135deg, #4f46e5 0%, #312e81 100%);
-    border-radius: 16px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    color: #fff;
-  }
-  .items-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); border-bottom: 2px solid var(--color-border); }
-  .items-table td { font-size: 0.85rem; vertical-align: middle; }
-</style>
 
-<!-- ── Back breadcrumb ── -->
+{% if can_manage %}
 <div class="mb-3">
-  <a href="{% url 'spare_shop_list' %}" class="text-muted text-decoration-none small">
-    <i class="bi bi-arrow-left me-1"></i> Back to Spare Shops
+  <a href="{% url 'spare_shop_list' %}" class="ua-back">
+    <i class="bi bi-arrow-left"></i> Back to Spare Shops
   </a>
 </div>
+{% endif %}
 
-<!-- ── Header ── -->
-<div class="hub-header shadow-sm d-flex align-items-center justify-content-between flex-wrap gap-3">
-  <div>
-    <h4 class="fw-bold mb-1"><i class="bi bi-box-seam me-2"></i>Unassigned Spares Hub</h4>
-    <div style="color: rgba(255,255,255,0.7); font-size: 0.85rem;">
-      Manage floating spare parts and legacy balances across all shops
-    </div>
+<div class="ua-head">
+  <div class="ua-head-text">
+    <h1><i class="bi bi-box-seam"></i> Unassigned Spares</h1>
+    <p>Parts bought from a shop, not yet fitted to a car.</p>
   </div>
-  <div class="bg-white text-dark rounded-pill px-4 py-2 fw-bold shadow-sm">
-    Total: {{ unassigned_items|length }} Items
-  </div>
+  <div class="ua-count">{{ item_count }} item{{ item_count|pluralize }}</div>
 </div>
 
 {% comment %}
-Add a purchase without opening the shop's own page first. Same row the shop page
-creates and the same server-side rules — the shop just arrives as a field here
-instead of a URL segment.
-
 The shop select is REQUIRED. A row with no job card AND no shop is filtered out
-of this Hub, missing from every shop ledger, and unreachable by the only delete
-there is, so it would be money nobody could see or remove.
+of this page (it lists `shop__isnull=False`), missing from every shop ledger,
+and unreachable by the only delete there is — money nobody could see or remove.
 {% endcomment %}
-<div class="card shadow-sm border-0 mb-4">
-  <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
-    <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-plus-circle me-2"></i>Add a Purchase</h6>
-    <small class="text-muted" style="font-size: 0.72rem;">Not yet fitted to any car</small>
-  </div>
-  <div class="card-body">
-    {% if shops %}
-    <form method="post" action="{% url 'unassigned_spare_add' %}" class="row g-2 align-items-end">
-      {% csrf_token %}
-      <div class="col-12 col-md-3">
-        <label class="form-label small text-muted mb-1" for="ua-shop">Shop</label>
-        <select name="shop" id="ua-shop" class="form-select form-select-sm" required>
-          <option value="">-- Choose shop --</option>
-          {% for shop in shops %}
-          <option value="{{ shop.pk }}">{{ shop.name }}</option>
-          {% endfor %}
-        </select>
+<div class="ua-add">
+  <div class="ua-add-head" role="button" tabindex="0"
+       data-bs-toggle="collapse" data-bs-target="#uaAddBody"
+       aria-expanded="false" aria-controls="uaAddBody">
+    <div class="d-flex align-items-center gap-2 ua-add-title">
+      <span class="ua-add-mark"><i class="bi bi-plus-lg"></i></span>
+      <div>
+        <h2>Add a Purchase</h2>
+        <span>Record a shop part before it goes on a car</span>
       </div>
-      <div class="col-12 col-md-4">
-        <label class="form-label small text-muted mb-1" for="ua-name">Item</label>
-        <input type="text" name="spare_part_name" id="ua-name" class="form-control form-control-sm"
-               maxlength="100" placeholder="Part name" autocomplete="off" required>
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label small text-muted mb-1" for="ua-qty">Qty</label>
-        <input type="number" name="quantity" id="ua-qty" class="form-control form-control-sm"
-               step="0.01" min="0.01" value="1" required>
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label small text-muted mb-1" for="ua-price">Shop Price (₹)</label>
-        <input type="number" name="unit_price" id="ua-price" class="form-control form-control-sm"
-               step="0.01" min="0" placeholder="0">
-      </div>
-      <div class="col-12 col-md-1 d-grid">
-        <button type="submit" class="btn btn-sm btn-primary">Add</button>
-      </div>
-    </form>
-    {% else %}
-    <div class="text-muted small mb-0">
-      No active spare shops yet — <a href="{% url 'spare_shop_list' %}">create one</a> first.
     </div>
-    {% endif %}
+    <div class="ua-add-toggle">
+      <span class="ua-toggle-word" id="uaToggleWord">Add</span>
+      <i class="bi bi-chevron-down ua-add-chev"></i>
+    </div>
+  </div>
+
+  <div class="collapse" id="uaAddBody">
+    <div class="ua-add-body">
+      {% if shops %}
+      <form method="post" action="{% url 'unassigned_spare_add' %}">
+        {% csrf_token %}
+        <div class="ua-form-scroll">
+          <div class="ua-form-row">
+            <div class="ua-field ua-f-shop">
+              <label for="ua-shop">Shop <span class="req">*</span></label>
+              <select name="shop" id="ua-shop" class="form-select" required>
+                <option value="">Choose shop</option>
+                {% for shop in shops %}
+                <option value="{{ shop.pk }}">{{ shop.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="ua-field ua-f-name">
+              <label for="ua-name">Item Name <span class="req">*</span></label>
+              <input type="text" name="spare_part_name" id="ua-name"
+                     class="form-control ua-autocomplete" maxlength="100"
+                     autocomplete="off" required
+                     aria-autocomplete="list" aria-expanded="false">
+              <div class="ua-sugs" role="listbox"></div>
+            </div>
+
+            <div class="ua-field ua-f-qty">
+              <label for="ua-qty">Qty</label>
+              <input type="number" name="quantity" id="ua-qty" class="form-control"
+                     step="0.01" min="0.01" value="1" required>
+            </div>
+
+            {% if can_see_prices %}
+            <div class="ua-field ua-f-price">
+              <label for="ua-price">Shop Price (₹)</label>
+              <input type="number" name="unit_price" id="ua-price" class="form-control"
+                     step="0.01" min="0" placeholder="Leave blank">
+            </div>
+            {% endif %}
+
+            <div class="ua-field ua-f-date">
+              <label for="ua-ordered">Ordered</label>
+              <input type="date" name="ordered_date" id="ua-ordered" class="form-control"
+                     value="{% now 'Y-m-d' %}" max="{% now 'Y-m-d' %}">
+            </div>
+
+            <div class="ua-field ua-f-date">
+              <label for="ua-received">Received</label>
+              <input type="date" name="received_date" id="ua-received" class="form-control"
+                     value="{% now 'Y-m-d' %}" max="{% now 'Y-m-d' %}">
+            </div>
+
+            <button type="submit" class="btn btn-primary ua-save">
+              <i class="bi bi-check-lg"></i> Save
+            </button>
+          </div>
+        </div>
+        {% if not can_see_prices %}
+        <div class="text-muted mt-2" style="font-size: 0.75rem;">
+          <i class="bi bi-info-circle"></i> The office adds the price when the shop's bill comes in.
+        </div>
+        {% endif %}
+      </form>
+      {% else %}
+      <div class="ua-form-scroll text-muted" style="font-size: 0.85rem;">
+        No active spare shops yet{% if can_manage %} — <a href="{% url 'spare_shop_list' %}">create one</a> first{% endif %}.
+      </div>
+      {% endif %}
+    </div>
   </div>
 </div>
 
-{% regroup unassigned_items by shop as grouped_spares %}
-
-{% if not grouped_spares %}
-<div class="card border-0 shadow-sm" style="border-radius: 16px;">
-  <div class="card-body text-center py-5 text-muted">
-    <i class="bi bi-check-circle-fill text-success mb-3" style="font-size: 3rem;"></i>
-    <h5 class="fw-bold text-dark">All Caught Up!</h5>
-    <p class="mb-0">There are no unassigned spare parts in any shop ledger.</p>
+{% if not unassigned_items %}
+  <div class="ua-empty">
+    <i class="bi bi-inbox"></i>
+    <div class="fw-bold text-dark mb-1">Nothing waiting</div>
+    <div style="font-size: 0.85rem;">Every shop part has been fitted to a car.</div>
   </div>
-</div>
 {% else %}
-
+  {% regroup unassigned_items by shop as grouped_spares %}
   {% for group in grouped_spares %}
-  <div class="card border-0 shadow-sm mb-4" style="border-radius: 16px; overflow: hidden;">
-    <div class="card-header border-0 py-3 d-flex align-items-center justify-content-between" style="background: rgba(0,0,0,0.02);">
-      <h6 class="fw-bold mb-0 text-primary">
-        <i class="bi bi-tools me-2"></i>{{ group.grouper.name }}
-      </h6>
-      <span class="badge bg-light text-dark border">{{ group.list|length }} Items</span>
-    </div>
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-borderless align-middle mb-0 items-table text-nowrap">
-          <thead>
-            <tr class="border-bottom text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px;">
-              <th class="ps-4">Part Name</th>
-              <th class="text-end">Qty</th>
-              <th class="text-end">Shop Price</th>
-              <th class="text-center">Date</th>
-              <th class="pe-4 text-end" style="width: 60px;"><span class="visually-hidden">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in group.list %}
-            <tr class="border-bottom" style="border-color: var(--color-border-light) !important;">
-              <td class="ps-4">
-                <div class="fw-medium text-dark">{{ item.spare_part_name|default:"Legacy Balance / Unknown" }}</div>
-                {% if item.original_vehicle_info %}
-                <div class="text-muted" style="font-size: 0.75rem;"><i class="bi bi-car-front me-1"></i>Ordered for: {{ item.original_vehicle_info }}</div>
-                {% endif %}
-              </td>
-              <td class="text-end text-muted">{% if item.quantity %}{{ item.quantity|floatformat:"-2" }}{% else %}—{% endif %}</td>
-              <td class="text-end fw-bold text-dark">
-                {% if item.unit_price %}₹{{ item.unit_price|floatformat:0 }}{% else %}<span class="text-muted">—</span>{% endif %}
-              </td>
-              <td class="text-center text-muted" style="font-size: 0.85rem;">
-                {{ item.ordered_date|date:"d/m/Y"|default:item.received_date|date:"d/m/Y"|default:"—" }}
-              </td>
-              {% comment %}
-              The only place an unassigned spare can be removed. Until 2026-07-31
-              there was none at all, so a mistyped ledger entry inflated what the
-              workshop owed that shop for ever. Deleting is permanent and logged
-              to Deletion History, like every other financial delete.
-              {% endcomment %}
-              <td class="pe-4 text-end">
-                <form method="post" action="{% url 'spare_shop_delete_unassigned' item.pk %}"
-                      onsubmit="return confirm('Permanently delete '{{ item.spare_part_name|escapejs }}' from {{ item.shop.name|escapejs }}'s ledger?
-
-This is logged to Deletion History and cannot be undone.');">
-                  {% csrf_token %}
-                  <input type="hidden" name="reason" value="Removed from Unassigned Spares">
-                  <button type="submit" class="btn btn-sm btn-outline-danger"
-                          style="font-size: 0.72rem; padding: 2px 10px;"
-                          aria-label="Delete {{ item.spare_part_name|default:'this spare' }}">
-                    <i class="bi bi-trash"></i>
-                  </button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+  <div class="ua-shop">
+    <div class="ua-shop-head">
+      {% if can_manage %}
+      <a href="{% url 'spare_shop_detail' group.grouper.pk %}" class="ua-shop-name">
+        <i class="bi bi-shop text-primary"></i><span>{{ group.grouper.name }}</span>
+      </a>
+      {% else %}
+      <div class="ua-shop-name">
+        <i class="bi bi-shop text-primary"></i><span>{{ group.grouper.name }}</span>
       </div>
+      {% endif %}
+      <div class="d-flex align-items-center gap-2">
+        {% comment %}
+        Archiving hides a shop from the pickers; it must never hide what is owed
+        to it, or that debt is reachable from no screen at all.
+        {% endcomment %}
+        {% if group.grouper.is_trashed %}
+        <span class="ua-badge ua-badge-archived">Archived</span>
+        {% endif %}
+        <span class="ua-badge ua-badge-count">{{ group.list|length }} item{{ group.list|length|pluralize }}</span>
+      </div>
+    </div>
+
+    <div class="ua-scroll">
+      <table class="ua-table">
+        <thead>
+          <tr>
+            <th class="ua-col-name">Part Name</th>
+            <th class="ua-num">Qty</th>
+            {% if can_see_prices %}<th class="ua-num">Shop Price</th>{% endif %}
+            <th>Ordered</th>
+            <th>Received</th>
+            {% if can_manage %}<th class="ua-num"><span class="visually-hidden">Actions</span></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in group.list %}
+          <tr>
+            <td class="ua-col-name">
+              <div class="ua-part">{{ item.spare_part_name|default:"Legacy Balance / Unknown" }}</div>
+              {% if item.original_vehicle_info %}
+              <div class="ua-for">
+                <i class="bi bi-car-front"></i>
+                <span>Ordered for {{ item.original_vehicle_info }}</span>
+              </div>
+              {% endif %}
+            </td>
+            <td class="ua-num">{{ item.quantity|clean_qty|default:"1" }}</td>
+            {% if can_see_prices %}
+            <td class="ua-num">
+              {% if item.unit_price is not None %}
+                <span class="ua-money">₹{{ item.unit_price|floatformat:0 }}</span>
+              {% else %}
+                {# NULL means nobody has priced it yet — not that it was free. #}
+                <span class="ua-none" title="Not priced yet">Not priced</span>
+              {% endif %}
+            </td>
+            {% endif %}
+            <td>
+              {% if item.ordered_date %}
+              <span class="ua-date"><i class="bi bi-calendar-event text-primary"></i>{{ item.ordered_date|date:"d/m/Y" }}</span>
+              {% else %}<span class="ua-none">—</span>{% endif %}
+            </td>
+            <td>
+              {% if item.received_date %}
+              <span class="ua-date"><i class="bi bi-calendar-check text-success"></i>{{ item.received_date|date:"d/m/Y" }}</span>
+              {% else %}<span class="ua-none">—</span>{% endif %}
+            </td>
+            {% if can_manage %}
+            <td class="ua-num">
+              <div class="ua-acts">
+                <button type="button" class="ua-act ua-act-edit"
+                        aria-label="Edit {{ item.spare_part_name|default:'this spare' }}"
+                        data-pk="{{ item.pk }}"
+                        data-shop="{{ item.shop.pk }}"
+                        data-shop-name="{{ item.shop.name }}"
+                        data-archived="{% if item.shop.is_trashed %}1{% else %}0{% endif %}"
+                        data-name="{{ item.spare_part_name|default:'' }}"
+                        data-qty="{{ item.quantity|default_if_none:'' }}"
+                        data-price="{{ item.unit_price|default_if_none:'' }}"
+                        data-ordered="{{ item.ordered_date|date:'Y-m-d'|default:'' }}"
+                        data-received="{{ item.received_date|date:'Y-m-d'|default:'' }}">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button type="button" class="ua-act ua-act-del"
+                        aria-label="Delete {{ item.spare_part_name|default:'this spare' }}"
+                        data-pk="{{ item.pk }}"
+                        data-name="{{ item.spare_part_name|default:'this spare' }}"
+                        data-shop-name="{{ item.shop.name }}">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </div>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
   {% endfor %}
-
 {% endif %}
 
+{% if can_manage %}
+{% comment %}
+One modal each, outside the row loop — a per-row copy would repeat every id in
+the document as many times as there are rows.
+{% endcomment %}
+<div class="modal fade" id="uaEditModal" tabindex="-1" aria-labelledby="uaEditTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="uaEditTitle">
+          <i class="bi bi-pencil-square me-2 text-primary"></i>Edit Spare
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="uaEditForm" method="post" action="">
+        {% csrf_token %}
+        <div class="modal-body py-3">
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted mb-1" for="ua-e-shop">Shop</label>
+            <select name="shop" id="ua-e-shop" class="form-select form-select-sm" required>
+              {% for shop in shops %}
+              <option value="{{ shop.pk }}">{{ shop.name }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text text-warning d-none" id="ua-e-archived" style="font-size: 0.74rem;">
+              <i class="bi bi-archive"></i> This shop is archived. Leave it selected to keep the purchase on its ledger.
+            </div>
+          </div>
+          <div class="mb-3 position-relative">
+            <label class="form-label small fw-bold text-muted mb-1" for="ua-e-name">Part Name</label>
+            <input type="text" name="spare_part_name" id="ua-e-name"
+                   class="form-control form-control-sm ua-autocomplete" maxlength="100"
+                   autocomplete="off" required aria-autocomplete="list" aria-expanded="false">
+            <div class="ua-sugs" role="listbox"></div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted mb-1" for="ua-e-qty">Quantity</label>
+              <input type="number" name="quantity" id="ua-e-qty" class="form-control form-control-sm"
+                     step="0.01" min="0.01" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted mb-1" for="ua-e-price">Shop Price (₹)</label>
+              <input type="number" name="unit_price" id="ua-e-price" class="form-control form-control-sm"
+                     step="0.01" min="0" placeholder="Not priced">
+            </div>
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted mb-1" for="ua-e-ordered">Ordered</label>
+              <input type="date" name="ordered_date" id="ua-e-ordered" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted mb-1" for="ua-e-received">Received</label>
+              <input type="date" name="received_date" id="ua-e-received" class="form-control form-control-sm">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-sm btn-light border px-3" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary fw-bold px-4">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="uaDeleteModal" tabindex="-1" aria-labelledby="uaDeleteTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+      <div class="modal-body text-center p-4">
+        <div class="rounded-circle bg-danger bg-opacity-10 text-danger d-inline-flex align-items-center justify-content-center mb-3"
+             style="width: 54px; height: 54px; font-size: 1.6rem;" aria-hidden="true">
+          <i class="bi bi-trash"></i>
+        </div>
+        <h5 class="fw-bold mb-2" id="uaDeleteTitle">Delete this spare?</h5>
+        <p class="text-muted small mb-3">
+          Permanently remove <strong id="uaDelName" class="text-dark"></strong>
+          from <strong id="uaDelShop" class="text-dark"></strong>'s ledger.
+        </p>
+        <div class="small p-2 rounded mb-4" style="background: #fef2f2; color: #991b1b; border: 1px solid #fee2e2;">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          Logged to Deletion History. There is no undo.
+        </div>
+        <form id="uaDeleteForm" method="post" action="">
+          {% csrf_token %}
+          <input type="hidden" name="reason" value="Removed from Unassigned Spares">
+          <div class="d-flex gap-2 justify-content-center">
+            <button type="button" class="btn btn-sm btn-light border px-4" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-sm btn-danger fw-bold px-4">Permanently Delete</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+
+    /* ── Part-name suggestions ───────────────────────────────
+       One delegated listener set, not per-input wiring: the edit modal's box
+       and the add form's box behave identically and neither is ever cloned.
+       Values go in with `textContent`, never innerHTML — these are master-list
+       names typed by staff. */
+    var AUTOCOMPLETE_URL = '{% url "autocomplete_spares" %}';
+    var timer = null;
+    var seq = 0;
+
+    function boxFor(input) {
+        return input.parentElement ? input.parentElement.querySelector('.ua-sugs') : null;
+    }
+
+    function close(box, input) {
+        if (!box) return;
+        box.classList.remove('is-open');
+        box.replaceChildren();
+        if (input) input.setAttribute('aria-expanded', 'false');
+    }
+
+    // The box is `position: fixed` to escape the form's horizontal scroller
+    // (see the stylesheet), so its coordinates have to come from the input.
+    // It flips above when there is not room below, which is what Popper would
+    // have done — and 210px is the box's own max-height.
+    function place(input, box) {
+        var r = input.getBoundingClientRect();
+        var below = window.innerHeight - r.bottom;
+        box.style.left = r.left + 'px';
+        box.style.width = r.width + 'px';
+        if (below < 140 && r.top > below) {
+            box.style.top = '';
+            box.style.bottom = (window.innerHeight - r.top + 3) + 'px';
+            box.style.maxHeight = Math.min(210, r.top - 12) + 'px';
+        } else {
+            box.style.bottom = '';
+            box.style.top = (r.bottom + 3) + 'px';
+            box.style.maxHeight = Math.min(210, below - 12) + 'px';
+        }
+    }
+
+    function placeOpenBoxes() {
+        document.querySelectorAll('.ua-sugs.is-open').forEach(function (box) {
+            var input = box.parentElement.querySelector('.ua-autocomplete');
+            if (input) place(input, box);
+        });
+    }
+    // Keep it attached to its box while the page or the modal moves under it.
+    window.addEventListener('scroll', placeOpenBoxes, true);
+    window.addEventListener('resize', placeOpenBoxes);
+
+    function render(input, names) {
+        var box = boxFor(input);
+        if (!box) return;
+        box.replaceChildren();
+        if (!names.length) { close(box, input); return; }
+        names.forEach(function (name) {
+            var btn = document.createElement('button');
+            btn.type = 'button';           // a bare <button> in a form submits it
+            btn.className = 'ua-sug';
+            btn.setAttribute('role', 'option');
+            btn.textContent = name;
+            btn.addEventListener('mousedown', function (e) {
+                // mousedown, not click: `blur` would close the box first.
+                e.preventDefault();
+                input.value = name;
+                close(box, input);
+                input.focus();
+            });
+            box.appendChild(btn);
+        });
+        box.classList.add('is-open');
+        place(input, box);
+        input.setAttribute('aria-expanded', 'true');
+    }
+
+    document.addEventListener('input', function (e) {
+        var input = e.target.closest ? e.target.closest('.ua-autocomplete') : null;
+        if (!input) return;
+        var q = input.value.trim();
+        if (timer) clearTimeout(timer);
+        if (q.length < 1) { close(boxFor(input), input); return; }
+        timer = setTimeout(function () {
+            // Replies do not necessarily arrive in the order they were sent, so
+            // each carries its request number and a stale one is dropped.
+            var mine = ++seq;
+            fetch(AUTOCOMPLETE_URL + '?q=' + encodeURIComponent(q))
+                .then(function (r) { return r.ok ? r.json() : []; })
+                .then(function (data) {
+                    if (mine !== seq) return;
+                    var names = (Array.isArray(data) ? data : []).map(function (row) {
+                        return (row && typeof row === 'object') ? (row.name || '') : String(row);
+                    }).filter(Boolean).slice(0, 8);
+                    render(input, names);
+                })
+                .catch(function () { /* a suggestion that never arrives costs nothing */ });
+        }, 250);
+    });
+
+    document.addEventListener('keydown', function (e) {
+        var input = e.target.closest ? e.target.closest('.ua-autocomplete') : null;
+        if (!input) return;
+        var box = boxFor(input);
+        if (!box || !box.classList.contains('is-open')) return;
+        var opts = Array.prototype.slice.call(box.querySelectorAll('.ua-sug'));
+        if (!opts.length) return;
+        var at = opts.findIndex(function (o) { return o.classList.contains('is-active'); });
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            var next = e.key === 'ArrowDown' ? at + 1 : at - 1;
+            if (next < 0) next = opts.length - 1;
+            if (next >= opts.length) next = 0;
+            opts.forEach(function (o) { o.classList.remove('is-active'); });
+            opts[next].classList.add('is-active');
+        } else if (e.key === 'Enter' && at > -1) {
+            e.preventDefault();
+            input.value = opts[at].textContent;
+            close(box, input);
+        } else if (e.key === 'Escape') {
+            close(box, input);
+        }
+    });
+
+    document.addEventListener('click', function (e) {
+        document.querySelectorAll('.ua-sugs.is-open').forEach(function (box) {
+            if (!box.parentElement.contains(e.target)) {
+                close(box, box.parentElement.querySelector('.ua-autocomplete'));
+            }
+        });
+    });
+
+    /* ── Add panel label ─────────────────────────────────── */
+    var body = document.getElementById('uaAddBody');
+    var word = document.getElementById('uaToggleWord');
+    if (body && word) {
+        body.addEventListener('show.bs.collapse', function () { word.textContent = 'Hide'; });
+        body.addEventListener('hide.bs.collapse', function () { word.textContent = 'Add'; });
+    }
+    // The header is a div, so Space/Enter have to be wired for a keyboard.
+    var head = document.querySelector('.ua-add-head');
+    if (head) {
+        head.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); head.click(); }
+        });
+    }
+
+    {% if can_manage %}
+    /* ── Edit ────────────────────────────────────────────── */
+    var editForm = document.getElementById('uaEditForm');
+    var editModalEl = document.getElementById('uaEditModal');
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('.ua-act-edit') : null;
+        if (!btn || !editForm || !editModalEl) return;
+        var d = btn.dataset;
+
+        editForm.action = '/spare-shops/items/' + encodeURIComponent(d.pk) + '/edit/';
+
+        // An ARCHIVED shop is not in the select — it is deliberately absent, so
+        // nothing new can be booked against it — but this row already belongs to
+        // it and must be able to stay there. Put it back as an option for this
+        // row only, or the select posts a different shop and the purchase walks
+        // off that shop's ledger on an unrelated edit. The server accepts the
+        // row's own shop whatever its state; that is the half that enforces it.
+        var sel = document.getElementById('ua-e-shop');
+        var note = document.getElementById('ua-e-archived');
+        var stale = sel.querySelector('option[data-archived="1"]');
+        if (stale) stale.remove();
+        if (d.archived === '1') {
+            var opt = document.createElement('option');
+            opt.value = d.shop;
+            opt.textContent = d.shopName + ' (archived)';
+            opt.dataset.archived = '1';
+            sel.insertBefore(opt, sel.firstChild);
+        }
+        sel.value = d.shop;
+        note.classList.toggle('d-none', d.archived !== '1');
+
+        document.getElementById('ua-e-name').value = d.name || '';
+        document.getElementById('ua-e-qty').value = d.qty || '1';
+        document.getElementById('ua-e-price').value = d.price || '';
+        document.getElementById('ua-e-ordered').value = d.ordered || '';
+        document.getElementById('ua-e-received').value = d.received || '';
+
+        bootstrap.Modal.getOrCreateInstance(editModalEl).show();
+    });
+
+    /* ── Delete ──────────────────────────────────────────── */
+    var delForm = document.getElementById('uaDeleteForm');
+    var delModalEl = document.getElementById('uaDeleteModal');
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('.ua-act-del') : null;
+        if (!btn || !delForm || !delModalEl) return;
+        delForm.action = '/spare-shops/items/' + encodeURIComponent(btn.dataset.pk) + '/delete/';
+        document.getElementById('uaDelName').textContent = btn.dataset.name || 'this spare';
+        document.getElementById('uaDelShop').textContent = btn.dataset.shopName || 'the shop';
+        bootstrap.Modal.getOrCreateInstance(delModalEl).show();
+    });
+    {% endif %}
+})();
+</script>
 {% endblock %}

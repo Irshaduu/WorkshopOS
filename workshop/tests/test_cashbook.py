@@ -380,3 +380,87 @@ class TheLedgerIsOneSearchableStreamTests(TestCase):
         self.electricity.refresh_from_db()
         self.assertEqual(self.electricity.amount, Decimal('600.00'))
         self.assertEqual(self.electricity.description, 'KSEB bill 7781')
+
+
+class BothSidesAreCollectedEvenThoughOnlyTwoAreShownTests(TestCase):
+    """
+    The Cashbook headline is two figures — Money Out and Money In — and carries
+    NO net card, on the owner's instruction (2026-08-16). The workshop does not
+    work out a cashbook net; it records what went out and what came in, and the
+    netting off belongs to the owner's Analysis section.
+
+    So what this page owes the business is that BOTH sides are captured
+    accurately and both reach that page. These assert exactly that, because it
+    is the half a UI change could silently break.
+    """
+
+    def setUp(self):
+        self.owner_group, _ = Group.objects.get_or_create(name='Owner')
+        self.owner = User.objects.create_user(username='cb_owner', password='pw')
+        self.owner.groups.add(self.owner_group)
+        self.client.force_login(self.owner)
+        self.today = timezone.localdate()
+
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Electricity',
+                                     amount=Decimal('2000.00'), payment_method='CASH',
+                                     created_by=self.owner, date=self.today)
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Rent',
+                                     amount=Decimal('8000.00'), payment_method='CASH',
+                                     created_by=self.owner, date=self.today)
+        CashbookEntry.objects.create(entry_type='INCOME', category='Scrap',
+                                     amount=Decimal('3000.00'), payment_method='CASH',
+                                     created_by=self.owner, date=self.today)
+
+    def page(self, query=''):
+        return self.client.get(reverse('cashbook') + query)
+
+    def test_both_totals_are_right(self):
+        totals = self.page().context['cashbook_totals']
+        self.assertEqual(totals['expense'], Decimal('10000.00'))
+        self.assertEqual(totals['income'], Decimal('3000.00'))
+
+    def test_net_is_still_computed_even_though_it_is_not_drawn(self):
+        """
+        Kept in the context deliberately: dropping the card is a decision about
+        what this screen shows, not about what the ledger knows.
+        """
+        self.assertEqual(self.page().context['cashbook_totals']['net'],
+                         Decimal('-7000.00'))
+
+    def test_the_page_draws_no_net_card(self):
+        page = self.page().content.decode()
+        self.assertIn('Money Out', page)
+        self.assertIn('Money In', page)
+        self.assertNotIn('Net movement', page)
+        self.assertNotIn('cb-stat--net', page)
+
+    def test_the_analysis_section_still_sees_both_sides(self):
+        """
+        The Profit page does not read this screen — `cashbook_income()` and
+        `cashbook_expense()` aggregate the entries themselves — which is why
+        removing a card here could not move a rupee there. Pinned so that stays
+        true the day somebody wires the two together.
+        """
+        from workshop import analysis_engine as engine
+        self.assertEqual(engine.cashbook_income(self.today, self.today),
+                         Decimal('3000.00'))
+        self.assertEqual(engine.cashbook_expense(self.today, self.today)['total'],
+                         Decimal('10000.00'))
+
+    def test_both_subtitles_name_the_same_window(self):
+        """
+        The label was written out twice in the template, once per figure — two
+        copies of one fact, free to drift into naming different periods on the
+        very headline whose job is to say which period the figures belong to.
+        It comes from the view now.
+        """
+        response = self.page('?filter=this_month')
+        self.assertEqual(response.context['filter_label'], 'This Month')
+        self.assertEqual(response.content.decode().count('Total This Month'), 2)
+
+    def test_a_custom_window_names_its_dates(self):
+        response = self.page('?filter=custom&start_date=2026-01-01&end_date=2026-01-31')
+        self.assertEqual(response.context['filter_label'], '2026-01-01 – 2026-01-31')
+
+    def test_an_unusable_custom_window_still_renders(self):
+        self.assertEqual(self.page('?filter=custom&start_date=abc&end_date=zz').status_code, 200)

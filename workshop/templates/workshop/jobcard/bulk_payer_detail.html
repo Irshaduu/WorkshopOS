@@ -394,6 +394,7 @@
     /* ── Car Cards ────────────────────────────────── */
     .bd-card {
         background: var(--color-card);
+        background-image: linear-gradient(var(--card-shade, transparent), var(--card-shade, transparent));
         border-radius: 12px;
         border: 1px solid var(--color-border);
         box-shadow: 0 1px 4px rgba(0,0,0,0.05);
@@ -401,7 +402,7 @@
         display: flex;
         flex-direction: row;
         height: 100%;
-        transition: box-shadow 0.2s;
+        transition: box-shadow 0.2s, border-color 0.2s;
     }
     .bd-card:hover {
         box-shadow: 0 4px 20px rgba(0,0,0,0.1);
@@ -462,12 +463,12 @@
     .bd-badge-partial { background: rgba(217,119,6,0.1); color: #d97706; border: 1px solid rgba(217,119,6,0.25); }
 
     .bd-vehicle {
-        font-family: var(--font-display);
-        font-size: 1.25rem;
-        font-weight: 800;
-        letter-spacing: 0.2px;
-        color: var(--color-text);
-        line-height: 1.1;
+        font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif);
+        font-size: 1.15rem;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--color-text, #0f172a);
+        line-height: 1.25;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -849,7 +850,7 @@
     {% for job in cards %}
     {% with color=job.get_car_color_hex|default:'#475569' %}
     <div class="col-12 col-md-6 col-lg-4">
-        <div class="bd-card" style="--card-glow: {{ color }}22;">
+        <div class="bd-card" style="--card-glow: {{ color }}22; --card-shade: {% if job.car_color %}{{ color }}14{% else %}transparent{% endif %};">
 
             <!-- 3-dot menu button -->
             <div class="dropdown" style="position: absolute; top: 8px; right: 8px; z-index: 5;">
@@ -962,7 +963,7 @@
         {% for job in paid_cards %}
         {% with color=job.get_car_color_hex|default:'#475569' %}
         <div class="col-12 col-md-6 col-lg-4">
-            <div class="bd-card bd-card-settled" style="--card-glow: {{ color }}22;">
+            <div class="bd-card bd-card-settled" style="--card-glow: {{ color }}22; --card-shade: {% if job.car_color %}{{ color }}14{% else %}transparent{% endif %};">
                 <a href="{% url 'jobcard_detail' job.pk %}" class="bd-card-link">
                     <div class="bd-stripe
                         {% if not job.car_color %}stripe-unset

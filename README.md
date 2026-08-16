@@ -21,11 +21,11 @@ A premium, comprehensive Django-based workshop management system for a single au
 
 ### Finance & Suppliers
 - **Spare Shops Management** — Dedicated module for tracking parts suppliers, monitoring outstanding balances, and managing lump-sum supplier payments with cascade distribution.
-- **Unassigned Spares Hub** — Add legacy stock/balances directly to a shop without linking to a job card. Move parts between job cards and the Unassigned pool. Import unassigned parts into new job cards.
+- **Unassigned Spares Hub** — Add legacy stock/balances directly to a shop without linking to a job card. Move parts between job cards and the Unassigned pool. Import unassigned parts into new job cards. Open to Floor as well, add-only: the mechanic who takes delivery records the part, with no price shown or stored, and the office prices it when the shop's bill arrives.
 - **Inline Shop Price Editing** — Update the shop-paid price of any spare item directly from the ledger page.
 - **Bulk Payer Management ("Fleet Account" in the UI)** — Manage repeat/fleet customers with oldest-first cascading payments, automatic advance-credit carry-forward on overpayment, and a 2-step UI for bulk bill transfers.
 - **Pending Bills Dashboard** — Centralized view of all unpaid/partially-paid jobs across the system.
-- **Paid Bills Dashboard** — Dedicated ledger for all fully settled jobs with time-range and payment-method filters (Owner only).
+- **Paid Bills Dashboard** — Dedicated ledger for all fully settled jobs. Owners get every time range plus the grand total collected; Office gets the last 7 days and no grand total, which is what settling a bill actually needs.
 - **Financial Audits** — Built-in tracking for High Discounts and Deleted Bulk Payers for financial accountability.
 - **Payment Reversal** — Every bulk payment records a JSON snapshot enabling precise, surgical reversal by the Owner.
 - **General Ledger (Cashbook)** — Standalone income & expense tracking for daily workshop overhead, with calendar-aligned date filters and net balance totals. Office and Owner only.
@@ -38,7 +38,7 @@ A premium, comprehensive Django-based workshop management system for a single au
 
 ### Dashboard & Layout
 - **Live Report Dashboard** — High-visibility "Floor" view for mechanics and "Live Report" for office staff.
-- **One Nav, Three Devices** — A single fixed top bar (Floor · New · Completed · Notifications · Manage) renders identically on laptop (Office), tablet (Floor) and mobile (Owners), with 44px touch targets and labels that shed gracefully on narrow phones. "Manage" opens an off-canvas drawer holding every other destination, grouped by section and filtered by role.
+- **One Nav, Three Devices** — A single fixed top bar (Admin · Completed · Report · Alerts · Manage for Office and Owner; Floor · New · Inventory · Menu for mechanics) renders on laptop (Office), tablet (Floor) and mobile (Owners), with 44px touch targets and labels that shed gracefully on narrow phones. "Manage" opens an off-canvas drawer holding every other destination, grouped by section and filtered by role.
 - **Skeleton Loading** — Shimmer animations for a smooth loading experience.
 
 ### Estimates

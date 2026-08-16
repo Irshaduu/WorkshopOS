@@ -50,7 +50,12 @@
             total.value = index + 1;
 
             var first = row.querySelector('input:not([type=hidden]):not([type=checkbox])');
-            if (first) first.focus();
+            if (first) {
+                try {
+                    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } catch (e) { }
+                first.focus();
+            }
         }
 
         form.querySelectorAll('[data-add-row]').forEach(function (btn) {
