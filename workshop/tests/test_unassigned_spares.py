@@ -418,3 +418,128 @@ class TheShopLedgerPriceEditIsBoundedToTests(HubBase):
         self.assertEqual(
             self.as_(self.office).get(
                 reverse('spare_shop_detail', args=[self.shop.pk])).status_code, 200)
+
+
+class OrderedForSaysWhichCarThePartIsForTests(HubBase):
+    """
+    Added 2026-08-18 on the owner's report.
+
+    `original_vehicle_info` already existed, already printed in the list here and
+    on both shop ledgers — and could only ever write ITSELF, because the one
+    place that set it was the "move this spare out of a job card" path. A part
+    recorded straight onto a shop's ledger therefore had no way to say which car
+    it was ordered for, which is the common case on this page: the part is
+    ordered before there is a job card to hang it on.
+
+    It is a NOTE and nothing else — free text, no picker, no FK. At the moment
+    somebody types it the car often has no job card to point at, and half the
+    point is being able to write "Audi A4 — the white one". It moves no money and
+    joins no table, so the only rules it needs are the ones that stop it
+    breaking the row it sits on.
+    """
+
+    def test_it_saves_when_a_purchase_is_recorded(self):
+        self.as_(self.office).post(
+            reverse('unassigned_spare_add'),
+            self.add_payload(unit_price='500', original_vehicle_info='BMW 320d'))
+        item = JobCardSpareItem.objects.get(spare_part_name='Oil Filter')
+        self.assertEqual(item.original_vehicle_info, 'BMW 320d')
+
+    def test_it_can_be_corrected_afterwards(self):
+        item = self.row(original_vehicle_info='BMW 320d')
+        self.as_(self.office).post(
+            reverse('unassigned_spare_edit', args=[item.pk]),
+            self.edit_payload(original_vehicle_info='Audi A4'))
+        item.refresh_from_db()
+        self.assertEqual(item.original_vehicle_info, 'Audi A4')
+
+    def test_clearing_it_stores_NULL_rather_than_an_empty_string(self):
+        """
+        Every other "nobody filled this in" on this row is NULL — the price, the
+        two dates — and the templates test it with `{% if %}`. An empty string
+        is falsy too, so this is tidiness rather than a defect waiting to
+        happen; it is asserted so the column keeps ONE way of saying nothing.
+        """
+        item = self.row(original_vehicle_info='BMW 320d')
+        self.as_(self.office).post(
+            reverse('unassigned_spare_edit', args=[item.pk]),
+            self.edit_payload(original_vehicle_info='   '))
+        item.refresh_from_db()
+        self.assertIsNone(item.original_vehicle_info)
+
+    def test_an_oversized_note_is_trimmed_rather_than_crashing(self):
+        """
+        The column is 255. A longer value is STORED by SQLite and REJECTED by
+        PostgreSQL — what actually ships — so the only answer that behaves the
+        same on both is to trim, which is the rule the part name already
+        follows. Both doors are checked, because the add path and the edit path
+        write this field with their own line of code.
+        """
+        long = 'X' * 400
+        self.as_(self.office).post(
+            reverse('unassigned_spare_add'),
+            self.add_payload(unit_price='500', original_vehicle_info=long))
+        added = JobCardSpareItem.objects.get(spare_part_name='Oil Filter')
+        self.assertEqual(len(added.original_vehicle_info), 255)
+
+        item = self.row()
+        self.as_(self.office).post(
+            reverse('unassigned_spare_edit', args=[item.pk]),
+            self.edit_payload(original_vehicle_info=long))
+        item.refresh_from_db()
+        self.assertEqual(len(item.original_vehicle_info), 255)
+
+    def test_floor_may_write_it_because_it_is_not_a_price(self):
+        """
+        Floor is add-only and is shown no COST anywhere in this app — that is
+        what `PRICE_NOT_SUPPLIED` enforces on this very view. Which car the part
+        is for is not cost: the mechanic is the person taking delivery and is
+        usually the one who knows. So this field is open to them, and the
+        price is still stripped in the same request.
+        """
+        self.as_(self.floor).post(
+            reverse('unassigned_spare_add'),
+            self.add_payload(unit_price='9999', original_vehicle_info='BMW 320d'))
+        item = JobCardSpareItem.objects.get(spare_part_name='Oil Filter')
+        self.assertEqual(item.original_vehicle_info, 'BMW 320d')
+        self.assertIsNone(item.unit_price)
+
+    def test_the_form_offers_a_box_for_it_and_the_list_still_reads_it(self):
+        html = self.as_(self.office).get(reverse('unassigned_spares_hub')).content.decode()
+        self.assertIn('name="original_vehicle_info"', html)
+        self.row(original_vehicle_info='BMW 320d')
+        html = self.as_(self.office).get(reverse('unassigned_spares_hub')).content.decode()
+        self.assertIn('Ordered for BMW 320d', html)
+
+    def test_the_add_form_is_one_scrolling_line_at_every_width(self):
+        """
+        It used to WRAP above 768px and scroll below it — one row of boxes with
+        two shapes, depending on whether it was opened on the tablet it is
+        filled in on or the laptop it is checked on. Nothing here executes CSS,
+        so what is pinned is that the phone-only override is gone and the
+        scroller is the base rule; the widths were verified in a browser.
+        """
+        import re
+        with open('workshop/templates/workshop/spare_shops/unassigned_hub.html',
+                  encoding='utf-8') as fh:
+            style = fh.read().split('<style>', 1)[1].split('</style>', 1)[0]
+
+        def rule(selector):
+            """
+            The body of one rule. Not `split(selector)` — this stylesheet has
+            several selectors sharing a prefix, so a naive split silently
+            returns the wrong block and the test then passes or fails for a
+            reason unrelated to what it asks. Brace-free bodies only, which is
+            also what keeps `@media` wrappers out of the answer.
+            """
+            for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', style):
+                if m.group(1).strip().endswith(selector):
+                    return m.group(2)
+            raise AssertionError('no rule for %r' % selector)
+
+        self.assertIn('overflow-x: auto', rule('.ua-form-scroll'),
+                      'the add form no longer scrolls by default')
+        self.assertIn('flex-wrap: nowrap', rule('.ua-form-row'))
+        self.assertNotIn('flex-wrap: wrap', rule('.ua-form-row'),
+                         'the wrapping behaviour is back — that is two shapes '
+                         'for one row of boxes')

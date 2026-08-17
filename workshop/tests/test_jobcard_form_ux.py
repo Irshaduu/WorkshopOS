@@ -672,7 +672,14 @@ class EverySectionAnnouncesItselfTheSameWayTests(JobCardFormBase):
         ('Customer Concerns', 'bi-chat-left-text-fill'),
         ('Job Performed', 'bi-tools'),
         ('Inventory Items', 'bi-box-seam-fill'),
-        ('Spare Parts', 'bi-nut-fill'),
+        # Was `bi-nut-fill` until 2026-08-18. Changed on the owner's
+        # instruction, and the point was to REMOVE a glyph rather than to swap
+        # one: "spare parts" had been said three different ways — this nut, the
+        # dashboard drawer's gear, and `bi-tools` on the Spare Shops pages,
+        # which is the JOB PERFORMED icon, so the section that buys parts was
+        # wearing the icon of the section that fits them. One meaning, one
+        # glyph, everywhere.
+        ('Spare Parts', 'bi-gear-wide-connected'),
     ]
 
     def test_every_section_has_a_name_and_a_glyph_in_page_order(self):
@@ -1711,3 +1718,139 @@ class BothPriceBoxesAreLineTotalsTests(JobCardFormBase):
         self.shop.update_totals()
         self.shop.refresh_from_db()
         self.assertEqual(self.shop.total_purchased_amount, D('7560'))
+
+
+class TheRowYouAreInIsNamedAndLitTests(JobCardFormBase):
+    """
+    Both parts tables are wider than the form that holds them, on EVERY device —
+    `.main-content` caps at 800px, so the spares table is 1200px and hides 432px
+    on a 1280px laptop exactly as it does on an 820px tablet, and 857px on a
+    phone. Scrolled right to the two price boxes, the Part Name column is 106px
+    past the left edge: not truncated, gone. Two marks answer that, and each has
+    a half the server owes the browser.
+
+    (a) A NUMBER, pinned left, 34px — measured to cost nothing in row height or
+        page height. A truncated name was the obvious alternative and collides
+        on this workshop's own data, which is what the fixture below is: two
+        parts differing in their last two characters.
+
+    (b) A LIGHT on the focused row, which is what actually stops the off-by-one
+        tap. That one is pure CSS and nothing here executes CSS — so what is
+        pinned is the contract the CSS depends on, and above all WHERE the two
+        row states are declared. Bootstrap 5.3 gives every cell an opaque
+        `background-color`, so a background on the `<tr>` is painted over and
+        never appears. That is not a new hazard: it is why `.jc-row-invalid` —
+        the red saying a row was refused — had never shown on these two tables,
+        while working correctly on concerns and job lines, which are `<div>`s.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # The two rows that make the case for a number over a truncated name.
+        for name in ('Front Lower Control Arm LH', 'Front Lower Control Arm RH'):
+            JobCardSpareItem.objects.create(
+                job_card=self.job, spare_part_name=name, quantity=D('1'),
+                unit_price=D('100'), total_price=D('150'),
+                shop=self.shop, source=JobCardSpareItem.SOURCE_SHOP)
+
+    @staticmethod
+    def _cells(row_html):
+        import re
+        return re.findall(r'<t[dh]\b[^>]*>', row_html)
+
+    def test_the_number_leads_every_spare_row_and_its_heading(self):
+        table = self.spare_table()
+        self.assertIn('col-idx', self._cells(table['thead'])[0],
+                      'the "#" heading is not the first column')
+
+        import re
+        rows = re.findall(r'<tr\b[^>]*>(.*?)</tr>', table['tbody'], re.S)
+        self.assertEqual(len(rows), 2, 'fixture rows are not rendering')
+        for n, row in enumerate(rows, start=1):
+            self.assertIn('col-idx', self._cells(row)[0],
+                          'row %d does not lead with its number' % n)
+            # The number itself, between that cell's tags.
+            cell = row.split('col-idx', 1)[1]
+            cell = cell[cell.index('>') + 1:cell.index('</td>')]
+            self.assertEqual(cell.strip(), str(n))
+
+    def test_the_number_is_not_a_form_field(self):
+        """
+        It describes the order on screen and nothing else — it posts no value,
+        stores no value, and moves no money. Anyone auditing this form can skip
+        it entirely, which is only true while it stays a bare cell.
+        """
+        table = self.spare_table()
+        for row in table['tbody'].split('<tr')[1:]:
+            cell = row.split('col-idx', 1)[1]
+            cell = cell[cell.index('>') + 1:cell.index('</td>')]
+            for tag in ('<input', '<select', '<textarea', 'name='):
+                self.assertNotIn(tag, cell)
+
+    def test_both_clone_templates_carry_the_number_cell(self):
+        """
+        `#empty-spare-form` and `#empty-inventory-form` are cloned by script.js
+        when somebody presses "+ Add". A template missing this cell lays every
+        added row one column adrift of the header it sits under — and nothing
+        would say so, because the clone happens in the browser.
+        """
+        source = self.source()
+        for template in ('empty-spare-form', 'empty-inventory-form'):
+            chunk = source.split('id="%s"' % template, 1)[1].split('</tbody>', 1)[0]
+            row = chunk.split('<tr', 1)[1]
+            self.assertIn('col-idx', self._cells(row)[0],
+                          '%s does not lead with a number cell' % template)
+
+    def test_both_row_states_are_painted_on_the_cells_not_the_row(self):
+        """
+        The trap, and the reason this test exists at all. Every cell in a
+        Bootstrap 5.3 table carries `background-color: var(--bs-table-bg)`,
+        which resolves to #fff here — an opaque cell sitting on its row. A
+        background on the `<tr>` therefore never appears, whatever its
+        specificity, because this is paint order rather than the cascade.
+
+        Both states must name `> td`. If this fails, one of them has quietly
+        stopped being visible on the two screens where it matters most.
+        """
+        selectors = ' | '.join(sel for sel, _ in self.css_rules())
+        for state in ('tr:focus-within > td', 'tr.jc-row-invalid > td'):
+            for table in ('#spare-list', '#inventory-list'):
+                self.assertIn('%s > %s' % (table, state), selectors,
+                              'nothing paints %s on %s — a background on the '
+                              '<tr> is covered by Bootstrap\'s opaque cells and '
+                              'will never be seen' % (state, table))
+
+    def test_a_refused_row_stays_red_while_it_is_being_corrected(self):
+        """
+        "This is wrong" has to outrank "you are here". The two sets of rules
+        match each other's specificity pair for pair, so the winner is decided
+        by document order — which makes the ORDER of the two blocks the rule,
+        and worth a test rather than a comment.
+        """
+        selectors = [sel for sel, _ in self.css_rules()]
+        focus = next(i for i, s in enumerate(selectors)
+                     if '#spare-list > tr:focus-within > td' in s)
+        refused = next(i for i, s in enumerate(selectors)
+                       if '#spare-list > tr.jc-row-invalid > td' in s)
+        self.assertGreater(refused, focus,
+                           'the focus tint is declared after the refused tint, '
+                           'so a row being corrected reads as merely focused')
+
+    def test_the_number_column_outranks_bootstraps_own_cell_rule(self):
+        """
+        Bootstrap's cell rule is `.table > :not(caption) > * > *` — one class
+        and one element. A bare `.col-idx` loses to it, silently: the cell keeps
+        Bootstrap's 8px of side padding and is left 18px for its digits, which
+        fits "12" and clips three figures. The descendant form is what wins.
+        """
+        self.css_rule('.table > * > tr > .col-idx')
+
+    def test_the_number_is_shown_to_floor_as_well(self):
+        """
+        Floor's table is narrower — no Shop and no prices — but it still scrolls
+        on a phone, and the off-by-one tap is not a role. Both roles get both
+        marks; only the money columns differ.
+        """
+        table = self.spare_table(self.rendered_as_floor())
+        self.assertIn('col-idx', self._cells(table['thead'])[0])
+        self.assertIn('col-idx', self._cells(table['tbody'].split('<tr', 1)[1])[0])

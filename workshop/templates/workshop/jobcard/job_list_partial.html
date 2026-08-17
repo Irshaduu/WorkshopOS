@@ -261,11 +261,15 @@
 
 <div id="job-count-data" data-count="{{ jobcards.paginator.count }}" style="display:none;"></div>
 
+{% comment %}
+`row-cards` (base.html) — one, two from 560px, three from 800px. The whole card
+family is on these two numbers; the reasoning lives beside the rule.
+{% endcomment %}
 {% if jobcards %}
-<div class="row g-3">
+<div class="row g-3 row-cards">
     {% for job in jobcards %}
     {% with color=job.get_car_color_hex|default:'#475569' %}
-    <div class="col-12 col-md-6 col-lg-4">
+    <div class="col-12">
         <div class="jl-card {% if job.on_hold %}on-hold-card{% endif %}">
 
             <!-- Left stripe — actual car colour, like dashboard_home.html -->

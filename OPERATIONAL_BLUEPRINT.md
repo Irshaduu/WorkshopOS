@@ -92,7 +92,7 @@ graph TD
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
    - Put a car On Hold / take it off hold, and Mark it Completed
-   - Record a purchase in the **Unassigned Spares Hub** — add only. No price box is shown and none is stored (the row is saved unpriced, and Office fills the figure in from the shop's bill); existing rows cannot be edited or deleted, and no price on the page is visible to Floor
+   - Record a purchase in the **Unassigned Spares Hub** — add only. No price box is shown and none is stored (the row is saved unpriced, and Office fills the figure in from the shop's bill); existing rows cannot be edited or deleted, and no price on the page is visible to Floor. Floor *can* fill in **Ordered For** — a free-text note saying which car the part is for ("BMW 320d"), added 2026-08-18 because a part is usually ordered before there is a job card to attach it to. It is a note, not a link: it moves no money and joins nothing
 ```
 
 ---

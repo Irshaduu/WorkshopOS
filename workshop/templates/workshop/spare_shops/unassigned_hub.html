@@ -23,13 +23,14 @@ crafted POST away from writing a price, which is AUD-0081 all over again.
 
 TWO LAYOUT RULES WORTH NOT REDISCOVERING.
 
-(a) The add form is ONE horizontal scroller, not a grid that stacks. On a phone
-    a stacked version is seven full-width rows — the Save button lands well
-    below the fold and the whole form has to be scrolled past to reach the list
-    underneath it. Scrolling sideways is also the gesture staff already use on
-    the Job Card's Spare Parts table, which is the screen this one sits beside
-    in their day. One structure serves every width: it simply does not need to
-    scroll on a laptop.
+(a) The add form is ONE horizontal scroller, not a grid that stacks, and since
+    2026-08-17 it scrolls at EVERY width including the laptop. Stacked it is
+    eight full-width rows — the Save button lands well below the fold and the
+    whole form has to be scrolled past to reach the list underneath it.
+    Scrolling sideways is also the gesture staff already use on the Job Card's
+    Spare Parts table, which is the screen this one sits beside in their day.
+    It used to wrap above 768px instead, which gave one row of boxes two
+    different shapes depending on the screen it was opened on.
 
 (b) The row actions are two inline BUTTONS, not a ⋮ dropdown. A dropdown inside
     a horizontal scroller is clipped — `overflow-x: auto` computes `overflow-y`
@@ -168,25 +169,46 @@ TWO LAYOUT RULES WORTH NOT REDISCOVERING.
 
   .ua-add-body { padding: 0 1.1rem 1.1rem; }
 
-  /* (a) above. Two behaviours, one structure:
-       ≥768px — the fields WRAP, so the whole form is visible with no scrollbar.
-                It has to wrap rather than sit on one line because
-                `.main-content` is capped at 800px app-wide (the Analysis page
-                is the only exception), so "desktop" here is a 767px column and
-                seven controls do not fit across it at a usable size.
-       <768px — one line, scrolled sideways, which is the gesture staff already
-                use on the Job Card's Spare Parts table. Stacked, this is seven
-                full-width rows and the Save button lands below the fold. */
+  /* (a) above, and since 2026-08-17 there is exactly ONE behaviour: the form is
+     a horizontal scroller at every width, laptop included, on the owner's
+     instruction.
+
+     It used to WRAP above 768px and scroll below it, which meant the form
+     rearranged itself between the tablet it is filled in on and the laptop it
+     is checked on — two shapes for one row of boxes. Wrapping was also getting
+     worse rather than better: `.main-content` is capped at 800px app-wide, so
+     "desktop" here is a 767px column, and the row is now EIGHT controls with
+     "Ordered For" in it. Eight across a 767px column either wrap to three
+     ragged lines or shrink to unusable. Scrolling sideways is the gesture staff
+     already use on the Job Card's Spare Parts table, which is the screen this
+     one sits beside in their day.
+
+     `max-content` on the row is what makes the fields overflow rather than
+     squash, and every field therefore carries a fixed width rather than a flex
+     basis — a growth rule here would let a wide screen stretch the boxes and
+     quietly bring the wrap back.
+
+     The suggestion box hanging off "Item Name" is unaffected: it has been
+     `position: fixed` since it was built, precisely so this scroller cannot clip
+     it — see the note on `.ua-sugs`. */
   .ua-form-scroll {
     padding-top: 0.9rem;
     border-top: 1px solid var(--color-border-light, #f1f5f9);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.35rem;
   }
+  .ua-form-scroll::-webkit-scrollbar { height: 6px; }
+  .ua-form-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+  .ua-form-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
   .ua-form-row {
     display: flex;
     align-items: flex-end;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    min-width: max-content;
     gap: 0.7rem;
   }
+  .ua-form-row > * { flex: 0 0 auto; }
   .ua-field { position: relative; }
   .ua-field label {
     display: block;
@@ -199,14 +221,15 @@ TWO LAYOUT RULES WORTH NOT REDISCOVERING.
     white-space: nowrap;
   }
   .ua-field .req { color: #dc2626; }
-  /* Bases chosen so the wrap falls where it reads: what the part IS on the
-     first line, when it moved on the second. The two dates are a pair and must
-     never be split across lines by a stray growth rule. */
-  .ua-f-shop  { flex: 1 1 180px; }
-  .ua-f-name  { flex: 2 1 230px; }
-  .ua-f-qty   { flex: 0 0 78px; }
-  .ua-f-price { flex: 0 0 118px; }
-  .ua-f-date  { flex: 1 1 150px; }
+  /* Fixed, not flexible — see the note above. Order is the order the row is
+     filled: which shop, what the part is, which car it is for, how many, what
+     it cost, when it moved. */
+  .ua-f-shop  { width: 170px; }
+  .ua-f-name  { width: 220px; }
+  .ua-f-for   { width: 170px; }
+  .ua-f-qty   { width: 78px; }
+  .ua-f-price { width: 118px; }
+  .ua-f-date  { width: 150px; }
   .ua-field .form-control,
   .ua-field .form-select {
     height: 42px;
@@ -421,25 +444,8 @@ TWO LAYOUT RULES WORTH NOT REDISCOVERING.
     .ua-act { width: 40px; height: 40px; }
     .ua-add-toggle { padding: 8px 14px; }
   }
-  /* The phone half of (a): one line, scrolled sideways. `max-content` on the
-     row is what stops the fields shrinking to fit instead of overflowing. */
-  @media (max-width: 767.98px) {
-    .ua-form-scroll {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      padding-bottom: 0.35rem;
-    }
-    .ua-form-scroll::-webkit-scrollbar { height: 6px; }
-    .ua-form-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
-    .ua-form-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
-    .ua-form-row { flex-wrap: nowrap; min-width: max-content; }
-    .ua-form-row > * { flex: 0 0 auto; }
-    .ua-f-shop  { width: 170px; }
-    .ua-f-name  { width: 220px; }
-    .ua-f-qty   { width: 78px; }
-    .ua-f-price { width: 118px; }
-    .ua-f-date  { width: 150px; }
-  }
+  {# The phone-only block that used to sit here is gone: the scroller is the #}
+  {# base rule now, at every width, so there is nothing left for it to say. #}
 
   @media (max-width: 575.98px) {
     .ua-head { padding: 1rem; border-radius: 12px; }
@@ -521,6 +527,29 @@ and unreachable by the only delete there is — money nobody could see or remove
                      autocomplete="off" required
                      aria-autocomplete="list" aria-expanded="false">
               <div class="ua-sugs" role="listbox"></div>
+            </div>
+
+            {% comment %}
+            ORDERED FOR — free text, and free text on purpose.
+
+            `original_vehicle_info` already existed and already printed in the
+            list below, but only ever wrote itself: it is stamped when a spare is
+            moved OUT of a job card, so a purchase recorded straight onto a
+            shop's ledger had no way to say which car it was for. That is the
+            common case here — the part is ordered before there is a job card to
+            hang it on.
+
+            It is a NOTE, never a link. There is deliberately no picker and no
+            FK: at the moment somebody types this the car often has no job card
+            yet, and half the point is being able to write "Audi A4 — the white
+            one" when that is all anyone knows. It moves no money, joins no
+            table and is read by nothing but the eye.
+            {% endcomment %}
+            <div class="ua-field ua-f-for">
+              <label for="ua-for">Ordered For</label>
+              <input type="text" name="original_vehicle_info" id="ua-for"
+                     class="form-control" maxlength="255" autocomplete="off"
+                     placeholder="e.g. BMW 320d">
             </div>
 
             <div class="ua-field ua-f-qty">
@@ -659,7 +688,8 @@ and unreachable by the only delete there is — money nobody could see or remove
                         data-qty="{{ item.quantity|default_if_none:'' }}"
                         data-price="{{ item.unit_price|default_if_none:'' }}"
                         data-ordered="{{ item.ordered_date|date:'Y-m-d'|default:'' }}"
-                        data-received="{{ item.received_date|date:'Y-m-d'|default:'' }}">
+                        data-received="{{ item.received_date|date:'Y-m-d'|default:'' }}"
+                        data-ordered-for="{{ item.original_vehicle_info|default:'' }}">
                   <i class="bi bi-pencil"></i>
                 </button>
                 <button type="button" class="ua-act ua-act-del"
@@ -715,6 +745,14 @@ the document as many times as there are rows.
                    class="form-control form-control-sm ua-autocomplete" maxlength="100"
                    autocomplete="off" required aria-autocomplete="list" aria-expanded="false">
             <div class="ua-sugs" role="listbox"></div>
+          </div>
+          {# The same note the add form writes — correctable here, like every #}
+          {# other field on the row. See the add form for why it is free text. #}
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted mb-1" for="ua-e-for">Ordered For</label>
+            <input type="text" name="original_vehicle_info" id="ua-e-for"
+                   class="form-control form-control-sm" maxlength="255"
+                   autocomplete="off" placeholder="e.g. BMW 320d">
           </div>
           <div class="row g-2 mb-3">
             <div class="col-6">
@@ -969,6 +1007,7 @@ the document as many times as there are rows.
         document.getElementById('ua-e-price').value = d.price || '';
         document.getElementById('ua-e-ordered').value = d.ordered || '';
         document.getElementById('ua-e-received').value = d.received || '';
+        document.getElementById('ua-e-for').value = d.orderedFor || '';
 
         bootstrap.Modal.getOrCreateInstance(editModalEl).show();
     });

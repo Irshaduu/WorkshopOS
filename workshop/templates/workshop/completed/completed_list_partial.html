@@ -298,11 +298,18 @@
 {# valid even when the list below is empty, since page_obj always carries a paginator. #}
 <span id="completedTotalCount" data-count="{{ completed_jobcards.paginator.count }}" style="display:none"></span>
 
+{% comment %}
+`row-cards` (base.html) owns how many go across: one, then two from 560px, then
+three from 800px — the width at which `.main-content` stops growing, so a tablet
+now gets the identical layout a laptop already had. Pending Bills and Car
+Profiles are on the same two numbers. The cards carry a bare `col-12` on purpose;
+see the note in base.html for why the responsive `col-*` classes went.
+{% endcomment %}
 {% if completed_jobcards %}
-<div class="row g-3">
+<div class="row g-3 row-cards">
     {% for jobcard in completed_jobcards %}
     {% with color=jobcard.get_car_color_hex|default:'#475569' %}
-    <div class="col-12 col-md-6 col-lg-4">
+    <div class="col-12">
         <div class="del-card" data-detail-url="{% url 'invoice_view' jobcard.pk %}?back={{ request.get_full_path|urlencode }}"
              style="cursor: pointer; --card-shade: {% if jobcard.car_color %}{{ color }}14{% else %}transparent{% endif %};">
 

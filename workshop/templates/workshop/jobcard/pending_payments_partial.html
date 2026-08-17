@@ -211,11 +211,17 @@
     }
 </style>
 
+{% comment %}
+`row-cards` (base.html) — one, two from 560px, three from 800px. Completed
+carries the identical class and Car Profiles the identical two numbers; these
+three lists are opened one after the other and must not disagree about the shape
+of a page of cards.
+{% endcomment %}
 {% if pending_jobs %}
-<div class="row g-3">
+<div class="row g-3 row-cards">
     {% for job in pending_jobs %}
     {% with color=job.get_car_color_hex|default:'#475569' %}
-    <div class="col-12 col-md-6 col-lg-4">
+    <div class="col-12">
         <a href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}" class="pp-card"
            style="--card-glow: {{ color }}22; --card-shade: {% if job.car_color %}{{ color }}14{% else %}transparent{% endif %};">
 

@@ -211,10 +211,19 @@ class TheTwoSectionsStaySeparateTests(InventorySectionBase):
         self.assertEqual(self.purchase.shop_id, self.shop.pk)
 
     def test_the_detail_page_splits_them(self):
+        """
+        The heading was "Inventory Items Used" until the read-only page was
+        rebuilt on 2026-08-18; it is "Inventory Items" now, which is what the
+        job-card form and the dashboard drawer have always called it. The old
+        wording was a third name for one section across three screens. Both
+        headings are asserted rather than one, since the subject of this test is
+        that the two routes stay APART.
+        """
         resp = self.client.get(reverse('jobcard_detail', args=[self.job.pk]))
         self.assertEqual([s.pk for s in resp.context['inventory_draws']], [self.draw.pk])
         self.assertEqual([s.pk for s in resp.context['shop_spares']], [self.purchase.pk])
-        self.assertContains(resp, 'Inventory Items Used')
+        self.assertContains(resp, 'Inventory Items')
+        self.assertContains(resp, 'Spare Parts')
 
     def test_the_bill_counts_both_routes(self):
         self.job.refresh_from_db()

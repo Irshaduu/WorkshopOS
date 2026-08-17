@@ -197,6 +197,119 @@
     .inventory-table > tbody > tr > td { vertical-align: top; }
 
     /* ==========================================================
+       WHICH ROW AM I IN — a number that stays, and a light
+       ==========================================================
+       Both parts tables are wider than the form that holds them, on EVERY
+       device — this is not a phone problem. `.main-content` is capped at 800px,
+       so the spares table is 1200px and hides 432px on a 1280px laptop exactly
+       as it does on an 820px tablet, and 857px on a 375px phone. Scrolled fully
+       right to reach the two price boxes, the Part Name column is 106px PAST the
+       left edge: not truncated, gone. The boxes being typed into belong to a row
+       that nothing on screen names.
+
+       Two marks, because there are two different questions.
+
+       (a) THE LIGHT is what actually prevents the mistake, and it is the half
+       that was not asked for. The failure here is rarely "wrong table" — it is
+       off-by-one, catching the row above or below the one meant, because rows
+       are 55px tall and every box in the grid looks like every other. On
+       `:focus-within` the whole row lights across every column the moment a box
+       is touched, so the row you are in is a shape rather than a memory. It
+       costs no width, no height and no JavaScript, which is also why a row added
+       by "+ Add Spare" has it for free — none of the three cloning traps
+       recorded in CLAUDE.md can be reintroduced by a rule that wires nothing.
+
+       It is BLUE deliberately. On this form amber already means "you changed
+       this" and red means "this was refused"; a third meaning on either would
+       cost the other two theirs. A refused row stays red while it is being
+       corrected — "this is wrong" outranks "you are here" — which is what the
+       rule order below buys.
+
+       Building this is what found the red not working on these two tables at
+       all. See the note on the cell rules for why, because it is a trap any
+       future row state on a Bootstrap table will walk into.
+
+       A LOCKED card needs no exception: the Financial Lock disables every
+       control, and a disabled input cannot take focus, so nothing ever lights.
+
+       (b) THE NUMBER is the handle for the horizontal scroll — 34px, pinned to
+       the left edge, so row 7 is still row 7 with its name 106px off screen.
+       Measured: the row stays 55px and the page height does not move, because a
+       sticky cell is laid out in its row like any other.
+
+       A truncated NAME is the obvious alternative and is the wrong one on this
+       workshop's data. One real job card carries "Front Lower Control Arm LH"
+       and "Front Lower Control Arm RH" in adjacent rows, and "Front Brake Pad
+       Set (Brembo)" directly above "Rear Brake Pad Set (Brembo)". Any column
+       narrow enough to afford — ~100px — prints "Front Lower…" on both, which is
+       worse than printing nothing, because it looks like an answer. A number
+       cannot collide with another number.
+
+       The number is written by the server (`forloop.counter`) and re-derived by
+       `renumberRows()` when a row is added, so it is never stored anywhere and
+       can never drift from the order on screen. */
+    /* EVERY selector here is written `.table > * > tr > …` on purpose, and it is
+       not decoration. Bootstrap's own cell rule is `.table > :not(caption) > * >
+       *`, which carries one class and one element — so a bare `.col-idx` LOSES
+       to it on padding and background, and it lost silently: the cell took
+       Bootstrap's 8px of side padding and was left 18px of content space, which
+       fits "12" and would clip a card that ever reached three figures. The
+       descendant form outranks it. */
+    .table > * > tr > .col-idx {
+        position: sticky;
+        left: 0;
+        z-index: 4;              /* over the cells it scrolls across; far under
+                                    the date panel (1035) and the sticky
+                                    header (100), which must both still win */
+        width: 34px;
+        min-width: 34px;
+        max-width: 34px;
+        padding: 0.5rem 1px;     /* the digits get 32px, so three of them fit */
+        text-align: center;
+        font-size: 0.78rem;
+        font-weight: 700;
+        line-height: 1.2;
+        color: #94a3b8;
+        /* Opaque, and it has to be: a sticky cell with a see-through background
+           lets the columns it is covering scroll visibly through it. */
+        background-color: #fff;
+        /* A SHADOW, not a border-right. With `border-collapse: collapse` the
+           table paints cell borders rather than the cell, so a border here
+           slides out from under the sticky column as it scrolls. A shadow is
+           painted by the element and travels with it. */
+        box-shadow: 1px 0 0 var(--color-border, #e2e8f0);
+        user-select: none;
+    }
+
+    /* ---- the two row states, declared on the CELLS ----
+       Bootstrap 5.3 gives every cell `background-color: var(--bs-table-bg)`,
+       and on this table that resolves to #fff — an OPAQUE cell sitting on top
+       of its row. So a background on the <tr> is painted over and never
+       appears, whatever its specificity, because this is paint order and not
+       the cascade.
+
+       That is not a wrinkle of the new tint. It is why `.jc-row-invalid`
+       further down — the red that says "this row was refused" — has never shown
+       on the two parts tables, which is the one place CLAUDE.md says marking the
+       row matters most, since the failing box there is one of eight in a line.
+       It works correctly everywhere else it is used, because concerns and job
+       lines are <div>s with no cell painting over them, and that is exactly why
+       nobody caught it. Both states are now painted where they can be seen.
+
+       The refused rules come AFTER the focus rules and match their specificity
+       pair for pair, so red wins on document order: while a row is being
+       corrected, "this is wrong" has to outrank "you are here". */
+    #spare-list > tr:focus-within > td,
+    #inventory-list > tr:focus-within > td { background-color: #eff6ff; }
+    #spare-list > tr:focus-within > .col-idx,
+    #inventory-list > tr:focus-within > .col-idx { background-color: #dbeafe; color: #1d4ed8; }
+
+    #spare-list > tr.jc-row-invalid > td,
+    #inventory-list > tr.jc-row-invalid > td { background-color: #fdf2f2; }
+    #spare-list > tr.jc-row-invalid > .col-idx,
+    #inventory-list > tr.jc-row-invalid > .col-idx { background-color: #fdf2f2; color: #b42318; }
+
+    /* ==========================================================
        ERROR SUMMARY — the one thing read before scrolling
        ==========================================================
        A rejected job card re-renders the whole page, and this form is long
@@ -225,7 +338,14 @@
        controls are rendered by Django widgets carrying their own class list,
        and a server-side class would have to be threaded through every widget
        declaration in forms.py. Marking the ROW is also more useful here: on the
-       parts tables the failing box is one of eight in a line. */
+       parts tables the failing box is one of eight in a line.
+
+       This rule reaches the DIV rows only — a concern and a job line. It is not
+       what paints a refused row on the two parts TABLES, and never was: a table
+       cell has an opaque background of its own and covers whatever the <tr>
+       declares, `!important` included. Those two are painted on the cells, up
+       beside the focus tint; the note there is the one to read before adding
+       any further row state. */
     .jc-row-invalid { background: #fdf2f2 !important; }
 
     /* ==========================================================
@@ -758,18 +878,18 @@
     /* ==========================================================
        THE PRIMARY ACTION IS THE DARKEST THING ON THE PAGE
        ==========================================================
-       On an edit, `btn-primary` blue put the Save button in a page that is now
-       mostly blue — a blue nav, six blue bands, a blue sticky button — and the
-       one control that matters most stopped being the loudest. It is
-       `--nav-blue-1` (#10275c) instead: the nav bar's own left corner, so it is
-       not a new hue and carries no new meaning, and it is far darker than the
-       #2a70da bands, which makes it the heaviest element on screen.
+       On an edit, `btn-primary` blue put the Save button in a page that was
+       then mostly blue — a blue nav, six filled blue section bands, a blue
+       sticky button — and the one control that matters most stopped being the
+       loudest. Note the bands are a soft NEUTRAL now (`.jc-sec-head`), so that
+       particular competition is over; the paragraph is kept because the
+       conclusion outlived its reason, and because the button ended up amber
+       anyway (see below).
 
-       Every other colour on this page is already spoken for, which is why the
-       answer is a darker blue rather than a different one: **amber** is the
-       unsaved language (header, pill, field edges), **red** is the Financial
-       Lock and every delete, **green** is a NEW card, and **#2a70da** is a
-       section band. A fifth hue would have to mean something, and this button
+       Every other colour on this page is spoken for, which is the durable half
+       of the argument: **amber** is the unsaved language (header, pill, field
+       edges), **red** is the Financial Lock and every delete, and **green** is
+       a NEW card. A fresh hue would have to mean something, and this button
        does not mean anything new — it commits what is already on screen.
 
        Set through `--jc-action` rather than a Bootstrap colour class, so the
@@ -1791,6 +1911,7 @@ grey".
                         <table class="table table-borderless mb-0 inventory-table" style="min-height: 80px;">
                             <thead class="table-premium-header text-muted small text-uppercase">
                                 <tr class="border-bottom">
+                                    <th class="col-idx" scope="col" aria-label="Row number">#</th>
                                     <th class="ps-3" style="min-width: 240px;">Item</th>
                                     <th class="text-center {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}" style="min-width: 90px;">Qty</th>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
@@ -1817,6 +1938,7 @@ grey".
                                 {% endcomment %}
                                 <tr class="inventory-row border-bottom{% if i_form.errors %} jc-row-invalid{% endif %}"
                                     data-category="{{ i_form.part_category }}">
+                                    <td class="col-idx">{{ forloop.counter }}</td>
                                     <td class="ps-3">
                                         {{ i_form.id }}
                                         <div class="d-none">{{ i_form.DELETE }}</div>
@@ -1874,7 +1996,7 @@ grey".
                     not standing in for a rule anybody could miss.
                     {% endcomment %}
                     <div class="jc-sec-title">
-                        <span class="jc-sec-icon"><i class="bi bi-nut-fill"></i></span>
+                        <span class="jc-sec-icon"><i class="bi bi-gear-wide-connected"></i></span>
                         <h6 class="jc-sec-name">Spare Parts</h6>
                     </div>
                     {% comment %}
@@ -1916,6 +2038,7 @@ grey".
                             {% endcomment %}
                             <thead class="table-premium-header text-muted small text-uppercase">
                                 <tr class="border-bottom">
+                                    <th class="col-idx" scope="col" aria-label="Row number">#</th>
                                     <th class="ps-3 col-part" style="min-width: 320px;">Part Name</th>
                                     <th class="text-center col-qty">Qty</th>
                                     <th class="col-status">Status</th>
@@ -1932,6 +2055,7 @@ grey".
                             <tbody id="spare-list">
                                 {% for s_form in spare_formset %}
                                 <tr class="spare-row border-bottom{% if s_form.errors %} jc-row-invalid{% endif %}" data-original-status="{{ s_form.instance.status }}">
+                                    <td class="col-idx">{{ forloop.counter }}</td>
                                     <td class="ps-3 col-part" style="min-width: 320px;">
                                         <div class="d-flex align-items-center gap-1">
                                             <div class="flex-grow-1">
@@ -2171,6 +2295,9 @@ is now true, and the column width is unchanged at every breakpoint.
             pick is safe, one that means "already wired" is not.)
             {% endcomment %}
             <tr class="inventory-row border-bottom" data-category="">
+                {# Empty here and filled by `renumberRows()` — a template cannot #}
+                {# know what position the row it becomes will be added at. #}
+                <td class="col-idx"></td>
                 <td class="ps-3">
                     {{ inventory_formset.empty_form.id }}
                     <div class="d-none">{{ inventory_formset.empty_form.DELETE }}</div>
@@ -2201,6 +2328,9 @@ is now true, and the column width is unchanged at every breakpoint.
     <table>
         <tbody id="empty-spare-form">
             <tr class="spare-row border-bottom" data-original-status="PENDING">
+                {# Empty here and filled by `renumberRows()` — a template cannot #}
+                {# know what position the row it becomes will be added at. #}
+                <td class="col-idx"></td>
                 <td class="ps-3 col-part" style="min-width: 320px;">
                     <div class="d-flex align-items-center gap-1">
                         <div class="flex-grow-1">
@@ -3099,6 +3229,34 @@ and filled for the guard.
         refreshRowTotals();
     };
 
+    // The sticky row numbers (see `.col-idx`). The server writes them with
+    // `forloop.counter`; this exists because "+ Add Spare" clones a template,
+    // and a template cannot know the position of the row it is about to become.
+    //
+    // Always re-derived from the DOM order, never incremented from a counter:
+    // the number's whole job is to agree with what is on screen, and a stored
+    // count is a second version of that free to drift from it. Cheap enough to
+    // do wholesale — the worst card in the live data carries 91 spares.
+    //
+    // Rows are never REMOVED (Django reads a formset by contiguous index, so a
+    // deleted row is hidden and its DELETE box ticked), which is what makes a
+    // position stable: a number, once given, stays given for the life of the
+    // page. A hidden row keeps its number rather than closing the gap, because
+    // the alternative is every row below a deletion silently renumbering under
+    // somebody mid-edit.
+    function renumberRows() {
+        [['spare-list', '.spare-row'],
+         ['inventory-list', '.inventory-row']].forEach(function (pair) {
+            var list = document.getElementById(pair[0]);
+            if (!list) return;
+            list.querySelectorAll(pair[1]).forEach(function (row, i) {
+                var cell = row.querySelector('.col-idx');
+                if (cell) cell.textContent = i + 1;
+            });
+        });
+    }
+    renumberRows();
+
     // The four "+ Add" buttons hand back a row of empty boxes, which should
     // wear their hairlines immediately rather than waiting to be typed in.
     // setTimeout(0) rather than ordering this against script.js's own click
@@ -3126,6 +3284,7 @@ and filled for the guard.
                 setTimeout(function () {
                     refreshAll();
                     refreshChips();
+                    renumberRows();
                     var row = list.lastElementChild;
                     if (!row) return;
                     // Restart the animation if the button is pressed twice in a

@@ -593,7 +593,8 @@ def _clean_spare_dates(raw_ordered, raw_received, blank_is_today):
 
 
 def _build_unassigned_spare(shop, name, raw_price, raw_qty,
-                            ordered_date=None, received_date=None):
+                            ordered_date=None, received_date=None,
+                            vehicle_info=None):
     """
     Validate and create one unassigned spare on a shop's ledger.
 
@@ -611,6 +612,13 @@ def _build_unassigned_spare(shop, name, raw_price, raw_qty,
     part that arrived, and Office fills the figure in when the shop's bill is
     keyed. `SpareShop.update_totals()` coalesces NULL to 0, so an unpriced row
     adds nothing to what the shop is owed until it is priced.
+
+    `vehicle_info` is the "Ordered For" note — free text, with no picker and no
+    FK, because at the moment somebody records a purchase the car very often has
+    no job card to point at yet. It moves no money and joins no table. It is
+    TRIMMED to the column rather than allowed to fail, the same rule the name
+    follows and for the same reason: an oversized value is stored by SQLite and
+    rejected by PostgreSQL, so the only consistent answer is to trim.
     """
     if shop is None:
         return None, "Choose which shop this was bought from."
@@ -660,6 +668,7 @@ def _build_unassigned_spare(shop, name, raw_price, raw_qty,
         status='RECEIVED',
         ordered_date=ord_date,
         received_date=rec_date,
+        original_vehicle_info=(vehicle_info or '').strip()[:255] or None,
     )
     return item, None
 
@@ -878,6 +887,7 @@ def unassigned_spare_add(request):
         request.POST.get('quantity', '1'),
         ordered_date=request.POST.get('ordered_date'),
         received_date=request.POST.get('received_date'),
+        vehicle_info=request.POST.get('original_vehicle_info'),
     )
     if error:
         messages.error(request, error)
@@ -970,6 +980,12 @@ def unassigned_spare_edit(request, item_pk):
     item.quantity = qty.quantize(Decimal('0.01'))
     item.ordered_date = ord_date
     item.received_date = rec_date
+    # The "Ordered For" note. Correctable like every other field on the row, and
+    # trimmed rather than refused — see `_build_unassigned_spare`. Clearing it is
+    # a deliberate act and stores NULL, the same way clearing a date does here.
+    item.original_vehicle_info = (
+        (request.POST.get('original_vehicle_info') or '').strip()[:255] or None
+    )
     # JobCardSpareItem.save() snapshots the previous shop_id and refreshes both
     # ledgers itself (AUD-0080), so moving a row between shops is already
     # accounted for on both sides — nothing further is needed here.

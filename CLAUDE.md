@@ -2414,34 +2414,35 @@ about to correct one of these, you are about to break the business:
   had no heading at all**, so scrolling the form you counted "Vehicle Details …
   (something) … Customer Concerns", and the unnamed block was the one people
   were least sure they had filled in.
-  **The band is ONE colour, `#2a70da` — the nav bar's own gradient sampled at
-  84%**, so it is a colour the page already wears at the top rather than a new
-  one. A six-step **ramp** down that gradient was built first, on the owner's
-  idea (each section a step further left, so the colour said how far down the
-  form you were), and the owner looked at it and chose one flat colour. The
-  reasoning is worth keeping even though the ramp is gone: **the sections are
-  not a scale of anything** — a car's concerns are not "more" than its vehicle
-  details — so six shades invited being read as a ranking, and the darkest drew
-  the eye hardest at the bottom of the form where the least urgent sections
-  live. It is a literal rather than `color-mix()` because that is Safari 16.2+
-  and the owners read this on iPhones;
-  `test_the_band_colour_comes_from_the_nav_bar` fails if the nav stops change,
-  which is the reminder to resample it.
-  Two things follow from filling the band, both about staying legible rather
-  than taste. **Everything on a band is white or translucent white** — a control
-  tuned for one band colour disappears on another, which is exactly what
-  `btn-outline-primary` did to the Add buttons; translucent white takes its
-  contrast from whatever is behind it, so it survives the band being recoloured
-  again. **The symbol keeps a tile** (`rgba(255,255,255,.20)`) so it stays an
-  object rather than dissolving into the band.
-  **The heading is 1.18rem/700, and the reason CHANGED — do not re-derive the
-  old one.** Under the ramp the lightest step measured 4.02:1 against white,
-  under the 4.5:1 normal text needs, and the size was what dragged it into
-  WCAG's large-text rule (3:1). At `#2a70da` the contrast is **4.74:1**, which
-  clears AA at any size, so the size is now purely a comfort choice on a long
-  form. Recorded so nobody finds the big heading, assumes it is load-bearing
-  for contrast, and is afraid to touch it — or shrinks it and quietly
-  reintroduces a problem that no longer exists.
+  **The band is ONE colour and it is a SOFT NEUTRAL: `#f8fafc`, with a 34px
+  `#f1f5f9` icon badge at `#475569` inside a `#e2e8f0` border, and the name in
+  `#0f172a` at 1.08rem/700.** ⚠ *Corrected 2026-08-18. This entry described a
+  filled `#2a70da` blue band with white-on-blue contents, sampled from the nav
+  gradient — that was true when it was written and has not been true for some
+  time: the form carries the neutral above, `test_the_band_colour_comes_from_the_nav_bar`
+  no longer exists, and `#2a70da` survives in this file and in two comments
+  inside `jobcard_form.html` only as a description of something that is gone.
+  It was caught by building the read-only page against the note instead of
+  against the form. **Read these values off `.jc-sec-head` itself, never off
+  this paragraph.***
+  What is still true is why there is ONE colour at all. A six-step **ramp** was
+  built first, on the owner's idea (each section a step further left, so the
+  colour said how far down the form you were), and the owner looked at it and
+  chose one flat treatment: **the sections are not a scale of anything** — a
+  car's concerns are not "more" than its vehicle details — so six shades
+  invited being read as a ranking, and the darkest drew the eye hardest at the
+  bottom of the form where the least urgent sections live. Also still true:
+  **a control on the band must not be tuned to one band colour**, which is what
+  `btn-outline-primary` was when it disappeared into the Add buttons, and
+  **the symbol keeps a tile** so it stays an object rather than dissolving into
+  the band.
+  **The read-only twin copies all of it** — `.dv-sec-head` in
+  `jobcard_detail.html` is the same six values, and
+  `test_the_section_band_is_the_forms_own_colour` compares the two rules so
+  neither can move alone. Note the trap that test records: `.jc-sec-head` is
+  re-used further down the form's stylesheet by the locked-record palette, so a
+  selector match on `endswith` finds the wrong rule and reads as the band having
+  changed colour when it has not.
   **The field labels are 600**, on the owner's instruction, at the colour and
   size they already had — weight is the only axis touched. They sit above boxes
   whose placeholders are deliberately quiet (see the top of `jobcard_form.html`),
@@ -3088,6 +3089,202 @@ about to correct one of these, you are about to break the business:
   screens start looking like two different products. If a third form copies this
   row, copy the fixed one.
 
+- **A `<tr>` background is INVISIBLE on a Bootstrap table, and that is how the
+  refused-row red went missing on both parts tables.** Found 2026-08-17 while
+  building the row marks below. Bootstrap 5.3 gives every cell
+  `background-color: var(--bs-table-bg)`, which resolves to `#fff` here — an
+  opaque cell sitting on top of its own row — so a background declared on the
+  `<tr>` is painted over and never appears, **whatever its specificity**. This
+  is paint order, not the cascade, which is why `.jc-row-invalid`'s
+  `!important` bought nothing. The consequence had been shipped for months:
+  `.jc-row-invalid` is the red that says "this row was refused", and on
+  `#spare-list` and `#inventory-list` it did nothing at all — the one place
+  CLAUDE.md says marking the row matters most, "because the failing box there
+  is one of eight in a line". It went unnoticed because the class works
+  perfectly everywhere *else* it is used: a concern row and a job line are
+  `<div>`s, with no cell painting over them. Both row states are now declared
+  on the **cells** (`#spare-list > tr.jc-row-invalid > td`), and the same trap
+  waits for any future row state on any table in this app.
+  Two smaller things came out of the same fix. **Bootstrap's cell rule
+  (`.table > :not(caption) > * > *`) is one class and one element, so a bare
+  class on a `<td>` LOSES to it** — silently, on padding as well as
+  background; the number column below kept Bootstrap's 8px side padding and
+  was left 18px for its digits, enough for "12" and not for three figures.
+  Write `.table > * > tr > .yours` and it wins. And **at equal specificity the
+  winner is document order**, which is what makes the *position* of the
+  refused-row block a rule rather than a formatting choice: it sits after the
+  focus block so that "this is wrong" outranks "you are here" on a row being
+  corrected. Guarded by `TheRowYouAreInIsNamedAndLitTests`.
+
+- **On the Job Card parts tables the row you are in is NAMED by a sticky
+  number and LIT by a focus tint — two marks, two different questions.** Added
+  2026-08-17 on the owner's report that "when lot of data came, these sections
+  may confuse users". The measurement that reframed it: **`.main-content` is
+  capped at 800px, so the form is the same width on every device.** The spares
+  table is 1200px and hides **432px on a 1280px laptop exactly as on an 820px
+  tablet**, and 857px on a 375px phone. Scrolled right to the two price boxes,
+  the Part Name column is **106px past the left edge** — not truncated, gone.
+  So this was never a tablet problem with a desktop escape hatch; it is one
+  problem, and one fix covers all three devices.
+  (a) **The LIGHT is what actually prevents the mistake**, and it is the half
+  the owner did not ask for. The failure is rarely "wrong table" — it is
+  off-by-one, catching the row above or below, because rows are 55px tall and
+  every box in the grid looks like every other. `:focus-within` lights the
+  whole row across every column the moment a box is touched. It costs no width,
+  no height and **no JavaScript**, which is also why an added row has it for
+  free: none of the three `script.js` cloning traps can be reintroduced by a
+  rule that wires nothing. It is **blue** because amber on this form already
+  means "you changed this" and red means "this was refused", and a third
+  meaning on either would cost the other two theirs. A locked card needs no
+  exception — the Financial Lock disables every control, and a disabled input
+  cannot take focus.
+  (b) **The NUMBER is the handle for the horizontal scroll** — 34px, pinned
+  left, so row 7 is still row 7 with its name off screen. Measured: **34px of
+  table width, 0px of row height, 0px of page height**, because a sticky cell
+  is laid out in its row like any other. 9.1% of a 375px phone.
+  **A truncated NAME was the obvious alternative and is wrong on this
+  workshop's data** — which is the part worth not re-deriving. One real job
+  card carries "Front Lower Control Arm LH" and "Front Lower Control Arm RH" in
+  adjacent rows, and "Front Brake Pad Set (Brembo)" directly above "Rear Brake
+  Pad Set (Brembo)". Any column narrow enough to afford (~100px) prints "Front
+  Lower…" on both — worse than printing nothing, because it looks like an
+  answer. A number cannot collide with another number. The trade the owner
+  accepted knowingly: a number is arbitrary, so using it means looking left,
+  remembering "Wheel Bearing is 7", and scrolling back. The light is what makes
+  that rare rather than routine.
+  Three things are load-bearing. The number is a **bare cell — no input, no
+  name, no stored value**, so anyone auditing the money can skip it; it is
+  written by `forloop.counter` and **re-derived from the DOM** by
+  `renumberRows()`, never incremented from a counter, because its whole job is
+  to agree with what is on screen. **Both clone templates carry the cell** —
+  `#empty-spare-form` and `#empty-inventory-form` are cloned by script.js, and
+  one missing cell lays every added row a column adrift of its header with
+  nothing in the browser to say so. And a hidden row **keeps its number rather
+  than closing the gap**: rows are never removed (Django reads a formset by
+  contiguous index), so a position is stable, and renumbering under somebody
+  mid-edit would be the mark undermining itself.
+
+- **Completed, Pending Bills and Car Profiles are ONE shape, and the two
+  breakpoints are 560 and 800.** Added 2026-08-17 on the owner's question about
+  tablets. `row-cards` in `base.html` owns Completed, Pending Bills, Paid Bills,
+  Job Cards and the High Discount Audit (the last three added 2026-08-18);
+  `.cp-grid` on Car Profiles keeps its own declaration because it is CSS grid
+  rather than Bootstrap columns, but **the numbers must never differ**. Both are
+  measured.
+  **800px is where `.main-content` reaches its `max-width` and stops growing**,
+  so from there up nothing about a card changes — 245px on an 820px tablet and
+  245px on a 1920px laptop, i.e. a tablet now gets the layout a laptop already
+  had. Bootstrap's `lg` (992px) had been holding these lists at two-up for
+  192px after the container had already stopped changing; it was the nearest
+  tier, not the right number. **It must not start lower**: on Completed the
+  plate and the payment badge stop fitting on one line at about a 236px card —
+  measured at 772px, ten of forty-five cards wrapped to 164px while the rest
+  stayed 138px, which is the exact raggedness `.del-vehicle-name`'s
+  `min-height` exists to prevent.
+  **560px** was already Car Profiles' own two-up point and the other two waited
+  for `md` (768), so an **iPad Mini (744px) showed Car Profiles two across and
+  Completed ONE across at 712px a card** — same screen, same minute, two
+  answers. Two-up at 560 gives 256px, clear of the 236px floor, and takes
+  Completed's own list from 7254px of page to 3900px. Measured across all three
+  at 375 / 559 / 560 / 744 / 799 / 800 / 820 / 1280: no name clipped, no badge
+  row wrapped, every card in a row the same height, no horizontal overflow.
+  Two consequences. **The cards carry a bare `col-12` and no responsive
+  `col-*`** — leaving `col-md-6 col-lg-4` on them would be two rules describing
+  one grid, agreeing today and free to disagree the first time either is
+  touched, with the winner decided by specificity. And **Car Profiles' four-up
+  rule at 1400px is gone**: `.cp-page`'s own `max-width: 1400px` is dead inside
+  an 800px `.main-content`, so a 1400px screen still had a 768px grid and four
+  columns would have made cards *narrower on the biggest screen* than three
+  columns are on a tablet. Widening the container is the only thing that would
+  earn a fourth, and that is a decision about the whole app. Guarded by
+  `workshop/tests/test_card_list_grid.py`.
+
+- **All SIX card lists are on the same two breakpoints, and the audit card had
+  to STACK to join them.** Added 2026-08-18, extending the entry above to Paid
+  Bills, the High Discount Audit and Job Cards. The first two and Job Cards were
+  a one-line change (`row-cards`, `col-12`). The audit card was not, and the
+  reason is worth keeping: it was a **two-column card** — the car facing its
+  figures — which is fine at 352px and falls apart at 245px. Measured at three
+  across, the left block collapsed from 208.9px to 76.9px, which **squeezed the
+  number plate itself** from 96.5px down to 76.9px (the plate is the one thing
+  on an audit row nobody should have to guess at), and heights went **ragged by
+  85px** as the longer names wrapped. Stacked — car above figures — every card
+  is 267px at one, two and three across and the plate is back to its natural
+  width. `min-height: 2.5em` on the name is copied from `.del-vehicle-name` on
+  Completed rather than re-derived; `margin-top: auto` on the figures pins them
+  to the foot so three Discount lines land at the same y. Its own
+  `margin-bottom` went with the change — the row gutter spaces these now, and a
+  card carrying both spaced them twice.
+
+- **"Ordered For" is a NOTE on an unassigned spare, not a link to a car.** Added
+  2026-08-18 on the owner's report. `original_vehicle_info` already existed,
+  already printed on the Unassigned hub and both shop ledgers, and could only
+  ever write **itself**: the one place that set it was the "move this spare out
+  of a job card" path, so a purchase recorded straight onto a shop's ledger had
+  no way to say which car it was for — which is the common case there, because
+  the part is ordered *before* there is a job card to hang it on. **No
+  migration was needed**; the column has existed since 0039. It is free text
+  with no picker and no FK on purpose: at the moment somebody types it the car
+  often has no job card to point at, and half the point is being able to write
+  "Audi A4 — the white one". It moves no money and joins no table. Three rules:
+  it is **trimmed to 255 rather than refused** (oversized is stored by SQLite
+  and rejected by PostgreSQL, so trimming is the only answer that behaves the
+  same on both — the rule the part name already follows), **clearing it stores
+  NULL** so the column has one way of saying nothing, and **Floor may write it**
+  — the mechanic takes delivery and is usually who knows, and it is not cost, so
+  `PRICE_NOT_SUPPLIED` still strips the price in the same request. Guarded by
+  `OrderedForSaysWhichCarThePartIsForTests`.
+  **The add form now scrolls sideways at EVERY width, laptop included** (the
+  owner's instruction). It used to wrap above 768px and scroll below it — one
+  row of boxes with two shapes, depending on whether it was opened on the
+  tablet it is filled in on or the laptop it is checked on. Wrapping was also
+  getting worse rather than better: `.main-content` caps at 800px, so "desktop"
+  here is a 767px column, and the row is eight controls now. Every field
+  carries a fixed width rather than a flex basis, or a wide screen stretches
+  the boxes and quietly brings the wrap back. The suggestion box was already
+  `position: fixed`, so the scroller cannot clip it.
+
+- **The read-only job card was KEPT and rebuilt, not deleted — and the reason
+  is the Financial Lock's scope.** Added 2026-08-18. The owner asked whether
+  `/jobcards/<pk>/` should go, with everything that reaches it pointed at the
+  edit form instead, "if financial lock, job card is locked right? so safely
+  scroll and view". The lock is real and it is **not the common case**: it
+  covers `PAID` and `BULK_PAID` only, so the cards people open most — the ones
+  still on the floor — open fully editable. Redirecting a read to an editable
+  form makes every glance one stray tap from a change, on a tablet, on the
+  longest form in the app, behind a `beforeunload` prompt; and the page is
+  `@staff_required`, so **Floor reads cards here**. Nine places link or redirect
+  to it. So it stays, rebuilt on the two vocabularies that already existed:
+  the **form's own `.jc-sec-head`** for the section bands (this page is that
+  form's twin and they had drifted into looking like different products) and
+  the **dashboard car card's live-details drawer** for the lists — the owner's
+  named reference, and what replaced two horizontally-scrolling TABLES. A table
+  on a read-only page is the worst of both: six columns of ordering workflow
+  that have to be scrolled sideways, on a page whose only job is to be read.
+  Four things are load-bearing. **Nothing on it posts** — no `<form>`, no
+  input — which is the whole argument for its existence, so
+  `test_nothing_on_the_page_posts` scopes itself to `<main>` (base.html's logout
+  modal is a real form and would fail a whole-page check). **The role split is
+  resolved in the VIEW as `office_view`**, not asked six times in the template —
+  six copies of one boolean is six chances to widen five and miss the sixth, and
+  what it gates is who the customer is *and* every figure on the page. **The
+  section is named "Workshop Note" for Floor and "Customer & Notes" for Office**,
+  because a heading naming a customer over a box with no customer in it is the
+  page misdescribing itself. And **a spare's status is the ICON, not also a
+  word** — spelled out, a row read "Ordered • Biljo • Ordered 17 Aug", the state
+  said twice. Guarded by `workshop/tests/test_jobcard_detail_view.py`.
+
+- **"Spare Parts" is ONE glyph app-wide: `bi-gear-wide-connected`.** Added
+  2026-08-18 on the owner's instruction, and it removed a glyph rather than
+  swapping one. Three symbols had been meaning spare parts: this gear on the
+  dashboard drawer, `bi-nut-fill` on the job-card form and the Live Report, and
+  **`bi-tools` on every Spare Shops page — which is the JOB PERFORMED icon**, so
+  the section that buys parts wore the icon of the section that fits them. The
+  owner spotted exactly that. `bi-tools` now means Jobs/Labour and nothing else,
+  in precisely three places (dashboard drawer, estimate form, job card form).
+  `test_spare_parts_wears_the_same_glyph_everywhere_it_is_named` scans every
+  template and fails if a second glyph comes back.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
 variables, the rollback, and what to do when both owners are locked out.
@@ -3521,7 +3718,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (45 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 50 files, **1,373 tests** (re-counted 2026-08-17 from a full green run, after the invoice's `OnePrintsAsNothingTests` and the job card's `BothPriceBoxesAreLineTotalsTests` were added; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, 79 and 63 on 2026-08-16, and **71 on 2026-08-17**, which is the clearest evidence that the spread is load-dependent rather than meaningful; that last one had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (46 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 51 files, **1,402 tests** (counted 2026-08-18 from a full green run, after `test_jobcard_detail_view.py` was added; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, 79 and 63 on 2026-08-16, 71 on 2026-08-17 and **46 on 2026-08-18**, which is the clearest evidence that the spread is load-dependent rather than meaningful; the 71 had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

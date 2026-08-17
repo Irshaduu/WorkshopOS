@@ -833,6 +833,45 @@
             .main-content { margin-top: 0; }
         }
 
+        /* ==========================================
+           CARD LISTS — one pair of breakpoints, 560 and 800
+           ========================================== */
+        /* Completed, Pending Bills and Car Profiles are three views of the same
+           thing — a page of cards you scan down — and they are opened one after
+           the other by the same person. They used to answer the "how many
+           across?" question differently: Car Profiles went two-up at 560px and
+           three-up at 992, the other two waited for Bootstrap's `md` (768) and
+           `lg` (992). So an iPad Mini held Car Profiles two across and Completed
+           ONE across, at 712px a card. Same screen, same minute, two answers.
+
+           Both numbers here are measured, not chosen.
+
+           800px is where `.main-content` reaches its own `max-width` and stops
+           growing, so from there up nothing about a card changes: 245px on an
+           820px tablet and 245px on a 1920px laptop. Below it the column really
+           is narrower, and on Completed the plate and the payment badge stop
+           fitting on one line at about a 236px card — measured at 772px, ten of
+           forty-five cards wrapped to 164px while the rest stayed 138px, which
+           is the exact raggedness `.del-vehicle-name`'s `min-height` exists to
+           prevent. So three-up starts where the container does and not one pixel
+           sooner.
+
+           560px is the widest point at which one card still fills the row
+           sensibly; two-up there gives 256px, clear of the 236px floor, and
+           takes Completed's own list from 7254px of page to 3900px.
+
+           These widths OWN the layout — the cards carry a bare `col-12` and no
+           responsive `col-*` classes. Leaving `col-md-6 col-lg-4` on them would
+           be two rules describing one grid, agreeing today and free to disagree
+           the first time either is touched; the winner would be decided by
+           specificity, which is not where a layout decision should live. */
+        @media (min-width: 560px) {
+            .row-cards > [class*="col-"] { flex: 0 0 auto; width: 50%; }
+        }
+        @media (min-width: 800px) {
+            .row-cards > [class*="col-"] { flex: 0 0 auto; width: 33.33333333%; }
+        }
+
         /* Analysis & Reports page — full-width override */
         body.analysis-page .main-content {
             max-width: 1400px;
@@ -1299,7 +1338,7 @@ widen this and the audience together.
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 <a class="drawer-link accent-amber{% if p|slice:':13' == '/spare-shops/' %} active{% endif %}" href="{% url 'spare_shop_list' %}">
-                    <span class="drawer-ico"><i class="bi bi-tools"></i></span>
+                    <span class="drawer-ico"><i class="bi bi-gear-wide-connected"></i></span>
                     Spare Shops
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>

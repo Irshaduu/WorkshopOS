@@ -204,9 +204,25 @@
         align-items: stretch;
     }
 
-    @media (min-width: 560px)  { .cp-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (min-width: 992px)  { .cp-grid { grid-template-columns: repeat(3, 1fr); } }
-    @media (min-width: 1400px) { .cp-grid { grid-template-columns: repeat(4, 1fr); } }
+    {% comment %}
+    560 and 800 are the app's two card-list breakpoints — Completed and Pending
+    Bills are on the identical pair (`row-cards` in base.html), which is where
+    both numbers are reasoned out. This grid keeps its own declaration rather
+    than the shared class because it is CSS grid and they are Bootstrap columns;
+    what must not differ is the NUMBERS. It already had 560; only the three-up
+    step moved, from 992 down to 800, so a tablet gets the layout a laptop
+    already had.
+
+    There is deliberately no four-up rule any more. One used to sit at 1400px and
+    could never have worked: `.cp-page`'s own `max-width: 1400px` is dead inside
+    an 800px `.main-content`, so a 1400px screen still had a 768px grid and four
+    columns would have made cards narrower on the biggest screen than three
+    columns are on a tablet. Widening the container is the only thing that would
+    earn a fourth column, and that is a decision about the whole app, not this
+    list.
+    {% endcomment %}
+    @media (min-width: 560px) { .cp-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 800px) { .cp-grid { grid-template-columns: repeat(3, 1fr); } }
 
     /* ---------- one car ---------- */
     .cp-card {

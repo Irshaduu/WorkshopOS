@@ -578,10 +578,24 @@ def jobcard_list(request):
 @staff_required
 def jobcard_detail(request, pk):
     """
-    Clean View for a Job Card (Read-Only).
+    The job card, read only.
+
+    TWO AUDIENCES, and the split is resolved HERE rather than inferred from
+    groups in the template — the same shape the Unassigned Spares hub uses, and
+    for the same reason: `office_view` is asked about six times on this page
+    (customer, notes, labour total, both part prices, the whole billing
+    section), and six copies of one boolean is six chances to widen five and
+    miss the sixth.
+
+    Floor legitimately reads a card here, which is why the view is
+    `@staff_required` and not `@office_required`. What Floor does not get is who
+    the customer is or any money — the same two things the edit form withholds,
+    gated on the same flag, because a card must not say more on the page that
+    only reads it than on the page that writes it.
     """
     jobcard = get_object_or_404(
-        JobCard.objects.select_related('lead_mechanic').prefetch_related('concerns', 'spares', 'labours'),
+        JobCard.objects.select_related('lead_mechanic', 'bulk_payer')
+                       .prefetch_related('concerns', 'spares__shop', 'labours'),
         pk=pk
     )
 
@@ -592,6 +606,7 @@ def jobcard_detail(request, pk):
 
     return render(request, 'workshop/jobcard/jobcard_detail.html', {
         'jobcard': jobcard,
+        'office_view': is_office_or_owner(request.user),
         'inventory_draws': [s for s in all_spares
                             if s.source == JobCardSpareItem.SOURCE_INVENTORY],
         'shop_spares': [s for s in all_spares
