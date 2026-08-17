@@ -243,7 +243,9 @@ class DoubleCountRuleTests(AnalysisBase):
             job_card=self.card, spare_part_name='Brake Pad', shop=self.shop,
             quantity=D('2'), unit_price=D('500'), total_price=D('1400'))
         s, e, _k, _l = engine.resolve_period('this_month')
-        self.assertEqual(engine.spare_shop_expense(s, e), D('1000'))   # 500 x 2
+        # 500 is the shop's LINE total for the row, not a rate — the quantity
+        # beside it does not multiply it (see SHOP_LINE_COST).
+        self.assertEqual(engine.spare_shop_expense(s, e), D('500'))
 
     def test_warehouse_drawn_spare_is_never_an_expense(self):
         """source=INVENTORY ⇒ already paid for by a restock bill."""
@@ -281,17 +283,29 @@ class DoubleCountRuleTests(AnalysisBase):
                                         shop=None, quantity=D('1'), unit_price=D('750'),
                                         total_price=D('900'))
         s, e, _k, _l = engine.resolve_period('this_month')
-        total = D('1000') + D('1200') + D('750')
+        # The two SHOP-route lines cost what was typed (500, 750); the warehouse
+        # draw is still 400 × 3, because there the price is a per-unit average
+        # taken off the shelf rather than a figure anyone typed. The partition
+        # property is what this test is for, and it is unchanged: every rupee
+        # lands in exactly one bucket.
+        total = D('500') + D('1200') + D('750')
         self.assertEqual(
             engine.spare_shop_expense(s, e)
             + engine.warehouse_drawn_spare_cost(s, e)
             + engine.unattributed_spare_expense(s, e),
             total)
         # Only the two genuinely-unpaid routes reach the expense total.
-        self.assertEqual(engine.build_profit_report(s, e)['expense_total'], D('1750'))
+        self.assertEqual(engine.build_profit_report(s, e)['expense_total'], D('1250'))
 
-    def test_null_quantity_counts_as_one_unit(self):
-        """Matches SpareShop.update_totals — a missing quantity is one unit, not zero."""
+    def test_a_missing_quantity_changes_nothing_on_a_shop_line(self):
+        """
+        Renamed 2026-08-17. It used to read "a missing quantity is one unit, not
+        zero", which mattered when the cost was `unit_price × quantity` and a
+        NULL would have zeroed the line. A shop line is no longer multiplied by
+        anything, so the quantity — present, absent or wrong — cannot move what
+        the shop is owed. Kept because that is worth asserting rather than
+        assuming, and because the warehouse route still coalesces a NULL to 1.
+        """
         JobCardSpareItem.objects.create(
             job_card=self.card, spare_part_name='Filter', shop=self.shop,
             quantity=None, unit_price=D('300'), total_price=D('450'))
@@ -498,8 +512,8 @@ class InsightSectionTests(AnalysisBase):
         rows = _insight_mechanics(s, e)['rows']
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['revenue'], D('2300'))
-        self.assertEqual(rows[0]['cost'], D('1000'))       # 500 x 2
-        self.assertEqual(rows[0]['profit'], D('1300'))
+        self.assertEqual(rows[0]['cost'], D('500'))        # the shop's line total
+        self.assertEqual(rows[0]['profit'], D('1800'))
 
     def test_mechanic_revenue_is_not_inflated_by_multiple_spares(self):
         """
@@ -516,7 +530,8 @@ class InsightSectionTests(AnalysisBase):
         rows = _insight_mechanics(s, e)['rows']
         # 1500 + 300 spares + 800 labour, counted once
         self.assertEqual(rows[0]['revenue'], D('2600'), "revenue inflated by the spare join")
-        self.assertEqual(rows[0]['cost'], D('1200'))
+        # Two shop lines, each costing what was typed for it: 500 + 200.
+        self.assertEqual(rows[0]['cost'], D('700'))
 
     def test_vehicles_section_reports_customer_name_coverage(self):
         from workshop.analysis_views import _insight_vehicles

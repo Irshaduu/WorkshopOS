@@ -1379,7 +1379,9 @@
             ("Engine Oil"), never the branded product it was bought as; a blank
             quantity has already been resolved to 1 and the unit price derived
             from the customer total, so no row can print an amount with nothing
-            beside it. All of that happens in workshop/invoice.py.
+            beside it. The QTY cell is empty for a quantity of one, blank or
+            typed — the workshop writes a number down only when there is more
+            than one of something. All of that happens in workshop/invoice.py.
             {% endcomment %}
             <table class="inv-table inv-parts">
                 <colgroup>

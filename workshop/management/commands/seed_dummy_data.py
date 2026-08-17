@@ -617,7 +617,13 @@ class Command(BaseCommand):
                     job_card=jobcard,
                     source=JobCardSpareItem.SOURCE_SHOP,
                     spare_part_name=name, quantity=qty,
-                    unit_price=Decimal(cost),
+                    # BOTH figures are LINE TOTALS, which is how Office fills
+                    # this row in: what the shop billed for the line, and what
+                    # the customer is charged for it. `unit_price` on a shop row
+                    # stopped meaning "per unit" on 2026-08-17 — seeding a rate
+                    # here would make the demo's Spare Shops expense read low by
+                    # a factor of the quantity on every multi-part row.
+                    unit_price=(Decimal(cost) * qty).quantize(Decimal("0.01")),
                     total_price=(Decimal(price) * qty).quantize(Decimal("0.01")),
                     status="RECEIVED", shop=shop, shop_name=shop.name,
                     ordered_date=admitted_date, received_date=admitted_date,

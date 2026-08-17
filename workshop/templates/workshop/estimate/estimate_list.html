@@ -223,13 +223,28 @@ rather than the dropdown those pages need for eight.
     .est-list > :last-child  { border-radius: 0 0 14px 14px; }
     .est-list > :only-child  { border-radius: 14px; }
 
+    {% comment %}
+    ── Row sizing, raised 2026-08-17 on the owner's instruction ───────
+
+    Everything on this row was a step smaller than the same fact is anywhere
+    else in the app, and it added up: the car's name set at 1.12rem against the
+    dashboard card's 1.15, the "QUOTED" caption at 0.58rem (9.3px), the meta
+    line at 0.72rem. Measured on a 375px phone the whole row was 59.7px tall
+    where a dashboard card is 172px, and the caption rendered at 8.3px — below
+    anything else the app asks anyone to read.
+
+    Nothing about the row's SHAPE changed, and that is deliberate: it is still
+    identity · money · menu on exactly two lines at every width, for the reason
+    recorded below (a third line costs half a card's height again, and this page
+    is read by scanning down it). Only the type and the padding grew.
+    {% endcomment %}
     .est-row {
         position: relative;          /* the stretched link anchors to this */
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto 40px;
         align-items: center;
-        gap: 4px 14px;
-        padding: 12px 8px 12px 18px;
+        gap: 5px 14px;
+        padding: 15px 8px 15px 18px;
         border-bottom: 1px solid var(--color-border);
         font-family: var(--est-font-body);
     }
@@ -276,7 +291,7 @@ rather than the dropdown those pages need for eight.
 
     .est-headline {
         font-family: var(--est-font-display);
-        font-size: 1.12rem;
+        font-size: 1.28rem;
         font-weight: 700;
         letter-spacing: -0.2px;
         line-height: 1.25;
@@ -301,7 +316,7 @@ rather than the dropdown those pages need for eight.
         border-radius: 5px;
         background: var(--color-bg);
         border: 1px solid var(--color-border);
-        font-size: 0.66rem;
+        font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.4px;
         color: var(--color-text-muted);
@@ -310,7 +325,7 @@ rather than the dropdown those pages need for eight.
 
     .est-meta {
         margin-top: 4px;
-        font-size: 0.72rem;
+        font-size: 0.79rem;
         color: var(--color-text-muted);
         display: flex;
         flex-wrap: wrap;
@@ -327,7 +342,7 @@ rather than the dropdown those pages need for eight.
 
     .est-money-label {
         display: block;
-        font-size: 0.58rem;
+        font-size: 0.63rem;
         font-weight: 700;
         letter-spacing: 1px;
         text-transform: uppercase;
@@ -336,7 +351,7 @@ rather than the dropdown those pages need for eight.
 
     .est-money-value {
         font-family: var(--est-font-display);
-        font-size: 1.18rem;
+        font-size: 1.32rem;
         font-weight: 800;
         color: var(--color-text);
         letter-spacing: -0.2px;
@@ -346,7 +361,7 @@ rather than the dropdown those pages need for eight.
        the workshop never quoted. Same distinction the printed sheet makes. */
     .est-money-value--none {
         font-family: var(--est-font-body);
-        font-size: 0.76rem;
+        font-size: 0.84rem;
         font-weight: 600;
         color: var(--color-text-muted);
     }
@@ -412,24 +427,32 @@ rather than the dropdown those pages need for eight.
             white-space: nowrap;
         }
 
-        /* Search and BOTH chips on one row. The chips shrink to make room —
-           they are two short words and do not need a 44px pill each once the
-           search box is competing for the same 360px. `flex-basis: 0` on the
-           search is what lets it take whatever is left instead of forcing a
-           wrap at its natural width. */
+        {% comment %}
+        Search and BOTH chips on one row. The chips shrink to make room — they
+        are two short words and do not need a 44px pill each once the search box
+        is competing for the same 360px. `flex-basis: 0` on the search is what
+        lets it take whatever is left instead of forcing a wrap at its natural
+        width.
+
+        The sizes here were cut further than they needed to be. Measured at
+        375px the search text was 12.2px and the chips 11.5px, and the row was
+        fitting with room to spare; they are back up to something readable, with
+        the fit re-checked at 360px (the narrowest phone this workshop uses) —
+        search 145px, both chips intact, no wrap.
+        {% endcomment %}
         .est-search-wrap { flex: 1 1 0; min-width: 90px; }
-        .est-search-input { padding: 8px 10px 8px 28px; font-size: 0.76rem; }
-        .est-search-wrap .search-icon { left: 10px; }
-        .est-chip { padding: 7px 10px; font-size: 0.72rem; }
+        .est-search-input { padding: 9px 12px 9px 30px; font-size: 0.84rem; }
+        .est-search-wrap .search-icon { left: 11px; }
+        .est-chip { padding: 8px 11px; font-size: 0.78rem; }
         .est-chip-group { gap: 6px; }
 
         /* The title shrinks before the button does — "New Estimate" is the
            action, and a page whose only action has wrapped to its own line
            looks like two headers. */
-        .est-page-title { font-size: 1.3rem; gap: 6px; }
-        .est-page-title .title-icon { font-size: 1.1rem; }
-        .est-count-pill { font-size: 0.55rem; padding: 2px 6px; }
-        .est-new-btn { min-height: 40px; padding: 0 13px; font-size: 0.78rem; flex: 0 0 auto; }
+        .est-page-title { font-size: 1.45rem; gap: 6px; }
+        .est-page-title .title-icon { font-size: 1.15rem; }
+        .est-count-pill { font-size: 0.58rem; padding: 2px 6px; }
+        .est-new-btn { min-height: 42px; padding: 0 14px; font-size: 0.8rem; flex: 0 0 auto; }
 
         {% comment %}
         The row keeps its shape rather than folding — identity, money, menu, all
@@ -441,15 +464,15 @@ rather than the dropdown those pages need for eight.
         {% endcomment %}
         .est-row {
             grid-template-columns: minmax(0, 1fr) auto 34px;
-            gap: 2px 8px;
-            padding: 10px 2px 10px 14px;
+            gap: 3px 8px;
+            padding: 13px 2px 13px 14px;
         }
 
-        .est-money-label { font-size: 0.52rem; letter-spacing: 0.6px; }
-        .est-money-value { font-size: 1rem; }
-        .est-headline { font-size: 1rem; }
-        .est-reg { font-size: 0.6rem; padding: 1px 5px; }
-        .est-meta { font-size: 0.68rem; margin-top: 2px; gap: 4px; }
+        .est-money-label { font-size: 0.56rem; letter-spacing: 0.6px; }
+        .est-money-value { font-size: 1.14rem; }
+        .est-headline { font-size: 1.16rem; }
+        .est-reg { font-size: 0.66rem; padding: 1px 5px; }
+        .est-meta { font-size: 0.74rem; margin-top: 3px; gap: 4px; }
         .est-menu-btn { width: 34px; height: 34px; }
         .est-stripe { width: 4px; top: 4px; bottom: 4px; }
     }

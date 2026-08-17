@@ -205,7 +205,8 @@ class GrossProfitTests(CarProfileBase):
         #   total_bill_amount                      ₹9,000
         #   less discount                        − ₹1,000
         #   revenue                                ₹8,000
-        #   parts COST  (2 x ₹1,000) + (4 x ₹250) = ₹3,000
+        #   parts COST  ₹2,000 (the shop's line total, not a rate)
+        #             + (4 x ₹250 warehouse average)  = ₹3,000
         #   gross profit                           ₹5,000  = 62.5%
         self.bill = self.visit(
             self.reg, date(2026, 8, 1),
@@ -213,7 +214,11 @@ class GrossProfitTests(CarProfileBase):
             payment_status='PAID', labour_amount=D('4000'))
         JobCardSpareItem.objects.create(
             job_card=self.bill, source=JobCardSpareItem.SOURCE_SHOP,
-            spare_part_name='Brake Pad', quantity=D('2'), unit_price=D('1000'),
+            # `unit_price` on a SHOP row is what the shop billed for the
+            # line — ₹2,000 for the pair — never a per-unit rate. The warehouse
+            # row below is the opposite and stays per unit, because there the
+            # figure is an average taken off the shelf. See SHOP_LINE_COST.
+            spare_part_name='Brake Pad', quantity=D('2'), unit_price=D('2000'),
             total_price=D('3000'))
         JobCardSpareItem.objects.create(
             job_card=self.bill, source=JobCardSpareItem.SOURCE_INVENTORY,

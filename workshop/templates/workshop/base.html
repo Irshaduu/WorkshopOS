@@ -1084,10 +1084,18 @@
                 <i class="bi bi-check-circle{% if p|slice:':11' == '/completed/' %}-fill{% endif %}"></i><span class="nav-label">Completed</span>
             </a>
 
-            <!-- Report (Office / Owner) -->
+            {% comment %}
+            LIVE (Office / Owner). It read "Report" until 2026-08-17, which was
+            the wrong word twice over: this page is the state of the workshop
+            right now — who is holding which car, which parts are travelling,
+            which bills were settled with boxes left empty — while the drawer's
+            "Analysis & Reports" is the profit page and genuinely IS a report.
+            Two entries a thumb's width apart both saying "report" and meaning
+            different things.
+            {% endcomment %}
             <a class="nav-btn{% if p == '/jobcards/live-report/' %} active{% endif %}"
-               href="{% url 'live_report' %}" aria-label="Report" title="Live Report">
-                <i class="bi bi-clipboard-data{% if p == '/jobcards/live-report/' %}-fill{% endif %}"></i><span class="nav-label">Report</span>
+               href="{% url 'live_report' %}" aria-label="Live" title="Live Report">
+                <i class="bi bi-clipboard-data{% if p == '/jobcards/live-report/' %}-fill{% endif %}"></i><span class="nav-label">Live</span>
             </a>
             {% else %}
             <!-- New job card (Floor) -->

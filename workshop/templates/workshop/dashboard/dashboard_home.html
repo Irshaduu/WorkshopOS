@@ -283,26 +283,36 @@
         min-width: 0;
     }
 
-    .status-pill-clean {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        padding: 2px 8px;
-        border-radius: 999px;
-        white-space: nowrap;
-    }
-    .status-pill-clean.active { background: rgba(22, 163, 74, 0.09); color: #16a34a; }
-    .status-pill-clean.hold   { background: rgba(220, 38, 38, 0.09); color: #dc2626; }
+    {% comment %}
+    ── The state is a DOT at the end of the name, 2026-08-17 ──────────
 
+    On the owner's instruction, and it removes the last pill from the top row.
+    "ACTIVE" in a green capsule was the second-loudest thing on a card whose
+    every row is active — the word was true of nearly all of them, so it
+    distinguished nothing, and the only card it mattered on was the held one,
+    which the colour already says. A dot says the same thing in a tenth of the
+    space, and the space goes to the car's name.
+
+    It lives INSIDE `.car-name`, so it follows the text rather than sitting in
+    a column of its own: on a name that wraps to two lines the dot is at the
+    end of the second line, which is where the eye already is. That is why it
+    is preceded by a non-breaking space — it binds to the last word, so it can
+    never be left alone on a line the two-line clamp then hides.
+
+    The dot itself is unchanged in size and colour ("but same current dot"),
+    hold ring included. What changed is only where it sits and that the word
+    beside it is gone; `role="img"` + `aria-label` is what keeps the state
+    readable to anything that was reading the word.
+    {% endcomment %}
     .status-dot-sm {
+        display: inline-block;
         width: 6px;
         height: 6px;
         border-radius: 50%;
         flex-shrink: 0;
+        /* Lifted off the text baseline so it centres on the lower-case
+           x-height rather than hanging under it. */
+        vertical-align: 0.22em;
     }
     .status-dot-sm.active { background: #16a34a; }
     {% comment %}
@@ -426,7 +436,7 @@
     .progress-ring-wrap {
         display: flex;
         align-items: center;
-        gap: 9px;
+        gap: 7px;
     }
 
     /* Tabular figures so the ratio cannot change width as it counts up — a
@@ -478,10 +488,21 @@
     .progress-ring-svg circle {
         transition: stroke-dashoffset 0.35s ease;
     }
-    /* A lighter track. At #e2e8f0 the unfinished part of the ring was itself a
-       mark on the card; the ring should read as ONE arc of colour on a hairline,
-       not as two arcs competing. */
-    .progress-ring-svg .ring-bg { stroke: #e8edf3; }
+    {% comment %}
+    The track is thinner than the arc, not just lighter (2026-08-17). Both were
+    3px, so the ring was two arcs of equal weight and the eye had to tell them
+    apart by colour alone — at 0% that reads as a complete grey ring rather than
+    an empty one. A 2.25px groove under a 3.5px mark says which is which before
+    any colour is involved, and it makes the same percentage look further along
+    at a glance because the coloured part is now visibly heavier.
+
+    Declared in CSS rather than on the elements: a `stroke-width` attribute is a
+    presentation attribute and loses to any stylesheet rule, so leaving both
+    would be two numbers for one line, free to disagree. The disc at r=16 still
+    clears the fatter stroke, whose inner edge is at 18 - 1.75 = 16.25.
+    {% endcomment %}
+    .progress-ring-svg .ring-bg    { stroke: #e8edf3; stroke-width: 2.25; }
+    .progress-ring-svg .ring-fg    { stroke-width: 3.5; }
     .progress-ring-svg .ring-going { stroke: #2563eb; }
     .progress-ring-svg .ring-done  { stroke: #16a34a; }
     .progress-ring-svg .disc-going { fill: rgba(37, 99, 235, 0.07); }
@@ -773,8 +794,82 @@
     /* Mobile compact */
     @media (max-width: 480px) {
         .stat-value { font-size: 1.7rem; }
-        .car-name   { font-size: 1.05rem; }
         .btn-report { font-size: 0.75rem; padding: 0.4rem 0.8rem; }
+    }
+
+    {% comment %}
+    ══ THE PHONE ══════════════════════════════════════════════════════
+    640px, the width the nav bar itself moves at, so "phone" means one thing
+    across the app. Two changes, and they pay for each other.
+
+    1. THE CAR'S NAME IS BIGGER HERE THAN ON A LAPTOP (1.24rem against 1.15),
+       which looks backwards and is not. The name used to SHRINK to 1.05rem on a
+       phone because it was sharing 332px with an "ACTIVE" pill and a ⋮ — it lost
+       both fights and "Land Rover Range Rover Sport" wrapped or clipped. The
+       pill is a dot now, which gave the line ~77px back; the owner asked for the
+       name bigger, and there is room to do it. It is also the right way round on
+       the merits: this is the screen read at arm's length while walking, and the
+       name is the only thing on the card you look for from that distance.
+
+    2. THE LIVE DETAILS SHED THEIR BOXES. Measured before this: four sections,
+       ten rows, a drawer 600px tall — a whole phone screen for one car — of
+       which 152px was section HEADING BARS and the rest sat inside four white
+       cards with their own borders, radii and padding, on a panel that already
+       has a border. The owner read it back as confusing, and that is the
+       accurate word: the chrome was as loud as the content, so nothing on it
+       led. Nothing is removed and nothing is reworded — the sections, their
+       counts, the status icons and the "+N more" tails are all still here. What
+       goes is the furniture: no card per section, no filled title bar, no rule
+       under every row. A section is a small grey label with its coloured glyph,
+       and the rows hang under it.
+
+    Deliberately NOT applied above 640px: the owner said the desktop reads
+    correctly as it is, where a wide drawer has the room for boxes and they help
+    the eye find a section across a long line.
+    {% endcomment %}
+    @media (max-width: 640px) {
+        .car-name { font-size: 1.24rem; }
+
+        .live-drawer-inner {
+            padding: 0.15rem 0.85rem 0.7rem;
+            gap: 0;
+        }
+
+        .drawer-sec {
+            background: transparent;
+            border: 0;
+            border-radius: 0;
+        }
+        /* One hairline BETWEEN sections, where it separates two things — not
+           four boxes each drawing their own on all sides. */
+        .drawer-sec + .drawer-sec { border-top: 1px solid #e6ebf1; }
+
+        .drawer-sec-title {
+            background: transparent;
+            border-bottom: 0;
+            padding: 0.5rem 0 0.2rem;
+            font-size: 0.66rem;
+            letter-spacing: 0.07em;
+            color: #94a3b8;
+            /* The row is as tall as its tallest child and the glyph is the
+               tallest — at the inherited 1.5 that made a 10px label occupy
+               20px. The padding above and below is what spaces these, not the
+               leading inside them. */
+            line-height: 1;
+        }
+        /* The glyph keeps its colour: with the bar gone it is the only thing
+           telling one section from another at a glance. */
+        .drawer-sec-title i { font-size: 0.82rem; }
+
+        /* The rows keep the exact size they had — they are the content, and
+           the whole point is that they are now what is left. Only the rule
+           under each one and the padding around it go. */
+        .drawer-item {
+            padding: 0.24rem 0;
+            border-bottom: 0;
+        }
+        .drawer-subtext { padding-left: 22px; }
+        .drawer-more { padding: 4px 0 2px 22px; }
     }
 
     {% comment %}
@@ -842,15 +937,19 @@
             <div class="card-body-inner">
                 <!-- Row 1: Car Name + Status Dot + 3-Dot Menu -->
                 <div class="card-top">
-                    <div class="car-name">
-                        {{ job.brand_name }} {{ job.model_name }}
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="status-pill-clean {% if job.on_hold %}hold{% else %}active{% endif %}">
-                            <span class="status-dot-sm {% if job.on_hold %}hold{% else %}active{% endif %}"></span>
-                            {% if job.on_hold %}Hold{% else %}Active{% endif %}
-                        </span>
-
+                    {% comment %}
+                    The dot is part of the name's own text run — see
+                    `.status-dot-sm`. `&nbsp;` rather than a space so it can
+                    never wrap onto a line by itself, and no newline between
+                    the name and it, because Django renders the whitespace and
+                    the template's own indentation would put a second gap in.
+                    {% endcomment %}
+                    <div class="car-name">{{ job.brand_name }} {{ job.model_name }}&nbsp;<span
+                            class="status-dot-sm {% if job.on_hold %}hold{% else %}active{% endif %}"
+                            role="img"
+                            aria-label="{% if job.on_hold %}On hold{% else %}Active{% endif %}"
+                            title="{% if job.on_hold %}On hold{% else %}Active{% endif %}"></span></div>
+                    <div class="d-flex align-items-center">
                         <!-- 3-dot Menu -->
                         <div class="dropdown pit-dropdown">
                             <button class="dot-menu-btn" type="button"
@@ -969,10 +1068,17 @@
                 </div>
             </div>
 
-            <!-- Top Dropdown Toggle Bar -->
-            <button type="button" class="live-drawer-toggle live-drawer-toggle--top" data-target="drawer-{{ job.pk }}">
+            {% comment %}
+            "View" / "Hide", not "View Live Details" — the owner's instruction.
+            The bar spans the whole card, sits directly under the car it belongs
+            to and carries a chevron that turns; three of those four words were
+            explaining a control that explains itself, on every card in a list
+            of forty-five.
+            {% endcomment %}
+            <button type="button" class="live-drawer-toggle live-drawer-toggle--top" data-target="drawer-{{ job.pk }}"
+                    aria-label="View live details">
                 <i class="bi bi-chevron-down toggle-icon"></i>
-                <span class="toggle-label">View Live Details</span>
+                <span class="toggle-label">View</span>
             </button>
 
             {% comment %}
@@ -1143,7 +1249,10 @@ document.addEventListener('DOMContentLoaded', function () {
             const topBtn = card.querySelector('.live-drawer-toggle--top');
             if (topBtn) {
                 const label = topBtn.querySelector('.toggle-label');
-                if (label) label.textContent = isOpen ? 'Hide Live Details' : 'View Live Details';
+                if (label) label.textContent = isOpen ? 'Hide' : 'View';
+                // The visible word is one syllable now, so the full sentence
+                // lives in the accessible name instead of being dropped.
+                topBtn.setAttribute('aria-label', isOpen ? 'Hide live details' : 'View live details');
             }
         });
     });

@@ -78,13 +78,13 @@ class MovingASpareBetweenShopsTests(SpareShopBase):
 
     def test_the_old_shops_ledger_is_cleared_on_save(self):
         row = self.spare(self.A)
-        self.assertEqual(self.owed(), (D('1000.00'), D('0')))
+        self.assertEqual(self.owed(), (D('500.00'), D('0')))
 
         row.shop = self.B
         row.shop_name = self.B.name
         row.save()
 
-        self.assertEqual(self.owed(), (D('0.00'), D('1000.00')),
+        self.assertEqual(self.owed(), (D('0.00'), D('500.00')),
                          "the debt must move, not be duplicated")
 
     def test_clearing_the_shop_strands_no_debt(self):
@@ -96,7 +96,7 @@ class MovingASpareBetweenShopsTests(SpareShopBase):
     def test_moving_it_through_the_job_card_form(self):
         """The reachable path: Office changes the Shop dropdown and saves."""
         row = self.spare(self.A)
-        self.assertEqual(self.owed(), (D('1000.00'), D('0')))
+        self.assertEqual(self.owed(), (D('500.00'), D('0')))
 
         resp = self.client.post(reverse('jobcard_edit', args=[self.jc.pk]), self.payload(**{
             'spares-TOTAL_FORMS': '1', 'spares-INITIAL_FORMS': '1',
@@ -111,9 +111,9 @@ class MovingASpareBetweenShopsTests(SpareShopBase):
 
         a_owed, b_owed = self.owed()
         self.assertEqual(a_owed, D('0.00'))
-        self.assertEqual(b_owed, D('1000.00'))
-        self.assertEqual(a_owed + b_owed, D('1000.00'),
-                         "only ₹1,000 was ever spent")
+        self.assertEqual(b_owed, D('500.00'))
+        self.assertEqual(a_owed + b_owed, D('500.00'),
+                         "only ₹500 was ever spent")
 
     def test_clearing_the_dropdown_through_the_form(self):
         row = self.spare(self.A)
@@ -185,7 +185,7 @@ class FloorCannotSetPricesTests(SpareShopBase):
         self.assertEqual(self.shop_row.unit_price, D('500.00'))
         self.assertEqual(self.shop_row.total_price, D('1400.00'))
         self.A.refresh_from_db()
-        self.assertEqual(self.A.get_pending_balance, D('1000.00'),
+        self.assertEqual(self.A.get_pending_balance, D('500.00'),
                          "the shop ledger must not move either")
 
     def test_floor_can_still_do_its_own_job(self):

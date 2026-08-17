@@ -736,7 +736,14 @@ task; here it is a hole in the books.
     {% with color=spare.job_card.get_car_color_hex|default:'#94a3b8' %}
     <a href="{% url 'jobcard_edit' spare.job_card_id %}?next=mini" class="lr-spare">
         <span class="lr-spare-name">
-            {{ spare.spare_part_name|default:"Unnamed part" }}{% if spare.quantity %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
+            {{ spare.spare_part_name|default:"Unnamed part" }}{% comment %}
+            A quantity of one is not printed — "× 1" beside every single part is
+            a column of noise, and the workshop only ever writes a number down
+            when there is more than one of something. The same rule the printed
+            bill follows, and the same one the home board's live details already
+            used. `gt` rather than a truthiness test: blank and 1 mean the same
+            thing here, and both are silent.
+            {% endcomment %}{% if spare.quantity|gt:1 %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
         </span>
         {% comment %}
         The car comes before its plate: the make is what an owner reads
@@ -780,7 +787,14 @@ task; here it is a hole in the books.
     {% with color=spare.job_card.get_car_color_hex|default:'#94a3b8' %}
     <a href="{% url 'jobcard_edit' spare.job_card_id %}?next=mini" class="lr-spare">
         <span class="lr-spare-name">
-            {{ spare.spare_part_name|default:"Unnamed part" }}{% if spare.quantity %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
+            {{ spare.spare_part_name|default:"Unnamed part" }}{% comment %}
+            A quantity of one is not printed — "× 1" beside every single part is
+            a column of noise, and the workshop only ever writes a number down
+            when there is more than one of something. The same rule the printed
+            bill follows, and the same one the home board's live details already
+            used. `gt` rather than a truthiness test: blank and 1 mean the same
+            thing here, and both are silent.
+            {% endcomment %}{% if spare.quantity|gt:1 %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
         </span>
         <span class="lr-spare-meta">
             <span class="lr-spare-car">

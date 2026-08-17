@@ -17,7 +17,8 @@ from django.utils import timezone
 
 from inventory.models import Category, Item
 from workshop.invoice import (
-    MIN_JOB_ROWS, MIN_PART_ROWS, build_invoice, effective_quantity,
+    MIN_JOB_ROWS, MIN_PART_ROWS, build_invoice, derive_unit_price,
+    effective_quantity,
 )
 from workshop.models import (
     BulkPayer, JobCard, JobCardLabourItem, JobCardSpareItem, SpareShop,
@@ -292,15 +293,23 @@ class ABlankQuantityIsOneTests(InvoiceTestCase):
         line = build_invoice(job)['part_lines'][0]
         self.assertEqual(line.quantity, Decimal('1'))
 
-    def test_the_unit_price_of_a_blank_quantity_is_the_whole_amount(self):
+    def test_the_arithmetic_of_a_blank_quantity_is_the_whole_amount(self):
         """
-        The regression this closes: the column used to divide by a missing
+        The regression this closes: the column used to divide by a MISSING
         quantity and print ₹0.00 beside a real amount on the same row.
+
+        The division still resolves blank to one — asserted here on
+        `derive_unit_price` itself, which is where the arithmetic lives. What
+        the row *prints* is a separate rule (`OnePrintsAsNothingTests`): a
+        single part shows the amount and nothing else, because the unit price
+        would be that same amount in the column beside it.
         """
+        self.assertEqual(
+            derive_unit_price(Decimal('12000'), effective_quantity(None)),
+            Decimal('12000.00'),
+        )
         job = self._jobcard()
         self._shop_spare(job, quantity=None, total_price=Decimal('12000'))
-        line = build_invoice(job)['part_lines'][0]
-        self.assertEqual(line.unit_price, Decimal('12000.00'))
         self.assertIn('12,000.00', _tables(self._render(job).content.decode(), 'inv-parts'))
 
     def test_zero_and_negative_are_treated_as_one_as_well(self):
@@ -313,6 +322,128 @@ class ABlankQuantityIsOneTests(InvoiceTestCase):
         self.assertEqual(effective_quantity(Decimal('0')), Decimal('1'))
         self.assertEqual(effective_quantity(Decimal('-3')), Decimal('1'))
         self.assertEqual(effective_quantity(Decimal('2.5')), Decimal('2.5'))
+
+
+class OnePrintsAsNothingTests(InvoiceTestCase):
+    """
+    A single part prints its name and its amount — no quantity, no unit price.
+
+    QTY and UNIT PRICE are the BREAKDOWN of the amount, and one unit has no
+    breakdown: the unit price would be the amount over again in the column
+    beside it. So the two cells travel together, and the workshop's own habit
+    is the same — a number is written down only when there is more than one of
+    something.
+
+    This is the CELLS only. The money is still computed from a quantity of one
+    (`ABlankQuantityIsOneTests` above), so the amount is unchanged and the bill
+    still adds up to the same total.
+    """
+
+    def _cells(self, job, css_class):
+        """One column of the parts table, real rows only."""
+        html = _tables(self._render(job).content.decode(), 'inv-parts')
+        # Every row is `<td>name</td><td class="c">qty</td><td class="r">unit</td>…`;
+        # the padding rows carry no class, so this finds exactly the parts.
+        return [
+            cell.split('</td>')[0].strip()
+            for cell in html.split('<td class="%s">' % css_class)[1:]
+        ]
+
+    def _qty_cells(self, job):
+        return self._cells(job, 'c')
+
+    def _unit_cells(self, job):
+        return self._cells(job, 'r')
+
+    def test_a_single_part_prints_neither_quantity_nor_unit_price(self):
+        job = self._jobcard()
+        self._shop_spare(job, quantity=Decimal('1'), total_price=Decimal('12000'))
+        line = build_invoice(job)['part_lines'][0]
+        self.assertIsNone(line.display_quantity)
+        self.assertIsNone(line.unit_price)
+        self.assertEqual(self._qty_cells(job), [''])
+        self.assertEqual(self._unit_cells(job), [''])
+
+    def test_a_blank_quantity_prints_neither_either(self):
+        job = self._jobcard()
+        self._shop_spare(job, quantity=None, total_price=Decimal('12000'))
+        line = build_invoice(job)['part_lines'][0]
+        self.assertIsNone(line.display_quantity)
+        self.assertIsNone(line.unit_price)
+        self.assertEqual(self._qty_cells(job), [''])
+        self.assertEqual(self._unit_cells(job), [''])
+
+    def test_the_amount_still_prints_for_a_single_part(self):
+        """The row is not silent — only its breakdown is."""
+        job = self._jobcard()
+        self._shop_spare(job, quantity=Decimal('1'), total_price=Decimal('12000'))
+        report = build_invoice(job)
+        self.assertEqual(report['part_lines'][0].amount, Decimal('12000'))
+        self.assertEqual(report['part_subtotal'], Decimal('12000'))
+        self.assertIn('12,000.00', _tables(self._render(job).content.decode(), 'inv-parts'))
+
+    def test_one_point_zero_zero_is_still_one(self):
+        """
+        The column stores two decimals, so a typed 1 comes back as 1.00. It is
+        compared numerically for exactly this reason — a string comparison would
+        itemise every row somebody typed rather than left blank.
+        """
+        job = self._jobcard()
+        self._shop_spare(job, quantity=Decimal('1.00'), total_price=Decimal('500'))
+        line = build_invoice(job)['part_lines'][0]
+        self.assertIsNone(line.display_quantity)
+        self.assertIsNone(line.unit_price)
+
+    def test_more_than_one_itemises_in_full(self):
+        job = self._jobcard()
+        self._shop_spare(job, quantity=Decimal('4'), total_price=Decimal('2000'))
+        line = build_invoice(job)['part_lines'][0]
+        self.assertEqual(line.display_quantity, Decimal('4'))
+        self.assertEqual(line.unit_price, Decimal('500.00'))
+        self.assertEqual(self._qty_cells(job), ['4'])
+        self.assertEqual(self._unit_cells(job), ['500.00'])
+
+    def test_qty_times_unit_still_reconciles_to_the_amount(self):
+        """
+        Whenever both are printed they must multiply back to the figure beside
+        them — a customer checking the row by hand is the one person guaranteed
+        to notice if they do not.
+        """
+        job = self._jobcard()
+        self._shop_spare(job, quantity=Decimal('3'), total_price=Decimal('7500'))
+        line = build_invoice(job)['part_lines'][0]
+        self.assertEqual(line.unit_price * line.display_quantity, line.amount)
+
+    def test_a_fraction_of_one_is_not_one_and_itemises(self):
+        """
+        Half a litre of oil is not a single anything. Hiding the breakdown would
+        drop the figures from the one row where the quantity is the whole point.
+        """
+        job = self._jobcard()
+        self._draw(job, quantity=Decimal('0.5'), customer_rate=None, total_price=Decimal('600'))
+        line = build_invoice(job)['part_lines'][0]
+        self.assertEqual(line.display_quantity, Decimal('0.5'))
+        self.assertEqual(line.unit_price, Decimal('1200.00'))
+        self.assertEqual(self._qty_cells(job), ['0.5'])
+
+    def test_an_unpriced_single_part_prints_a_name_and_nothing_else(self):
+        job = self._jobcard()
+        self._shop_spare(job, quantity=Decimal('1'), unit_price=None, total_price=None)
+        line = build_invoice(job)['part_lines'][0]
+        self.assertFalse(line.priced)
+        self.assertIsNone(line.unit_price)
+        self.assertEqual(self._unit_cells(job), [''])
+
+    def test_a_free_single_part_still_prints_its_zero(self):
+        """
+        ₹0.00 means given away and an empty cell means not yet priced — the
+        `priced` distinction. Blanking the breakdown must not collapse them.
+        """
+        job = self._jobcard()
+        self._shop_spare(job, quantity=Decimal('1'), total_price=Decimal('0'))
+        line = build_invoice(job)['part_lines'][0]
+        self.assertTrue(line.priced)
+        self.assertIn('0.00', _tables(self._render(job).content.decode(), 'inv-parts'))
 
 
 class TheUnitPriceColumnIsNeverTheWorkshopsCostTests(InvoiceTestCase):

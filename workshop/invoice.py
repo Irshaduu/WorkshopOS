@@ -39,11 +39,19 @@ things differ, and each is a decision rather than a shortcut:
    `JobCardLabourItem.amount` is the column this replaced and is dormant; the
    subtotal here comes from the card, never from summing the lines.
 
-4. **A blank QTY is ONE.** Staff routinely leave the box empty for a single
-   part. Before this, blank meant the unit-price column divided by nothing and
-   printed ₹0.00 beside a real amount. Blank and a typed 1 now produce byte-for-
-   byte identical output, which is the only defensible reading of a field whose
-   two states mean the same thing to the person filling it in.
+4. **A blank QTY is ONE for the money, and a single part prints NEITHER a
+   quantity NOR a unit price.** Staff routinely leave the box empty for a single
+   part, so blank has to resolve to 1 somewhere — before it did, the unit-price
+   column divided by nothing and printed ₹0.00 beside a real amount. But the
+   workshop writes a quantity down only when there is more than one of
+   something, and on a row of one the unit price *is* the amount, so printing it
+   is the same figure twice in adjacent columns. QTY and UNIT PRICE are the
+   breakdown of the amount; with one unit there is nothing to break down, and
+   the row prints as a name and a price, which is how the workshop says it.
+   Blank, a typed 1 and a typed 1.00 therefore produce byte-for-byte identical
+   output — two empty cells — while anything that is not one (2, or a genuine
+   0.5) itemises in full. The arithmetic never changes: every figure is still
+   computed from a quantity of one.
 
 Nothing here is a money source of truth. `grand_total` is the job card's own
 denormalized `total_bill_amount`, exactly as the rest of the app reads it; the
@@ -233,12 +241,15 @@ class PartLine:
     amount: Optional[Decimal]
     #: What the QTY column prints. `None` prints an empty cell.
     #:
-    #: Separate from `quantity` because the two documents answer differently,
-    #: and both answers are right. An INVOICE bills a fitted part, so a blank
-    #: box means one and prints as 1 — a fact. An ESTIMATE may be written before
-    #: anyone has counted, so a blank box means "not decided yet" and printing 1
-    #: would state something the workshop has not established. The arithmetic is
-    #: identical either way; only the cell differs.
+    #: Separate from `quantity` because the money and the cell are different
+    #: questions, and because the two documents answer the cell differently.
+    #: An INVOICE prints a quantity only when there is more than one of
+    #: something: one is what the workshop never writes down, so blank and a
+    #: typed 1 both print nothing. An ESTIMATE prints exactly what somebody
+    #: typed — a quote may be written before anyone has counted, so a blank box
+    #: means "not decided yet", but a 1 that was deliberately entered is a
+    #: figure the customer was quoted. The arithmetic is identical either way;
+    #: only the cell differs.
     display_quantity: Optional[Decimal] = None
 
     @property
@@ -272,6 +283,12 @@ def derive_unit_price(total_price, quantity):
 
     A row with no price yet prints nothing at all, in both columns — the
     reference invoice does exactly this for parts fitted but not yet costed.
+
+    Note this is the ARITHMETIC, not the decision to show it. `build_invoice`
+    calls it only when the row itemises (a quantity that is not one); on a row
+    of one the answer would be the amount over again, so the cell is left empty
+    instead. Keeping the division here and the display rule there is what lets
+    the division stay tested on its own.
     """
     if total_price is None:
         return None
@@ -300,13 +317,21 @@ def build_invoice(jobcard):
     part_subtotal = Decimal('0')
     for spare in jobcard.spares.all():
         quantity = effective_quantity(spare.quantity)
+        # QTY and UNIT PRICE are the BREAKDOWN of the amount, and one unit has
+        # no breakdown: the unit price would be the amount, printed twice, in
+        # the column beside it. So the two cells travel together — either the
+        # row reads "qty x unit = amount" or it reads just the amount, and it
+        # is decided once here rather than twice.
+        #
+        # Compared numerically, so 1.00 is one too. Anything else itemises,
+        # 0.5 included: half a litre is not a single anything, and there the
+        # per-unit figure is the whole point of the row.
+        itemised = quantity != ONE
         part_lines.append(PartLine(
             name=part_display_name(spare),
             quantity=quantity,
-            # A bill always prints a quantity: the part was fitted, so a blank
-            # box means one and 1 is the true figure. See PartLine.
-            display_quantity=quantity,
-            unit_price=derive_unit_price(spare.total_price, quantity),
+            display_quantity=quantity if itemised else None,
+            unit_price=derive_unit_price(spare.total_price, quantity) if itemised else None,
             amount=spare.total_price,
         ))
         part_subtotal += spare.total_price or Decimal('0')
@@ -348,13 +373,15 @@ def build_estimate(estimate):
 
       * **QTY prints only what was typed; blank stays blank.** `quantity` is
         still resolved to 1 for the arithmetic, so the money is identical — only
-        the cell is empty. The bill does the opposite and prints 1, which is the
-        documented rule there and stays. (There is no case where an estimate can
-        contradict the bill that follows it: nothing carries over, the job card
-        is typed fresh.)
+        the cell is empty. The two documents now agree about a BLANK box and
+        still differ about a typed 1: the bill hides it, because on a bill one
+        is the figure nobody writes down, while a quote prints it, because
+        somebody chose to put it in front of the customer. (There is no case
+        where an estimate can contradict the bill that follows it: nothing
+        carries over, the job card is typed fresh.)
       * **UNIT PRICE prints only when a rate was actually entered.** The bill
-        DERIVES it from the total every time, which is right there because every
-        billed part has a real quantity. Here, deriving would present the
+        DERIVES it from the total on any row that itemises, which is right there
+        because a billed part has a real quantity. Here, deriving would present the
         workshop's own arithmetic as a quoted rate, and on a row with no
         quantity it would divide by a 1 nobody agreed to. When `customer_rate`
         IS set, `amount` was computed from it on save, so `qty x unit` still

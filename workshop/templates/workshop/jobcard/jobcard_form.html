@@ -127,6 +127,67 @@
         min-height: 1.15rem;
     }
 
+    /* ==========================================================
+       "total" — BOTH PRICE BOXES TAKE THE WHOLE LINE, NOT A RATE
+       ==========================================================
+       Settled 2026-08-17, over three passes, and what it ended at is the
+       simplest thing on the row: **both money boxes on a Spare Parts line hold
+       the TOTAL for that line**, and on a row of more than one they both say so.
+
+         SHOP PRICE      what the shop billed for the line, copied off their bill
+         CUSTOMER PRICE  what the customer is charged for the line
+
+       It did not start there. Shop Price used to be a price PER UNIT that
+       `SPARE_COST` and `SpareShop.update_totals()` multiplied by Qty, while
+       Customer Price was already a total — two logics on one row, and the "×2"
+       badge that first landed here existed to warn about the difference. The
+       owner's question was the right one: "2 different logic may make user
+       confused?" It did, and the answer was to remove the difference rather
+       than to label it. The engine no longer multiplies a shop line by
+       anything, so what is typed is what is owed.
+
+       The mark survives that because it now does a different job: on a row of 2
+       it is the reminder to type ₹7,560 for the pair rather than ₹3,780 for
+       one. Same word on both boxes, same condition, one logic — which is what
+       makes it possible to stop thinking about it after a few rows.
+
+       Neither mark changes a figure. Both are <span>s with no name, driven off
+       the Qty already in the row.
+
+       INSIDE the box, on the left, absolutely positioned — for the reason the
+       stock line above reserves its space: this row is worked on a tablet, and
+       anything that appears BELOW a control moves every row under it while a
+       finger is already on the way. Both boxes are `text-end`, so the left half
+       is space the value never occupies, and the padding keeps a long figure
+       clear of the mark (verified: a 10-digit value makes the input SCROLL
+       rather than paint over its own padding).
+
+       Shown only when the row holds more than one of something. On a row of one
+       "total" is true of every box on the page and would say nothing, so both
+       stay clean — which is the common case. */
+    .jc-total-wrap { position: relative; }
+    .jc-total {
+        position: absolute;
+        left: 7px;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;   /* the box behind it still takes every click */
+        font-size: 0.7rem;
+        font-weight: 600;
+        line-height: 1.2;
+        letter-spacing: 0.02em;
+        color: #64748b;
+        background: #eef1f5;
+        border-radius: 4px;
+        padding: 1px 5px;
+    }
+    .jc-total[hidden] { display: none; }
+    /* Only while the mark is there, so a row of one is unchanged. */
+    .jc-total-wrap input.jc-has-total { padding-left: 52px; }
+    /* A locked card's marks must not stay louder than the boxes they sit in. */
+    .jc-total-wrap input:disabled + .jc-total,
+    .jc-total-wrap input[readonly] + .jc-total { background: #dbe2ea; color: #6b7480; }
+
     /* Every box in an Inventory row starts at the same y.
        The Item cell is the tall one — it carries the stock line underneath —
        so with the cells vertically centred the Item box floated above the Qty
@@ -1979,10 +2040,23 @@ grey".
                                     </td>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <td class="col-price">
-                                        {{ s_form.unit_price }}
+                                        {% comment %}
+                                        Both price boxes carry the same mark —
+                                        see `.jc-total`. Shown by the script when
+                                        this row's Qty is anything other than
+                                        one. A <span>, so it posts nothing and
+                                        changes no figure.
+                                        {% endcomment %}
+                                        <div class="jc-total-wrap">
+                                            {{ s_form.unit_price }}
+                                            <span class="jc-total" hidden>total</span>
+                                        </div>
                                     </td>
                                     <td class="col-price pe-4">
-                                        {{ s_form.total_price }}
+                                        <div class="jc-total-wrap">
+                                            {{ s_form.total_price }}
+                                            <span class="jc-total" hidden>total</span>
+                                        </div>
                                     </td>
                                     {% else %}
                                     <td class="d-none">
@@ -2195,10 +2269,17 @@ is now true, and the column width is unchanged at every breakpoint.
                 </td>
                 {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                 <td class="col-price">
-                    {{ spare_formset.empty_form.unit_price }}
+                    {# Cloned with the row, so an added spare is marked too. #}
+                    <div class="jc-total-wrap">
+                        {{ spare_formset.empty_form.unit_price }}
+                        <span class="jc-total" hidden>total</span>
+                    </div>
                 </td>
                 <td class="col-price pe-4">
-                    {{ spare_formset.empty_form.total_price }}
+                    <div class="jc-total-wrap">
+                        {{ spare_formset.empty_form.total_price }}
+                        <span class="jc-total" hidden>total</span>
+                    </div>
                 </td>
                 {% else %}
                 <td class="d-none">
@@ -2924,6 +3005,51 @@ and filled for the guard.
     }
 
     // ==========================================================
+    // "total" — BOTH PRICE BOXES ON A SPARE ROW TAKE THE WHOLE LINE
+    // ==========================================================
+    // Shop Price is what the shop billed for the line and Customer Price is
+    // what the customer is charged for it — both totals, neither multiplied by
+    // anything (see `SHOP_LINE_COST` in analysis_engine.py for the day the
+    // first of those stopped being a per-unit rate). On a row of more than one
+    // part both boxes say "total", which is the reminder to type ₹7,560 for the
+    // pair rather than ₹3,780 for one.
+    //
+    // It CHANGES NOTHING. The marks are <span>s with no name, driven off the
+    // Qty already in the row; no figure is computed, stored or posted here.
+    //
+    // Scoped by field NAME (`spares-…-quantity`) so the Inventory section is
+    // untouched — a draw's Unit Price genuinely IS per unit there, and its cost
+    // comes off the warehouse average rather than a typed box.
+    function markTotals(qtyBox) {
+        var row = qtyBox.closest('tr');
+        if (!row) return;
+        var qty = parseFloat(qtyBox.value);
+        // Anything that is not one. Blank, unparseable and 0 all mean a single
+        // part, where "total" would be true of every box on the page and so
+        // would say nothing.
+        var show = isFinite(qty) && qty > 0 && qty !== 1;
+
+        var marks = row.querySelectorAll('.jc-total');
+        for (var i = 0; i < marks.length; i++) marks[i].hidden = !show;
+
+        // Both money boxes, together — one condition, one appearance, so the
+        // row can never mark one figure and not the other.
+        var boxes = row.querySelectorAll(
+            'input[name$="-unit_price"], input[name$="-total_price"]');
+        for (var j = 0; j < boxes.length; j++) {
+            boxes[j].classList.toggle('jc-has-total', show);
+        }
+    }
+
+    function refreshRowTotals() {
+        // `document`, not `form` — same reason as the date chips: the
+        // `#empty-spare-form` template lives outside the form and is cloned on
+        // "+ Add Spare". Its Qty is blank, so it simply resolves to hidden.
+        var boxes = document.querySelectorAll('input[name^="spares-"][name$="-quantity"]');
+        for (var i = 0; i < boxes.length; i++) markTotals(boxes[i]);
+    }
+
+    // ==========================================================
     // UNSAVED CHANGES
     // ==========================================================
     var dirty = false;
@@ -2940,6 +3066,10 @@ and filled for the guard.
     form.addEventListener('input', function (e) {
         refresh(e.target);
         markDirty(e.target);
+        // ...and the marks that box can move. Typing the Qty is exactly when
+        // somebody needs telling that both prices beside it are line totals, so
+        // it cannot wait for a blur.
+        if (/^spares-.*-quantity$/.test(e.target.name || '')) markTotals(e.target);
     });
 
     // `change` is rare (a select, a date, a blur), and it is the one that can
@@ -2949,6 +3079,7 @@ and filled for the guard.
     form.addEventListener('change', function (e) {
         markDirty(e.target);
         refreshAll();
+        refreshRowTotals();
         // The date chip too. `spare_autofill.js` writes today into a row's date
         // when its Status moves to ORDERED or RECEIVED, and that assignment
         // fires no event of its own — but the status change that caused it does,
@@ -2964,6 +3095,8 @@ and filled for the guard.
         markDirty();
         refreshAll();
         refreshChips();
+        // `importSpare()` fills a Qty as well as the two dates.
+        refreshRowTotals();
     };
 
     // The four "+ Add" buttons hand back a row of empty boxes, which should
@@ -3368,6 +3501,7 @@ and filled for the guard.
     document.addEventListener('DOMContentLoaded', function () {
         refreshAll();
         refreshChips();
+        refreshRowTotals();
     });
 }());
 </script>

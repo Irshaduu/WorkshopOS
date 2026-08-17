@@ -76,13 +76,20 @@
         align-items: flex-end;
         gap: 2px;
     }
+    /* Smaller than it was (0.62rem / 1.2px), on the owner's instruction, and
+       there is a measurement behind why it was worth doing. This label is a
+       CAPTION on the figure below it, but "TOTAL COLLECTED THIS MONTH" set at
+       0.62rem was 140px wide — WIDER than the ₹ amount it describes — and this
+       row also holds the page title, which needs 189px of a 343px phone. The
+       caption was the thing deciding whether the header fitted on one line. */
     .pb-total-label {
         font-family: var(--font-body);
-        font-size: 0.62rem;
+        font-size: 0.54rem;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 1.2px;
+        letter-spacing: 0.7px;
         color: #94a3b8;
+        line-height: 1.35;
     }
     .pb-total-amount {
         font-family: var(--font-display);

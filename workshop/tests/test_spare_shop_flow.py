@@ -82,7 +82,7 @@ class ArchivedShopKeepsItsDebtTests(SpareFlowBase):
     The resolution pass rebuilds each spare's shop FK from the posted pk. It used
     to look only at active shops, so once a shop was archived, saving any job card
     holding one of its spares set `shop=None` and the purchase vanished from that
-    shop's ledger — ₹2,000 owed became ₹0, silently, from an unrelated edit.
+    shop's ledger — ₹1,000 owed became ₹0, silently, from an unrelated edit.
     """
 
     def archive(self):
@@ -91,10 +91,10 @@ class ArchivedShopKeepsItsDebtTests(SpareFlowBase):
 
     def test_archiving_alone_changes_nothing(self):
         self.spare()
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
         self.archive()
         self.assertTrue(self.shop.is_trashed)
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
 
     def test_editing_a_card_after_archiving_keeps_the_link(self):
         row = self.spare()
@@ -104,7 +104,7 @@ class ArchivedShopKeepsItsDebtTests(SpareFlowBase):
         row.refresh_from_db()
         self.assertEqual(row.shop_id, self.shop.pk,
                          "an archived shop must stay attached to what was bought from it")
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
 
     def test_the_archived_shop_is_still_offered_and_preselected(self):
         """
@@ -154,7 +154,7 @@ class DeletingAnUnassignedSpareTests(SpareFlowBase):
 
     def test_deleting_one_clears_it_from_the_ledger(self):
         item = self.add_unassigned()
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
 
         self.client.post(reverse('spare_shop_delete_unassigned', args=[item.pk]),
                          {'reason': 'entered twice'})
@@ -170,7 +170,7 @@ class DeletingAnUnassignedSpareTests(SpareFlowBase):
         log = DeletionLog.objects.filter(
             entity_type=DeletionLog.ENTITY_UNASSIGNED_SPARE).first()
         self.assertIsNotNone(log, "a financial delete must reach Deletion History")
-        self.assertEqual(log.amount, D('2000.00'))
+        self.assertEqual(log.amount, D('1000.00'))
         self.assertIn('Ajmal', log.entity_label)
 
     def test_a_spare_on_a_job_card_cannot_be_deleted_this_way(self):
@@ -208,7 +208,7 @@ class UnassignedLifecycleTests(SpareFlowBase):
         self.jc.refresh_from_db()
         self.assertIsNone(row.job_card_id)
         self.assertEqual(self.jc.total_bill_amount, D('0.00'))
-        self.assertEqual(self.owed(), D('2000.00'),
+        self.assertEqual(self.owed(), D('1000.00'),
                          "the part was still bought, whoever it ends up on")
         self.assertIn('KL20AA0001', row.original_vehicle_info)
 
@@ -217,7 +217,7 @@ class UnassignedLifecycleTests(SpareFlowBase):
             'spare_part_name': 'Brake Pad', 'unit_price': '1000', 'quantity': '2',
         })
         orphan = JobCardSpareItem.objects.get(job_card__isnull=True)
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
 
         self.client.post(reverse('jobcard_edit', args=[self.jc.pk]), self.payload(**{
             'spares-TOTAL_FORMS': '1', 'spares-INITIAL_FORMS': '0',
@@ -231,7 +231,7 @@ class UnassignedLifecycleTests(SpareFlowBase):
 
         self.assertEqual(JobCardSpareItem.objects.filter(job_card__isnull=True).count(), 0)
         self.assertEqual(self.jc.spares.count(), 1)
-        self.assertEqual(self.owed(), D('2000.00'), "one purchase, counted once")
+        self.assertEqual(self.owed(), D('1000.00'), "one purchase, counted once")
 
 
 class ShopPaymentTests(SpareFlowBase):
@@ -253,7 +253,7 @@ class ShopPaymentTests(SpareFlowBase):
         self.client.post(reverse('spare_shop_pay', args=[self.shop.pk]),
                          {'lump_sum': '0', 'payment_method': 'CASH'})
         self.assertEqual(SpareShopPayment.objects.count(), 0)
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
 
     def test_an_archived_shop_takes_no_new_payment(self):
         self.spare()
@@ -274,7 +274,7 @@ class LedgerEditTests(SpareFlowBase):
 
         self.assertEqual(row.unit_price, D('1500.00'))
         self.assertEqual(row.quantity, D('3.00'))
-        self.assertEqual(self.owed(), D('4500.00'))
+        self.assertEqual(self.owed(), D('1500.00'))
         # The customer price is typed separately and must not move on its own.
         self.assertEqual(row.total_price, D('2800.00'))
         self.assertEqual(self.jc.total_bill_amount, D('2800.00'))
@@ -282,11 +282,11 @@ class LedgerEditTests(SpareFlowBase):
     def test_the_analysis_follows_the_ledger(self):
         row = self.spare()
         s, e, _k, _l = engine.resolve_period('all_time')
-        self.assertEqual(engine.spare_shop_expense(s, e), D('2000.00'))
+        self.assertEqual(engine.spare_shop_expense(s, e), D('1000.00'))
 
         self.client.post(reverse('spare_shop_update_item_price', args=[row.pk]),
                          {'unit_price': '1500', 'quantity': '3'})
-        self.assertEqual(engine.spare_shop_expense(s, e), D('4500.00'))
+        self.assertEqual(engine.spare_shop_expense(s, e), D('1500.00'))
 
 
 class AddUnassignedValidationTests(SpareFlowBase):
@@ -311,7 +311,7 @@ class AddUnassignedValidationTests(SpareFlowBase):
     def test_a_normal_entry_is_accepted(self):
         self.add()
         self.assertEqual(self.rows(), 1)
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
 
     def test_a_negative_price_is_refused(self):
         resp = self.add(unit_price='-5000')
@@ -432,7 +432,7 @@ class AddingFromTheHubTests(SpareFlowBase):
         self.assertIsNone(row.item_id)
         self.assertEqual(row.unit_price, D('1000.00'))
         self.assertEqual(row.quantity, D('2.00'))
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
 
     def test_the_new_row_shows_up_on_the_hub(self):
         self.add()
@@ -522,6 +522,6 @@ class AddingFromTheHubTests(SpareFlowBase):
         # Check that shop totals reflect the move
         self.assertEqual(self.owed(), D('0.00'))
         shop2.refresh_from_db()
-        self.assertEqual(shop2.total_purchased_amount, D('2400.00'))
-        self.assertEqual(shop2.get_pending_balance, D('2400.00'))
+        self.assertEqual(shop2.total_purchased_amount, D('800.00'))
+        self.assertEqual(shop2.get_pending_balance, D('800.00'))
 

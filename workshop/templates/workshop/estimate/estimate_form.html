@@ -164,6 +164,39 @@ Two decisions worth not undoing:
 
     .est-row .form-control { min-height: 42px; }
 
+    {% comment %}
+    ══ PLACEHOLDERS — QUIETER THAN THE VALUES THEY STAND IN FOR ═══════
+    Word for word the rule `jobcard_form.html` already carries, on the owner's
+    instruction, and this form needed it more: a quote is mostly EMPTY boxes by
+    design — "Job to be performed", "Part Name", "Qty", "Amount (₹)", "Total
+    Amount", one set per row — so at the browser default (a solid grey the same
+    size as a real value) a blank estimate reads as a filled-in one. On a
+    document typed with the customer standing there, that is the difference
+    between checking a quote and re-reading it.
+
+    Colour and font-size only. Nothing here touches layout, so no input changes
+    height and no row moves as it is filled in — the trap this codebase records
+    against `transition: all` on a form control applies to sizing a placeholder
+    too.
+    {% endcomment %}
+    .form-control::placeholder,
+    .form-select::placeholder,
+    textarea::placeholder,
+    input::placeholder {
+        color: #b6bfcc;
+        opacity: 1;        /* Firefox dims placeholders again on top of this */
+        font-size: 0.86em; /* `em`, so it tracks whatever size the box is */
+        font-weight: 400;
+    }
+
+    /* The box being typed into fades its hint further rather than leaving grey
+       text sitting under a live caret. */
+    .form-control:focus::placeholder,
+    textarea:focus::placeholder,
+    input:focus::placeholder {
+        color: #d3dae3;
+    }
+
     /* New row addition animation feedback */
     @keyframes est-rowin {
         from { background-color: rgba(37, 99, 235, .18); }
@@ -171,11 +204,21 @@ Two decisions worth not undoing:
     }
     .est-row-new { animation: est-rowin 1.1s ease-out; }
 
-    /* Suggested unit price placeholder */
-    .estimate-rate::placeholder {
+    {% comment %}
+    The SUGGESTED unit price — and only the suggestion. This box carries two
+    different placeholders: "Unit Price (₹)", which is a label like every other
+    box's and now reads as quietly as they do, and "avg: 1064", which estimate.js
+    writes when the part has sales history. The second is real information a
+    person is meant to notice, so it keeps its own voice.
+
+    Told apart by the attribute, because `el.placeholder = …` reflects onto it,
+    so the rule follows the JS with nothing to keep in step. The alternative was
+    a class the script toggles — a second thing to remember on both branches of
+    a function that already has two.
+    {% endcomment %}
+    .estimate-rate[placeholder^="avg"]::placeholder {
         font-style: italic;
         color: #94a3b8;
-        font-size: 0.85rem;
     }
 
     .est-labour-box { max-width: 190px; min-width: 150px; }

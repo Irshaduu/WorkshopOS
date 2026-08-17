@@ -118,12 +118,47 @@ about to correct one of these, you are about to break the business:
   cannot be un-averaged, so keeping both a fast and a correcting implementation would be
   two versions of one number free to disagree. Receipts move the average; draws do not.
 
-- **`JobCardSpareItem.unit_price` means COST PER UNIT on both routes** — typed by Office
-  for a shop purchase, snapshotted from `Item.avg_cost` at draw time for a warehouse
-  one. `SPARE_COST` in `analysis_engine.py` and `SpareShop.update_totals()` both
-  multiply it by quantity, so its meaning must stay uniform across routes; putting a
-  customer price in it for inventory rows would make the margin report compute
-  revenue − revenue = zero.
+- **`JobCardSpareItem.unit_price` is the workshop's COST, and its SHAPE differs
+  by route: a shop line's LINE TOTAL, a warehouse draw's cost PER UNIT.**
+  Changed 2026-08-17 on the owner's instruction, reversing "cost per unit on
+  both routes". Putting a *customer* price in it on either route is still wrong
+  and would make the margin report compute revenue − revenue = zero.
+  **Why the shop side moved.** This workshop enters what it was billed, not a
+  rate: Office copies the figure off the spare shop's own bill. The engine was
+  multiplying it by the row's quantity, so 5,000 typed on a row of 2 became
+  ₹10,000 owed — money nobody was billed. It was noticed because the Job Card
+  grew a `×2` badge to *warn* about the difference between that box and the
+  Customer Price beside it (which was always a line total), and the owner asked
+  the right question: "2 different logic may make user confused?" It did. The
+  fix was to remove the difference rather than label it, so **both boxes on a
+  Spare Parts row now hold the line total** and there is no arithmetic at all
+  between a typed figure and a ledger.
+  **The warehouse route is NOT the same and must not be "made consistent".**
+  There `unit_price` is a weighted average of what the shelf paid, written by
+  `JobCardSpareItem.save()` and rewritten by the date-ordered replay in
+  `inventory/costing.py`. It is per unit *by construction* — derived from the
+  shelf, never typed — so a draw's cost is still `× quantity`.
+  **`analysis_engine.SPARE_COST` is the one expression that knows which is
+  which** (a `Case/When` on `source`, over `SHOP_LINE_COST` and
+  `WAREHOUSE_LINE_COST`), and **nothing may re-derive it.** That mattered
+  immediately: the expression had been hand-rolled in FIVE places — the engine,
+  `SpareShop.update_totals()`, and three aggregates in `views/spare_shop.py`
+  (the ledger's running balance, its grand total, and the amount written to
+  `DeletionLog` when an unassigned spare is removed) — which is five chances to
+  fix one and leave four, and they would have disagreed exactly where it hurts:
+  a shop's own page and the Profit page quoting different debts for the same
+  rows. All five now import it; `models.py` imports locally because
+  `analysis_engine` imports `models`.
+  **Consequences worth knowing.** Nothing was migrated, because nothing real
+  exists yet — pre-go-live, both instances hold demo data (`purge_business_data`
+  before go-live). On the seeded data the Spare Shops expense drops from
+  ₹41.9L to ₹33.9L across 253 multi-quantity rows; `seed_dummy_data` now writes
+  the line total so a fresh seed is coherent. **A shop row's quantity no longer
+  moves any money at all** — it is a description of what was bought, and it
+  still prints on the invoice. 30 tests asserted the old rule and were updated;
+  `test_a_shop_line_costs_what_was_typed_not_that_times_quantity` (formerly
+  `test_spare_shop_quantity_math`, which asserted the exact opposite) is the
+  inverted guard.
   **Revised 2026-07-31 — an inventory row's cost is DERIVED, not frozen.** The rule
   was "snapshot at draw time and never recompute", to stop next month's price rise
   rewriting last month's margin. That defended against something which cannot
@@ -773,15 +808,41 @@ about to correct one of these, you are about to break the business:
   (c) **Labour prints its descriptions and one SUBTOTAL, never per-line
   amounts.** Splitting a ₹2,500 job into five numbers invites a line-by-line
   negotiation about work that was quoted whole.
-  (d) **A blank QTY is ONE, and prints as 1.** Staff routinely leave the box
-  empty for a single part. The column used to divide by the missing quantity and
-  print ₹0.00 beside a real amount. Blank and a typed 1 now produce byte-for-byte
-  identical markup — asserted by comparing two rendered parts tables, which is
-  the only form of that requirement worth testing. Only shop spares can reach
-  this: `InventoryDrawForm` refuses a draw with no quantity, because that number
-  moves warehouse stock, so the printed quantity can never disagree with what
-  came off the shelf. Zero and negative are folded in with blank rather than
-  left to divide by nothing.
+  (d) **A blank QTY is ONE for the money, and a single part prints NEITHER a
+  quantity NOR a unit price.** Staff routinely leave the box empty for a single
+  part, so blank has to resolve to 1 somewhere — before it did, the column
+  divided by the missing quantity and printed ₹0.00 beside a real amount. But
+  **the workshop writes a quantity down only when there is more than one of
+  something**, and on a row of one **the unit price IS the amount**, so printing
+  it is the same figure twice in adjacent columns. QTY and UNIT PRICE are the
+  BREAKDOWN of the amount; with one unit there is nothing to break down, and the
+  row prints as a name and a price, which is how the workshop says it. Changed
+  2026-08-17 on the owner's instruction, reversing "prints as 1" — **the
+  arithmetic is untouched, only the cells.** Blank, a typed 1 and a typed 1.00
+  therefore produce byte-for-byte identical markup (asserted by comparing two
+  rendered parts tables, which is the only form of that requirement worth
+  testing), and it is now two empty cells rather than a 1 and a repeat of the
+  amount.
+  **The two cells travel together and are decided ONCE**, by an `itemised` flag
+  in `build_invoice` — one row either reads "qty × unit = amount" or reads just
+  the amount, and it can never say a quantity it does not price or price a
+  quantity it does not say. `derive_unit_price` still holds the division and is
+  still tested on its own: keeping the arithmetic there and the display decision
+  here is what lets each be checked without the other.
+  **Compared NUMERICALLY** — the column stores two decimals, so a string test
+  would itemise every row somebody typed rather than left blank — and only
+  against exactly one: **0.5 litres is not a single anything** and still
+  itemises in full, on the row where the per-unit figure is the whole point.
+  Zero and negative are folded in with blank rather than left to divide by
+  nothing. Only shop spares can reach here without a quantity:
+  `InventoryDrawForm` refuses a draw with no quantity, because that number moves
+  warehouse stock. **The Live Report's spare lists follow the same rule**
+  (`|gt:1`, so "× 1" never prints), as the home board's live details already did
+  — one rule about how this workshop writes a quantity, wherever a quantity is
+  written. Guarded by `OnePrintsAsNothingTests`, which also pins the two
+  properties a customer could catch by hand: whenever both are printed they
+  multiply back to the amount beside them, and a free part still prints ₹0.00
+  while an unpriced one prints nothing.
   Two further things worth not rediscovering. **The UNIT PRICE column is always
   DERIVED** as `total_price ÷ quantity` and never read from a stored field:
   `JobCardSpareItem.unit_price` is the workshop's *cost* (see the entry above)
@@ -1033,17 +1094,26 @@ about to correct one of these, you are about to break the business:
   not.** So a blank box on a bill is a fact too obvious to type, while a blank
   box on an estimate is something nobody has decided — and filling either in
   with a computed number puts a figure on the page that no one chose.
-  (a) **QTY.** The invoice prints `1` for a blank quantity (blank and a typed 1
-  produce byte-identical markup — asserted). The estimate prints **nothing**,
-  while still counting it as 1 in the arithmetic. `PartLine` therefore carries
-  both `quantity` (the money) and `display_quantity` (the cell); the invoice
-  sets them equal, the estimate does not.
-  (b) **UNIT PRICE.** The invoice always DERIVES it as `amount ÷ quantity` —
-  right there, because every billed part has a real quantity. The estimate
-  prints it **only when `customer_rate` was actually entered**: deriving would
-  present the workshop's own arithmetic as a quoted rate, and on a row with no
-  quantity it would divide by a 1 nobody agreed to. It still reconciles when
-  shown, because `amount = customer_rate × quantity` is enforced on save.
+  (a) **QTY.** Both leave a BLANK box blank, and they differ on a **typed 1**:
+  the invoice hides it, because on a bill one is the figure this workshop never
+  writes down (see the rule above, changed 2026-08-17); the estimate prints it,
+  because somebody chose to put it in front of the customer. Both still count a
+  blank as 1 in the arithmetic. `PartLine` therefore carries both `quantity`
+  (the money) and `display_quantity` (the cell), and **neither document sets
+  them equal any more** — the invoice blanks the cell at exactly one, the
+  estimate passes through whatever was typed.
+  (b) **UNIT PRICE.** The invoice DERIVES it as `amount ÷ quantity` on any row
+  that ITEMISES — a billed part has a real quantity, so the division is always
+  safe — and prints nothing on a row of one, where the answer would be the
+  amount over again in the column beside it (see the rule above; the two cells
+  are decided together). The estimate prints it **only when `customer_rate` was
+  actually entered**, whatever the quantity: deriving would present the
+  workshop's own arithmetic as a quoted rate, and on a row with no quantity it
+  would divide by a 1 nobody agreed to. So a quote CAN carry a rate on a
+  single-unit row and a bill cannot — right on both, because one is a figure
+  somebody chose to quote and the other would be a repeat of the total. It
+  still reconciles when shown, because `amount = customer_rate × quantity` is
+  enforced on save.
   Nothing can carry an estimate's figures onto a job card — the card is typed
   fresh — so the two documents can never contradict each other on one car.
   `TheEstimatePrintsWhatSomebodyTypedTests` pins the divergence;
@@ -1204,6 +1274,18 @@ about to correct one of these, you are about to break the business:
   width. The name truncates instead; the plate and the amount never do. A quote with no figures yet prints **"Not
   priced"**, never `₹0.00` — the same `priced` distinction the printed sheet
   makes.
+  **The row's TYPE was raised on 2026-08-17, and its shape was not.** Every
+  fact on it had been set a step smaller than the same fact anywhere else in
+  the app and it added up: the car's name at 1.12rem against the dashboard
+  card's 1.15, the "QUOTED" caption at 0.58rem — which on a 375px phone
+  rendered at **8.3px**, smaller than anything else the app asks anyone to
+  read — and the whole row 59.7px tall where a dashboard card is 172px. Now
+  70.9px on a phone, with the headline at 1.16rem there and 1.28rem on a
+  laptop. The two-line shape above is untouched, because that reasoning still
+  holds. The phone's *controls* went up with it (search 0.76→0.84rem, chips
+  0.72→0.78rem): they had been shrunk to fit search + both chips on one row,
+  and the row was fitting with room to spare — re-measured at a 288px
+  container (a 320px phone) the search still gets 133px and nothing wraps.
 
 - **The Estimate form uses a native `<datalist>` for part names, not the Job
   Card's fetch autocomplete.** Added 2026-08-05. The master spare list is ~200
@@ -1527,7 +1609,11 @@ about to correct one of these, you are about to break the business:
   (b) **`SPARE_COST` is imported from `analysis_engine`, never restated.** It
   is the app's one definition of what a spare cost, shared with the Profit page
   and `SpareShop.update_totals()`; a second copy would be a second answer on
-  the screen an owner reads to judge a customer.
+  the screen an owner reads to judge a customer. Since 2026-08-17 it is also
+  **route-aware** — a shop line costs what was typed, a warehouse draw costs its
+  per-unit average × quantity — which matters most here, because this is the one
+  query that spans both routes on purpose. A caller picking one rule for the
+  whole queryset would misprice half of every car.
   (c) **It says so when its cost side is incomplete.** `SPARE_COST` counts a
   missing `unit_price` as ₹0, so an uncosted part reads as *free* and pushes
   the figure UP — the one way it can be wrong without looking wrong, and
@@ -2219,6 +2305,62 @@ about to correct one of these, you are about to break the business:
   somewhere; `test_the_inventory_box_still_says_it_searches_by_type` fails if
   it goes.
 
+- **BOTH price boxes on a Spare Parts row hold the LINE TOTAL, and on a row of
+  more than one they both say "total".** Settled 2026-08-17 over three passes,
+  and the end of it is the simplest thing on the row — but the route there is
+  worth keeping, because two of the three passes were wrong.
+  The boxes used to hold different KINDS of number: `unit_price` was the price
+  of ONE (multiplied by Qty for the shop's ledger and the Profit page) while
+  `total_price` was the whole row (summed exactly as typed). Pass one added a
+  `×2` badge to the Shop Price to warn about the multiplication. Pass two, on
+  the owner asking whether the badge belonged on both boxes, marked each one
+  differently — `×2` here, `total` there — because a `×2` on the customer box
+  would have been an expensive lie: anyone believing it would type the per-unit
+  price and halve the bill. Then the owner asked the question that ended it:
+  **"2 different logic may make user confused? what is the stable flow?"** It
+  did, and the stable flow is one logic — so the shop side stopped multiplying
+  (see the `unit_price` entry above) and both boxes now mean the same thing.
+  **What is left is one mark, one word, one condition**, and it earns its place
+  by doing a different job from the badge it replaced: on a row of 2 it is the
+  reminder to type ₹7,560 for the pair rather than ₹3,780 for one — the mistake
+  that is still possible, and the only one left. Six things are load-bearing.
+  (a) **Both are `<span>`s with no name.** They post nothing, compute nothing
+  and store nothing; they are driven off the Qty box already in the row. Anyone
+  auditing the money can ignore them entirely.
+  (b) **INSIDE the boxes, absolutely positioned on the left**, so the mark reads
+  at the left edge with the typed value at the right. Both are `text-end`, so
+  the left half is space the value never occupies and neither mark costs any
+  height. Anything that appears *below* a control moves every row under it — the
+  trap `.inventory-stock-hint` already reserves space to avoid, and this table is
+  worked on the Floor tablet. Measured: row 60.7px and page height 1972px,
+  **identical with the marks showing and hidden**, across 2, 12, 0.5, 1, 1.00,
+  blank, junk and 0. `padding-left: 52px` is applied only while a mark is there,
+  and it is what stops a big figure sliding underneath — verified that a
+  10-digit value makes the input SCROLL (scrollWidth 151 > clientWidth 138)
+  rather than paint over its own padding.
+  (c) **Both appear together, under one condition: a quantity that is not ONE.**
+  One condition and one appearance, so a row can never mark one figure and not
+  the other. On a row of one, "total" is true of every box on the page and says
+  nothing, so both stay clean — the common case.
+  (d) **Scoped by field NAME (`spares-…-quantity`), so the Inventory section is
+  untouched** — a draw's Unit Price genuinely IS per unit there, and its cost
+  comes off the warehouse average rather than a typed box. Verified: an
+  inventory row carries no mark element at all.
+  (e) **Pure delegation, no per-element wiring**, so a row added by "+ Add
+  Spare" works with nothing re-initialised — all three of `script.js`'s
+  documented cloning traps live in per-element wiring, and this section has
+  none. `refreshRowTotals()` rides the same three sweeps the date chips do
+  (`change`, `jcFormTouched`, DOMContentLoaded) plus the per-keystroke `input`
+  path, because typing the Qty is exactly when the marks are needed and they
+  must not wait for a blur. On a locked card they take the muted palette with
+  the boxes they sit in.
+  (f) **Floor is shown neither**, because Floor is shown no prices at all — its
+  price cells are rendered inside `d-none` purely so they keep posting what
+  Office entered. Guarded by `BothPriceBoxesAreLineTotalsTests`, which pins the
+  pairing, the order, that neither can post, and that the *tbody* (never the
+  whole page, where the stylesheet declares the same class names) is what gets
+  searched.
+
 - **The two spare DATES share one cell, and the column order follows the order
   the row is filled.** 2026-08-13, on the owner's instruction: Part Name · ⋮ ·
   Qty · Status · Shop · Dates · Shop Price · Customer Price, money last. The
@@ -2736,6 +2878,22 @@ about to correct one of these, you are about to break the business:
   by saying something a label cannot: the Inventory picker's "or type" (which is
   load-bearing — see the entry above) and the money boxes' currency. Guarded by
   `test_the_vehicle_and_customer_boxes_carry_no_placeholder`.
+  **The ones that survive are drawn QUIETLY, on both forms.** The Job Card has
+  said so since the placeholder block at the top of `jobcard_form.html`
+  (#b6bfcc, 0.86em, fading further on focus, colour and size only so no box
+  changes height); the Estimate form was given the identical block on
+  2026-08-17 on the owner's instruction, and needed it more — a quote is mostly
+  empty boxes by design, one "Job to be performed" / "Part Name" / "Qty" /
+  "Amount (₹)" per row, so at the browser default a blank estimate read as a
+  filled-in one. **One exception, and it is told apart by the ATTRIBUTE:** the
+  unit-price box carries two placeholders — the plain label, which is now as
+  quiet as its neighbours, and `avg: 1064`, which `estimate.js` writes when the
+  part has sales history and which is real information somebody is meant to
+  notice. `.estimate-rate[placeholder^="avg"]::placeholder` keeps that one
+  italic and darker; the selector works because `el.placeholder = …` reflects
+  onto the attribute, so the rule follows the script with nothing to keep in
+  step (the alternative was a class toggled on both branches of a function that
+  already has two).
 
 - **A LOCKED job card has to LOOK locked.** Fixed 2026-08-16. The form grew a
   soft-surface palette that painted every control `#f1f5f9` — and that was also
@@ -2861,6 +3019,60 @@ about to correct one of these, you are about to break the business:
   on the board, which made "no tasks yet", the most ordinary state a fresh card
   can be in, look like an apology.
 
+- **The state is a DOT at the end of the car's name, and the phone's live
+  details have no boxes.** Added 2026-08-17 on the owner's instruction, and the
+  two halves pay for each other — the first frees width on the card's top line,
+  the second frees a screenful under it.
+  (a) **No ACTIVE / HOLD pill, just the dot, inside `.car-name`.** The word was
+  true of nearly every card on a board of cars currently in the workshop, so it
+  distinguished nothing; the only card it mattered on is the held one, and the
+  colour already says that. **The dot is unchanged in size and colour** (the
+  owner's "same current dot"), hold ring included — what changed is where it
+  sits. It is part of the name's own text run, so on a name that wraps it lands
+  at the end of the SECOND line, which is where the eye already is; it is
+  preceded by **`&nbsp;`** so it binds to the last word and can never be left
+  alone on a line the two-line clamp then hides. `role="img"` + `aria-label`
+  carries the state that the word used to.
+  (b) **The name is BIGGER on a phone than on a laptop** — 1.24rem against 1.15
+  — which looks backwards and is not. It used to *shrink* to 1.05rem there
+  because it was sharing 332px with the pill and the ⋮ and losing to both.
+  Removing the pill gave the line ~77px back (measured), and this is the screen
+  read at arm's length while walking, where the name is the only thing you look
+  for from that distance. `.car-name` therefore has no rule in the ≤480px block
+  at all any more; its phone size lives in the 640px one.
+  (c) **The live-details drawer sheds its boxes below 640px, and ONLY below
+  640px.** Measured before: four sections, ten rows, a drawer **599.7px** tall
+  on a 375px phone — a whole screen for one car — of which **151.6px was section
+  heading bars**, with each section additionally inside a white card with its
+  own border, radius and padding, on a panel that already has a border. The
+  owner read it back as confusing, which is the accurate word: the chrome was as
+  loud as the content. **Nothing is removed and nothing is reworded** — sections,
+  counts, status icons and the "+N more" tails all stay. What goes is the
+  furniture: no card per section, no filled title bar, no rule under every row,
+  one hairline *between* sections. Same card, same ten rows, now **449.6px**
+  (−25%), with the heading bars down from 37.9px to 24.6px and the row text at
+  the size it always was — 0.92rem, unchanged, because the rows are the content.
+  Above 640px it is untouched, deliberately — the owner said the desktop reads
+  correctly, and a wide drawer has room for boxes that help the eye find a
+  section across a long line. One trap worth keeping: **`line-height: 1` on the
+  title** is what actually shrank it, because that row is as tall as its tallest
+  child and the glyph is the tallest — at the inherited 1.5 a 10px label was
+  occupying 20px.
+  (d) **The bar says "View" / "Hide".** It spans the whole card, sits directly
+  under the car it belongs to and carries a chevron that turns; "View Live
+  Details" was three words explaining a control that explains itself, on every
+  card in a list of forty-five. The sentence moved to `aria-label`, which the JS
+  keeps in step with the word.
+  (e) **The ring's track is THINNER than its arc** (2.25 against 3.5), not just
+  lighter. Both were 3px, so it was two arcs of equal weight told apart by
+  colour alone — and at 0% that reads as a complete grey ring rather than an
+  empty one. Declared in CSS, never as a `stroke-width` attribute: an attribute
+  is a presentation attribute and loses to any stylesheet rule, so leaving both
+  would be two numbers for one line. The disc at r=16 still clears the fatter
+  stroke (inner edge 16.25). **The two numbers stay** — "1/2" beside the ring
+  and "50%" inside it — on the owner's decision when offered the merge; the ring
+  was polished, not rebuilt.
+
 - **`px-5` and `flex-grow-1` on the same Bootstrap button is a wrap waiting to
   happen.** Fixed 2026-08-17 on the owner's report, `add_shop.html` and
   `edit_shop.html`. `px-5` is 3rem of padding *each side* — 96px of a ~187px
@@ -2910,8 +3122,14 @@ things. **Don't add a second nav** — a new destination goes in the drawer, in 
 section it belongs to.
 - Top bar is deliberately minimal, and it carries a DIFFERENT set per role
   (reordered 2026-08-16):
-  - **Owner / Office** — Admin · Completed · Report · Alerts · Manage. The bell
-    is Owner-only. There is no `+ New` here on purpose: Floor creates most job
+  - **Owner / Office** — Admin · Completed · **Live** · Alerts · Manage. The
+    bell is Owner-only. That third tab is `live_report` and was called "Report"
+    until 2026-08-17, which was the wrong word twice over: the page is the state
+    of the workshop *right now* and carries no money at all, while the drawer's
+    "Analysis & Reports" is the profit page and genuinely is a report — two
+    entries a thumb's width apart, both saying "report", meaning opposite
+    things. The URL, the view name and the page's own "Live Report" heading are
+    unchanged; only the tab's word and its `aria-label` moved. There is no `+ New` here on purpose: Floor creates most job
     cards, and Owner/Office reach the form from the `+ New` button in the home
     page's own header. That is the owner's call, and it means **the only
     `{% url 'jobcard_create' %}` in `base.html` is the Floor tab** — if that
@@ -3260,7 +3478,8 @@ resolve the window, call the engine, and render.
 **The double-count rule — the thing most likely to get "fixed" into a bug.** A spare reaches a
 car by one of two routes and is paid for exactly once:
 - `JobCardSpareItem.shop` set → bought from a spare shop for that job → charged as the
-  **Spare Shops** expense (`unit_price × quantity`).
+  **Spare Shops** expense — `unit_price` as typed, the shop's LINE TOTAL, never
+  multiplied by the quantity (changed 2026-08-17; see `SHOP_LINE_COST`).
 - `shop` NULL **and** the part name matches an inventory `Item` → taken off warehouse stock →
   **already paid for** by a Supplies Shop restock bill, so it must **never** be charged again.
 
@@ -3302,7 +3521,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (45 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 50 files, **1,350 tests** (re-counted 2026-08-16 after `test_billed_but_not_filled.py`, `test_spare_dates.py` and `test_job_line_suggestions.py` were added; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, and 79 and **63 on 2026-08-16**, which is the clearest evidence that the spread is load-dependent rather than meaningful; that last one had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (45 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 50 files, **1,373 tests** (re-counted 2026-08-17 from a full green run, after the invoice's `OnePrintsAsNothingTests` and the job card's `BothPriceBoxesAreLineTotalsTests` were added; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, 79 and 63 on 2026-08-16, and **71 on 2026-08-17**, which is the clearest evidence that the spread is load-dependent rather than meaningful; that last one had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

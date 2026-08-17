@@ -294,11 +294,11 @@ class EditingAnUnassignedSpareIsValidatedTests(HubBase):
 
     def test_moving_it_refreshes_BOTH_shop_ledgers(self):
         row = self.row()
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
         self.as_(self.office).post(reverse('unassigned_spare_edit', args=[row.pk]),
                                    self.edit_payload(shop=str(self.other.pk)))
         self.assertEqual(self.owed(), D('0.00'))
-        self.assertEqual(self.owed(self.other), D('2000.00'))
+        self.assertEqual(self.owed(self.other), D('1000.00'))
 
 
 class TheTwoDatesAreCheckedAsAPairTests(HubBase):
@@ -353,7 +353,7 @@ class TheTwoDatesAreCheckedAsAPairTests(HubBase):
 class DeletingAnUnassignedSpareIsLoggedTests(HubBase):
     def test_it_is_removed_logged_and_taken_off_the_ledger(self):
         row = self.row()
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
         self.as_(self.office).post(
             reverse('spare_shop_delete_unassigned', args=[row.pk]),
             {'reason': 'entered twice'})
@@ -414,7 +414,7 @@ class TheShopLedgerPriceEditIsBoundedToTests(HubBase):
         """
         row = self.row()
         self.edit(row, unit_price='99999999999')
-        self.assertEqual(self.owed(), D('2000.00'))
+        self.assertEqual(self.owed(), D('1000.00'))
         self.assertEqual(
             self.as_(self.office).get(
                 reverse('spare_shop_detail', args=[self.shop.pk])).status_code, 200)

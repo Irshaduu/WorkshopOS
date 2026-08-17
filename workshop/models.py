@@ -708,20 +708,23 @@ class SpareShop(models.Model):
         """
         Calculates and caches the sum of all purchased parts (shop cost) vs total payments.
         Uses pure SQL aggregation for efficiency.
+
+        The cost expression is IMPORTED, never restated. It used to be a
+        hand-rolled copy of `analysis_engine.SPARE_COST` kept "identical" by
+        comment — one of five such copies — and this is the one that decides
+        what the workshop owes a shop, so a copy left behind after a fix would
+        show a different debt on the shop's own page than on the Profit page.
+        The import is local because `analysis_engine` imports this module.
         """
-        from django.db.models import Sum, F, ExpressionWrapper, DecimalField, Value
+        from django.db.models import Sum, DecimalField, Value
         from django.db.models.functions import Coalesce
         from decimal import Decimal
 
+        from .analysis_engine import SHOP_LINE_COST
+
         purchases = self.spare_items.aggregate(
             total=Coalesce(
-                Sum(
-                    ExpressionWrapper(
-                        Coalesce(F('unit_price'), Value(Decimal('0'), output_field=DecimalField())) * 
-                        Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField())),
-                        output_field=DecimalField()
-                    )
-                ),
+                Sum(SHOP_LINE_COST, output_field=DecimalField()),
                 Value(Decimal('0'), output_field=DecimalField()),
                 output_field=DecimalField()
             )
@@ -1251,11 +1254,20 @@ class JobCardSpareItem(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     quantity = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
 
-    # Pricing. `unit_price` is COST PER UNIT on both routes — typed by Office for
-    # a shop purchase, snapshotted from Item.avg_cost for a warehouse draw. Every
-    # money formula in analysis_engine.py (SPARE_COST) and SpareShop.update_totals()
-    # multiplies it by quantity, so its meaning must stay uniform across routes.
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Cost per unit (shop price, or warehouse average cost)")
+    # Pricing. `unit_price` is the workshop's COST, and its shape DIFFERS by
+    # route — changed 2026-08-17 on the owner's instruction:
+    #
+    #   SHOP      the LINE TOTAL the shop billed for this row, typed by Office
+    #             straight off the shop's own bill. Never multiplied.
+    #   INVENTORY the weighted-average cost of ONE unit, snapshotted from
+    #             Item.avg_cost here in save() and rewritten by the replay in
+    #             inventory/costing.py. Per unit by construction — it is derived
+    #             from the shelf, not typed — so a draw's cost IS × quantity.
+    #
+    # `analysis_engine.SPARE_COST` is the one expression that knows which is
+    # which; nothing else may re-derive it. See SHOP_LINE_COST there for why the
+    # shop side stopped multiplying.
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Workshop cost: the shop's line total (SHOP), or the warehouse average cost per unit (INVENTORY)")
     total_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, help_text="Customer price — the figure that bills, shown in the UI as 'Customer Price'")
     # The optional "Unit Price" box on an INVENTORY row: what the customer is
     # charged per unit. INPUT ONLY — never back-filled from total_price ÷ quantity,

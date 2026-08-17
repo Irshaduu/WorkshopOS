@@ -25,8 +25,9 @@ TURNOVER
 
 EXPENSES — four real, non-overlapping money-out streams
   1. Spare Shops ....... Parts bought from a spare shop *for a specific job*:
-                         unit_price × quantity on JobCardSpareItem rows that
-                         have source=SHOP and a shop recorded.
+                         the `unit_price` LINE TOTAL on JobCardSpareItem rows
+                         that have source=SHOP and a shop recorded. Not
+                         multiplied by quantity — see SHOP_LINE_COST.
   2. Supplies Shops .... Warehouse restocking: SupplierRestockBill effective
      (Inventory)         amount (total − discount).
   3. Salary ............ From the Salary & Advance section — never from the
@@ -93,7 +94,7 @@ Built for 5+ years of history (live: 5,478 job cards over 2021→2026):
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from django.db.models import Sum, Count, Q, F, Value, DecimalField
+from django.db.models import Case, Count, DecimalField, F, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
@@ -107,11 +108,46 @@ from .models import (
 MONEY = DecimalField(max_digits=20, decimal_places=2)
 ZERO = Decimal('0')
 
-# Mirrors SpareShop.update_totals() exactly: a missing price is ₹0, a missing
-# quantity is 1 unit. Kept identical so the shop ledger and this engine can
-# never disagree about what a spare cost.
-SPARE_COST = Coalesce(F('unit_price'), Value(ZERO, output_field=MONEY)) * \
-             Coalesce(F('quantity'), Value(Decimal('1'), output_field=MONEY))
+# =============================================================================
+# WHAT A SPARE COST — one definition, and the two routes are NOT the same shape
+# =============================================================================
+# Changed 2026-08-17 on the owner's instruction, and it is a change of MEANING
+# on one route, not of arithmetic on both.
+#
+#   SHOP     `unit_price` is the LINE TOTAL the shop billed for that row, as
+#            Office typed it off the shop's own bill. Nothing multiplies it.
+#   WAREHOUSE `unit_price` is the weighted-average cost of ONE unit, snapshotted
+#            from `Item.avg_cost` by `JobCardSpareItem.save()` and rewritten by
+#            `inventory/costing.py`'s replay. It is per unit by construction —
+#            it is derived from the shelf, never typed — so a draw's cost is
+#            still `× quantity` and must stay that way.
+#
+# Why the shop side moved: this workshop enters what it was billed, not a rate.
+# A row reading 5,000 with a Qty of 2 was being read as ₹10,000 owed, and the
+# owner confirmed staff type the whole amount — so the multiplication was
+# inventing money nobody was billed. It also removes the last division from the
+# path between a typed figure and a ledger: what is typed is what is owed.
+#
+# Both are declared here because five places used to hand-roll this expression
+# (this module, `SpareShop.update_totals`, and three aggregates in
+# `views/spare_shop.py`), which is five chances for one of them to be fixed and
+# the rest left behind — and they would disagree exactly where it matters, as a
+# shop page and the Profit page quoting different debts for the same rows.
+# A missing price is ₹0 on both routes; a missing quantity is 1 unit, which now
+# only matters to the warehouse side.
+SHOP_LINE_COST = Coalesce(F('unit_price'), Value(ZERO, output_field=MONEY))
+
+WAREHOUSE_LINE_COST = Coalesce(F('unit_price'), Value(ZERO, output_field=MONEY)) * \
+                      Coalesce(F('quantity'), Value(Decimal('1'), output_field=MONEY))
+
+#: What a spare cost, whichever shelf it came off. Route-aware, so a queryset
+#: spanning both (a car profile's gross profit) gets each row costed by its own
+#: rule rather than by whichever one the caller happened to pick.
+SPARE_COST = Case(
+    When(source=JobCardSpareItem.SOURCE_SHOP, then=SHOP_LINE_COST),
+    default=WAREHOUSE_LINE_COST,
+    output_field=MONEY,
+)
 
 
 def _sum(qs, expr, alias='t'):

@@ -1584,3 +1584,130 @@ class WhoTheCustomerIsIsOfficeOnlyTests(JobCardFormBase):
         self.assertEqual(floor.count('Customer Name'), 0)
         self.assertNotIn('John', floor)
         self.assertNotIn('1234567890', floor)
+
+
+class BothPriceBoxesAreLineTotalsTests(JobCardFormBase):
+    """
+    Both money boxes on a Spare Parts row hold the TOTAL for that line — what
+    the shop billed for it, and what the customer is charged for it. Neither is
+    multiplied by the quantity.
+
+    It was not always so. `unit_price` was a price PER UNIT that `SPARE_COST`
+    and `SpareShop.update_totals()` multiplied by Qty, while `total_price` was
+    already a total — two logics on one row. The owner settled it on 2026-08-17:
+    one logic, both totals, and the engine stopped multiplying (see
+    `SHOP_LINE_COST`). The mark that remains says "total" on both boxes when the
+    row holds more than one part, which is the moment somebody might otherwise
+    type a rate.
+
+    Nothing in this suite executes the script that shows them, so these pin what
+    the SERVER owes it: a mark in each price cell, on every row including the
+    one "+ Add Spare" clones, and nothing on either that could post a figure.
+    """
+
+    def setUp(self):
+        super().setUp()
+        JobCardSpareItem.objects.create(
+            job_card=self.job, spare_part_name='Stabilizer Link',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('2'), unit_price=D('7560'), total_price=D('11122'))
+
+    def marks(self, chunk):
+        """Every mark's opening tag in `chunk`, attributes and all."""
+        out, at = [], chunk.find('class="jc-total"')
+        while at != -1:
+            out.append(chunk[chunk.rfind('<', 0, at):chunk.index('>', at) + 1])
+            at = chunk.find('class="jc-total"', at + 1)
+        return out
+
+    def test_both_price_boxes_carry_a_mark(self):
+        self.assertEqual(len(self.marks(self.spare_table()['tbody'])), 2)
+
+    def test_the_added_row_template_carries_both(self):
+        """
+        `#empty-spare-form` is cloned in the browser on "+ Add Spare". A
+        template missing a mark leaves an added row unable to show it, and
+        nothing server-side would notice — the clone happens where no test
+        looks.
+        """
+        template = self.rendered().split(
+            'id="empty-spare-form"', 1)[1].split('</tbody>', 1)[0]
+        self.assertEqual(len(self.marks(template)), 2)
+
+    def test_one_mark_sits_with_each_price(self):
+        """
+        Shop Price then its mark, Customer Price then its mark. Both boxes mean
+        the same thing now, so both must say it — a row that marked one and not
+        the other would read as though only one were a total.
+        """
+        tbody = self.spare_table()['tbody']
+        first = tbody.index('class="jc-total"')
+        second = tbody.index('class="jc-total"', first + 1)
+        positions = [
+            tbody.index('name="spares-0-unit_price"'),
+            first,
+            tbody.index('name="spares-0-total_price"'),
+            second,
+        ]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_the_word_is_total_on_both(self):
+        """
+        Fixed in the markup rather than written by the script: it never varies,
+        and the script decides only whether it shows.
+        """
+        tbody = self.spare_table()['tbody']
+        self.assertEqual(tbody.count('>total</span>'), 2)
+
+    def test_neither_can_post_a_figure(self):
+        """
+        Labels, not fields: no name, so neither is in the payload, and nothing
+        for a stored figure to disagree with. Every rupee on this row still
+        comes from the two boxes they sit in.
+        """
+        for tag in self.marks(self.spare_table()['tbody']):
+            self.assertTrue(tag.startswith('<span'), tag)
+            self.assertNotIn('name=', tag)
+            self.assertIn('hidden', tag)
+
+    def test_they_cost_the_row_no_height(self):
+        """
+        Absolutely positioned inside their boxes, so a row cannot change height
+        as a quantity is typed. This table is worked on the Floor tablet, where
+        anything that moves a row moves the box a finger is already heading
+        for — the reason `.inventory-stock-hint` reserves its space rather than
+        appearing. Measured at 2, 0.5, 1, blank and 3: row 60.7px, page 1972px,
+        identical throughout, with both marks appearing together.
+        """
+        self.assertIn('position: absolute', self.css_rule('.jc-total'))
+
+    def test_a_long_figure_cannot_reach_them(self):
+        """
+        The boxes are `text-end` and the marks sit in the empty left half; the
+        padding is what stops a big number sliding under one. Verified in a
+        browser: a 10-digit figure makes the input SCROLL (scrollWidth 151 >
+        clientWidth 138) rather than paint over its own padding.
+        """
+        self.assertIn('padding-left: 52px',
+                      self.css_rule('.jc-total-wrap input.jc-has-total'))
+
+    def test_floor_is_shown_neither(self):
+        """
+        Floor sees no prices anywhere in this app; its price cells are rendered
+        inside `d-none` purely so they keep posting what Office entered. Marks
+        about figures that are not on screen would be noise at best.
+
+        Scoped to the tbody deliberately — `.jc-total` is also a rule in this
+        page's inline stylesheet, which Floor is served like everyone else, so
+        a whole-page `assertNotIn` would fail for the wrong reason.
+        """
+        self.assertEqual(self.marks(self.spare_table(self.rendered_as_floor())['tbody']), [])
+
+    def test_the_shop_line_is_billed_at_what_was_typed(self):
+        """
+        The rule under the label, asserted where it can be: 7,560 typed on a
+        row of 2 is ₹7,560 owed to that shop — not ₹15,120.
+        """
+        self.shop.update_totals()
+        self.shop.refresh_from_db()
+        self.assertEqual(self.shop.total_purchased_amount, D('7560'))

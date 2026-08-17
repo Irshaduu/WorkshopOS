@@ -15,6 +15,12 @@ from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
 from ..decorators import office_required, owner_required, staff_required, is_office_or_owner
 from ..notifications import notify
 from ..spare_dates import pair_problem
+# What a shop-bought line cost, in the one place it is defined. This page's
+# running balance, its grand total and `SpareShop.total_purchased_amount` are
+# three views of the same money, and they used to be three hand-written copies
+# of the expression — so a change to one would have shown a different debt on
+# the shop's own page than on the Profit page.
+from ..analysis_engine import SHOP_LINE_COST
 
 
 @office_required
@@ -209,22 +215,12 @@ def spare_shop_detail(request, pk):
         Q(job_card__admitted_date__lt=OuterRef('job_card__admitted_date')) | 
         Q(job_card__admitted_date=OuterRef('job_card__admitted_date'), pk__lte=OuterRef('pk'))
     ).values('shop').annotate(
-        total=Sum(
-            ExpressionWrapper(
-                Coalesce(F('unit_price'), Value(Decimal('0'), output_field=DecimalField())) * 
-                Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField())),
-                output_field=DecimalField()
-            )
-        )
+        total=Sum(SHOP_LINE_COST, output_field=DecimalField())
     ).values('total')
 
     items_qs = items_qs.annotate(
         absolute_running_sum=Coalesce(Subquery(older_items_sum_sq), Decimal('0'), output_field=DecimalField()),
-        item_cost=ExpressionWrapper(
-            Coalesce(F('unit_price'), Value(Decimal('0'), output_field=DecimalField())) * 
-            Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField())),
-            output_field=DecimalField()
-        )
+        item_cost=SHOP_LINE_COST,
     )
 
     total_purchases = shop.total_purchased_amount
@@ -483,7 +479,11 @@ def spare_shop_print(request, pk):
 
     # Grand totals (pure SQL)
     total_purchases = items_qs.aggregate(
-        total_purchases=Coalesce(Sum(ExpressionWrapper(F('unit_price') * Coalesce(F('quantity'), Value(Decimal('1'), output_field=DecimalField())), output_field=DecimalField())), Value(Decimal('0'), output_field=DecimalField()), output_field=DecimalField())
+        total_purchases=Coalesce(
+            Sum(SHOP_LINE_COST, output_field=DecimalField()),
+            Value(Decimal('0'), output_field=DecimalField()),
+            output_field=DecimalField(),
+        )
     )['total_purchases']
     
     total_paid = payment_qs.aggregate(
@@ -816,7 +816,10 @@ def spare_shop_delete_unassigned(request, item_pk):
 
     shop = item.shop
     name = item.spare_part_name or 'Unnamed spare'
-    cost = (item.unit_price or Decimal('0')) * (item.quantity or Decimal('1'))
+    # The shop's line total, as typed — the same figure the ledger carried for
+    # this row, so the Deletion History records what was actually removed from
+    # the balance rather than a recomputation of it.
+    cost = item.unit_price or Decimal('0')
 
     DeletionLog.record(
         DeletionLog.ENTITY_UNASSIGNED_SPARE, item,

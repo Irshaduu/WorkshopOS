@@ -55,10 +55,20 @@ class FinancialIntegrationTests(TestCase):
         return JobCard.objects.create(**defaults)
 
     # -------------------------------------------------------------------------
-    # Spare Shop: Quantity × Unit Price math
+    # Spare Shop: a line's cost is what was typed, whatever the quantity
     # -------------------------------------------------------------------------
-    def test_spare_shop_quantity_math(self):
-        """Verify that total_purchases = unit_price × quantity, not just unit_price."""
+    def test_a_shop_line_costs_what_was_typed_not_that_times_quantity(self):
+        """
+        INVERTED on 2026-08-17, on the owner's decision — it used to be named
+        `test_spare_shop_quantity_math` and asserted the opposite: "total_purchases
+        = unit_price × quantity, not just unit_price".
+
+        Office types what the shop's own bill says for that line, so 500 on a row
+        of 3 is ₹500 owed, not ₹1,500. Multiplying it was inventing money nobody
+        was billed. See `SHOP_LINE_COST` in analysis_engine.py; the warehouse route
+        still multiplies, because there the price is a per-unit average derived
+        from the shelf rather than a figure anyone typed.
+        """
         jc = self._create_jobcard()
         JobCardSpareItem.objects.create(
             job_card=jc,
@@ -70,9 +80,8 @@ class FinancialIntegrationTests(TestCase):
 
         resp = self.client.get(reverse('spare_shop_detail', args=[self.shop.pk]))
         self.assertEqual(resp.status_code, 200)
-        # 500 × 3 = 1500
-        self.assertEqual(resp.context['total_purchases'], Decimal('1500'))
-        self.assertEqual(resp.context['total_balance'], Decimal('1500'))
+        self.assertEqual(resp.context['total_purchases'], Decimal('500'))
+        self.assertEqual(resp.context['total_balance'], Decimal('500'))
 
     def test_spare_shop_bulk_pay_and_waterfall(self):
         """Lump sum should generate a payment record and update shop totals."""
@@ -80,7 +89,9 @@ class FinancialIntegrationTests(TestCase):
         item = JobCardSpareItem.objects.create(
             job_card=jc,
             spare_part_name='Oil Filter',
-            unit_price=Decimal('200'),
+            # The shop's LINE total for 4 filters — `unit_price` on a shop row is
+            # what was billed for the row, never a rate (see SHOP_LINE_COST).
+            unit_price=Decimal('800'),
             quantity=Decimal('4'),
             total_price=Decimal('1000'),
             shop=self.shop,
