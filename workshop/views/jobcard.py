@@ -163,11 +163,15 @@ def _problems_for(request, form, concern_formset, labour_formset,
     ])
     if problems:
         count = len(problems)
+        # Short, because it is not the only thing on screen: the summary box
+        # below it lists what is wrong, and the boxes themselves are marked.
+        # The banner's job is to say the save did not happen and that nothing
+        # was thrown away — two facts, one line. It used to run to three
+        # clauses and repeat the box's own heading almost word for word.
         messages.error(
             request,
             f"{subject} not saved — {count} thing{'s' if count != 1 else ''} "
-            f"still need{'' if count != 1 else 's'} fixing. Nothing was lost; "
-            f"what you typed is still on the form."
+            f"to fix. Nothing you typed was lost."
         )
     return problems
 

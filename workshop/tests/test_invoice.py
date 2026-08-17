@@ -737,12 +737,18 @@ class NothingInteractiveLivesOnThePaperTests(InvoiceTestCase):
     def test_the_controls_are_all_marked_no_print(self):
         html = self._render(self.job).content.decode()
 
-        for label in ('Print / Save PDF', 'Edit Job', 'Settle Bill'):
+        for label in ('Edit Job', 'Settle Bill'):
             self.assertIn(label, html)
+        # The print button is checked by its ACTION, not its label: below 640px
+        # the label sheds "/ Save PDF" into a hidden span, so the full wording is
+        # no longer one contiguous string in the markup — and "Print" alone
+        # matches `@media print` in the stylesheet, so it proves nothing.
+        self.assertIn('window.print()', html)
         # Every control block declares itself unprintable, and the stylesheet
         # backs that with a single `display: none !important` rule.
         self.assertIn('.no-print', html)
-        self.assertNotIn('Print / Save PDF', _sheet(html))
+        self.assertNotIn('Edit Job', _sheet(html))
+        self.assertNotIn('window.print()', _sheet(html))
 
     def test_the_payment_status_is_not_on_the_bill(self):
         """
@@ -1056,6 +1062,56 @@ class TheBackLinkCannotLeaveTheSiteTests(InvoiceTestCase):
         response = self.client.get(self.url, {'back': 'javascript:alert(1)'})
         self.assertIsNone(response.context['back_url'])
         self.assertNotIn('javascript:', response.content.decode())
+
+
+class ThereIsAlwaysAWayOffThisPageTests(InvoiceTestCase):
+    """
+    This template is standalone — no nav bar, no drawer — so the toolbar's first
+    button is the only way out, and it used to render ONLY when the page had
+    been opened with a `?back=`.
+
+    Every route without one therefore dead-ended, and the commonest of them is
+    the one that matters most: settling a bill redirects to this URL carrying no
+    `back`, so the screen an owner reaches immediately after taking money had
+    nothing to press. (Reported by the owner, 2026-08-17.) Opening an invoice
+    from a bookmark or a notification lands the same way.
+
+    Home is the FALLBACK, never a second button beside Back: one exit, in one
+    place, whichever of the two it is.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.job = self._jobcard()
+        self.url = reverse('invoice_view', args=[self.job.pk])
+
+    def _toolbar(self, body):
+        """Just the screen toolbar. The bar holds no nested <div>, so the first
+        closing tag ends it — and scoping matters, because "Home" appears in the
+        page title of nothing else here but "/" would match a form action."""
+        return body.split('<div class="bar no-print">', 1)[1].split('</div>', 1)[0]
+
+    def test_the_back_link_is_offered_when_there_is_one(self):
+        toolbar = self._toolbar(
+            self.client.get(self.url, {'back': '/completed/'}).content.decode())
+        self.assertIn('href="/completed/"', toolbar)
+        self.assertIn('Back', toolbar)
+        self.assertNotIn('Home', toolbar)
+
+    def test_home_is_offered_when_there_is_not(self):
+        toolbar = self._toolbar(self.client.get(self.url).content.decode())
+        self.assertIn('href="%s"' % reverse('home'), toolbar)
+        self.assertIn('Home', toolbar)
+
+    def test_the_page_reached_after_settling_has_a_way_out(self):
+        """The owner's actual report, followed end to end rather than asserted
+        about a hand-built URL."""
+        response = self.client.post(
+            reverse('update_bill_status', args=[self.job.pk]),
+            {'received_amount': '100', 'payment_method': 'CASH'},
+            follow=True,
+        )
+        self.assertIn('Home', self._toolbar(response.content.decode()))
 
 
 class TheTitleIsTheFilenameTests(InvoiceTestCase):

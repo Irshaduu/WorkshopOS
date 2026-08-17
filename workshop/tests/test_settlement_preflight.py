@@ -156,7 +156,7 @@ class WhatItChecksTests(PreflightBase):
         card.save()
         self.assertIn('Mileage', self.card_chips(card))
 
-    def test_an_unfixed_concern_is_named_AND_carries_its_status(self):
+    def test_an_unfixed_concern_is_named_by_its_WORDING(self):
         """
         This reverses an earlier decision, on the owner's redesign. The dialog
         used to name concerns by status alone ("1 Working") because quoting a
@@ -169,7 +169,21 @@ class WhatItChecksTests(PreflightBase):
         concerns = unfilled(card).concerns
         self.assertEqual(len(concerns), 1)
         self.assertEqual(concerns[0].text, 'Brake noise')
-        self.assertEqual(concerns[0].status, 'Working')
+
+    def test_a_concern_is_reported_as_NOT_FIXED_whatever_its_status(self):
+        """
+        The status went with the redesign (2026-08-17), and dropping it is more
+        correct rather than merely shorter. PENDING and WORKING are a real
+        distinction while the car is on the floor; the moment it has been billed
+        and driven away, "Working" is a claim about the present that is not
+        true — nobody is working on a car that left last Tuesday. What is true,
+        and the only thing anyone can act on, is that it was never marked fixed.
+        """
+        card = self.a_clean_card()
+        for status in ('PENDING', 'WORKING'):
+            with self.subTest(status=status):
+                card.concerns.update(status=status)
+                self.assertEqual(unfilled(card).concerns[0].missing, 'not fixed')
 
     def test_a_fixed_concern_is_not_reported(self):
         self.assertEqual(unfilled(self.a_clean_card()).concerns, ())
@@ -354,6 +368,29 @@ class CompleteAndSettleTests(PreflightBase):
     def test_a_completed_card_is_not_offered_it(self):
         self.assertNotIn('Complete &amp; settle', self.page(self.a_clean_card()))
 
+    def test_there_is_no_way_to_settle_and_leave_the_car_on_the_board(self):
+        """
+        "Settle without completing" was removed on 2026-08-17, on the owner's
+        question about what it was for.
+
+        A walk-in has exactly one payment event and it happens at pickup, so by
+        the time anyone is on this screen the car is going out. Settling while
+        leaving the card open says the workshop still holds a car it does not,
+        and that card then sits on the home board and in every "in workshop"
+        count until somebody notices.
+
+        Removing it traps nobody: completing a card is the one thing here that
+        is not one-way, and Undo Completion is in the ⋮ menu on the Completed
+        list. Two ways out are still on the dialog — this is not the checklist
+        starting to block.
+        """
+        body = self.page(self.open_card())
+
+        self.assertNotIn('Settle without completing', body)
+        self.assertIn('Complete &amp; settle', body)
+        self.assertIn('Open job card', body)
+        self.assertIn('id="pfCancel"', body)
+
     def test_complete_and_settle_does_both(self):
         card = self.open_card()
         resp = self.client.post(
@@ -481,26 +518,31 @@ class TheDialogAndTheChaseListSayTheSameThingTests(PreflightBase):
 
         self.assertEqual(settlement_readiness(card)['unfilled'], unfilled(card))
 
-    def test_the_dialog_prints_the_chip_wordings_the_module_names(self):
+    def test_the_dialog_prints_the_phrases_the_module_names(self):
+        """
+        The wording is the module's, not the template's. Both screens print
+        `settlement.MISSING` verbatim, so one gap cannot be chased as "no shop
+        price" on one and "supplier price missing" on the other.
+        """
         card = self.a_holey_card()
         holes = unfilled(card)
         body = self.page(card)
 
-        chips = list(holes.card)
-        for part in holes.spares + holes.inventory:
-            chips.extend(part.tags)
+        phrases = [holes.card_missing]
+        phrases.extend(part.missing for part in holes.spares + holes.inventory)
 
-        self.assertTrue(chips)
-        for chip in chips:
-            self.assertIn('<em>%s</em>' % chip, body)
+        self.assertTrue(all(phrases))
+        for phrase in phrases:
+            self.assertIn(phrase, body)
 
-    def test_the_dialog_names_the_part_each_chip_belongs_to(self):
+    def test_the_dialog_names_the_part_ITS_OWN_gap_belongs_to(self):
         """
-        One row per part, so "Shop Price" is attached to the part that is
-        missing it rather than floating over the whole section.
+        One box per part, holding the part and what is missing from it — so "no
+        shop price" is attached to the part that has no shop price rather than
+        floating over a section heading.
         """
         card = self.a_holey_card()
         body = self.page(card)
 
         self.assertIn('Brake Pad', body)
-        self.assertIn('Spare Parts', body)
+        self.assertRegex(body, r'Brake Pad</span>\s*<span class="pf-gap-miss">')

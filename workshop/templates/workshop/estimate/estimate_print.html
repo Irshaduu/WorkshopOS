@@ -559,15 +559,48 @@
             }
         }
 
+        /* TWO chosen rows on a phone — the same arrangement, and the same
+           reasoning, as the invoice's toolbar; see the long note there. Five
+           controls do not fit one line at 375px, and letting the browser pick
+           where to break a flex row with a `flex: 1 1 auto` spacer in it gives
+           you whatever happens to fit rather than anything meaningful.
+
+           Kept identical to the invoice on purpose. The estimate is handed over
+           first and the bill follows it for the same car, so the two screens
+           are opened days apart by the same person; a toolbar that rearranges
+           itself between them reads as two different products. `estimate_print`
+           and `invoice_template` already share `workshop/invoice.py`, the
+           letterhead include and the row-padding rules — this is the same
+           discipline applied to the screen chrome. */
         @media (max-width: 640px) {
             .bar {
-                gap: 6px;
+                gap: 8px 6px;
                 padding: 8px 10px;
+            }
+
+            .bar-spacer {
+                flex: 0 0 100%;
+                height: 0;
+                margin: 0;
             }
 
             .btn {
                 padding: 0 12px;
                 font-size: 13px;
+            }
+
+            /* Scoped to the toolbar: `.btn` is the dialogs' button too. */
+            .bar .btn {
+                flex: 1 1 0;
+                min-width: max-content;
+            }
+
+            .bar > .btn:first-child {
+                flex: 0 0 auto;
+            }
+
+            .btn-print-long {
+                display: none;
             }
         }
     </style>
@@ -611,7 +644,7 @@
 
         <button type="button" class="btn btn-primary" onclick="window.print()">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
-            Print / Save PDF
+            Print<span class="btn-print-long"> / Save PDF</span>
         </button>
     </div>
 

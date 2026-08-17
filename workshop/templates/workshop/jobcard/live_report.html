@@ -128,19 +128,54 @@
     settle dialog reads before the money moves. One rule, asked at two moments:
     "you are about to skip this" and "you skipped this".
 
-    The shape repeats all the way down: a NAME, and small red chips saying what
-    is missing from it. The card's own boxes (mileage, mechanic, labour) have no
-    name to hang off, so they are chips alone under the registration.
+    ── The shape, rebuilt 2026-08-17 on the owner's instruction ──────
+
+    Each car is its own CARD, and every gap is ONE box holding both the thing
+    and what is wrong with it.
+
+    It was neither. Cars were separated by a hairline, so a list of four ran
+    together as one wall of red; and a gap was drawn as the name of the thing on
+    one line with small chips on the line beneath it, under a section heading
+    with a count beside it. One part missing one figure cost three lines and
+    five elements. The owner read it back as "lot of rows and texts to confuse
+    user", which is the accurate description: everything on screen was true and
+    none of it could be taken in at a glance.
+
+    Now: "Castrol Edge 5W-30 — no customer price", in one box, one line. The
+    phrases come from `settlement.MISSING`, derived from the same chip labels
+    the settle dialog and the tests use, so the two screens cannot come to
+    describe one gap in two vocabularies.
+
+    The SECTION HEADINGS are gone with the chips. Each row carries the icon of
+    the job-card section it belongs to instead — the same glyphs
+    `jobcard_form.html` heads those sections with, so the icon says where to go
+    and costs a line of type rather than a line of the page. The heading's count
+    went with it and nothing is lost by that: a capped section still prints its
+    exact remainder, so the visible rows plus "+N more" are still the true
+    total.
     {% endcomment %}
     .lr-bill {
         display: block;
         text-decoration: none;
         color: inherit;
-        padding: 12px 4px;
-        transition: background-color 0.15s ease;
+        background: var(--color-card);
+        border: 1px solid rgba(220, 38, 38, 0.22);
+        border-radius: 12px;
+        padding: 11px 12px 12px;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
     }
-    .lr-box--red .lr-bill + .lr-bill { border-top: 1px solid rgba(220, 38, 38, 0.18); }
-    .lr-bill:hover { background: rgba(220, 38, 38, 0.07); }
+    .lr-bill + .lr-bill { margin-top: 10px; }
+    /* This container is read on a phone and the Floor tablet. Hover never fires
+       on a touch screen and, where it does, it STICKS — the last row tapped
+       sits highlighted until something else is. */
+    @media (hover: hover) {
+        .lr-bill:hover {
+            border-color: rgba(220, 38, 38, 0.45);
+            box-shadow: 0 2px 10px rgba(220, 38, 38, 0.10);
+        }
+    }
+    .lr-bill:active { border-color: rgba(220, 38, 38, 0.45); background: #fffafa; }
 
     {% comment %}
     The NAME and the billed state share the top line; the plate sits under them
@@ -178,7 +213,7 @@
         display: block;
         padding-left: 17px;   /* clears the colour dot, so the plate lines up
                                  with the name above it rather than the rail */
-        margin-bottom: 7px;
+        margin-top: 1px;
     }
     /* The car wears its own colour here as a dot rather than a rail — these
        rows have no card of their own to run a rail down, and the dot is the
@@ -218,67 +253,85 @@
         border-color: rgba(217, 119, 6, 0.30);
     }
 
-    .lr-miss { display: flex; flex-wrap: wrap; gap: 4px; }
-    /* A chip carries a WHITE ground, not a tint: it is sitting on the box's own
-       red wash, and a red-on-red chip is a smudge rather than a mark. */
-    .lr-miss em {
-        font-style: normal;
-        font-size: 0.66rem;
-        font-weight: 700;
-        color: var(--lr-red);
-        background: #fff;
-        border: 1px solid rgba(220, 38, 38, 0.35);
-        border-radius: 4px;
-        padding: 2px 7px;
-        white-space: nowrap;
-    }
-
     {% comment %}
+    ── One gap, one box ──────────────────────────────────────────────
+
+    A row reads "Stabilizer Bar — no shop, no dates, no shop price": the thing
+    on the left in the page's own text colour, what is wrong with it on the
+    right in red. Both halves in one bordered box, because they are one fact.
+
+    The tint is the INVERSE of what the old chips carried, and deliberately so.
+    A chip was white-on-red because it sat directly on the section's red wash,
+    where a red chip would have been a smudge. These boxes sit on the car's
+    white card, so a faint red ground is what separates them — and it lets the
+    red be spent on the words that say what is missing.
+
     Everything inside `.lr-bill` is a <span>, because the whole block is one
     <a>: a row here opens the job card and there is nothing else to press, so
     one link around the lot is one target with one meaning. Spans are inline by
-    default, hence the explicit `display: block` — a missing one collapses a
-    section onto the line above it.
+    default, hence the explicit `display` on each — a missing one collapses a
+    row onto the line above it.
     {% endcomment %}
-    .lr-bill-sec { display: block; margin-top: 11px; }
-    .lr-bill-sec-name {
+    .lr-gaps {
         display: flex;
-        align-items: center;
+        flex-direction: column;
         gap: 6px;
-        font-size: 0.62rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: var(--color-text-muted);
-        padding-bottom: 3px;
-        margin-bottom: 6px;
-        border-bottom: 1px solid rgba(220, 38, 38, 0.16);
+        margin-top: 9px;
     }
-    .lr-bill-sec-n { margin-left: auto; opacity: 0.8; letter-spacing: 0; }
-
-    .lr-bill-row { display: block; }
-    .lr-bill-row + .lr-bill-row { margin-top: 8px; }
+    .lr-gap {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 3px 7px;
+        background: rgba(239, 68, 68, 0.07);
+        border: 1px solid rgba(220, 38, 38, 0.16);
+        border-radius: 8px;
+        padding: 6px 9px;
+    }
+    /* The icon of the job-card SECTION this row lives in — the same glyph that
+       heads it on the form, so the row says where to go as well as what is
+       wrong. Concerns, Inventory Items, Spare Parts. */
+    .lr-gap-ico {
+        flex: none;
+        font-size: 0.72rem;
+        color: var(--lr-red);
+        opacity: 0.6;
+        align-self: center;
+    }
     /* A concern is free text staff write sentences into, so it is clamped in
        CSS rather than shortened in Python — the stored wording is never what
        gets cut, and two lines is enough to know which concern this is. */
-    .lr-bill-row-name {
+    .lr-gap-name {
+        flex: 1 1 auto;
+        min-width: 0;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
-        font-size: 0.82rem;
+        font-size: 0.8rem;
         font-weight: 600;
         color: var(--color-text);
-        line-height: 1.3;
-        margin-bottom: 4px;
+        line-height: 1.35;
     }
+    /* Wraps rather than truncates: a part missing four things has a long
+       phrase, and the whole point of the row is that the phrase is readable. */
+    .lr-gap-miss {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: var(--lr-red);
+        line-height: 1.35;
+    }
+    /* The card's own boxes have no name to sit beside — the card IS the car —
+       so the phrase runs the width of the row on its own. */
+    .lr-gap--card .lr-gap-miss { flex: 1 1 auto; }
+
     .lr-bill-more {
         display: block;
         font-size: 0.7rem;
         font-weight: 700;
         color: var(--lr-red);
         opacity: 0.85;
-        padding-top: 7px;
+        padding: 2px 2px 0;
     }
 
     {% comment %}
@@ -557,67 +610,54 @@ task; here it is a hole in the books.
         {% endif %}
 
         {% comment %}
-        The card's own boxes — mileage, mechanic, the labour charge. They belong
-        to the whole card rather than to any one row, so they are chips alone,
-        directly under the registration.
-        {% endcomment %}
-        {% if u.card %}
-        <span class="lr-miss">{% for tag in u.card %}<em>{{ tag }}</em>{% endfor %}</span>
-        {% endif %}
+        One box per gap, each holding the thing and what is wrong with it. The
+        icon in front of a row is the glyph the job card heads that section
+        with, so the row says which part of the card to open.
 
-        {% if u.concerns %}
-        <span class="lr-bill-sec">
-            <span class="lr-bill-sec-name">
-                Customer Concerns
-                <span class="lr-bill-sec-n">{{ u.concerns|length }}</span>
+        The card's own boxes — mileage, mechanic, the labour charge — belong to
+        the whole card rather than to any one row, so that box carries the
+        phrase alone and no icon: the card IS the car it is about.
+        {% endcomment %}
+        <span class="lr-gaps">
+            {% if u.card %}
+            <span class="lr-gap lr-gap--card">
+                <span class="lr-gap-miss">{{ u.card_missing }}</span>
             </span>
+            {% endif %}
+
             {% for concern in job.uf_concerns %}
-            <span class="lr-bill-row">
-                <span class="lr-bill-row-name">{{ concern.text|default:"Concern" }}</span>
-                <span class="lr-miss"><em>{{ concern.status }}</em></span>
+            <span class="lr-gap">
+                <i class="bi bi-chat-left-text-fill lr-gap-ico" aria-hidden="true"></i>
+                <span class="lr-gap-name">{{ concern.text|default:"Concern" }}</span>
+                <span class="lr-gap-miss">{{ concern.missing }}</span>
             </span>
             {% endfor %}
             {% if job.uf_concerns_more %}
-            <span class="lr-bill-more">+{{ job.uf_concerns_more }} more — open the card</span>
+            <span class="lr-bill-more">+{{ job.uf_concerns_more }} more concerns</span>
             {% endif %}
-        </span>
-        {% endif %}
 
-        {% if u.inventory %}
-        <span class="lr-bill-sec">
-            <span class="lr-bill-sec-name">
-                Inventory Items
-                <span class="lr-bill-sec-n">{{ u.inventory|length }}</span>
-            </span>
             {% for part in job.uf_inventory %}
-            <span class="lr-bill-row">
-                <span class="lr-bill-row-name">{{ part.name }}</span>
-                <span class="lr-miss">{% for tag in part.tags %}<em>{{ tag }}</em>{% endfor %}</span>
+            <span class="lr-gap">
+                <i class="bi bi-box-seam-fill lr-gap-ico" aria-hidden="true"></i>
+                <span class="lr-gap-name">{{ part.name }}</span>
+                <span class="lr-gap-miss">{{ part.missing }}</span>
             </span>
             {% endfor %}
             {% if job.uf_inventory_more %}
-            <span class="lr-bill-more">+{{ job.uf_inventory_more }} more — open the card</span>
+            <span class="lr-bill-more">+{{ job.uf_inventory_more }} more items</span>
             {% endif %}
-        </span>
-        {% endif %}
 
-        {% if u.spares %}
-        <span class="lr-bill-sec">
-            <span class="lr-bill-sec-name">
-                Spare Parts
-                <span class="lr-bill-sec-n">{{ u.spares|length }}</span>
-            </span>
             {% for part in job.uf_spares %}
-            <span class="lr-bill-row">
-                <span class="lr-bill-row-name">{{ part.name }}</span>
-                <span class="lr-miss">{% for tag in part.tags %}<em>{{ tag }}</em>{% endfor %}</span>
+            <span class="lr-gap">
+                <i class="bi bi-nut-fill lr-gap-ico" aria-hidden="true"></i>
+                <span class="lr-gap-name">{{ part.name }}</span>
+                <span class="lr-gap-miss">{{ part.missing }}</span>
             </span>
             {% endfor %}
             {% if job.uf_spares_more %}
-            <span class="lr-bill-more">+{{ job.uf_spares_more }} more — open the card</span>
+            <span class="lr-bill-more">+{{ job.uf_spares_more }} more parts</span>
             {% endif %}
         </span>
-        {% endif %}
 
     </a>
     {% endwith %}

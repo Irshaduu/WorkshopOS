@@ -37,16 +37,24 @@ def pair_problem(ordered, received):
     year — 2027 for 2026 — than a plan, and the workshop has no forward-ordering
     workflow to protect. Same reasoning as `_parse_money`'s future-advance
     refusal.
+
+    **The wording is SHORT, on the owner's instruction (2026-08-17.)** The first
+    version explained the rule — "Received date cannot be before the ordered
+    date — this part would have arrived before it was ordered" — and the job
+    card prints it after a field label, so a mistyped year filled two lines with
+    "Received date: Received date cannot be…". A sentence that repeats the box
+    it is attached to and then argues its case is a sentence nobody finishes.
+    Say what is wrong and what to do: "Arrived before it was ordered — fix the
+    date." The job card also checks the pair AS IT IS TYPED now
+    (`jobcard_form.html`), so in the ordinary case this message is the backstop
+    rather than the thing anybody reads.
     """
     today = timezone.localdate()
 
     if ordered and ordered > today:
-        return "Ordered date cannot be in the future."
+        return "Ordered date is in the future."
     if received and received > today:
-        return "Received date cannot be in the future."
+        return "Received date is in the future."
     if ordered and received and received < ordered:
-        return (
-            "Received date cannot be before the ordered date — "
-            "this part would have arrived before it was ordered."
-        )
+        return "Arrived before it was ordered — fix the date."
     return None

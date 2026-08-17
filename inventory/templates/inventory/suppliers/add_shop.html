@@ -24,9 +24,22 @@
                     <label class="form-label fw-bold">Address</label>
                     <textarea name="address" class="form-control form-control-lg bg-light border-0" rows="3">{{ address|default:'' }}</textarea>
                 </div>
+                {% comment %}
+                `px-5` and `flex-grow-1` on the same button are what broke this
+                on a phone: 3rem of padding each side is 96px of a ~187px button,
+                so "Create Shop" had ~90px left and broke across two lines —
+                inside a pill, which made the control half again as tall as
+                Cancel beside it. The padding is doing nothing here anyway, since
+                `flex-grow-1` is already what makes this the wide one.
+
+                `text-nowrap` on both so a label can never wrap again, whatever
+                the phone or the wording. Same edit in `edit_shop.html`, which
+                is the same row with different verbs — they sit one click apart
+                and must not start looking like two different forms.
+                {% endcomment %}
                 <div class="d-flex gap-2 pt-2">
-                    <a href="{% url 'supplier_shop_list' %}" class="btn btn-outline-secondary btn-lg fw-bold rounded-pill px-4">Cancel</a>
-                    <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-pill px-5 flex-grow-1">Create Shop</button>
+                    <a href="{% url 'supplier_shop_list' %}" class="btn btn-outline-secondary btn-lg fw-bold rounded-pill px-4 text-nowrap">Cancel</a>
+                    <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-pill flex-grow-1 text-nowrap">Create Shop</button>
                 </div>
             </form>
         </div>

@@ -978,59 +978,69 @@
         }
 
         /* ── What is unfilled ─────────────────────────────────────────────
-           Everything below is ONE shape repeated: a name, and red chips under
-           it naming what is missing. The card's own gaps (mileage, mechanic,
-           labour) have no name to hang off, so they are the chips alone.
+           ONE shape repeated: a box holding the thing and, in red, what is
+           wrong with it — "Wheel Bearing — no customer price".
+
+           NOTE, and it is not pedantry: do not put a real INVENTORY product's
+           name in a comment on this page, however illustrative. These are CSS
+           comments inside an inline <style>, so unlike the Django comments
+           everywhere else in this codebase they are SERVED — and this page's
+           whole rule about warehouse draws is that the branded SKU never
+           reaches a document the workshop hands out.
+           `test_the_category_prints_and_the_product_brand_does_not` searches
+           the whole page and caught exactly that, on the first draft of this
+           comment.
+
+           It was two lines per gap until 2026-08-17: the name, then small red
+           chips under it, under a section heading. Everything on screen was
+           true and none of it could be taken in at the counter with a customer
+           standing there, which is the only moment this dialog is ever read.
+           The section headings went with the chips; each row carries the icon
+           of the job-card section it belongs to instead.
 
            The same shape is drawn by the "Billed but not filled" container on
-           the Live Report, from the same `workshop/settlement.py` data. The
-           two are deliberately separate MARKUP — this page loads nothing from
+           the Live Report, from the same `workshop/settlement.py` data — the
+           phrases included, so one gap cannot be described two ways. The two
+           are deliberately separate MARKUP (this page loads nothing from
            anywhere and carries its own stylesheet inline, so an include would
-           still need the classes declared twice — but never separate RULES.
+           still need the classes declared twice) but never separate RULES.
            `workshop/tests/test_settlement_preflight.py` asserts both surfaces
            read the one function. */
-        .pf-chips {
+        .pf-gaps {
             display: flex;
-            flex-wrap: wrap;
-            gap: 5px;
+            flex-direction: column;
+            gap: 6px;
         }
 
-        /* Red, because every one of these is a box nobody filled in. They are
-           chips rather than sentences because five chips read in one sweep
-           where five sentences do not, and they wrap without ever pushing the
-           buttons off a phone. */
-        .pf-chips em {
-            font-style: normal;
-            font-size: 11px;
-            font-weight: 700;
-            color: #b91c1c;
+        .pf-gap {
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 3px 7px;
             background: #fef2f2;
             border: 1px solid #fecaca;
-            border-radius: 5px;
-            padding: 2px 7px;
-            white-space: nowrap;
+            border-radius: 8px;
+            padding: 6px 9px;
         }
 
-        .pf-sec { margin-top: 13px; }
-
-        .pf-sec-name {
-            font-size: 10.5px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            color: #94a3b8;
-            padding-bottom: 4px;
-            margin-bottom: 6px;
-            border-bottom: 1px solid #f1f5f9;
+        /* The glyph the job card heads that section with, so the row says
+           where to go as well as what is wrong. */
+        .pf-gap > svg {
+            width: 12px;
+            height: 12px;
+            flex: none;
+            align-self: center;
+            color: #b91c1c;
+            opacity: .55;
         }
-
-        .pf-row + .pf-row { margin-top: 8px; }
 
         /* A concern is free text staff write sentences into, so the name is
            clamped in CSS rather than truncated in Python — the stored wording
            is never what gets shortened, and two lines is enough to recognise
            which concern this is. */
-        .pf-row-name {
+        .pf-gap-name {
+            flex: 1 1 auto;
+            min-width: 0;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
@@ -1039,16 +1049,34 @@
             font-weight: 600;
             color: #1e293b;
             line-height: 1.35;
-            margin-bottom: 4px;
         }
 
-        /* Four buttons will not sit on one line on a phone at any sensible
-           size, and squeezing them produces four ambiguous stubs on the screen
-           where money is agreed. They stack — `column-reverse`, so the primary
-           action (last in the DOM, rightmost on a laptop) paints at the TOP,
-           under the thumb, with Cancel furthest from it. See the note beside
-           the buttons: the DOM order serves both layouts and must not be
-           shuffled. */
+        /* Wraps rather than truncates: a part missing four things has a long
+           phrase, and the phrase being readable is the whole point of the row. */
+        .pf-gap-miss {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #b91c1c;
+            line-height: 1.35;
+        }
+
+        /* The card's own boxes have no name to sit beside — the dialog IS
+           about this one card — so the phrase runs the width of the row. */
+        .pf-gap--card .pf-gap-miss { flex: 1 1 auto; }
+
+        /* THREE buttons — it was four until 2026-08-17, when "Settle without
+           completing" went; see the note beside them.
+
+           On a laptop they sit in one right-aligned row, weakest to strongest,
+           the same shape as the toolbar at the top of this page.
+
+           On a phone the owner's layout: the action on its own full-width row
+           at the TOP, under the thumb, and the two ways out side by side
+           beneath it. A grid rather than a column, because Cancel and Open job
+           card are short and equal in weight — stacking them made a four-row
+           tower on the one screen where somebody is standing at a counter. The
+           primary is hoisted with `order`, so the DOM keeps the laptop's
+           weakest→strongest reading and neither layout has to be given up. */
         .pf-foot {
             display: flex;
             flex-wrap: wrap;
@@ -1060,8 +1088,12 @@
         }
 
         @media (max-width: 520px) {
-            .pf-foot { flex-direction: column-reverse; }
+            .pf-foot {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+            }
             .pf-foot .btn { width: 100%; justify-content: center; }
+            .pf-foot .pf-go { grid-column: 1 / -1; order: -1; }
         }
 
         /* Carried into the payment box, so the decision made a tap ago is still
@@ -1073,15 +1105,64 @@
             color: #b45309;
         }
 
+        /* ── The toolbar on a phone: TWO deliberate rows ──────────────────
+           Five controls will not sit on one line at 375px, so they wrapped —
+           and wrapping a flex row with a `flex: 1 1 auto` spacer in the middle
+           of it produces whatever happens to fit: the owner's screenshot has
+           Back and the status chip stranded on row one with Edit Job shoved to
+           the far right of it, then two buttons of different widths beneath.
+           Nothing is aligned with anything and the widest button is the one
+           that matters least.
+
+           So the break is CHOSEN rather than left to the browser. The spacer
+           becomes a full-width zero-height line break — which is what it
+           already is on a laptop, just made explicit — putting
+
+             row 1   where you came from, and what this bill's state is
+             row 2   the three things you can do, in equal columns
+
+           `flex: 1 1 0` with `min-width: max-content` is what makes them equal
+           when they fit and wrap intact when they do not: no label is ever
+           truncated, which on a row of verbs is the difference between a button
+           and a guess. The fleet card's "Settle on Fleet Account" is the case
+           that needs it — it takes a row of its own and Print drops below.
+
+           `Print / Save PDF` sheds its second half here: the icon is a printer
+           and the sheet is on screen behind it, so "Print" is not ambiguous,
+           and the full label alone is wider than a third of a phone. */
         @media (max-width: 640px) {
             .bar {
-                gap: 6px;
+                gap: 8px 6px;
                 padding: 8px 10px;
+            }
+
+            .bar-spacer {
+                flex: 0 0 100%;
+                height: 0;
+                margin: 0;
             }
 
             .btn {
                 padding: 0 12px;
                 font-size: 13px;
+            }
+
+            /* Scoped to the toolbar on purpose. `.btn` is also the dialogs'
+               button, and the settle dialog's footer has its own phone layout
+               (a full-width action over two ways out) that this would fight. */
+            .bar .btn {
+                flex: 1 1 0;
+                min-width: max-content;
+            }
+
+            /* Back / Home is row one's own, beside the chip, and stays the
+               size of its word — it is not one of the three actions. */
+            .bar > .btn:first-child {
+                flex: 0 0 auto;
+            }
+
+            .btn-print-long {
+                display: none;
             }
         }
     </style>
@@ -1095,10 +1176,29 @@
     ========================================================================
     {% endcomment %}
     <div class="bar no-print">
+        {% comment %}
+        There is ALWAYS a way off this page, and that is the point of the
+        `{% else %}`.
+
+        This template is standalone — it does not extend base.html, so it
+        carries no nav bar and no drawer. The Back button used to be the only
+        exit and it renders only when the page was opened with a `?back=`. Every
+        route that does not carry one therefore ended here: settling a bill
+        redirects to this URL with no `back` (the owner's report), and so does
+        opening an invoice from a bookmark or a notification. The browser's own
+        Back button then reposts or returns to a stale copy of the card that was
+        just settled. Home is the fallback, never a second button beside Back —
+        one exit, in one place, whichever it is.
+        {% endcomment %}
         {% if back_url %}
         <a href="{{ back_url }}" class="btn btn-ghost">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
             Back
+        </a>
+        {% else %}
+        <a href="{% url 'home' %}" class="btn btn-ghost">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.4 15 7.6l-.93 1.05L13 7.7V14a1 1 0 0 1-1 1H9.6v-4.2H6.4V15H4a1 1 0 0 1-1-1V7.7l-1.07.95L1 7.6 8 1.4z"/></svg>
+            Home
         </a>
         {% endif %}
 
@@ -1140,7 +1240,7 @@
 
         <button type="button" class="btn btn-primary" onclick="window.print()">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
-            Print / Save PDF
+            Print<span class="btn-print-long"> / Save PDF</span>
         </button>
     </div>
 
@@ -1420,49 +1520,45 @@
             </div>
 
             {% comment %}
-            The card's own boxes have no name to hang off — mileage, mechanic
-            and the labour charge belong to the whole card — so they are the
-            chips alone, on one wrapping row.
+            One box per gap, each holding the thing and what is wrong with it.
+            The icon in front of a row is the glyph the job card heads that
+            section with, so the row says which part of the card to open.
+
+            The card's own boxes — mileage, mechanic, the labour charge —
+            belong to the whole card rather than to any one row, so that box
+            carries the phrase alone and no icon.
             {% endcomment %}
-            {% if u.card %}
-            <div class="pf-chips">{% for tag in u.card %}<em>{{ tag }}</em>{% endfor %}</div>
-            {% endif %}
+            <div class="pf-gaps">
+                {% if u.card %}
+                <div class="pf-gap pf-gap--card">
+                    <span class="pf-gap-miss">{{ u.card_missing }}</span>
+                </div>
+                {% endif %}
 
-            {% if u.concerns %}
-            <div class="pf-sec">
-                <div class="pf-sec-name">Customer Concerns</div>
                 {% for concern in u.concerns %}
-                <div class="pf-row">
-                    <div class="pf-row-name">{{ concern.text|default:"Concern" }}</div>
-                    <div class="pf-chips"><em>{{ concern.status }}</em></div>
+                <div class="pf-gap">
+                    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6l-4 3V3a1 1 0 0 1 1-1zm2 3v1.3h8V5H4zm0 3v1.3h5.5V8H4z"/></svg>
+                    <span class="pf-gap-name">{{ concern.text|default:"Concern" }}</span>
+                    <span class="pf-gap-miss">{{ concern.missing }}</span>
                 </div>
                 {% endfor %}
-            </div>
-            {% endif %}
 
-            {% if u.inventory %}
-            <div class="pf-sec">
-                <div class="pf-sec-name">Inventory Items</div>
                 {% for part in u.inventory %}
-                <div class="pf-row">
-                    <div class="pf-row-name">{{ part.name }}</div>
-                    <div class="pf-chips">{% for tag in part.tags %}<em>{{ tag }}</em>{% endfor %}</div>
+                <div class="pf-gap">
+                    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .6 15 4v8L8 15.4.98 12V4L8 .6zM2.4 5.2v6l4.9 2.35V7.55L2.4 5.2zm11.2 0L8.7 7.55v6L13.6 11.2v-6zM8 2.1 3.5 4.25 8 6.4l4.5-2.15L8 2.1z"/></svg>
+                    <span class="pf-gap-name">{{ part.name }}</span>
+                    <span class="pf-gap-miss">{{ part.missing }}</span>
                 </div>
                 {% endfor %}
-            </div>
-            {% endif %}
 
-            {% if u.spares %}
-            <div class="pf-sec">
-                <div class="pf-sec-name">Spare Parts</div>
                 {% for part in u.spares %}
-                <div class="pf-row">
-                    <div class="pf-row-name">{{ part.name }}</div>
-                    <div class="pf-chips">{% for tag in part.tags %}<em>{{ tag }}</em>{% endfor %}</div>
+                <div class="pf-gap">
+                    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.6 1h6.8l3.4 6-3.4 6H4.6L1.2 7l3.4-6zm3.4 3.6A2.4 2.4 0 1 0 8 9.4a2.4 2.4 0 0 0 0-4.8z"/></svg>
+                    <span class="pf-gap-name">{{ part.name }}</span>
+                    <span class="pf-gap-miss">{{ part.missing }}</span>
                 </div>
                 {% endfor %}
             </div>
-            {% endif %}
             {% endif %}
             {% endwith %}
         </div>
@@ -1471,21 +1567,32 @@
             <a class="btn btn-edit" href="{% url 'jobcard_edit' jobcard.pk %}">Open job card</a>
             {% if not readiness.is_completed %}
             {% comment %}
-            Order is load-bearing, and it inverts. On a wide screen this row
-            reads left to right weakest → strongest, the same shape as the
-            toolbar at the top of this page. On a phone `.pf-foot` becomes
-            `column-reverse`, so the LAST child paints at the TOP — which puts
-            the primary action under the thumb and Cancel furthest from it.
-            Swapping these two buttons breaks both at once.
+            ONE way forward, and it completes the card.
 
-            "Complete & settle" is the one gap this screen can close from where
-            it stands: it sets the hidden `complete_card` field, which
-            `update_bill_status` reads.
+            There used to be two: "Settle without completing" beside this
+            button. The owner asked what it was for, which is the right
+            question — a walk-in has exactly one payment event and it happens at
+            pickup, so by the time anyone is on this screen the car is going
+            out. Settling a card while leaving it on the board says the workshop
+            still has a car it does not have, and that card then sits on the
+            home board and in every "in workshop" count until somebody notices.
+            The escape hatch existed for a case this business does not have.
+
+            Nothing is trapped by removing it: marking a card completed is the
+            one action here that is NOT one-way — Undo Completion is in the ⋮
+            menu on the Completed list, for Office and Owner.
+
+            "Complete & settle" sets the hidden `complete_card` field, which
+            `update_bill_status` reads BEFORE the money moves, so a card that is
+            genuinely finished stays marked finished even if the settlement then
+            fails.
+
+            `pf-go` is what the phone layout hoists to the top row; the DOM
+            order stays weakest → strongest for the laptop.
             {% endcomment %}
-            <button type="button" class="btn btn-ghost" id="pfContinue">Settle without completing</button>
-            <button type="button" class="btn btn-primary" id="pfCompleteSettle">Complete &amp; settle</button>
+            <button type="button" class="btn btn-primary pf-go" id="pfCompleteSettle">Complete &amp; settle</button>
             {% else %}
-            <button type="button" class="btn btn-primary" id="pfContinue">Continue settling</button>
+            <button type="button" class="btn btn-primary pf-go" id="pfContinue">Continue settling</button>
             {% endif %}
         </div>
     </dialog>

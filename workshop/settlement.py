@@ -61,16 +61,60 @@ DATES = 'Dates'
 SHOP_PRICE = 'Shop Price'
 CUSTOMER_PRICE = 'Customer Price'
 
+#: The same gap said as a PHRASE, and the phrase is what both screens now print.
+#:
+#: Until 2026-08-17 a gap was drawn as the name of the thing on one line and
+#: small red chips on the line under it — so one part missing one figure was two
+#: lines and three elements, and a car with a concern and two parts was a
+#: fourteen-line block. The owner read that back as "lot of rows and texts to
+#: confuse user", and the instruction was to put the thing and what is wrong
+#: with it in ONE box: "Castrol Edge 5W-30 — no customer price".
+#:
+#: DERIVED from the labels above rather than written out beside them. The labels
+#: are still the identity of a gap — `count` counts them, and the tests name
+#: them — so a second hand-written list would be the same vocabulary twice,
+#: free to drift into a screen that chases "Shop Price" in one place and "no
+#: supplier price" in another.
+MISSING = {
+    MILEAGE: 'no mileage',
+    MECHANIC: 'no mechanic',
+    JOB_AMOUNT: 'no job amount',
+    SHOP: 'no shop',
+    DATES: 'no dates',
+    SHOP_PRICE: 'no shop price',
+    CUSTOMER_PRICE: 'no customer price',
+}
+
+#: A concern has exactly one thing wrong with it and this is it.
+#:
+#: It replaces the concern's STATUS, which both screens printed until
+#: 2026-08-17 ("Pending", "Working"). That distinction is real while the car is
+#: on the floor and meaningless the moment it has been billed and driven away:
+#: nobody is "working" on a car that left last Tuesday, so the status read as a
+#: claim about the present that was not true. What is true, and all anyone can
+#: act on, is that it was never marked fixed.
+NOT_FIXED = 'not fixed'
+
 #: What a part with no name is called. `spare_part_name` is nullable, and a row
 #: with an empty headline reads as something that failed to load.
 UNNAMED = 'Unnamed part'
 
 
+def phrase(tags):
+    """The chips for one row, as one short phrase — "no shop, no dates"."""
+    return ', '.join(MISSING[tag] for tag in tags if tag in MISSING)
+
+
 @dataclass(frozen=True)
 class PartGap:
-    """One part, and the chips naming what is not filled in on it."""
+    """One part, and what is not filled in on it."""
     name: str
     tags: tuple = ()
+
+    @property
+    def missing(self):
+        """"no shop, no dates" — printed beside the name, in one box."""
+        return phrase(self.tags)
 
 
 @dataclass(frozen=True)
@@ -78,16 +122,20 @@ class ConcernGap:
     """
     One concern nobody has marked fixed.
 
-    Carries the wording as well as the status, deliberately, and this reverses
-    an earlier decision. The old settle dialog named concerns by status alone
-    ("1 Working") because quoting a TextField into a dialog read in two seconds
-    cost three lines per concern. The chase list is read differently — somebody
-    is deciding which car to walk over to — and there the wording is the whole
-    point. Both surfaces clamp it in CSS rather than truncating it here, so the
-    stored text is never what gets shortened.
+    Carries the WORDING, and that reverses the settle dialog's first rule. It
+    named concerns by status alone ("1 Working") because quoting a TextField
+    into a dialog read in two seconds cost three lines per concern. Both
+    surfaces are read differently now — somebody is deciding which car to walk
+    over to — and there the wording is the whole point. They clamp it in CSS
+    rather than truncating it here, so the stored text is never what gets cut.
+
+    It no longer carries the status: see `NOT_FIXED`.
     """
     text: str
-    status: str
+
+    @property
+    def missing(self):
+        return NOT_FIXED
 
 
 @dataclass(frozen=True)
@@ -105,6 +153,17 @@ class Unfilled:
 
     def __bool__(self):
         return bool(self.card or self.concerns or self.inventory or self.spares)
+
+    @property
+    def card_missing(self):
+        """
+        The card's own boxes, as one phrase — "no mileage, no mechanic".
+
+        They belong to the whole card rather than to any one row, so unlike
+        every other gap here they have no name to sit beside. The box is the
+        car, so the row is the phrase alone.
+        """
+        return phrase(self.card)
 
     @property
     def count(self):
@@ -152,7 +211,7 @@ def unfilled(jobcard):
 
     # ---- The work --------------------------------------------------------
     concerns = tuple(
-        ConcernGap(text=(c.concern_text or '').strip(), status=c.get_status_display())
+        ConcernGap(text=(c.concern_text or '').strip())
         for c in jobcard.concerns.all()
         if c.status != 'FIXED'
     )

@@ -74,6 +74,25 @@
         flex: 1;
     }
 
+    {% comment %}
+    The car's name WRAPS to a second line, and the second line is RESERVED
+    whether or not it is used.
+
+    It was one line with an ellipsis, so "Mercedes-Benz C-Class" arrived as
+    "Mercedes-Benz C…" — on a card whose whole job is saying which car was
+    finished, in a three-across grid where the column is ~330px and most premium
+    makes do not fit. That is the card failing at its one job.
+
+    Reserving the height is what the grid needs and the dashboard does not.
+    These cards sit three to a row in a plain `row g-3`, each sized to its own
+    content, so a wrapped name on one card and a short name on its two
+    neighbours draws a row of three different heights — and down a page of
+    fifteen that raggedness is the first thing the eye catches and it means
+    nothing. `min-height` of exactly two lines makes every card the same height
+    again, at the cost of ~23px on the short ones. The dashboard's list is one
+    column, where a taller card has nothing beside it to be ragged against, so
+    it wraps without reserving.
+    {% endcomment %}
     .del-vehicle-name {
         font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif);
         font-size: 1.15rem;
@@ -81,9 +100,11 @@
         letter-spacing: -0.015em;
         color: var(--color-text, #0f172a);
         line-height: 1.25;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        min-height: 2.5em;   /* 2 × line-height — see above */
     }
 
     .del-reg-row {

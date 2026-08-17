@@ -223,13 +223,21 @@ document.addEventListener('DOMContentLoaded', function () {
                         opt.style.cursor = 'pointer';
 
                         // Stock can be zero or negative — an overdraw waiting on its
-                        // supplier bill. Show it plainly rather than hiding the
-                        // product: the part may well be physically on the shelf.
+                        // supplier bill. Neither hides the product: the part may
+                        // well be physically on the shelf.
                         const stock = parseFloat(item.stock);
-                        const tone = stock <= 0 ? 'text-danger' : 'text-muted';
+
+                        // The suggestion names the product and its category, and
+                        // NOT the shelf count (2026-08-17, on the owner's
+                        // instruction: "it's everywhere, it's interrupting").
+                        // The count belongs in exactly one place — the line
+                        // under the box, written the instant a product is
+                        // picked, gone again once the card is saved. Printing it
+                        // on every row of a dropdown as well made a number that
+                        // matters once into the loudest thing in the list, and
+                        // put it in front of somebody who is still reading names.
                         opt.innerHTML =
                             `<i class="bi bi-box-seam me-2"></i><span class="fw-semibold">${item.name}</span>` +
-                            `<span class="${tone} ms-2" style="font-size:0.75rem;">${item.stock} in stock</span>` +
                             `<div class="text-muted" style="font-size:0.7rem;">${item.category}</div>`;
 
                         opt.addEventListener('click', function (e) {

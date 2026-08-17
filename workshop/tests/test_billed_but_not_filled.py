@@ -117,7 +117,12 @@ class BilledButNotFilledTests(LiveReportTestCase):
 
     # ── what it says is missing ────────────────────────────────────────
 
-    def test_the_cards_own_boxes_are_chips_with_no_name_over_them(self):
+    def test_the_cards_own_boxes_are_one_phrase_with_no_name_over_them(self):
+        """
+        Mileage, mechanic and the labour charge belong to the whole card rather
+        than to any one row, so they have nothing to sit beside — the box is the
+        car. One row, one phrase, no name.
+        """
         card = self._billed(mileage='', lead_mechanic=None)
         JobCardLabourItem.objects.create(job_card=card, job_description='Brake service')
         card.labour_amount = Decimal('0')
@@ -125,27 +130,31 @@ class BilledButNotFilledTests(LiveReportTestCase):
 
         box = self._box(self._page(self.owner))
 
-        self.assertIn('<em>Mileage</em>', box)
-        self.assertIn('<em>Mechanic</em>', box)
-        self.assertIn('<em>Job Amount</em>', box)
+        self.assertIn('no mileage, no mechanic, no job amount', box)
 
     def test_a_parts_only_bill_is_not_nagged_about_labour(self):
         """Zero labour is the CORRECT answer on a card with no work listed on
         it, and saying so on every one of them is how this container would come
         to be scrolled past without being read."""
         self._billed(mileage='', labour_amount=Decimal('0'))
-        self.assertNotIn('<em>Job Amount</em>', self._box(self._page(self.owner)))
+        self.assertNotIn('no job amount', self._box(self._page(self.owner)))
 
-    def test_an_unfixed_concern_is_named_and_carries_its_status(self):
+    def test_an_unfixed_concern_is_named_and_says_it_is_not_fixed(self):
+        """
+        The wording and "not fixed", in ONE box. It used to be the wording on
+        one line with the concern's STATUS as a chip on the line under it —
+        which was two lines for one fact, and the fact it printed ("Working")
+        is a claim about the present that stopped being true when the car left.
+        """
         card = self._billed()
         JobCardConcern.objects.create(
             job_card=card, concern_text='Brake noise at low speed', status='WORKING')
 
         box = self._box(self._page(self.owner))
 
-        self.assertIn('Customer Concerns', box)
         self.assertIn('Brake noise at low speed', box)
-        self.assertIn('<em>Working</em>', box)
+        self.assertIn('not fixed', box)
+        self.assertNotIn('Working', box)
 
     def test_a_fixed_concern_puts_the_card_on_no_list(self):
         card = self._billed()
@@ -154,6 +163,7 @@ class BilledButNotFilledTests(LiveReportTestCase):
         self.assertEqual(self._regs(self._page(self.owner)), [])
 
     def test_a_spare_names_itself_and_every_box_left_empty_on_it(self):
+        """One box: the part, then everything missing from it as one phrase."""
         card = self._billed()
         JobCardSpareItem.objects.create(
             job_card=card, source=SHOP,
@@ -161,16 +171,14 @@ class BilledButNotFilledTests(LiveReportTestCase):
 
         box = self._box(self._page(self.owner))
 
-        self.assertIn('Spare Parts', box)
         self.assertIn('Wheel Bearing', box)
-        for chip in ('Shop', 'Dates', 'Shop Price', 'Customer Price'):
-            self.assertIn('<em>%s</em>' % chip, box)
+        self.assertIn('no shop, no dates, no shop price, no customer price', box)
 
-    def test_the_two_dates_are_chased_as_ONE_chip(self):
+    def test_the_two_dates_are_chased_as_ONE_thing(self):
         """
         A spare is finished when it has been ordered AND received, so half
         filled is still incomplete — and which of the two is missing is answered
-        by opening the date panel on the job card, not by a second chip here.
+        by opening the date panel on the job card, not by saying it twice here.
         """
         card = self._billed()
         JobCardSpareItem.objects.create(
@@ -181,7 +189,7 @@ class BilledButNotFilledTests(LiveReportTestCase):
 
         box = self._box(self._page(self.owner))
 
-        self.assertEqual(box.count('<em>Dates</em>'), 1)
+        self.assertEqual(box.count('no dates'), 1)
 
     def test_a_warehouse_draw_is_chased_ONLY_for_its_customer_price(self):
         """
@@ -198,12 +206,10 @@ class BilledButNotFilledTests(LiveReportTestCase):
 
         box = self._box(self._page(self.owner))
 
-        self.assertIn('Inventory Items', box)
         self.assertIn('Liqui Moly 5W-30', box)
-        self.assertIn('<em>Customer Price</em>', box)
-        self.assertNotIn('<em>Shop</em>', box)
-        self.assertNotIn('<em>Dates</em>', box)
-        self.assertNotIn('<em>Shop Price</em>', box)
+        self.assertIn('no customer price', box)
+        self.assertNotIn('no shop', box)      # covers "no shop price" too
+        self.assertNotIn('no dates', box)
 
     def test_a_priced_draw_puts_the_card_on_no_list(self):
         card = self._billed()
@@ -257,9 +263,9 @@ class BilledButNotFilledTests(LiveReportTestCase):
         """
         A rebuild in the live data carries 91 spares. A cap is safe here for the
         usual reason: no total sits above these rows, the exact remainder is
-        printed rather than implied, the section heading still reports the true
-        count so the two add back up, and every hidden row is on the job card
-        the header already opens.
+        PRINTED rather than implied, and every hidden row is on the job card the
+        card already opens — so the rows on screen plus the "+N more" line are
+        still the true count, which is the property that matters.
         """
         from workshop.views.dashboard import UNFILLED_ROW_CAP
 
@@ -270,7 +276,8 @@ class BilledButNotFilledTests(LiveReportTestCase):
 
         box = self._box(self._page(self.owner))
 
-        self.assertEqual(box.count('class="lr-bill-row"'), UNFILLED_ROW_CAP)
-        self.assertIn('+3 more — open the card', box)
-        # The heading still reports the TRUE count, so the two add back up.
-        self.assertIn('>%d</span>' % (UNFILLED_ROW_CAP + 3), box)
+        # `lr-gap-name` rather than `lr-gap`: the card's own gaps are a row too
+        # and carry no name, so counting the boxes would count that one as a
+        # part on any card that also has an empty header.
+        self.assertEqual(box.count('class="lr-gap-name"'), UNFILLED_ROW_CAP)
+        self.assertIn('+3 more parts', box)

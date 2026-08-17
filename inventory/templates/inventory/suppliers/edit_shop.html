@@ -19,9 +19,10 @@
                     <label class="form-label fw-bold">Address</label>
                     <textarea name="address" class="form-control form-control-lg bg-light border-0" rows="3">{{ shop.address|default:'' }}</textarea>
                 </div>
+                {# Same row, same fix as `add_shop.html` — see the note there. #}
                 <div class="d-flex gap-2 pt-2">
-                    <a href="{% url 'supplier_shop_detail' shop.id %}" class="btn btn-outline-secondary btn-lg fw-bold rounded-pill px-4">Cancel</a>
-                    <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-pill px-5 flex-grow-1">Save Changes</button>
+                    <a href="{% url 'supplier_shop_detail' shop.id %}" class="btn btn-outline-secondary btn-lg fw-bold rounded-pill px-4 text-nowrap">Cancel</a>
+                    <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-pill flex-grow-1 text-nowrap">Save Changes</button>
                 </div>
             </form>
 

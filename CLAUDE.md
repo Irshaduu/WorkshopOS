@@ -707,31 +707,37 @@ about to correct one of these, you are about to break the business:
   (d) **A card with no job lines is NOT nagged about labour.** ₹0 labour is the
   correct answer on a parts-only bill; the gap is reported only when work was
   *recorded* and left unpriced.
-  **It is a CHECKLIST, not prose — labels and chips, no sentences, no tinted
-  boxes.** Rewritten 2026-08-12 on the owner's instruction after the first
-  build explained each gap in a sentence: every sentence was true and the whole
-  thing was four paragraphs deep, which on the one screen where somebody is
-  standing at a counter with a customer is the same as saying nothing. `Gap`
-  therefore carries a short `label` ("No mechanic assigned", "Spare parts") and
-  a tuple of `tags` — the chips naming exactly what is missing. Three
-  consequences. **The parts checks are GROUPED into one row per section**, not
-  one row per check: five lines all beginning "Spare parts" is five times the
-  height for the one fact that the parts section is unfinished, and it buries
-  the rows above it, which are about something else. **A concern is named by
-  its STATUS, never its wording** — `concern_text` is a TextField staff write
-  sentences into, and quoting one costs three lines while still describing only
-  one of them; the chips read "1 Pending", "2 Working". And **the uncompleted
-  flag has no filled panel behind it** — a tinted box made it the loudest thing
-  on a dialog that is mostly a list, and pushed the list below the fold. The
-  body's `max-height` is `min(62vh, calc(100vh - 330px))`, sized so the worst
-  card measured (six rows, thirteen chips, 483px) does not scroll on a 375×812
-  phone; it is a subtraction as well as a fraction because the head and the
-  four stacked buttons do not shrink with the viewport. `test_a_label_is_a_
-  phrase_not_a_sentence` keeps prose out.
-  **The four buttons' DOM order serves both layouts at once and must not be
-  shuffled**: left-to-right weakest→strongest on a laptop, and `column-reverse`
-  on a phone so the primary paints at the TOP under the thumb with Cancel
-  furthest away. Verified at 375×667 and 375×812.
+  **It is a CHECKLIST, not prose — no sentences, no tinted boxes.** Rewritten
+  2026-08-12 on the owner's instruction after the first build explained each gap
+  in a sentence: every sentence was true and the whole thing was four paragraphs
+  deep, which on the one screen where somebody is standing at a counter with a
+  customer is the same as saying nothing. **The uncompleted flag has no filled
+  panel behind it** — a tinted box made it the loudest thing on a dialog that is
+  mostly a list, and pushed the list below the fold. The body's `max-height` is
+  `min(62vh, calc(100vh - 330px))`, sized so the worst card measured (six rows,
+  thirteen chips, 483px) does not scroll on a 375×812 phone; it is a subtraction
+  as well as a fraction because the head and the buttons do not shrink with the
+  viewport. `test_a_chip_is_a_label_not_a_sentence` keeps prose out.
+  *Superseded 2026-08-17 — see "One gap, one box" below for how a gap is
+  drawn now, and for why a concern is named by its wording rather than by its
+  status.*
+  **There are THREE buttons and the DOM order serves both layouts at once, so
+  it must not be shuffled**: left-to-right weakest→strongest on a laptop
+  (Cancel · Open job card · the action), and on a phone a two-column grid with
+  the action hoisted by `order` to a full-width row at the TOP under the thumb
+  and the two ways out side by side beneath it. Verified at 375×812 (action
+  297px wide on its own row; Cancel and Open job card level at 144px each) and
+  at 1280px (one right-aligned row).
+  **"Settle without completing" was REMOVED on 2026-08-17**, on the owner's
+  question about what it was for — which was the right question. A walk-in has
+  exactly one payment event and it happens at pickup, so by the time anybody is
+  on this screen the car is going out; settling while leaving the card open
+  says the workshop still holds a car it does not, and that card then sits on
+  the home board and in every "in workshop" count until somebody notices. It
+  traps nobody: completing a card is the one action here that is **not**
+  one-way, and Undo Completion is in the ⋮ menu on the Completed list. Two ways
+  out are still on the dialog, so this is not the checklist starting to block.
+  Guarded by `test_there_is_no_way_to_settle_and_leave_the_car_on_the_board`.
   **An uncompleted card is kept apart from the list, with its own button.** It
   is not one more unfilled box — it is a contradiction (money taken for a car
   the board still shows as being worked on) and it is the only item here fixable
@@ -918,6 +924,42 @@ about to correct one of these, you are about to break the business:
   Note `src=` is legitimately present — the page loads its own
   `js/sound.js` off `/static/`, which is this server; the *printed sheet*
   carries no reference at all, which is asserted separately.
+
+- **The invoice toolbar breaks into TWO CHOSEN rows on a phone.** Added
+  2026-08-17 on the owner's report. Five controls will not sit on one line at
+  375px, so they wrapped — and wrapping a flex row that has a `flex: 1 1 auto`
+  spacer in the middle of it gives you whatever happens to fit: Back and the
+  status chip stranded on row one with Edit Job shoved to the far right of it,
+  then two buttons of different widths beneath. Nothing lined up with anything
+  and the widest button was the one that mattered least.
+  The break is now chosen. **`.bar-spacer` becomes `flex: 0 0 100%; height: 0`
+  below 640px** — a full-width line break, which is what it already is on a
+  laptop, just made explicit — so row 1 is *where you came from and what state
+  this bill is in* and row 2 is *the three things you can do*, in equal columns
+  (measured 114px each at 375px).
+  Three things are load-bearing. **`flex: 1 1 0` with `min-width: max-content`**
+  is what makes them equal when they fit and wrap INTACT when they do not: no
+  label is ever truncated, which on a row of verbs is the difference between a
+  button and a guess. The fleet card is the case that needs it — "Settle on
+  Fleet Account" takes most of row 2 and Print drops to a row of its own
+  (verified; no overflow at 375px). **The rule is scoped `.bar .btn`, not
+  `.btn`** — the same class is the dialogs' button, and the settle dialog's
+  footer has its own phone layout that this would fight. And **"Print / Save
+  PDF" sheds its second half** into a `.btn-print-long` span: the icon is a
+  printer and the sheet is on screen behind it, so "Print" is not ambiguous, and
+  the full label alone is wider than a third of a phone. Consequence for tests:
+  the full wording is no longer one contiguous string in the markup, so
+  `test_the_controls_are_all_marked_no_print` checks that button by its ACTION
+  (`window.print()`) — "Print" on its own also matches `@media print` in the
+  stylesheet and would prove nothing.
+  **`estimate_print.html` carries the identical block**, and that is the point
+  rather than a copy-paste slip: the estimate is handed over first and the bill
+  follows it for the same car, so the two screens are opened days apart by the
+  same person and a toolbar that rearranges itself between them reads as two
+  different products. The two templates already share `workshop/invoice.py`, the
+  letterhead include and the row-padding rules. Verified at 375px — invoice:
+  Home + chip, then three 114px columns; estimate: All Estimates + chip, then
+  two 175px columns; neither overflows.
 
 - **The invoice page's controls live outside the paper.** Added 2026-08-04. It used to pull Bootstrap CSS, Bootstrap
   JS and an icon font from a CDN — which bought one modal and cost control over
@@ -1854,18 +1896,18 @@ about to correct one of these, you are about to break the business:
   match nothing. The view still drops any card whose computed gaps come back
   empty, so a drift can only ever show FEWER cards — never an empty red box,
   which is how an owner learns to stop reading a warning.
-  (c) **The two spare DATES are ONE chip.** A part is finished when it has been
+  (c) **The two spare DATES are ONE gap.** A part is finished when it has been
   ordered *and* received, so half-filled is still incomplete; which of the two
   is missing is answered by opening the date panel on the card. The old flat
   list's separate "Not received" chip went with it — status without dates and
   dates without status are the same fact, and `spare_autofill.js` derives one
   from the other anyway.
-  (d) **A concern is now named by its WORDING as well as its status**, which
-  reverses the old dialog's rule. There, quoting a TextField cost three lines
-  of a dialog read in two seconds. Here somebody is deciding which car to walk
-  over to, and the wording is the whole point. Both surfaces clamp it in CSS,
-  so the stored text is never what gets shortened.
-  (e) **`count` is in CHIPS, not rows** — a spare missing four things is four
+  (d) **A concern is named by its WORDING**, which reverses the old dialog's
+  rule. There, quoting a TextField cost three lines of a dialog read in two
+  seconds. Here somebody is deciding which car to walk over to, and the wording
+  is the whole point. Both surfaces clamp it in CSS, so the stored text is
+  never what gets shortened. It carries no STATUS — see "One gap, one box".
+  (e) **`count` is in GAPS, not rows** — a spare missing four things is four
   problems, and that number is what says whether this is a typo or a card
   nobody filled in.
   (f) **Paginated, not windowed by date.** It is a queue to be worked down; the
@@ -1873,6 +1915,54 @@ about to correct one of these, you are about to break the business:
   hidden behind a filter that would have to be widened to find the oldest and
   worst cards. Sections cap at `UNFILLED_ROW_CAP` (8) with the remainder named.
   Guarded by `workshop/tests/test_billed_but_not_filled.py`.
+
+- **ONE GAP, ONE BOX — and it holds the thing AND what is wrong with it.**
+  Added 2026-08-17 on the owner's instruction, and it governs **both** surfaces
+  above: the "Billed but not filled" container and the settle dialog.
+  A gap used to be drawn as the name of the thing on one line with small red
+  chips on the line beneath it, under a section heading carrying a count. One
+  part missing one figure cost three lines and five elements, and a car with a
+  concern and two parts was a fourteen-line block. Everything on it was true and
+  none of it could be taken in at a glance, which the owner reported exactly:
+  "lot of rows and texts to confuse user". A row now reads
+  **"Castrol Edge 5W-30 — no customer price"**, in one bordered box.
+  Six things hold it up.
+  (a) **The phrases live in `settlement.MISSING` and are DERIVED from the chip
+  labels**, not written out beside them. The labels are still a gap's identity —
+  `count` counts them and the tests name them — so a second hand-written list
+  would be one vocabulary twice, free to drift into a screen that chases "Shop
+  Price" here and "no supplier price" there. `PartGap.missing`,
+  `ConcernGap.missing` and `Unfilled.card_missing` are the only things either
+  template prints.
+  (b) **A concern says "not fixed", and its STATUS is gone from the module.**
+  Dropping it is more correct rather than merely shorter: PENDING vs WORKING is
+  a real distinction while the car is on the floor, and the moment it has been
+  billed and driven away "Working" is a claim about the present that is not true
+  — nobody is working on a car that left last Tuesday. What is true, and the
+  only thing anyone can act on, is that it was never marked fixed.
+  (c) **The SECTION HEADINGS went with the chips.** Each row carries the icon of
+  the job-card section it belongs to instead — the same glyphs
+  `jobcard_form.html` heads Customer Concerns / Inventory Items / Spare Parts
+  with — so the icon says where to go and costs a line of type rather than a
+  line of the page. The heading's count went too, and the capping rule survives
+  it intact: a capped section still prints its exact remainder, so the visible
+  rows plus "+N more" are the true total.
+  (d) **On the Live Report each car is its own CARD.** "Need separation between
+  cars" was the other half of the instruction — a hairline between rows ran a
+  list of four together as one wall of red.
+  (e) **The tint INVERTS between the two surfaces' chips and these boxes, and
+  that is deliberate.** A chip was white-on-red because it sat directly on the
+  section's red wash, where a red chip is a smudge. These boxes sit on a white
+  card, so a faint red ground is what separates them and the red is spent on the
+  words that say what is missing.
+  (f) **The phrase WRAPS, it never truncates.** Measured at 375px: an ordinary
+  row is one line (31px), a part missing two things wraps to two, and the worst
+  case — a part missing all four — is three. The phrase being readable is the
+  whole point of the row.
+  The two templates stay separate MARKUP (the invoice loads nothing from
+  anywhere and carries its stylesheet inline, so an include would still declare
+  the classes twice) but never separate RULES;
+  `test_the_dialog_prints_the_phrases_the_module_names` is what says so.
 
 - **The settle dialog is AMBER for a question and RED for a warning.** Added
   2026-08-16 with the above. An uncompleted card on its own is a contradiction
@@ -2453,6 +2543,14 @@ about to correct one of these, you are about to break the business:
   **The empty div still reserves its height** — that rule is untouched and is
   the whole reason the div stays: a line that appears when it is written to is a
   row that jumps under the finger aiming at it.
+  **The PICKER'S OWN SUGGESTIONS stopped printing it too, on 2026-08-17** ("it's
+  everywhere, it's interrupting"). A dropdown row now carries the product and its
+  category and nothing else. That is the same rule finished rather than a second
+  one: the count belongs in exactly ONE place — under the box, the instant a
+  product is chosen, gone once the card is saved — and printing it on every row
+  of a list somebody is still reading NAMES in made a number that matters once
+  into the loudest thing on screen. `script.js` still parses `item.stock`,
+  because the hint line under the box is written from the same response.
 
 - **A part cannot arrive before it was ordered, and the rule lives in
   `workshop/spare_dates.py`.** Added 2026-08-16, on the owner's report
@@ -2473,6 +2571,39 @@ about to correct one of these, you are about to break the business:
   `row_label()` contract, so the error summary names the PART rather than "row
   7". A row marked DELETE is not argued with. Guarded by
   `workshop/tests/test_spare_dates.py`.
+  **Said WHILE it is typed, and said SHORT — both added 2026-08-17 on the
+  owner's report** ("this screen totally confusing, lot of texts"). What they
+  were looking at was the cost of only checking on the server: a mistyped year
+  came back as a re-rendered form several screens long, with a red banner, a red
+  summary box under it, and the reason spelled out after a field label —
+  "Received date: Received date cannot be before the ordered date — this part
+  would have arrived before it was ordered". Four pieces of furniture for one
+  digit, none of them beside the box holding it. Two fixes, and the first is
+  what means nobody sees the second. (a) `refreshChips()` runs the same rule in
+  the browser the moment the two boxes disagree: the date chip turns red and one
+  short line appears inside the panel. It is **not** `required` and it does not
+  cancel the submit — a browser constraint on these boxes breaks the form in the
+  two ways the Inventory quantity guard already records. (b) The server wording
+  is now "Arrived before it was ordered — fix the date." / "Ordered date is in
+  the future." A message that repeats the box it is attached to and then argues
+  its case is one nobody finishes. **Keep the two implementations word for word
+  identical**, in the same order — the browser copy exists only to save the
+  round trip, and the moment it says something different from the refusal it
+  causes it is worse than not being there. Its date arithmetic is string
+  comparison on the ISO values and `todayISO()` is built from LOCAL parts, never
+  `toISOString()`, which converts to UTC and so reports yesterday for the whole
+  of an IST morning.
+  **The panel's Done button greys out while the pair is wrong** (2026-08-17, the
+  owner asked whether that was possible "without complications" — it is, and it
+  is one line). Be clear what it is: **not a lock.** The panel still closes on
+  Escape and on a tap outside, and it has to — a popover whose only exit is
+  conditional on its contents is a trap, and on a phone the way out of a trap is
+  reloading the page and losing the card. What it is, is the primary control
+  declining to agree with you, at the moment and in the place the mistake was
+  made; the chip stays red after the panel closes and the save is still refused
+  server-side, so none of the enforcement lives here. One hazard to keep in
+  mind: that button is `type="button"`, so a disabled state cannot swallow a
+  submit. If it ever becomes a submit, this has to go.
 
 - **`jobcard_form.html` closes its `<form>` before its wrappers, and that
   ordering is load-bearing.** Fixed 2026-08-13 (was AUD-0093). Two `</div>`s
@@ -2673,11 +2804,77 @@ about to correct one of these, you are about to break the business:
   click area so a near miss opened the job card instead of the menu; and the
   **reg badge's border was softened** because `#cbd5e1` around a near-white
   fill is a darker line than the card's own border, so the plate outranked the
-  card it sits on. *Known and left alone:* `.car-name` truncates, so "Land
-  Rover Range Rover Sport" clips on a 375px phone. Wrapping it is the Live
-  Report's answer, and it would make the row height vary down the list — which
-  is the raggedness this codebase avoids elsewhere. Raise it as a design call,
-  not a bug fix.
+  card it sits on.
+
+- **The card says the progress ONCE loudly, and the car's name is never cut
+  off.** Added 2026-08-17, the owner's follow-up to the polish pass above
+  ("premium look… within seconds, no confusion, no stress"), and it settles the
+  `.car-name` question that entry deliberately left open.
+  (a) **The ratio is a caption on the ring, not a headline.** "1/1" was
+  0.95rem/800 in near-black — the second heaviest thing on the card after the
+  car's name — with **DONE** under it in uppercase, and the ring beside it
+  saying the same thing again as a percentage. Three tellings, one of them
+  shouted. The ratio stays, because "2 of 5" is the fact a percentage rounds
+  away, but at 0.74rem/700 in `#94a3b8` and with `tabular-nums` so it cannot
+  change width as it counts up. The word DONE is **gone**: it labelled a number
+  that already reads as a proportion, and it was one of only two uppercase runs
+  on the card.
+  (b) **The ring's track lightened and its stroke thinned to 3px.** At `#e2e8f0`
+  the *unfinished* part of the ring was itself a mark, so the ring read as two
+  arcs competing rather than one arc of colour on a hairline.
+  **The ring is TWO colours and carries a tinted DISC.** Added 2026-08-17, the
+  owner's follow-up ("round indicator need more good design"). It ran red under
+  30%, amber to 60%, blue to 99% and green at 100% — and the board that produced
+  is what they were looking at: three cars in, two showing a red 0% and one an
+  amber 33%, so a perfectly normal morning read as three warnings. The colour
+  was encoding **progress** while being decorated like **urgency**, and progress
+  is not urgent: a car admitted two hours ago has done nothing yet and that is
+  correct. It was also wrong in both directions at once — the 16-day card sat
+  amber while a two-hour card sat red, because the ring knows nothing about age
+  (that is the pill beside it). So **green means finished, one blue means under
+  way**, and how far along it is is the ARC, which is what an arc is for. Two
+  colours can be told apart at a glance on a moving tablet; four cannot.
+  The **disc** (`r=16`, inside the 3px stroke's inner edge at 16.5, drawn first
+  so the track paints over it) fixes the other half: at 0% there is no arc at
+  all, so the indicator was a hollow grey circle with a red number in it, which
+  reads as something that failed to load rather than as a car nobody has started.
+  A body at every value makes it a badge that fills instead of a ring that is
+  missing.
+  (c) **Hover does LESS**, on the owner's instruction — the lift and the
+  coloured halo are gone, leaving the border coming forward. Hover is the
+  minority case on a board worked with a thumb; (b) in the entry above is why it
+  is behind `@media (hover: hover)` at all.
+  (d) **`.car-name` WRAPS to two lines instead of truncating**, and this
+  reverses the "known and left alone" note the polish pass left here. "Land
+  Rover Range Rover Sport" arriving as "Land Rover Range Ro…" is the card
+  failing at the one job it has. Clamped at two, so a pathological name still
+  cannot push the card down the screen.
+  **The dashboard wraps NATURALLY and Completed RESERVES the second line, and
+  the difference is the layout, not taste.** The dashboard is a single-column
+  list, where a taller card has nothing beside it to look short against.
+  Completed is a three-across `row g-3` of self-sized cards, so one wrapped name
+  would draw a row of three different heights — the raggedness this codebase
+  avoids — hence `min-height: 2.5em` on `.del-vehicle-name`. Measured: every
+  Completed card 136px whatever its name, and the longest name unclipped at both
+  1280px and 375px.
+  *The `no-concerns-badge` also stopped being italic* — it was the only italic
+  on the board, which made "no tasks yet", the most ordinary state a fresh card
+  can be in, look like an apology.
+
+- **`px-5` and `flex-grow-1` on the same Bootstrap button is a wrap waiting to
+  happen.** Fixed 2026-08-17 on the owner's report, `add_shop.html` and
+  `edit_shop.html`. `px-5` is 3rem of padding *each side* — 96px of a ~187px
+  button on a 375px phone — so "Create Shop" had about 90px left for its words
+  and broke across two lines, inside a pill, which made the control half again
+  as taller than the Cancel beside it. The padding was doing nothing anyway:
+  `flex-grow-1` is already what makes that button the wide one, so the two were
+  fighting over the same job. Dropping `px-5` and adding `text-nowrap` to both
+  buttons fixes it (measured: 111px + 153px filling the 271px form width, both
+  47px tall, one line each).
+  **Both files, one edit.** They are the same row with different verbs, one
+  click apart in the same section, and letting one keep the old shape is how two
+  screens start looking like two different products. If a third form copies this
+  row, copy the fixed one.
 
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
