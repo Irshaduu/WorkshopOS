@@ -1574,12 +1574,18 @@ class WhoTheCustomerIsIsOfficeOnlyTests(JobCardFormBase):
     def test_the_read_only_view_of_a_card_is_gated_the_same_way(self):
         """
         The rule has to hold wherever the customer is SHOWN, not only where they
-        are typed. `jobcard_detail` is `@staff_required` — Floor legitimately
-        reads a card there — and it printed the name and number with no gate at
-        all, so hiding them on the form alone would have moved the door rather
-        than closing it. Every other screen that names a customer (the invoice,
-        Car Profiles, Job Cards, Completed, Paid Bills, the Fleet pages) is
-        `@office_required` already.
+        are typed. `jobcard_detail` used to print the name and number with no
+        gate at all, so hiding them on the form alone would have moved the door
+        rather than closing it.
+
+        That page was `@staff_required` and gated the two fields inside the
+        template. Since 2026-08-18 the whole page is `@office_required`, which
+        is a stronger form of the same rule and the only one its layout can
+        support — it now runs mileage, mechanic, customer and phone into one
+        unlabelled line, and there is no version of that line worth showing
+        with two of the four removed. Every other screen naming a customer (the
+        invoice, Car Profiles, Job Cards, Completed, Paid Bills, the Fleet
+        pages) was already `@office_required`; this was the exception.
         """
         detail = reverse('jobcard_detail', args=[self.job.pk])
 
@@ -1587,10 +1593,7 @@ class WhoTheCustomerIsIsOfficeOnlyTests(JobCardFormBase):
         self.assertIn('John', office)
         self.assertIn('1234567890', office)
 
-        floor = self.floor_client().get(detail).content.decode()
-        self.assertEqual(floor.count('Customer Name'), 0)
-        self.assertNotIn('John', floor)
-        self.assertNotIn('1234567890', floor)
+        self.assertEqual(self.floor_client().get(detail).status_code, 403)
 
 
 class BothPriceBoxesAreLineTotalsTests(JobCardFormBase):

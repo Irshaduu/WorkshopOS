@@ -258,8 +258,20 @@
     </div>
   </div>
 
-  <!-- Stat Boxes -->
+  {% comment %}
+  Products FIRST, on the owner's instruction (2026-08-18). The Spare Shop's own
+  header was reordered to match in the same edit — the two pages are the same
+  four boxes about two kinds of shop, and a count that sits first on one and
+  last on the other is two layouts for one idea. How many things, what they
+  cost, what has been paid, what is left.
+  {% endcomment %}
   <div class="row g-2">
+    <div class="col-6 col-md-3">
+      <div class="stat-box h-100">
+        <div class="s-label">Products</div>
+        <div class="s-val">{{ catalog|length }}</div>
+      </div>
+    </div>
     <div class="col-6 col-md-3">
       <div class="stat-box h-100">
         <div class="s-label">Total Billed</div>
@@ -278,12 +290,6 @@
         <div class="s-val balance-big {% if shop.get_pending_balance <= 0 %}balance-ok{% endif %}">
           ₹{{ shop.get_pending_balance|floatformat:0|intcomma }}
         </div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="stat-box h-100">
-        <div class="s-label">Products</div>
-        <div class="s-val">{{ catalog|length }}</div>
       </div>
     </div>
   </div>

@@ -17,7 +17,14 @@ from ..forms import (
     JobCardForm, JobCardConcernFormSet, JobCardSpareFormSet,
     JobCardInventoryFormSet, JobCardLabourFormSet
 )
+from django.contrib.humanize.templatetags.humanize import intcomma
+from django.template.defaultfilters import floatformat
+
 from ..decorators import staff_required, office_required, is_office_or_owner
+# The app's ONE way of printing a quantity — 1.00 → "1", 1.50 → "1.5". Imported
+# rather than restated so the read-only card cannot disagree with every other
+# screen about how many of something there are.
+from ..templatetags.custom_filters import clean_qty
 
 
 
@@ -575,26 +582,43 @@ def jobcard_list(request):
     return render(request, 'workshop/jobcard/jobcard_list.html', {'jobcards': jobcards, 'page_obj': jobcards, 'q': q})
 
 
-@staff_required
+@office_required
 def jobcard_detail(request, pk):
     """
-    The job card, read only.
+    The job card, read only. OFFICE AND OWNER ONLY.
 
-    TWO AUDIENCES, and the split is resolved HERE rather than inferred from
-    groups in the template — the same shape the Unassigned Spares hub uses, and
-    for the same reason: `office_view` is asked about six times on this page
-    (customer, notes, labour total, both part prices, the whole billing
-    section), and six copies of one boolean is six chances to widen five and
-    miss the sixth.
+    It was `@staff_required` until 2026-08-18 and Floor really could reach it —
+    by URL, and by the "View" button in the Vehicles-in-Workshop sidebar on the
+    new-job-card screen, which is a Floor page. What kept that honest was a pile
+    of gates INSIDE the template hiding the customer and every figure.
 
-    Floor legitimately reads a card here, which is why the view is
-    `@staff_required` and not `@office_required`. What Floor does not get is who
-    the customer is or any money — the same two things the edit form withholds,
-    gated on the same flag, because a card must not say more on the page that
-    only reads it than on the page that writes it.
+    Closing the door replaces all of them, and the reason is the layout rather
+    than the secrecy. The page is now three lines of identity and four lists,
+    with no labels — the owner's own design, and it only works because position
+    carries the meaning. Line 2 runs mileage, mechanic, customer and phone
+    number into one comma-separated line, and every part sets the workshop's
+    COST beside the customer's price. There is no version of either that is safe
+    to show a mechanic with some words removed: what Floor would get is a line
+    with holes in it and a parts list where the figures sometimes appear, which
+    is worse than not having the page.
+
+    FLOOR LOSES NOTHING IT CANNOT GET SOMEWHERE BETTER. The dashboard car card's
+    live-details drawer is these same four lists, on the board Floor works from
+    all day, and the job card itself is still `@staff_required`. The one
+    Floor-visible link is gated in the same edit that closed this view, which is
+    the `InvoiceLinkVisibilityTests` rule: a template gate must mirror its view's
+    decorator, in both directions — a door Floor can see but not open is worse
+    than no door.
+
+    What each part PRINTS is built here too, by `_describe_spare` — "join the
+    values that exist", which a template does as a chain of `{% if %}`s that has
+    to get every separator right, and gets wrong on the row with no shop. The
+    identity line's separators are the one exception and are drawn in CSS
+    (`.dv-fact + .dv-fact::before`), where a missing value cannot leave one
+    behind at all.
     """
     jobcard = get_object_or_404(
-        JobCard.objects.select_related('lead_mechanic', 'bulk_payer')
+        JobCard.objects.select_related('lead_mechanic')
                        .prefetch_related('concerns', 'spares__shop', 'labours'),
         pk=pk
     )
@@ -603,15 +627,72 @@ def jobcard_detail(request, pk):
     # form. Partitioned in Python off the existing prefetch rather than with two
     # queries, so this stays one round trip.
     all_spares = list(jobcard.spares.all())
+    shop_spares = [s for s in all_spares if s.source == JobCardSpareItem.SOURCE_SHOP]
+    draws = [s for s in all_spares if s.source == JobCardSpareItem.SOURCE_INVENTORY]
+
+    for spare in shop_spares:
+        _describe_spare(spare, is_draw=False)
+    for draw in draws:
+        _describe_spare(draw, is_draw=True)
 
     return render(request, 'workshop/jobcard/jobcard_detail.html', {
         'jobcard': jobcard,
-        'office_view': is_office_or_owner(request.user),
-        'inventory_draws': [s for s in all_spares
-                            if s.source == JobCardSpareItem.SOURCE_INVENTORY],
-        'shop_spares': [s for s in all_spares
-                        if s.source == JobCardSpareItem.SOURCE_SHOP],
+        'inventory_draws': draws,
+        'shop_spares': shop_spares,
     })
+
+
+def _describe_spare(spare, is_draw):
+    """
+    Everything the read-only card prints about one part, as three ready strings
+    on the object: `meta_line`, `cost_str` and `price_str`.
+
+    Three rather than one because the page puts them in different places — the
+    facts read left-to-right under the part's name, the two figures sit
+    right-aligned in their own column so they form a line you can run an eye
+    down, and the cost is drawn quieter than the price. Joined into a single
+    string they ran together as "10/07/2026 – 10/07/2026 · ₹5,727 – ₹7,967",
+    where the eye had to find the ₹ to know where the dates stopped. That is
+    what the owner asked to have fixed.
+
+    Built here rather than in the template because a template doing this ends up
+    as a chain of `{% if %}`s that has to get every separator right, and gets it
+    wrong on the row with no shop. No captions in any of them — that is the
+    page's whole rule.
+
+    THE TWO ROUTES DIFFER, and the difference is the `source` rule this codebase
+    keeps everywhere. A warehouse draw came off the shelf already fitted: no
+    shop, no order, no arrival, so it has no dates and no supplier. It also
+    prints ONE figure, because its `unit_price` is the warehouse average PER
+    UNIT while a shop row's is what the shop billed for the whole line — setting
+    those two either side of one dash would be two kinds of number pretending to
+    be a range.
+    """
+    meta = []
+
+    if not is_draw:
+        # The pair is ONE item, with an em dash for the half not in yet: a spare
+        # is finished when it has been ordered AND received, so half-filled is
+        # still incomplete. Same rule the job card's date chip follows.
+        if spare.ordered_date or spare.received_date:
+            ordered = spare.ordered_date.strftime('%d/%m/%Y') if spare.ordered_date else '—'
+            received = spare.received_date.strftime('%d/%m/%Y') if spare.received_date else '—'
+            meta.append(f'{ordered} – {received}')
+
+        if spare.shop_id and spare.shop:
+            meta.append(spare.shop.name)
+
+    # Only above one — this workshop writes a quantity down only when there is
+    # more than one of something, which the invoice and the Live Report follow.
+    if spare.quantity is not None and spare.quantity > 1:
+        meta.append(f'× {clean_qty(spare.quantity)}')
+
+    def rupees(value):
+        return None if value is None else f'₹{intcomma(floatformat(value, 0))}'
+
+    spare.meta_line = ' · '.join(meta)
+    spare.cost_str = None if is_draw else rupees(spare.unit_price)
+    spare.price_str = rupees(spare.total_price)
 
 
 @staff_required

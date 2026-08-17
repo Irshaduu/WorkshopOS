@@ -233,7 +233,17 @@ def spare_shop_detail(request, pk):
     
     # ── Absolute Ledger Waterfall Calculation ──
     page_items = list(page_obj)
-    for item in page_items:
+    for row_no, item in enumerate(page_items, start=1):
+        # The sticky row number, same handle the Job Card's Spare Parts table
+        # carries: this table is wider than the page and the Vehicle column
+        # scrolls away, so without it the row being read is unnamed once you
+        # reach Status. Numbered 1..45 within the PAGE — the same span the job
+        # card numbers, and what is on screen is what you are following. It is
+        # assigned here rather than with `forloop.counter` because the template
+        # regroups these by date, so a template counter would restart at every
+        # separator and two rows on one screen would share a number.
+        item.row_no = row_no
+
         item_cost = item.item_cost
         older_sum = item.absolute_running_sum - item_cost
         bulk_pool = total_paid - older_sum

@@ -85,10 +85,9 @@ graph TD
 
 
  FLOOR (Mechanics / Floor Manager)
-   - View Dashboard (active cars on floor)
+   - View Dashboard (active cars on floor), including each car's live details — the same four lists (Customer Concerns, Job Performed, Inventory Items, Spare Parts) the read-only job card shows. **This is where Floor reads a card**: the Live Report and the read-only card view at `/jobcards/<pk>/` are both Office/Owner (the Live Report since 2026-08-16, the card view since 2026-08-18)
    - Create new Job Cards
    - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Total Labour included, is Office/Owner only and is enforced on the server)
-   - View Live Report — the "Live Jobs" cards only; the operations board above them (who is holding which car, and the two parts-waiting boxes) is Office/Owner, since it names spare shops and ordering state
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
    - Put a car On Hold / take it off hold, and Mark it Completed

@@ -1,71 +1,64 @@
 {% extends 'workshop/base.html' %}
-{% load custom_filters %}
+{% load custom_filters humanize %}
 
 {% block title %}
 View Job Card - {{ jobcard.registration_number }}
 {% endblock %}
 
 {% comment %}
-THE JOB CARD, READ ONLY. Rebuilt 2026-08-18 on the owner's report that it was
-"not visually comfortable", and on their own suggestion of what to copy.
+THE JOB CARD, READ ONLY — the owner's layout, polished (2026-08-18).
 
-The owner offered a second option worth recording, because it is the one that
-was NOT taken: delete this page and point everything that reaches it at the edit
-form instead, on the reasoning that a settled card is locked anyway so it is
-safe to scroll. The lock is real but it is not the common case — it covers PAID
-and BULK_PAID only, and the cards people open most are the ones still on the
-floor, which open fully editable. Sending a read to an editable form means every
-glance is one stray tap from a change, on a tablet, on the longest form in the
-app; and this page is `@staff_required`, so Floor reads cards here. Nine places
-link or redirect here. A read-only view is a different job from an edit, and the
-answer was to make it look like it belongs rather than to remove it.
+DATA ONLY, NO LABELS. Three lines of identity, then the four lists, then one
+line of money. The owner's reasoning is the load-bearing part: *"few times
+repeatedly see, humans will understand and adapt easily."* A caption is what you
+need the FIRST time and what costs you every time after, on a page four people
+open twenty times a day. So position carries the meaning and nothing is
+announced.
 
-WHAT IT COPIES, AND FROM WHERE. Two vocabularies already existed and both are
-reused verbatim rather than re-invented:
+ONE COLUMN, not two. The four sections sat side by side for half a day and the
+owner had them straightened out: a 2×2 makes you read in a Z, and the two
+columns are unrelated lists of unrelated lengths, so the right-hand one starts
+wherever the left-hand one happened to end. Down a single column the eye only
+ever goes one way and every section starts at the same x. It also gives the
+rows the full width, which is what lets the money sit in its own right-hand
+column — see `.dv-money-col`.
 
-  · The SECTION BAND is the job-card form's `.jc-sec-head`, value for value —
-    the same `#f8fafc` band, the same 34px slate icon badge, the same title
-    size and weight. This page is that form's read-only twin, and the two are
-    opened minutes apart; they were drifting into looking like different
-    products, which is the whole complaint. Read those values off the FORM if
-    you ever change them, not off CLAUDE.md, which still describes an older
-    filled-blue band the form no longer has.
+EVERY ROW IS A GRID, not a run-on sentence. What a part IS goes left, what it
+COST goes right, and the facts about it sit quietly underneath. Before this they
+were one string — "10/07/2026 – 10/07/2026 · ₹5,727 – ₹7,967" — where the eye
+had to find the ₹ to know where the dates stopped. Right-aligned and
+`tabular-nums`, the figures form a column you can run down.
 
-  · The LISTS are the dashboard car card's live-details drawer — a row is an
-    icon and a line, with a quiet subtext under it. That is the owner's named
-    reference and it replaces two horizontally-scrolling TABLES. A table on a
-    read-only page is the worst of both: six columns of ordering workflow that
-    have to be scrolled sideways to read, on a page whose only job is to be
-    read. The drawer shape needs no scroller at any width.
-
-Nothing here is editable and nothing posts. The only controls are Invoice and
-Edit in the header.
+Office and Owner only. That is not squeamishness about the data, it is what
+lets the layout be this dense: line 2 runs mileage, mechanic, customer and phone
+number together with no captions, and every part sets the workshop's COST beside
+the customer's price. There is no version of either worth showing with two of
+the four values removed — see the view.
 {% endcomment %}
 
 {% block extra_css %}
 <style>
-    /* ── the header, and the car's own colour ────────────────────
-       The rail is `.jc-head`'s, from the same CAR_COLOR_HEX map the dashboard
-       stripe, Car Profiles and the Live Report read — so one Red car is one red
-       everywhere. Both documented exceptions travel with it: a WHITE car's rail
-       is outlined or it vanishes against the header, and a car with NO colour
-       recorded gets a hatched rail rather than a slate one, because "nobody
-       wrote it down" is a different fact from "this car is grey". */
+    /* ══ identity ═══════════════════════════════════════════════
+       The car's own colour is a RAIL down the head, not a dot in the text —
+       the same rail the job-card form, Car Profiles and the Live Report use, so
+       one Red car is one red on every screen. Both documented exceptions travel
+       with it: a WHITE car's rail is outlined or it vanishes, and a car with NO
+       colour recorded gets the hatch, because "nobody wrote it down" is a
+       different fact from "this car is grey". */
     .dv-head {
         position: sticky;
         top: var(--sticky-top);
         z-index: 100;
-        background: var(--color-primary-light);
-        border-radius: 0 0 10px 10px;
-        padding: 0.55rem 1rem 0.55rem 1.15rem;
-        margin-bottom: 1.1rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 0.6rem;
+        background: #fff;
+        border: 1px solid var(--color-border);
+        border-radius: 14px;
+        padding: 0.85rem 1rem 0.85rem 1.15rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 12px rgba(15,23,42,.05);
         overflow: hidden;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.85rem;
     }
     .dv-head::before {
         content: '';
@@ -80,207 +73,247 @@ Edit in the header.
     .dv-head--unset::before {
         background: repeating-linear-gradient(-45deg, #e2e8f0 0 3px, #f8fafc 3px 8px);
     }
-    /* The name gives way before the plate does — the plate is what identifies
-       the car, and it is the shorter of the two. Same rule the Spare Shop
-       header follows. */
-    .dv-head-name {
-        min-width: 0;
+    .dv-head-lines { min-width: 0; flex: 1 1 auto; }
+
+    /* Line 1 — the car. `baseline` so the plate and the dates sit on the name's
+       own line rather than floating against its box. */
+    .dv-line1 {
         display: flex;
         align-items: baseline;
-        gap: 0.5rem;
         flex-wrap: wrap;
+        gap: 0.4rem 0.55rem;
+        margin: 0;
     }
     .dv-car {
-        font-size: 1.06rem;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-        color: var(--color-text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        min-width: 0;
+        font-size: 1.2rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #0f172a;
+        line-height: 1.2;
+        word-break: break-word;
     }
+    /* The plate is the car's identity, so it is the one thing here drawn as an
+       object rather than as text — the same badge Completed and Car Profiles
+       print it in. */
     .dv-reg {
-        flex: 0 0 auto;
         font-family: var(--font-display);
         font-size: 0.74rem;
         font-weight: 700;
         letter-spacing: 1.4px;
         text-transform: uppercase;
         padding: 3px 9px;
-        border-radius: 5px;
-        background: #fff;
-        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
         color: #334155;
         white-space: nowrap;
     }
-    .dv-head-acts { display: flex; gap: 0.45rem; flex: 0 0 auto; }
+    .dv-when {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #64748b;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
 
-    /* ── the state banner ───────────────────────────────────────── */
+    /* Line 2 — the facts. Separated by dots rather than commas: a dot is a
+       divider and a comma reads as a list, and these are four unrelated
+       things. `.dv-fact + .dv-fact::before` draws them, so a missing value
+       takes its separator with it and there is never a stray one. */
+    .dv-line2 {
+        margin: 5px 0 0;
+        font-size: 0.85rem;
+        color: #475569;
+        line-height: 1.5;
+        word-break: break-word;
+    }
+    .dv-fact { white-space: nowrap; }
+    .dv-fact + .dv-fact::before {
+        content: '·';
+        margin: 0 0.5rem;
+        color: #cbd5e1;
+        font-weight: 700;
+    }
+    .dv-fact-num { font-variant-numeric: tabular-nums; }
+    /* The mechanic's glyph, taken from the dashboard car card's own
+       `.mechanic-tag` — same `bi-person-gear`, same muted slate, same size. It
+       is the one fact on this line that is a PERSON, and the board people come
+       here from already marks it that way. */
+    .dv-who i {
+        color: #64748b;
+        font-size: 0.85rem;
+        margin-right: 4px;
+        vertical-align: -1px;
+    }
+
+    /* THE CUSTOMER IS ONE THING, so the name and the number are one box.
+       Transparent — an outline, no fill — because it is a grouping and not an
+       emphasis: it says "these two belong together and the rest of the line is
+       about the car", without becoming the loudest thing on the head. Rendered
+       only when there is something to put in it, so a card with no customer
+       shows no empty outline. It carries no dot separator of its own for the
+       same reason: it is a box, and a box is already a separation. */
+    .dv-cust {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.5rem;
+        margin-left: 0.6rem;
+        padding: 2px 10px;
+        border: 1px solid var(--color-border, #e2e8f0);
+        border-radius: 999px;
+        background: transparent;
+        vertical-align: 1px;
+        max-width: 100%;
+    }
+    .dv-cust-name {
+        font-weight: 600;
+        color: #334155;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+    .dv-cust-num {
+        color: #64748b;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Line 3 — the note. The only prose on the page, so it is the only thing
+       given a ground of its own: it is not a fact about the car in the way the
+       line above it is, and running it on in the same grey made the two read
+       as one paragraph. */
+    .dv-line3 {
+        margin: 0.55rem 0 0;
+        padding: 0.45rem 0.6rem;
+        border-left: 3px solid #e2e8f0;
+        border-radius: 0 6px 6px 0;
+        background: #f8fafc;
+        font-size: 0.84rem;
+        color: #475569;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .dv-acts { display: flex; gap: 0.4rem; flex: 0 0 auto; }
+
+    /* ══ state ═══════════════════════════════════════════════════ */
     .dv-state {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 7px;
         border-radius: 10px;
-        padding: 0.55rem 0.85rem;
-        margin-bottom: 1.1rem;
-        font-size: 0.82rem;
+        padding: 0.5rem 0.85rem;
+        margin-bottom: 1rem;
+        font-size: 0.8rem;
         font-weight: 700;
     }
-    .dv-state-locked { background: #fce8e6; color: #c5221f; }
-    .dv-state-done   { background: #fef7e0; color: #b06000; }
+    .dv-state-locked { background: #fef2f2; color: #b91c1c; }
+    .dv-state-done   { background: #fffbeb; color: #b45309; }
 
-    /* ── one section ─────────────────────────────────────────────
-       Every value here is READ OFF `.jc-sec-head` on the job-card form rather
-       than chosen: the same `#f8fafc` band, the same 34px `#f1f5f9` icon badge
-       at `#475569` on a `#e2e8f0` border, the same 1.08rem/700 title in
-       `#0f172a`. That is the whole point of the section — this page is the
-       form's read-only twin and the complaint that started the rebuild was that
-       the two had stopped looking related.
+    /* ══ the four sections, ONE COLUMN ═══════════════════════════ */
+    .dv-secs { display: flex; flex-direction: column; gap: 0.7rem; }
 
-       Worth knowing if you are re-deriving this: CLAUDE.md described the band as
-       a FILLED `#2a70da` blue with white-on-blue contents, and that was true
-       when it was written and is not true now — the form carries a soft neutral.
-       Take the values from the form, never from the note.
-
-       `test_the_section_band_is_the_forms_own_colour` compares the two rules and
-       fails if either moves without the other. */
     .dv-sec {
         background: #fff;
-        border: 1px solid var(--color-border);
+        border: 1px solid #e2e8f0;
         border-radius: 12px;
         overflow: hidden;
-        margin-bottom: 1rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
-    .dv-sec-head {
+    /* The drawer's own values, to the character — "these 4 exactly as Dashboard
+       Card cards" was the instruction, and the optimisation asked for after it
+       was about the header, the row data and the column count, not this.
+       `test_the_row_styling_is_the_drawers_own` compares the two rules. */
+    .dv-sec-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #0f172a;
+        background: #f8fafc;
+        padding: 0.45rem 0.75rem;
+        border-bottom: 1px solid #e2e8f0;
         display: flex;
         align-items: center;
-        gap: 0.65rem;
-        background: #f8fafc;
-        padding: 0.75rem 1.15rem;
-        border-bottom: 1px solid var(--color-border, #e2e8f0);
+        gap: 7px;
     }
-    .dv-sec-icon {
-        flex: 0 0 auto;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
-        background: #f1f5f9;
-        border: 1px solid #e2e8f0;
-        color: #475569;
-        font-size: 1.05rem;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-    }
-    .dv-sec-title {
-        font-size: 1.08rem;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-        color: #0f172a;
-        margin: 0;
-        min-width: 0;
-    }
-    /* The count sits where the form puts its "+ Add" button, which is the one
-       thing this page has instead of one — so the eye lands in the same place
-       on both and finds the thing that belongs to that page. */
-    .dv-sec-count {
+    .dv-sec-title i { font-size: 0.95rem; }
+    /* The count is the only number in a heading, so it is drawn as a count and
+       not as more heading. */
+    .dv-sec-n {
         margin-left: auto;
-        flex: 0 0 auto;
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: #475569;
-        background: #f1f5f9;
-        border: 1px solid #e2e8f0;
+        min-width: 20px;
+        text-align: center;
+        font-size: 0.7rem;
+        font-weight: 800;
+        color: #64748b;
+        background: #eef2f7;
         border-radius: 999px;
-        padding: 2px 10px;
+        padding: 1px 8px;
+        font-variant-numeric: tabular-nums;
     }
 
-    /* ── a field (the two grid sections) ─────────────────────────── */
-    .dv-fields {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 0.9rem 1rem;
-        padding: 0.9rem;
-    }
-    .dv-label {
-        display: block;
-        font-size: 0.68rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--color-text-muted);
-        margin-bottom: 2px;
-    }
-    .dv-value {
-        display: block;
-        font-size: 1.02rem;
-        font-weight: 700;
-        color: var(--color-text);
-        word-break: break-word;
-    }
-    .dv-value .dv-none { font-weight: 500; color: #94a3b8; }
-    .dv-swatch {
-        display: inline-block;
-        width: 22px; height: 22px;
-        border-radius: 5px;
-        border: 1px solid rgba(0,0,0,0.12);
-        vertical-align: -5px;
-        margin-right: 6px;
-    }
-    /* A note is prose, not a field — it gets the full width whatever the grid
-       is doing around it, or a two-sentence note is read in a 150px column. */
-    .dv-note { grid-column: 1 / -1; white-space: pre-wrap; font-weight: 500; font-size: 0.94rem; }
-
-    /* ── a list (the four content sections) ──────────────────────
-       Copied from `.drawer-item` on the dashboard, which is the owner's named
-       reference: an icon, a line, and a quiet subtext under it. No table, so
-       nothing scrolls sideways. */
-    .dv-list { display: flex; flex-direction: column; }
+    /* ── one row ──────────────────────────────────────────────────
+       A grid, not a line: name left, money right, facts underneath the name.
+       `minmax(0, 1fr)` on the first column is what lets a long part name wrap
+       instead of pushing the money off the row. */
     .dv-row {
-        padding: 0.5rem 0.85rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: baseline;
+        column-gap: 0.9rem;
+        padding: 0.55rem 0.85rem;
         border-bottom: 1px solid #f1f5f9;
     }
     .dv-row:last-child { border-bottom: 0; }
-    .dv-row-text {
+    .dv-row-main {
         display: flex;
-        align-items: center;
+        align-items: baseline;
         gap: 8px;
-        font-size: 0.94rem;
-        line-height: 1.35;
-        color: #0f172a;
         min-width: 0;
+        font-size: 0.94rem;
+        line-height: 1.4;
+        color: #0f172a;
         word-break: break-word;
     }
-    .dv-sub {
-        font-size: 0.78rem;
-        color: #64748b;
-        padding-left: 24px;
-        margin-top: 1px;
+    /* Row 2 of the grid, under the name and clear of the money column. */
+    .dv-row-meta {
+        grid-column: 1 / 2;
+        margin-top: 2px;
+        padding-left: 25px;          /* clears the status glyph above it */
+        font-size: 0.77rem;
+        color: #94a3b8;
+        line-height: 1.45;
+        font-variant-numeric: tabular-nums;
+        word-break: break-word;
     }
-    /* The money on a row sits at the end of the line and never wraps under it —
-       a figure that drops to its own line reads as belonging to the next row. */
-    .dv-amt {
-        margin-left: auto;
-        flex: 0 0 auto;
-        font-family: var(--font-body);
+    /* The money column. Right-aligned and tabular so the figures line up down
+       the page — that alignment IS the optimisation, and it only works because
+       the sections are one column wide now. */
+    .dv-money-col {
+        grid-row: 1 / 2;
+        grid-column: 2 / 3;
+        text-align: right;
+        font-size: 0.86rem;
         font-weight: 700;
-        font-size: 0.9rem;
         color: #0f172a;
         white-space: nowrap;
+        font-variant-numeric: tabular-nums;
     }
+    /* Cost is the quieter of the pair: it is the workshop's own side, and the
+       one an owner scans for is what the customer was charged. */
+    .dv-cost { color: #94a3b8; font-weight: 600; }
+    .dv-arrow { color: #cbd5e1; margin: 0 5px; font-weight: 400; }
+
     .dv-empty {
-        text-align: center;
-        padding: 1.1rem;
-        color: #94a3b8;
-        font-size: 0.88rem;
+        padding: 0.55rem 0.85rem;
+        color: #cbd5e1;
+        font-size: 0.85rem;
     }
 
-    /* Same traffic light the Live Report and the dashboard drawer use — red not
-       started, amber under way, green done. Declared once per meaning so two
-       hand-written ambers cannot drift apart. */
+    /* One traffic light, shared with the dashboard drawer and the Live Report:
+       red not started, amber under way, green done. */
     .dv-ico-pending {
         display: inline-block;
         width: 9px; height: 9px;
@@ -288,401 +321,279 @@ Edit in the header.
         background: #dc2626;
         margin: 0 4px 0 3px;
         flex-shrink: 0;
+        align-self: center;
     }
-    .dv-ico-done { color: #16a34a; font-size: 1.05rem; flex-shrink: 0; }
-    .dv-ico-going { color: #d97706; font-size: 1rem; flex-shrink: 0; }
+    .dv-ico-done  { color: #16a34a; font-size: 1.02rem; flex-shrink: 0; align-self: center; }
+    .dv-ico-going { color: #d97706; font-size: 1rem;    flex-shrink: 0; align-self: center; }
 
-    /* The one-line total under a list — labour's charge, and each parts
-       subtotal. Same shape as the invoice's SUBTOTAL row, deliberately. */
-    .dv-foot {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        padding: 0.6rem 0.85rem;
-        background: #f8fafc;
-        border-top: 1px solid var(--color-border);
-    }
-    .dv-foot-label {
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #64748b;
-    }
-    .dv-foot-val { font-weight: 700; font-family: var(--font-body); }
-
-    /* ── the money summary ───────────────────────────────────────
-       TILES that wrap, not a `d-flex` with `gap-5` and vertical rules between
-       the figures — which is what this was, and on a phone it put three amounts
-       and two borders into 343px. A tile carries its own ground, so the three
-       can sit side by side on a laptop and stack on a phone with nothing to
-       re-style. */
+    /* ══ the money line ══════════════════════════════════════════
+       Figures, no labels, and NOTHING PRINTED TWICE — with nothing received the
+       balance IS the bill, and paid in full with no discount the receipt IS the
+       bill, so in each case the repeat goes and the state chip carries it. Same
+       call the Cashbook makes when it drops its Net card on a period with no
+       income: a figure repeated in a second colour reads as a second fact. */
     .dv-money {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 0.6rem;
-        padding: 0.9rem;
-    }
-    .dv-tile {
-        background: #f8fafc;
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 0.35rem 1rem;
+        margin-top: 0.9rem;
+        padding: 0.75rem 1rem;
+        background: #fff;
         border: 1px solid var(--color-border);
-        border-radius: 10px;
-        padding: 0.6rem 0.75rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 2px rgba(15,23,42,.04);
+        font-variant-numeric: tabular-nums;
     }
-    .dv-tile-val {
-        display: block;
-        font-family: var(--font-body);
-        font-size: 1.18rem;
-        font-weight: 800;
-        letter-spacing: -0.01em;
-        color: #0f172a;
-    }
-    .dv-tile-owed .dv-tile-val { color: #dc2626; }
-    .dv-tile-in   .dv-tile-val { color: #16a34a; }
-
+    .dv-bill { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; color: #0f172a; }
+    .dv-got  { font-size: 0.95rem; font-weight: 700; color: #16a34a; }
+    .dv-owed { font-size: 0.95rem; font-weight: 700; color: #dc2626; }
+    .dv-off  { font-size: 0.95rem; font-weight: 600; color: #94a3b8; }
     .dv-pay {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 0.72rem;
+        margin-left: auto;
+        font-size: 0.68rem;
         font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.06em;
         border-radius: 999px;
-        padding: 3px 10px;
+        padding: 4px 11px;
+        white-space: nowrap;
     }
-    .dv-pay-paid    { background: rgba(22,163,74,.12);  color: #15803d; }
-    .dv-pay-partial { background: rgba(217,119,6,.12);  color: #b45309; }
-    .dv-pay-pending { background: rgba(220,38,38,.10);  color: #b91c1c; }
+    .dv-pay-paid    { background: rgba(22,163,74,.12); color: #15803d; }
+    .dv-pay-partial { background: rgba(217,119,6,.12); color: #b45309; }
+    .dv-pay-pending { background: rgba(220,38,38,.10); color: #b91c1c; }
 
-    @media (max-width: 575.98px) {
-        .dv-sec-title { font-size: 0.98rem; }
-        .dv-fields { padding: 0.75rem; gap: 0.75rem 0.85rem; }
-        .dv-car { font-size: 0.98rem; }
+    /* ══ phone ═══════════════════════════════════════════════════
+       The dashboard drawer's own treatment below 640px: the boxes go and one
+       hairline separates the sections. Measured there, four boxes each drawing
+       a border on all four sides spent 151.6px of a 375px screen on furniture.
+       The ROWS keep the size they had — they are the content, and the whole
+       point is that they are what is left. */
+    @media (max-width: 640px) {
+        .dv-secs { gap: 0; }
+        .dv-sec {
+            background: transparent;
+            border: 0;
+            border-radius: 0;
+        }
+        .dv-sec + .dv-sec { border-top: 1px solid #e6ebf1; }
+        .dv-sec-title {
+            background: transparent;
+            border-bottom: 0;
+            padding: 0.6rem 0 0.25rem;
+            font-size: 0.66rem;
+            color: #94a3b8;
+            line-height: 1;    /* or the glyph makes a 10px label occupy 20px */
+        }
+        .dv-sec-title i { font-size: 0.82rem; }
+        .dv-row { padding: 0.3rem 0; border-bottom: 0; }
+        .dv-row-meta { padding-left: 23px; }
+        .dv-empty { padding: 0.3rem 0; }
+        .dv-head { padding: 0.75rem 0.8rem 0.75rem 0.95rem; border-radius: 12px; }
+        .dv-car { font-size: 1.1rem; }
+        .dv-money { padding: 0.65rem 0.8rem; }
+        .dv-bill { font-size: 1.18rem; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-{% comment %}
-The two rail exceptions are tested exactly as `jobcard_form.html` tests them —
-against `car_color` itself, never against the resolved hex — so the two headers
-can never disagree about one car. A WHITE rail is outlined or it vanishes; a car
-with NO colour recorded gets the hatch, because "nobody wrote it down" is a
-different fact from "this car is grey".
-{% endcomment %}
+
 <div class="dv-head{% if jobcard.car_color == 'White' %} dv-head--white{% endif %}{% if not jobcard.car_color %} dv-head--unset{% endif %}"
      style="--dv-accent: {{ jobcard.get_car_color_hex }};">
-    <div class="dv-head-name">
-        <span class="dv-car">{{ jobcard.brand_name }} {{ jobcard.model_name }}</span>
-        <span class="dv-reg">{{ jobcard.registration_number }}</span>
-    </div>
-    <div class="dv-head-acts">
-        {% if office_view %}
-        <a href="{% url 'invoice_view' jobcard.pk %}?back={{ request.get_full_path|urlencode }}"
-           class="btn btn-sm btn-outline-primary fw-bold bg-white">
-            <i class="bi bi-receipt"></i> Invoice
-        </a>
+    <div class="dv-head-lines">
+        <h1 class="dv-line1">
+            {% if jobcard.brand_name or jobcard.model_name %}
+            <span class="dv-car">{{ jobcard.brand_name }} {{ jobcard.model_name }}</span>
+            {% endif %}
+            <span class="dv-reg">{{ jobcard.registration_number }}</span>
+            <span class="dv-when">{{ jobcard.admitted_date|date:"d/m/Y" }}{% if jobcard.completed_date %} – {{ jobcard.completed_date|date:"d/m/Y" }}{% endif %}</span>
+        </h1>
+
+        {% comment %}
+        Each fact is its own element so the dot separators are drawn by CSS —
+        a missing value takes its separator with it, and there is never a
+        stray one. Whitespace between them is stripped by `spaceless`, or the
+        `+` selector would still match but the gap would double.
+
+        The CAR's facts are plain; the CUSTOMER's two are boxed together,
+        because they are one thing and the rest of the line is not about them.
+        {% endcomment %}
+        {% if jobcard.mileage or jobcard.lead_mechanic or jobcard.customer_name or jobcard.customer_contact %}
+        <p class="dv-line2">{% spaceless %}
+            {% if jobcard.mileage %}<span class="dv-fact dv-fact-num">{{ jobcard.mileage|intcomma }} km</span>{% endif %}
+            {% if jobcard.lead_mechanic %}<span class="dv-fact dv-who"><i class="bi bi-person-gear"></i>{{ jobcard.lead_mechanic.name }}</span>{% endif %}
+            {% if jobcard.customer_name or jobcard.customer_contact %}<span class="dv-cust">
+                {% if jobcard.customer_name %}<span class="dv-cust-name">{{ jobcard.customer_name }}</span>{% endif %}
+                {% if jobcard.customer_contact %}<span class="dv-cust-num">{{ jobcard.customer_contact }}</span>{% endif %}
+            </span>{% endif %}
+        {% endspaceless %}</p>
         {% endif %}
-        <a href="{% url 'jobcard_edit' jobcard.pk %}" class="btn btn-sm btn-primary fw-bold shadow-sm">
-            <i class="bi bi-pencil-square"></i> Edit
+
+        {% if jobcard.notes %}<p class="dv-line3">{{ jobcard.notes }}</p>{% endif %}
+    </div>
+
+    <div class="dv-acts">
+        <a href="{% url 'invoice_view' jobcard.pk %}?back={{ request.get_full_path|urlencode }}"
+           class="btn btn-sm btn-outline-primary" aria-label="Invoice" title="Invoice">
+            <i class="bi bi-receipt"></i>
+        </a>
+        <a href="{% url 'jobcard_edit' jobcard.pk %}" class="btn btn-sm btn-primary"
+           aria-label="Edit" title="Edit">
+            <i class="bi bi-pencil-square"></i>
         </a>
     </div>
 </div>
 
-{% comment %}
-The state, said once. A settled card is locked against editing, and a completed
-one has left the workshop; both are worth knowing before reading the rest.
-{% endcomment %}
 {% if jobcard.payment_status == 'PAID' or jobcard.payment_status == 'BULK_PAID' %}
 <div class="dv-state dv-state-locked">
-    <i class="bi bi-shield-lock-fill"></i> Financial lock active — this bill is settled
+    <i class="bi bi-shield-lock-fill"></i> Settled — locked against editing
 </div>
 {% elif jobcard.completed %}
 <div class="dv-state dv-state-done">
-    <i class="bi bi-check-circle-fill"></i> Completed — the car has left the workshop
+    <i class="bi bi-check-circle-fill"></i> Completed
 </div>
 {% endif %}
 
-<!-- ── VEHICLE ─────────────────────────────────────────────────── -->
-<div class="dv-sec">
-    <div class="dv-sec-head">
-        <span class="dv-sec-icon"><i class="bi bi-car-front-fill"></i></span>
-        <h2 class="dv-sec-title">Vehicle Details</h2>
-    </div>
-    <div class="dv-fields">
-        <div>
-            <span class="dv-label">Brand</span>
-            <span class="dv-value">{{ jobcard.brand_name|default:"—" }}</span>
-        </div>
-        <div>
-            <span class="dv-label">Model</span>
-            <span class="dv-value">{{ jobcard.model_name|default:"—" }}</span>
-        </div>
-        <div>
-            <span class="dv-label">Colour</span>
-            <span class="dv-value">
-                <span class="dv-swatch" style="background: {{ jobcard.get_car_color_hex }};"></span>{{ jobcard.get_car_color_display }}
-            </span>
-        </div>
-        <div>
-            <span class="dv-label">Mileage (km)</span>
-            <span class="dv-value">{% if jobcard.mileage %}{{ jobcard.mileage }}{% else %}<span class="dv-none">Not recorded</span>{% endif %}</span>
-        </div>
-        <div>
-            <span class="dv-label">Mechanic</span>
-            <span class="dv-value">{% if jobcard.lead_mechanic %}{{ jobcard.lead_mechanic.name }}{% else %}<span class="dv-none">Unassigned</span>{% endif %}</span>
-        </div>
-        <div>
-            <span class="dv-label">Admitted</span>
-            <span class="dv-value">{{ jobcard.admitted_date|date:"d M Y" }}</span>
-        </div>
-        {% if jobcard.completed_date %}
-        <div>
-            <span class="dv-label">Completed</span>
-            <span class="dv-value text-success">{{ jobcard.completed_date|date:"d M Y" }}</span>
-        </div>
-        {% endif %}
-    </div>
-</div>
+<div class="dv-secs">
 
-{% comment %}
-WHO THE CUSTOMER IS — Office and Owner only, mirroring the gate on the form.
-Owner 1 keeps those relationships himself and the workshop identifies a car by
-its registration, so a mechanic never needs this. The note underneath is about
-the CAR, not the customer, so Floor sees that half — which is why the section is
-named differently for each audience rather than showing an empty "Customer" box.
-{% endcomment %}
-{% if office_view %}
-{% if jobcard.customer_name or jobcard.customer_contact or jobcard.notes %}
-<div class="dv-sec">
-    <div class="dv-sec-head">
-        <span class="dv-sec-icon"><i class="bi bi-person-vcard-fill"></i></span>
-        <h2 class="dv-sec-title">Customer &amp; Notes</h2>
-    </div>
-    <div class="dv-fields">
-        <div>
-            <span class="dv-label">Name</span>
-            <span class="dv-value">{% if jobcard.customer_name %}{{ jobcard.customer_name }}{% else %}<span class="dv-none">Not recorded</span>{% endif %}</span>
+    <!-- 1. Customer Concerns -->
+    <div class="dv-sec">
+        <div class="dv-sec-title">
+            <i class="bi bi-exclamation-circle text-primary"></i> Customer Concerns
+            <span class="dv-sec-n">{{ jobcard.concerns.all|length }}</span>
         </div>
-        <div>
-            <span class="dv-label">Contact</span>
-            <span class="dv-value">{% if jobcard.customer_contact %}{{ jobcard.customer_contact }}{% else %}<span class="dv-none">Not recorded</span>{% endif %}</span>
-        </div>
-        {% if jobcard.notes %}
-        <div class="dv-note">
-            <span class="dv-label">Internal note</span>
-            {{ jobcard.notes }}
-        </div>
-        {% endif %}
-    </div>
-</div>
-{% endif %}
-{% elif jobcard.notes %}
-<div class="dv-sec">
-    <div class="dv-sec-head">
-        <span class="dv-sec-icon"><i class="bi bi-sticky-fill"></i></span>
-        <h2 class="dv-sec-title">Workshop Note</h2>
-    </div>
-    <div class="dv-fields">
-        <div class="dv-note">{{ jobcard.notes }}</div>
-    </div>
-</div>
-{% endif %}
-
-<!-- ── CUSTOMER CONCERNS ───────────────────────────────────────── -->
-<div class="dv-sec">
-    <div class="dv-sec-head">
-        <span class="dv-sec-icon"><i class="bi bi-chat-left-text-fill"></i></span>
-        <h2 class="dv-sec-title">Customer Concerns</h2>
-        <span class="dv-sec-count">{{ jobcard.concerns.all|length }}</span>
-    </div>
-    {% if jobcard.concerns.all %}
-    <div class="dv-list">
         {% for concern in jobcard.concerns.all %}
         <div class="dv-row">
-            <div class="dv-row-text">
-                {% if concern.status == 'FIXED' %}
-                <i class="bi bi-check-circle-fill dv-ico-done"></i>
-                {% elif concern.status == 'WORKING' %}
-                <i class="bi bi-clock-history dv-ico-going"></i>
-                {% else %}
-                <span class="dv-ico-pending"></span>
-                {% endif %}
+            <div class="dv-row-main">
+                {% if concern.status == 'FIXED' %}<i class="bi bi-check-circle-fill dv-ico-done"></i>
+                {% elif concern.status == 'WORKING' %}<i class="bi bi-clock-history dv-ico-going"></i>
+                {% else %}<span class="dv-ico-pending"></span>{% endif %}
                 <span>{{ concern.concern_text }}</span>
             </div>
         </div>
+        {% empty %}
+        <div class="dv-empty">—</div>
         {% endfor %}
     </div>
-    {% else %}
-    <div class="dv-empty">Nothing recorded</div>
-    {% endif %}
-</div>
 
-<!-- ── JOBS ────────────────────────────────────────────────────── -->
-{% comment %}
-Labour is ONE charge on the card, not a price per line — work is quoted whole
-here. So the rows carry no money and the footer carries all of it, which is
-exactly how the printed invoice sets it out. Shown even with no rows, because
-the money is on the card and hiding it would make a priced card read as free.
-{% endcomment %}
-<div class="dv-sec">
-    <div class="dv-sec-head">
-        <span class="dv-sec-icon"><i class="bi bi-tools"></i></span>
-        <h2 class="dv-sec-title">Job Performed</h2>
-        <span class="dv-sec-count">{{ jobcard.labours.all|length }}</span>
-    </div>
-    {% if jobcard.labours.all %}
-    <div class="dv-list">
+    <!-- 2. Job Performed -->
+    {% comment %}
+    Labour is ONE charge on the card, never a price per line — work is quoted
+    whole here — so these rows carry no figure at all and the charge is on the
+    money line at the foot. That is also how the printed invoice sets it out.
+    {% endcomment %}
+    <div class="dv-sec">
+        <div class="dv-sec-title">
+            <i class="bi bi-tools text-primary"></i> Job Performed
+            <span class="dv-sec-n">{{ jobcard.labours.all|length }}</span>
+        </div>
         {% for labour in jobcard.labours.all %}
         <div class="dv-row">
-            <div class="dv-row-text">
+            <div class="dv-row-main">
                 <i class="bi bi-check-circle-fill dv-ico-done"></i>
                 <span>{{ labour.job_description }}</span>
             </div>
         </div>
+        {% empty %}
+        <div class="dv-empty">—</div>
         {% endfor %}
     </div>
-    {% else %}
-    <div class="dv-empty">Nothing recorded</div>
-    {% endif %}
-    {% if office_view %}
-    <div class="dv-foot">
-        <span class="dv-foot-label">Total Labour</span>
-        <span class="dv-foot-val">₹ {{ jobcard.labour_amount|inr_exact }}</span>
-    </div>
-    {% endif %}
-</div>
 
-<!-- ── INVENTORY ───────────────────────────────────────────────── -->
-{% comment %}
-A warehouse draw came off the shelf already fitted, so it has no shop, no order
-and no arrival — its `status` column is meaningless and is not reported. That is
-the same `source` rule the Live Report and the settle checklist follow: a
-problem that cannot exist is not worth a line on a page anyone has to read.
-{% endcomment %}
-<div class="dv-sec">
-    <div class="dv-sec-head">
-        <span class="dv-sec-icon"><i class="bi bi-box-seam-fill"></i></span>
-        <h2 class="dv-sec-title">Inventory Items</h2>
-        <span class="dv-sec-count">{{ inventory_draws|length }}</span>
-    </div>
-    {% if inventory_draws %}
-    <div class="dv-list">
+    <!-- 3. Inventory Items -->
+    {% comment %}
+    A warehouse draw came off the shelf already fitted: no shop, no order, no
+    arrival, and its `status` column is meaningless — the same `source` rule the
+    Live Report and the settle checklist follow.
+
+    ONE figure, not two. A shop line's `unit_price` is the whole line, so cost
+    and price are comparable and both print; a draw's is the warehouse average
+    PER UNIT, so setting it beside a line total would put two different kinds of
+    number either side of one dash.
+    {% endcomment %}
+    <div class="dv-sec">
+        <div class="dv-sec-title">
+            <i class="bi bi-box-seam text-info"></i> Inventory Items
+            <span class="dv-sec-n">{{ inventory_draws|length }}</span>
+        </div>
         {% for draw in inventory_draws %}
         <div class="dv-row">
-            <div class="dv-row-text">
+            <div class="dv-row-main">
                 <i class="bi bi-check-circle-fill dv-ico-done"></i>
                 <span>{{ draw.spare_part_name }}</span>
-                {% if office_view %}
-                <span class="dv-amt">₹{{ draw.total_price|default:"0.00" }}</span>
-                {% endif %}
             </div>
-            {% if draw.quantity|gt:1 %}
-            <div class="dv-sub">Qty: {{ draw.quantity|clean_qty }}</div>
+            {% if draw.price_str %}
+            <div class="dv-money-col">{{ draw.price_str }}</div>
+            {% endif %}
+            {% if draw.meta_line %}
+            <div class="dv-row-meta">{{ draw.meta_line }}</div>
             {% endif %}
         </div>
+        {% empty %}
+        <div class="dv-empty">—</div>
         {% endfor %}
     </div>
-    {% else %}
-    <div class="dv-empty">Nothing taken from stock</div>
-    {% endif %}
-</div>
 
-<!-- ── SPARE PARTS ─────────────────────────────────────────────── -->
-{% comment %}
-The quantity prints only when there is more than one of something — this
-workshop writes a number down only when it matters, the same rule the invoice
-and the Live Report follow, so "× 1" never appears. The shop is Office-only:
-Floor is shown supplier names nowhere else.
-{% endcomment %}
-<div class="dv-sec">
-    <div class="dv-sec-head">
-        <span class="dv-sec-icon"><i class="bi bi-gear-wide-connected"></i></span>
-        <h2 class="dv-sec-title">Spare Parts</h2>
-        <span class="dv-sec-count">{{ shop_spares|length }}</span>
-    </div>
-    {% if shop_spares %}
-    <div class="dv-list">
+    <!-- 4. Spare Parts -->
+    {% comment %}
+    All three strings come from `_describe_spare()` in the view: the facts
+    (dates · shop · quantity), and the two figures. Separate because they sit in
+    separate places — joined into one line they ran together as "10/07/2026 –
+    10/07/2026 · ₹5,727 – ₹7,967", where the eye had to find the ₹ to know where
+    the dates stopped. The COST is drawn quieter than the price: it is the
+    workshop's own side, and what an owner scans a bill for is what the customer
+    was charged.
+    {% endcomment %}
+    <div class="dv-sec">
+        <div class="dv-sec-title">
+            <i class="bi bi-gear-wide-connected text-warning"></i> Spare Parts
+            <span class="dv-sec-n">{{ shop_spares|length }}</span>
+        </div>
         {% for spare in shop_spares %}
         <div class="dv-row">
-            <div class="dv-row-text">
-                {% if spare.status == 'RECEIVED' %}
-                <i class="bi bi-check-circle-fill dv-ico-done"></i>
-                {% elif spare.status == 'ORDERED' %}
-                <i class="bi bi-clock-history dv-ico-going"></i>
-                {% else %}
-                <span class="dv-ico-pending"></span>
-                {% endif %}
+            <div class="dv-row-main">
+                {% if spare.status == 'RECEIVED' %}<i class="bi bi-check-circle-fill dv-ico-done"></i>
+                {% elif spare.status == 'ORDERED' %}<i class="bi bi-clock-history dv-ico-going"></i>
+                {% else %}<span class="dv-ico-pending"></span>{% endif %}
                 <span>{{ spare.spare_part_name }}</span>
-                {% if office_view %}
-                <span class="dv-amt">₹{{ spare.total_price|default:"0.00" }}</span>
-                {% endif %}
             </div>
-            {% comment %}
-            The STATUS is the icon and is not also spelled out, which is the
-            dashboard drawer's rule and avoids the row reading "Ordered • Biljo
-            • Ordered 17 Aug" — the state said twice, once as a word and once as
-            a date label. The subtext is only rendered when it has something to
-            say, or a part with no shop, no quantity and no dates leaves an
-            empty line under it.
-            {% endcomment %}
-            {% with named_shop=spare.shop|yesno:"y," %}
-            {% if spare.quantity|gt:1 or spare.ordered_date or spare.received_date or office_view and named_shop %}
-            <div class="dv-sub">
-                {% if office_view and named_shop %}{{ spare.shop.name }}{% endif %}{% if spare.quantity|gt:1 %}{% if office_view and named_shop %} • {% endif %}Qty: {{ spare.quantity|clean_qty }}{% endif %}{% if spare.ordered_date %} • Ordered {{ spare.ordered_date|date:"d M" }}{% endif %}{% if spare.received_date %} • Received {{ spare.received_date|date:"d M" }}{% endif %}
-            </div>
+            {% if spare.price_str or spare.cost_str %}
+            <div class="dv-money-col">{% spaceless %}
+                {% if spare.cost_str %}<span class="dv-cost">{{ spare.cost_str }}</span>{% endif %}
+                {% if spare.cost_str and spare.price_str %}<span class="dv-arrow">–</span>{% endif %}
+                {% if spare.price_str %}<span>{{ spare.price_str }}</span>{% endif %}
+            {% endspaceless %}</div>
             {% endif %}
-            {% endwith %}
+            {% if spare.meta_line %}
+            <div class="dv-row-meta">{{ spare.meta_line }}</div>
+            {% endif %}
         </div>
+        {% empty %}
+        <div class="dv-empty">—</div>
         {% endfor %}
     </div>
-    {% else %}
-    <div class="dv-empty">Nothing ordered from a shop</div>
-    {% endif %}
+
 </div>
 
-<!-- ── MONEY ───────────────────────────────────────────────────── -->
-{% if office_view %}
-<div class="dv-sec mb-5">
-    <div class="dv-sec-head">
-        <span class="dv-sec-icon"><i class="bi bi-cash-coin"></i></span>
-        <h2 class="dv-sec-title">Billing</h2>
-        <span class="dv-sec-count">
-            {% if jobcard.payment_status == 'PAID' %}Paid
-            {% elif jobcard.payment_status == 'BULK_PAID' %}Fleet Paid
-            {% elif jobcard.payment_status == 'PARTIAL' %}Partial
-            {% else %}Pending{% endif %}
-        </span>
-    </div>
-    <div class="dv-money">
-        <div class="dv-tile">
-            <span class="dv-label">Total bill</span>
-            <span class="dv-tile-val">₹{{ jobcard.get_total_amount|floatformat:2 }}</span>
-        </div>
-        <div class="dv-tile dv-tile-in">
-            <span class="dv-label">Received</span>
-            <span class="dv-tile-val">₹{{ jobcard.received_amount|default:"0"|floatformat:2 }}</span>
-        </div>
-        {% if jobcard.payment_status != 'PAID' and jobcard.payment_status != 'BULK_PAID' %}
-        <div class="dv-tile dv-tile-owed">
-            <span class="dv-label">Still owed</span>
-            <span class="dv-tile-val">₹{{ jobcard.get_balance_amount|floatformat:2 }}</span>
-        </div>
-        {% elif jobcard.discount_amount %}
-        {% comment %}
-        A settled walk-in books its shortfall as a DISCOUNT — the deliberate rule
-        at the top of CLAUDE.md — so on a settled card the third tile names that
-        rather than a balance, which is zero by construction.
-        {% endcomment %}
-        <div class="dv-tile">
-            <span class="dv-label">Discount</span>
-            <span class="dv-tile-val">₹{{ jobcard.discount_amount|floatformat:2 }}</span>
-        </div>
+<div class="dv-money">
+    <span class="dv-bill">₹{{ jobcard.get_total_amount|floatformat:0|intcomma }}</span>
+    {% if jobcard.received_amount and jobcard.received_amount != jobcard.get_total_amount %}
+    <span class="dv-got">₹{{ jobcard.received_amount|floatformat:0|intcomma }}</span>
+    {% endif %}
+    {% if jobcard.payment_status == 'PAID' or jobcard.payment_status == 'BULK_PAID' %}
+        {% if jobcard.discount_amount %}
+        <span class="dv-off">−₹{{ jobcard.discount_amount|floatformat:0|intcomma }}</span>
         {% endif %}
-    </div>
+    {% elif jobcard.received_amount and jobcard.get_balance_amount %}
+    <span class="dv-owed">₹{{ jobcard.get_balance_amount|floatformat:0|intcomma }}</span>
+    {% endif %}
+
+    <span class="dv-pay {% if jobcard.payment_status == 'PAID' or jobcard.payment_status == 'BULK_PAID' %}dv-pay-paid{% elif jobcard.payment_status == 'PARTIAL' %}dv-pay-partial{% else %}dv-pay-pending{% endif %}">
+        {% if jobcard.payment_status == 'PAID' %}Paid
+        {% elif jobcard.payment_status == 'BULK_PAID' %}Fleet Paid
+        {% elif jobcard.payment_status == 'PARTIAL' %}Partial
+        {% else %}Pending{% endif %}
+    </span>
 </div>
-{% endif %}
 
 {% endblock %}

@@ -1408,9 +1408,24 @@ grey".
                             </small>
                         </div>
                         <div class="d-flex gap-2">
+                            {% comment %}
+                            Office and Owner only, mirroring `jobcard_detail`'s
+                            own decorator — that page became `@office_required`
+                            on 2026-08-18 and this sidebar renders on a screen
+                            Floor uses, so it was the one Floor-visible route to
+                            it. A gate that does not match its view is a door
+                            somebody can see and not open, which is worse than
+                            no door (`InvoiceLinkVisibilityTests`).
+
+                            Floor loses nothing: these same four lists are on
+                            the dashboard car card they work from all day, and
+                            the Completed button beside this one is unchanged.
+                            {% endcomment %}
+                            {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                             <a href="{% url 'jobcard_detail' job.pk %}" class="btn btn-sm btn-outline-primary flex-fill">
                                 <i class="bi bi-eye"></i> View
                             </a>
+                            {% endif %}
                             <form method="post" action="{% url 'mark_completed' job.pk %}" class="flex-fill">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-success w-100"

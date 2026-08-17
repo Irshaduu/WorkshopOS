@@ -242,7 +242,7 @@ routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 | | `/jobcards/create/` | `jobcard_create` | Staff |
 | **JOBS** | `/jobcards/` | `jobcard_list` | Office |
 | | `/jobcards/live-report/` | `live_report` | Staff (operations board inside it: Office/Owner) |
-| | `/jobcards/<pk>/` | `jobcard_detail` | Staff |
+| | `/jobcards/<pk>/` | `jobcard_detail` (read-only) | **Office** |
 | | `/jobcards/<pk>/edit/` | `jobcard_edit` | Staff |
 | | `/jobcards/<pk>/delete/` | `jobcard_delete` | Office |
 | **COMPLETED** | `/completed/` | `completed_list` | Office |
@@ -776,7 +776,7 @@ base classes.*
 | `test_spare_dates.py` | A part cannot arrive before it was ordered — the pair rule itself, the job card refusing it (which it never used to), and both screens reading the one implementation in `workshop/spare_dates.py` |
 | `test_job_line_suggestions.py` | "Job Performed" suggested from the parts already on the card: the datalist, every box pointing at it, a warehouse draw offered by its CATEGORY through the invoice's own rule, and the verbs declared in exactly one place |
 | `test_card_list_grid.py` | The app's card lists as ONE shape: Completed, Pending Bills, Paid Bills, Job Cards and the High Discount Audit on the shared `row-cards` rule, Car Profiles on the identical two breakpoints (560 / 800), no fourth column, and the audit card stacked so three across cannot squeeze its number plate |
-| `test_jobcard_detail_view.py` | The read-only job card after its 2026-08-18 rebuild: nothing on it posts, no table and no sideways scroll, the section band read off the edit form it mirrors, one glyph for Spare Parts app-wide, and Floor reading the card without the customer or any money |
+| `test_jobcard_detail_view.py` | The read-only job card as the owner laid it out (2026-08-18): data with NO labels anywhere, a missing value leaving no trace, a part carrying only its two dates and two figures, the four sections copied value-for-value from the dashboard drawer, no figure printed twice on the money line, nothing on the page posting, and the whole page Office/Owner only with its one Floor-visible link gated to match |
 
 ### Inventory Tests (5 files)
 

@@ -3244,35 +3244,121 @@ about to correct one of these, you are about to break the business:
   the boxes and quietly brings the wrap back. The suggestion box was already
   `position: fixed`, so the scroller cannot clip it.
 
-- **The read-only job card was KEPT and rebuilt, not deleted — and the reason
-  is the Financial Lock's scope.** Added 2026-08-18. The owner asked whether
-  `/jobcards/<pk>/` should go, with everything that reaches it pointed at the
-  edit form instead, "if financial lock, job card is locked right? so safely
-  scroll and view". The lock is real and it is **not the common case**: it
-  covers `PAID` and `BULK_PAID` only, so the cards people open most — the ones
-  still on the floor — open fully editable. Redirecting a read to an editable
-  form makes every glance one stray tap from a change, on a tablet, on the
-  longest form in the app, behind a `beforeunload` prompt; and the page is
-  `@staff_required`, so **Floor reads cards here**. Nine places link or redirect
-  to it. So it stays, rebuilt on the two vocabularies that already existed:
-  the **form's own `.jc-sec-head`** for the section bands (this page is that
-  form's twin and they had drifted into looking like different products) and
-  the **dashboard car card's live-details drawer** for the lists — the owner's
-  named reference, and what replaced two horizontally-scrolling TABLES. A table
-  on a read-only page is the worst of both: six columns of ordering workflow
-  that have to be scrolled sideways, on a page whose only job is to be read.
-  Four things are load-bearing. **Nothing on it posts** — no `<form>`, no
-  input — which is the whole argument for its existence, so
-  `test_nothing_on_the_page_posts` scopes itself to `<main>` (base.html's logout
-  modal is a real form and would fail a whole-page check). **The role split is
-  resolved in the VIEW as `office_view`**, not asked six times in the template —
-  six copies of one boolean is six chances to widen five and miss the sixth, and
-  what it gates is who the customer is *and* every figure on the page. **The
-  section is named "Workshop Note" for Floor and "Customer & Notes" for Office**,
-  because a heading naming a customer over a box with no customer in it is the
-  page misdescribing itself. And **a spare's status is the ICON, not also a
-  word** — spelled out, a row read "Ordered • Biljo • Ordered 17 Aug", the state
-  said twice. Guarded by `workshop/tests/test_jobcard_detail_view.py`.
+- **The read-only job card is DATA WITH NO LABELS, and it is Office and Owner
+  only.** Added 2026-08-18, rewritten the same day. Two questions were settled
+  here and the second reversed a decision from the first attempt.
+  **(a) Keep it or delete it.** The owner asked whether `/jobcards/<pk>/` should
+  go, with everything pointed at the edit form instead, "if financial lock, job
+  card is locked right? so safely scroll and view". The lock is real and it is
+  **not the common case**: it covers `PAID` and `BULK_PAID` only, so the cards
+  people open most — the ones still on the floor — open fully editable.
+  Redirecting a read to an editable form makes every glance one stray tap from a
+  change, on a tablet, on the longest form in the app, behind a `beforeunload`
+  prompt. Nine places link or redirect to it. So it stays.
+  **(b) What it looks like.** The first rebuild kept the FORM's shape — a
+  section per fact, a label over every value — and the owner read it back as
+  "still useless because it's confusing", then drew the replacement:
+
+      🟩 Audi A4, KL 10 AA 1000, 01/01/2026 – 25/01/2026
+      10021 km, Amlah, customer name, contact
+      note
+
+      Customer Concerns | Job Performed
+      Inventory Items   | Spare Parts
+
+  **There are no labels anywhere**, and the owner's reasoning is the
+  load-bearing part: *"few times repeatedly see, humans will understand and
+  adapt easily."* A caption is what you need the FIRST time and what costs you
+  every time after, on a page four people open twenty times a day. Under a part
+  there is nothing but its two dates and its two figures. **A missing value
+  leaves no trace** — no "Not recorded", no dash — which is also why the two
+  identity line's facts are separate elements with the separators drawn in CSS
+  (`.dv-fact + .dv-fact::before`): a missing value takes its own separator with
+  it, and a stray one is not expressible. **The mechanic wears the dashboard car
+  card's own `bi-person-gear`**, at its colour and size — it is the one fact on
+  that line that is a PERSON, and the board people arrive from already marks it
+  that way. **The customer's name and number are ONE transparent box**, an
+  outline with no fill, because they are one thing and the rest of the line is
+  about the car: the box groups rather than emphasises, and it is not drawn at
+  all when there is nothing to put in it. It carries no dot separator of its
+  own — a box is already a separation. Everything a PART prints is
+  joined in the view by `_describe_spare()` for the same reason — a template
+  doing it is a chain of `{% if %}`s that has to get every separator right, and
+  gets it wrong on the row with no shop. Consequence for tests: line 2 is
+  asserted as a LIST of values in order, never as one joined string, because the
+  dots are not in the markup.
+  **(c) Office and Owner ONLY, which is new.** It was `@staff_required` and
+  gated the customer and the money inside the template; the owner asked "no
+  chance to get Floor, right?" and the honest answer was that there was — by
+  URL, and by the "View" button in the Vehicles-in-Workshop sidebar on the
+  new-job-card screen, which is a Floor page (now gated to match, the
+  `InvoiceLinkVisibilityTests` rule in the other direction). The reason to close
+  it is the LAYOUT rather than the secrecy: line 2 runs mileage, mechanic,
+  customer and phone number together with no captions, and every part sets the
+  workshop's COST beside the customer's price. Removing two of four values from
+  an unlabelled line does not produce a safe page, it produces a confusing one.
+  **Floor loses nothing** — the dashboard car card's live-details drawer is
+  these same four lists, on the board they work from all day.
+  **(d) ONE COLUMN, and every row is a GRID.** The four sections shipped 2×2 and
+  the owner had them straightened out the same day. A 2×2 makes you read in a Z,
+  and the two columns are unrelated lists of unrelated lengths, so the
+  right-hand one starts wherever the left-hand one happened to end. One column
+  also buys the thing that fixed the crowding: with the full width, a row can be
+  a grid — **what a part IS on the left, what it COST right-aligned in its own
+  column, the facts about it quietly underneath**. They used to be one string,
+  "10/07/2026 – 10/07/2026 · ₹5,727 – ₹7,967", where the eye had to find the ₹
+  to know where the dates stopped. Right-aligned and `tabular-nums`, the figures
+  form a line you can run down. The **cost is drawn quieter than the price** —
+  it is the workshop's own side, and what an owner scans a bill for is what the
+  customer was charged.
+  Four smaller rules. **The four sections keep the drawer's own values**, copied
+  to the character (`test_the_row_styling_is_the_drawers_own` compares the two
+  rules) — the polish pass deliberately did NOT touch them, because "these 4
+  exactly as Dashboard Card cards" was an instruction; what it touched was the
+  header, the row data and the column count. Below 640px they still shed their
+  boxes for one hairline, as the drawer does. **An empty section is still
+  drawn**, a deliberate divergence from the drawer: the owner drew a fixed set,
+  and a page whose sections come and go is one you cannot learn. **Nothing on it
+  posts**, which is the whole argument for its existence —
+  `test_nothing_on_the_page_posts` scopes to `<main>`, because base.html's
+  logout modal is a real form. And **the money line never prints a figure
+  twice**: with nothing received the balance IS the bill, and paid in full with
+  no discount the receipt IS the bill, so in each case the repeat goes and the
+  state chip carries it — the call the Cashbook already makes when it drops its
+  Net card on a period with no income.
+  *One trap this cost twice, worth not rediscovering:* `.dv-money` is the footer
+  and `.dv-money-col` is on every part row, so a test splitting on the bare
+  string `dv-money` finds a PRICE and asserts about the bill. Match the exact
+  class attribute. Guarded by `workshop/tests/test_jobcard_detail_view.py`.
+
+- **Purchase History carries the same sticky row number the Job Card's Spare
+  Parts table does.** Added 2026-08-18. Same table, same problem: it is
+  `text-nowrap` and wider than the page, so by the time you have scrolled to
+  Status the Vehicle and Part columns are gone and the row being read is
+  unnamed. Two things differ from the job card. The number is assigned in the
+  **view** (`item.row_no`), because the template regroups these rows by date and
+  `forloop.counter` would restart at every separator — two rows on one screen
+  sharing a number is worse than no number. And the **date separator row gets
+  its own sticky cell**, or the column has a hole at every date and the numbers
+  appear to float. Numbered 1..45 within the page, matching what the job card
+  numbers: what is on screen is what you are following.
+
+- **The Items / Products count leads both shop headers.** Added 2026-08-18 on
+  the owner's instruction. `/spare-shops/<pk>/` and `/inventory/shops/<pk>/` are
+  the same four stat boxes about two kinds of shop, and the count sat last on
+  both. First, it reads in the order the question is asked — how many things,
+  what they cost, what has been paid, what is left — and the three money figures
+  keep their order, so Balance Owed is still at the end where a total belongs.
+  **Both files in one edit**: these two pages are opened one after the other,
+  and a count that leads on one and trails on the other is two layouts for one
+  idea.
+
+- **"Spare Parts" is ONE glyph app-wide: `bi-gear-wide-connected`.** Added
+  2026-08-18 on the owner's instruction, and it removed a glyph rather than
+  swapping one. Three symbols had been meaning spare parts: this gear on the
+  dashboard drawer, `bi-nut-fill` on the job-card form and the Live Report, and
+  **`bi-tools` on every Spare Shops page — which is the JOB PERFORMED icon**, so
+  the section that buys parts wore the icon of the section that fits them. The
 
 - **"Spare Parts" is ONE glyph app-wide: `bi-gear-wide-connected`.** Added
   2026-08-18 on the owner's instruction, and it removed a glyph rather than
@@ -3718,7 +3804,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (46 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 51 files, **1,402 tests** (counted 2026-08-18 from a full green run, after `test_jobcard_detail_view.py` was added; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, 79 and 63 on 2026-08-16, 71 on 2026-08-17 and **46 on 2026-08-18**, which is the clearest evidence that the spread is load-dependent rather than meaningful; the 71 had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (46 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 51 files, **1,414 tests** (counted 2026-08-18 from a full green run, after the read-only job card was laid out to the owner's own design and `test_jobcard_detail_view.py` grew with it; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, 79 and 63 on 2026-08-16, 71 on 2026-08-17, and 46 and **30 on 2026-08-18**, which is the clearest evidence that the spread is load-dependent rather than meaningful; the 71 had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

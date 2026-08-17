@@ -334,8 +334,24 @@ class JobCardViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_jobcard_detail_view(self):
-        """Detail view should be accessible to all staff."""
+        """
+        The read-only card is OFFICE AND OWNER ONLY.
+
+        This asserted the opposite — "accessible to all staff" — until
+        2026-08-18, when the owner asked whether Floor could reach it and the
+        answer was yes. The page is now three unlabelled lines of identity and
+        four lists, and line 2 runs mileage, mechanic, customer and phone
+        together while every part sets the workshop's cost beside the customer's
+        price. There is no version of that worth showing a mechanic with half
+        the values removed, so the audience is one audience; Floor reads the same
+        four lists in the dashboard car card's live-details drawer.
+
+        See `workshop/tests/test_jobcard_detail_view.py` for the rest of it.
+        """
         url = reverse('jobcard_detail', args=[self.job.pk])
+        self.assertEqual(self.client.get(url).status_code, 403)   # Floor
+
+        self.user.groups.add(self.office_group)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'workshop/jobcard/jobcard_detail.html')

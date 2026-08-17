@@ -62,6 +62,45 @@
   /* ── Items table ── */
   .items-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); border-bottom: 2px solid var(--color-border); }
   .items-table td { font-size: 0.85rem; vertical-align: middle; }
+
+  /* ── the sticky row number ──────────────────────────────────────
+     The same handle the Job Card's Spare Parts table carries, and here for the
+     same reason: this table is `text-nowrap` and wider than the page, so by the
+     time you have scrolled to Status the Vehicle and Part columns are gone and
+     the row being read is unnamed.
+
+     Written `.table > * > tr > .col-idx` on purpose. Bootstrap's own cell rule
+     (`.table > :not(caption) > * > *`) carries one class and one element, so a
+     bare `.col-idx` loses to it on padding AND background — silently, which is
+     how the job card's number ended up with 18px for its digits before this
+     form was used.
+
+     A SHADOW rather than a border-right: with `border-collapse: collapse` the
+     table paints cell borders, not the cell, so a border slides out from under
+     the sticky column as it scrolls. Opaque background for the same class of
+     reason — a see-through sticky cell lets the columns it covers scroll
+     visibly through it. */
+  .items-table > * > tr > .col-idx {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    padding: 0.5rem 1px;
+    text-align: center;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #94a3b8;
+    background-color: #fff;
+    box-shadow: 1px 0 0 var(--color-border, #e2e8f0);
+    user-select: none;
+  }
+  /* The date separator spans the rest of the row, so its own first cell keeps
+     the sticky column unbroken — without it the column has a hole at every
+     date and the numbers appear to float. */
+  .items-table > tbody > tr > .col-idx-sep { background-color: #fff; }
   .paid-badge { background: #f0fdf4; color: #16a34a; border-radius: 8px; padding: 0.2rem 0.55rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
   .unpaid-badge { background: #fef2f2; color: #dc2626; border-radius: 8px; padding: 0.2rem 0.55rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
   .partial-badge { background: #fffbeb; color: #d97706; border-radius: 8px; padding: 0.2rem 0.55rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
@@ -281,8 +320,24 @@
     </div>
   </div>
 
-  <!-- Grand Stats -->
+  {% comment %}
+  Items FIRST, on the owner's instruction (2026-08-18), and the supplier shop's
+  own header was reordered to match in the same edit — the two pages are the
+  same four boxes about two kinds of shop, and a count that sits first on one
+  and last on the other is two layouts for one idea.
+
+  It reads as a sentence in the order the question is asked: how many things,
+  what they cost, what has been paid, what is left. The three money figures
+  keep their order, so the one an owner comes here for — Balance Owed — is
+  still where it was, at the end, where a total belongs.
+  {% endcomment %}
   <div class="row g-2">
+    <div class="col-6 col-md-3">
+      <div class="stat-box h-100">
+        <div class="s-label">Items</div>
+        <div class="s-val">{{ item_count }}</div>
+      </div>
+    </div>
     <div class="col-6 col-md-3">
       <div class="stat-box h-100">
         <div class="s-label">Total Purchased</div>
@@ -299,12 +354,6 @@
       <div class="stat-box h-100">
         <div class="s-label">Balance Owed</div>
         <div class="s-val balance-big {% if total_balance <= 0 %}balance-ok{% endif %}">₹{{ total_balance|floatformat:0|intcomma }}</div>
-      </div>
-    </div>
-    <div class="col-6 col-md-3">
-      <div class="stat-box h-100">
-        <div class="s-label">Items</div>
-        <div class="s-val">{{ item_count }}</div>
       </div>
     </div>
   </div>
@@ -393,6 +442,7 @@
       <table class="table table-borderless align-middle mb-0 items-table text-nowrap">
         <thead>
           <tr class="border-bottom text-muted" style="background: rgba(0,0,0,0.02); font-size: 0.75rem; letter-spacing: 0.5px;">
+            <th class="col-idx" scope="col" aria-label="Row number">#</th>
             <th class="ps-3 text-uppercase">Vehicle</th>
             <th class="text-uppercase">Part</th>
             <th class="text-end text-uppercase">Qty</th>
@@ -406,7 +456,8 @@
           {% for group in grouped_items %}
           <!-- Date Separator Row -->
           <tr>
-            <td colspan="9" class="py-2 ps-3" style="font-size: 0.82rem;">
+            <td class="col-idx col-idx-sep"></td>
+            <td colspan="8" class="py-2 ps-3" style="font-size: 0.82rem;">
               {% if group.grouper %}
                 <span class="text-muted">{{ group.grouper|date:"d/m/Y" }}</span>
               {% else %}
@@ -419,6 +470,7 @@
           
           {% for item in group.list %}
           <tr class="border-bottom" style="border-color: var(--color-border-light) !important;">
+            <td class="col-idx">{{ item.row_no }}</td>
             <td class="ps-3" style="white-space: nowrap;">
               {% if item.job_card %}
               <div class="d-flex align-items-center flex-nowrap">
