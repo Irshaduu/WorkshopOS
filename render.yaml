@@ -1,0 +1,27 @@
+# Render Blueprint for the throwaway client-meeting demo.
+# Branch-only: this file lives on render-demo and is not meant to be merged
+# into main. Real production is Postgres on Railway (see RAILWAY_OPERATIONS.md
+# / GO_LIVE_RUNBOOK.md); this exists purely because Railway's free-tier
+# Postgres was too slow for a live demo, and SQLite as a committed file
+# removes the network round trip.
+#
+# Deploy: connect this repo on Render as a Blueprint, point it at the
+# render-demo branch, and it reads this file automatically.
+services:
+  - type: web
+    name: workshopos-demo
+    runtime: python
+    plan: free
+    branch: render-demo
+    buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
+    startCommand: gunicorn formulad_workshop.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DJANGO_ENV
+        value: render_demo
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      # ALLOWED_HOSTS / CSRF_TRUSTED_ORIGINS default to *.onrender.com in
+      # settings/render_demo.py — only override here if the assigned
+      # hostname is unusual.

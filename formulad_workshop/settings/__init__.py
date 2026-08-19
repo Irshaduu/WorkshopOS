@@ -11,6 +11,10 @@ if env == 'production':
     from .production import *  # noqa: F401,F403
 elif env == 'development':
     from .development import *  # noqa: F401,F403
+elif env == 'render_demo':
+    # Throwaway Render/SQLite demo path — see settings/render_demo.py.
+    # Only exists on the render-demo branch; never merge into main.
+    from .render_demo import *  # noqa: F401,F403
 else:
     raise ImproperlyConfigured(
         "DJANGO_ENV environment variable must be set to 'development' or 'production'."
