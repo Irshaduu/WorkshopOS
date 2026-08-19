@@ -281,6 +281,35 @@
         user-select: none;
     }
 
+    /* The photo cell, sized so it cannot grow with its contents. Written in the
+       same `.table > * > tr > …` form and for the same reason: a bare class
+       loses to Bootstrap's cell rule on padding, and the box would then sit in
+       a cell 16px wider than it needs on a table that already scrolls. */
+    .table > * > tr > .col-photo {
+        width: 56px;
+        min-width: 56px;
+        max-width: 56px;
+        /* 0.3rem, not 0.35rem, and the difference is measurable: the row's
+           natural height is 55px on a laptop, the box is 44px, so anything over
+           5.5px of padding each side makes the photo cell the tallest in the row
+           and the whole table one pixel taller. Measured 56px against 55px at
+           0.35rem; 0px difference at 0.3rem. On a phone the box is 48px and the
+           date chip already forces 60px, so there is more room there, not less. */
+        padding: 0.3rem 6px;
+        text-align: center;
+    }
+    /* `line-height: 0` belongs to the BODY cell only, and the `td` is
+       load-bearing. It is there because an inline-flex child adds the strut of
+       its line box underneath, which would make this the tallest cell in the
+       row. Applied to the column as a whole it also hits the <th>, whose
+       content is real text — and text in a zero-height line box paints on top
+       of its neighbours: the header rendered "Photos" overlapping "Shop" as an
+       unreadable smudge, which is what shipped for one afternoon. Any future
+       column that hides its own line box must scope it the same way. */
+    .table > * > tr > td.col-photo {
+        line-height: 0;
+    }
+
     /* ---- the two row states, declared on the CELLS ----
        Bootstrap 5.3 gives every cell `background-color: var(--bs-table-bg)`,
        and on this table that resolves to #fff — an OPAQUE cell sitting on top
@@ -1630,7 +1659,7 @@ grey".
                 <summary class="card-header jc-sec-head jc-fold-head">
                     <div class="jc-sec-title">
                         <span class="jc-sec-icon"><i class="bi bi-person-vcard-fill"></i></span>
-                        <h6 class="jc-sec-name">Customer &amp; Notes</h6>
+                        <h6 class="jc-sec-name">Customer{% if photos_configured %}, Notes &amp; Photos{% else %} &amp; Notes{% endif %}</h6>
                         <span class="jc-fold-note">optional</span>
                     </div>
                     <i class="bi bi-chevron-down jc-fold-chevron"></i>
@@ -1673,6 +1702,8 @@ grey".
 {% if form.notes.errors %}<div class="text-danger small mt-1">{{ form.notes.errors|join:", " }}</div>{% endif %}
 
                         </div>
+
+                        {% include "workshop/includes/_photo_card_row.html" %}
                     </div>
 
                 </div>
@@ -1687,7 +1718,7 @@ grey".
                 <summary class="card-header jc-sec-head jc-fold-head">
                     <div class="jc-sec-title">
                         <span class="jc-sec-icon"><i class="bi bi-sticky-fill"></i></span>
-                        <h6 class="jc-sec-name">Workshop Note</h6>
+                        <h6 class="jc-sec-name">Workshop Note{% if photos_configured %} &amp; Photos{% endif %}</h6>
                         <span class="jc-fold-note">optional</span>
                     </div>
                     <i class="bi bi-chevron-down jc-fold-chevron"></i>
@@ -1702,6 +1733,8 @@ grey".
 {% if form.notes.errors %}<div class="text-danger small mt-1">{{ form.notes.errors|join:", " }}</div>{% endif %}
 
                         </div>
+
+                        {% include "workshop/includes/_photo_card_row.html" %}
                     </div>
                 </div>
             </details>
@@ -2057,6 +2090,35 @@ grey".
                                     <th class="ps-3 col-part" style="min-width: 320px;">Part Name</th>
                                     <th class="text-center col-qty">Qty</th>
                                     <th class="col-status">Status</th>
+                                    {% comment %}
+                                    Photos, between Status and Shop on the owner's instruction. It
+                                    costs the table ~56px of WIDTH — which it already scrolls, by a
+                                    documented 432px even on a laptop — and no row HEIGHT, which is
+                                    the dimension that actually hurts: anything that grows a row
+                                    reflows every row beneath it while a finger is already on its
+                                    way to one.
+                                    {% endcomment %}
+                                    {% comment %}
+                                    A GLYPH, not the word. "PHOTOS" needs about
+                                    63px once uppercased with the header's
+                                    letter-spacing, and this column is 56px — so
+                                    the word wrapped to two lines ("PHOT / OS")
+                                    and made the header row taller than every
+                                    other table on the page. Widening the column
+                                    to fit six letters would cost the table
+                                    another ~16px it does not have.
+
+                                    The `#` column already does exactly this: a
+                                    symbol plus an `aria-label`, which is this
+                                    codebase's rule for anything that becomes
+                                    icon-only. Here it is unambiguous anyway —
+                                    the cells beneath it are camera boxes.
+                                    {% endcomment %}
+                                    {% if photos_configured %}
+                                    <th class="col-photo text-center" scope="col" aria-label="Photos" title="Photos">
+                                        <i class="bi bi-camera"></i>
+                                    </th>
+                                    {% endif %}
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <th class="col-shop" style="min-width: 220px;">Shop</th>
                                     {% endif %}
@@ -2111,6 +2173,18 @@ grey".
                                     <td class="col-status">
                                         {{ s_form.status }}
                                     </td>
+                                    {% if photos_configured %}
+                                    {% comment %}
+                                    An UNSAVED row leaves this cell empty rather than showing a box.
+                                    A photo needs a row to attach to and a row added a moment ago has
+                                    no primary key yet — a box that looked live and then refused
+                                    would be worse than no box. The cell itself always renders, or
+                                    every column to its right shifts by one on that row.
+                                    {% endcomment %}
+                                    <td class="col-photo text-center">
+                                        {% include "workshop/includes/_photo_box.html" with photo_subject="spare" photo_subject_id=s_form.instance.pk photo_count=s_form.instance.photo_count photo_limit=spare_photo_limit photo_can_edit=photo_can_edit %}
+                                    </td>
+                                    {% endif %}
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <td class="col-shop" style="min-width: 220px;">
                                         <select name="{{ s_form.shop_name.html_name }}"
@@ -2378,6 +2452,16 @@ is now true, and the column width is unchanged at every breakpoint.
                 <td class="col-status">
                     {{ spare_formset.empty_form.status }}
                 </td>
+                {% comment %}
+                The clone template must carry this cell too, or every row added by
+                "+ Add Spare" sits one column adrift of its header — and nothing in
+                the browser would say so. `test_the_added_row_template_matches_the_live_rows`
+                is what catches it. Deliberately EMPTY: a row that does not exist yet
+                has nothing to attach a photo to.
+                {% endcomment %}
+                {% if photos_configured %}
+                <td class="col-photo text-center"></td>
+                {% endif %}
                 {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                 <td class="col-shop" style="min-width: 220px;">
                     <select name="spares-__prefix__-shop_name"
@@ -2649,13 +2733,40 @@ is now true, and the column width is unchanged at every breakpoint.
                     }
                 });
 
-                // Spare parts — keyed on the part name.
+                {% comment %}
+                Spare parts — dropped only when the row is ENTIRELY empty.
+
+                It used to key on the part name alone, so a row carrying dates,
+                a shop, a status and two prices but no name was ticked for
+                deletion and vanished on save with nothing said. Everything
+                typed into it went with it.
+
+                An untouched row still disappears, which is what lets somebody
+                press "+ Add Spare" twice and save without an argument. A row
+                with content and no name now reaches the server, where
+                `ShopSpareRowForm.clean` refuses it and the error summary names
+                it — a slip is worth stopping for, an empty row is not.
+
+                Status is deliberately not counted as content: it defaults to
+                PENDING and is never blank, so it would make every untouched row
+                look filled in.
+                {% endcomment %}
                 document.querySelectorAll('#spare-list .spare-row').forEach(row => {
                     const partInput = row.querySelector('input[name$="-spare_part_name"]');
                     const deleteCheckbox = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
-                    if (partInput && deleteCheckbox) {
-                        deleteCheckbox.checked = !partInput.value.trim();
-                    }
+                    if (!partInput || !deleteCheckbox) return;
+
+                    const filled = [
+                        '-quantity', '-ordered_date', '-received_date',
+                        '-unit_price', '-total_price', '-customer_rate',
+                    ].some(function (suffix) {
+                        const field = row.querySelector('[name$="' + suffix + '"]');
+                        return field && field.value.trim();
+                    });
+                    const shop = row.querySelector('select.shop-name-select');
+                    const shopChosen = shop && shop.value.trim();
+
+                    deleteCheckbox.checked = !partInput.value.trim() && !filled && !shopChosen;
                 });
 
                 {% comment %}
@@ -2865,7 +2976,7 @@ is now true, and the column width is unchanged at every breakpoint.
 
 <!-- Spare Parts Auto-Fill Logic -->
 {% load static %}
-<script src="{% static 'js/spare_autofill.js' %}?v=5"></script>
+<script src="{% static 'js/spare_autofill.js' %}?v=6"></script>
 
 <!-- UNASSIGN CONFIRMATION MODAL -->
 <div class="modal fade" id="unassignConfirmModal" tabindex="-1" aria-hidden="true">
@@ -3705,5 +3816,18 @@ and filled for the guard.
 
 {% comment %} Closes #jcColour, opened at the top of this block. {% endcomment %}
 </div>
+
+{% comment %}
+The camera and the gallery. OUTSIDE the <form> deliberately — they are fixed
+full-screen overlays, and nesting them in the form would put them inside the
+Financial Lock's `querySelectorAll` sweep, which would disable the gallery's
+own controls on exactly the settled cards whose photos matter most.
+
+Only when storage is configured: with no credentials there are no boxes, so
+loading two scripts and a stylesheet to drive nothing is waste.
+{% endcomment %}
+{% if photos_configured %}
+{% include "workshop/includes/_photo_overlays.html" %}
+{% endif %}
 
 {% endblock %}

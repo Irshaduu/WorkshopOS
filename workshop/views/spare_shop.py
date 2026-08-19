@@ -2,6 +2,7 @@ import json
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime, timedelta
 
+from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.contrib import messages
@@ -11,6 +12,7 @@ from django.db import transaction
 from django.core.paginator import Paginator
 from django.urls import reverse
 
+from .. import photos as photo_storage
 from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
 from ..decorators import office_required, owner_required, staff_required, is_office_or_owner
 from ..notifications import notify
@@ -125,7 +127,11 @@ def spare_shop_detail(request, pk):
         .filter(shop=shop)
         .select_related('job_card')
         .annotate(
-            group_date=F(group_field)
+            group_date=F(group_field),
+            # Annotated, never counted per row: this page paginates at 45, so a
+            # `.photos.count()` in the template would be 45 extra queries on a
+            # table that is already the widest in the app.
+            photo_count=Count('photos'),
         )
         .order_by(F('group_date').desc(nulls_first=True), '-pk')
     )
@@ -276,6 +282,13 @@ def spare_shop_detail(request, pk):
         'sort_by': sort_by,
         'start_date': start_date_str if filter_type == 'custom' else '',
         'end_date': end_date_str if filter_type == 'custom' else '',
+        # Photos here are VIEW ONLY — no camera, no delete, whatever state the
+        # card behind the row is in. Recording a part is the floor's job and it
+        # happens on the job card; this page is a ledger, and giving it a second
+        # door into changing evidence is how the two screens start disagreeing
+        # about what a purchase looked like.
+        'photos_configured': photo_storage.photos_are_configured(),
+        'spare_photo_limit': settings.PHOTO_LIMIT_SPARE,
     })
 
 

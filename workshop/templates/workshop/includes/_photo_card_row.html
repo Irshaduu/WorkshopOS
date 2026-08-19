@@ -1,0 +1,38 @@
+{% comment %}
+The car's photo box, as it appears under the Internal note.
+
+Rendered in BOTH branches of the Customer section — the Office/Owner
+"Customer & Notes" fold and Floor's "Workshop Note" fold. Floor is who
+actually walks round the car with the tablet, so leaving it out of their half
+would be leaving it out of the hands it was built for. The two sections differ
+only in whether they carry the customer's name and number, which is a separate
+rule (`OFFICE_ONLY_CARD_FIELDS`); a photo of a car says nothing about whose it
+is.
+
+Nothing renders on a NEW card — `_photo_context` passes no
+`photo_subject_id` until the card has been saved — so the hint takes its place
+rather than a box that looks live and then refuses.
+{% endcomment %}
+{% if photos_configured %}
+<div class="col-12">
+    <label class="form-label small text-muted d-block">
+        <i class="bi bi-camera"></i> Photos
+    </label>
+    {% if photo_subject_id %}
+    <div class="photo-box-row">
+        {% include "workshop/includes/_photo_box.html" %}
+        <p class="photo-box-hint">
+            {% if not photo_can_edit %}
+                This bill is settled — photos can be viewed, not changed.
+            {% elif photo_count %}
+                Tap to view or add.
+            {% else %}
+                Tap to open the camera.
+            {% endif %}
+        </p>
+    </div>
+    {% else %}
+    <p class="photo-box-hint">Save the job card first, then photos can be added here.</p>
+    {% endif %}
+</div>
+{% endif %}

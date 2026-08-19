@@ -450,6 +450,15 @@
             <th class="text-center text-uppercase">{% if sort_by == 'ordered' %}Received Date{% else %}Ordered Date{% endif %}</th>
             <th class="text-uppercase">Job Card</th>
             <th class="pe-3 text-center text-uppercase">Status</th>
+            {% comment %}
+            Photos, VIEW ONLY. Last column deliberately: this table is scanned
+            for money and dates, and a box in the middle of that run breaks the
+            reading order for something that is a secondary affordance. It is
+            appended rather than inserted for the same reason.
+            {% endcomment %}
+            {% if photos_configured %}
+            <th class="text-center text-uppercase">Photos</th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
@@ -457,7 +466,7 @@
           <!-- Date Separator Row -->
           <tr>
             <td class="col-idx col-idx-sep"></td>
-            <td colspan="8" class="py-2 ps-3" style="font-size: 0.82rem;">
+            <td colspan="{% if photos_configured %}9{% else %}8{% endif %}" class="py-2 ps-3" style="font-size: 0.82rem;">
               {% if group.grouper %}
                 <span class="text-muted">{{ group.grouper|date:"d/m/Y" }}</span>
               {% else %}
@@ -539,6 +548,21 @@
                 </span>
               {% endif %}
             </td>
+            {% if photos_configured %}
+            {% comment %}
+            Only rows that HAVE photos get a box. A camera-less box on an empty
+            row opens an empty gallery and answers nothing, and there would be
+            one on every row of a 45-row page. `photo_can_edit` is False, which
+            is what makes a tap open the gallery instead of a camera — and
+            photos.js additionally ANDs it with the server's own answer, so a
+            settled card stays frozen here too.
+            {% endcomment %}
+            <td class="text-center" style="line-height: 0; padding: 0.25rem 0.5rem;">
+              {% if item.photo_count %}
+                {% include "workshop/includes/_photo_box.html" with photo_subject="spare" photo_subject_id=item.pk photo_count=item.photo_count photo_limit=spare_photo_limit photo_can_edit=False photo_box_compact=True %}
+              {% endif %}
+            </td>
+            {% endif %}
           </tr>
           {% endfor %}
           {% endfor %}
@@ -825,5 +849,15 @@
     modal.show();
   }
 </script>
+
+{% comment %}
+The gallery. The camera markup comes with it and is simply never opened from
+this page — every box here carries `data-can-edit="0"`, so a tap goes to the
+gallery. One include rather than a stripped-down second copy: two components
+doing nearly the same job is how they drift.
+{% endcomment %}
+{% if photos_configured %}
+{% include "workshop/includes/_photo_overlays.html" %}
+{% endif %}
 
 {% endblock %}

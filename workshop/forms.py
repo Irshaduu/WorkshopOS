@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django import forms
+from django.db.models import Count
 from django.forms import inlineformset_factory, BaseInlineFormSet
 from django.forms.formsets import DELETION_FIELD_NAME
 
@@ -441,7 +442,17 @@ class SourceScopedSpareFormSet(BaseInlineFormSet):
     spare_source = None
 
     def get_queryset(self):
-        return super().get_queryset().filter(source=self.spare_source)
+        # `photo_count` is annotated, never counted per row. Each spare row
+        # renders a photo box carrying its own count, and a card can hold
+        # dozens of parts — a rebuild in the live data carries 91 — so a
+        # `.photos.count()` in the template would be one query per row on the
+        # longest form in the app. Annotating is this codebase's own rule for
+        # list views.
+        return (
+            super().get_queryset()
+            .filter(source=self.spare_source)
+            .annotate(photo_count=Count('photos'))
+        )
 
     def save_new(self, form, commit=True):
         # `source` is deliberately not an editable field — a row cannot be moved
@@ -678,6 +689,22 @@ class ShopSpareRowForm(forms.ModelForm):
         if cleaned.get('DELETE'):
             return cleaned
 
+        # A row somebody filled in but never NAMED is refused, not dropped.
+        #
+        # `spare_part_name` is blank=True on the model, and the blank-row sweep
+        # in the template ticks DELETE on any row whose name box is empty — so
+        # a row carrying dates, a status, a shop and two prices, but no name,
+        # was silently thrown away on save with nothing said. Everything typed
+        # into it went with it.
+        #
+        # An entirely empty row is still dropped in the browser and never
+        # reaches here, so this only ever fires on a row with real content. The
+        # same distinction the Estimate makes: clearing a row is an erasure,
+        # while a row with figures and no name is a slip, and dropping a slip
+        # throws away work somebody just did.
+        if not (cleaned.get('spare_part_name') or '').strip() and self._row_has_content(cleaned):
+            self.add_error('spare_part_name', 'Give this part a name, or clear the row.')
+
         problem = pair_problem(cleaned.get('ordered_date'), cleaned.get('received_date'))
         if problem:
             # On `received_date`, not as a non-field error: that is the box the
@@ -685,6 +712,15 @@ class ShopSpareRowForm(forms.ModelForm):
             # what puts the hairline on the right input inside the date panel.
             self.add_error('received_date', problem)
         return cleaned
+
+    # Everything a person can put on this row EXCEPT the name and the status.
+    # Status is excluded deliberately: it defaults to PENDING and is never
+    # blank, so counting it would make every untouched row look filled in.
+    CONTENT_FIELDS = ('quantity', 'ordered_date', 'received_date', 'unit_price',
+                      'total_price', 'customer_rate', 'shop')
+
+    def _row_has_content(self, cleaned):
+        return any(cleaned.get(name) not in (None, '') for name in self.CONTENT_FIELDS)
 
     def row_label(self):
         """How this row is named in the error summary at the top of the page.

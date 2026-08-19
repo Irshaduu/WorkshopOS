@@ -61,6 +61,65 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ==========================================
+    // DATES -> STATUS (the other direction)
+    // ==========================================
+    //
+    // Typing a date by hand used to leave the status behind, so a part with an
+    // ordered date could still read "Pending" and a received one still read
+    // "Ordered" — and the Live Report, which chases parts by status, believed
+    // it.
+    //
+    // ONE RULE COVERS ALL OF IT: the status is whatever the dates say.
+    //
+    //     received present -> RECEIVED
+    //     ordered  present -> ORDERED
+    //     neither          -> PENDING
+    //
+    // The case worth pointing out is the one that needed no extra clause.
+    // "If both dates are there and Ordered is edited, the status must not jump"
+    // falls straight out: received is still present, so the rule still says
+    // RECEIVED, so nothing moves. No special case, nothing to keep in step.
+    function statusFromDates(ordered, received) {
+        if (received) return 'RECEIVED';
+        if (ordered) return 'ORDERED';
+        return 'PENDING';
+    }
+
+    // Delegated on `document`, deliberately. Rows added by "+ Add Spare" are
+    // clones, and this file already carries the trap CLAUDE.md warns about —
+    // `dataset.listenerAttached` is serialised into the HTML, so a cloned row
+    // inherits the mark and never gets wired. Delegation cannot inherit
+    // anything, so a new row works with nothing re-initialised.
+    document.addEventListener('change', function (event) {
+        const input = event.target;
+        if (!input.name || !/-(ordered|received)_date$/.test(input.name)) return;
+
+        const row = input.closest('.spare-row');
+        if (!row) return;
+        const dropdown = row.querySelector('select[name*="status"]');
+        if (!dropdown) return;
+
+        const ordered = (row.querySelector('input[name*="ordered_date"]') || {}).value || '';
+        const received = (row.querySelector('input[name*="received_date"]') || {}).value || '';
+        const derived = statusFromDates(ordered.trim(), received.trim());
+        if (dropdown.value === derived) return;
+
+        // `originalStatus` is updated BEFORE the value changes, and that
+        // ordering is what keeps this simple. The status listener above reads
+        // it to decide whether a change is backward and needs confirming — so
+        // clearing both dates drops the status to Pending quietly instead of
+        // interrupting with a dialog about a move the person did not make.
+        // `applyConfirmedChange` uses the same trick for the same reason.
+        row.dataset.originalStatus = derived;
+        dropdown.value = derived;
+
+        // Bubbling, so the delegated colour coding on `document` hears it.
+        // A constructed event does not bubble by default, and that omission is
+        // what made the status colour look unreliable in the first place.
+        dropdown.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    // ==========================================
     // MODAL LOGIC (Variables & Interaction)
     // ==========================================
 
@@ -153,10 +212,19 @@ document.addEventListener('DOMContentLoaded', function () {
         row.dataset.originalStatus = newStatus;
 
         // Dispatch change event to trigger any style updates (colors, icons)
-        // Since we updated dataset.originalStatus *before* this, 
+        // Since we updated dataset.originalStatus *before* this,
         // it won't trigger the modal loop again.
-        const event = new Event('change');
-        dropdown.dispatchEvent(event);
+        //
+        // `bubbles: true` is load-bearing and its absence was a real defect.
+        // A constructed Event does NOT bubble by default, and every listener
+        // that repaints this dropdown — the status colour coding, the dirty
+        // marker, the date chips — is delegated on `document`. So a status
+        // changed through the CONFIRMATION path fired nothing at all and kept
+        // the colour of the status it had left, while a status changed
+        // directly repainted correctly, because a native change event does
+        // bubble. That is what "the colour is not stable" was: not a race, but
+        // two paths where only one of them was heard.
+        dropdown.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     // Logic for Forward moves (Auto-fill)

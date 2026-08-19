@@ -50,6 +50,31 @@ else:
 # it here costs nothing when it isn't.
 DATABASES['sqlite'] = sqlite_db()
 
+# ---------------------------------------------------------------------------
+# PHOTOS ARE OFF UNDER THE TEST RUNNER, WHATEVER .env SAYS
+# ---------------------------------------------------------------------------
+# Not a convenience — a correctness rule, and it was learned the hard way. The
+# photo settings are read by `config()` from `.env`, so the moment a developer
+# added real storage credentials the suite started rendering the photo box, the
+# spare-parts column and the "Customer, Notes & Photos" heading — and four
+# unrelated section tests that assert the ordinary shape began to fail on one
+# machine and pass on another.
+#
+# A suite whose result depends on the developer's local configuration is worse
+# than a failing one, because it is trusted. Tests that want photos turn them on
+# explicitly with `override_settings`, exactly as `workshop/tests/test_photos.py`
+# does, so both shapes stay pinned and neither depends on who is running them.
+#
+# Same reasoning as forcing SQLite above: the test environment is decided here,
+# not by whatever happens to be in the environment.
+if RUNNING_TESTS:
+    PHOTO_S3_ACCESS_KEY_ID = ''
+    PHOTO_S3_SECRET_ACCESS_KEY = ''
+    PHOTO_S3_BUCKET = ''
+    PHOTO_S3_ACCOUNT_ID = ''
+    PHOTO_S3_ENDPOINT = ''
+    PHOTO_LOCAL_FALLBACK = False
+
 # No SSL in dev
 SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False

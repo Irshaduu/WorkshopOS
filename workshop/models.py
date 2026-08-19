@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
@@ -1382,6 +1383,182 @@ class JobCardLabourItem(models.Model):
         return self.job_description
 
 
+def _filename_safe(text, limit=40):
+    """
+    Collapse a free-text value into something safe to hand a filesystem.
+
+    Registration numbers carry spaces, part names carry brackets and slashes,
+    and a slash in particular would read as a directory separator on the way
+    into somebody's phone. Anything that is not a letter, digit, dash or dot
+    becomes a single dash.
+    """
+    import re as _re
+    cleaned = _re.sub(r'[^A-Za-z0-9.-]+', '-', (text or '').strip())
+    return _re.sub(r'-{2,}', '-', cleaned).strip('-')[:limit]
+
+
+class JobCardPhoto(models.Model):
+    """
+    A photograph taken on the shop floor — of the car, or of one spare part.
+
+    ONE TABLE, TWO SUBJECTS, told apart by which FK is set. That is the same
+    shape `JobCardSpareItem` uses to hold both part routes: one table, one set
+    of rules, no chance of two implementations drifting. `job_card` set means a
+    car photo; `spare` set means a part photo.
+
+    **Exactly one of them is ever populated, and the DATABASE enforces it.**
+    `clean()` alone would not: Django does not call it on `save()`, so a model
+    check is advisory and only forms honour it — and this model has no form, it
+    is written by an endpoint. The `CheckConstraint` is what makes the rule
+    true. A row with both set would count against two different limits and show
+    in two galleries; a row with neither is reachable from no screen at all and
+    invisible to the sweep.
+
+    `spare` alone is enough for a part photo because an unassigned spare has no
+    job card at all, and those rows are photographed like any other.
+
+    WHY THIS SECTION IS COMPLETELY OPTIONAL
+    ---------------------------------------
+    Nothing points AT a photo. There is no column on `JobCard` or
+    `JobCardSpareItem`, no money, no stock, no ledger line, nothing in
+    `analysis_engine.py` and nothing in `invoice.py` — so a photo can never
+    reach a customer's bill, exactly as the internal note cannot. Photos also
+    upload independently of the form POST, so R2 being slow, down, or entirely
+    unconfigured cannot block a job card from saving. And `settlement.py` must
+    never chase a missing photo: turning "no photos" into a settlement gap would
+    paint every ordinary card red on the Live Report, which is the opposite of
+    optional.
+
+    The primary key is a UUID because it doubles as the storage key (see
+    `photos.object_key`) — derived, never stored, so the database and the bucket
+    cannot disagree about where an image lives. It also means a key cannot be
+    guessed from a sequence.
+
+    `taken_at` is set by the SERVER. The gallery prints it, and a tablet whose
+    clock is wrong would otherwise put a confident, false time on evidence.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    job_card = models.ForeignKey(
+        JobCard, on_delete=models.CASCADE, related_name='photos',
+        null=True, blank=True,
+        help_text="Set for a CAR photo. Null for a spare photo.",
+    )
+    spare = models.ForeignKey(
+        JobCardSpareItem, on_delete=models.CASCADE, related_name='photos',
+        null=True, blank=True,
+        help_text="Set for a SPARE photo. Null for a car photo.",
+    )
+
+    taken_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    taken_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='photos_taken',
+    )
+    byte_size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['-taken_at']
+        indexes = [
+            models.Index(fields=['job_card', '-taken_at']),
+            models.Index(fields=['spare', '-taken_at']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(job_card__isnull=False, spare__isnull=True)
+                    | models.Q(job_card__isnull=True, spare__isnull=False)
+                ),
+                name='photo_belongs_to_exactly_one_subject',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Photo {self.id}"
+
+    @property
+    def is_car_photo(self):
+        return self.job_card_id is not None
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if bool(self.job_card_id) == bool(self.spare_id):
+            raise ValidationError(
+                "A photo belongs to exactly one subject — a job card or a spare, never both and never neither."
+            )
+
+    @property
+    def storage_key(self):
+        from . import photos as photo_storage
+        return photo_storage.object_key(self.id)
+
+    def download_name(self):
+        """
+        The filename a long-press "Save image" offers — the car, its plate, the
+        job card and the date.
+
+        THIS IS THE READABLE NAME, AND THE STORAGE KEY IS DELIBERATELY NOT.
+        The object in the bucket stays `<uuid>.jpg` for three reasons, and each
+        one is a defect avoided rather than a preference:
+
+          * The key is DERIVED from the primary key, so nothing has to be kept
+            in step with it. Build it from the registration instead and
+            correcting a typo in a plate silently orphans every photo of that
+            car — the row would compute a key that no longer exists.
+          * Two photos of one car on one job card would collide.
+          * A readable key is a GUESSABLE key. A bucket left public would then
+            be enumerable by anyone who knows a registration number, which is
+            most of a workshop's customers.
+
+        None of that applies to the download name: it is a label on a copy
+        somebody already has, carried by `Content-Disposition` on the signed
+        URL. Verified against Supabase, which honours the S3 override.
+        """
+        stamp = timezone.localtime(self.taken_at).strftime('%Y-%m-%d') if self.taken_at else 'undated'
+
+        card = self.job_card if self.job_card_id else (
+            self.spare.job_card if self.spare_id and self.spare else None
+        )
+
+        parts = []
+        if self.spare_id and self.spare:
+            parts.append(self.spare.spare_part_name or 'part')
+        if card:
+            parts.append(f"{card.brand_name or ''} {card.model_name or ''}")
+            parts.append(card.registration_number or '')
+            parts.append(card.bill_number or f"JB{card.pk}")
+
+        name = '_'.join(_filename_safe(p) for p in parts if _filename_safe(p))
+        return f"{name}_{stamp}.jpg" if name else f"photo_{stamp}.jpg"
+
+
+class OrphanedPhotoBlob(models.Model):
+    """
+    A storage key whose row is gone but whose object is still in the bucket.
+
+    Deleting the row and deleting the blob are deliberately separated. A DELETE
+    to R2 is a network call, and this codebase does not put those on the request
+    path — the same reasoning that sends Web Push off to a background thread. If
+    the bucket is slow or unreachable, a photo must still disappear from the app
+    the moment somebody deletes it; the object is collected afterwards by
+    `sweep_photo_blobs`.
+
+    The row is written in the same transaction as the delete, so a key can never
+    be lost by a crash between the two. A re-run is harmless: R2 answers a
+    DELETE for a missing key with a success, and this row is only removed once
+    that has happened.
+    """
+    storage_key = models.CharField(max_length=255, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return self.storage_key
+
+
 class BulkPayer(models.Model):
     """
     Persistent Bulk Payment group for fleet/repeat customers.
@@ -1924,3 +2101,29 @@ def on_user_logout(sender, request, user, **kwargs):
     """
     if user:
         UserSession.objects.filter(session_key=request.session.session_key).delete()
+
+
+@receiver(models.signals.post_delete, sender=JobCardPhoto)
+def queue_photo_blob_for_collection(sender, instance, **kwargs):
+    """
+    Whenever a photo row disappears, remember the object it left behind.
+
+    ON THE SIGNAL, NOT IN THE VIEW, AND THAT IS THE WHOLE POINT. The delete
+    endpoint used to queue the key itself, which covered exactly one of the ways
+    a photo row can vanish. Every other way is a CASCADE — deleting a spare
+    row, deleting a job card, `purge_business_data`, the retention purge — and a
+    CASCADE fires no view, so those objects were orphaned in the bucket for
+    ever with nothing left pointing at them and no record that they existed.
+
+    Django disables its fast-delete path for a model that has a post_delete
+    receiver, so this fires for querysets and cascades too, not just
+    `instance.delete()`. It runs inside the same transaction as the delete, so
+    a key can never be lost between the two, and `get_or_create` keeps it
+    idempotent.
+
+    The object itself is removed later by `sweep_photo_blobs`. Deleting a row
+    and deleting a blob stay separated: a DELETE to storage is a network call,
+    and a slow or unreachable bucket must never be able to stop a photo
+    disappearing from the app.
+    """
+    OrphanedPhotoBlob.objects.get_or_create(storage_key=instance.storage_key)

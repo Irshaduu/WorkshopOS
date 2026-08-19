@@ -78,7 +78,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (28)
+### Workshop App Models (30)
 
 ```mermaid
 erDiagram
@@ -123,6 +123,8 @@ erDiagram
 | 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
 | 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking, **original_vehicle_info** (free-text "Ordered For" note) | Per-job parts, both routes. `source` records which route and is **never inferred** — added 2026-07-30 with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only. `original_vehicle_info` (since migration 0039) names the car an UNASSIGNED purchase was bought for — stamped automatically when a spare is moved out of a job card, and typed by hand on the Unassigned Hub since 2026-08-18. Free text with no FK by design: a part is usually ordered before there is a job card to attach it to |
 | 17 | **JobCardLabourItem** | job_card (FK), job_description, ~~amount~~ | What was done. A DESCRIPTION, not a price — the charge for all the work is `JobCard.labour_amount`. `amount` is dormant (pre-2026-08-04 per-line column, summed into the card by migration 0066, no longer written or read). |
+| 17a | **JobCardPhoto** | **id (UUID pk)**, job_card (FK, null), spare (FK→JobCardSpareItem, null), taken_at, taken_by (FK→User), byte_size | A photograph of the car (`job_card` set) or of one part (`spare` set) — exactly one, enforced by `clean()`. Added 2026-08-19, migration `0070_jobcard_photos`. The UUID **is** the storage key (derived by `photos.object_key`, never stored). Bytes live in Cloudflare R2 and never pass through Django. Nothing points AT this table: no column on JobCard, no money, no stock, nothing in `analysis_engine.py` or `invoice.py`. Limits 10 per car / 4 per spare, enforced in the view. |
+| 17b | **OrphanedPhotoBlob** | storage_key (unique), created_at, attempts | Storage keys whose rows are gone, awaiting `sweep_photo_blobs`. Written in the same transaction as a photo delete so a key cannot be lost between the two — a DELETE to R2 is a network call and never runs on the request path. |
 | 18 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), advance_balance, is_trashed | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
 | 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
 | 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
@@ -225,7 +227,7 @@ parallel system.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (150 Total)
+## 4. ALL URL ROUTES — COMPLETE (155 Total)
 
 *Recounted 2026-08-10 by walking `get_resolver().url_patterns` recursively and
 excluding Django admin (131 of its own) — the method below, not by grepping
@@ -234,7 +236,7 @@ trusting this line; it has now gone stale twice**, most recently reading 147/114
 when the resolver said 150/117. The workshop figure includes the root-level
 routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 
-### Workshop App (117 routes)
+### Workshop App (122 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -341,6 +343,10 @@ routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 | | `/salary-advance/staff/<id>/set-salary/` | `salary_set_amount` | Office |
 | | `/salary-advance/payment/<year>/<month>/` | `salary_payment_form` | Office |
 | | `/salary-advance/payment/<id>/delete/` | `salary_payment_delete` | **Owner** |
+| **PHOTOS** | `/photos/sign/` | `photo_sign` | Staff |
+| | `/photos/commit/` | `photo_commit` | Staff |
+| | `/photos/list/` | `photo_list` | Staff |
+| | `/photos/delete/` | `photo_delete` | Staff |
 | **CLEANUP** | `/manage/cleanup/` | `data_cleanup_view` | Office |
 | | `/manage/cleanup/spare/<id>/delete/` | `cleanup_delete_spare` | Office |
 | | `/manage/cleanup/spare/<id>/rename/` | `cleanup_rename_spare` | Office |
@@ -726,15 +732,15 @@ changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
 
 ---
 
-## 13. TEST SUITE (40 files · 1,042 tests)
+## 13. TEST SUITE (52 files · 1,506 tests)
 
-*Recounted 2026-08-12 — file counts by listing the directories, the test total
+*Recounted 2026-08-19 — file counts by listing the directories, the test total
 by building the suite with Django's own runner
 (`DiscoverRunner().build_suite([...]).countTestCases()`) rather than by grepping
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (46 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (47 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -777,6 +783,10 @@ base classes.*
 | `test_job_line_suggestions.py` | "Job Performed" suggested from the parts already on the card: the datalist, every box pointing at it, a warehouse draw offered by its CATEGORY through the invoice's own rule, and the verbs declared in exactly one place |
 | `test_card_list_grid.py` | The app's card lists as ONE shape: Completed, Pending Bills, Paid Bills, Job Cards and the High Discount Audit on the shared `row-cards` rule, Car Profiles on the identical two breakpoints (560 / 800), no fourth column, and the audit card stacked so three across cannot squeeze its number plate |
 | `test_jobcard_detail_view.py` | The read-only job card as the owner laid it out (2026-08-18): data with NO labels anywhere, a missing value leaving no trace, a part carrying only its two dates and two figures, the four sections copied value-for-value from the dashboard drawer, no figure printed twice on the money line, nothing on the page posting, and the whole page Office/Owner only with its one Floor-visible link gated to match |
+
+| `test_photos.py` | Job card photos (2026-08-19): SigV4 pinned to AWS's published known-answer vector, the sign-then-commit ordering that stops a row ever pointing at a missing object, per-subject limits re-checked inside the commit transaction, the settled-card freeze keyed on payment status rather than on the page, Floor being able to take *and* delete on an open card, the box being a `<div>` so the Financial Lock cannot kill viewing, and — the reason the owner asked — that with storage switched off the form still opens, the invoice still prints and settlement never chases a photo |
+
+*JavaScript: `workshop/tests/js/photos-core.test.js` runs under `node --test workshop/tests/js/`, NOT under `manage.py test`. It covers the photo upload queue's failure paths and the gallery's index arithmetic. It is the only JavaScript in this repo with tests, and it adds no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
 ### Inventory Tests (5 files)
 

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.utils import timezone
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -183,6 +184,53 @@ def _problems_for(request, form, concern_formset, labour_formset,
     return problems
 
 
+def _photo_context(jobcard):
+    """
+    What the job-card form needs to render the photo box, and nothing more.
+
+    Three deliberate properties.
+
+    **It is silent on an unsaved card.** `jobcard` is None on the create screen,
+    so `photo_subject_id` is None and `_photo_box.html` renders nothing. A
+    photo needs a row to attach to and a brand-new card has no primary key —
+    and this is not a workaround so much as the real workflow: nobody
+    photographs a car while typing its registration, they do it when it is on
+    the ramp and the card already exists.
+
+    **It is silent with no storage configured**, the same degradation Web Push
+    has with no VAPID keys. The section is optional; a deploy without R2
+    credentials simply has no photo box, and every other thing on this form
+    behaves identically.
+
+    **`can_edit` mirrors the Financial Lock.** A settled card's photos can be
+    looked at and not changed, which is the same boundary the money stops at.
+    The server enforces it again in `views/photos.py` — this only decides
+    whether the camera opens, and a page cannot be the rule.
+    """
+    from .. import photos as photo_storage
+    from ..models import JobCardPhoto
+
+    if not photo_storage.photos_are_configured():
+        return {'photos_configured': False, 'photo_subject_id': None}
+
+    if jobcard is None:
+        return {'photos_configured': True, 'photo_subject_id': None}
+
+    return {
+        'photos_configured': True,
+        'photo_subject': 'card',
+        'photo_subject_id': jobcard.pk,
+        'photo_count': JobCardPhoto.objects.filter(job_card=jobcard).count(),
+        'photo_limit': settings.PHOTO_LIMIT_CAR,
+        # Each spare row includes the same box with its own subject and count;
+        # only the ceiling differs, so it travels separately. The per-row counts
+        # are annotated onto the formset queryset, never counted in the
+        # template — a card can carry dozens of parts.
+        'spare_photo_limit': settings.PHOTO_LIMIT_SPARE,
+        'photo_can_edit': jobcard.payment_status not in ('PAID', 'BULK_PAID'),
+    }
+
+
 def _form_context(request, *, form, concern_formset, spare_formset,
                   inventory_formset, labour_formset, jobcard=None, problems=None):
     """
@@ -217,6 +265,7 @@ def _form_context(request, *, form, concern_formset, spare_formset,
         'can_see_customer': is_office_or_owner(request.user),
         'next_url': request.GET.get('next'),
         'spare_shops': _shop_options(jobcard),
+        **_photo_context(jobcard),
         'unassigned_spares': JobCardSpareItem.objects.filter(
             job_card__isnull=True
         ).select_related('shop').order_by('-ordered_date'),

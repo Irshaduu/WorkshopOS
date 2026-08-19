@@ -290,6 +290,30 @@ select.status-ordered {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23000000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
 }
 
+/* A STATUS COLOUR NEVER ANIMATES.
+ *
+ * The job-card form gives every `.form-select` a 0.15s background-color
+ * transition, which is right for a hover tint and wrong for this: the colour
+ * here IS the state, and state should arrive at once rather than fade in.
+ *
+ * It is also a real hazard, not just a preference. A running CSS transition is
+ * the highest origin in the cascade — above `!important` — so while one is in
+ * flight the computed background is the OLD colour whatever these rules say.
+ * On a dropped or delayed frame that reads as the colour not having changed at
+ * all, which is exactly how this was reported. CLAUDE.md records the same trap
+ * biting the locked-record palette.
+ *
+ * Scoped to the four status classes rather than to the control, so a select
+ * moving between two of them matches on both sides and cannot animate in
+ * either direction. Everything else on the form keeps its transition.
+ */
+select.status-pending,
+select.status-working,
+select.status-ordered,
+select.status-fixed {
+    transition: none !important;
+}
+
 /* ========================================== */
 /* PROGRESS BAR COLORS */
 /* ========================================== */

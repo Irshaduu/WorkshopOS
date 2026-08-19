@@ -220,6 +220,55 @@ VAPID_PUBLIC_KEY = config('VAPID_PUBLIC_KEY', default='')
 VAPID_PRIVATE_KEY = config('VAPID_PRIVATE_KEY', default='')
 VAPID_ADMIN_EMAIL = config('VAPID_ADMIN_EMAIL', default='')
 
+# ---------------------------------------------------------------------------
+# PHOTOS
+# ---------------------------------------------------------------------------
+# Optional by design, the same way push is. With no storage at all the photo box
+# is not rendered, the endpoints refuse politely, and everything else in the app
+# is untouched — a job card still saves, an invoice still prints, and settlement
+# never chases a missing photo.
+#
+# THREE BACKENDS, chosen automatically (see `photos.storage_backend`):
+#
+#   s3     an S3-compatible bucket, whenever credentials are present. Cloudflare
+#          R2 is the intended production home; Supabase Storage works with the
+#          same settings and needs no payment card, which matters while the
+#          workshop's own accounts do not exist yet.
+#   local  this machine's disk, on a DEBUG server only. What makes the section
+#          demonstrable with no account, no card and no internet.
+#   off    neither — the section disappears rather than half-working.
+#
+# Named PHOTO_S3_* rather than R2_* deliberately: the moment these point at
+# Supabase, a setting called R2_BUCKET would be describing something it is not.
+PHOTO_S3_ACCESS_KEY_ID = config('PHOTO_S3_ACCESS_KEY_ID', default='')
+PHOTO_S3_SECRET_ACCESS_KEY = config('PHOTO_S3_SECRET_ACCESS_KEY', default='')
+PHOTO_S3_BUCKET = config('PHOTO_S3_BUCKET', default='')
+PHOTO_S3_PREFIX = config('PHOTO_S3_PREFIX', default='')
+
+# R2: set the account id and the host is derived. Anything else: set the full
+# endpoint, the region it wants, and the path its S3 API lives under.
+#   R2        PHOTO_S3_ACCOUNT_ID=xxxx                       (region auto, no path prefix)
+#   Supabase  PHOTO_S3_ENDPOINT=<ref>.supabase.co
+#             PHOTO_S3_REGION=ap-south-1
+#             PHOTO_S3_PATH_PREFIX=storage/v1/s3
+PHOTO_S3_ACCOUNT_ID = config('PHOTO_S3_ACCOUNT_ID', default='')
+PHOTO_S3_ENDPOINT = config('PHOTO_S3_ENDPOINT', default='')
+PHOTO_S3_REGION = config('PHOTO_S3_REGION', default='auto')
+PHOTO_S3_PATH_PREFIX = config('PHOTO_S3_PATH_PREFIX', default='')
+
+# Allow the local-disk fallback when DEBUG is on. Set False to prove the
+# switched-off behaviour on a development machine.
+PHOTO_LOCAL_FALLBACK = config('PHOTO_LOCAL_FALLBACK', default=True, cast=bool)
+
+# How many photos each subject may carry. Deliberately not shown in the UI —
+# a "3/10" badge invites filling it. The number only appears once it is hit.
+PHOTO_LIMIT_CAR = 10
+PHOTO_LIMIT_SPARE = 4
+
+# Server-side ceiling on one upload. The browser emits ~200 KB at 1600px/q0.75;
+# this is the bound on a crafted POST, not on the camera.
+PHOTO_MAX_BYTES = 1_500_000
+
 # =============================================================================
 # ERROR LOGGING - Save errors to file instead of showing on screen
 # =============================================================================

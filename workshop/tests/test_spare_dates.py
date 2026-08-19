@@ -153,12 +153,120 @@ class TheJobCardRefusesItTests(TestCase):
         self.assertIn('before it was ordered', body)
 
     def test_an_unnamed_row_falls_back_to_its_position(self):
+        """
+        A row nobody has named yet can only be found by counting, so that is
+        what the summary offers.
+
+        Deliberately a NEW row (no `spares-0-id`): that is the only case where
+        the position is genuinely all there is to say. A STORED row is covered
+        by the test below, and names itself.
+        """
         payload = self.payload('2026-07-29', '2026-07-22')
+        payload['spares-INITIAL_FORMS'] = '0'
+        payload.pop('spares-0-id')
         payload['spares-0-spare_part_name'] = ''
         body = self.client.post(
             reverse('jobcard_edit', args=[self.job.pk]), payload).content.decode()
 
         self.assertIn('row 1', body)
+
+    def test_the_status_is_derived_from_the_dates_by_one_rule(self):
+        """
+        Typing a date by hand must move the status with it, or a part with an
+        ordered date still reads "Pending" and the Live Report — which chases
+        parts by status — believes it.
+
+        Nothing in this suite executes JavaScript, so this guards the two things
+        that would silently break the rule: the derivation existing at all, and
+        it being DELEGATED rather than wired per element. `spare_autofill.js`
+        already carries the `dataset.listenerAttached` trap CLAUDE.md documents,
+        where a cloned row inherits the mark and never gets a listener — so a
+        per-element version of this would work on saved rows and quietly do
+        nothing on every row added by "+ Add Spare". The behaviour itself was
+        verified by hand against all four cases the owner specified.
+        """
+        with open('workshop/static/js/spare_autofill.js', encoding='utf-8') as handle:
+            source = handle.read()
+
+        # One rule, in priority order: received wins, then ordered, then neither.
+        self.assertIn('function statusFromDates', source)
+        received_at = source.index("if (received) return 'RECEIVED';")
+        ordered_at = source.index("if (ordered) return 'ORDERED';")
+        pending_at = source.index("return 'PENDING';")
+        self.assertLess(received_at, ordered_at,
+                        'received must be tested first, or both dates would read as ORDERED')
+        self.assertLess(ordered_at, pending_at)
+
+        # Delegated on document, not attached to each input.
+        self.assertIn("document.addEventListener('change'", source)
+        self.assertIn("_date$/.test(input.name)", source)
+
+        # `originalStatus` is set BEFORE the value, so clearing the dates does
+        # not trip the backward-change confirmation dialog.
+        self.assertLess(source.index('row.dataset.originalStatus = derived;'),
+                        source.index('dropdown.value = derived;'))
+
+    def test_a_row_with_content_but_no_name_is_REFUSED_not_dropped(self):
+        """
+        The defect this closes: the blank-row sweep keyed on the part name
+        alone, so a row carrying dates, a shop, a status and two prices but no
+        name was ticked for deletion and vanished on save with nothing said.
+        Everything typed into it went with it.
+
+        A slip is worth stopping for. An erasure is not — see the test below.
+        """
+        payload = self.payload('2026-07-22', '2026-07-29')       # dates in order
+        payload['spares-INITIAL_FORMS'] = '0'
+        payload.pop('spares-0-id')
+        payload['spares-0-spare_part_name'] = ''
+        payload['spares-0-unit_price'] = '2500'
+
+        before = JobCardSpareItem.objects.count()
+        response = self.client.post(
+            reverse('jobcard_edit', args=[self.job.pk]), payload)
+
+        self.assertEqual(response.status_code, 200)              # re-rendered, not saved
+        self.assertIn('Give this part a name', response.content.decode())
+        self.assertEqual(JobCardSpareItem.objects.count(), before)
+
+    def test_an_entirely_empty_row_is_still_dropped_without_a_word(self):
+        """
+        Pressing "+ Add Spare" twice and saving must not be an argument. Only
+        rows with something in them are worth refusing.
+        """
+        payload = self.payload('', '')
+        payload['spares-INITIAL_FORMS'] = '0'
+        payload.pop('spares-0-id')
+        payload['spares-0-spare_part_name'] = ''
+        payload['spares-0-shop_name'] = ''
+        payload['spares-0-status'] = 'PENDING'
+        payload['spares-0-DELETE'] = 'on'      # what the browser sweep sends
+
+        response = self.client.post(
+            reverse('jobcard_edit', args=[self.job.pk]), payload)
+        self.assertEqual(response.status_code, 302)              # saved, no complaint
+
+    def test_a_STORED_row_whose_name_was_cleared_is_still_named(self):
+        """
+        Clearing the name box on a saved spare does not make the row anonymous —
+        the card still knows it is the Wheel Bearing, and saying so beats
+        telling somebody to count rows.
+
+        This changed as a side effect of refusing an unnamed row, and the
+        mechanism is worth knowing because CLAUDE.md already records its
+        opposite: `_post_clean()` writes posted values onto the bound instance,
+        so an emptied name box used to overwrite the stored one and leave
+        `row_label()` with nothing. Adding an error on that field takes it out
+        of `cleaned_data`, so the instance keeps what it had — and the label
+        improves.
+        """
+        payload = self.payload('2026-07-29', '2026-07-22')
+        payload['spares-0-spare_part_name'] = ''
+        body = self.client.post(
+            reverse('jobcard_edit', args=[self.job.pk]), payload).content.decode()
+
+        self.assertIn('Wheel Bearing', body)
+        self.assertIn('Give this part a name', body)
 
     def test_a_blank_row_being_deleted_is_not_argued_with(self):
         """

@@ -1341,10 +1341,25 @@ class ABlankRowIsRecomputedOnEverySubmitTests(JobCardFormBase):
     """
 
     def test_the_delete_flag_is_assigned_not_only_set(self):
+        """
+        Every sweep must ASSIGN the flag from the row's current state, never
+        latch it to true — a submit can be cancelled after the sweep has run
+        (the Financial Lock does exactly that), and a latched flag would then
+        drop a row somebody had since typed into.
+
+        The three simple sections key on one box. Spares are the exception and
+        deliberately so: they drop a row only when it is entirely empty, so that
+        dates or a price with no part name are refused by the server rather than
+        silently thrown away. What matters is that all four still assign.
+        """
         source = self.source()
-        for keyed_on in ('textInput', 'partInput', 'itemId', 'jobInput'):
+        for keyed_on in ('textInput', 'itemId', 'jobInput'):
             self.assertIn('deleteCheckbox.checked = !%s.value.trim();' % keyed_on,
                           source)
+        self.assertIn(
+            'deleteCheckbox.checked = !partInput.value.trim() && !filled && !shopChosen;',
+            source,
+        )
         self.assertNotIn('deleteCheckbox.checked = true;', source)
 
     def test_the_quantity_guard_stops_the_submit_reaching_them(self):

@@ -189,6 +189,78 @@ traffic never leaves Railway's network either way.
 every owner then has to re-enable push by hand on their own phone. Treat them as
 permanent. Generating fresh ones is only safe before anyone has subscribed.
 
+### Required for photos
+
+| Variable | Notes |
+|---|---|
+| `PHOTO_S3_ACCOUNT_ID` | Cloudflare account id — the R2 endpoint hostname is built from it |
+| `PHOTO_S3_ACCESS_KEY_ID` | R2 API token |
+| `PHOTO_S3_SECRET_ACCESS_KEY` | R2 API token secret |
+| `PHOTO_S3_BUCKET` | **A different bucket from development** |
+| `PHOTO_S3_PREFIX` | Optional key prefix. Leave unset when using separate buckets. |
+
+**If the payment card is not available**, Cloudflare will not let you create an
+R2 bucket at all — it wants a card on file even for the free tier. Supabase
+Storage needs none and speaks the same protocol, so it is a drop-in: set
+`PHOTO_S3_ENDPOINT=<project-ref>.storage.supabase.co`,
+`PHOTO_S3_PATH_PREFIX=storage/v1/s3`, `PHOTO_S3_REGION=<your region>`, and the
+three keys above. Moving to R2 later is the same three settings again. Verified
+end to end against Supabase on 2026-08-19: signed PUT, signed GET, signed
+DELETE, and the `Content-Disposition` filename override all behave as S3 does,
+and the browser upload needs no CORS configuration there.
+
+Two Supabase caveats that do not apply to R2: the free tier is **1 GB** (against
+~1.8 GB/year of real use), and a free project **pauses after about a week
+idle** — open the dashboard before a demo. Both are reasons it is a bridge and
+not the destination.
+
+**Whichever provider, set the bucket to PRIVATE and cap it.** Every read the app
+performs is a signed URL, so public access buys nothing and makes the bucket
+enumerable. Also set a **2 MB file-size limit** and restrict the MIME type to
+`image/jpeg`: the app checks the size the browser declares before signing, but a
+presigned PUT cannot enforce it, so the bucket-level limit is the only real
+ceiling. The uploader emits ~200 KB, so 2 MB is ten times the headroom it needs.
+
+**Set none of them and photos are simply off in production** — the box does not
+render, the endpoints answer 503, and everything else behaves identically. The
+local-disk backend is DEBUG-only on purpose and can never engage here, because
+this filesystem is wiped on every deploy.
+
+Railway sells no object storage — only Volumes, which `backup_db` cannot see.
+Photos are evidence in a damage dispute, so they go to Cloudflare R2 instead:
+free at this workshop's volume (~1.8 GB/year against a 10 GB tier), zero egress,
+and independent of the host. See the photos entry in `CLAUDE.md` for the
+reasoning.
+
+**Each bucket needs a CORS policy or every upload fails**, with a browser error
+that looks exactly like a signing bug:
+
+```json
+[{ "AllowedOrigins": ["https://your-app-domain"],
+   "AllowedMethods": ["PUT", "GET"],
+   "AllowedHeaders": ["content-type"] }]
+```
+
+**Use separate buckets for development and production.** They are free, and a
+shared bucket means `purge_business_data` run against dev queues deletions for
+real photos.
+
+These are all optional. With none of them set the photo box is not rendered, the
+endpoints answer 503, and the rest of the app is unaffected — the same
+degradation push has with no VAPID keys.
+
+**Schedule `sweep_photo_blobs --yes`** (a Railway cron, monthly is plenty). It
+deletes storage objects whose database rows are gone. It is time-based and
+idempotent, so it is safe to run twice and safe to skip for months.
+
+**`purge_old_photos --yes` is the retention sweep**, and is deliberately NOT
+scheduled out of the box. It deletes photos older than a year — except on cards
+still `PENDING` or `PARTIAL`, which it always keeps, because an unpaid year-old
+bill is an open argument and those photos are the evidence in it. Run it by hand
+first and read the dry run. Once you are happy, a monthly Railway cron is the
+right home for it; run it *before* `sweep_photo_blobs` so the objects it queues
+are collected in the same pass.
+
 ### Not used in production
 
 `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`,

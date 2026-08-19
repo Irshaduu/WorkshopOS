@@ -60,3 +60,7 @@ from .notifications import (
     notification_mark_read, notification_mark_all_read,
 )
 from .push import service_worker, push_subscribe, push_unsubscribe
+from .photos import (
+    photo_sign, photo_commit, photo_list, photo_delete,
+    photo_blob_put, photo_blob_get,
+)

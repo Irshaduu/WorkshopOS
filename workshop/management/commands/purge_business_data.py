@@ -33,6 +33,7 @@ from django.db import transaction
 
 from workshop.models import (
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
+    JobCardPhoto,
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
     Mechanic, CashbookEntry, DeletionLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
@@ -55,6 +56,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         # Ordered so children go before parents where CASCADE isn't relied on.
         targets = [
+            ("Job card photos", JobCardPhoto),
             ("Job card spares", JobCardSpareItem),
             ("Job card labour", JobCardLabourItem),
             ("Job card concerns", JobCardConcern),
@@ -101,8 +103,19 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
+            # The objects in the bucket are queued by the post_delete signal on
+            # JobCardPhoto, which fires for querysets and cascades alike — so
+            # there is nothing to do here beyond deleting in the right order.
+            # Photos are first in `targets` so they go before the job cards
+            # would cascade them away.
             for label, model, n in counts:
                 if n:
                     model.objects.all().delete()
 
         self.stdout.write(self.style.SUCCESS(f"\n[DONE] {total:,} rows deleted."))
+        photo_count = next((n for _, model, n in counts if model is JobCardPhoto), 0)
+        if photo_count:
+            self.stdout.write(
+                f"{photo_count:,} photo object(s) queued for removal from storage — "
+                f"run `manage.py sweep_photo_blobs --yes` to collect them."
+            )

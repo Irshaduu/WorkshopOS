@@ -196,6 +196,22 @@ urlpatterns = [
     path('push/unsubscribe/', views.push_unsubscribe, name='push_unsubscribe'),
 
     # ------------------
+    # PHOTOS — sign, commit, list, delete. All @staff_required: Floor is who
+    # takes them. Sign and commit are separate so a row can never point at an
+    # object that failed to upload; see workshop/views/photos.py.
+    # ------------------
+    path('photos/sign/', views.photo_sign, name='photo_sign'),
+    path('photos/commit/', views.photo_commit, name='photo_commit'),
+    path('photos/list/', views.photo_list, name='photo_list'),
+    path('photos/delete/', views.photo_delete, name='photo_delete'),
+
+    # The local-disk backend's stand-in for a bucket. Live only on a DEBUG
+    # server with no S3 credentials; both 404 otherwise. Their permission is the
+    # signed link, not the session — same shape as a presigned URL.
+    path('photos/blob/put/', views.photo_blob_put, name='photo_blob_put'),
+    path('photos/blob/get/', views.photo_blob_get, name='photo_blob_get'),
+
+    # ------------------
     # MANAGEMENT & SECURITY (Owner/Office)
     # ------------------
     path('manage/', management_views.manage_dashboard, name='manage_dashboard'),

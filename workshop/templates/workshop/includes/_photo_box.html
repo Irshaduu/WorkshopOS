@@ -1,0 +1,45 @@
+{% comment %}
+ONE PHOTO BOX. Include it wherever something can be photographed.
+
+    {% include "workshop/includes/_photo_box.html" with photo_subject="card" photo_subject_id=jobcard.pk photo_count=photo_count photo_limit=photo_limit photo_can_edit=photo_can_edit %}
+
+It renders NOTHING when `photo_subject_id` is missing — a brand-new job card or
+an unsaved formset row has no primary key, so there is nothing to attach a
+photo to yet. The caller shows the "save first" hint instead; a box that looked
+live and then failed would be worse than no box.
+
+WHY THIS IS A <div role="button"> AND NOT A <button>
+---------------------------------------------------
+The Financial Lock disables every control it can find with
+`form.querySelectorAll('input:not([type=hidden]), select, textarea, button')`.
+A real button here would therefore go dead on a settled card — and that would
+kill VIEWING the photos as well as adding them, which is exactly wrong: the
+photos on a settled card are the ones most worth looking at. A div is invisible
+to that sweep. Whether photos may be ADDED is answered separately, by the
+server, in `data-can-edit`.
+
+The count is the ONLY thing the box shows. No thumbnail, on the owner's
+instruction — "it's just for to know there is photo" — which is what lets this
+whole feature skip thumbnail generation, a second object per photo, and any
+server-side image processing at all.
+
+The limit is never printed until it is reached. A "3/10" badge invites filling
+it; 99% of cards will carry a handful.
+{% endcomment %}
+{% if photo_subject_id %}
+<div class="photo-box{% if photo_count %} has-photos{% endif %}{% if photo_box_compact %} is-compact{% endif %}"
+     role="button"
+     tabindex="0"
+     data-photo-box
+     data-subject="{{ photo_subject }}"
+     data-subject-id="{{ photo_subject_id }}"
+     data-count="{{ photo_count|default:0 }}"
+     data-limit="{{ photo_limit }}"
+     data-can-edit="{% if photo_can_edit %}1{% else %}0{% endif %}"
+     aria-label="{% if photo_count %}{{ photo_count }} photo{{ photo_count|pluralize }}{% else %}Take a photo{% endif %}"
+     title="{% if photo_count %}{{ photo_count }} photo{{ photo_count|pluralize }}{% else %}Take a photo{% endif %}">
+    <i class="bi bi-camera-fill photo-box-camera"></i>
+    <i class="bi bi-images photo-box-gallery"></i>
+    <span class="photo-box-count"{% if not photo_count %} hidden{% endif %}>{{ photo_count }}</span>
+</div>
+{% endif %}

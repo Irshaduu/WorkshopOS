@@ -329,7 +329,8 @@ considered and left out. They will be built only if the client asks for them.*
 | **Customer-facing notifications** (SMS / WhatsApp / email to car owners) | The app makes exactly **one** kind of outbound network call: SMTP, for owner password-reset codes. Twilio and Telegram were deleted on 2026-07-29. Do not reintroduce a messaging integration. |
 | **Attendance tracking** | Leave days are typed once per person at month-end settlement. For seven staff, that is less work than maintaining a daily attendance record. |
 | **Multi-mechanic assignment** | A job card has one `lead_mechanic`. Work is assigned verbally on the floor; the card records who owns the job, not everyone who touched it. |
-| **Car photos / attachments** | No upload, no file storage, no image handling anywhere in the app. This is also why the deployment needs no media backend. |
+| ~~**Car photos / attachments**~~ | **No longer out of scope — brought in on 2026-08-19 on the owner's instruction.** Phase 1 (car photos on a saved job card) is built; spare-row photos and a read-only box on Purchase History are Phases 2 and 3. Storage is Cloudflare R2, signed with stdlib `hmac` and reached by the browser directly, so the *app* still has no upload path and no media backend. The whole section is optional — with no credentials configured it is simply absent. See the photos entry in `CLAUDE.md` for the rules. |
+| **General file attachments** (PDFs, documents on a job card) | Still out. Photos are a camera workflow with a fixed shape and a hard count limit; an open attachment store is a different problem with different retention, virus-scanning and naming questions. |
 
 **For reviewers — human or AI:** proposing any of the above is proposing
 **scope**, not reporting a defect. If a review flags one as "missing", the

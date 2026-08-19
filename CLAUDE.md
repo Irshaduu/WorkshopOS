@@ -1652,14 +1652,24 @@ about to correct one of these, you are about to break the business:
   for extracting the rest do not apply here: **there is no CSP** (so no
   hardening is unlocked today), the largest page carries ~12 KB of script read
   by four devices on one shop's LAN (so caching is a rounding error), and there
-  is **no npm, no bundler, no linter and no JS test runner** — none of which
-  will be added. That last point is the load-bearing one: **nothing in the 956
-  Django tests executes a line of JavaScript**, so a JS refactor leaves the
-  suite green whether or not it broke, and this codebase has already been bitten
-  by exactly that (see the three `script.js` cloning traps above — "the symptom
-  in every case was a control that simply did nothing, with a clean console").
-  Moving working code with no way to prove it still works is the bad trade, not
-  the inline JS. Two rules follow: the printed invoice and estimate load
+  is **no npm, no bundler and no linter** — none of which will be added. That
+  last point is the load-bearing one: **nothing in the Django suite executes a
+  line of JavaScript**, so a JS refactor leaves it green whether or not it
+  broke, and this codebase has already been bitten by exactly that (see the
+  three `script.js` cloning traps above — "the symptom in every case was a
+  control that simply did nothing, with a clean console"). Moving working code
+  with no way to prove it still works is the bad trade, not the inline JS.
+  **Amended 2026-08-19: there IS now a JS test runner, and it cost nothing.**
+  `node --test workshop/tests/js/` uses Node's built-in runner — still no npm,
+  no package.json, no node_modules, no bundler, no linter. It covers exactly one
+  file, `photos-core.js`, because that file was written to be coverable: pure
+  functions, no DOM, no fetch, a `module.exports` guard at the bottom. **This
+  does not reopen the extraction argument for the other ~2,660 lines.** Inline
+  page JS is entangled with the DOM and would have to be rewritten, not moved,
+  to be testable — and rewriting working code with no way to prove it still
+  works is the same bad trade as before. What it does establish is the shape for
+  anything NEW: if a piece of logic can fail silently and can be written
+  DOM-free, put it in its own file and test it. Two rules follow: the printed invoice and estimate load
   **nothing** from a third party and keep their JS inline on purpose (see the
   invoice entry above), and **no new runtime dependency is added without a
   defect it is the only fix for.**
@@ -3371,6 +3381,259 @@ about to correct one of these, you are about to break the business:
   `test_spare_parts_wears_the_same_glyph_everywhere_it_is_named` scans every
   template and fails if a second glyph comes back.
 
+- **A SPARE's STATUS IS DERIVED FROM ITS DATES, and a status colour never
+  animates.** Added 2026-08-19 on the owner's report, and the two halves are
+  unrelated defects that presented as one complaint ("colour not live
+  changing").
+  **(a) The colour.** `.form-select` gives every control a 0.15s
+  `background-color` transition, which is right for a hover tint and wrong for
+  this: the colour IS the state. It is also a genuine hazard rather than a
+  preference — **a running CSS transition is the highest origin in the cascade,
+  above `!important`** — so while one is in flight the computed background is
+  the OLD colour whatever `select.status-ordered { … !important }` says, and on
+  a dropped or delayed frame that reads as the change not having happened.
+  CLAUDE.md already records the same trap biting the locked-record palette; it
+  cost an hour again here, because the Browser pane does not composite frames
+  and reported the transitions as `running` with `currentTime: 0` for ever.
+  The four status classes now carry `transition: none`, scoped to the classes
+  rather than the control so a select moving between two of them matches on
+  both sides and cannot animate in either direction.
+  **(b) `new Event('change')` DOES NOT BUBBLE**, and every listener that
+  repaints that dropdown is delegated on `document`. So a status changed through
+  the confirmation dialog fired nothing at all while a status changed directly
+  repainted correctly — two paths, one of them silent, which is exactly what
+  "not stable" meant. `bubbles: true` is now load-bearing in
+  `applyConfirmedChange` and in the derivation below.
+  **(c) The dates now move the status, by ONE rule**: `received` present →
+  RECEIVED, else `ordered` present → ORDERED, else PENDING. The case worth
+  pointing out is the one needing no clause — "both dates present and Ordered
+  edited must not jump" falls straight out, because received is still there so
+  the rule still says RECEIVED. `originalStatus` is updated BEFORE the value, so
+  clearing both dates drops to Pending quietly instead of interrupting with the
+  backward-change dialog about a move nobody made. Delegated on `document`,
+  because this file already carries the `dataset.listenerAttached` trap and a
+  per-element version would work on saved rows and silently do nothing on every
+  row added by "+ Add Spare". Guarded by
+  `test_the_status_is_derived_from_the_dates_by_one_rule`.
+
+- **A SPARE ROW WITH CONTENT BUT NO NAME IS REFUSED, NOT DROPPED.** Added
+  2026-08-19. `spare_part_name` is `blank=True` on the model and the blank-row
+  sweep keyed on the name alone, so a row carrying dates, a shop, a status and
+  BOTH prices but no name was ticked for deletion and thrown away on save with
+  nothing said — everything typed into it went with it. An entirely empty row is
+  still dropped in the browser and never reaches the server, so the refusal only
+  ever fires on a row with real content. The same distinction the Estimate
+  makes: clearing a row is an erasure, a row with figures and no name is a slip,
+  and dropping a slip throws away work somebody just did. Status is deliberately
+  **not** counted as content — it defaults to PENDING and is never blank, so it
+  would make every untouched row look filled in. One side effect worth knowing:
+  `add_error` removes the field from `cleaned_data`, so `_post_clean()` no
+  longer overwrites the stored name with the posted blank, and a saved row now
+  names itself in the error summary instead of falling back to "row 1" — better,
+  and the reverse of the `_post_clean` trap this file already records.
+
+- **`?v=` IS THE ONLY CACHE-BUSTER IN DEVELOPMENT, AND IT IS MANUAL.** Learned
+  2026-08-19, after an hour spent testing a JavaScript fix the browser was not
+  running. In production `ManifestStaticFilesStorage` content-hashes every
+  filename, so a changed file is a changed URL; under `runserver` with DEBUG on,
+  `{% static %}` returns the plain path and the `?v=N` strings in the templates
+  are the whole mechanism. Change a `.js` or `.css` file without bumping it and
+  every browser that already has it keeps running the old copy — including the
+  Floor tablet and the owners' phones. **Bump `?v=` in the same edit as any
+  static-file change**, and reach for a hard refresh before concluding a fix did
+  not work.
+
+- **PHOTOS are a SEPARATE SUBSYSTEM that the rest of the app does not know
+  exists — and that isolation is the feature, exactly as it is for an
+  Estimate.** Added 2026-08-19 on the owner's instruction, reversing the
+  "car photos" line in `TITAN_MASTER_HANDOVER.md` §VII. All three phases are
+  built: car photos on a saved job card, a box per Spare Parts row, and a
+  read-only box on Spare Shop → Purchase History.
+  **Nothing points AT a photo.** No column on `JobCard` or `JobCardSpareItem`,
+  no money, no stock, no ledger, nothing in `analysis_engine.py` and nothing in
+  `invoice.py` — so a photo cannot reach a customer's bill, the same guarantee
+  the internal note has. Photos also upload **independently of the form POST**,
+  so storage being slow, down or entirely unconfigured cannot block a job card
+  from saving. With no credentials the box is not rendered, the endpoints answer
+  503, and every other thing on the form behaves identically — the same
+  degradation Web Push has with no VAPID keys. `TheSectionIsCompletelyOptionalTests`
+  is what keeps all of that true.
+  **`settlement.py` must NEVER chase a missing photo.** Turning "no photos" into
+  a settlement gap would paint every ordinary card red on the Live Report and in
+  the settle dialog, which is the opposite of optional.
+  **Cloudflare R2, not a Railway Volume, and the deciding factor was BACKUP.**
+  Railway sells no object storage — only Volumes, a disk bolted to one service.
+  A Volume would work and `backup_db` cannot see it, so photos would be the only
+  data in this system with no backup at all, and they are evidence in a
+  pre-existing-damage dispute. R2 is free at this workshop's volume (~1.8 GB/year
+  against a 10 GB tier), has zero egress, and survives a change of host. Postgres
+  BYTEA was rejected on the backups: 14 retained `pg_dump`s of 1.8 GB/year makes
+  restores unusable.
+  **The bytes never touch Django.** The browser PUTs straight to R2 on a
+  presigned URL and GETs the same way, so a 300 KB upload on bad shop wifi never
+  occupies a gunicorn worker and the `no-store` middleware never forces a
+  re-fetch. `workshop/photos.py` signs with stdlib `hmac`/`hashlib` rather than
+  `boto3` — the `ResendEmailBackend` trade — and `presign()` deliberately takes
+  every input as an argument and reads no settings, because that is what lets it
+  be pinned to **AWS's published known-answer vector**
+  (`test_it_matches_the_published_aws_example`). Get the signing wrong and
+  uploads 403 with an opaque browser error; there is no other way to catch it
+  without a live bucket. **The bucket needs a CORS policy** (PUT + GET from the
+  app's origin, `content-type` allowed) or every upload fails in a way that
+  reads exactly like a signing bug.
+  **FOUR endpoints, not three: sign and commit are separate, and the ordering is
+  load-bearing.** The obvious design writes the row first — and a browser closed
+  mid-upload then leaves a row pointing at an object that does not exist, which
+  the gallery draws as a broken image nobody can explain or remove. Signing
+  first inverts the failure: **a row always means a real photo**, and the cost is
+  an orphaned object when a commit never lands, which is invisible to everyone
+  and is collected by `sweep_photo_blobs`. The server mints the UUID at sign time
+  because the storage key is derived from it. The **limit is re-checked inside
+  the commit transaction**, because a burst has several in flight at once.
+  **Deleting the row and deleting the blob are deliberately separated.** A DELETE
+  to R2 is a network call and this codebase does not put those on the request
+  path (the `queue_push` rule); if the bucket is unreachable a photo must still
+  vanish from the app the instant somebody deletes it. `OrphanedPhotoBlob` is
+  written in the same transaction as the delete, so a key cannot be lost between
+  the two, and a re-run of the sweep is harmless.
+  **The queueing is a `post_delete` SIGNAL on `JobCardPhoto`, never the view —
+  and that distinction was a real leak.** It lived in the delete endpoint first,
+  which covers exactly one of the ways a photo row can vanish. Every other way is
+  a CASCADE — removing a spare row, deleting a job card, `purge_business_data`,
+  `purge_old_photos` — and a cascade fires no view, so those objects were
+  orphaned in the bucket permanently with nothing pointing at them and no record
+  they had existed. Django skips its fast-delete path for a model carrying a
+  post_delete receiver, so the signal fires for querysets and cascades alike;
+  both purge commands are therefore plain `.delete()` calls with nothing to
+  remember. Guarded by `test_a_CASCADE_queues_the_object_too` and
+  `test_a_bulk_queryset_delete_queues_every_object`.
+  **The STORAGE KEY is a UUID and the DOWNLOAD NAME is readable — two different
+  strings, on purpose.** `download_name()` gives a saved copy the car, the
+  plate, the job card number and the date
+  (`Bmw-3-Series-320d_KL-07-CD-7788_JB-26-457_2026-08-19.jpg`), carried by
+  `Content-Disposition` on the signed URL — verified against Supabase, which
+  honours the S3 override. The key stays `<uuid>.jpg` for three reasons, each a
+  defect avoided: it is DERIVED from the primary key, so building it from the
+  registration would orphan every photo of a car the moment somebody corrected a
+  typo in its plate; two photos of one car on one job card would collide; and a
+  readable key is a **guessable** key, which on a bucket left public is
+  enumerable by anyone who knows a registration number. `_filename_safe()`
+  collapses anything that is not a letter, digit, dash or dot — a slash in a
+  part name would otherwise read as a directory separator on the way into
+  somebody's phone.
+  **The freeze mirrors the FINANCIAL LOCK, and is keyed on the CARD'S PAYMENT
+  STATUS, never on which page the request came from.** A settled card's photos
+  can be looked at and not changed — money and evidence stop moving together.
+  Purchase History carries no Financial Lock, so a page-based check would leave
+  that door open, which is why the rule lives in the view. Consequence worth
+  knowing: because a settled card's photos cannot be deleted at all, the only
+  delete there is removes a mis-shot from an open card — housekeeping — so it
+  writes **no `DeletionLog` row**, on the Estimates reasoning that
+  `DeletionLog.record()` pushes CRITICAL to both owners.
+  **The box is a `<div role="button">`, never a `<button>`.** The Financial Lock
+  disables everything matching `input, select, textarea, button` inside the form,
+  so a real button would go dead on a settled card — killing **viewing** as well
+  as adding, on exactly the cards whose photos matter most. Whether photos may be
+  ADDED arrives separately as `data-can-edit`, decided by the server. The
+  overlays live **outside** the `<form>` for the same reason. Guarded by
+  `test_the_box_is_not_a_button_so_the_financial_lock_cannot_kill_viewing`.
+  **Capture is ONE TAP and there is no review**, on the owner's choice over
+  shutter-then-confirm — it halves the taps on a ten-photo walk-around. That
+  moves the whole risk into the upload: a frame is **held in memory until the
+  server confirms it**, one retry is spent automatically, a *refusal* (limit
+  full, bill settled) is never retried, and anything still broken becomes a
+  **visible** failed item plus a `beforeunload` warning. A photo may never
+  disappear silently — `test_a_photo_that_never_uploads_becomes_VISIBLY_failed`
+  is the guard. The flash and the count bump are the capture feedback; **no tone
+  per shot**, because ten success tones in a burst is precisely the noise that
+  teaches people to stop hearing the tones that matter.
+  **The box shows a COUNT and never a thumbnail** ("it's just for to know there
+  is photo"), which is what lets the whole feature skip thumbnail generation, a
+  second object per photo, and any server-side image processing at all. **The
+  limit is never printed until it is hit** — a "3/10" badge invites filling it.
+  **The gallery is newest-first**, which is not a preference: it is what makes
+  unreviewed capture safe, since opening it after a burst shows what was just
+  taken. **The lightbox image is a plain `<img>` with nothing layered over it**,
+  which is what makes long-press "Save image" work for free on iOS and Android;
+  an overlay or a `pointer-events` trick would take that away. The signed GET
+  carries a `Content-Disposition` filename so the saved copy is named after the
+  car and the date rather than a UUID.
+  **A NEW card, and a NEW spare row, offer no box.** Neither has a primary key
+  to attach a photo to. The card's row says "save the job card first"; a spare
+  row leaves its cell EMPTY — the cell itself always renders, or every column to
+  its right shifts by one on that row. This is the real workflow rather than a
+  workaround: nobody photographs a car while typing its registration. Doing
+  better needs client-generated row UIDs and reconciliation on save, and that is
+  deliberately **not** built on speculation.
+  **The spare column costs 56px of WIDTH and ZERO row height — measured, not
+  asserted.** Removing the cells live from a rendered card: table 56px narrower,
+  every row identical, page height identical, at 375px and at 1280px. Two things
+  buy that. `line-height: 0` on the cell, because an inline-flex child otherwise
+  adds its line box's strut underneath. And **`padding: 0.3rem`, not 0.35rem** —
+  the row's natural height is 55px on a laptop and the box is 44px, so anything
+  over 5.5px each side makes the photo cell the tallest thing in the row; at
+  0.35rem it measured 56px against 55px. The width is a real cost on a table
+  that already scrolls 432px on a laptop, and it was the owner's call.
+  **The per-row counts are ANNOTATED onto the formset queryset**
+  (`SourceScopedSpareFormSet.get_queryset`), never counted in the template — a
+  rebuild in the live data carries 91 spares. Verified as a *constant* cost by
+  comparing photos-off against photos-on at a fixed row count, deliberately not
+  as growth across row counts: this page already spends ~7 queries per spare row
+  on things that have nothing to do with photos (AUD-0096), and a test measuring
+  the total would fail on somebody else's defect and keep failing after this
+  feature was perfect.
+  **PURCHASE HISTORY IS VIEW ONLY — no camera, no delete, and no box at all on a
+  row with no photos.** Recording a part is the floor's job and it happens on
+  the job card; a second door into changing evidence is how two screens start
+  disagreeing about what a purchase looked like. A camera-less box on an empty
+  row opens an empty gallery and answers nothing, and there would be one on
+  every row of a 45-row page. Both halves have to agree for editing to be
+  offered — the server's `can_edit` (which freezes a settled bill) AND the box's
+  `data-can-edit`; photos.js ANDs them. **Only the first is a control.** The
+  second is presentation, and that is honest here because there is nothing to
+  protect: the person may already add that photo from the job card, this page
+  simply does not offer it.
+  **The ledger box is COMPACT (30px), and that is a measurement not a
+  preference.** Rows there are 40px, so the 48px box made its row 64px and left
+  one outlier in a 45-row list — the raggedness `.del-vehicle-name`'s min-height
+  exists to prevent, arriving from the other direction. Dropping to a
+  pointer-sized target is safe *there* and would not be on the job card: that
+  page is `@office_required`, read on a laptop, and the box only ever opens a
+  gallery. Measured back to 40px, level with its neighbours, at 375px and
+  1280px. **A new column also means the date separator's `colspan` grows with
+  it** (8 → 9), or the date sits under a short rule with a gap beside it.
+  **The heading only renames itself when photos are switched ON** —
+  "Customer, Notes & Photos" configured, "Customer & Notes" not. A section named
+  "… & Photos" over no photo control is the page misdescribing itself, the same
+  reasoning that names Floor's fold "Workshop Note". **The box renders in BOTH
+  branches of that section**, because Floor is who walks round the car with the
+  tablet; a photo of a car says nothing about whose it is, so it is not covered
+  by `OFFICE_ONLY_CARD_FIELDS`.
+  **Retention is `purge_old_photos`, and it is NOT scheduled by default.** The
+  owner's rule is that complaints stop after a year, and the arithmetic works
+  out: 1.8 GB in, 1.8 GB out, plateauing around 2 GB inside a free 10 GB for
+  ever. **It skips cards still `PENDING` or `PARTIAL`, whatever their age** — a
+  year-old unpaid bill is the one case where "no complaints after a year" is
+  false by construction, because an unpaid bill *is* an open argument and those
+  photos are the evidence in it. Age is from `taken_at`, not the card's date, so
+  a photo added late to an old card still gets its own full year. Dry-run by
+  default, `--older-than` adjustable, rows deleted and blobs queued for the
+  sweep — never a network call inside a delete loop. No `DeletionLog` rows:
+  several hundred CRITICAL pushes a month is how a critical alert stops being
+  read.
+  **This is the first JavaScript in the repo with tests, and it added no
+  dependency.** `workshop/tests/js/photos-core.test.js` runs under Node's
+  built-in runner — `node --test workshop/tests/js/` — so there is still no npm,
+  no package.json, no node_modules, no bundler and no linter. It covers the
+  upload queue's failure paths and the gallery's index arithmetic, which are pure
+  and are what fail silently; the camera still needs a hand session on the
+  tablet. **It does not run under `manage.py test`** — two commands. The test
+  file lives outside the static tree on purpose, or `collectstatic` would ship it
+  and give it a manifest entry. `photos-core.js` is loaded as a **plain
+  `<script>` before `photos.js`, never as an ES module**: the manifest storage
+  rewrites URLs in CSS but not in JS, so a relative `import` would 404 in
+  production and work perfectly in development.
+
 Known-but-unscheduled problems live in `TECH_DEBT.md` (local, not in git).
 **Deploying is `GO_LIVE_RUNBOOK.md`** — the ordered steps, the environment
 variables, the rollback, and what to do when both owners are locked out.
@@ -3502,6 +3765,12 @@ python manage.py runserver
 # Run full test suite (40 test files, 1056 tests, ~23-69 min; always uses SQLite, see below)
 python manage.py test workshop inventory
 
+# JavaScript tests — a SECOND command, not part of `manage.py test`.
+# Node's built-in runner, so no npm / package.json / node_modules / bundler.
+# Covers the photo upload queue and gallery paging only; everything else in
+# the app's JS is still untested by anything (see the frontend note below).
+node --test workshop/tests/js/
+
 # Run a single test file / class / method
 python manage.py test workshop.tests.test_financial
 python manage.py test workshop.tests.test_financial.SomeTestClass
@@ -3514,6 +3783,10 @@ python manage.py migrate
 
 # One-off management commands
 python manage.py backup_db       # rotated backup of whichever DB is active, keeps last 14 in /backups
+python manage.py sweep_photo_blobs       # DRY RUN — photo objects whose rows are gone
+python manage.py sweep_photo_blobs --yes # actually delete them from the bucket
+python manage.py purge_old_photos        # DRY RUN — photos past the 1-year window
+python manage.py purge_old_photos --yes  # delete them (skips unpaid bills, always)
 python manage.py setup_groups    # (legacy) creates Owner/Office/Floor auth groups
 python manage.py sync_owner_identity        # DRY RUN — owner group/mobile/admin-access: .env -> DB
 python manage.py sync_owner_identity --yes  # apply
@@ -3632,6 +3905,10 @@ while it's cheap to fix rather than on go-live day.
   keep query counts low.
 
 Required `.env` keys (see `settings/base.py`): `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_1_USERNAME`/`OWNER_1_MOBILE` and the `OWNER_2_*` pair (read only by `sync_owner_identity`; the authoritative copy lives in the database). Production adds `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`.
+
+**Photos** (optional): `PHOTO_S3_ACCESS_KEY_ID`, `PHOTO_S3_SECRET_ACCESS_KEY`, `PHOTO_S3_BUCKET`, plus either `PHOTO_S3_ACCOUNT_ID` (Cloudflare R2, host derived) or `PHOTO_S3_ENDPOINT` + `PHOTO_S3_REGION` + `PHOTO_S3_PATH_PREFIX` (any other S3-compatible provider). Optionally `PHOTO_S3_PREFIX`. **Named `PHOTO_S3_*` rather than `R2_*` deliberately** — the moment they point at Supabase, a setting called `R2_BUCKET` is describing something it is not. **Use separate buckets for development and production** — they are free, and one shared bucket means a purge run on dev can reach real photos. Each bucket also needs a **CORS policy** (`AllowedOrigins` = the app's domain, `AllowedMethods` = PUT + GET, `AllowedHeaders` = `content-type`); without it every upload fails with an opaque browser error that reads exactly like a signing bug.
+
+**With no bucket configured there are THREE outcomes, not two, and the third is what makes this demonstrable.** `photos.storage_backend()` returns `s3` whenever credentials are present, **`local` on a DEBUG server without them** — photographs go to `MEDIA_ROOT/photos/` and are served back through two Django endpoints — and `off` otherwise, where the section disappears entirely. That local backend exists because **Cloudflare R2 requires a payment card even for its free tier**, and the workshop's own accounts (and card) do not exist until after the owners' meeting; without it the whole feature would have been undemonstrable at exactly the meeting where it is being shown. It costs almost nothing to support because the browser is handed a URL and PUTs to it, so it does not care whether that URL points at a bucket or at this Django process — swapping backends swaps two functions and touches neither the camera, the upload queue nor the gallery. It is **gated on DEBUG**, and that gate is load-bearing: Railway's container filesystem is wiped on every deploy, so a production server that lost its credentials must fall back to `off`, which is honest, rather than to a disk that accepts photographs all week and loses them on the next push. Guarded by `WhichBackendTests.test_production_with_no_bucket_is_OFF_not_local`. **Supabase Storage is the no-card fallback for production** if the card is still unavailable at go-live: it speaks the same S3 protocol, so it is three settings and no code change (`test_a_supabase_endpoint_needs_no_code_change`).
 
 **Web Push** (optional): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL`. Generated once — **regenerating them invalidates every existing subscription**, so treat them as permanent. The public key ships to the browser and is not a secret; the private key is. They must also be set in the host's environment (Render) or push is skipped there while the in-app feed keeps working.
 
@@ -3804,7 +4081,7 @@ so the chart can never contradict the headline.
 Keep any new stock-affecting model change signal-driven rather than mutating `Item.current_stock` directly in views.
 
 ## Testing conventions
-Tests live in `workshop/tests/` (46 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 51 files, **1,414 tests** (counted 2026-08-18 from a full green run, after the read-only job card was laid out to the owner's own design and `test_jobcard_detail_view.py` grew with it; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, 79 and 63 on 2026-08-16, 71 on 2026-08-17, and 46 and **30 on 2026-08-18**, which is the clearest evidence that the spread is load-dependent rather than meaningful; the 71 had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
+Tests live in `workshop/tests/` (47 files) and `inventory/` (`tests.py`, `tests_suppliers.py`, `test_signals.py`, `test_costing.py`, `test_supplier_costing.py`) — 52 files, **1,506 tests** (counted 2026-08-19 after `test_photos.py` was added with the photo section; the figures here had gone stale five times before, so re-count rather than trusting this line — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()` is the counter, since grepping `def test_` cannot see tests inherited from shared base classes). Expect the full suite to take **20-79 minutes** — timed at 53 minutes on 2026-08-04, 31 on 2026-08-05, then 23, 33, 35, 41 and 42, and 63 and 69 on 2026-08-12, 79 and 63 on 2026-08-16, 71 on 2026-08-17, and 46 and **30 on 2026-08-18**, which is the clearest evidence that the spread is load-dependent rather than meaningful; the 71 had two other test processes competing for the same cores, and a run at 40 minutes has not hung. **Running two suites at once is safe** — SQLite's test database is in-memory by default (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide on it, which is worth knowing when you only need to re-check one file. They always run against SQLite (see "Which database am I on?"), so the suite stays fast and never touches the hosted Postgres. When a test fails, the project convention (stated in `TITAN_MASTER_HANDOVER.md`) is "fix the code, not the tests" — treat failing tests, especially security/financial ones, as a signal the implementation regressed, not the test being wrong.
 
 ## Repo hygiene notes
 - `API_DOCUMENTATION.md` and `TECH_INFO.md` were **deleted on 2026-08-10**, along with

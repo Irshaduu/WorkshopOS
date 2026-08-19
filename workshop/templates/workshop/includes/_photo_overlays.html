@@ -1,0 +1,373 @@
+{% load static %}
+{% comment %}
+The camera and the gallery — ONE of each per page, however many boxes there
+are. Include once, near the end of the page body:
+
+    {% include "workshop/includes/_photo_overlays.html" %}
+
+Everything is wired by delegation in photos.js, so a box that appears later
+(a formset row added by "+ Add Spare") works with nothing re-initialised.
+
+The stylesheet lives here rather than in a static file because it styles
+markup that lives here, and because a page that includes the overlays always
+wants it — one include, nothing to remember, no second collectstatic
+dependency for CSS. It is ~5 KB.
+
+THE CAMERA HAS ONE BUTTON THAT TAKES A PHOTO, AND NO REVIEW.
+Tap, and the photo is captured and on its way; the flash and the count are the
+confirmation. That was the owner's choice over shutter-then-confirm, and it
+halves the taps for a ten-photo walk-around. The price is paid in photos.js: a
+frame is held in memory until the server confirms it, one retry is spent
+automatically, and a failure becomes visible rather than silent.
+{% endcomment %}
+
+<div id="photoRoot"
+     data-sign-url="{% url 'photo_sign' %}"
+     data-commit-url="{% url 'photo_commit' %}"
+     data-list-url="{% url 'photo_list' %}"
+     data-delete-url="{% url 'photo_delete' %}"
+     data-csrf="{{ csrf_token }}">
+
+    {# ---------------- CAMERA ---------------- #}
+    <div class="photo-cam" id="photoCam" hidden>
+        <video id="photoCamVideo" class="photo-cam-video" playsinline autoplay muted></video>
+        <div class="photo-cam-flash" id="photoCamFlash" aria-hidden="true"></div>
+
+        <div class="photo-cam-top">
+            <span class="photo-cam-count" id="photoCamCount">0</span>
+            <button type="button" class="photo-cam-close" id="photoCamClose" aria-label="Close the camera">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+
+        <p class="photo-cam-error" id="photoCamError" hidden></p>
+
+        <div class="photo-cam-bottom">
+            <button type="button" class="photo-shutter" id="photoCamShutter" aria-label="Take a photo"></button>
+        </div>
+    </div>
+
+    {# ---------------- GALLERY ---------------- #}
+    <div class="photo-gal" id="photoGal" hidden>
+        <div class="photo-gal-top">
+            <div class="photo-gal-menu-wrap">
+                <button type="button" class="photo-gal-icon" id="photoGalMenu" hidden aria-label="Photo options">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <div class="photo-gal-menu-list" id="photoGalMenuList" hidden>
+                    <button type="button" id="photoGalDelete">
+                        <i class="bi bi-trash3"></i> Delete this photo
+                    </button>
+                </div>
+            </div>
+            <button type="button" class="photo-gal-icon" id="photoGalClose" aria-label="Close">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+
+        <div class="photo-gal-stage">
+            <button type="button" class="photo-gal-arrow prev" id="photoGalPrev" hidden aria-label="Previous photo">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            {% comment %}
+            A plain <img> with nothing layered over it, deliberately. That is
+            what makes a long press offer "Save image" on iOS and Android with
+            no code at all — an overlay, or `pointer-events`/`user-select`
+            trickery, would take that away. The signed URL carries a
+            Content-Disposition filename so the saved copy is named after the
+            car and the date rather than a raw UUID.
+            {% endcomment %}
+            <img id="photoGalImg" class="photo-gal-img" alt="">
+            <p class="photo-gal-empty" id="photoGalEmpty" hidden>No photos yet.</p>
+            <button type="button" class="photo-gal-arrow next" id="photoGalNext" hidden aria-label="Next photo">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+
+        <div class="photo-gal-bottom">
+            <p class="photo-gal-meta" id="photoGalMeta"></p>
+            <p class="photo-gal-pos" id="photoGalPos"></p>
+            <button type="button" class="photo-gal-add" id="photoGalAdd" hidden>Add photo</button>
+        </div>
+    </div>
+</div>
+
+<style>
+/* ---------------------------------------------------------------------------
+   THE BOX
+   Sized to sit in a form row without changing its height. On the Spare Parts
+   table (Phase 2) it becomes a cell between Status and Shop, which costs the
+   table ~44px of width and NO row height — height is the thing that actually
+   hurts, because it reflows every row beneath it on a tablet mid-tap.
+   --------------------------------------------------------------------------- */
+.photo-box {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 1.05rem;
+    /* Paint only. Never transition layout — `transition: all` on a flex child
+       is what pinned the Cashbook chips at content width for an afternoon. */
+    transition: background-color .15s, border-color .15s, color .15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.photo-box:focus-visible { outline: 2px solid #2a70da; outline-offset: 2px; }
+@media (hover: hover) {
+    .photo-box:hover { background: #eef2f7; border-color: #cbd5e1; color: #334155; }
+}
+.photo-box:active { transform: scale(.94); background: #e2e8f0; }
+.photo-box .photo-box-gallery { display: none; }
+.photo-box.has-photos { background: #eef6ff; border-color: #bfdbfe; color: #2a70da; }
+.photo-box.has-photos .photo-box-camera { display: none; }
+.photo-box.has-photos .photo-box-gallery { display: inline; }
+.photo-box-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: #2a70da;
+    color: #fff;
+    font-size: .68rem;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* A finger, not a pointer: the Floor tablet is the device this is for. */
+@media (hover: none) {
+    .photo-box { width: 48px; height: 48px; flex-basis: 48px; }
+}
+
+/* COMPACT — for a dense ledger row rather than a form row.
+   Measured on Spare Shop → Purchase History: rows there are 40px, so a 48px box
+   made its row 64px and left one card-height outlier in a 45-row list. That is
+   the raggedness `.del-vehicle-name`'s min-height exists to prevent, arriving
+   from the other direction.
+   Dropping to a pointer-sized target is safe THERE and would not be on the job
+   card: that page is @office_required, it is read on a laptop, and the box is
+   view-only — it opens a gallery, it never starts a camera. It keeps its 48px
+   on a touch screen anyway, which still fits inside the taller rows a tablet
+   renders. */
+.photo-box.is-compact {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+}
+.photo-box.is-compact .photo-box-count {
+    top: -5px;
+    right: -5px;
+    min-width: 15px;
+    height: 15px;
+    line-height: 15px;
+    font-size: 0.6rem;
+}
+
+/* The label beside the box when it sits under the internal note. */
+.photo-box-row { display: flex; align-items: center; gap: .65rem; }
+.photo-box-hint { font-size: .82rem; color: #94a3b8; margin: 0; }
+
+body.photo-open { overflow: hidden; }
+
+/* ---------------------------------------------------------------------------
+   CAMERA
+   --------------------------------------------------------------------------- */
+.photo-cam, .photo-gal {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;          /* above the nav (1030) and the date panel (1035) */
+    background: #000;
+    display: flex;
+    flex-direction: column;
+}
+.photo-cam-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+}
+.photo-cam-flash {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+}
+.photo-cam-flash.is-firing { animation: photo-flash .22s ease-out; }
+@keyframes photo-flash {
+    0%   { opacity: .85; }
+    100% { opacity: 0; }
+}
+.photo-cam-top, .photo-gal-top {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(env(safe-area-inset-top) + 12px) 14px 12px;
+}
+.photo-cam-count {
+    min-width: 40px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .55);
+    color: #fff;
+    font-weight: 700;
+    font-size: .95rem;
+    font-variant-numeric: tabular-nums;
+}
+.photo-cam-count.has-failure { background: #b91c1c; }
+.photo-cam-close, .photo-gal-icon {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .55);
+    color: #fff;
+    font-size: 1.1rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.photo-cam-error {
+    position: relative;
+    z-index: 2;
+    margin: 0 16px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(185, 28, 28, .92);
+    color: #fff;
+    font-size: .88rem;
+}
+.photo-cam-bottom {
+    position: relative;
+    z-index: 2;
+    margin-top: auto;
+    display: flex;
+    justify-content: center;
+    padding: 20px 0 calc(env(safe-area-inset-bottom) + 28px);
+}
+.photo-shutter {
+    width: 74px;
+    height: 74px;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 255, 255, .9);
+    background: #fff;
+    cursor: pointer;
+    transition: transform .1s, background-color .15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.photo-shutter:active { transform: scale(.9); background: #e2e8f0; }
+.photo-shutter:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------------------
+   GALLERY
+   --------------------------------------------------------------------------- */
+.photo-gal { background: rgba(4, 8, 15, .96); }
+.photo-gal-menu-wrap { position: relative; }
+.photo-gal-menu-list {
+    position: absolute;
+    top: 50px;
+    left: 0;
+    min-width: 200px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+    overflow: hidden;
+    z-index: 3;
+}
+.photo-gal-menu-list button {
+    display: block;
+    width: 100%;
+    padding: 12px 16px;
+    border: 0;
+    background: none;
+    text-align: left;
+    font-size: .92rem;
+    color: #b91c1c;
+    cursor: pointer;
+}
+.photo-gal-menu-list button:active { background: #fef2f2; }
+.photo-gal-stage {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: 0 8px;
+}
+.photo-gal-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 6px;
+}
+.photo-gal-empty { color: #94a3b8; font-size: .95rem; margin: 0; }
+.photo-gal-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 48px;
+    height: 48px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .14);
+    color: #fff;
+    font-size: 1.2rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.photo-gal-arrow.prev { left: 10px; }
+.photo-gal-arrow.next { right: 10px; }
+.photo-gal-arrow:active { background: rgba(255, 255, 255, .3); }
+.photo-gal-bottom {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 14px 16px calc(env(safe-area-inset-bottom) + 20px);
+}
+.photo-gal-meta { margin: 0; color: #e2e8f0; font-size: .9rem; }
+.photo-gal-pos {
+    margin: 4px 0 0;
+    color: #94a3b8;
+    font-size: .78rem;
+    font-variant-numeric: tabular-nums;
+}
+.photo-gal-add {
+    margin-top: 14px;
+    padding: 12px 26px;
+    min-height: 44px;
+    border: 0;
+    border-radius: 999px;
+    background: #2a70da;
+    color: #fff;
+    font-weight: 600;
+    font-size: .95rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.photo-gal-add:disabled { background: #475569; color: #cbd5e1; cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+    .photo-cam-flash.is-firing { animation-duration: .01ms; }
+    .photo-box, .photo-shutter { transition: none; }
+}
+</style>
+
+<script src="{% static 'js/photos-core.js' %}?v=2"></script>
+<script src="{% static 'js/photos.js' %}?v=2"></script>
