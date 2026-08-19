@@ -173,13 +173,72 @@
     background: var(--color-card); border: 1px dashed var(--color-border); border-radius: 14px;
   }
 
-  /* ── Advance form ── */
+  /* ── Advance form ──
+     The amount box carries the same size and weight whether it holds a
+     typed figure or its own placeholder, so an untouched "₹0" reads as a
+     real zero already sitting there rather than a hint — the trap
+     CLAUDE.md calls out under "A money box must not fight the person
+     typing into it". The placeholder is quieted below to break that
+     resemblance; the typed value stays full weight and full colour. */
   .amount-field {
     font-size: 1.35rem; font-weight: 800; text-align: center;
     min-height: 54px; letter-spacing: 0.01em;
   }
+  .amount-field::placeholder { color: var(--color-text-muted); opacity: 0.5; font-weight: 700; }
   .form-label-sm { font-size: 0.74rem; font-weight: 700; color: var(--color-text-muted); margin-bottom: 4px; }
   .modal-body .form-control, .modal-body .form-select { min-height: 46px; border-radius: 10px; }
+  /* Paint only — never `transition: all` on a form control (CLAUDE.md). */
+  .modal-body .form-control,
+  .modal-body .form-select {
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .modal-body .form-control:focus,
+  .modal-body .form-select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  }
+
+  /* Date given / Note — both were the same 46px box as Amount and Staff,
+     which is too tall for a date and a one-word note. Compact height, and
+     the columns are no longer a plain 6/6: a date is a fixed-width fact
+     while a note is free text, so the width follows what each actually
+     needs. The note is a single-row textarea that grows with what's typed
+     rather than scrolling sideways inside a fixed input. */
+  /* `.modal-body .form-control` (below) sets min-height: 46px at specificity
+     0,2,0 — a bare `.adv-compact` alone (0,1,0) can never beat that, so the
+     override has to match its specificity. */
+  /* Smaller than the 1rem the rest of the form's inputs use — at full size
+     the date's own text ("20-08-2026") ran into the native calendar glyph
+     inside a box this narrow. A smaller box needs smaller type, not just a
+     tighter box, or the two collide. Matches on the Note box too, so typed
+     and placeholder text read the same size across both compact fields. */
+  .modal-body .adv-compact { min-height: 40px; font-size: 0.86rem; }
+  .adv-note {
+    resize: none;
+    overflow: hidden;
+    line-height: 1.35;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  .adv-hint {
+    font-size: 0.58rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  /* Sized and positioned to sit ON the text's first line, not float above
+     it — the icon was still at its old (pre-shrink) size and offset with a
+     top margin tuned for that size, so next to text this small it read as
+     a separate element rather than a label beside its own hint. */
+  .adv-hint i {
+    opacity: 0.7;
+    font-size: 0.62rem;
+    line-height: inherit;
+    flex-shrink: 0;
+  }
 </style>
 
 <!-- ── Header ── -->
@@ -383,18 +442,18 @@
           </select>
 
           <div class="row g-2">
-            <div class="col-6">
+            <div class="col-5">
               <div class="form-label-sm">Date given</div>
-              <input type="date" name="date" class="form-control" value="{% now 'Y-m-d' %}" required>
+              <input type="date" name="date" class="form-control adv-compact" value="{% now 'Y-m-d' %}" required>
             </div>
-            <div class="col-6">
+            <div class="col-7">
               <div class="form-label-sm">Note <span class="fw-normal">(optional)</span></div>
-              <input type="text" name="note" class="form-control" placeholder="e.g. from owner">
+              <textarea name="note" class="form-control adv-compact adv-note" rows="1"></textarea>
             </div>
           </div>
 
-          <div class="small text-muted mt-3 d-flex align-items-start gap-2">
-            <i class="bi bi-info-circle mt-1"></i>
+          <div class="adv-hint mt-3">
+            <i class="bi bi-info-circle"></i>
             <span>Subtracted automatically when that month's salary is settled.</span>
           </div>
         </div>
@@ -477,6 +536,21 @@
     select.value = staffId ? String(staffId) : '';
     new bootstrap.Modal(document.getElementById('giveAdvanceModal')).show();
   }
+
+  // The note grows with what's typed instead of scrolling sideways inside a
+  // fixed-height box. Re-measured on shown.bs.modal too, so reopening the
+  // modal with leftover text (Cancel was pressed, not Save) still shows the
+  // right height rather than the single-row default.
+  (function () {
+    const noteEl = document.querySelector('#giveAdvanceModal .adv-note');
+    if (!noteEl) return;
+    function grow() {
+      noteEl.style.height = 'auto';
+      noteEl.style.height = noteEl.scrollHeight + 'px';
+    }
+    noteEl.addEventListener('input', grow);
+    document.getElementById('giveAdvanceModal').addEventListener('shown.bs.modal', grow);
+  })();
 
   function openSetSalary(staffId, staffName, currentSalary) {
     document.getElementById('salaryStaffName').textContent = staffName;

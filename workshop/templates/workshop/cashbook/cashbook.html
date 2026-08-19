@@ -98,19 +98,27 @@
     .cb-filter-btn .bi-funnel { font-size: 0.72rem; color: var(--color-text-muted); }
     .cb-filter-btn .bi-chevron-down { font-size: 0.6rem; opacity: 0.5; }
 
+    @media (max-width: 640px), (pointer: coarse) {
+        .cb-filter-btn { font-size: 0.85rem; padding: 9px 14px; }
+        .cb-filter-btn .bi-funnel { font-size: 0.8rem; }
+    }
+
     .cb-dropdown-menu {
         border-radius: 16px; border: 1px solid var(--color-border);
         box-shadow: 0 20px 60px rgba(0,0,0,0.14), 0 6px 16px rgba(0,0,0,0.07);
         padding: 4px; min-width: 172px; width: max-content;
         max-height: calc(100vh - 160px); overflow-y: auto; margin-top: 6px !important;
     }
+    /* The rows inside the OPEN menu — Today, This Week, etc. — read small
+       next to everything else on this page. Same fix as Completed's own
+       filter dropdown: enlarge the list itself, not its toggle button. */
     .cb-dropdown-menu .dropdown-item {
-        border-radius: 9px; font-size: 0.8rem; font-weight: 500; padding: 8px 12px;
-        color: var(--color-text); display: flex; align-items: center; gap: 8px;
+        border-radius: 9px; font-size: 0.92rem; font-weight: 500; padding: 11px 14px;
+        color: var(--color-text); display: flex; align-items: center; gap: 10px;
         transition: background 0.12s, color 0.12s;
     }
     .cb-dropdown-menu .dropdown-item .item-icon {
-        font-size: 0.72rem; opacity: 0.38; width: 14px; text-align: center;
+        font-size: 0.85rem; opacity: 0.38; width: 16px; text-align: center;
         flex-shrink: 0; transition: opacity 0.12s;
     }
     .cb-dropdown-menu .dropdown-item:hover { background: rgba(16,185,129,0.08); color: #047857; }

@@ -16,6 +16,36 @@
     border-radius: 16px; padding: 1.25rem 1.5rem;
     margin-bottom: 1.25rem; color: #fff;
   }
+
+  /* ── Header layout — same fix as spare_shops/shop_detail.html, and for the
+     same reason: this row used to be a plain `flex-wrap`, so when Restock
+     Bills, Payments and the ⋮ menu didn't fit one line, they wrapped one
+     button at a time — the ⋮ stranded on a row of its own below the other
+     two, nowhere near the corner a thumb expects it. On a WIDE screen the
+     actions sit beside the title, where there's room for both. On a PHONE
+     the whole actions group drops to its own row together and aligns RIGHT,
+     so the three controls stay as one row under the thumb; the shop name
+     gets the full width instead of fighting them for it and wraps rather
+     than truncating. `min-width: 0` on the title block is load-bearing on
+     the wide layout — a flex item defaults to `min-width: auto` and refuses
+     to shrink below its content. */
+  .shop-titleblock { min-width: 0; flex: 1 1 auto; }
+  .shop-actions { flex: 0 0 auto; }
+  .shop-title,
+  .shop-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  @media (max-width: 767.98px) {
+    .shop-headrow { flex-wrap: wrap; }
+    .shop-titleblock { flex: 1 1 100%; }
+    .shop-actions { flex: 1 1 100%; justify-content: flex-end; }
+    .shop-title,
+    .shop-sub { white-space: normal; overflow: visible; text-overflow: clip; }
+  }
+
+  @media (max-width: 480px) {
+    .detail-header { padding: 1rem 1rem; }
+    .shop-title { font-size: 1.1rem !important; }
+  }
   .stat-box {
     text-align: center; padding: 0.8rem 1rem;
     border-radius: 10px; background: rgba(255,255,255,0.07);
@@ -36,6 +66,12 @@
     transition: border-color 0.15s;
   }
   .shop-filter-btn:hover { border-color: var(--color-primary); }
+
+  @media (max-width: 640px), (pointer: coarse) {
+    .shop-filter-btn { min-height: 40px; padding: 8px 14px; font-size: 0.85rem; }
+    .shop-filter-btn .bi-funnel { font-size: 0.8rem; }
+  }
+
   .shop-dropdown-menu {
     border-radius: 16px; border: 1px solid var(--color-border);
     box-shadow: 0 20px 60px rgba(0,0,0,0.14), 0 6px 16px rgba(0,0,0,0.07);
@@ -43,15 +79,19 @@
     max-height: calc(100vh - 160px); overflow-y: auto;
     margin-top: 6px !important;
   }
+  /* The rows inside the OPEN menu — Today, This Week, etc. — were 6px/12px
+     at 0.8rem, smaller than the button that opens them. Same fix as
+     Completed's .del-dropdown-menu: it's the list itself that reads small
+     once open, not its toggle. */
   .shop-dropdown-menu .dropdown-item {
-    border-radius: 8px; font-size: 0.8rem; font-weight: 500;
-    padding: 6px 12px; color: var(--color-text);
+    border-radius: 8px; font-size: 0.92rem; font-weight: 500;
+    padding: 11px 14px; color: var(--color-text);
     transition: background 0.12s, color 0.12s;
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 10px;
   }
   .shop-dropdown-menu .dropdown-item .item-icon {
-    font-size: 0.72rem; opacity: 0.38; flex-shrink: 0;
-    width: 14px; text-align: center; transition: opacity 0.12s;
+    font-size: 0.85rem; opacity: 0.38; flex-shrink: 0;
+    width: 16px; text-align: center; transition: opacity 0.12s;
   }
   .shop-dropdown-menu .dropdown-item:hover {
     background: rgba(37,99,235,0.07); color: var(--color-primary);
@@ -213,14 +253,14 @@
 
 <!-- ── HEADER CARD ── -->
 <div class="detail-header mb-3">
-  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-    <div>
-      <div class="fw-bold" style="font-size:1.25rem;"><i class="bi bi-truck me-2"></i>{{ shop.name }}</div>
-      {% if shop.phone %}<div style="color:rgba(255,255,255,0.6); font-size:0.82rem;"><i class="bi bi-telephone me-1"></i>{{ shop.phone }}</div>{% endif %}
-      {% if shop.address %}<div style="color:rgba(255,255,255,0.6); font-size:0.82rem;"><i class="bi bi-geo-alt me-1"></i>{{ shop.address }}</div>{% endif %}
+  <div class="shop-headrow d-flex justify-content-between align-items-start mb-3 gap-2">
+    <div class="shop-titleblock">
+      <div class="fw-bold shop-title" style="font-size:1.25rem;"><i class="bi bi-truck me-2"></i>{{ shop.name }}</div>
+      {% if shop.phone %}<div class="shop-sub" style="color:rgba(255,255,255,0.6); font-size:0.82rem;"><i class="bi bi-telephone me-1"></i>{{ shop.phone }}</div>{% endif %}
+      {% if shop.address %}<div class="shop-sub" style="color:rgba(255,255,255,0.6); font-size:0.82rem;"><i class="bi bi-geo-alt me-1"></i>{{ shop.address }}</div>{% endif %}
     </div>
 
-    <div class="d-flex align-items-center gap-2 flex-wrap">
+    <div class="d-flex align-items-center gap-2 shop-actions">
       <!-- Restock Bills Button -->
       <button class="btn btn-sm btn-outline-warning rounded-pill px-3" data-bs-toggle="offcanvas" data-bs-target="#billsOffcanvas" style="font-size:0.8rem;">
         <i class="bi bi-receipt me-1"></i> Restock Bills ({{ bills_count }})

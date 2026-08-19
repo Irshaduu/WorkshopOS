@@ -597,6 +597,36 @@ class SupplierShopViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_the_name_and_the_actions_are_separately_addressable(self):
+        """
+        Same fix, same reason as spare_shop_detail (CLAUDE.md: "a shop header
+        gives up its actions before it gives up its name"). Restock Bills,
+        Payments and the ⋮ menu used to be a bare `flex-wrap` group, so on a
+        phone they wrapped one at a time and the ⋮ stranded on its own row
+        below the other two. Both halves need their own hook or the phone
+        rule below has nothing to target and silently does nothing.
+        """
+        shop = SupplierShop.objects.create(name='Layout Shop')
+        page = self.client.get(
+            reverse('supplier_shop_detail', args=[shop.id])
+        ).content.decode()
+
+        self.assertIn('shop-headrow', page)
+        self.assertIn('shop-titleblock', page)
+        self.assertIn('shop-actions', page)
+
+    def test_on_a_phone_the_actions_take_their_own_row_aligned_right(self):
+        shop = SupplierShop.objects.create(name='Layout Shop')
+        page = self.client.get(
+            reverse('supplier_shop_detail', args=[shop.id])
+        ).content.decode()
+
+        self.assertIn('max-width: 767.98px', page)
+        # 100% basis is what FORCES the break — without it the two boxes
+        # share the line again the moment they happen to fit.
+        self.assertIn('flex: 1 1 100%', page)
+        self.assertIn('justify-content: flex-end', page)
+
     def test_shop_detail_with_custom_filter(self):
         shop = SupplierShop.objects.create(name='Custom Shop')
         response = self.client.get(

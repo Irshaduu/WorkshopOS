@@ -136,7 +136,12 @@
   .shop-filter-btn:hover { border-color: var(--color-primary); }
   .shop-filter-btn .bi-funnel { font-size: 0.72rem; color: var(--color-text-muted); }
   .shop-filter-btn .bi-chevron-down { font-size: 0.6rem; opacity: 0.5; }
-  
+
+  @media (max-width: 640px), (pointer: coarse) {
+    .shop-filter-btn { min-height: 40px; padding: 8px 14px; font-size: 0.85rem; }
+    .shop-filter-btn .bi-funnel { font-size: 0.8rem; }
+  }
+
   .shop-dropdown-menu {
       border-radius: 16px;
       border: 1px solid var(--color-border);
@@ -148,22 +153,26 @@
       overflow-y: auto;
       margin-top: 6px !important;
   }
+  /* The rows inside the OPEN menu — Today, This Week, etc. — were 6px/12px
+     at 0.8rem, smaller than the button that opens them. Same fix as
+     Completed's .del-dropdown-menu: it's the list itself that reads small
+     once open, not its toggle. */
   .shop-dropdown-menu .dropdown-item {
       border-radius: 8px;
-      font-size: 0.8rem;
+      font-size: 0.92rem;
       font-weight: 500;
-      padding: 6px 12px;
+      padding: 11px 14px;
       color: var(--color-text);
       transition: background 0.12s, color 0.12s;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
   }
   .shop-dropdown-menu .dropdown-item .item-icon {
-      font-size: 0.72rem;
+      font-size: 0.85rem;
       opacity: 0.38;
       flex-shrink: 0;
-      width: 14px;
+      width: 16px;
       text-align: center;
       transition: opacity 0.12s;
   }

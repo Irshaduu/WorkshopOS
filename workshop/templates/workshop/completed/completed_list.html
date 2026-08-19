@@ -143,8 +143,21 @@
     .del-filter-btn .bi-funnel { font-size: 0.72rem; color: var(--color-text-muted); }
     .del-filter-btn .bi-chevron-down { font-size: 0.6rem; opacity: 0.5; }
 
+    /* The button was 7px/12px padding at 0.78rem — a ~28px tall target on the
+       one control besides search that gets tapped on every visit to this page.
+       Bumped to the app's own touch-target floor, keyed on input method rather
+       than a width breakpoint so a small laptop window isn't caught by it. */
+    @media (max-width: 640px), (pointer: coarse) {
+        .del-filter-btn {
+            min-height: 40px;
+            padding: 8px 14px;
+            font-size: 0.85rem;
+        }
+        .del-filter-btn .bi-funnel { font-size: 0.8rem; }
+    }
+
     /* Filter Dropdown */
-    .del-dropdown-menu {
+    .del-filter-menu {
         border-radius: 16px;
         border: 1px solid var(--color-border);
         box-shadow: 0 20px 60px rgba(0,0,0,0.14), 0 6px 16px rgba(0,0,0,0.07);
@@ -155,48 +168,52 @@
         overflow-y: auto;
         margin-top: 6px !important;
     }
-    .del-dropdown-menu .dropdown-item {
+    /* The rows inside the OPEN menu — Today, This Week, etc. — were 6px/12px
+       at 0.8rem, smaller than the button that opens them. This is the thing
+       that was actually reported small: the list you're reading and tapping
+       once the menu is open, not its toggle. */
+    .del-filter-menu .dropdown-item {
         border-radius: 8px;
         font-family: var(--font-body);
-        font-size: 0.8rem;
+        font-size: 0.92rem;
         font-weight: 500;
-        padding: 6px 12px;
+        padding: 11px 14px;
         color: var(--color-text);
         transition: background 0.12s, color 0.12s;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
     }
-    .del-dropdown-menu .dropdown-item .item-icon {
-        font-size: 0.72rem;
+    .del-filter-menu .dropdown-item .item-icon {
+        font-size: 0.85rem;
         opacity: 0.38;
         flex-shrink: 0;
-        width: 14px;
+        width: 16px;
         text-align: center;
         transition: opacity 0.12s;
     }
-    .del-dropdown-menu .dropdown-item:hover {
+    .del-filter-menu .dropdown-item:hover {
         background: rgba(37,99,235,0.07);
         color: var(--del-blue);
     }
-    .del-dropdown-menu .dropdown-item:hover .item-icon { opacity: 0.7; }
-    .del-dropdown-menu .dropdown-item.active {
+    .del-filter-menu .dropdown-item:hover .item-icon { opacity: 0.7; }
+    .del-filter-menu .dropdown-item.active {
         background: rgba(37,99,235,0.1);
         color: var(--del-blue);
         font-weight: 700;
     }
-    .del-dropdown-menu .dropdown-item.active .item-icon { opacity: 1; }
-    .del-dropdown-menu .dropdown-item.active::after {
+    .del-filter-menu .dropdown-item.active .item-icon { opacity: 1; }
+    .del-filter-menu .dropdown-item.active::after {
         content: '✓';
         margin-left: auto;
         font-size: 0.75rem;
         font-weight: 900;
         color: var(--del-blue);
     }
-    .del-dropdown-menu .dropdown-divider { margin: 4px 8px; }
+    .del-filter-menu .dropdown-divider { margin: 4px 8px; }
 
     /* Custom date inputs */
-    .del-dropdown-menu .form-control-sm {
+    .del-filter-menu .form-control-sm {
         font-family: var(--font-body);
         font-size: 0.78rem;
         border-radius: 8px;
@@ -250,7 +267,7 @@
                 </span>
                 <i class="bi bi-chevron-down"></i>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end del-dropdown-menu">
+            <ul class="dropdown-menu dropdown-menu-end del-filter-menu">
                 <li><a class="dropdown-item {% if filter_type == 'today' %}active{% endif %}" data-filter="today" href="#">
                     <i class="bi bi-brightness-high item-icon"></i>Today
                 </a></li>
@@ -404,10 +421,10 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Filter dropdown — uses data-filter attribute; manages active class in JS
-    document.querySelectorAll('.del-dropdown-menu a[data-filter]').forEach(item => {
+    document.querySelectorAll('.del-filter-menu a[data-filter]').forEach(item => {
         item.addEventListener('click', function (e) {
             e.preventDefault();
-            document.querySelectorAll('.del-dropdown-menu a[data-filter]').forEach(a => a.classList.remove('active'));
+            document.querySelectorAll('.del-filter-menu a[data-filter]').forEach(a => a.classList.remove('active'));
             this.classList.add('active');
             currentFilter = this.getAttribute('data-filter');
             updateResults(searchInput.value);

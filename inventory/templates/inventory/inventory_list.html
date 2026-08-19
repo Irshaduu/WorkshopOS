@@ -106,21 +106,29 @@
         min-width: 0;
     }
 
+    /* Wraps to two lines by default rather than truncating to one — the qty
+       box + View button on this row leave only ~170px for the name on a
+       phone, so a single truncated line was cutting real product names
+       ("Castrol DOT 4 Bra…") well before their brand or spec. Tap-to-expand
+       stays for the rare name that still doesn't fit in two lines. */
     .item-name {
         font-weight: 600;
         font-size: 1.05rem;
         line-height: 1.3;
         color: var(--color-text);
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        white-space: normal;
         overflow: hidden;
         text-overflow: ellipsis;
+        word-break: break-word;
         cursor: pointer;
     }
 
     .item-name.expanded {
-        white-space: normal;
+        -webkit-line-clamp: unset;
         overflow: visible;
-        word-break: break-word;
     }
 
     /* Current stock is already shown in the readonly number box next to the
@@ -201,6 +209,19 @@
         opacity: 0.9;
         stroke: currentColor;
     }
+
+    /* The stock box + View button were together taking up half the card on
+       a phone — the same width fight the item name lost, before it was let
+       wrap to two lines. The stock box shrinks (it only ever holds two or
+       three digits) and View drops to just its eye glyph, on the same
+       breakpoint the rest of this page's mobile layout already uses. The
+       label survives for a screen reader via aria-label. */
+    @media (max-width: 575.98px) {
+        .controls { gap: 6px; }
+        .controls input[type="number"] { width: 46px; padding: 4px; font-size: 0.85rem; }
+        a.btn-view { width: 38px; padding: 0; gap: 0; flex-shrink: 0; }
+        a.btn-view .btn-view-label { display: none; }
+    }
 </style>
 
 <div class="inventory-wrapper mt-3">
@@ -251,12 +272,12 @@
                     style="border-color: {{ item.stock_status_color }}; cursor: not-allowed; opacity: 0.9;">
                 {# Supplier views are Office/Owner only — don't offer Floor a link it can't open. #}
                 {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
-                <a href="{% url 'inventory_item_suppliers' item.id %}" class="btn-view">
+                <a href="{% url 'inventory_item_suppliers' item.id %}" class="btn-view" aria-label="View suppliers for {{ item.name }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                         <circle cx="12" cy="12" r="3" />
                     </svg>
-                    View
+                    <span class="btn-view-label">View</span>
                 </a>
                 {% endif %}
             </div>
