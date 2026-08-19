@@ -729,7 +729,7 @@ def spare_shop_unassign_item(request, item_pk):
         if not shop_id:
             messages.error(request, "Cannot unassign an item that isn't linked to a Spare Shop.")
             if item.job_card:
-                return redirect('jobcard_detail', pk=item.job_card.pk)
+                return redirect('jobcard_edit', pk=item.job_card.pk)
             return redirect('home')
         
         # Valid shop and request method
@@ -751,7 +751,7 @@ def spare_shop_unassign_item(request, item_pk):
             old_jc.update_totals()
         messages.success(request, f"'{item.spare_part_name}' moved to unassigned stock.")
         if old_jc:
-            return redirect('jobcard_detail', pk=old_jc.pk)
+            return redirect('jobcard_edit', pk=old_jc.pk)
         return redirect('spare_shop_detail', pk=shop_id)
     return redirect('home')
 
