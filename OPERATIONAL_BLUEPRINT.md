@@ -1,9 +1,10 @@
 # 🔧 WorkshopOS (Titan) — OPERATIONAL BLUEPRINT
 ## How Every Feature Connects & Works Together
 
-> **Accurate as of**: 2026-07-27 (v8)
->
-> This is the **workflow narrative** doc — how features connect for a human reading top to bottom. For exact model/route/template tables see `MASTER_BLUEPRINT.md`; for roadmap and status see `TITAN_MASTER_HANDOVER.md`.
+> This is the **workflow narrative** doc — how features connect, for a human
+> reading top to bottom. For exact model/route/template tables see
+> `MASTER_BLUEPRINT.md`; for roadmap and status see `TITAN_MASTER_HANDOVER.md`;
+> for the rules behind these behaviours see `CLAUDE.md`.
 
 ---
 
@@ -85,13 +86,13 @@ graph TD
 
 
  FLOOR (Mechanics / Floor Manager)
-   - View Dashboard (active cars on floor), including each car's live details — the same four lists (Customer Concerns, Job Performed, Inventory Items, Spare Parts) the read-only job card shows. **This is where Floor reads a card**: the Live Report and the read-only card view at `/jobcards/<pk>/` are both Office/Owner (the Live Report since 2026-08-16, the card view since 2026-08-18)
+   - View Dashboard (active cars on floor), including each car's live details — the same four lists (Customer Concerns, Job Performed, Inventory Items, Spare Parts) the read-only job card shows. **This is where Floor reads a card**: the Live Report and the read-only card view at `/jobcards/<pk>/` are both Office/Owner
    - Create new Job Cards
    - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Total Labour included, is Office/Owner only and is enforced on the server)
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
    - Put a car On Hold / take it off hold, and Mark it Completed
-   - Record a purchase in the **Unassigned Spares Hub** — add only. No price box is shown and none is stored (the row is saved unpriced, and Office fills the figure in from the shop's bill); existing rows cannot be edited or deleted, and no price on the page is visible to Floor. Floor *can* fill in **Ordered For** — a free-text note saying which car the part is for ("BMW 320d"), added 2026-08-18 because a part is usually ordered before there is a job card to attach it to. It is a note, not a link: it moves no money and joins nothing
+   - Record a purchase in the **Unassigned Spares Hub** — add only. No price box is shown and none is stored (the row is saved unpriced, and Office fills the figure in from the shop's bill); existing rows cannot be edited or deleted, and no price on the page is visible to Floor. Floor *can* fill in **Ordered For** — a free-text note saying which car the part is for ("BMW 320d"), because a part is usually ordered before there is a job card to attach it to. It is a note, not a link: it moves no money and joins nothing
 ```
 
 ---
@@ -219,6 +220,70 @@ that fires for housekeeping stops being read for the things that matter.
 
 ---
 
+## 3C. PHOTOS — EVIDENCE, ATTACHED TO NOTHING
+
+A photograph answers one question later: *what did this car look like when it came
+in?* It is evidence in a pre-existing-damage argument, and nothing else in the system
+depends on it.
+
+### Where they are taken
+
+| Surface | Who | What they can do |
+|---|---|---|
+| **Job card → car photos** | Floor, Office, Owner | take, view, delete (while the bill is open) |
+| **Job card → a Spare Parts row** | Floor, Office, Owner | take, view, delete (while the bill is open) |
+| **Spare Shop → Purchase History** | Office, Owner | **view only** |
+
+The mechanic walking round the car with the tablet is who takes them, which is why
+Floor has full access here even though Floor is shown no prices anywhere in the app —
+a photo of a car says nothing about whose it is or what it cost.
+
+### How it works
+
+1. The person taps the box; the camera opens; **one tap takes the photo** — there is
+   no shutter-then-confirm review step, because that doubles the taps on a ten-photo
+   walk-around.
+2. The browser asks the server to **sign** an upload URL. The server mints the photo's
+   id and hands back a URL pointing straight at the storage bucket.
+3. **The browser uploads to the bucket directly.** The bytes never pass through
+   Django, so a slow upload on bad shop wifi never occupies a server worker.
+4. Only once the bucket confirms does the browser tell the server to **commit** the
+   row.
+
+That ordering is the whole design. Writing the row first would mean a browser closed
+mid-upload leaves a record pointing at a photo that does not exist — a broken image
+nobody can explain or remove. This way **a row always means a real photograph**, and
+the worst case is an unreferenced object in the bucket, which a housekeeping command
+sweeps up.
+
+Because the frame is held in memory until the server confirms, a failed upload
+retries once by itself, and anything still broken becomes a **visible** failed item
+plus a warning if you try to leave the page. **A photo never disappears silently.**
+
+### The rules that matter operationally
+
+- **Nothing in the business depends on a photo.** No job card column points at one, no
+  money, no stock, no ledger, no report, and nothing on the printed bill. Settlement
+  never asks for one — a card with no photographs is a perfectly ordinary card.
+- **Limits: 10 per car, 4 per spare.** The count is only shown once the limit is hit;
+  a permanent "3/10" badge just invites filling it.
+- **Settling the bill freezes the photos.** Once a card is PAID or FLEET PAID its
+  photographs can be looked at but not added to or deleted — money and evidence stop
+  moving together, the same principle as the Financial Lock. The only delete there is
+  removes a mis-shot from an open card.
+- **A new job card, and a newly added spare row, offer no photo box** — there is no
+  saved record yet to attach one to. The card says "save the job card first". This is
+  the real workflow, not a workaround: nobody photographs a car while typing its
+  registration.
+- **Photos are kept for a year, then purged** — the owner's rule is that complaints
+  stop after a year. `purge_old_photos` does it, and it **skips any bill still
+  unpaid**, whatever its age: an unpaid bill is an open argument, and those
+  photographs are the evidence in it.
+- **The whole section is optional.** With no storage configured the box simply does
+  not appear, and every other thing on the job card behaves identically.
+
+---
+
 ## 4. BILLING & FINANCIAL FLOW
 
 ### Cost Accumulation
@@ -302,7 +367,7 @@ Payment history is recorded; Owner can reverse any payment.
 ## 5. INVENTORY <-> JOB CARD AUTO-SYNC
 
 ### Two sections, because a part arrives by one of two routes
-A Job Card records parts in **two separate sections** (rebuilt 2026-07-30):
+A Job Card records parts in **two separate sections**:
 
 | | **Inventory Items** | **Spare Parts** |
 |---|---|---|
@@ -312,7 +377,7 @@ A Job Card records parts in **two separate sections** (rebuilt 2026-07-30):
 | Moves warehouse stock? | **yes** | never |
 | Who already paid for it | a Supplies Shop restock bill, earlier | the spare shop, per this job |
 
-They were one section until 2026-07-30, which meant five of the eight columns were
+They were one section, which meant five of the eight columns were
 permanently blank for a warehouse draw and staff were invited to fill boxes that
 meant nothing. Worse, the system had to *guess* which route a row took, and guessed
 differently in two places — so a shop-bought part that happened to share a name with
@@ -982,8 +1047,16 @@ graph TD
 
 ## 🛠️ OPERATIONAL TOOLING
 
-- **Automated SQLite Backups** — Run `python manage.py backup_db` to securely clone the database into a timestamped archive (automatically retains the 7 most recent backups).
-- **Production Static Serving** — Integrated `WhiteNoiseMiddleware` to seamlessly serve static assets directly from the application in production environments.
+- **Database backups** — `python manage.py backup_db` follows whichever database is
+  active: `pg_dump` for PostgreSQL, a file copy for SQLite. It keeps the 14 most
+  recent, and the file extension tells you how to restore it (`.dump` needs
+  `pg_restore`, `.sql` needs `psql`, `.sqlite3` is a plain copy).
+  ⚠ On Railway this writes to the container's **ephemeral** filesystem — see
+  `RAILWAY_OPERATIONS.md` §6 for the procedure that actually persists.
+- **Production static serving** — WhiteNoise serves static assets from the
+  application layer, through `STORAGES` with a content-hashing manifest.
+- **Before real books go in** — `purge_business_data --yes` clears every business
+  table. It never touches logins, groups or the master lists.
 
 ---
 

@@ -1,159 +1,261 @@
 # WorkshopOS (Titan) — Workshop Management System
 
-A premium, comprehensive Django-based workshop management system for a single automotive workshop. Manage job cards, inventory, customer vehicles, spare shop finances, bulk/fleet payments, and invoicing in one platform.
+A Django workshop-management system for a single premium automotive workshop. Job
+cards, inventory, spare and supplier shops, fleet billing, estimates, invoicing,
+cashbook, photos and owner analytics in one platform.
 
-> Full technical reference (models, routes, templates): [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) · Workflow walkthrough: [`OPERATIONAL_BLUEPRINT.md`](OPERATIONAL_BLUEPRINT.md) · Status & roadmap: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md) · Coding conventions: [`CLAUDE.md`](CLAUDE.md)
+> **Docs:** technical reference (models, routes, templates) →
+> [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) · workflow walkthrough →
+> [`OPERATIONAL_BLUEPRINT.md`](OPERATIONAL_BLUEPRINT.md) · status & roadmap →
+> [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md) · coding conventions and
+> deliberate decisions → [`CLAUDE.md`](CLAUDE.md)
+
+---
 
 ## Features
 
-### Role-Based Access Control (RBAC)
-- **Three-Tier Permissions** — Dedicated access levels for **Owner**, **Office**, and **Floor (Mechanic)** roles.
-- **Secure Admin Hub** — Password-protected Owner login with direct access and real-time security alerts.
-- **Owner Analysis & Reports** — Owner-only. A protected **Profit** page (Total Turnover − Total Expenses = Profit, by month/year/custom range) used for profit distribution, plus a separate **Deep Analysis** page covering mechanics, spares, vehicles, fleet accounts, shops and operations.
-- **Role-specific UI** — Dynamic navigation and information visibility based on user groups.
+### Access control
+- **Three tiers** — **Owner**, **Office**, **Floor (Mechanic)** — as Django auth
+  groups, enforced by decorators on every view. Template gates mirror their view's
+  decorator.
+- **Role-specific UI** — the nav bar, the drawer and per-page controls are filtered
+  by role. Floor is shown no prices anywhere in the app.
+- **Layered security** — per-account and per-IP lockout, session monitoring with
+  remote revoke, no-store on authenticated pages, and an owner-only in-app alert feed.
 
-### Job Card Management
-- **Digital Job Cards** — Create and manage service records with customer details, vehicle information, and work performed.
-- **Real-time Status Tracking** — Progress bars and visual status cues on the Dashboard and Live Report views.
-- **Auto-Learning Database** — System automatically captures new concerns and spare parts for future smart-suggestions (case-insensitive & whitespace-normalized).
-- **Safety Hardened** — Double-confirmation modals for renames and deletes, and merge alerts to protect historical data.
-- **Duplicate Prevention** — Only one active job card is allowed per registration number at a time, enforced on create, edit, and completion-undo alike — no bypass.
+### Job cards
+- **Digital job cards** — customer, vehicle, concerns, work performed, and parts from
+  either of two routes (a spare shop, or the warehouse shelf).
+- **Real-time status** — progress rings and colour-coded state on the dashboard and
+  the Live Report.
+- **Auto-learning master data** — new concerns and spare names are captured for
+  future suggestions, deduped case-insensitively.
+- **Duplicate prevention** — only one active job card per registration number at a
+  time, enforced on create, edit and completion-undo alike. No bypass.
+- **Financial Lock** — a settled card's fields are disabled and its POST is refused
+  without an explicit unlock, on the server as well as in the browser.
+- **Safety-hardened master data** — renames propagate to historical job cards, and a
+  merge is confirmed before it happens with both usage counts disclosed.
 
-### Finance & Suppliers
-- **Spare Shops Management** — Dedicated module for tracking parts suppliers, monitoring outstanding balances, and managing lump-sum supplier payments with cascade distribution.
-- **Unassigned Spares Hub** — Add legacy stock/balances directly to a shop without linking to a job card. Move parts between job cards and the Unassigned pool. Import unassigned parts into new job cards. Open to Floor as well, add-only: the mechanic who takes delivery records the part, with no price shown or stored, and the office prices it when the shop's bill arrives.
-- **Inline Shop Price Editing** — Update the shop-paid price of any spare item directly from the ledger page.
-- **Bulk Payer Management ("Fleet Account" in the UI)** — Manage repeat/fleet customers with oldest-first cascading payments, automatic advance-credit carry-forward on overpayment, and a 2-step UI for bulk bill transfers.
-- **Pending Bills Dashboard** — Centralized view of all unpaid/partially-paid jobs across the system.
-- **Paid Bills Dashboard** — Dedicated ledger for all fully settled jobs. Owners get every time range plus the grand total collected; Office gets the last 7 days and no grand total, which is what settling a bill actually needs.
-- **Financial Audits** — Built-in tracking for High Discounts and Deleted Bulk Payers for financial accountability.
-- **Payment Reversal** — Every bulk payment records a JSON snapshot enabling precise, surgical reversal by the Owner.
-- **General Ledger (Cashbook)** — Standalone income & expense tracking for daily workshop overhead, with calendar-aligned date filters and net balance totals. Office and Owner only.
+### Finance
+- **Spare Shops** — parts suppliers, outstanding balances, and lump-sum payments with
+  oldest-first cascade distribution.
+- **Unassigned Spares Hub** — record a purchase against a shop before there is a job
+  card to hang it on. Open to Floor as well, **add-only and with no price**: the
+  mechanic who takes delivery records the part, and the office prices it when the
+  shop's bill arrives.
+- **Fleet Accounts** — repeat/fleet customers with cascading payments, automatic
+  advance-credit carry-forward on overpayment, and reversal guarded to newest-first.
+- **Pending & Paid Bills** — Owners get every time range plus the grand total
+  collected; Office gets the last 7 days and no grand total, which is what settling a
+  bill actually needs.
+- **General Ledger (Cashbook)** — one chronological stream with `All / Out / In`
+  chips, calendar-aligned date filters and a searchable pager. Office and Owner only.
+- **Financial audits** — High Discount audit (flat ₹3,500 threshold) and Deletion
+  History, both Owner-only.
+- **Owner Analysis** — a protected **Profit** page showing
+  `Turnover − Expenses = Profit` for one date window, plus a separate **Deep
+  Analysis** page covering mechanics, spares, vehicles, fleet accounts, shops and
+  operations.
 
-### Inventory System
-- **Stock Management** — Track parts and consumables with low-stock alerts and percentage-based color coding.
-- **Consumption Tracking** — Automatically records part usage from job cards via Django Signals (real-time delta sync).
-- **Category Organization** — Group inventory items for easier management and restocking.
-- **Supplier Shops** — Dedicated supplier management module for tracking inventory suppliers, creating restock bills, recording payments, and maintaining a per-supplier catalog. Stock auto-increases on restock and auto-reverses on bill deletion via signals.
+### Inventory
+- **Signal-driven stock** — restock bills add, job-card draws remove. There is no
+  manual stock editing anywhere; Low Stock is read-only.
+- **Weighted-average costing** — a full date-ordered replay, so a backdated or
+  corrected supplier bill re-prices the draws it should and no others.
+- **Negative stock is allowed**, deliberately — it is the signal that a supplier bill
+  has not been entered yet, and it is reported separately from Low Stock so nobody
+  reorders a part that is sitting on the shelf.
+- **Supplier Shops** — restock bills with pro-rata discount apportionment, payments,
+  and a per-supplier catalog.
 
-### Dashboard & Layout
-- **Live Report Dashboard** — High-visibility "Floor" view for mechanics and "Live Report" for office staff.
-- **One Nav, Three Devices** — A single fixed top bar (Admin · Completed · Report · Alerts · Manage for Office and Owner; Floor · New · Inventory · Menu for mechanics) renders on laptop (Office), tablet (Floor) and mobile (Owners), with 44px touch targets and labels that shed gracefully on narrow phones. "Manage" opens an off-canvas drawer holding every other destination, grouped by section and filtered by role.
-- **Skeleton Loading** — Shimmer animations for a smooth loading experience.
+### Customer documents
+- **Print-ready invoices** — one A4 sheet on the workshop's own letterhead, rendered
+  the same on screen as on paper (narrow screens scale the page rather than
+  rearranging it). Fully self-contained: **no CDN**, so a bill never prints unstyled
+  on a bad connection, and every control lives outside the printable sheet.
+- **One parts list** — spare-shop purchases and warehouse draws merged into a single
+  section. A warehouse draw bills under its *category*, never the branded product, so
+  the bill does not publish the workshop's supply chain. The unit price shown is
+  always derived from the customer total; the workshop's cost never reaches the bill.
+- **Estimates** — quotations on the same letterhead, built by the same module, with a
+  searchable history (`EST-26-001`). **Connected to nothing on purpose:** an estimate
+  creates no job card, moves no stock and touches no ledger or report.
+- **Sequential billing** — thread-safe numbers (`JB-26-001`).
 
-### Estimates
-- **Quotations on the workshop's own letterhead** — Write a quote before any work is agreed, print it, and keep every one in a searchable history (`EST-26-001`).
-- **The same document as the bill** — Both are built by one module, so an estimate and the invoice that follows it agree on the letterhead, the layout and how labour is subtotalled. Where they differ is deliberate: an estimate prints only the quantities and unit prices somebody actually typed, because it describes work that has not happened yet.
-- **Connected to nothing, on purpose** — An estimate creates no job card, moves no stock, and touches no ledger or report. A quote is a proposal; counting it would be counting work the workshop has not done.
-- **Suggested pricing** — Typing a part name shows what it last sold for (average of its last five bills) in the Unit Price box's placeholder. A suggestion only — never filled in, never saved.
-- **Nothing is required** — A quote saves however little is filled in, and the car's colour is recorded with the same picker as a Job Card so it can be spotted at a glance in the history.
+### Photos
+- **A separate subsystem the rest of the app does not know exists** — no column
+  points at a photo, and nothing in the analytics or the printed documents can reach
+  one. Photos upload independently of the form POST, so storage being slow or down
+  never blocks a job card from saving.
+- **Three surfaces** — car photos on a saved job card, a box per Spare Parts row, and
+  a read-only box on Purchase History.
+- **The bytes never touch Django** — the browser PUTs straight to S3-compatible
+  storage on a presigned URL. **Entirely optional:** with no credentials configured
+  the section is simply absent.
 
-### Invoice & Billing
-- **Print-ready invoices** — One A4 sheet matching the workshop's own letterhead, rendered the same on screen as on paper (narrow screens scale the page rather than rearranging it). Fully self-contained: no CDN, so a bill never prints unstyled on a bad connection.
-- **One parts list** — Spare-shop purchases and warehouse draws merged into a single "PART NAME" section. A warehouse draw is billed under its category ("Engine Oil"), never the branded product it was bought as, and the unit price shown is always derived from the customer total — the workshop's own cost never reaches the bill.
-- **Clean print view** — Every control lives outside the printable sheet, not merely hidden by CSS. Long bills paginate with repeating column headings and no split rows.
-- **Cost Analytics** — Automatic calculations for parts and labour.
-- **Sequential Billing** — Thread-safe billing numbers (e.g., `JB-26-001`).
+### Layout
+- **One nav, three devices** — a single fixed bar (Admin · Completed · Live · Alerts ·
+  Manage for Office and Owner; Floor · New · Inventory · Menu for mechanics) that
+  renders at the top on a laptop and **at the bottom on phones**, with 44px touch
+  targets and labels that shed gracefully. "Manage" opens an off-canvas drawer holding
+  every other destination, grouped by section and filtered by role.
+- **Outcome sounds** — four synthesised tones riding on Django's own message tags, so
+  one attribute covers every action in the system. Per-device toggle, default on.
+- **Installable (PWA)** — with icons generated from a single source file, and an
+  offline page for bad workshop wifi.
 
-### Data Management
-- **Deactivate & Archive** — Accounts (Spare Shops, Fleet Accounts, Supplier Shops, Mechanics) are deactivated/reactivated rather than destroyed, so all linked job-card and financial history is preserved.
-- **Deletion History** — Job cards and financial transactions are permanently deleted (with a guard that blocks deleting a job card still holding financial data), each recorded in an Owner-only, read-only audit log. No restore — reversing stale deletions would corrupt running balances.
-- **Data Cleanup Tool** — Rename, merge, and delete duplicate entries across master lists with cascade updates.
-- **Car Profiles** — Vehicle history tracking grouped by registration number with chronological visit numbering.
+### Data management
+- **Archive, don't delete** — Spare Shops, Fleet Accounts, Supplier Shops and staff are
+  deactivated rather than destroyed, so their linked history survives. Archiving is
+  blocked where it would strand unpaid debt.
+- **Deletion History** — job cards and financial transactions are permanently deleted,
+  each snapshotted first to an Owner-only, read-only audit log. No restore: reversing
+  stale deletions would corrupt running balances.
+- **Data Cleanup** — rename, merge and delete duplicate master-list entries with
+  cascade updates to historical job cards.
+- **Car Profiles** — vehicle history grouped by registration, with per-car totals and
+  an Owner-only gross-margin figure.
 
-## Tech Stack
+---
 
-- **Backend**: Python 3.13 / Django 5.2 LTS
-- **Database**: PostgreSQL in both development and production as of 2026-07-27. SQLite is kept only for bulk dummy-data seeding and for running the test suite, which selects it automatically.
-- **Hosting**: Railway — the app and its PostgreSQL database in one project. See [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md).
-- **Frontend**: Bootstrap 5, vanilla JavaScript, CSS3. Server-rendered Django templates with page-scoped inline JS and **no build step** — a deliberate choice, recorded in [`CLAUDE.md`](CLAUDE.md).
-- **Security**: `python-decouple` for environment variables, role-based decorators, per-account and per-IP lockout
-- **Static Assets**: WhiteNoise, configured through `STORAGES` (Django 5.1 removed `STATICFILES_STORAGE` and ignores it silently)
-- **Notifications**: in-app feed behind the nav bell, owner-only — 13 events covering sign-ins, large discounts (over ₹3,500), permanent deletions, salary activity, archives, and account security (lockouts, password resets, reset-code abuse). The nine CRITICAL ones also push to a phone. Twilio/Telegram were removed 2026-07-29. Outbound integrations are transactional email for password-reset codes, sent over **Resend's HTTPS API** (Railway blocks outbound SMTP below its Pro plan), and Web Push — both optional, and the app runs correctly with neither configured.
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| **Backend** | Python 3.13 · Django 5.2 |
+| **Database** | PostgreSQL in development *and* production. SQLite is kept only for bulk dummy-data seeding and for the test suite, which selects it automatically. |
+| **Hosting** | Railway — app and PostgreSQL in one project. See [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md). |
+| **Frontend** | Bootstrap 5, vanilla JavaScript, CSS3. Server-rendered Django templates with page-scoped inline JS and **no build step** — a deliberate, recorded choice. |
+| **Static assets** | WhiteNoise via `STORAGES` with a manifest (Django 5.1 removed `STATICFILES_STORAGE` and ignores it silently). |
+| **Config** | `python-decouple`; `DJANGO_ENV` has no default, so an unset value fails loudly. |
+| **Notifications** | Owner-only in-app feed — **14 events**, of which **10 are CRITICAL** and also push to a phone. |
+| **Outbound** | Exactly two kinds, both optional: password-reset email (Resend's HTTPS API in production, SMTP in development) and Web Push. The app runs correctly with neither configured. |
+
+**Dependencies** (`requirements.txt`): Django, Pillow, python-decouple,
+psycopg2-binary, whitenoise, gunicorn, coverage, pywebpush. No HTTP client library —
+both outbound calls are written against stdlib `urllib`/`hmac`.
+
+---
 
 ## Installation
 
-### Prerequisites
-- Python 3.13+
-- pip
+**Prerequisites:** Python 3.13+, pip.
 
-### Setup
-
-1. **Clone the repository**
+1. **Clone**
    ```bash
    git clone https://github.com/Irshaduu/WorkshopOS.git
-   cd WorkshopOS
    ```
 
-2. **Create virtual environment**
+2. **Virtual environment**
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
+   Then activate it — `venv\Scripts\activate` on Windows, `source venv/bin/activate`
+   elsewhere.
 
 3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Configure environment**
-   - Create a `.env` file with the required variables — see `CLAUDE.md` for the full list (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `OWNER_*`, the `EMAIL_*` block for password-reset codes in development, and the PostgreSQL settings). Production instead uses `RESEND_API_KEY`; the full deployment variable table is in [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) §3.
-   - Set `DJANGO_ENV=development` in your shell/session (required — there is no default; see `CLAUDE.md`).
+4. **Configure**
+   - Create a `.env` file — the full variable list is in
+     [`CLAUDE.md`](CLAUDE.md) § Environment variables. The deployment table is
+     [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) §3.
+   - Set `DJANGO_ENV` in your shell — **required, there is no default.**
+     ```bash
+     export DJANGO_ENV=development
+     ```
 
-5. **Run migrations**
+5. **Migrate**
    ```bash
    python manage.py migrate
    ```
 
-6. **Create superuser**
+6. **Seed the master data** *(brands, models, spare parts — needed before any demo
+   seeding)*
    ```bash
-   python manage.py createsuperuser
+   python manage.py load_master_data
    ```
 
-7. **Run development server**
+7. **Run**
    ```bash
    python manage.py runserver
    ```
 
-## Project Structure
+---
+
+## Project structure
 
 ```
 WorkshopOS (Titan)/
-├── formulad_workshop/      # Django project configuration & split settings
-│   └── settings/           # base.py, development.py, production.py
-├── workshop/               # Core application — job cards, billing, cashbook, analytics
-│   ├── views/               # Modular views package
-│   ├── analysis_views.py    # Owner Profit + Deep Analysis views
-│   ├── analysis_engine.py   # All Analysis money math (pure, testable)
-│   ├── cashbook_views.py    # Standalone Cashbook ledger
+├── formulad_workshop/       # project config
+│   └── settings/            # base.py, development.py, production.py
+├── workshop/                # core app — job cards, billing, cashbook, analytics
+│   ├── views/               # 18-module views package
+│   ├── analysis_engine.py   # all Analysis money math (pure, testable)
+│   ├── invoice.py           # both customer documents
+│   ├── settlement.py        # what is still unfilled before a bill is settled
+│   ├── master_data.py       # the one rename/merge implementation
+│   ├── money.py             # rupee bounds, read from the column
+│   ├── spare_dates.py       # ordered/received pair validation
+│   ├── photos.py            # storage backend + URL signing
 │   └── templates/
-├── inventory/               # Inventory, stock & supplier shops app
-│   ├── views.py
-│   ├── views_suppliers.py
-│   └── templates/
-├── templates/               # Root templates (403, 404, 500 error pages)
-├── static/                  # Global static assets
-├── requirements.txt         # Django, Pillow, python-decouple, twilio, whitenoise, psycopg2-binary
+├── inventory/               # stock, categories & supplier shops
+├── templates/               # 403 / 404 / 500
+├── static/
 └── manage.py
 ```
 
-Exact model/route/template counts live in [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) — kept there as the single source of truth rather than restated here.
-
-## 🛡️ Reliability, Performance & Security
-
-WorkshopOS is backed by an automated test suite (**40 files, 1,042 tests**, counted 2026-08-12) covering security, models, views, signals, financial logic, and supplier/spare-shop operations, and follows deliberate performance patterns (server-side pagination, indexed lookups, N+1-safe querying) and a layered security model (IP-based lockout, RBAC, session monitoring with remote revoke). Full detail: [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md).
-
-## 🛠️ Operational Tooling
-- **Database Backups** — `python manage.py backup_db` follows whichever database is active: `pg_dump` for PostgreSQL, a file copy for SQLite, keeping the 14 most recent. **On Railway it writes into the container's ephemeral filesystem, so the file does not survive the next deploy** — see [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) §6 for the backup procedure that actually persists.
-- **Production Static Serving** — `WhiteNoiseMiddleware` serves static files directly from the application layer.
-- **Deployment** — [`GO_LIVE_RUNBOOK.md`](GO_LIVE_RUNBOOK.md) is the one-time go-live checklist; [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) is the ongoing platform reference.
-
-## 🔜 Roadmap
-
-See [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md) § Roadmap for the current, authoritative priority list.
+Exact model, route and template counts live in
+[`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) as the single source of truth.
 
 ---
 
-**Version**: 8
-**Last Updated**: 2026-07-23
-**Status**: 🛡️ SECURITY HARDENED | 🔧 IN ACTIVE DEVELOPMENT
+## Testing
+
+```bash
+python manage.py test workshop inventory
+```
+
+**53 files, 1,508 tests** covering security, models, views, signals, financial logic,
+supplier and spare-shop operations, salary settlement, the printed documents and
+photos. Expect 20–80 minutes; the suite always runs on SQLite, so it never touches
+hosted Postgres.
+
+JavaScript tests are a **second** command, using Node's built-in runner — no npm, no
+bundler:
+
+```bash
+node --test workshop/tests/js/
+```
+
+> **Convention: fix the code, not the tests.** A failing test — especially a security
+> or financial one — is a signal the implementation regressed.
+
+---
+
+## Operations
+
+- **Backups** — `python manage.py backup_db` follows whichever database is active
+  (`pg_dump` for PostgreSQL, a file copy for SQLite), keeping the 14 most recent.
+  ⚠ On Railway this writes to the container's **ephemeral** filesystem, so the file
+  does not survive the next deploy — see
+  [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) §6 for the procedure that persists.
+- **Before real books go in** — `python manage.py purge_business_data --yes` clears
+  every business table (it never touches logins, groups or the master lists).
+- **Deployment** — [`GO_LIVE_RUNBOOK.md`](GO_LIVE_RUNBOOK.md) is the one-time
+  checklist; [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md) is the ongoing platform
+  reference.
+
+---
+
+## Roadmap
+
+See [`TITAN_MASTER_HANDOVER.md`](TITAN_MASTER_HANDOVER.md) §VI for the authoritative
+list, and §VII for what is **deliberately out of scope**.
+
+---
+
+**Version 8** · pre-go-live · security hardened · in active development

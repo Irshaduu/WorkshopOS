@@ -1,17 +1,18 @@
 # 🏗️ WorkshopOS (Titan) — SUPER MASTER BLUEPRINT
 
 > **Project**: WorkshopOS (Titan) · Django project package name `formulad_workshop`
-> **Framework**: Django 5.2 LTS · Python 3.13 · **PostgreSQL** — development *and* production since 2026-07-27 (development on Neon, production on Railway's own Postgres alongside the app; SQLite retained only for bulk dummy-data seeding and the test suite)
+> **Framework**: Django 5.2 · Python 3.13 · **PostgreSQL** in development *and* production (development on Neon, production on Railway's own Postgres alongside the app; SQLite retained only for bulk dummy-data seeding and the test suite)
 > **Apps**: `workshop` (core) + `inventory` (warehouse)
-> **Accurate as of**: 2026-08-11 (v11) — every count in this file was re-derived
-> from the code (suite built with Django's runner, routes walked from the
-> resolver, files listed from disk). Seven had drifted on 2026-08-10: routes
-> 147→**150**, workshop routes 114→**117**, templates 99→**102**, workshop
-> templates 76→**79**, workshop migrations 59→**68**, inventory migrations
-> 7→**8**, inventory test files 3→**5**, and the test-suite heading said 38 files
-> while the section below it said 33 and 34 in two different places. Templates
-> then went **102→104 / 79→81** on 2026-08-11 with
-> `salary_advance/staff_detail.html` and `includes/_brand_mark.html`.
+>
+> **Every count in this file is re-derived from the code** — the suite built with
+> Django's runner, routes walked from the resolver, files listed from disk.
+>
+> ⚠ **These numbers drift.** They have gone stale several times, always in the same
+> way: a feature lands and the tables are not recounted. Before relying on one, run
+> the counter — `DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases()`
+> for tests, `get_resolver()` walked recursively for routes, `find` for files.
+> Grepping `def test_` undercounts, because it cannot see tests inherited from
+> shared base classes.
 >
 > This is the **technical reference** doc — exact model/route/template/admin/test counts and structure. For workflow narrative see `OPERATIONAL_BLUEPRINT.md`; for mission, status, and roadmap see `TITAN_MASTER_HANDOVER.md`; for day-to-day coding conventions see `CLAUDE.md`.
 
@@ -27,21 +28,21 @@ graph TB
     end
 
     subgraph WORKSHOP["Workshop App (Core)"]
-        W_MODELS["models.py — 28 Models"]
-        W_VIEWS["views/ — 17 Module Package"]
+        W_MODELS["models.py — 30 Models"]
+        W_VIEWS["views/ — 18 Module Package"]
         W_ANALYSIS["analysis_views.py + analysis_engine.py — Owner Profit & Insights"]
         W_AUTH["auth_views.py — Auth Views"]
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 115 URL Patterns"]
-        W_FORMS["forms.py — 9 Forms + 6 Formsets"]
+        W_URLS["urls.py — 123 URL Patterns"]
+        W_FORMS["forms.py — 12 Forms + 7 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
-        W_MID["middleware.py — Session Tracker"]
-        W_TAGS["templatetags — 8 Filters"]
+        W_MID["middleware.py — Session / NoStore / NoIndex"]
+        W_TAGS["templatetags — 13 Filters"]
         W_ADMIN["admin.py — 10 Registered"]
-        W_CMD["Commands — 9 management commands"]
-        W_TPL["Templates — 76 HTML Files"]
+        W_CMD["Commands — 11 management commands"]
+        W_TPL["Templates — 83 HTML Files"]
     end
 
     subgraph INVENTORY["Inventory App (Warehouse + Supplier Shops)"]
@@ -68,11 +69,10 @@ graph TB
     W_MODELS -->|"queue_push, on_commit"| WPUSH
 ```
 
-> Twilio and Telegram were removed on 2026-07-29. The application now makes exactly
-> **two** kinds of outbound network call — the password-reset email and Web Push —
-> and both are optional: a deploy with no `RESEND_API_KEY` or no `VAPID_*` keys is
-> valid, and neither sits on the request path (push hands off to a background
-> thread via `transaction.on_commit`).
+> The application makes exactly **two** kinds of outbound network call — the
+> password-reset email and Web Push — and both are optional: a deploy with no
+> `RESEND_API_KEY` or no `VAPID_*` keys is valid, and neither sits on the request
+> path (push hands off to a background thread via `transaction.on_commit`).
 
 ---
 
@@ -119,11 +119,11 @@ erDiagram
 | 11 | **SparePart** | name (unique), created_at | Master list for autocomplete |
 | 12 | **ConcernSolution** | concern (text), created_at | Knowledge base for autocomplete |
 | 13 | **SpareShop** | name (unique), phone, address, is_trashed | Master list of spare parts suppliers |
-| 14 | **JobCard** | bill_number, dates, vehicle info, customer, **notes**, financials, status flags | **Core entity** — full lifecycle. `notes` (added 2026-08-13, migration `0069_jobcard_notes`) is an internal line for the workshop, declared field-for-field like `Estimate.notes` and **never printed** on the invoice. |
+| 14 | **JobCard** | bill_number, dates, vehicle info, customer, **notes**, financials, status flags | **Core entity** — full lifecycle. `notes` (migration `0069_jobcard_notes`) is an internal line for the workshop, declared field-for-field like `Estimate.notes` and **never printed** on the invoice. |
 | 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
-| 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking, **original_vehicle_info** (free-text "Ordered For" note) | Per-job parts, both routes. `source` records which route and is **never inferred** — added 2026-07-30 with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only. `original_vehicle_info` (since migration 0039) names the car an UNASSIGNED purchase was bought for — stamped automatically when a spare is moved out of a job card, and typed by hand on the Unassigned Hub since 2026-08-18. Free text with no FK by design: a part is usually ordered before there is a job card to attach it to |
-| 17 | **JobCardLabourItem** | job_card (FK), job_description, ~~amount~~ | What was done. A DESCRIPTION, not a price — the charge for all the work is `JobCard.labour_amount`. `amount` is dormant (pre-2026-08-04 per-line column, summed into the card by migration 0066, no longer written or read). |
-| 17a | **JobCardPhoto** | **id (UUID pk)**, job_card (FK, null), spare (FK→JobCardSpareItem, null), taken_at, taken_by (FK→User), byte_size | A photograph of the car (`job_card` set) or of one part (`spare` set) — exactly one, enforced by `clean()`. Added 2026-08-19, migration `0070_jobcard_photos`. The UUID **is** the storage key (derived by `photos.object_key`, never stored). Bytes live in Cloudflare R2 and never pass through Django. Nothing points AT this table: no column on JobCard, no money, no stock, nothing in `analysis_engine.py` or `invoice.py`. Limits 10 per car / 4 per spare, enforced in the view. |
+| 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking, **original_vehicle_info** (free-text "Ordered For" note) | Per-job parts, both routes. `source` records which route and is **never inferred** — added with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only. `original_vehicle_info` (since migration 0039) names the car an UNASSIGNED purchase was bought for — stamped automatically when a spare is moved out of a job card, and typed by hand on the Unassigned Hub. Free text with no FK by design: a part is usually ordered before there is a job card to attach it to |
+| 17 | **JobCardLabourItem** | job_card (FK), job_description, ~~amount~~ | What was done. A DESCRIPTION, not a price — the charge for all the work is `JobCard.labour_amount`. `amount` is dormant (the old per-line column, summed into the card by migration 0066, no longer written or read). |
+| 17a | **JobCardPhoto** | **id (UUID pk)**, job_card (FK, null), spare (FK→JobCardSpareItem, null), taken_at, taken_by (FK→User), byte_size | A photograph of the car (`job_card` set) or of one part (`spare` set) — exactly one, enforced by `clean()`. Migration `0070_jobcard_photos`. The UUID **is** the storage key (derived by `photos.object_key`, never stored). Bytes live in Cloudflare R2 and never pass through Django. Nothing points AT this table: no column on JobCard, no money, no stock, nothing in `analysis_engine.py` or `invoice.py`. Limits 10 per car / 4 per spare, enforced in the view. |
 | 17b | **OrphanedPhotoBlob** | storage_key (unique), created_at, attempts | Storage keys whose rows are gone, awaiting `sweep_photo_blobs`. Written in the same transaction as a photo delete so a key cannot be lost between the two — a DELETE to R2 is a network call and never runs on the request path. |
 | 18 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), advance_balance, is_trashed | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
 | 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
@@ -133,11 +133,11 @@ erDiagram
 | 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
 | 24 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
 | 25 | **SalaryPaymentLine** | payment (FK), staff (FK→Mechanic), salary_used, leave_days, advance_used, net_amount — unique per (payment, staff) | One staff member's **frozen** figures for that month. Written once and never recalculated, so a later pay rise cannot rewrite a month already paid. |
-| 26 | **Estimate** | estimate_number (unique, auto `EST-26-001`), date, customer/vehicle (all free text), **car_color/car_color_other**, labour_amount, total_amount (denormalized), notes, created_by | A **quotation**, connected to nothing — no job card, no stock, no ledger, no report. Added 2026-08-05 (migrations `0067_estimate_estimatejobline_estimatepartline_and_more`, `0068_estimate_car_color_estimate_car_color_other`). Colour uses the shared `CAR_COLOR_CHOICES`/`CAR_COLOR_HEX`, is picked with the shared `_car_color_picker.html`, and is drawn as the stripe on each history row — never printed on the quotation. `total_amount` is written only by `update_totals()`, called explicitly by the views; there are no signals on any of these three models. |
+| 26 | **Estimate** | estimate_number (unique, auto `EST-26-001`), date, customer/vehicle (all free text), **car_color/car_color_other**, labour_amount, total_amount (denormalized), notes, created_by | A **quotation**, connected to nothing — no job card, no stock, no ledger, no report. Migrations (`0067_estimate_estimatejobline_estimatepartline_and_more`, `0068_estimate_car_color_estimate_car_color_other`). Colour uses the shared `CAR_COLOR_CHOICES`/`CAR_COLOR_HEX`, is picked with the shared `_car_color_picker.html`, and is drawn as the stripe on each history row — never printed on the quotation. `total_amount` is written only by `update_totals()`, called explicitly by the views; there are no signals on any of these three models. |
 | 27 | **EstimateJobLine** | estimate (FK), description | One line of work being quoted. **No money column at all** — the charge lives once on `Estimate.labour_amount`, same rule as `JobCard.labour_amount`. |
 | 28 | **EstimatePartLine** | estimate (FK), name, quantity, **customer_rate**, **amount** | One quoted part. Note the naming is the OPPOSITE of `JobCardSpareItem`: an estimate has no cost side, so both figures are customer prices. `amount = customer_rate × quantity` is enforced on save when a rate is set. |
 
-Salary models added 2026-07-27 (migration `0054_mechanic_current_salary_and_more`, which also added `Mechanic.current_salary`). Wage cost for a settled month is `net_amount + advance_used` — the advance already left the drawer and the settlement pays the remainder.
+Salary models (migration `0054_mechanic_current_salary_and_more`, which also added `Mechanic.current_salary`). Wage cost for a settled month is `net_amount + advance_used` — the advance already left the drawer and the settlement pays the remainder.
 
 `advance_balance` (added migration `0047_bulkpayer_advance_balance`) tracks credit carried forward when a lump-sum Fleet Account payment exceeds the total currently owed; `total_balance` can legitimately go negative once this credit exists.
 
@@ -146,7 +146,7 @@ Salary models added 2026-07-27 (migration `0054_mechanic_current_salary_and_more
 | # | Model | Key Fields | Purpose |
 |---|-------|--------|---------|
 | 1 | **Category** | name | Groups inventory items |
-| 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count, **avg_cost** | Warehouse part with stock levels. `current_stock` may be **negative** (an overdraw awaiting its supplier bill — deliberate, see CLAUDE.md). `avg_cost` is the weighted-average purchase cost per unit, added 2026-07-30 (migration `inventory/0008_item_avg_cost`), maintained only by restock receipts via a full replay in `inventory/costing.py` |
+| 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count, **avg_cost** | Warehouse part with stock levels. `current_stock` may be **negative** (an overdraw awaiting its supplier bill — deliberate, see CLAUDE.md). `avg_cost` is the weighted-average purchase cost per unit, (migration `inventory/0008_item_avg_cost`), maintained only by restock receipts via a full replay in `inventory/costing.py` |
 | 3 | **ConsumptionRecord** | user (FK→User), item (FK→Item), quantity, date, timestamp | **Dormant** — superseded by Stock History, which reads `JobCardSpareItem` live. Nothing writes this model; kept only to avoid a needless migration |
 | 6 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, is_active | Supplier / Supplies Shop master record |
 | 7 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), is_active, unique_together(shop,item) | Links a supplier to the items they stock; `is_active=False` = deactivated (listed but excluded from restock bills) |
@@ -187,12 +187,12 @@ Superusers pass every check regardless of group membership. For the human-readab
 
 | Feature | Implementation |
 |---------|---------------|
-| **Login** | `/login/` — the one door, for every role. Office/Floor by username; **Owners by email address only** (`resolve_login_identifier`, 2026-08-12). The owner-blocking was removed 2026-07-28; the separate `/admin-login/` face was merged away 2026-08-12 |
+| **Login** | `/login/` — the one door, for every role. Office/Floor by username; **Owners by email address only** (`resolve_login_identifier`). `/admin-login/` redirects here, kept alive for the owners' bookmarks |
 | **Legacy owner door** | `/admin-login/` — now a `RedirectView` to `/login/`, carrying `?next=` across. Kept for the owners' bookmarks and existing `reverse('admin_login')` calls |
 | **IP Lockout** | 5 failures → 15 min block via `FailedAttempt`, keyed on `REMOTE_ADDR` only |
-| **Security Alerts** | On every login → a `LOGIN` notification to the *other* owners, read from the nav bell. Replaced the Twilio/Telegram broadcast on 2026-07-29 |
+| **Security Alerts** | On every login → a `LOGIN` notification to the *other* owners, read from the nav bell. The bell is the only alert channel |
 | **Change Password** | `/change-password/` — signed-in Owner sets a new password. No email. Entry point is the drawer account panel; Office/Floor have no self-service path (owners manage those from Control Hub) |
-| **Forgot Password** | `/forgot-password/` (username, email, or mobile) → 6-digit code **emailed** → `/reset-password/`. Owners only — Office/Floor carry no email and have no self-service path. Replaced the SMS/Telegram OTP on 2026-07-28 |
+| **Forgot Password** | `/forgot-password/` (username, email, or mobile) → 6-digit code **emailed** → `/reset-password/`. Owners only — Office/Floor carry no email and have no self-service path. The code is emailed, never sent over any other channel |
 | **OTP Authentication** | 6-digit, 5-min expiry, 3 attempts max, 60s cooldown |
 | **Session Tracking** | `SessionTrackingMiddleware` updates `UserSession`, throttled to a 5-minute cooldown per session |
 | **Remote Revoke** | Owners can terminate any session from the management dashboard |
@@ -208,35 +208,35 @@ Any event → workshop/notifications.py :: notify(event, body, actor=…)
 ```
 
 The event catalogue is the `EVENTS` dict in `workshop/notifications.py` —
-thirteen entries, one screen. **Never call `Notification.objects.create()` from
+fourteen entries, one screen. **Never call `Notification.objects.create()` from
 a view.**
 
-Two of the thirteen break the "minus the actor" rule in the diagram above, and
-deliberately: `RESET_CODE_LIMIT` and `RESET_CODE_ATTEMPTS_SPENT` (added
-2026-08-10) are raised from the *unauthenticated* password-reset form, so there
-is no actor to exclude and they reach **both** owners including the one being
-targeted. They are also the only events passed through `recently_raised()`,
-which caps them at one per account per hour — a form that needs no login would
-otherwise be a doorbell anyone could hold down. See CLAUDE.md for the full rule,
-including why the visitor's response must stay byte-identical.
+**Ten of the fourteen are CRITICAL and also push to a phone**; the other four
+(`LOGIN`, `ACCOUNT_ARCHIVED`, `SALARY_ADVANCE`, `SALARY_SETTLED`) are INFO and wait
+in the bell. Push is a *delivery layer* over rows that are already written, never a
+parallel system — see §II.5 of `TITAN_MASTER_HANDOVER.md`.
 
-The Twilio SMS + Telegram broadcast this section used to describe was deleted on
-2026-07-29 (see `TITAN_MASTER_HANDOVER.md` §1c). No outbound messaging
-integration remains; push is a future layer on top of the same rows, not a
-parallel system.
+Two of the fourteen break the "minus the actor" rule in the diagram above, and
+deliberately: `RESET_CODE_LIMIT` and `RESET_CODE_ATTEMPTS_SPENT` are raised from the
+*unauthenticated* password-reset form, so there is no actor to exclude and they reach
+**both** owners including the one being targeted. They are also the only events
+passed through `recently_raised()`, which caps them at one per account per hour — a
+form that needs no login would otherwise be a doorbell anyone could hold down. See
+`CLAUDE.md` for the full rule, including why the visitor's response must stay
+byte-identical.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (155 Total)
+## 4. ALL URL ROUTES — COMPLETE (156 Total)
 
-*Recounted 2026-08-10 by walking `get_resolver().url_patterns` recursively and
+*Walked from `get_resolver().url_patterns` recursively and
 excluding Django admin (131 of its own) — the method below, not by grepping
 `path(`, which misses routes reached through `include()`. **Recount rather than
 trusting this line; it has now gone stale twice**, most recently reading 147/114
 when the resolver said 150/117. The workshop figure includes the root-level
 routes (`robots.txt`, `sw.js`, media) since they are served by the same app.*
 
-### Workshop App (122 routes)
+### Workshop App (123 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -432,7 +432,7 @@ Stock is synced by **8 signal handlers in 3 groups** (`inventory/signals.py`):
 
 **Group 1 — Workshop Consumption (`JobCardSpareItem`, 3 handlers):**
 Applies to **`source='INVENTORY'` rows only**, resolved by the `item` FK. A `source='SHOP'`
-row never moves warehouse stock, whatever it is named. Rewritten 2026-07-30 — it previously
+row never moves warehouse stock, whatever it is named. It previously
 keyed on a `spare_part_name` ↔ `Item.name` match, which deducted the warehouse for
 shop-bought parts that shared a name with a stock product.
 1. **New draw added** → Deduct full qty from warehouse
@@ -483,7 +483,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (104 HTML Files)
+## 7. TEMPLATE STRUCTURE (106 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -493,7 +493,7 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 81 files
+### Workshop Templates (`workshop/templates/workshop/`) — 83 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -502,7 +502,7 @@ stateDiagram-v2
 | `/analysis/` | `profit.html` | The protected Profit page: Turnover − Expenses = Profit, monthly trend, expense split, position |
 | `/analysis/` | `insights.html` | Deep Analysis shell — six AJAX-loaded accordion sections |
 | `/analysis/sections/` | `mechanics.html`, `spares.html`, `vehicles.html`, `fleet.html`, `shops.html`, `operations.html` (6) | One partial per Insights section, each rendered by `analysis_insight_section` |
-| `/auth/` | `base_auth.html`, `login.html`, `forgot_password.html`, `reset_password.html`, `change_password.html` | 5 files — the shared shell plus 4 screens. `admin_login.html` was deleted 2026-08-12 when the two login faces merged; `otp_verify.html` had already gone with the SMS 2FA removal |
+| `/auth/` | `base_auth.html`, `login.html`, `forgot_password.html`, `reset_password.html`, `change_password.html` | 5 files — the shared shell plus 4 screens. There is one sign-in face; a second `admin_login.html` and an `otp_verify.html` were both removed with the flows they belonged to |
 | `/dashboard/` | `dashboard_home.html` | Main floor dashboard with active jobs |
 | `/jobcard/` | 23 files: CRUD (`jobcard_form/detail/list/confirm_delete`), `job_list_partial`, `live_report`, pending/paid bills + partials, bulk payer detail/panel/trash + bulk_payments + partial, audits (`audit_high_discounts`, `audit_deleted_bulk_payers`), unified trash + 4 tab partials | Job, payment, audit & trash screens |
 | `/completed/` | `completed_list.html`, `completed_list_partial.html` | 2 completed-jobs screens |
@@ -559,7 +559,7 @@ stateDiagram-v2
 |---------|-------------|--------|----------|
 | `JobCardConcernFormSet` | JobCard→Concern | concern_text, status | Autocomplete, can_delete |
 | `JobCardSpareFormSet` | JobCard→Spare (`source=SHOP`) | 8 fields (name, qty, prices, shop, status, dates) | Autocomplete, can_delete. Prefix `spares` |
-| `JobCardInventoryFormSet` | JobCard→Spare (`source=INVENTORY`) | 4 fields (item FK, qty, customer_rate, total_price) | Prefix `inventory`. Product **picked**, not typed — hidden `item` field carries the choice; `InventoryDrawForm.clean()` rejects a started row with no product. Added 2026-07-30 |
+| `JobCardInventoryFormSet` | JobCard→Spare (`source=INVENTORY`) | 4 fields (item FK, qty, customer_rate, total_price) | Prefix `inventory`. Product **picked**, not typed — hidden `item` field carries the choice; `InventoryDrawForm.clean()` rejects a started row with no product |
 | `JobCardLabourFormSet` | JobCard→Labour | job_description | can_delete. No `amount` field — deliberately: the charge lives on `JobCard.labour_amount`, and a field that does not exist cannot be posted by a Floor login. |
 | `EstimateJobFormSet` | Estimate→JobLine | description | Prefix `jobs`, `extra=3`, `BlankRowIsNoRowFormSet`. No money field — the charge lives on `Estimate.labour_amount` |
 | `EstimatePartFormSet` | Estimate→PartLine | name, quantity, customer_rate, amount | Prefix `parts`, `extra=3`, `BlankRowIsNoRowFormSet`. Names come from a native `<datalist>`, not the Job Card's fetch autocomplete — it needs no wiring, so a row added after page load works with nothing to re-initialise |
@@ -727,14 +727,14 @@ graph TB
 
 Owner **email addresses** are deliberately not here — they are per-account
 `User.email` values in the database, changed with `set_owner_email`, which is why
-changing one needs no deploy. `TWILIO_*`, `TELEGRAM_BOT_TOKEN` and
-`OWNER_n_CHAT_ID` were removed on 2026-07-29 with the channels themselves.
+changing one needs no deploy. There are no messaging-integration keys: the only
+outbound credentials are the mail API key and the VAPID pair, and both are optional.
 
 ---
 
-## 13. TEST SUITE (52 files · 1,506 tests)
+## 13. TEST SUITE (53 files · 1,508 tests)
 
-*Recounted 2026-08-19 — file counts by listing the directories, the test total
+*File counts by listing the directories, the test total
 by building the suite with Django's own runner
 (`DiscoverRunner().build_suite([...]).countTestCases()`) rather than by grepping
 `def test_`, which undercounts because it cannot see tests inherited from shared
@@ -764,9 +764,9 @@ base classes.*
 | `test_owner_identity.py` | Unique mobile constraint; `sync_owner_identity` (.env → DB owner migration) |
 | `test_change_password.py` | Owner-only password change, session survival, other-device sign-out |
 | `test_password_reset.py` | Emailed OTP: hashing, expiry, attempt budget, throttling, identifier resolution, non-disclosure |
-| `test_login.py` | Two faces / one engine, multi-identifier sign-in, per-account + IP lockout, `?next=` open-redirect guard, 403 vs redirect |
+| `test_login.py` | One sign-in door for every role, multi-identifier sign-in, per-account + IP lockout, `?next=` open-redirect guard, 403 vs redirect |
 | `test_control_hub.py` | Owner-only gate on every hub section and action; owner unlock of locked staff accounts |
-| `test_notifications.py` | Fan-out, actor exclusion, audience-by-group, retention, feed RBAC, and all **13** event hooks |
+| `test_notifications.py` | Fan-out, actor exclusion, audience-by-group, retention, feed RBAC, and all **14** event hooks |
 | `test_push.py` | Service-worker root scope, subscribe/unsubscribe RBAC, CRITICAL-only dispatch, dead-endpoint reaping, and the guarantee that a failing push never breaks the feed |
 | `test_invoice.py` | Every rule in `workshop/invoice.py` a customer would notice: one parts list, category naming for warehouse draws, derived unit price, blank QTY, labour as one subtotal, nothing interactive on the paper |
 | `test_estimate.py` | Estimates: the printed sheet held in step with the invoice, isolation from job cards / stock / ledgers / DeletionLog, `EST-` numbering, the price-hint endpoint, and the screens' RBAC |
@@ -777,14 +777,13 @@ base classes.*
 | `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants |
 | `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants |
 | `test_ui_regressions.py` | Layout and markup invariants that a functional test cannot see — the double-render rule, a list row never nesting a `<button>` inside an `<a>`, and the drawer/Manage-pill coverage |
-| `test_live_report.py` | The Live Report, Office/Owner only since 2026-08-16 (Floor 403s, and "Live Jobs" is gone): cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), each box's count matching the rows beneath it, and nothing on the page narrowed by a query string |
+| `test_live_report.py` | The Live Report, Office/Owner only (Floor 403s): cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), each box's count matching the rows beneath it, and nothing on the page narrowed by a query string |
 | `test_billed_but_not_filled.py` | The critical container at the top of the Live Report: which billed cards are chased (PAID / FLEET PAID / PART PAID, never an unbilled or deleted one), what it says is missing on each, the two spare dates as ONE chip, a warehouse draw chased only for its customer price, and the DB narrowing never disagreeing with `settlement.unfilled` |
 | `test_spare_dates.py` | A part cannot arrive before it was ordered — the pair rule itself, the job card refusing it (which it never used to), and both screens reading the one implementation in `workshop/spare_dates.py` |
 | `test_job_line_suggestions.py` | "Job Performed" suggested from the parts already on the card: the datalist, every box pointing at it, a warehouse draw offered by its CATEGORY through the invoice's own rule, and the verbs declared in exactly one place |
 | `test_card_list_grid.py` | The app's card lists as ONE shape: Completed, Pending Bills, Paid Bills, Job Cards and the High Discount Audit on the shared `row-cards` rule, Car Profiles on the identical two breakpoints (560 / 800), no fourth column, and the audit card stacked so three across cannot squeeze its number plate |
-| `test_jobcard_detail_view.py` | The read-only job card as the owner laid it out (2026-08-18): data with NO labels anywhere, a missing value leaving no trace, a part carrying only its two dates and two figures, the four sections copied value-for-value from the dashboard drawer, no figure printed twice on the money line, nothing on the page posting, and the whole page Office/Owner only with its one Floor-visible link gated to match |
-
-| `test_photos.py` | Job card photos (2026-08-19): SigV4 pinned to AWS's published known-answer vector, the sign-then-commit ordering that stops a row ever pointing at a missing object, per-subject limits re-checked inside the commit transaction, the settled-card freeze keyed on payment status rather than on the page, Floor being able to take *and* delete on an open card, the box being a `<div>` so the Financial Lock cannot kill viewing, and — the reason the owner asked — that with storage switched off the form still opens, the invoice still prints and settlement never chases a photo |
+| `test_jobcard_detail_view.py` | The read-only job card as the owner laid it out: data with NO labels anywhere, a missing value leaving no trace, a part carrying only its two dates and two figures, the four sections copied value-for-value from the dashboard drawer, no figure printed twice on the money line, nothing on the page posting, and the whole page Office/Owner only with its one Floor-visible link gated to match |
+| `test_photos.py` | Job card photos: SigV4 pinned to AWS's published known-answer vector, the sign-then-commit ordering that stops a row ever pointing at a missing object, per-subject limits re-checked inside the commit transaction, the settled-card freeze keyed on payment status rather than on the page, Floor being able to take *and* delete on an open card, the box being a `<div>` so the Financial Lock cannot kill viewing, and — the reason the owner asked — that with storage switched off the form still opens, the invoice still prints and settlement never chases a photo |
 
 *JavaScript: `workshop/tests/js/photos-core.test.js` runs under `node --test workshop/tests/js/`, NOT under `manage.py test`. It covers the photo upload queue's failure paths and the gallery's index arithmetic. It is the only JavaScript in this repo with tests, and it adds no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
@@ -861,11 +860,12 @@ WorkshopOS (Titan)/
 │   │   ├── seed_salary_data.py ← Demo salaries/advances/settlements
 │   │   ├── purge_business_data.py     ← Clears all business tables (dry run by default)
 │   │   └── copy_sqlite_to_postgres.py ← Push a seeded SQLite file up to PostgreSQL
-│   ├── templates/workshop/     ← 68 HTML files
+│   ├── templates/workshop/     ← 83 HTML files
 │   ├── static/js/              ← script.js (formsets + service-worker registration),
-│   │                             estimate.js, spare_autofill.js, sound.js (outcome tones)
-│   ├── migrations/             ← 68 migrations
-│   └── tests/                  ← 34 test files (package, not flat files)
+│   │                             estimate.js, spare_autofill.js, sound.js,
+│   │                             photos.js + photos-core.js (camera / upload)
+│   ├── migrations/             ← 70 migrations
+│   └── tests/                  ← 48 test files (package) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)
@@ -888,10 +888,10 @@ WorkshopOS (Titan)/
 ├── .env                        ← Secrets & owner config
 ├── .gitignore                  ← Git exclusions
 ├── errors.log                  ← Rotating error log
-├── requirements.txt            ← Django~=5.2.0, Pillow, python-decouple, psycopg2-binary, whitenoise, gunicorn, coverage
+├── requirements.txt            ← Django~=5.2.0, Pillow, python-decouple, psycopg2-binary, whitenoise, gunicorn, coverage, pywebpush
 ├── manage.py                   ← Django CLI
 ```
 
 ---
 
-> **Total** *(recounted 2026-08-10 — every figure here had drifted; test-file count corrected and test total added 2026-08-11; test figures re-counted 2026-08-16)*: 2 Django Apps · 36 Models (28 workshop + 8 inventory) · 147 URL Routes (114 + 33, excluding Django admin) · 101 Templates · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · 50 Test Files (1,350 tests) · 76 Migrations (68 workshop + 8 inventory)
+> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin) · **106 Templates** (83 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · **53 Test Files / 1,508 tests** · **78 Migrations** (70 workshop + 8 inventory)

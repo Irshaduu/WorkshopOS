@@ -95,6 +95,11 @@ RESEND_API_KEY=<from Resend, section 2.3>
 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_ADMIN_EMAIL
 DB_NAME / DB_USER / DB_PASSWORD / DB_HOST / DB_PORT
 DB_SSLMODE=prefer
+
+PHOTO_S3_ACCESS_KEY_ID / PHOTO_S3_SECRET_ACCESS_KEY / PHOTO_S3_BUCKET
+PHOTO_S3_ACCOUNT_ID            ← Cloudflare R2 only; host is derived from it
+                                 (for any other provider use PHOTO_S3_ENDPOINT
+                                  + PHOTO_S3_REGION + PHOTO_S3_PATH_PREFIX)
 ```
 
 Generate the secret key:
@@ -115,6 +120,12 @@ Notes that will save you time:
   the app.
 - **Never regenerate the VAPID keys.** Doing so invalidates every push
   subscription and every device has to re-enable push by hand.
+- **The photo variables are optional and fail safe.** With none of them set the
+  photo section is simply absent and everything else on the job card behaves
+  identically — so a missing bucket cannot block go-live. But **do not leave them
+  half-set**: production must resolve to either a real bucket or nothing. It can
+  never fall back to local disk (that is gated on `DEBUG`, deliberately, because
+  Railway's filesystem is wiped on every deploy). See §2.6.
 
 ### 1.4 Redeploy and check the browser console ☐
 
@@ -232,6 +243,39 @@ Then the four things that actually bite:
 Both will lock out an owner travelling, at a moment when you are the only person
 who can lift it.
 
+### 2.6 Photo storage bucket ☐
+
+Optional — skip the whole section and the photo feature is simply absent. If the
+owners want it:
+
+- ☐ Create a **production bucket, separate from the development one.** They are
+      free, and one shared bucket means a purge run on a laptop can reach real
+      photographs.
+- ☐ Create an access key scoped to that bucket, and set the `PHOTO_S3_*`
+      variables from §1.3.
+- ☐ **Set the bucket's CORS policy** — without it every upload fails:
+
+  | Setting | Value |
+  |---|---|
+  | `AllowedOrigins` | `https://app.formuladservice.in` |
+  | `AllowedMethods` | `PUT`, `GET` |
+  | `AllowedHeaders` | `content-type` |
+
+- ☐ Redeploy, open a saved job card, take one photo, reload the page, confirm it
+      is still there.
+
+**Two things that will cost you an hour if you skip them.** A missing CORS policy
+fails in the browser in a way that reads exactly like a **signing** bug — check
+CORS first. And **Cloudflare R2 requires a payment card even on its free tier**;
+if the owners' card is not available on the day, **Supabase Storage** speaks the
+same S3 protocol and needs no code change — set `PHOTO_S3_ENDPOINT`,
+`PHOTO_S3_REGION` and `PHOTO_S3_PATH_PREFIX` instead of `PHOTO_S3_ACCOUNT_ID`.
+
+**Retention is not scheduled by default.** `purge_old_photos` drops photographs
+older than a year (never from an unpaid bill). At this workshop's volume the
+bucket plateaus around 2 GB inside a 10 GB free tier, so there is no hurry —
+decide with the owners rather than automating it now.
+
 ---
 
 ## Part 3 — The day
@@ -263,6 +307,15 @@ python manage.py purge_business_data --yes
 
 This clears every business table. It does not touch logins, groups or the
 master lists.
+
+If photos were configured and any test photograph was taken against this
+database, the purge deletes the rows and queues the stored objects; sweep them
+out of the bucket afterwards:
+
+```bash
+python manage.py sweep_photo_blobs
+python manage.py sweep_photo_blobs --yes
+```
 
 ### 3.3 Owner accounts and real email addresses ☐
 
@@ -351,8 +404,12 @@ For each owner, on their own phone:
 - ☐ Print an invoice — confirm it fits one A4 sheet
 - ☐ Take a payment, confirm it appears in Paid Bills
 - ☐ Add a Cashbook entry, confirm the Profit page moves
+- ☐ Write an Estimate, print it, confirm it carries the same letterhead as the bill
 - ☐ Sign in as Office and as Floor; confirm each sees only what it should
 - ☐ Open the app on the Floor tablet at its real screen size
+- ☐ *(if photos are configured)* Take one from the tablet's camera, reload, confirm
+      it is still there — then settle the bill and confirm the camera is gone but
+      the photo is still viewable
 
 ---
 
