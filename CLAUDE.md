@@ -3605,6 +3605,26 @@ elsewhere.**
 | **`GO_LIVE_RUNBOOK.md`** | the **one-time** go-live procedure, rollback, and lockout recovery |
 | **`RAILWAY_OPERATIONS.md`** | the **ongoing** platform reference — env vars, deploys, backups, cost, troubleshooting |
 | **`master_data_export.md`** | the workshop's own brand/model/spare list, as a source record |
+| **`SYSTEM_MAP.html`** | the whole system on one page, as a drawing — every section as a card, every flow as a line |
+
+**`SYSTEM_MAP.html` is GENERATED — edit `scratchpad/build_system_map.py`, never
+the HTML.** It is one self-contained page (inline SVG, no CDN, no script) sized to
+A4 landscape, so "Save as PDF" gives an exact full-bleed sheet. **Turn background
+graphics ON in the print dialog** or every colour drops out.
+
+Two things about it are load-bearing, and both were learned by getting them wrong
+first. **Zones are separated by real corridors** (`H1`/`H2`, `VL`/`VM`/`VE`/`VR`)
+and every long connector is routed through one — a first version packed the zones
+tight and let the router choose, and 12 of 32 lines cut straight through unrelated
+cards. And **linked cards are placed adjacent**: a line between two cards with a
+third between them has nowhere to go. If you add a card, re-run
+`scratchpad/check_map.py`-style validation — the generator records every connector
+in `LINKS`, so crossings, missed targets and overlaps are all checkable without
+looking at it.
+
+⚠ **It states counts** (14 events, 10 critical, 8 signal handlers, ₹3,500, 25%,
+keeps 14). Those drift like every other count in these docs — check them when you
+touch it.
 
 **Roadmap vs debt:** `TITAN_MASTER_HANDOVER.md` says what we plan to do;
 `TECH_DEBT.md` says what we know is wrong. Re-verify an item before acting on it — it

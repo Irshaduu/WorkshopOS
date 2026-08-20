@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorkshopOS - System Map</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:#eef2f6;
+    font-family:Inter,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .sheet{width:min(calc(100vw - 24px),1720px);margin:18px auto;background:#f8fafc;
+    border-radius:12px;box-shadow:0 10px 40px rgba(15,23,42,.16);overflow:hidden}
+  svg{display:block;width:100%;height:auto}
+  @page{size:A4 landscape;margin:0}
+  @media print{
+    html,body{background:#fff}
+    .sheet{width:100%;margin:0;border-radius:0;box-shadow:none}
+    *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+<svg viewBox="0 0 1414 1000" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Inter, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"><rect width="1414" height="1000" fill="#f8fafc"/>
+<defs>
+<marker id="ar-work" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#2563eb"/></marker>
+<marker id="ar-in" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#059669"/></marker>
+<marker id="ar-out" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#dc2626"/></marker>
+<marker id="ar-stock" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#7c3aed"/></marker>
+<marker id="ar-data" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#94a3b8"/></marker>
+<marker id="ar-alert" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#f59e0b"/></marker>
+</defs>
+<text x="18" y="34" font-size="23" font-weight="800" fill="#0f172a" letter-spacing="-.3">WorkshopOS</text>
+<text x="151" y="34" font-size="23" font-weight="300" fill="#94a3b8">/ Titan</text>
+<text x="18" y="48" font-size="8" font-weight="600" letter-spacing="1.7" fill="#64748b">SYSTEM MAP</text>
+<line x1="1313.5" y1="31" x2="1324.5" y2="31" stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round"/>
+<text x="1328.5" y="34" font-size="7.8" fill="#64748b">alert / audit</text>
+<line x1="1270.0" y1="31" x2="1281.0" y2="31" stroke="#94a3b8" stroke-width="2.2" stroke-linecap="round"/>
+<text x="1285.0" y="34" font-size="7.8" fill="#64748b">data</text>
+<line x1="1222.3" y1="31" x2="1233.3" y2="31" stroke="#7c3aed" stroke-width="2.2" stroke-linecap="round"/>
+<text x="1237.3" y="34" font-size="7.8" fill="#64748b">stock</text>
+<line x1="1157.1" y1="31" x2="1168.1" y2="31" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round"/>
+<text x="1172.1" y="34" font-size="7.8" fill="#64748b">money out</text>
+<line x1="1096.3" y1="31" x2="1107.3" y2="31" stroke="#059669" stroke-width="2.2" stroke-linecap="round"/>
+<text x="1111.3" y="34" font-size="7.8" fill="#64748b">money in</text>
+<line x1="1035.5" y1="31" x2="1046.5" y2="31" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round"/>
+<text x="1050.5" y="34" font-size="7.8" fill="#64748b">workflow</text>
+<text x="1396" y="47" font-size="7.4" text-anchor="end" fill="#94a3b8">&#8709; connected to nothing, by design</text>
+<line x1="18" y1="57" x2="1396" y2="57" stroke="#e2e8f0"/>
+<rect x="16" y="66" width="236" height="374" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+<rect x="16" y="66" width="4" height="374" rx="2" fill="#f59e0b" opacity=".55"/>
+<text x="30" y="83" font-size="9" font-weight="700" letter-spacing="1.4" fill="#64748b">ACCESS</text>
+<rect x="26.0" y="92.0" width="216.0" height="41.42857142857143" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="98.0" width="3" height="29.42857142857143" rx="1.5" fill="#f59e0b"/>
+<text x="36.0" y="107.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">OWNER</text>
+<text x="36.0" y="119.0" font-size="7.6" fill="#64748b">everything</text>
+<rect x="26.0" y="141.42857142857144" width="216.0" height="41.42857142857143" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="147.42857142857144" width="3" height="29.42857142857143" rx="1.5" fill="#f59e0b"/>
+<text x="36.0" y="156.42857142857144" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">OFFICE</text>
+<text x="36.0" y="168.42857142857144" font-size="7.6" fill="#64748b">no cost side</text>
+<rect x="26.0" y="190.85714285714286" width="216.0" height="41.42857142857143" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="196.85714285714286" width="3" height="29.42857142857143" rx="1.5" fill="#f59e0b"/>
+<text x="36.0" y="205.85714285714286" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">FLOOR</text>
+<text x="36.0" y="217.85714285714286" font-size="7.6" fill="#64748b">no prices</text>
+<rect x="26.0" y="240.28571428571428" width="216.0" height="41.42857142857143" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="246.28571428571428" width="3" height="29.42857142857143" rx="1.5" fill="#f59e0b"/>
+<text x="36.0" y="255.28571428571428" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">SIGN-IN</text>
+<text x="36.0" y="267.2857142857143" font-size="7.6" fill="#64748b">user - email - mobile</text>
+<rect x="26.0" y="289.7142857142857" width="216.0" height="41.42857142857143" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="295.7142857142857" width="3" height="29.42857142857143" rx="1.5" fill="#f59e0b"/>
+<text x="36.0" y="304.7142857142857" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">LOCKOUT</text>
+<text x="36.0" y="316.7142857142857" font-size="7.6" fill="#64748b">5 account - 20 network</text>
+<rect x="26.0" y="339.14285714285717" width="216.0" height="41.42857142857143" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="345.14285714285717" width="3" height="29.42857142857143" rx="1.5" fill="#f59e0b"/>
+<text x="36.0" y="354.14285714285717" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">PASSWORD RESET</text>
+<text x="36.0" y="366.14285714285717" font-size="7.6" fill="#64748b">6-digit code by email</text>
+<rect x="26.0" y="388.57142857142856" width="216.0" height="41.42857142857143" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="394.57142857142856" width="3" height="29.42857142857143" rx="1.5" fill="#f59e0b"/>
+<text x="36.0" y="403.57142857142856" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">CONTROL HUB</text>
+<text x="36.0" y="415.57142857142856" font-size="7.6" fill="#64748b">logins - staff - sessions</text>
+<rect x="272" y="66" width="806" height="374" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+<rect x="272" y="66" width="4" height="374" rx="2" fill="#2563eb" opacity=".55"/>
+<text x="286" y="83" font-size="9" font-weight="700" letter-spacing="1.4" fill="#64748b">OPERATIONS</text>
+<rect x="282" y="94" width="246" height="56" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="282" y="100" width="3" height="44" rx="1.5" fill="#2563eb"/>
+<text x="292" y="109" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">ESTIMATE</text>
+<text x="519" y="109" font-size="11" text-anchor="end" fill="#2563eb" font-weight="700">⊘</text>
+<text x="292" y="121" font-size="7.6" fill="#64748b">quote - print - history</text>
+<text x="548" y="106" font-size="7" font-weight="700" letter-spacing="1.1" fill="#94a3b8">CARD</text>
+<rect x="582.0" y="92" width="110.2" height="19" rx="9.5" fill="#ffffff" stroke="#2563eb" stroke-width="1"/>
+<text x="637.1" y="105" font-size="7.2" font-weight="600" text-anchor="middle" fill="#2563eb">ADMITTED</text>
+<path d="M 695.2 101.5 L 702.2 101.5" stroke="#2563eb" stroke-width="1.1" marker-end="url(#ar-work)" opacity=".8"/>
+<rect x="707.2" y="92" width="110.2" height="19" rx="9.5" fill="#ffffff" stroke="#2563eb" stroke-width="1"/>
+<text x="762.4" y="105" font-size="7.2" font-weight="600" text-anchor="middle" fill="#2563eb">WORKING</text>
+<path d="M 820.5 101.5 L 827.5 101.5" stroke="#2563eb" stroke-width="1.1" marker-end="url(#ar-work)" opacity=".8"/>
+<rect x="832.5" y="92" width="110.2" height="19" rx="9.5" fill="#ffffff" stroke="#2563eb" stroke-width="1"/>
+<text x="887.6" y="105" font-size="7.2" font-weight="600" text-anchor="middle" fill="#2563eb">ON HOLD</text>
+<path d="M 945.8 101.5 L 952.8 101.5" stroke="#2563eb" stroke-width="1.1" marker-end="url(#ar-work)" opacity=".8"/>
+<rect x="957.8" y="92" width="110.2" height="19" rx="9.5" fill="#ffffff" stroke="#2563eb" stroke-width="1"/>
+<text x="1012.9" y="105" font-size="7.2" font-weight="600" text-anchor="middle" fill="#2563eb">COMPLETED</text>
+<text x="548" y="138" font-size="7" font-weight="700" letter-spacing="1.1" fill="#94a3b8">BILL</text>
+<rect x="582.0" y="124" width="110.2" height="19" rx="9.5" fill="#ffffff" stroke="#059669" stroke-width="1"/>
+<text x="637.1" y="137" font-size="7.2" font-weight="600" text-anchor="middle" fill="#059669">PENDING</text>
+<path d="M 695.2 133.5 L 702.2 133.5" stroke="#059669" stroke-width="1.1" marker-end="url(#ar-in)" opacity=".8"/>
+<rect x="707.2" y="124" width="110.2" height="19" rx="9.5" fill="#ffffff" stroke="#059669" stroke-width="1"/>
+<text x="762.4" y="137" font-size="7.2" font-weight="600" text-anchor="middle" fill="#059669">PART PAID</text>
+<path d="M 820.5 133.5 L 827.5 133.5" stroke="#059669" stroke-width="1.1" marker-end="url(#ar-in)" opacity=".8"/>
+<rect x="832.5" y="124" width="110.2" height="19" rx="9.5" fill="#ffffff" stroke="#059669" stroke-width="1"/>
+<text x="887.6" y="137" font-size="7.2" font-weight="600" text-anchor="middle" fill="#059669">PAID</text>
+<path d="M 945.8 133.5 L 952.8 133.5" stroke="#059669" stroke-width="1.1" marker-end="url(#ar-in)" opacity=".8"/>
+<rect x="957.8" y="124" width="110.2" height="19" rx="9.5" fill="#ffffff" stroke="#059669" stroke-width="1"/>
+<text x="1012.9" y="137" font-size="7.2" font-weight="600" text-anchor="middle" fill="#059669">FLEET PAID</text>
+<rect x="282" y="162" width="786" height="152" rx="9" fill="#ffffff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="296" y="184" font-size="14" font-weight="800" fill="#2563eb" letter-spacing=".3">JOB CARD</text>
+<text x="388" y="184" font-size="8" fill="#94a3b8">the hub</text>
+<rect x="296.0" y="196" width="104.0" height="100" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="296.0" y="196" width="104.0" height="2.5" rx="1.2" fill="#2563eb" opacity=".5"/>
+<text x="348.0" y="220" font-size="8.4" font-weight="700" text-anchor="middle" fill="#0f172a">VEHICLE</text>
+<text x="348.0" y="232" font-size="6.9" text-anchor="middle" fill="#64748b">reg - brand - km</text>
+<rect x="405.0" y="196" width="104.0" height="100" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="405.0" y="196" width="104.0" height="2.5" rx="1.2" fill="#2563eb" opacity=".5"/>
+<text x="457.0" y="220" font-size="8.4" font-weight="700" text-anchor="middle" fill="#0f172a">CUSTOMER</text>
+<text x="457.0" y="232" font-size="6.9" text-anchor="middle" fill="#64748b">office only</text>
+<rect x="514.0" y="196" width="104.0" height="100" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="514.0" y="196" width="104.0" height="2.5" rx="1.2" fill="#2563eb" opacity=".5"/>
+<text x="566.0" y="220" font-size="8.4" font-weight="700" text-anchor="middle" fill="#0f172a">CONCERNS</text>
+<text x="566.0" y="232" font-size="6.9" text-anchor="middle" fill="#64748b">pending to fixed</text>
+<rect x="623.0" y="196" width="104.0" height="100" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="623.0" y="196" width="104.0" height="2.5" rx="1.2" fill="#2563eb" opacity=".5"/>
+<text x="675.0" y="220" font-size="8.4" font-weight="700" text-anchor="middle" fill="#0f172a">JOBS</text>
+<text x="675.0" y="232" font-size="6.9" text-anchor="middle" fill="#64748b">one labour charge</text>
+<rect x="732.0" y="196" width="104.0" height="100" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="732.0" y="196" width="104.0" height="2.5" rx="1.2" fill="#2563eb" opacity=".5"/>
+<text x="784.0" y="220" font-size="8.4" font-weight="700" text-anchor="middle" fill="#0f172a">SPARE PARTS</text>
+<text x="784.0" y="232" font-size="6.9" text-anchor="middle" fill="#64748b">from a shop</text>
+<rect x="841.0" y="196" width="104.0" height="100" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="841.0" y="196" width="104.0" height="2.5" rx="1.2" fill="#2563eb" opacity=".5"/>
+<text x="893.0" y="220" font-size="8.4" font-weight="700" text-anchor="middle" fill="#0f172a">INVENTORY</text>
+<text x="893.0" y="232" font-size="6.9" text-anchor="middle" fill="#64748b">off the shelf</text>
+<rect x="950.0" y="196" width="104.0" height="100" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="950.0" y="196" width="104.0" height="2.5" rx="1.2" fill="#2563eb" opacity=".5"/>
+<text x="1002.0" y="220" font-size="8.4" font-weight="700" text-anchor="middle" fill="#0f172a">PHOTOS</text>
+<text x="1002.0" y="232" font-size="6.9" text-anchor="middle" fill="#64748b">car - part</text>
+<rect x="282" y="330" width="230" height="56" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="282" y="336" width="3" height="44" rx="1.5" fill="#2563eb"/>
+<text x="292" y="345" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">COMPLETED</text>
+<text x="292" y="357" font-size="7.6" fill="#64748b">car handed over</text>
+<rect x="520" y="330" width="230" height="56" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="520" y="336" width="3" height="44" rx="1.5" fill="#2563eb"/>
+<text x="530" y="345" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">INVOICE</text>
+<text x="530" y="357" font-size="7.6" fill="#64748b">A4 - one parts list</text>
+<rect x="758" y="330" width="230" height="56" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="758" y="336" width="3" height="44" rx="1.5" fill="#f59e0b"/>
+<text x="768" y="345" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">SETTLEMENT CHECK</text>
+<text x="768" y="357" font-size="7.6" fill="#64748b">what is unfilled</text>
+<rect x="1098" y="66" width="300" height="374" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+<rect x="1098" y="66" width="4" height="374" rx="2" fill="#94a3b8" opacity=".55"/>
+<text x="1112" y="83" font-size="9" font-weight="700" letter-spacing="1.4" fill="#64748b">BOARDS &amp; HISTORY</text>
+<rect x="1108.0" y="92.0" width="280.0" height="61.2" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1108.0" y="98.0" width="3" height="49.2" rx="1.5" fill="#94a3b8"/>
+<text x="1118.0" y="107.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">DASHBOARD</text>
+<text x="1118.0" y="119.0" font-size="7.6" fill="#64748b">cars on the floor - progress</text>
+<rect x="1108.0" y="161.2" width="280.0" height="61.2" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1108.0" y="167.2" width="3" height="49.2" rx="1.5" fill="#94a3b8"/>
+<text x="1118.0" y="176.2" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">LIVE REPORT</text>
+<text x="1118.0" y="188.2" font-size="7.6" fill="#64748b">billed but unfilled - crews</text>
+<rect x="1108.0" y="230.4" width="280.0" height="61.2" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1108.0" y="236.4" width="3" height="49.2" rx="1.5" fill="#94a3b8"/>
+<text x="1118.0" y="245.4" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">CAR PROFILES</text>
+<text x="1118.0" y="257.4" font-size="7.6" fill="#64748b">history by registration</text>
+<rect x="1108.0" y="299.6" width="280.0" height="61.2" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1108.0" y="305.6" width="3" height="49.2" rx="1.5" fill="#94a3b8"/>
+<text x="1118.0" y="314.6" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">JOB CARDS</text>
+<text x="1118.0" y="326.6" font-size="7.6" fill="#64748b">search - filter</text>
+<rect x="1108.0" y="368.8" width="280.0" height="61.2" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1108.0" y="374.8" width="3" height="49.2" rx="1.5" fill="#94a3b8"/>
+<text x="1118.0" y="383.8" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">ESTIMATE HISTORY</text>
+<text x="1118.0" y="395.8" font-size="7.6" fill="#64748b">searchable</text>
+<rect x="16" y="462" width="544" height="276" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+<rect x="16" y="462" width="4" height="276" rx="2" fill="#7c3aed" opacity=".55"/>
+<text x="30" y="479" font-size="9" font-weight="700" letter-spacing="1.4" fill="#64748b">PARTS, SHOPS &amp; STOCK</text>
+<rect x="26.0" y="488.0" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="494.0" width="3" height="62.66666666666667" rx="1.5" fill="#dc2626"/>
+<text x="36.0" y="503.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">SPARE SHOPS</text>
+<text x="36.0" y="515.0" font-size="7.6" fill="#64748b">ledger - balance - pay</text>
+<rect x="203.33333333333334" y="488.0" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="203.33333333333334" y="494.0" width="3" height="62.66666666666667" rx="1.5" fill="#dc2626"/>
+<text x="213.33333333333334" y="503.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">SUPPLIES SHOPS</text>
+<text x="213.33333333333334" y="515.0" font-size="7.6" fill="#64748b">suppliers - catalog</text>
+<rect x="380.6666666666667" y="488.0" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="380.6666666666667" y="494.0" width="3" height="62.66666666666667" rx="1.5" fill="#7c3aed"/>
+<text x="390.6666666666667" y="503.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">WAREHOUSE</text>
+<text x="390.6666666666667" y="515.0" font-size="7.6" fill="#64748b">items - categories</text>
+<rect x="26.0" y="570.6666666666666" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="576.6666666666666" width="3" height="62.66666666666667" rx="1.5" fill="#dc2626"/>
+<text x="36.0" y="585.6666666666666" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">UNASSIGNED</text>
+<text x="36.0" y="597.6666666666666" font-size="7.6" fill="#64748b">floor adds - office prices</text>
+<rect x="203.33333333333334" y="570.6666666666666" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="203.33333333333334" y="576.6666666666666" width="3" height="62.66666666666667" rx="1.5" fill="#dc2626"/>
+<text x="213.33333333333334" y="585.6666666666666" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">RESTOCK BILLS</text>
+<text x="213.33333333333334" y="597.6666666666666" font-size="7.6" fill="#64748b">discount pro-rata</text>
+<rect x="380.6666666666667" y="570.6666666666666" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="380.6666666666667" y="576.6666666666666" width="3" height="62.66666666666667" rx="1.5" fill="#7c3aed"/>
+<text x="390.6666666666667" y="585.6666666666666" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">LOW STOCK</text>
+<text x="390.6666666666667" y="597.6666666666666" font-size="7.6" fill="#64748b">under 25% - negatives</text>
+<rect x="26.0" y="653.3333333333334" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="659.3333333333334" width="3" height="62.66666666666667" rx="1.5" fill="#7c3aed"/>
+<text x="36.0" y="668.3333333333334" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">STOCK HISTORY</text>
+<text x="36.0" y="680.3333333333334" font-size="7.6" fill="#64748b">who drew what</text>
+<rect x="203.33333333333334" y="653.3333333333334" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="203.33333333333334" y="659.3333333333334" width="3" height="62.66666666666667" rx="1.5" fill="#7c3aed"/>
+<text x="213.33333333333334" y="668.3333333333334" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">STOCK SIGNALS</text>
+<text x="213.33333333333334" y="680.3333333333334" font-size="7.6" fill="#64748b">8 handlers - automatic</text>
+<rect x="380.6666666666667" y="653.3333333333334" width="169.33333333333334" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="380.6666666666667" y="659.3333333333334" width="3" height="62.66666666666667" rx="1.5" fill="#7c3aed"/>
+<text x="390.6666666666667" y="668.3333333333334" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">AVERAGE COST</text>
+<text x="390.6666666666667" y="680.3333333333334" font-size="7.6" fill="#64748b">weighted - full replay</text>
+<rect x="580" y="462" width="420" height="276" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+<rect x="580" y="462" width="4" height="276" rx="2" fill="#059669" opacity=".55"/>
+<text x="594" y="479" font-size="9" font-weight="700" letter-spacing="1.4" fill="#64748b">MONEY</text>
+<text x="593" y="498" font-size="7.6" font-weight="700" letter-spacing="1.2" fill="#059669">IN</text>
+<text x="797" y="498" font-size="7.6" font-weight="700" letter-spacing="1.2" fill="#dc2626">OUT</text>
+<rect x="590.0" y="504.0" width="196.0" height="69.33333333333333" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="590.0" y="510.0" width="3" height="57.33333333333333" rx="1.5" fill="#059669"/>
+<text x="600.0" y="519.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">PENDING BILLS</text>
+<text x="600.0" y="531.0" font-size="7.6" fill="#64748b">unpaid - part paid</text>
+<rect x="794.0" y="504.0" width="196.0" height="69.33333333333333" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="794.0" y="510.0" width="3" height="57.33333333333333" rx="1.5" fill="#dc2626"/>
+<text x="804.0" y="519.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">CASHBOOK</text>
+<text x="804.0" y="531.0" font-size="7.6" fill="#64748b">rent - power - scrap</text>
+<rect x="590.0" y="581.3333333333334" width="196.0" height="69.33333333333333" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="590.0" y="587.3333333333334" width="3" height="57.33333333333333" rx="1.5" fill="#059669"/>
+<text x="600.0" y="596.3333333333334" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">PAID BILLS</text>
+<text x="600.0" y="608.3333333333334" font-size="7.6" fill="#64748b">settled - by date</text>
+<rect x="794.0" y="581.3333333333334" width="196.0" height="69.33333333333333" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="794.0" y="587.3333333333334" width="3" height="57.33333333333333" rx="1.5" fill="#dc2626"/>
+<text x="804.0" y="596.3333333333334" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">SALARY &amp; ADVANCE</text>
+<text x="804.0" y="608.3333333333334" font-size="7.6" fill="#64748b">advances - settlement</text>
+<rect x="590.0" y="658.6666666666666" width="196.0" height="69.33333333333333" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="590.0" y="664.6666666666666" width="3" height="57.33333333333333" rx="1.5" fill="#059669"/>
+<text x="600.0" y="673.6666666666666" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">FLEET ACCOUNTS</text>
+<text x="600.0" y="685.6666666666666" font-size="7.6" fill="#64748b">cascade - advance credit</text>
+<rect x="794.0" y="658.6666666666666" width="196.0" height="69.33333333333333" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="794.0" y="664.6666666666666" width="3" height="57.33333333333333" rx="1.5" fill="#f59e0b"/>
+<text x="804.0" y="673.6666666666666" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">DISCOUNT AUDIT</text>
+<text x="804.0" y="685.6666666666666" font-size="7.6" fill="#64748b">over ₹3,500</text>
+<rect x="1020" y="462" width="378" height="276" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+<rect x="1020" y="462" width="4" height="276" rx="2" fill="#94a3b8" opacity=".55"/>
+<text x="1034" y="479" font-size="9" font-weight="700" letter-spacing="1.4" fill="#64748b">ANALYSIS &amp; AUDIT</text>
+<rect x="1030.0" y="488.0" width="358.0" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1030.0" y="494.0" width="3" height="62.66666666666667" rx="1.5" fill="#059669"/>
+<text x="1040.0" y="503.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">PROFIT</text>
+<text x="1040.0" y="515.0" font-size="7.6" fill="#64748b">turnover − expenses</text>
+<text x="1040.0" y="524.4" font-size="7.6" fill="#64748b">the distribution figure</text>
+<rect x="1030.0" y="570.6666666666666" width="358.0" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1030.0" y="576.6666666666666" width="3" height="62.66666666666667" rx="1.5" fill="#94a3b8"/>
+<text x="1040.0" y="585.6666666666666" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">DEEP ANALYSIS</text>
+<text x="1040.0" y="597.6666666666666" font-size="7.6" fill="#64748b">mechanics - spares - vehicles</text>
+<text x="1040.0" y="607.0666666666666" font-size="7.6" fill="#64748b">fleet - shops - operations</text>
+<rect x="1030.0" y="653.3333333333334" width="358.0" height="74.66666666666667" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1030.0" y="659.3333333333334" width="3" height="62.66666666666667" rx="1.5" fill="#f59e0b"/>
+<text x="1040.0" y="668.3333333333334" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">DELETION HISTORY</text>
+<text x="1040.0" y="680.3333333333334" font-size="7.6" fill="#64748b">every permanent delete</text>
+<text x="1040.0" y="689.7333333333333" font-size="7.6" fill="#64748b">owner only - no restore</text>
+<rect x="16" y="760" width="674" height="226" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+<rect x="16" y="760" width="4" height="226" rx="2" fill="#94a3b8" opacity=".55"/>
+<text x="30" y="777" font-size="9" font-weight="700" letter-spacing="1.4" fill="#64748b">RULES &amp; AUTOMATION</text>
+<rect x="26.0" y="786.0" width="157.5" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="792.0" width="3" height="79.0" rx="1.5" fill="#94a3b8"/>
+<text x="36.0" y="801.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">MASTER LISTS</text>
+<text x="36.0" y="813.0" font-size="7.6" fill="#64748b">brands - models</text>
+<text x="36.0" y="822.4" font-size="7.6" fill="#64748b">spares - concerns</text>
+<rect x="191.5" y="786.0" width="157.5" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="191.5" y="792.0" width="3" height="79.0" rx="1.5" fill="#94a3b8"/>
+<text x="201.5" y="801.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">AUTOCOMPLETE</text>
+<text x="201.5" y="813.0" font-size="7.6" fill="#64748b">learns as you type</text>
+<rect x="357.0" y="786.0" width="157.5" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="357.0" y="792.0" width="3" height="79.0" rx="1.5" fill="#94a3b8"/>
+<text x="367.0" y="801.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">DATA CLEANUP</text>
+<text x="367.0" y="813.0" font-size="7.6" fill="#64748b">rename - merge</text>
+<text x="367.0" y="822.4" font-size="7.6" fill="#64748b">reaches old cards</text>
+<rect x="522.5" y="786.0" width="157.5" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="522.5" y="792.0" width="3" height="79.0" rx="1.5" fill="#f59e0b"/>
+<text x="532.5" y="801.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">RBAC</text>
+<text x="532.5" y="813.0" font-size="7.6" fill="#64748b">3 tiers - server side</text>
+<rect x="26.0" y="885.0" width="157.5" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="26.0" y="891.0" width="3" height="79.0" rx="1.5" fill="#f59e0b"/>
+<text x="36.0" y="900.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">FINANCIAL LOCK</text>
+<text x="36.0" y="912.0" font-size="7.6" fill="#64748b">settled = frozen</text>
+<rect x="191.5" y="885.0" width="157.5" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="191.5" y="891.0" width="3" height="79.0" rx="1.5" fill="#f59e0b"/>
+<text x="201.5" y="900.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">MONEY BOUNDS</text>
+<text x="201.5" y="912.0" font-size="7.6" fill="#64748b">read from the column</text>
+<rect x="357.0" y="885.0" width="157.5" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="357.0" y="891.0" width="3" height="79.0" rx="1.5" fill="#f59e0b"/>
+<text x="367.0" y="900.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">DATE RULES</text>
+<text x="367.0" y="912.0" font-size="7.6" fill="#64748b">ordered before received</text>
+<rect x="522.5" y="885.0" width="157.5" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="522.5" y="891.0" width="3" height="79.0" rx="1.5" fill="#f59e0b"/>
+<text x="532.5" y="900.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">ARCHIVE MODEL</text>
+<text x="532.5" y="912.0" font-size="7.6" fill="#64748b">accounts archived</text>
+<text x="532.5" y="921.4" font-size="7.6" fill="#64748b">records logged</text>
+<rect x="710" y="760" width="688" height="226" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+<rect x="710" y="760" width="4" height="226" rx="2" fill="#2563eb" opacity=".55"/>
+<text x="724" y="777" font-size="9" font-weight="700" letter-spacing="1.4" fill="#64748b">PLATFORM</text>
+<rect x="720.0" y="786.0" width="217.33333333333334" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="720.0" y="792.0" width="3" height="79.0" rx="1.5" fill="#f59e0b"/>
+<text x="730.0" y="801.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">NOTIFICATIONS</text>
+<text x="730.0" y="813.0" font-size="7.6" fill="#64748b">14 events - 10 critical</text>
+<text x="730.0" y="822.4" font-size="7.6" fill="#64748b">owners only</text>
+<rect x="945.3333333333334" y="786.0" width="217.33333333333334" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="945.3333333333334" y="792.0" width="3" height="79.0" rx="1.5" fill="#f59e0b"/>
+<text x="955.3333333333334" y="801.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">WEB PUSH</text>
+<text x="955.3333333333334" y="813.0" font-size="7.6" fill="#64748b">critical goes to a phone</text>
+<rect x="1170.6666666666667" y="786.0" width="217.33333333333334" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1170.6666666666667" y="792.0" width="3" height="79.0" rx="1.5" fill="#2563eb"/>
+<text x="1180.6666666666667" y="801.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">PHOTO STORAGE</text>
+<text x="1180.6666666666667" y="813.0" font-size="7.6" fill="#64748b">S3 - presigned</text>
+<text x="1180.6666666666667" y="822.4" font-size="7.6" fill="#64748b">browser uploads direct</text>
+<rect x="720.0" y="885.0" width="217.33333333333334" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="720.0" y="891.0" width="3" height="79.0" rx="1.5" fill="#f59e0b"/>
+<text x="730.0" y="900.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">EMAIL</text>
+<text x="730.0" y="912.0" font-size="7.6" fill="#64748b">reset codes only</text>
+<rect x="945.3333333333334" y="885.0" width="217.33333333333334" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="945.3333333333334" y="891.0" width="3" height="79.0" rx="1.5" fill="#2563eb"/>
+<text x="955.3333333333334" y="900.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">INSTALLABLE</text>
+<text x="955.3333333333334" y="912.0" font-size="7.6" fill="#64748b">home screen - offline page</text>
+<rect x="1170.6666666666667" y="885.0" width="217.33333333333334" height="91.0" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="1170.6666666666667" y="891.0" width="3" height="79.0" rx="1.5" fill="#2563eb"/>
+<text x="1180.6666666666667" y="900.0" font-size="9.6" font-weight="700" fill="#0f172a" letter-spacing=".2">BACKUPS</text>
+<text x="1180.6666666666667" y="912.0" font-size="7.6" fill="#64748b">pg_dump - keeps 14</text>
+<path d="M 242.0 162.1 L 255.0 162.1 Q 262.0 162.1 262.0 169.1 L 262.0 208.2 Q 262.0 215.2 269.0 215.2 L 282.0 215.2" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-alert)"/>
+<path d="M 242.0 211.6 L 255.0 211.6 Q 262.0 211.6 262.0 218.6 L 262.0 253.8 Q 262.0 260.8 269.0 260.8 L 282.0 260.8" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-alert)"/>
+<path d="M 376.3 314.0 L 376.3 316.0 Q 376.3 318.0 383.3 318.0 L 390.0 318.0 Q 397.0 318.0 397.0 324.0 L 397.0 330.0" fill="none" stroke="#2563eb" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-work)"/>
+<path d="M 512.0 358.0 L 514.0 358.0 Q 516.0 358.0 518.0 358.0 L 520.0 358.0" fill="none" stroke="#2563eb" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-work)"/>
+<path d="M 750.0 358.0 L 752.0 358.0 Q 754.0 358.0 756.0 358.0 L 758.0 358.0" fill="none" stroke="#2563eb" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-work)"/>
+<path d="M 784.0 296.0 L 784.0 315.0 Q 784.0 322.0 777.0 322.0 L 761.0 322.0 Q 754.0 322.0 754.0 329.0 L 754.0 445.0 Q 754.0 452.0 747.0 452.0 L 84.0 452.0 Q 77.0 452.0 77.0 459.0 L 77.0 488.0" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-out)"/>
+<path d="M 893.0 296.0 L 893.0 319.0 Q 893.0 326.0 886.0 326.0 L 523.0 326.0 Q 516.0 326.0 516.0 333.0 L 516.0 451.0 Q 516.0 458.0 509.0 458.0 L 472.0 458.0 Q 465.0 458.0 465.0 465.0 L 465.0 488.0" fill="none" stroke="#7c3aed" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-stock)"/>
+<path d="M 288.0 562.7 L 288.0 564.7 Q 288.0 566.7 288.0 568.7 L 288.0 570.7" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-out)"/>
+<path d="M 372.7 608.0 L 374.3 608.0 Q 376.0 608.0 376.0 601.0 L 376.0 532.3 Q 376.0 525.3 378.3 525.3 L 380.7 525.3" fill="none" stroke="#7c3aed" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-stock)"/>
+<path d="M 465.3 562.7 L 465.3 564.7 Q 465.3 566.7 465.3 568.7 L 465.3 570.7" fill="none" stroke="#7c3aed" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-stock)"/>
+<path d="M 372.7 690.7 L 374.7 690.7 Q 376.7 690.7 378.7 690.7 L 380.7 690.7" fill="none" stroke="#7c3aed" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-stock)"/>
+<path d="M 203.3 690.7 L 201.3 690.7 Q 199.3 690.7 197.3 690.7 L 195.3 690.7" fill="none" stroke="#7c3aed" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-stock)"/>
+<path d="M 110.7 570.7 L 110.7 568.7 Q 110.7 566.7 110.7 564.7 L 110.7 562.7" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-out)"/>
+<path d="M 635.0 386.0 L 635.0 440.0 Q 635.0 447.0 640.0 447.0 L 640.0 447.0 Q 645.0 447.0 645.0 454.0 L 645.0 504.0" fill="none" stroke="#059669" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-in)"/>
+<path d="M 688.0 573.3 L 688.0 575.3 Q 688.0 577.3 688.0 579.3 L 688.0 581.3" fill="none" stroke="#059669" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-in)"/>
+<path d="M 688.0 650.7 L 688.0 652.7 Q 688.0 654.7 688.0 656.7 L 688.0 658.7" fill="none" stroke="#059669" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-in)"/>
+<path d="M 153.0 488.0 L 153.0 452.0 Q 153.0 445.0 160.0 445.0 L 997.0 445.0 Q 1004.0 445.0 1004.0 452.0 L 1004.0 493.0 Q 1004.0 500.0 1011.0 500.0 L 1030.0 500.0" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-out)"/>
+<path d="M 330.3 488.0 L 330.3 471.0 Q 330.3 464.0 337.3 464.0 L 993.0 464.0 Q 1000.0 464.0 1000.0 471.0 L 1000.0 503.0 Q 1000.0 510.0 1007.0 510.0 L 1030.0 510.0" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-out)"/>
+<path d="M 786.0 616.0 L 786.0 584.0 Q 786.0 577.0 793.0 577.0 L 999.0 577.0 Q 1006.0 577.0 1006.0 570.0 L 1006.0 529.0 Q 1006.0 522.0 1013.0 522.0 L 1030.0 522.0" fill="none" stroke="#059669" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-in)"/>
+<path d="M 786.0 693.3 L 786.0 661.0 Q 786.0 654.0 793.0 654.0 L 995.0 654.0 Q 1002.0 654.0 1002.0 647.0 L 1002.0 541.0 Q 1002.0 534.0 1009.0 534.0 L 1030.0 534.0" fill="none" stroke="#059669" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-in)"/>
+<path d="M 990.0 538.7 L 1003.0 538.7 Q 1010.0 538.7 1010.0 542.3 L 1010.0 542.3 Q 1010.0 546.0 1017.0 546.0 L 1030.0 546.0" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-out)"/>
+<path d="M 990.0 616.0 L 1007.0 616.0 Q 1014.0 616.0 1014.0 609.0 L 1014.0 563.0 Q 1014.0 556.0 1021.0 556.0 L 1030.0 556.0" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-out)"/>
+<path d="M 183.5 831.5 L 185.5 831.5 Q 187.5 831.5 189.5 831.5 L 191.5 831.5" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-data)"/>
+<path d="M 270.2 786.0 L 270.2 746.0 Q 270.2 739.0 277.2 739.0 L 1003.0 739.0 Q 1010.0 739.0 1010.0 732.0 L 1010.0 314.0" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-data)"/>
+<path d="M 1068.0 207.6 L 1081.0 207.6 Q 1088.0 207.6 1088.0 200.6 L 1088.0 129.6 Q 1088.0 122.6 1095.0 122.6 L 1108.0 122.6" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-data)"/>
+<path d="M 1068.0 268.4 L 1086.0 268.4 Q 1093.0 268.4 1093.0 264.7 L 1093.0 264.7 Q 1093.0 261.0 1100.0 261.0 L 1108.0 261.0" fill="none" stroke="#94a3b8" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-data)"/>
+<path d="M 988.0 358.0 L 1041.0 358.0 Q 1048.0 358.0 1048.0 351.0 L 1048.0 198.8 Q 1048.0 191.8 1055.0 191.8 L 1108.0 191.8" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-alert)"/>
+<path d="M 892.0 728.0 L 892.0 738.0 Q 892.0 745.0 885.0 745.0 L 835.0 745.0 Q 828.0 745.0 828.0 752.0 L 828.0 786.0" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-alert)"/>
+<path d="M 1209.0 728.0 L 1209.0 746.0 Q 1209.0 753.0 1202.0 753.0 L 897.0 753.0 Q 890.0 753.0 890.0 760.0 L 890.0 786.0" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-alert)"/>
+<path d="M 937.3 831.5 L 939.3 831.5 Q 941.3 831.5 943.3 831.5 L 945.3 831.5" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-alert)"/>
+<path d="M 1002.0 296.0 L 1002.0 323.0 Q 1002.0 330.0 1003.0 330.0 L 1003.0 330.0 Q 1004.0 330.0 1004.0 337.0 L 1004.0 752.0 Q 1004.0 759.0 1011.0 759.0 L 1272.0 759.0 Q 1279.0 759.0 1279.0 766.0 L 1279.0 786.0" fill="none" stroke="#2563eb" stroke-width="1.3" stroke-linecap="round" opacity=".85" marker-end="url(#ar-work)"/></svg>
+</div>
+</body>
+</html>

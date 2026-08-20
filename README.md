@@ -4,6 +4,10 @@ A Django workshop-management system for a single premium automotive workshop. Jo
 cards, inventory, spare and supplier shops, fleet billing, estimates, invoicing,
 cashbook, photos and owner analytics in one platform.
 
+> **Start here:** [`SYSTEM_MAP.html`](SYSTEM_MAP.html) — the whole system on one
+> page, as a drawing. Open it in a browser; every section is a card and every flow
+> is a line.
+>
 > **Docs:** technical reference (models, routes, templates) →
 > [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) · workflow walkthrough →
 > [`OPERATIONAL_BLUEPRINT.md`](OPERATIONAL_BLUEPRINT.md) · status & roadmap →
