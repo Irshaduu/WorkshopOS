@@ -481,6 +481,51 @@ __SVG__
     return anchors, links
 
 
+def to_pdf(root):
+    """
+    Render each sheet to PDF with headless Chrome.
+
+    THIS IS THE ONLY WAY TO GET A CLEAN PDF, and it is worth knowing why. The
+    browser's own Print dialog stamps a date, the page title, the file path and
+    a page number onto the sheet. That is not something the page can prevent -
+    there is no CSS for it, and `@page{margin:0}` only suppresses it in some
+    browsers. It is a checkbox in the dialog ("Headers and footers"), which
+    means every person who ever prints this has to know to untick it.
+
+    Headless Chrome with --no-pdf-header-footer never adds them, so the PDF is
+    generated once, here, and handed over as a file. Nobody has to remember a
+    setting.
+    """
+    import shutil
+    import subprocess
+    from urllib.request import pathname2url
+
+    candidates = [
+        r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+        r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
+    ]
+    chrome = next((c for c in candidates if Path(c).exists()), None) \
+        or shutil.which('chrome') or shutil.which('chromium') \
+        or shutil.which('google-chrome') or shutil.which('msedge')
+    if not chrome:
+        print('  (no Chrome or Edge found - skipping PDFs; the HTML still works)')
+        return
+
+    for T in THEMES.values():
+        src = root / T['out']
+        pdf = src.with_suffix('.pdf')
+        subprocess.run([chrome, '--headless', '--disable-gpu',
+                        '--no-pdf-header-footer',
+                        '--print-to-pdf=%s' % pdf,
+                        'file:' + pathname2url(str(src))],
+                       capture_output=True, check=False)
+        if pdf.exists():
+            print('wrote %-22s (%.0f KB)' % (pdf.name, pdf.stat().st_size / 1024))
+
+
 if __name__ == '__main__':
     for name in THEMES:
         build(name)
+    to_pdf(Path(__file__).resolve().parent.parent)

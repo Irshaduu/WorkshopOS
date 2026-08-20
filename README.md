@@ -9,8 +9,9 @@ cashbook, photos and owner analytics in one platform.
 > says what kind of flow it is. A dark version is at
 > [`SYSTEM_MAP_DARK.html`](SYSTEM_MAP_DARK.html).
 >
-> To get a PDF: open in a browser → Print → **A4 Landscape**, background graphics
-> **on**, headers and footers **off**.
+> PDFs are committed alongside them — [`SYSTEM_MAP.pdf`](SYSTEM_MAP.pdf) and
+> [`SYSTEM_MAP_DARK.pdf`](SYSTEM_MAP_DARK.pdf), one page each, A4 landscape, no
+> browser headers. Use those rather than printing the HTML yourself.
 >
 > **Docs:** technical reference (models, routes, templates) →
 > [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) · workflow walkthrough →

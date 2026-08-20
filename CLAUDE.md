@@ -3612,9 +3612,15 @@ HTML.** One set of coordinates emits a light and a dark theme, so they cannot
 drift apart. Each is self-contained (inline SVG, no CDN, no script) and pinned to
 A4 landscape, so "Save as PDF" gives an exact full-bleed sheet.
 
-⚠ **Two print settings decide whether it comes out right**: turn **background
-graphics ON** or every colour drops out, and turn **headers and footers OFF** or
-the browser stamps a date, a title and a file path onto the sheet.
+⚠ **Do not print these from a browser — use the committed PDFs.** The Print
+dialog stamps a date, the page title, the file path and a page number onto the
+sheet. **No CSS can stop that** (`@page{margin:0}` suppresses it in some browsers
+and not Chrome); it is the dialog's "Headers and footers" checkbox, which means
+everyone who ever prints it has to know to untick it. The build runs headless
+Chrome with `--no-pdf-header-footer`, which never adds them, so
+`SYSTEM_MAP.pdf` / `SYSTEM_MAP_DARK.pdf` are generated once and committed.
+`python scratchpad/build_system_map.py` writes all four files; the PDF step is
+skipped with a note if no Chrome or Edge is installed.
 
 **Run `scratchpad/check_system_map.py` after any change.** It re-runs the
 generator and checks the five things that are invisible by eye at this density —
