@@ -47,31 +47,13 @@
     <small class="text-muted">Manage inventory vendors and restock billing</small>
   </div>
   
+  {% if not is_active_list %}
   <div class="d-flex gap-2">
-    {% if is_active_list %}
-      <a href="{% url 'add_supplier_shop' %}" class="btn btn-primary fw-bold rounded-pill shadow-sm" style="white-space:nowrap;">
-        <i class="bi bi-plus-lg me-1"></i> New Shop
-      </a>
-      <div class="dropdown flex-shrink-0">
-        <button class="btn btn-light border rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                style="width: 38px; height: 38px;" type="button"
-                data-bs-toggle="dropdown" aria-expanded="false" title="More options">
-          <i class="bi bi-three-dots-vertical"></i>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px;">
-          <li>
-            <a class="dropdown-item py-2" href="{% url 'deactivated_supplier_shop_list' %}">
-              <i class="bi bi-archive me-2"></i> Archived Shops
-            </a>
-          </li>
-        </ul>
-      </div>
-    {% else %}
       <a href="{% url 'supplier_shop_list' %}" class="btn btn-outline-secondary fw-bold rounded-pill">
         <i class="bi bi-arrow-left me-1"></i> Back to Active
       </a>
-    {% endif %}
   </div>
+  {% endif %}
 </div>
 
 
@@ -83,6 +65,28 @@
         <span class="text-white fw-bold">
           <i class="bi bi-truck me-2"></i>{{ shops|length }} Shop{{ shops|length|pluralize }} {% if is_active_list %}Active{% else %}Deactivated{% endif %}
         </span>
+        {% if is_active_list %}
+        <div class="dropdown flex-shrink-0">
+          <button class="btn btn-light border rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                  style="width: 38px; height: 38px;" type="button"
+                  data-bs-toggle="dropdown" aria-expanded="false" title="More options">
+            <i class="bi bi-three-dots-vertical"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px;">
+            <li>
+              <a class="dropdown-item py-2" href="{% url 'add_supplier_shop' %}">
+                <i class="bi bi-plus-lg me-2"></i> New Shop
+              </a>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <a class="dropdown-item py-2" href="{% url 'deactivated_supplier_shop_list' %}">
+                <i class="bi bi-archive me-2"></i> Archived Shops
+              </a>
+            </li>
+          </ul>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -149,6 +153,11 @@
     <a href="{% url 'add_supplier_shop' %}" class="btn btn-primary btn-sm rounded-pill px-4 mt-2 fw-bold">
       <i class="bi bi-plus-lg me-1"></i> Add First Shop
     </a>
+    <div class="mt-2">
+      <a href="{% url 'deactivated_supplier_shop_list' %}" class="text-muted small">
+        <i class="bi bi-archive me-1"></i> View Archived Shops
+      </a>
+    </div>
     {% endif %}
   </div>
 {% endif %}

@@ -15,8 +15,11 @@ Deliberately plain: an estimate is not money, so there is no totals bar, no
 anything that could be read as owed or earned.
 
 TWO filters, not the eight the day-to-day lists carry — see DATE_FILTERS in
-workshop/views/estimate.py for why. Two options is one tap, so they are pills
-rather than the dropdown those pages need for eight.
+workshop/views/estimate.py for why. The control itself is still the same
+dropdown pill Completed/Paid Bills use (`.est-filter-btn` / `.est-filter-menu`,
+declared byte-identical to `.del-filter-btn` / `.del-filter-menu`) rather than
+a pair of chips — changed on the owner's instruction so the filter looks the
+same wherever it appears, even where it only ever offers two choices.
 ================================================================================
 {% endcomment %}
 
@@ -132,16 +135,6 @@ rather than the dropdown those pages need for eight.
         min-width: 0;
     }
 
-    /* The two chips are ONE unit and wrap as one. Left to themselves they broke
-       apart onto separate lines on a phone — the search box takes the first
-       row, then "This Year" wrapped alone and "All Time" wrapped again, which
-       read as three unrelated controls stacked up. */
-    .est-chip-group {
-        display: flex;
-        gap: 8px;
-        flex: 0 0 auto;
-    }
-
     .est-search-wrap .search-icon {
         position: absolute;
         left: 12px; top: 50%;
@@ -174,7 +167,12 @@ rather than the dropdown those pages need for eight.
 
     .est-search-input::placeholder { color: var(--color-text-muted); }
 
-    .est-chip {
+    /* Filter Button — same shape as Completed's .del-filter-btn, values kept
+       byte-identical on purpose: this page and Completed are opened back to
+       back and a filter control that looks different between them reads as
+       two products. Two options doesn't change that — see the comment at the
+       top of this file for why it stayed a dropdown even so. */
+    .est-filter-btn {
         display: inline-flex;
         align-items: center;
         gap: 5px;
@@ -183,31 +181,76 @@ rather than the dropdown those pages need for eight.
         background: var(--color-card);
         border: 1px solid var(--color-border);
         border-radius: 999px;
-        padding: 0 14px;
+        padding: 0 12px;
         font-family: var(--est-font-body);
         font-size: 0.78rem;
         font-weight: 600;
         color: var(--color-text);
-        text-decoration: none;
-        white-space: nowrap;
         cursor: pointer;
-        /* Paint only. NEVER `transition: all` on a pill — it animates
-           flex-grow, and the chip stays pinned at its content width with the
-           correct rule matching and no way to see why. */
-        transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+        box-shadow: 0 1px 3px var(--color-shadow);
+        white-space: nowrap;
+        flex-shrink: 0;
+        transition: border-color 0.15s;
     }
 
-    .est-chip:hover { border-color: #94a3b8; color: var(--color-text); }
+    .est-filter-btn:hover { border-color: var(--est-accent); }
+    .est-filter-btn .bi-funnel { font-size: 0.72rem; color: var(--color-text-muted); }
+    .est-filter-btn .bi-chevron-down { font-size: 0.6rem; opacity: 0.5; }
 
-    /* SLATE, not the accent. "New Estimate" is the accent, and when the active
-       filter wore the same indigo the page had two equally loud purple pills
-       doing completely different jobs — one creates a record, one narrows a
-       list. Different role, different colour; the accent now means "this
-       button makes something". */
-    .est-chip.active {
+    @media (max-width: 640px), (pointer: coarse) {
+        .est-filter-btn { padding: 0 14px; font-size: 0.85rem; }
+        .est-filter-btn .bi-funnel { font-size: 0.8rem; }
+    }
+
+    /* Filter Dropdown — same shape as Completed's .del-filter-menu. */
+    .est-filter-menu {
+        border-radius: 16px;
+        border: 1px solid var(--color-border);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.14), 0 6px 16px rgba(0,0,0,0.07);
+        padding: 4px;
+        min-width: 155px;
+        width: max-content;
+    }
+    .est-filter-menu .dropdown-item {
+        border-radius: 8px;
+        font-family: var(--est-font-body);
+        font-size: 0.92rem;
+        font-weight: 500;
+        padding: 11px 14px;
+        color: var(--color-text);
+        transition: background 0.12s, color 0.12s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .est-filter-menu .dropdown-item .item-icon {
+        font-size: 0.85rem;
+        opacity: 0.38;
+        flex-shrink: 0;
+        width: 16px;
+        text-align: center;
+        transition: opacity 0.12s;
+    }
+    .est-filter-menu .dropdown-item:hover {
+        background: rgba(79, 70, 229, 0.07);
+        color: var(--est-accent);
+    }
+    .est-filter-menu .dropdown-item:hover .item-icon { opacity: 0.7; }
+    /* SLATE, not the accent, for the same reason the old chip's active state
+       was slate — "New Estimate" is the accent, and an active filter wearing
+       the same indigo made two equally loud purple controls doing completely
+       different jobs. */
+    .est-filter-menu .dropdown-item.active {
         background: #334155;
-        border-color: #334155;
         color: #fff;
+        font-weight: 700;
+    }
+    .est-filter-menu .dropdown-item.active .item-icon { opacity: 1; }
+    .est-filter-menu .dropdown-item.active::after {
+        content: '✓';
+        margin-left: auto;
+        font-size: 0.75rem;
+        font-weight: 900;
     }
 
     /* ── The list ───────────────────────────────────────────── */
@@ -432,23 +475,16 @@ rather than the dropdown those pages need for eight.
         }
 
         {% comment %}
-        Search and BOTH chips on one row. The chips shrink to make room — they
-        are two short words and do not need a 44px pill each once the search box
-        is competing for the same 360px. `flex-basis: 0` on the search is what
-        lets it take whatever is left instead of forcing a wrap at its natural
-        width.
-
-        The sizes here were cut further than they needed to be. Measured at
-        375px the search text was 12.2px and the chips 11.5px, and the row was
-        fitting with room to spare; they are back up to something readable, with
-        the fit re-checked at 360px (the narrowest phone this workshop uses) —
-        search 145px, both chips intact, no wrap.
+        Search and the filter button on one row. The filter is now a single
+        dropdown pill (see the top-of-file comment for why it stayed a
+        dropdown at two options) rather than two chips, so it no longer
+        competes for width the way a pair of chips did — but the search box
+        keeps its own `flex-basis: 0` squeeze regardless, so it never forces
+        a wrap even on the narrowest phone this workshop uses (360px).
         {% endcomment %}
         .est-search-wrap { flex: 1 1 0; min-width: 90px; }
         .est-search-input { padding: 0 12px 0 30px; font-size: 0.84rem; }
         .est-search-wrap .search-icon { left: 11px; }
-        .est-chip { padding: 0 11px; font-size: 0.78rem; }
-        .est-chip-group { gap: 6px; }
 
         /* The title shrinks before the button does — "New Estimate" is the
            action, and a page whose only action has wrapped to its own line
@@ -518,11 +554,21 @@ rather than the dropdown those pages need for eight.
                        value="{{ q }}" autocomplete="off">
             </form>
 
-            <div class="est-chip-group">
-                {% for key, label in filters %}
-                <button type="button" class="est-chip{% if filter_type == key %} active{% endif %}"
-                        data-filter="{{ key }}">{{ label }}</button>
-                {% endfor %}
+            <div class="dropdown">
+                <button id="estimateFilterBtn" class="est-filter-btn" type="button" data-bs-toggle="dropdown">
+                    <i class="bi bi-funnel"></i>
+                    <span id="estimateFilterLabel">
+                        {% for key, label in filters %}{% if filter_type == key %}{{ label }}{% endif %}{% endfor %}
+                    </span>
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end est-filter-menu">
+                    {% for key, label in filters %}
+                    <li><a class="dropdown-item {% if filter_type == key %}active{% endif %}" data-filter="{{ key }}" href="#">
+                        <i class="bi {% if key == 'all' %}bi-infinity{% else %}bi-calendar3{% endif %} item-icon"></i>{{ label }}
+                    </a></li>
+                    {% endfor %}
+                </ul>
             </div>
         </div>
     </div>
@@ -581,13 +627,16 @@ rather than the dropdown those pages need for eight.
             timer = setTimeout(function () { fetchResults(1); }, 250);
         });
 
-        document.querySelectorAll('.est-chip').forEach(function (chip) {
-            chip.addEventListener('click', function () {
-                document.querySelectorAll('.est-chip').forEach(function (c) {
-                    c.classList.remove('active');
+        var filterLabel = document.getElementById('estimateFilterLabel');
+        document.querySelectorAll('.est-filter-menu a[data-filter]').forEach(function (item) {
+            item.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelectorAll('.est-filter-menu a[data-filter]').forEach(function (a) {
+                    a.classList.remove('active');
                 });
-                chip.classList.add('active');
-                filter = chip.getAttribute('data-filter');
+                item.classList.add('active');
+                filter = item.getAttribute('data-filter');
+                if (filterLabel) filterLabel.textContent = item.textContent.trim();
                 fetchResults(1);
             });
         });

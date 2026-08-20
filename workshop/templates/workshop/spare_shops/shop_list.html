@@ -55,26 +55,6 @@
       <i class="bi bi-box-seam"></i>
       <span class="d-none d-sm-inline ms-2">Unassigned</span>
     </a>
-    <button class="btn btn-primary fw-bold rounded-pill flex-shrink-0"
-            style="white-space: nowrap;"
-            data-bs-toggle="modal" data-bs-target="#createShopModal">
-      <i class="bi bi-plus-lg"></i>
-      <span class="d-none d-sm-inline ms-1">New Shop</span>
-    </button>
-    <div class="dropdown flex-shrink-0">
-      <button class="btn btn-light border rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-              style="width: 38px; height: 38px;" type="button"
-              data-bs-toggle="dropdown" aria-expanded="false" title="More options">
-        <i class="bi bi-three-dots-vertical"></i>
-      </button>
-      <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px;">
-        <li>
-          <a class="dropdown-item py-2" href="{% url 'spare_shop_archived' %}">
-            <i class="bi bi-archive me-2"></i> Archived Shops
-          </a>
-        </li>
-      </ul>
-    </div>
   </div>
   {% endif %}
 </div>
@@ -87,7 +67,28 @@
   <div class="card-body py-3">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="text-white fw-bold"><i class="bi bi-gear-wide-connected me-2"></i>{{ shops|length }} Shop{{ shops|length|pluralize }} Registered</span>
-      <span class="text-white-50 small">Showing all active spare shops</span>
+      {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+      <div class="dropdown flex-shrink-0">
+        <button class="btn btn-light border rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                style="width: 38px; height: 38px;" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false" title="More options">
+          <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px;">
+          <li>
+            <button type="button" class="dropdown-item py-2" data-bs-toggle="modal" data-bs-target="#createShopModal">
+              <i class="bi bi-plus-lg me-2"></i> New Shop
+            </button>
+          </li>
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <a class="dropdown-item py-2" href="{% url 'spare_shop_archived' %}">
+              <i class="bi bi-archive me-2"></i> Archived Shops
+            </a>
+          </li>
+        </ul>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -142,6 +143,13 @@
           data-bs-toggle="modal" data-bs-target="#createShopModal">
     + Add First Shop
   </button>
+  {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+  <div class="mt-2">
+    <a href="{% url 'spare_shop_archived' %}" class="text-muted small">
+      <i class="bi bi-archive me-1"></i> View Archived Shops
+    </a>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
