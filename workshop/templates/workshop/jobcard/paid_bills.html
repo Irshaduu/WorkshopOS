@@ -123,13 +123,15 @@
     }
     .pb-search-input {
         width: 100%;
+        height: 40px;
+        box-sizing: border-box;
         border: 1px solid var(--color-border);
         border-radius: 999px;
         background: var(--color-card);
         font-family: var(--font-body);
         font-size: 0.8rem;
         color: var(--color-text);
-        padding: 7px 14px 7px 32px;
+        padding: 0 14px 0 32px;
         outline: none;
         transition: border-color 0.15s, box-shadow 0.15s;
         box-shadow: 0 1px 3px var(--color-shadow);
@@ -145,10 +147,12 @@
         display: inline-flex;
         align-items: center;
         gap: 5px;
+        height: 40px;
+        box-sizing: border-box;
         background: var(--color-card);
         border: 1px solid var(--color-border);
         border-radius: 999px;
-        padding: 7px 12px;
+        padding: 0 12px;
         font-family: var(--font-body);
         font-size: 0.78rem;
         font-weight: 600;
@@ -163,8 +167,10 @@
     .pb-filter-btn .bi-funnel      { font-size: 0.72rem; color: var(--color-text-muted); }
     .pb-filter-btn .bi-chevron-down { font-size: 0.6rem; opacity: 0.5; }
 
+    /* Search and filter share one explicit 40px height, set on both rules
+       above — level at every width; only the font size grows on touch. */
     @media (max-width: 640px), (pointer: coarse) {
-        .pb-filter-btn { min-height: 40px; padding: 8px 14px; font-size: 0.85rem; }
+        .pb-filter-btn { padding: 0 14px; font-size: 0.85rem; }
         .pb-filter-btn .bi-funnel { font-size: 0.8rem; }
     }
 
@@ -296,7 +302,7 @@
             <i class="bi bi-search search-icon"></i>
             <input type="text" id="paidSearch" name="q"
                    class="pb-search-input"
-                   placeholder="Search reg, customer, brand, model, bill no…"
+                   placeholder="Search…"
                    value="{{ q }}" autocomplete="off">
         </form>
 

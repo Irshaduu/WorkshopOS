@@ -125,13 +125,15 @@
 
     .jl-search-input {
         width: 100%;
+        height: 40px;
+        box-sizing: border-box;
         border: 1px solid var(--color-border);
         border-radius: 999px;
         background: var(--color-card);
         font-family: var(--font-body);
         font-size: 0.8rem;
         color: var(--color-text);
-        padding: 7px 34px 7px 32px;
+        padding: 0 34px 0 32px;
         outline: none;
         transition: border-color 0.15s, box-shadow 0.15s;
         box-shadow: 0 1px 3px var(--color-shadow);
@@ -181,7 +183,7 @@
             <i class="bi bi-search search-icon"></i>
             <input type="text" name="q" id="jobsSearchInput"
                    value="{{ q }}"
-                   placeholder="Search reg, brand, model…"
+                   placeholder="Search…"
                    class="jl-search-input" autocomplete="off">
             {% if q %}
             <a href="{% url 'jobcard_list' %}" class="jl-clear-btn">

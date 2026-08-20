@@ -49,7 +49,7 @@
                 <i class="bi bi-search search-icon"></i>
                 <input type="text" name="q" id="carSearchInput" value="{{ q|default:'' }}"
                        class="cp-search-input"
-                       placeholder="Search reg, owner, brand, model…"
+                       placeholder="Search…"
                        aria-label="Search cars"
                        autocomplete="off" enterkeyhint="search">
             </form>
@@ -174,12 +174,14 @@
 
     .cp-search-input {
         width: 100%;
+        height: 40px;
+        box-sizing: border-box;
         border: 1px solid var(--color-border);
         border-radius: 999px;
         background: var(--color-card);
         font-size: 0.8rem;
         color: var(--color-text);
-        padding: 7px 14px 7px 32px;
+        padding: 0 14px 0 32px;
         outline: none;
         /* Paint only. Never `transition: all` on a form control in this
            codebase — CLAUDE.md records the afternoon that cost. */

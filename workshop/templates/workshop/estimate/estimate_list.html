@@ -153,13 +153,15 @@ rather than the dropdown those pages need for eight.
 
     .est-search-input {
         width: 100%;
+        height: 40px;
+        box-sizing: border-box;
         border: 1px solid var(--color-border);
         border-radius: 999px;
         background: var(--color-card);
         font-family: var(--est-font-body);
         font-size: 0.8rem;
         color: var(--color-text);
-        padding: 10px 14px 10px 32px;
+        padding: 0 14px 0 32px;
         outline: none;
         transition: border-color 0.15s, box-shadow 0.15s;
         box-shadow: 0 1px 3px var(--color-shadow);
@@ -176,10 +178,12 @@ rather than the dropdown those pages need for eight.
         display: inline-flex;
         align-items: center;
         gap: 5px;
+        height: 40px;
+        box-sizing: border-box;
         background: var(--color-card);
         border: 1px solid var(--color-border);
         border-radius: 999px;
-        padding: 9px 14px;
+        padding: 0 14px;
         font-family: var(--est-font-body);
         font-size: 0.78rem;
         font-weight: 600;
@@ -441,9 +445,9 @@ rather than the dropdown those pages need for eight.
         search 145px, both chips intact, no wrap.
         {% endcomment %}
         .est-search-wrap { flex: 1 1 0; min-width: 90px; }
-        .est-search-input { padding: 9px 12px 9px 30px; font-size: 0.84rem; }
+        .est-search-input { padding: 0 12px 0 30px; font-size: 0.84rem; }
         .est-search-wrap .search-icon { left: 11px; }
-        .est-chip { padding: 8px 11px; font-size: 0.78rem; }
+        .est-chip { padding: 0 11px; font-size: 0.78rem; }
         .est-chip-group { gap: 6px; }
 
         /* The title shrinks before the button does — "New Estimate" is the
@@ -510,7 +514,7 @@ rather than the dropdown those pages need for eight.
             <form id="estimateSearchForm" class="est-search-wrap" onsubmit="return false;">
                 <i class="bi bi-search search-icon"></i>
                 <input type="text" id="estimateSearch" name="q" class="est-search-input"
-                       placeholder="Search reg no, car, customer, estimate no…"
+                       placeholder="Search…"
                        value="{{ q }}" autocomplete="off">
             </form>
 

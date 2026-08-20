@@ -146,8 +146,8 @@ class TheSearchLooksLikeCompletedsTests(CarProfileBase):
     written; this catches one of them being edited afterwards.
     """
 
-    SHARED = ('border-radius: 999px', 'font-size: 0.8rem',
-              'padding: 7px 14px 7px 32px', 'box-shadow: 0 1px 3px var(--color-shadow)')
+    SHARED = ('border-radius: 999px', 'font-size: 0.8rem', 'height: 40px',
+              'padding: 0 14px 0 32px', 'box-shadow: 0 1px 3px var(--color-shadow)')
 
     def _css(self, path):
         from django.conf import settings
