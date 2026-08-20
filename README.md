@@ -5,8 +5,12 @@ cards, inventory, spare and supplier shops, fleet billing, estimates, invoicing,
 cashbook, photos and owner analytics in one platform.
 
 > **Start here:** [`SYSTEM_MAP.html`](SYSTEM_MAP.html) — the whole system on one
-> page, as a drawing. Open it in a browser; every section is a card and every flow
-> is a line.
+> page, as a drawing. Every section is a card, every flow is a line, and colour
+> says what kind of flow it is. A dark version is at
+> [`SYSTEM_MAP_DARK.html`](SYSTEM_MAP_DARK.html).
+>
+> To get a PDF: open in a browser → Print → **A4 Landscape**, background graphics
+> **on**, headers and footers **off**.
 >
 > **Docs:** technical reference (models, routes, templates) →
 > [`MASTER_BLUEPRINT.md`](MASTER_BLUEPRINT.md) · workflow walkthrough →
