@@ -6,6 +6,9 @@ and owner analytics, in one Django application.
 
 > **[SYSTEM_MAP.pdf](SYSTEM_MAP.pdf)** — the whole system on one page: every section
 > as a card, every flow as a line.
+>
+> **[TITAN_SPEC_SHEET.md](TITAN_SPEC_SHEET.md)** — every file, model, route and rule,
+> counted from the repository rather than estimated.
 
 ---
 
