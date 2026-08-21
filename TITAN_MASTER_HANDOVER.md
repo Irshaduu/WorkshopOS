@@ -168,14 +168,16 @@ can remotely terminate any of them from the management dashboard.
 ### 8. The warehouse pulse — stock delta engine
 
 Django signals in `inventory/signals.py` orchestrate stock across **three independent
-groups (8 handlers)**, all using the same pre_save-snapshot + post_save-delta pattern:
+groups (10 handlers)**, all using the same pre_save-snapshot + post_save-delta pattern:
 
 1. **Workshop consumption** (3) — replacement, quantity adjustment, deletion. Deducts
    for `source='INVENTORY'` rows only, resolved through the `item` FK.
 2. **JobCard soft-delete reversal** (2) — **dormant.** Job cards are hard-deleted and
    the delete guard forbids deleting a card that still holds spares.
-3. **Supplier restocking** (3) — creation, edit, deletion. The **only** thing that
-   moves `Item.avg_cost`.
+3. **Supplier restocking** (5) — three on `SupplierRestockItem` (creation, edit,
+   deletion), the **only** thing that moves `Item.avg_cost`; plus a
+   `SupplierRestockBill` pre/post_save pair that re-costs the bill's lines when its
+   **date** or its **discount** changes, since neither of those lives on a line.
 
 **Warehouse stock is allowed to go negative**, deliberately — a negative balance is
 self-healing and is the signal that a Supplies Shop bill is missing. See `CLAUDE.md`.
@@ -277,8 +279,8 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
   (`USE_SQLITE=true`) and automatically for `manage.py test`.
 - **Modular views**: the `workshop` app's views live in a `views/` package of **18
   focused modules**, with full backward compatibility via re-exports in `__init__.py`.
-  Six further modules hold **no views at all** and exist so that one rule has exactly
-  one implementation — see `CLAUDE.md` § Architecture.
+  **Seven** further modules hold **no views at all** and exist so that one rule has
+  exactly one implementation — see `CLAUDE.md` § Architecture.
 - **Deployment**: Railway (app + PostgreSQL in one project) behind
   `app.formuladservice.in`.
 
@@ -296,7 +298,7 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
 | 4 | **Auth & notifications rebuild** | Delivered in six ordered phases so each left a working system: owner identity into the DB → Change Password → emailed reset code → login rebuilt → Control Hub locked to Owners → in-app feed. Web Push followed once the app was hosted. |
 | 5 | **Owner Analysis rebuild** | The 7-zone placeholder system was deleted entirely and replaced with the two pages in §II.9. |
 | 6 | **PostgreSQL migration** | Both environments. SQLite retained for exactly two jobs. |
-| 7 | **Repo & docs cleanup** | Unreferenced files removed; every count in `MASTER_BLUEPRINT.md` recounted from the code. |
+| 7 | **Repo & docs cleanup** | Unreferenced files removed; every count in `MASTER_BLUEPRINT.md` re-derived from the code. **This is recurring, not finished** — the 2026-08-22 pass found the docs describing access rules the code had outgrown (the whole Supplier-Shops module and Control Hub had been tightened to Office/Owner while three docs still said Floor could reach them), a Trash-with-restore screen that no longer exists, a `CarModel.sample_image` field that never did, and six counts that had drifted (10 signal handlers reported as 8, 11 forms as 12, 16 `notify()` call sites as 18, 13 template filters as 12, 11 commands as 9, 30 models as 28). **Re-derive before quoting; do not trust a number because it is written down.** |
 | 8 | **Photos** | Car photos on a saved job card, a box per Spare Parts row, and a read-only box on Purchase History. Storage is S3-compatible (Cloudflare R2, or Supabase as the no-card fallback), reached by the browser directly on presigned URLs — the app has no upload path and no media backend. Optional: with no credentials the section is simply absent. |
 | 9 | **One origin, and a page that says it is loading** | Delivered 2026-08-21 as two commits. Every typed rupee amount now goes through `workshop/money.py` — the four payment screens had kept hand-rolled parsing, so `Infinity` settled a bill at an infinite receipt and 11 digits 500'd on Postgres. `GZipMiddleware` is on (211 KB → 55 KB on the job card form), which matters because `no-store` makes every page uncacheable. Every third-party asset is self-hosted from `static/vendor/`. And a 3px progress bar reports navigations, plus in-page updates that outlast 250 ms — the installed PWA is `display: standalone`, so it has no address bar or tab spinner of its own. Along the way: two JS tests that could never have passed now do, and a 300 ms debounce was removed from filter and pager taps. |
 

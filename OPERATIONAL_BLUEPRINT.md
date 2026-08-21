@@ -59,8 +59,12 @@ graph TD
    - View the Paid Bills Dashboard over ANY period, with the grand Total Collected (Office sees the last 7 days and no grand total)
    - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
-   - Monitor all active login sessions
-   - Remotely revoke any staff access
+   - Monitor all active login sessions, and remotely revoke any staff access
+   - **The whole Control Hub (`/manage/`)** — create, delete and reset staff logins;
+     unlock a locked account; add, edit and retire staff on the roster. Office cannot
+     reach any of it, by URL or otherwise. Owner accounts are never managed *from*
+     here: an owner changes their own password at `/change-password/` or recovers it
+     by emailed code
    - Receive notifications in-app (nav bell): sign-ins, discounts over **₹3,500**, permanent deletions, archives, salary activity, and the account-security events (lockouts, resets, reset-code abuse, login created/deleted, staff password changed)
    - Change their own password, or recover it by emailed 6-digit code
    - **No** Django Admin access — `is_staff=False` on purpose; see `CLAUDE.md`
@@ -78,8 +82,6 @@ graph TD
    - Manage Spare Shops (create, edit, pay, view ledger, print) and edit or delete rows in the Unassigned Spares Hub
    - Manage Master Lists (Brands, Models, Spares, Concerns)
    - View Car Profiles (vehicle history)
-   - Create/Delete/Reset passwords for staff accounts
-   - Add/Edit/Toggle mechanics
    - Run Data Cleanup (rename, merge, delete duplicates)
    - Manage inventory Categories (add/list/edit) + create/edit products via Supplier Shops (Add Product); all supplier-shop management
    - Record and review Cashbook entries (income & expenses ledger)
@@ -421,7 +423,7 @@ Delete a job card              -->   (guarded: a card holding spares can't be de
                                       clear/unassign its spares first, so no stock moves)
 ```
 
-Stock sync runs on **three signal groups** (8 handlers): warehouse draws (above — Inventory-section rows only), a whole-job-card soft-delete/restore reversal that is **now dormant** (job cards are hard-deleted and a card holding spares can't be deleted), and supplier restock (§5B). All stock changes are signal-driven, never mutated directly in views — and there is **no manual stock-number editing anywhere** (Low Stock is read-only).
+Stock sync runs on **three signal groups** (10 handlers): warehouse draws (above — Inventory-section rows only), a whole-job-card soft-delete/restore reversal that is **now dormant** (job cards are hard-deleted and a card holding spares can't be deleted), and supplier restock (§5B — 5 handlers there: 3 that move stock, plus a bill-level pair that re-costs when a bill's date or discount changes). All stock changes are signal-driven, never mutated directly in views — and there is **no manual stock-number editing anywhere** (Low Stock is read-only).
 
 ### Where inventory items come from
 Items are created **only** via **Supplier → Add Product** (which requires an Average Stock — see below); there is no separate "add item" screen, and "Manage Database" is a read-only Category browser (add/list/edit/delete Category; drill in to see products + their shops). Category names can't be duplicated in any casing, and a category can only be deleted while it is **empty** — Delete simply isn't offered once it holds products. Product name and Average Stock are edited on the supplier catalog, where a product can also be **deactivated** (kept and listed, but excluded from restock bills — enforced when the bill is saved, not merely hidden from the picker).
@@ -518,12 +520,24 @@ Purpose:            Buy parts INTO warehouse    Buy parts FOR specific jobs
 Linked To:          Inventory Items (FK)        Job Card Spare Items (FK)
 Stock Effect:       Increases stock             N/A (tracked separately)
 Bill Structure:     Restock Bills + Line Items  Per-job spare items
-Payment System:     Quick payments + soft-delete Cascade waterfall + JSON snapshot
-Access:             Staff+ (Floor/Office/Owner) Office+ for most; Owner-only
-                    — matches Inventory app     for delete/reverse/permanent-delete
+Payment System:     Running balance; delete     Cascade waterfall; delete
+                    reverses + logs             reverses + logs (JSON snapshot)
+Access:             Office+ (all 23 views)      Office+ for most; Owner-only
+                                                for delete/reverse/permanent-delete
 ```
 
-> ⚠️ **Access asymmetry — worth a design review:** every Supplies-Shop view (including delete-restock-bill and delete-payment) is `@staff_required`, so **Floor mechanics can create/delete supplier bills and payments** — because the whole Inventory app is staff-level. The sibling Spare-Shop module restricts destructive actions to Office/Owner. This is the *current code behavior*, documented here honestly; if Floor should not be touching supplier financial records, the fix is in the code (tighten the decorators), not this doc.
+> **The two modules now agree, and they did not always.** Every Supplies-Shop view —
+> the catalog, restock bills, payments, the AJAX partials, and both deletes — is
+> `@office_required`. **Floor cannot reach any of it.** What Floor keeps in the
+> Inventory app is the read-only side: the stock list, Low Stock, Stock History and
+> the per-mechanic drill-down, five routes in all.
+>
+> This used to be an asymmetry worth flagging: the whole Inventory app was
+> staff-level, so a mechanic could create *and delete* supplier bills and payments
+> while the sibling Spare-Shop module already restricted destructive actions to
+> Office. The decorators were tightened; the recorded fix is that **money-side
+> screens are Office/Owner in both modules, and Floor's inventory access is
+> read-only in both.**
 
 ---
 
@@ -712,15 +726,18 @@ MAIN DASHBOARD (home)
            card"). The heading keeps the true count, so the two add back up.
            Floor is shown no shop name and no price in it.
 
-JOB LIST
-  Shows: ALL job cards (active + completed, not trash)
+JOB LIST (Office / Owner)
+  Shows: ALL job cards (active + completed)
   Searchable, Paginated (45 per page), AJAX live search
 
-LIVE REPORT
-  Shows: The live state of the workshop, read on a phone. Two stacked parts
-         with two different audiences.
+LIVE REPORT — Office / Owner only, WHOLE PAGE
+  Shows: The live state of the workshop, read on a phone. Two stacked parts.
+         Floor gets none of it: every box on the page is supplier names,
+         ordering state or a money-side gap, none of which Floor is shown
+         anywhere else. Floor reads a card from the dashboard car card's own
+         live-details drawer, which is these same four lists.
 
-  Operations board (Office / Owner only)
+  Operations board
     ON THE FLOOR    Mechanics as panels — four names across on a laptop, three
                     on a tablet, two on a phone, wrapping to a second row for
                     the fifth, all panels on a row ending level — with that
@@ -740,7 +757,7 @@ LIVE REPORT
     already fitted and has no ordering workflow to wait on — and only for cars
     still in the workshop.
 
-  Live Jobs (Floor / Office / Owner)
+  Live Jobs
     The detailed card per active car: make, model, registration, the mechanic
     on it, how long it has been in, whether it is on hold, and progress across
     the customer's concerns — then FOUR sections, in the order the work
@@ -884,28 +901,44 @@ SUPPLIES SHOPS (Inventory App — distinct from Spare Shops, see §5B)
   Actions: Create restock bills (auto stock increase), record payments, manage catalog
 
 AUDITS (Owner only)
-  Shows: Security and financial logs
-  High Discounts: Flags jobs where received amount is significantly lower than total bill
-  Deleted Bulk Payers: Tracks manually deleted bulk payer records for accountability
+  High Discounts (/audits/high-discounts/) — the ONE audit view.
+  Lists every card whose shortfall (bill - received) is at or over the flat
+  ₹3,500 in JobCard.HIGH_DISCOUNT_AMOUNT, sorted by amount. It is the
+  compensating control for the rule that books a walk-in's shortfall as a
+  discount, so it reads as what the workshop settled for against what it
+  billed — which is why it is Owner-only while Paid Bills is not.
+  The same constant drives the HIGH_DISCOUNT alert and the settle dialog,
+  so none of the three can disagree about where the line is.
 
 SPARE SHOPS
   Shows: Supplier list with balances
   Drill-down: Full ledger per shop
   Actions: Pay individual items, lump-sum cascade, print ledger
 
-TRASH (Owner only)
-  Shows: Soft-deleted items across 5 tabs
-  Action: Restore or permanently delete
+DELETION HISTORY (Owner only, read-only)
+  Shows: One unified list of every permanent deletion, filterable by entity
+         type, click through to the JSON snapshot taken before the delete.
+  Action: NONE. There is deliberately no restore anywhere in the system —
+          reviving stale financial data corrupts running balances. Accounts
+          that other records point at are ARCHIVED instead, and reactivate
+          from their own per-module Archived list.
+  (This replaced an older Trash screen that offered restore across five tabs.
+   If you are looking for that, it is gone on purpose — see §11.)
 
 CAR PROFILES
   Shows: Unique vehicles grouped by registration
   Drill-down: Full visit history with chronological numbering
 
 INVENTORY
-  Restock: View all stock levels with health bars
-  Manage: Add/edit categories and items
-  Low Stock: Critical items needing reorder
-  History: Who used what, when
+  Stock list: All stock levels with health bars (Floor+, read-only)
+  Manage Database: a READ-ONLY Category browser (Office/Owner) — add, rename
+    and delete categories, and drill in to see the products in one. There is
+    no "add item" screen here: a product is created only through
+    Supplier -> Add Product, which is what makes Average Stock mandatory.
+  Low Stock: below 25% of Average Stock (Floor+, read-only). Negative stock is
+    reported separately as a "stock discrepancy" — it means a supplier bill is
+    missing, not that anything needs reordering.
+  Stock History: who used what, when (Floor+, live query, read-only)
 
 MANAGEMENT DASHBOARD (Owner Control Hub, /manage/)
   Accounts: Create/delete/reset passwords for Office and Floor login accounts

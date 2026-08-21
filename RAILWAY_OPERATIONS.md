@@ -571,8 +571,8 @@ Documented so they are not rediscovered as emergencies.
 
 ### Uploaded images do not work in production
 
-`CarBrand.logo_image` and `CarModel.sample_image` accept uploads, and the brand
-form exposes one. In production they are **silently broken**:
+`CarBrand.logo_image` is the **one** `ImageField` left in the codebase, and
+`CarBrandForm` exposes it. In production it is **silently broken**:
 `formulad_workshop/urls.py` serves media through Django's `static()` helper,
 which returns an empty list when `DEBUG=False` — so the file is written, never
 servable (404), and destroyed by the next deploy.
@@ -581,6 +581,9 @@ Decorative master data, so not a go-live blocker. If you want it working, it
 needs a Railway Volume mounted at `/app/media` plus a way to serve `MEDIA_URL`.
 If you do not, removing `logo_image` from `CarBrandForm` is more honest than an
 upload button that does nothing. Logged as `AUD-0088` in `TECH_DEBT.md`.
+
+*(An earlier version of this note also named `CarModel.sample_image`. That field
+does not exist — `CarModel` carries only `brand`, `name` and `created_at`.)*
 
 ⚠ **This is not the photo path.** Job-card photos never touch the Django
 filesystem — the browser PUTs them straight to the bucket on a presigned URL, so

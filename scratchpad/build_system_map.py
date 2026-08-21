@@ -310,7 +310,7 @@ def build(theme):
             ('rest',  'RESTOCK BILLS',  ['discount pro-rata'],          FLOW['out']),
             ('low',   'LOW STOCK',      ['under 25% - negatives'],      FLOW['stock']),
             ('shist', 'STOCK HISTORY',  ['who drew what'],              FLOW['stock']),
-            ('sig',   'STOCK SIGNALS',  ['8 handlers - automatic'],     FLOW['stock']),
+            ('sig',   'STOCK SIGNALS',  ['10 handlers - automatic'],     FLOW['stock']),
             ('cost',  'AVERAGE COST',   ['weighted - full replay'],     FLOW['stock'])],
             grid(16, B2Y, 544, B2H, 3, 3, top=26)):
         card(cid, *cell, t, ch, accent=ac)

@@ -1572,7 +1572,7 @@ browsers.
 
 The whole event list is **`workshop/notifications.py`**. Add an event to `EVENTS`,
 then call `notify()` from the single place it happens — **never**
-`Notification.objects.create()` in a view. There are **18 call sites across 8
+`Notification.objects.create()` in a view. There are **16 call sites across 8
 modules**; that file is the only way to answer "what does this thing notify
 about?" without grepping.
 
@@ -1998,7 +1998,8 @@ Five things are load-bearing:
 - **It must not fire on things that do not navigate.** Verified: `data-bs-toggle`
   (the drawer and every ⋮ menu), `#` anchors, `target`, `download`, cross-origin,
   the same URL, and **a `confirm()` the person cancelled** — that last one matters,
-  since sixteen templates use `onsubmit="return confirm(…)"`. It is delegated on
+  since eleven templates ask through `confirm()`, mostly as an
+  `onsubmit="return confirm(…)"` attribute. It is delegated on
   `document` in the BUBBLE phase, so the guards that refuse a submit in CAPTURE
   (the Financial Lock, the inventory quantity check) never reach it.
 
@@ -2973,9 +2974,12 @@ modal (`show.bs.modal`, which bubbles, so one document listener catches every on
 native `<dialog>` (no bubbling open event, so `showModal` is wrapped once on the
 prototype), and plain **`window.confirm()`**, wrapped the same way.
 
-⚠ **The third was missed for a day and it was half the app.** The `confirm()` sites are
-`onsubmit="return confirm(…)"` attributes across sixteen templates — nothing about that
-markup looks like a dialog needing wiring — against nineteen of the other two kinds.
+⚠ **The third was missed for a day and it was close to half the sites.** The `confirm()`
+sites are thirteen calls across eleven templates, most of them an
+`onsubmit="return confirm(…)"` attribute — nothing about that markup looks like a
+dialog needing wiring — against seventeen of the other two kinds (fourteen
+`data-bs-toggle="modal"` triggers and three `showModal()` calls, all three of those on
+the invoice).
 → `test_every_way_the_app_asks_a_question_is_hooked` scans the templates for all three
 shapes and fails if sound.js does not hook one it finds, because a *missing* hook is
 invisible to every other kind of test.
@@ -3303,16 +3307,18 @@ reason it is being shown.
 and there is no build step.** Every outside review reaches the same suggestion, so the
 reasoning is recorded here rather than re-argued.
 
-Roughly 188 KB of inline JS across 36 templates (and ~552 KB of inline CSS —
-most templates carry their own `<style>`). Seven shared files exist —
+Roughly 188 KB of inline JS across 36 templates, and ~551 KB of inline CSS across 60
+of the 106 (most templates carry their own `<style>`). Seven shared files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
 `photos-core.js`, `spare_autofill.js` — and the rule for what goes in one is
 **used on more than one page**; what stays inline is genuinely page-specific.
 
 The usual arguments do not apply here:
 - **There is no CSP**, so no hardening is unlocked today.
-- The largest page carries ~12 KB of script read by four devices on one shop's LAN, so
-  caching is a rounding error.
+- The largest page — the job card form — carries ~52 KB of inline script and ~62 KB of
+  inline CSS, read by four devices on one shop's LAN, so caching is a rounding error.
+  It is re-sent on every navigation anyway, because `no-store` makes a signed-in page
+  uncacheable; that is what `GZipMiddleware` is for, not a bundler.
 - **There is no npm, no bundler and no linter, and none will be added.**
 
 That last point is load-bearing: **nothing in the Django suite executes a line of
@@ -3327,7 +3333,7 @@ bundler, no linter. It covers exactly one file, `photos-core.js`, because that f
 *written* to be coverable: pure functions, no DOM, no fetch, a `module.exports` guard at
 the bottom.
 
-⚠ **This does not reopen the extraction argument for the other ~2,660 lines.** Inline
+⚠ **This does not reopen the extraction argument for the other ~3,700 lines.** Inline
 page JS is entangled with the DOM and would have to be **rewritten, not moved**, to be
 testable. What it does establish is the shape for anything NEW: **if a piece of logic can
 fail silently and can be written DOM-free, put it in its own file and test it.**
@@ -3598,7 +3604,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Six modules hold no views at all** — this is the codebase's main structural idea, and
+**Seven modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -3621,7 +3627,7 @@ view-to-view coupling between the two apps for stock changes.
 
 ## Signals-driven stock sync
 
-`inventory/signals.py` has three independent groups (**8 handlers**) on
+`inventory/signals.py` has three independent groups (**10 handlers**) on
 `pre_save`/`post_save`/`post_delete`:
 
 1. **Workshop consumption** (`JobCardSpareItem`, 3 handlers) — deducts stock for
@@ -3632,9 +3638,15 @@ view-to-view coupling between the two apps for stock changes.
 2. **JobCard soft-delete reversal** (2 handlers) — **dormant**. Job cards are
    hard-deleted and the delete guard forbids deleting a card that still holds spares, so
    `is_deleted` never flips. Kept for safety; don't rely on them for new logic.
-3. **Supplier restocking** (`SupplierRestockItem`, 3 handlers) — increases stock using
-   the same snapshot+delta pattern, and is the **only** thing that moves `Item.avg_cost`
-   (via `recompute_average_cost`, a full replay).
+3. **Supplier restocking** (5 handlers) — 3 on `SupplierRestockItem`, which increase
+   stock using the same snapshot+delta pattern and are the **only** thing that moves
+   `Item.avg_cost` (via `recompute_average_cost`, a full replay); plus a
+   `SupplierRestockBill` **pre/post_save pair** that re-costs the bill's items when
+   `bill_date` or `discount_amount` changes, since neither of those lives on a line.
+
+⚠ **Count them before quoting the number.** This group grew from 3 handlers to 5 when
+the bill-terms pair was added, and every doc went on saying "8 handlers" for months —
+the grouping stayed right while the total went stale.
 
 ## Settings
 
@@ -3784,7 +3796,7 @@ close**. Each of those has caught a real defect:
   picture — they add up to one number. The remaining shared-corridor lines are
   spaced by hand, ~12px minimum.
 
-⚠ **It states counts** (14 events, 10 critical, 8 signal handlers, ₹3,500, 25%,
+⚠ **It states counts** (14 events, 10 critical, 10 signal handlers, ₹3,500, 25%,
 keeps 14). Those drift like every other count in these docs — check them when you
 touch it.
 
