@@ -1,4 +1,5 @@
 {% extends 'workshop/base.html' %}
+{% load static %}
 {% load custom_filters %}
 
 {% comment %}
@@ -599,7 +600,7 @@ answer must not leave the "Show all" button inert.
   });
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <script>
 (function () {
   const read = id => JSON.parse(document.getElementById(id).textContent);
