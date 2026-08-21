@@ -889,6 +889,13 @@ inline SVG. A framework reset shipping upstream could move a column on a
 customer's bill, and a workshop printing on a dropped connection got an unstyled
 page.
 
+*Since 2026-08-21 the whole app is third-party-free* (see `static/vendor/`), so
+this is no longer the one page that is. **The rule still stands on its own terms
+and is stricter:** the invoice loads nothing from ANY origin, including ours —
+inline, not merely self-hosted — because a bill must print identically whatever
+the network is doing, and because the sheet must carry no reference a stylesheet
+edit could turn into a fetch.
+
 **Assert that on FETCHES, not on the string "http".** A blunt
 `assertNotIn('http://', html)` breaks the moment an SVG goes in, because every SVG
 declares `xmlns="http://www.w3.org/2000/svg"` — an XML namespace *identifier*, a
@@ -1789,6 +1796,29 @@ protecting is behind a login.
 on every authenticated request, throttled to a 5-minute cooldown per session.
 Owners can remotely terminate any active session from the management dashboard.
 
+**`GZipMiddleware` is on, and it sits BELOW WhiteNoise.** The two facts above
+combine into a bill: pages are large (the job card form renders 211 KB, most of it
+the inline CSS and JS the frontend deliberately keeps in the template) and
+`no-store` means every navigation re-sends all of it. Railway's proxy does not
+compress. It gzips to 55 KB — 26% — with the cashbook at 22% and the dashboard at
+24%. Below WhiteNoise on purpose: WhiteNoise short-circuits static requests, so
+from there they never reach this middleware, which is right because it already
+serves its own pre-compressed `.gz`/`.br`.
+
+**On BREACH — the preconditions DO exist here, and two Django defences cover
+them.** `?q=` is reflected on Completed, Paid Bills, Car Profiles and Estimates,
+all of which also carry a CSRF token, which is the classic setup. Both defences
+were verified rather than assumed: the CSRF token is **re-masked on every render**
+(three renders, three different tokens), so there is no stable secret for a
+compression-length oracle to walk a byte at a time; and
+`GZipMiddleware.max_random_bytes = 100` pads every response with a random-length
+gzip filename field, added by Django for exactly this reason. No other secret
+lives in a response body — the session id is an HttpOnly cookie. **Revisit if a
+page ever renders a long-lived token into its HTML.**
+→ `ThePagesAreCompressedOnTheWayOutTests` asserts the BEHAVIOUR, not the
+MIDDLEWARE list: a settings test would pass while the middleware sat in a position
+where it never saw a response.
+
 ## Deletion model — two verbs
 
 **Accounts that other records point to** — Spare Shops, Fleet Accounts, Supplier
@@ -1938,6 +1968,43 @@ strings and nothing was reading what the page actually *said*. Use
 → `workshop/tests/test_template_comments.py` scans every template statically.
 
 ## Navigation — one bar, one drawer
+
+**A 3px bar at the top reports that something is on its way, because the installed
+app has no chrome to borrow.** `manifest.json` declares `"display": "standalone"`,
+which removes the address bar and the tab spinner — so in the installed app a tap
+was answered with *nothing at all* until the new page painted, and every page here
+is a full server-rendered navigation over a `no-store` response, which is a real
+round trip. `navProgress` in `script.js`, `.nav-progress` in `base.html`.
+
+Five things are load-bearing:
+
+- **A navigation paints AT ONCE; an in-page update has to EARN it.** Half the list
+  screens never navigate — their filters are `href="#"`, fetching a partial and
+  calling `pushState`, so the URL changes while the document never unloads. Those
+  call `navProgress.begin()`, which paints only if the work outlasts
+  **`THRESHOLD_MS = 250`**. Measured 22–37ms against the real database, so on the
+  shop laptop nothing appears at all; on an owner's phone, where the same fetch is
+  a real round trip, it does. **That threshold is the whole reason this is not
+  noise.**
+- **It never reaches the end.** Nothing here knows how far along a request is, so
+  it eases towards 90% and waits. A bar that completes and then sits there has lied.
+- **It only ever STARTS on a navigation.** The page it reports on replaces the
+  document, so the bar leaves with the page that created it — there is no
+  completion path to get wrong. A 15s safety timer covers a navigation that never
+  happens.
+- **`transform` only**, so it cannot reflow the page it is describing;
+  `prefers-reduced-motion` keeps the bar and drops the creep, because the
+  information is the point.
+- **It must not fire on things that do not navigate.** Verified: `data-bs-toggle`
+  (the drawer and every ⋮ menu), `#` anchors, `target`, `download`, cross-origin,
+  the same URL, and **a `confirm()` the person cancelled** — that last one matters,
+  since sixteen templates use `onsubmit="return confirm(…)"`. It is delegated on
+  `document` in the BUBBLE phase, so the guards that refuse a submit in CAPTURE
+  (the Financial Lock, the inventory quantity check) never reach it.
+
+⚠ Three templates confirm through a Bootstrap modal that then calls
+`formToSubmit.submit()`. **Programmatic `.submit()` fires no submit event**, so
+those show no bar. Known and left alone.
 
 There is exactly **one** nav: a fixed bar in `base.html` plus a Bootstrap
 off-canvas drawer (`#appDrawer`) behind the Manage/Menu button. There used to be a
@@ -2392,8 +2459,10 @@ deliberately further from the live state than the live state is from hover, and
 The state is keyed on the form's own **`data-locked`**, read in CSS rather than
 script because the lock is applied on a `setTimeout(…, 100)`. It is restated on
 every section heading as the **word** "LOCKED", not an icon-font glyph — a codepoint
-would depend on a stylesheet fetched from a CDN, and this is not the screen to take
-that bet on.
+depends on the icon stylesheet having arrived, and this is not the screen to take
+that bet on. (The argument was originally about the CDN; the font is self-hosted
+now, but a stylesheet that fails to load still paints a blank box where the state
+should be, and a word cannot fail that way.)
 → `ALockedRecordLooksLockedTests`
 
 ⚠ Those rules re-use `.jc-sec-head` / `.jc-sec-icon`, so they are declared at the
@@ -3185,6 +3254,47 @@ hour was once spent testing a JavaScript fix the browser was not running.
 inside an app is never served and `collectstatic` warns about the collision on every
 run.
 
+**EVERY third-party frontend asset is VENDORED into `static/vendor/`, and none of
+it is hand-edited.** Bootstrap's CSS, its icon font and its JS bundle, Chart.js and
+the Barlow families used to come from `cdn.jsdelivr.net` and
+`fonts.googleapis.com` across 14 templates. They are fetched by
+`scratchpad/vendor_assets.py` — the same rule `build_app_icons.py` follows: to
+change a version, change it in the script and re-run, then `collectstatic`.
+
+The reasoning is in `TITAN_MASTER_HANDOVER.md` §Carried into go-live and is not
+repeated here. What belongs in this file are the three things that will bite
+somebody:
+
+⚠ **A `sourceMappingURL` comment fails `collectstatic` outright.** The minified
+bundles end with a pointer to a `.map` file, and `ManifestStaticFilesStorage`
+resolves those references like any other — so the run dies with
+`MissingFileError: … bootstrap.bundle.min.js.map` unless the maps are vendored
+too. The script strips the comment, which changes no executable byte. **Anything
+new added under `static/vendor/` needs the same treatment.**
+
+⚠ **`{% load static %}` must appear ABOVE the first `{% static %}` in the file.**
+Django resolves tags at parse time, so a load tag further down is not merely
+untidy — every page raises `TemplateSyntaxError: Invalid block tag 'static'`.
+`base.html` had its load tags on line 18 while the stylesheet links moved to lines
+12 and 15, and the whole app 500'd. They now sit at the very top of the file so a
+`<link>` added higher in the `<head>` cannot repeat it. **A child template needs
+its own `{% load static %}`** — it is not inherited through `{% extends %}`.
+
+⚠ **The Railway Build Command is load-bearing and does NOT travel with the repo.**
+`collectstatic` is not in the `Procfile`; it is set per project in the Railway
+dashboard (`GO_LIVE_RUNBOOK.md` §1.2). Without it the vendored assets are never
+collected and the manifest storage 500s every page.
+
+**`.gitattributes` marks `static/vendor/**` as `-text`**, because `core.autocrlf`
+is true on the development machine: without it a Windows working copy holds a
+different file from the one `collectstatic` hashes on the server.
+
+**The error pages load NOTHING — not even from our own origin.** `403.html`,
+`404.html` and `500.html` each pulled 233 KB of Bootstrap to style one link; they
+carry that button themselves and are ~1.4 KB. That matters most on `500.html`,
+where depending on static serving means an error page that breaks for the very
+reason it is being shown.
+
 ---
 
 # Frontend architecture — settled, not a backlog item
@@ -3230,6 +3340,19 @@ entry.
 
 **No new runtime dependency is added without a defect it is the only fix for.**
 
+**The near-copies drifted a second time, and it was a DELAY rather than a bug.**
+`updateResults()` computed `const delay = (event && event.type === 'submit') ? 0 : 300`
+— so only a search-form submit skipped the keystroke debounce, and a **filter tap, a
+pager tap and the custom-date Apply each waited 300ms for nothing**. Measured 367ms
+from tap to results on Completed, of which the fetch was ~35ms. It now reads
+`(event && event.type === 'input') ? 300 : 0`: debounce TYPING, nothing else.
+
+Worth recording because the *spread* was the surprise — only **three** files had it
+(Completed, Paid Bills, Pending Payments). Cashbook and Estimates already called
+their fetch directly from the filter handler, and Car Profiles and Job Cards have no
+filter or pager at all, only a search box. **Check each copy before assuming a fix
+applies to all seven.**
+
 *Consequence, accepted knowingly:* the AJAX list-search pattern exists as **seven
 near-copies** across the list pages. It has drifted once already — an
 out-of-order-response guard was written in `estimate_list.html` and never reached the
@@ -3258,13 +3381,20 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 54 files, 1,519 tests. Always SQLite (see below).
+# Full test suite — 54 files, 1,524 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
 ```bash
 # JavaScript tests — a SECOND command, not part of `manage.py test`.
 node --test "workshop/tests/js/*.test.js"
+```
+
+```bash
+# Re-fetch the vendored frontend assets (Bootstrap, its icon font, Chart.js,
+# Barlow). Only needed when changing a version — the files are committed.
+# ALWAYS followed by collectstatic, or the manifest still points at the old ones.
+python scratchpad/vendor_assets.py && python manage.py collectstatic --noinput
 ```
 
 ```bash
@@ -3343,7 +3473,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 | `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
-whole database — not something to point at hosted Postgres — and 1,519 tests at ~75 ms
+whole database — not something to point at hosted Postgres — and 1,524 tests at ~75 ms
 per round-trip would take hours. There is deliberately no flag to remember and no way to
 run the suite against live data by accident (`development.py` keys off
 `sys.argv[1] == 'test'`).
@@ -3556,7 +3686,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **54 files, 1,519 tests**.
+files) — **54 files, 1,524 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

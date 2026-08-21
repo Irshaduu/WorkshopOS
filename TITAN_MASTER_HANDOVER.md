@@ -29,7 +29,7 @@ leave days are typed once a month instead of tracked daily, and why performance 
 judged against real volume rather than generic "web scale".
 
 **The standard:** functional integrity across every operation that touches money or
-access. Backed by **54 test files / 1,519 tests** covering security, views, signals,
+access. Backed by **54 test files / 1,524 tests** covering security, views, signals,
 financial logic, cashbook, spare shops, salary settlement, the profit engine, the
 printed documents, photos and the email transport behind password reset.
 
@@ -298,16 +298,17 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
 | 6 | **PostgreSQL migration** | Both environments. SQLite retained for exactly two jobs. |
 | 7 | **Repo & docs cleanup** | Unreferenced files removed; every count in `MASTER_BLUEPRINT.md` recounted from the code. |
 | 8 | **Photos** | Car photos on a saved job card, a box per Spare Parts row, and a read-only box on Purchase History. Storage is S3-compatible (Cloudflare R2, or Supabase as the no-card fallback), reached by the browser directly on presigned URLs — the app has no upload path and no media backend. Optional: with no credentials the section is simply absent. |
+| 9 | **One origin, and a page that says it is loading** | Delivered 2026-08-21 as two commits. Every typed rupee amount now goes through `workshop/money.py` — the four payment screens had kept hand-rolled parsing, so `Infinity` settled a bill at an infinite receipt and 11 digits 500'd on Postgres. `GZipMiddleware` is on (211 KB → 55 KB on the job card form), which matters because `no-store` makes every page uncacheable. Every third-party asset is self-hosted from `static/vendor/`. And a 3px progress bar reports navigations, plus in-page updates that outlast 250 ms — the installed PWA is `display: standalone`, so it has no address bar or tab spinner of its own. Along the way: two JS tests that could never have passed now do, and a 300 ms debounce was removed from filter and pager taps. |
 
 ### Open
 
 | # | Item | State |
 |---|---|---|
-| 9 | **Hosting & go-live** | *In progress.* The system runs on Railway at a temporary URL; static serving, build commands and the email transport are done. **Remaining:** the production project on the Hobby plan under the workshop's own account, DNS for `app.formuladservice.in`, Resend domain verification, Cloudflare, and the go-live steps. Procedure: `GO_LIVE_RUNBOOK.md`. |
-| 10 | **Deep debug pass** | The serious pre-handover sweep, to run once everything is wired on the real infrastructure. |
-| 11 | **Frontend polish** | Ongoing. Raise the visual/UX bar to match the backend's rigor. |
-| 12 | **Stability / security / performance / code-quality hardening** | Ongoing across both apps. |
-| 13 | **Keep every financial and security rule under test** | Not a coverage percentage. The existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. **Add a test when a rule is added or a bug is fixed, not to move a metric.** |
+| 10 | **Hosting & go-live** | *In progress.* The system runs on Railway at a temporary URL; static serving, build commands and the email transport are done. **Remaining:** the production project on the Hobby plan under the workshop's own account, DNS for `app.formuladservice.in`, Resend domain verification, Cloudflare, and the go-live steps. Procedure: `GO_LIVE_RUNBOOK.md`. |
+| 11 | **Deep debug pass** | The serious pre-handover sweep, to run once everything is wired on the real infrastructure. |
+| 12 | **Frontend polish** | Ongoing. Raise the visual/UX bar to match the backend's rigor. |
+| 13 | **Stability / security / performance / code-quality hardening** | Ongoing across both apps. |
+| 14 | **Keep every financial and security rule under test** | Not a coverage percentage. The existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. **Add a test when a rule is added or a bug is fixed, not to move a metric.** |
 
 ### Carried into go-live
 
@@ -323,43 +324,40 @@ development:
   small on a real phone. This is a **design decision, not a bug**; measurements have
   been taken and the owner is answering it screen by screen.
 
-- **The app still loads five things from third parties, and self-hosting them is
-  DEFERRED to a few weeks after go-live — the owner's call, recorded here with the
-  trade so it can be re-judged rather than re-discovered.**
+- **DONE (2026-08-21): the app no longer loads anything from a third party.**
+  It previously pulled Bootstrap's CSS, its icon font and its JS bundle from
+  `cdn.jsdelivr.net`, Chart.js from the same, and the Barlow families from
+  `fonts.googleapis.com` — 16 references across 14 templates, **none carrying an
+  `integrity=` attribute**. All of it is now served from `static/vendor/`, at the
+  exact versions those tags were pinned to.
 
-  What is loaded, across 13 templates: Bootstrap CSS, Bootstrap Icons CSS and the
-  Bootstrap JS bundle from `cdn.jsdelivr.net`; Chart.js from the same; and the Barlow
-  families from `fonts.googleapis.com`. **None carries an `integrity=` attribute.**
+  Recorded because the reasoning outlives the change:
 
-  Two consequences, and the second is the one that actually argues for doing it:
+  1. *Availability.* The HTML arrives from our own origin while a subresource
+     fails, so the page rendered BROKEN rather than not at all — unstyled if the
+     CSS dropped, and with the drawer, every modal and every ⋮ dropdown dead if
+     the JS dropped. Narrower than "flaky wifi": it needed our origin to work
+     while jsdelivr specifically did not, which is what a **cold cache on go-live
+     day** looks like — the one day every device in the workshop loads the app for
+     the first time.
+  2. *Supply chain.* With no SRI, a compromised CDN would have executed arbitrary
+     JavaScript on every page, including the settle screen. SRI was considered and
+     rejected: it fixes tampering while making availability slightly worse, since
+     a mismatched file is blocked outright.
 
-  1. *Availability.* The HTML arrives from our own origin while a subresource fails,
-     so the page renders BROKEN rather than not at all — unstyled if the CSS drops,
-     and with the drawer, every modal and every ⋮ dropdown dead if the JS drops.
-     Narrower than "flaky wifi": it needs our origin to work while jsdelivr
-     specifically does not. Browsers cache these hard, so it mostly bites on a cold
-     cache.
-  2. *Supply chain.* With no SRI, a compromised CDN executes arbitrary JavaScript on
-     every page of this app, including the settle screen.
+  It costs nothing at runtime — WhiteNoise serves them content-hashed and
+  pre-compressed, so after the first visit they are free, and two third-party
+  origins leave the critical path.
 
-  ⚠ **The cold-cache risk is front-loaded onto GO-LIVE DAY**, which is the one day
-  every device in the workshop — the Floor tablet, both owners' phones, the office
-  laptop — loads the app for the first time with nothing cached. A broken first
-  impression reads as "the new system does not work". **If this stays deferred, the
-  mitigation is to open the app once on each device over good wifi before anyone
-  depends on it**, which fills every cache and removes the exposure until eviction.
+  ⚠ **The Railway Build Command is now load-bearing.** `collectstatic` is not in
+  the `Procfile`; it is a Build Command set by hand per project
+  (`GO_LIVE_RUNBOOK.md` §1.2), and it does **not** travel with the repo. Without
+  it these assets are never collected and the manifest storage 500s every page.
+  It is set on the throwaway demo project; **the real production project needs it
+  set again**, along with the Pre-Deploy `migrate`.
 
-  Cutting the other way, and why deferring is defensible: adding static files is the
-  change most likely to trip the fact that **`collectstatic` is not in the `Procfile`**
-  — it is a Railway Build Command that has to be set by hand (`GO_LIVE_RUNBOOK.md`
-  §Build). If it is not set, the manifest storage 500s every page. Doing this while the
-  workshop already depends on the system is worse than doing it while nobody does.
-
-  So: **verify the Build Command first, whenever this is done.** Self-hosting is
-  otherwise a straight improvement — the files are pinned to exact versions already,
-  so they arrive byte-identical, and WhiteNoise then serves them content-hashed,
-  brotli-compressed and cached forever, which is faster than the CDN rather than
-  slower.
+  Nothing here is hand-edited — `scratchpad/vendor_assets.py` refetches the lot,
+  the same rule `build_app_icons.py` follows.
 
 One product question is still owed to the owner: **master-list rename/merge could be
 replaced with delete-only plus click-through** to the job cards using an entry.

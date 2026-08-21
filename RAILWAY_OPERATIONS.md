@@ -295,6 +295,11 @@ Things worth knowing:
   version never takes traffic. This is the behaviour you want.
 - **`collectstatic` runs at build time**, so `staticfiles/` is baked into the
   image. That is why it survives, while runtime-written files do not.
+- ⚠ **Without the Build Command the app does not start degraded — it 500s.**
+  Every frontend asset now ships from `static/vendor/` instead of a CDN, and the
+  manifest storage raises on a missing entry rather than emitting a dead link.
+  The setting lives in the Railway dashboard, not in the repo, so a new service
+  starts without it.
 - Deploy logs and build logs are separate tabs. Build problems are in Build.
 
 ---

@@ -135,8 +135,8 @@ cashbook, photos and owner analytics in one platform.
 | **Backend** | Python 3.13 · Django 5.2 |
 | **Database** | PostgreSQL in development *and* production. SQLite is kept only for bulk dummy-data seeding and for the test suite, which selects it automatically. |
 | **Hosting** | Railway — app and PostgreSQL in one project. See [`RAILWAY_OPERATIONS.md`](RAILWAY_OPERATIONS.md). |
-| **Frontend** | Bootstrap 5, vanilla JavaScript, CSS3. Server-rendered Django templates with page-scoped inline JS and **no build step** — a deliberate, recorded choice. |
-| **Static assets** | WhiteNoise via `STORAGES` with a manifest (Django 5.1 removed `STATICFILES_STORAGE` and ignores it silently). |
+| **Frontend** | Bootstrap 5, vanilla JavaScript, CSS3. Server-rendered Django templates with page-scoped inline JS and **no build step** — a deliberate, recorded choice. **Nothing is loaded from a third party:** Bootstrap, its icon font, Chart.js and the Barlow families are all served from `static/vendor/`, so a page can never render unstyled because a CDN was slow, and no outside host can execute script on a page that settles bills. |
+| **Static assets** | WhiteNoise via `STORAGES` with a manifest (Django 5.1 removed `STATICFILES_STORAGE` and ignores it silently), plus `GZipMiddleware` — signed-in pages are `no-store` by design, so the whole document is re-sent per navigation; the largest compresses 211 KB → 55 KB. |
 | **Config** | `python-decouple`; `DJANGO_ENV` has no default, so an unset value fails loudly. |
 | **Notifications** | Owner-only in-app feed — **14 events**, of which **10 are CRITICAL** and also push to a phone. |
 | **Outbound** | Exactly two kinds, both optional: password-reset email (Resend's HTTPS API in production, SMTP in development) and Web Push. The app runs correctly with neither configured. |
@@ -228,7 +228,7 @@ Exact model, route and template counts live in
 python manage.py test workshop inventory
 ```
 
-**54 files, 1,519 tests** covering security, models, views, signals, financial logic,
+**54 files, 1,524 tests** covering security, models, views, signals, financial logic,
 supplier and spare-shop operations, salary settlement, the printed documents and
 photos. Expect 20–80 minutes; the suite always runs on SQLite, so it never touches
 hosted Postgres.

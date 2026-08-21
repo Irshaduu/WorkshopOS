@@ -70,6 +70,15 @@ front of you on the day you need it, not in your head.
 The `Procfile` only defines `web:`, so nothing currently runs `collectstatic`
 or `migrate`. This is why the test deployment served no CSS or JavaScript.
 
+⚠ **This setting is now load-bearing, and it does NOT travel with the repo — it
+is set per project, by hand.** Since 2026-08-21 every frontend asset is served
+from `static/vendor/` rather than a CDN (Bootstrap, its icon font, Chart.js, the
+Barlow families). Combined with the manifest storage that means a missing
+`collectstatic` no longer degrades the styling — **it 500s every page**, because
+`{% static %}` raises when an entry is absent from the manifest. Confirm this
+field on the real production service even if you remember setting it on the demo
+one.
+
 Railway dashboard → service → **Settings**:
 
 | Setting | Value |
