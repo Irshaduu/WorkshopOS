@@ -64,22 +64,44 @@ test('the limit is reached at the limit, not past it', () => {
 
 const blob = (size) => ({ size: size || 1000 });
 
+/*
+ * A behaviour function is asked about EVERY call and answers with an error or
+ * with null — `(n) => (n === 1 ? new Error('network') : null)` means "the first
+ * PUT dies, the rest are fine". So the returned value has to be checked before
+ * it is thrown.
+ *
+ * This helper used to `throw behaviour.putFails(n)` unconditionally, which
+ * threw `null` on the calls that were supposed to SUCCEED. `null` is not fatal
+ * and carries no message, so the queue read it as an ordinary network failure
+ * and retried it into oblivion — and the two tests that describe the retry
+ * path (a flaky first PUT, and clearing finished work) failed for a reason that
+ * had nothing to do with photos-core.js, which was correct throughout.
+ *
+ * Worth stating because of what it cost: the single most likely real failure on
+ * shop wifi had a test written for it that could never have passed.
+ */
+function raise(fn, n) {
+    if (!fn) { return; }
+    const err = fn(n);
+    if (err) { throw err; }
+}
+
 function transportThat(behaviour) {
     const calls = { sign: 0, put: 0, commit: 0 };
     return {
         calls,
         sign: async () => {
             calls.sign += 1;
-            if (behaviour.signFails) { throw behaviour.signFails(calls.sign); }
+            raise(behaviour.signFails, calls.sign);
             return { photo_id: 'p' + calls.sign, upload_url: 'https://bucket/p' };
         },
         put: async () => {
             calls.put += 1;
-            if (behaviour.putFails) { throw behaviour.putFails(calls.put); }
+            raise(behaviour.putFails, calls.put);
         },
         commit: async () => {
             calls.commit += 1;
-            if (behaviour.commitFails) { throw behaviour.commitFails(calls.commit); }
+            raise(behaviour.commitFails, calls.commit);
             return { photo: { id: 'photo-' + calls.commit } };
         }
     };

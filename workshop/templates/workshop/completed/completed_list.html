@@ -368,13 +368,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 label.textContent = labelMap[currentFilter] || 'Today';
             }
         }
-        const delay = (event && event.type === 'submit') ? 0 : 300;
+        // Debounce TYPING only. A filter tap, a pager tap and the custom-date
+        // Apply are each one discrete decision, and running them through the
+        // keystroke timer added 300ms of nothing to every one of them —
+        // measured 367ms from tap to results, of which the fetch was ~35ms.
+        const delay = (event && event.type === 'input') ? 300 : 0;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
             // Responses do not necessarily arrive in the order they were sent,
             // so each carries its request number and a stale one is dropped —
             // otherwise a slow reply for "KL" lands after the one for "KL 10".
             const mine = ++seq;
+            // The bar paints only if this outlasts navProgress's threshold, so a
+            // fast reply on the shop laptop still shows nothing at all.
+            var doneProgress = window.navProgress ? window.navProgress.begin() : function () {};
             fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(res => res.text())
                 .then(html => {
@@ -390,11 +397,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (countEl && pill && label) {
                         pill.textContent = `${label.textContent.trim()} ${countEl.dataset.count}`;
                     }
-                }).catch(err => console.error('Search error:', err));
+                }).catch(err => console.error('Search error:', err)).finally(doneProgress);
         }, delay);
     }
 
-    searchInput.addEventListener('input', function () { updateResults(this.value); });
+    searchInput.addEventListener('input', function (e) { updateResults(this.value, 1, e); });
     searchForm.addEventListener('submit', function (e) { updateResults(searchInput.value, 1, e); });
 
     resultsContainer.addEventListener('click', function (e) {

@@ -29,7 +29,7 @@ leave days are typed once a month instead of tracked daily, and why performance 
 judged against real volume rather than generic "web scale".
 
 **The standard:** functional integrity across every operation that touches money or
-access. Backed by **53 test files / 1,508 tests** covering security, views, signals,
+access. Backed by **54 test files / 1,519 tests** covering security, views, signals,
 financial logic, cashbook, spare shops, salary settlement, the profit engine, the
 printed documents, photos and the email transport behind password reset.
 
@@ -254,7 +254,7 @@ a claim of internet-scale throughput.
 ```
 
 ```bash
-node --test workshop/tests/js/
+node --test "workshop/tests/js/*.test.js"
 ```
 
 Everything else — seeding, backups, the owner-identity commands, the SQLite→Postgres
@@ -323,6 +323,44 @@ development:
   small on a real phone. This is a **design decision, not a bug**; measurements have
   been taken and the owner is answering it screen by screen.
 
+- **The app still loads five things from third parties, and self-hosting them is
+  DEFERRED to a few weeks after go-live — the owner's call, recorded here with the
+  trade so it can be re-judged rather than re-discovered.**
+
+  What is loaded, across 13 templates: Bootstrap CSS, Bootstrap Icons CSS and the
+  Bootstrap JS bundle from `cdn.jsdelivr.net`; Chart.js from the same; and the Barlow
+  families from `fonts.googleapis.com`. **None carries an `integrity=` attribute.**
+
+  Two consequences, and the second is the one that actually argues for doing it:
+
+  1. *Availability.* The HTML arrives from our own origin while a subresource fails,
+     so the page renders BROKEN rather than not at all — unstyled if the CSS drops,
+     and with the drawer, every modal and every ⋮ dropdown dead if the JS drops.
+     Narrower than "flaky wifi": it needs our origin to work while jsdelivr
+     specifically does not. Browsers cache these hard, so it mostly bites on a cold
+     cache.
+  2. *Supply chain.* With no SRI, a compromised CDN executes arbitrary JavaScript on
+     every page of this app, including the settle screen.
+
+  ⚠ **The cold-cache risk is front-loaded onto GO-LIVE DAY**, which is the one day
+  every device in the workshop — the Floor tablet, both owners' phones, the office
+  laptop — loads the app for the first time with nothing cached. A broken first
+  impression reads as "the new system does not work". **If this stays deferred, the
+  mitigation is to open the app once on each device over good wifi before anyone
+  depends on it**, which fills every cache and removes the exposure until eviction.
+
+  Cutting the other way, and why deferring is defensible: adding static files is the
+  change most likely to trip the fact that **`collectstatic` is not in the `Procfile`**
+  — it is a Railway Build Command that has to be set by hand (`GO_LIVE_RUNBOOK.md`
+  §Build). If it is not set, the manifest storage 500s every page. Doing this while the
+  workshop already depends on the system is worse than doing it while nobody does.
+
+  So: **verify the Build Command first, whenever this is done.** Self-hosting is
+  otherwise a straight improvement — the files are pinned to exact versions already,
+  so they arrive byte-identical, and WhiteNoise then serves them content-hashed,
+  brotli-compressed and cached forever, which is faster than the CDN rather than
+  slower.
+
 One product question is still owed to the owner: **master-list rename/merge could be
 replaced with delete-only plus click-through** to the job cards using an entry.
 `AUD-0085` and the note in `TECH_DEBT.md` carry the trade.
@@ -355,7 +393,7 @@ be built only if the client asks.
 1. **Fix the code, not the tests.** If a test fails, the logic is likely wrong. Never
    bypass a security test.
 2. **Every new rule gets a test.** One honest exception: the Django suite executes no
-   JavaScript. `node --test workshop/tests/js/` covers one deliberately DOM-free
+   JavaScript. `node --test "workshop/tests/js/*.test.js"` covers one deliberately DOM-free
    module; everything else in the frontend must be verified by hand in the browser on
    the page it touches. Treat that as a reason to keep JS changes small — **not** as a
    reason to add a build toolchain.

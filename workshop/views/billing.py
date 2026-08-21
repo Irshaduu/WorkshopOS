@@ -12,6 +12,7 @@ from ..decorators import office_required
 from ..invoice import build_invoice
 from ..notifications import notify
 from ..settlement import settlement_readiness
+from ..money import parse_money
 
 
 def _safe_back(request):
@@ -106,16 +107,28 @@ def update_bill_status(request, pk):
             )
             return redirect('invoice_view', pk=pk)
 
-        # Safely convert to Decimal
-        raw_received = request.POST.get('received_amount', '0')
-        try:
-            received = Decimal(str(raw_received) if raw_received else '0')
-        except (ValueError, TypeError, ArithmeticError):
-            received = Decimal('0')
-
-        # AUD-0015: Guard against negative received amounts — would corrupt financials.
-        if received < Decimal('0'):
-            messages.error(request, "Received amount cannot be negative.")
+        # One shared rule — see workshop/money.py, which every other typed
+        # rupee amount already goes through. The old `try: Decimal(...)` here
+        # caught only unparseable text, and the sign check below it caught only
+        # negatives, so three figures walked straight into the column:
+        #
+        #   * 'Infinity' — a genuinely positive Decimal, so it passed the sign
+        #                  check honestly and settled the card as PAID at an
+        #                  infinite receipt. The one that corrupts silently.
+        #   * 'NaN'      — an ORDERED comparison against it raises
+        #                  decimal.InvalidOperation, and the try/except above
+        #                  wrapped only the parsing, so `received < 0` raised
+        #                  outside it: a 500 on the settle screen.
+        #   * 11+ digits — over numeric(12,2), which SQLite stores and Postgres
+        #                  rejects with `numeric field overflow`: a 500 on the
+        #                  one screen where money is actually taken.
+        #
+        # A blank box still means zero (that is how a card is put back to
+        # PENDING), so zero is allowed here where the payment views refuse it.
+        raw_received = (request.POST.get('received_amount') or '').strip() or '0'
+        received = parse_money(raw_received, JobCard, 'received_amount', allow_zero=True)
+        if received is None:
+            messages.error(request, "Enter a valid received amount.")
             return redirect('invoice_view', pk=pk)
             
         method = request.POST.get('payment_method', 'CASH')

@@ -9,6 +9,7 @@ from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierResto
 from workshop.decorators import office_required
 from workshop.models import DeletionLog, JobCardSpareItem
 from workshop.notifications import notify
+from workshop.money import parse_money, fit_text
 from django.urls import reverse
 from workshop.templatetags.custom_filters import clean_qty
 from django.db import transaction, IntegrityError
@@ -826,22 +827,24 @@ def add_shop_payment(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     
     if request.method == 'POST':
-        try:
-            amount = Decimal(str(request.POST.get('amount') or 0).strip())
-            method = request.POST.get('payment_method')
-            note = request.POST.get('note')
-
-            if amount > 0:
-                SupplierPayment.objects.create(
-                    supplier=shop,
-                    amount=amount,
-                    payment_method=method,
-                    note=note
-                )
-                messages.success(request, "Payment recorded successfully.")
-                return redirect('supplier_shop_detail', shop_id=shop.id)
-        except (ValueError, InvalidOperation):
+        # workshop/money.py, as everywhere else a rupee amount is typed. The old
+        # `amount > 0` guard let 'Infinity' straight through into the ledger,
+        # raised decimal.InvalidOperation on 'NaN' (an ordered comparison
+        # against NaN raises, and InvalidOperation is not in the except clause),
+        # and passed an 11-digit fat finger to a numeric(12,2) column, which
+        # Postgres refuses with an overflow — a 500 instead of a message.
+        amount = parse_money(request.POST.get('amount') or '0', SupplierPayment, 'amount')
+        if amount is None:
             messages.error(request, "Invalid payment amount.")
+        else:
+            SupplierPayment.objects.create(
+                supplier=shop,
+                amount=amount,
+                payment_method=request.POST.get('payment_method'),
+                note=fit_text(request.POST.get('note'), SupplierPayment, 'note'),
+            )
+            messages.success(request, "Payment recorded successfully.")
+            return redirect('supplier_shop_detail', shop_id=shop.id)
             
     return render(request, 'inventory/suppliers/add_payment.html', {'shop': shop})
 

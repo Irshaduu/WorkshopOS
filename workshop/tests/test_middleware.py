@@ -123,3 +123,57 @@ class SignedInPagesAreNotKeptByTheBrowserTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('no-store', response['Cache-Control'])
+
+
+class ThePagesAreCompressedOnTheWayOutTests(TestCase):
+    """
+    `NoStoreMiddleware` makes every signed-in page uncacheable — correctly, so
+    Back cannot un-log-out — which means the whole document is re-sent on every
+    navigation. The job card form is ~203 KB of that, most of it the inline CSS
+    and JS the frontend deliberately keeps in the template, and Railway's proxy
+    does not compress. So compression is the only lever left, and it has to
+    actually be on.
+
+    These assert BEHAVIOUR, not the MIDDLEWARE list: a settings test would pass
+    while the middleware sat in a position where it never saw a response.
+    """
+
+    def setUp(self):
+        from django.contrib.auth.models import Group
+        for name in ('Owner', 'Office', 'Floor'):
+            Group.objects.get_or_create(name=name)
+        user = User.objects.create_user(username='gz_office', password='password123')
+        user.groups.add(Group.objects.get(name='Office'))
+        self.client.login(username='gz_office', password='password123')
+
+    def test_a_big_page_is_actually_compressed(self):
+        response = self.client.get('/jobcards/create/', HTTP_ACCEPT_ENCODING='gzip')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Encoding'], 'gzip')
+        # It must be a real saving, not merely encoded. The measured ratio is
+        # ~0.26; half is a loose bound that still fails if compression silently
+        # stops doing anything.
+        self.assertLess(len(response.content), 100_000)
+
+    def test_it_still_says_no_store(self):
+        """
+        Compression must not disturb the header the logout story rests on —
+        `patch_vary_headers` rewrites headers on the way out, so this is the
+        one interaction worth pinning.
+        """
+        response = self.client.get('/jobcards/create/', HTTP_ACCEPT_ENCODING='gzip')
+
+        self.assertIn('no-store', response['Cache-Control'])
+        self.assertIn('Accept-Encoding', response['Vary'])
+
+    def test_a_browser_that_does_not_ask_gets_plain_bytes(self):
+        """
+        Compression is negotiated, never forced. If this ever returns gzip to a
+        client that did not offer it, the page is undisplayable.
+        """
+        response = self.client.get('/jobcards/create/', HTTP_ACCEPT_ENCODING='')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.has_header('Content-Encoding'))
+        self.assertIn(b'<form', response.content)

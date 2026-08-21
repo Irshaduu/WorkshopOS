@@ -77,6 +77,32 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # AUD-0047: Serve static files cleanly
+    # ------------------------------------------------------------------
+    # COMPRESSION — the pages are large and CANNOT be cached.
+    # ------------------------------------------------------------------
+    # `NoStoreMiddleware` marks every signed-in response `no-store` so Back
+    # cannot un-log-out, which is right and means the whole document is sent
+    # again on every navigation. The job card form measures 207,877 bytes and
+    # gzips to 54,816 — most of it the ~53 KB of inline JS and ~63 KB of inline
+    # CSS that the frontend deliberately keeps in the template. Railway's proxy
+    # does not compress, so without this the owners re-download 200 KB per page
+    # on a phone.
+    #
+    # BELOW WhiteNoise on purpose. WhiteNoise short-circuits static requests, so
+    # from here they never reach this middleware — which is what we want, since
+    # it already serves its own pre-compressed .gz/.br files. Above WhiteNoise
+    # this would waste cycles re-compressing assets it had just served.
+    #
+    # ON BREACH: the preconditions do exist here — `?q=` is reflected on four
+    # list pages that also carry a CSRF token. Two Django defences cover it, and
+    # both were verified rather than assumed:
+    #   1. the CSRF token is re-masked on every render, so there is no stable
+    #      secret for a compression-length oracle to walk one byte at a time;
+    #   2. `GZipMiddleware.max_random_bytes = 100` pads each response with a
+    #      random-length gzip filename field for exactly this reason.
+    # No other secret is in a response body — the session id is an HttpOnly
+    # cookie. Revisit if a page ever renders a long-lived token into its HTML.
+    'django.middleware.gzip.GZipMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

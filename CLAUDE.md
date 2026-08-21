@@ -28,7 +28,7 @@ describe either as live production data. Deployment: `GO_LIVE_RUNBOOK.md`
 1. **Fix the code, not the tests.** A failing test — especially a financial or
    security one — means the implementation regressed. Never bypass one.
 2. **Every new rule gets a test.** One honest gap: the Django suite executes no
-   JavaScript. `node --test workshop/tests/js/` covers one DOM-free module.
+   JavaScript. `node --test "workshop/tests/js/*.test.js"` covers one DOM-free module.
    Everything else in the frontend must be verified by hand in a browser.
 3. **Keep docs in sync in the same session.** New model/field, new route, new
    workflow, roadmap item completed → update the owning doc (see the ownership
@@ -122,12 +122,24 @@ real need, but nothing followed the money afterwards.
 READ from the column.** Three failures, one rule: a figure too large for
 `max_digits` is **stored by SQLite** (silently violating the declared precision)
 and **rejected by PostgreSQL** with `numeric field overflow` — a 500 from a fat
-finger. `Infinity` and `NaN` both parse as valid `Decimal`s, and since `NaN`
-compares False against everything while `Infinity` is genuinely `> 0`, a bare
-`amount > 0` guard lets one through in each direction and poisons every aggregate
-that touches them. `fit_text()` is the same story for strings — an oversized note
-is another SQLite-accepts / Postgres-500s split, and is **trimmed rather than
-crashed**.
+finger. `Infinity` and `NaN` both parse as valid `Decimal`s, and they break a
+bare `amount > 0` guard in **two different ways** — worth being precise about,
+because the difference decides how the failure shows up. `Infinity` is genuinely
+`> 0`, so the guard agrees with it and it is **written**, poisoning every
+aggregate that touches the column. `NaN` never gets that far: in Python's
+`decimal`, an *ordered* comparison against NaN (`< > <= >=`) raises
+`InvalidOperation` — only `==` returns False quietly, and float NaN does not
+behave this way — so the guard raises outside whatever `try` wrapped the parsing
+and the page **500s**. One corrupts, one crashes; `parse_money` refuses both
+before either can happen. `fit_text()` is the same story for strings — an
+oversized note is another SQLite-accepts / Postgres-500s split, and is **trimmed
+rather than crashed**.
+
+**The four payment screens were wired to it late (2026-08-21).** Settling a
+bill, paying a Fleet Account, paying a spare shop and paying a Supplies Shop each
+carried a hand-rolled `try: Decimal(...)` plus a sign check, so the rule above
+held everywhere except where money actually moves.
+→ `workshop/tests/test_money_guards.py`
 
 **`JobCard.paid_date` is when a bill was actually settled.** Set only when
 `payment_status` becomes `PAID`/`BULK_PAID`, cleared when a payment is undone.
@@ -3181,8 +3193,10 @@ run.
 and there is no build step.** Every outside review reaches the same suggestion, so the
 reasoning is recorded here rather than re-argued.
 
-Roughly 2,660 lines of inline JS across 34 templates. Three shared files exist —
-`script.js`, `estimate.js`, `notifications.js` — and the rule for what goes in one is
+Roughly 188 KB of inline JS across 36 templates (and ~552 KB of inline CSS —
+most templates carry their own `<style>`). Seven shared files exist —
+`script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
+`photos-core.js`, `spare_autofill.js` — and the rule for what goes in one is
 **used on more than one page**; what stays inline is genuinely page-specific.
 
 The usual arguments do not apply here:
@@ -3197,7 +3211,7 @@ codebase has already been bitten by exactly that (see the three cloning traps ab
 **Moving working code with no way to prove it still works is the bad trade, not the
 inline JS.**
 
-**There IS a JS test runner, and it cost nothing.** `node --test workshop/tests/js/`
+**There IS a JS test runner, and it cost nothing.** `node --test "workshop/tests/js/*.test.js"`
 uses Node's built-in runner — still no npm, no `package.json`, no `node_modules`, no
 bundler, no linter. It covers exactly one file, `photos-core.js`, because that file was
 *written* to be coverable: pure functions, no DOM, no fetch, a `module.exports` guard at
@@ -3244,13 +3258,13 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 53 files, 1,508 tests. Always SQLite (see below).
+# Full test suite — 54 files, 1,519 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
 ```bash
 # JavaScript tests — a SECOND command, not part of `manage.py test`.
-node --test workshop/tests/js/
+node --test "workshop/tests/js/*.test.js"
 ```
 
 ```bash
@@ -3329,7 +3343,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 | `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
-whole database — not something to point at hosted Postgres — and 1,508 tests at ~75 ms
+whole database — not something to point at hosted Postgres — and 1,519 tests at ~75 ms
 per round-trip would take hours. There is deliberately no flag to remember and no way to
 run the suite against live data by accident (`development.py` keys off
 `sys.argv[1] == 'test'`).
@@ -3541,8 +3555,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` (47 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **53 files, 1,508 tests**.
+Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
+files) — **54 files, 1,519 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

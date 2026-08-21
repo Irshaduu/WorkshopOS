@@ -1108,6 +1108,9 @@ document.addEventListener('DOMContentLoaded', function () {
         // each carries its request number and a stale one is dropped — without
         // this, a slow reply for "elec" lands after the one for "electricity".
         const mine = ++seq;
+        // The bar paints only if this outlasts navProgress's threshold, so a
+        // fast reply on the shop laptop still shows nothing at all.
+        var doneProgress = window.navProgress ? window.navProgress.begin() : function () {};
 
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(r => r.text())
@@ -1137,7 +1140,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     countPill.append(' · ' + marker.dataset.count);
                 }
             })
-            .catch(err => console.error('Cashbook refresh failed:', err));
+            .catch(err => console.error('Cashbook refresh failed:', err))
+            .finally(doneProgress);
     }
 
     function refreshDebounced() {

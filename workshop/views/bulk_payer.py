@@ -19,6 +19,7 @@ from ..models import (
 )
 from ..decorators import office_required, owner_required
 from ..notifications import notify
+from ..money import parse_money
 
 
 @office_required
@@ -332,13 +333,15 @@ def bulk_payer_pay(request, pk):
     bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=False)
     lump_sum_raw = request.POST.get('lump_sum', '0')
     payment_method = request.POST.get('payment_method', 'CASH')
-    
-    try:
-        lump_sum = Decimal(str(lump_sum_raw))
-    except (ValueError, TypeError, ArithmeticError):
-        lump_sum = Decimal('0')
-    
-    if lump_sum <= 0:
+
+    # workshop/money.py, same as every other typed amount. 'Infinity' passes
+    # `lump_sum <= 0` honestly and would have settled the whole account at an
+    # infinite receipt; 'NaN' made that same comparison raise
+    # decimal.InvalidOperation outside the try/except above, 500ing the page;
+    # and 11 digits overflow numeric(12,2) on Postgres. parse_money refuses zero
+    # by default, which is the rule this view already wanted.
+    lump_sum = parse_money(lump_sum_raw, BulkPaymentHistory, 'amount')
+    if lump_sum is None:
         messages.error(request, "Invalid payment amount.")
         return redirect('bulk_payer_detail', pk=pk)
     

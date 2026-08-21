@@ -17,6 +17,7 @@ from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
 from ..decorators import office_required, owner_required, staff_required, is_office_or_owner
 from ..notifications import notify
 from ..spare_dates import pair_problem
+from ..money import parse_money, fit_text
 # What a shop-bought line cost, in the one place it is defined. This page's
 # running balance, its grand total and `SpareShop.total_purchased_amount` are
 # three views of the same money, and they used to be three hand-written copies
@@ -304,14 +305,18 @@ def spare_shop_pay(request, pk):
 
     shop = get_object_or_404(SpareShop, pk=pk, is_trashed=False)
     payment_method = request.POST.get('payment_method', 'CASH')
-    note = request.POST.get('note', '').strip()
+    # Trimmed to the column — a long pasted note is another
+    # SQLite-accepts / Postgres-500s split (see workshop/money.py).
+    note = fit_text(request.POST.get('note', '').strip(), SpareShopPayment, 'note')
 
-    try:
-        lump_sum = Decimal(str(request.POST.get('lump_sum', '0')))
-    except Exception:
-        lump_sum = Decimal('0')
-
-    if lump_sum <= 0:
+    # workshop/money.py — the same rule the Cashbook and Salary & Advance use.
+    # `except Exception` caught only unparseable text, and both of the figures
+    # that matter parse: 'Infinity' passes `<= 0` honestly and lands in the
+    # shop's ledger, making the balance meaningless; 'NaN' makes that same
+    # comparison raise, which is a 500 rather than a message. Zero is refused,
+    # as before.
+    lump_sum = parse_money(request.POST.get('lump_sum', '0'), SpareShopPayment, 'amount')
+    if lump_sum is None:
         messages.error(request, "Invalid payment amount.")
         return redirect('spare_shop_detail', pk=pk)
 

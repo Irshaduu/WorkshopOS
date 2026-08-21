@@ -732,7 +732,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (53 files · 1,508 tests)
+## 13. TEST SUITE (54 files · 1,519 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -740,7 +740,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (47 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (48 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -779,13 +779,14 @@ base classes.*
 | `test_ui_regressions.py` | Layout and markup invariants that a functional test cannot see — the double-render rule, a list row never nesting a `<button>` inside an `<a>`, and the drawer/Manage-pill coverage |
 | `test_live_report.py` | The Live Report, Office/Owner only (Floor 403s): cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), each box's count matching the rows beneath it, and nothing on the page narrowed by a query string |
 | `test_billed_but_not_filled.py` | The critical container at the top of the Live Report: which billed cards are chased (PAID / FLEET PAID / PART PAID, never an unbilled or deleted one), what it says is missing on each, the two spare dates as ONE chip, a warehouse draw chased only for its customer price, and the DB narrowing never disagreeing with `settlement.unfilled` |
+| `test_money_guards.py` | The four screens where money MOVES — settling a bill, paying a Fleet Account, a spare shop and a Supplies Shop — all read `workshop/money.py`. Pins the property rather than the wording: `Infinity` (which passes a `> 0` guard honestly and corrupts the column), `NaN` (an ordered comparison against which RAISES, 500ing the page) and an 11-digit overflow all write nothing and move no stored figure, while an ordinary settlement, a real cascade and a blank-means-zero correction still work |
 | `test_spare_dates.py` | A part cannot arrive before it was ordered — the pair rule itself, the job card refusing it (which it never used to), and both screens reading the one implementation in `workshop/spare_dates.py` |
 | `test_job_line_suggestions.py` | "Job Performed" suggested from the parts already on the card: the datalist, every box pointing at it, a warehouse draw offered by its CATEGORY through the invoice's own rule, and the verbs declared in exactly one place |
 | `test_card_list_grid.py` | The app's card lists as ONE shape: Completed, Pending Bills, Paid Bills, Job Cards and the High Discount Audit on the shared `row-cards` rule, Car Profiles on the identical two breakpoints (560 / 800), no fourth column, and the audit card stacked so three across cannot squeeze its number plate |
 | `test_jobcard_detail_view.py` | The read-only job card as the owner laid it out: data with NO labels anywhere, a missing value leaving no trace, a part carrying only its two dates and two figures, the four sections copied value-for-value from the dashboard drawer, no figure printed twice on the money line, nothing on the page posting, and the whole page Office/Owner only with its one Floor-visible link gated to match |
 | `test_photos.py` | Job card photos: SigV4 pinned to AWS's published known-answer vector, the sign-then-commit ordering that stops a row ever pointing at a missing object, per-subject limits re-checked inside the commit transaction, the settled-card freeze keyed on payment status rather than on the page, Floor being able to take *and* delete on an open card, the box being a `<div>` so the Financial Lock cannot kill viewing, and — the reason the owner asked — that with storage switched off the form still opens, the invoice still prints and settlement never chases a photo |
 
-*JavaScript: `workshop/tests/js/photos-core.test.js` runs under `node --test workshop/tests/js/`, NOT under `manage.py test`. It covers the photo upload queue's failure paths and the gallery's index arithmetic. It is the only JavaScript in this repo with tests, and it adds no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
+*JavaScript: `workshop/tests/js/photos-core.test.js` runs under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. It covers the photo upload queue's failure paths and the gallery's index arithmetic. It is the only JavaScript in this repo with tests, and it adds no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
 ### Inventory Tests (5 files)
 
@@ -865,7 +866,7 @@ WorkshopOS (Titan)/
 │   │                             estimate.js, spare_autofill.js, sound.js,
 │   │                             photos.js + photos-core.js (camera / upload)
 │   ├── migrations/             ← 70 migrations
-│   └── tests/                  ← 48 test files (package) + tests/js/ (node --test)
+│   └── tests/                  ← 49 test files (package) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)
@@ -894,4 +895,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin) · **106 Templates** (83 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · **53 Test Files / 1,508 tests** · **78 Migrations** (70 workshop + 8 inventory)
+> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin) · **106 Templates** (83 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push) · 8 Signal Handlers (3 groups) · **54 Test Files / 1,519 tests** · **78 Migrations** (70 workshop + 8 inventory)

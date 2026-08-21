@@ -32,6 +32,159 @@ if ('serviceWorker' in navigator) {
     });
 }
 
+// ==========================================
+// 0b. NAVIGATION PROGRESS — the installed app has no chrome to borrow
+// ==========================================
+//
+// manifest.json declares "display": "standalone", so in the installed app there
+// is no address bar and no tab spinner. Every page here is a full server-
+// rendered navigation over a `no-store` response — nothing is cached, so a tap
+// costs a real round trip — and until the new page painted, the app answered
+// that tap with nothing whatsoever. The bar is the answer.
+//
+// Delegated on `document` rather than wired per link, which is this codebase's
+// rule and matters here for the ordinary reason: rows are added by script all
+// over this app, and a per-element version would work on the ones that were
+// there at load and silently do nothing on the rest.
+//
+// It only ever STARTS. The navigation it reports on replaces the document, so
+// the bar is discarded with the page that created it — there is no completion
+// path to get wrong. The two ways a navigation can fail to happen are handled
+// explicitly below, because a bar left creeping over a page that is going
+// nowhere is worse than no bar at all.
+(function () {
+    /*
+     * A NAVIGATION paints at once; an IN-PAGE UPDATE has to earn it.
+     *
+     * Half this app's list screens do not navigate at all — Completed, Paid
+     * Bills, Cashbook, Estimates and Pending Payments answer a filter tap by
+     * fetching a partial, swapping innerHTML and calling history.pushState, so
+     * the URL changes while the document never unloads. A navigation bar could
+     * not see any of that, which is why those screens showed nothing at all.
+     *
+     * But they are also FAST — measured 22-37ms against the real database — and
+     * a bar that flashes for 30ms is the noise this app deliberately avoids
+     * everywhere else (see the outcome sounds, which stay silent on `info`).
+     * So an in-page update schedules the bar and paints it only if it is still
+     * running THRESHOLD_MS later. On the shop laptop that means nothing appears;
+     * on an owner's phone, where the same fetch is a real round trip, it does.
+     */
+    var THRESHOLD_MS = 250;
+    var SAFETY_MS = 15000;
+
+    var bar = null;
+    var safety = null;
+    var scheduled = null;
+    var pending = 0;        // in-flight in-page updates
+
+    function paint() {
+        if (bar) { return; }
+        bar = document.createElement('div');
+        bar.className = 'nav-progress';
+        bar.setAttribute('aria-hidden', 'true');
+        (document.body || document.documentElement).appendChild(bar);
+        // Force a frame before the class lands, or the browser collapses the
+        // two style changes into one and the animation never plays.
+        void bar.offsetWidth;
+        bar.classList.add('is-running');
+        window.clearTimeout(safety);
+        safety = window.setTimeout(clear, SAFETY_MS);
+    }
+
+    function clear() {
+        window.clearTimeout(scheduled);
+        window.clearTimeout(safety);
+        scheduled = null;
+        safety = null;
+        if (bar && bar.parentNode) { bar.parentNode.removeChild(bar); }
+        bar = null;
+    }
+
+    /*
+     * A real navigation. It only ever STARTS: the page it reports on replaces
+     * the document, so the bar is discarded with the page that created it and
+     * there is no completion path to get wrong. The safety timer covers the two
+     * ways a navigation can fail to happen — a download that never becomes a
+     * page, or an inline handler that submits later by script.
+     */
+    function startNavigation() {
+        if (bar) { return; }
+        window.clearTimeout(scheduled);
+        scheduled = null;
+        paint();
+    }
+
+    /*
+     * An in-page update. Returns the function to call when the work is done —
+     * `.finally(done)` at the call site, so it runs on success and on failure
+     * alike and a failed search can never strand the bar. Counted rather than
+     * flagged, because a fast typist has several in flight at once.
+     */
+    function begin() {
+        pending += 1;
+        if (!bar && !scheduled) {
+            scheduled = window.setTimeout(function () {
+                scheduled = null;
+                if (pending > 0) { paint(); }
+            }, THRESHOLD_MS);
+        }
+        var settled = false;
+        return function done() {
+            if (settled) { return; }        // a double call must not go negative
+            settled = true;
+            pending -= 1;
+            if (pending <= 0) { pending = 0; clear(); }
+        };
+    }
+
+    window.navProgress = { begin: begin };
+
+    // A page restored from the back/forward cache re-runs no script, but it does
+    // fire pageshow — so if `no-store` is ever relaxed, a restored page does not
+    // come back wearing a stale bar.
+    window.addEventListener('pageshow', clear);
+
+    document.addEventListener('click', function (e) {
+        // Another handler already refused this click (a confirm() that was
+        // cancelled, the Financial Lock, a guard). Nothing is navigating.
+        if (e.defaultPrevented) { return; }
+        // Anything but a plain left click opens a tab, saves a link or pastes —
+        // the current page stays exactly where it is.
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
+
+        var link = e.target.closest ? e.target.closest('a') : null;
+        if (!link) { return; }
+
+        var href = link.getAttribute('href');
+        // href="#" is how every AJAX filter in this app is written — it is a
+        // handle for a script, not a destination.
+        if (!href || href.charAt(0) === '#') { return; }
+        if (link.hasAttribute('download')) { return; }
+        if (link.target && link.target !== '_self') { return; }
+        // Bootstrap drives the drawer, dropdowns and modals through <a> tags;
+        // none of them leaves the page.
+        if (link.hasAttribute('data-bs-toggle')) { return; }
+        if (/^(javascript|mailto|tel|sms):/i.test(href)) { return; }
+        if (link.origin && link.origin !== window.location.origin) { return; }
+        // Same URL as now — the browser may not navigate at all.
+        if (link.href === window.location.href) { return; }
+
+        startNavigation();
+    }, false);
+
+    // Bubble phase, deliberately. The guards that refuse a submit — the
+    // Financial Lock, the inventory quantity check — run in CAPTURE and call
+    // stopPropagation(), so a refused save never reaches this at all. The
+    // sixteen `onsubmit="return confirm(...)"` attributes DO reach it, with
+    // defaultPrevented already set when the person answered no.
+    document.addEventListener('submit', function (e) {
+        if (e.defaultPrevented) { return; }
+        var form = e.target;
+        if (form && form.target && form.target !== '_self') { return; }
+        startNavigation();
+    }, false);
+})();
+
 document.addEventListener('DOMContentLoaded', function () {
     console.log("Workshop Script Loaded");
 

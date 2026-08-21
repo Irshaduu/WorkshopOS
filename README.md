@@ -228,7 +228,7 @@ Exact model, route and template counts live in
 python manage.py test workshop inventory
 ```
 
-**53 files, 1,508 tests** covering security, models, views, signals, financial logic,
+**54 files, 1,519 tests** covering security, models, views, signals, financial logic,
 supplier and spare-shop operations, salary settlement, the printed documents and
 photos. Expect 20–80 minutes; the suite always runs on SQLite, so it never touches
 hosted Postgres.
@@ -237,7 +237,7 @@ JavaScript tests are a **second** command, using Node's built-in runner — no n
 bundler:
 
 ```bash
-node --test workshop/tests/js/
+node --test "workshop/tests/js/*.test.js"
 ```
 
 > **Convention: fix the code, not the tests.** A failing test — especially a security
