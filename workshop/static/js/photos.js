@@ -14,10 +14,9 @@
  * killing VIEWING as well as adding. Whether photos may be ADDED is decided by
  * the server and arrives as `data-can-edit`.
  *
- * NO TONE PER SHOT. `WorkshopSound` is used only when an upload fails. A burst
- * is ten shots in a few seconds, and ten success tones is precisely the noise
- * that teaches people to stop hearing the tones that matter. The flash and the
- * count bump are the capture feedback.
+ * SHUTTER SOUND PER SHOT. `WorkshopSound` plays a subtle synthesized mechanical
+ * click on capture (respecting the sound toggle), and an error tone if an upload
+ * fails. The flash and the count bump provide visual capture feedback.
  */
 document.addEventListener('DOMContentLoaded', function () {
     'use strict';
@@ -312,6 +311,7 @@ document.addEventListener('DOMContentLoaded', function () {
         canvas.getContext('2d').drawImage(camVideo, 0, 0, size.width, size.height);
 
         flash();
+        if (window.WorkshopSound) { window.WorkshopSound.play('shutter'); }
 
         canvas.toBlob(function (blob) {
             shooting = false;

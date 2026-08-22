@@ -83,7 +83,7 @@
         osc.frequency.setValueAtTime(freq, start);
 
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(peak, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(peak, start + Math.min(0.008, duration * 0.4));
         gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
         osc.connect(gain);
@@ -108,7 +108,12 @@
         // moment, not carry it. Distinct from `warning` on purpose: a warning
         // reports something that HAS happened, this asks about something that
         // has not yet.
-        prompt: function () { note(950, 0, 0.07, 0.03); }
+        prompt: function () { note(950, 0, 0.07, 0.03); },
+        // Camera shutter: crisp dual-click mechanical snap.
+        shutter: function () {
+            note(1500, 0, 0.025, 0.07);
+            note(850, 0.032, 0.028, 0.05);
+        }
     };
 
     /*

@@ -1297,9 +1297,18 @@ walk-around, and moves the whole risk into the upload: a frame is **held in memo
 until the server confirms it**, one retry is spent automatically, a *refusal*
 (limit full, bill settled) is never retried, and anything still broken becomes a
 **visible** failed item plus a `beforeunload` warning. A photo may never disappear
-silently. The flash and the count bump are the capture feedback; **no tone per
-shot**, because ten success tones in a burst is the noise that teaches people to
-stop hearing the tones that matter.
+silently. The flash, the count bump and a shutter click (`sound.js`'s `shutter`
+tone) are the capture feedback.
+
+**The shutter click is not an outcome tone, and that is what keeps it safe in a
+burst.** The rule used to be "no tone per shot" outright, rejecting a `success`
+chime on every frame of a ten-photo walk-around — ten confirmations is the noise
+that teaches people to stop hearing the tones that matter elsewhere in the app.
+`shutter` sits outside that vocabulary on purpose: it fires at the moment of
+capture, before the upload even starts, so — like a physical camera, which clicks
+on every frame whether or not the shot comes out — it claims nothing about the
+result. The tone that actually reports a result is still `error`, still fires
+once per genuine failure rather than once per shot, and is unchanged by this.
 → `test_a_photo_that_never_uploads_becomes_VISIBLY_failed`
 
 **The box shows a COUNT and never a thumbnail** — which is what lets the feature
@@ -2946,7 +2955,7 @@ midnight IST.
 
 ## Outcome sounds
 
-**Four synthesised tones, riding on Django's message tags, wired nowhere else.**
+**Five synthesised tones, riding on Django's message tags, wired nowhere else.**
 `data-sound-tag` on the message banner. The app already tags every outcome, so one
 attribute covers every action in the system and anything added later.
 
@@ -2997,6 +3006,13 @@ matter stop being heard.
 *Bonus worth knowing:* the prompt fires on a real click, so it is never blocked by the
 autoplay policy and it warms the AudioContext, which makes the *outcome* tone after a
 confirmed action audible even in a plain browser tab.
+
+**A fifth tone, `shutter`, rides neither the message tags nor a question.** It fires
+directly from `photos.js`'s capture handler — the same direct-call shape already used
+there for the upload-failure `error` tone — and plays once per frame of a burst on
+purpose, which none of the other four do. See Photos, "the shutter click is not an
+outcome tone," for why that is safe here when the identical idea (a `success` chime
+per shot) was rejected for the outcome tones.
 
 ## App icons & PWA
 
