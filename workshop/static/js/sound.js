@@ -70,7 +70,20 @@
      * The gain ramp is not decoration: an oscillator started and stopped at
      * full volume produces a click at each end, which on a phone speaker is
      * louder and nastier than the note itself.
+     *
+     * VOLUME_SCALE amplifies every tone from one place, so the tones stay
+     * proportional to each other (error/success louder than prompt, etc.)
+     * whatever the overall level. Pushed as high as it goes: 14x lands the
+     * loudest note (shutter's first click) at 0.98, a hair under the
+     * 1.0 a sine wave can hit before the speaker distorts rather than plays
+     * louder — so the `Math.min(…, 0.98)` ceiling is a hard backstop, not
+     * the thing doing the work. The fast exponential decay each note already
+     * ramps through means two overlapping notes never sum anywhere near that
+     * ceiling either — the second note of a pair starts only after the first
+     * has decayed to near-silence.
      */
+    var VOLUME_SCALE = 14;
+
     function note(freq, when, duration, peak) {
         var ctx = audio();
         if (!ctx) return;
@@ -83,7 +96,7 @@
         osc.frequency.setValueAtTime(freq, start);
 
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(peak, start + Math.min(0.008, duration * 0.4));
+        gain.gain.exponentialRampToValueAtTime(Math.min(peak * VOLUME_SCALE, 0.98), start + Math.min(0.008, duration * 0.4));
         gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
         osc.connect(gain);
@@ -92,8 +105,9 @@
         osc.stop(start + duration + 0.02);
     }
 
-    // Deliberately quiet and deliberately short. This plays in a room where
-    // people are working; it is a confirmation, not an announcement.
+    // Short, and loud enough to cut through a shop floor. This plays in a
+    // room where people are working; it is a confirmation, not an
+    // announcement, but it has to actually be heard over it.
     var TONES = {
         // Two notes rising — the shape everyone already reads as "went through".
         success: function () { note(660, 0, 0.09, 0.05); note(880, 0.075, 0.11, 0.05); },

@@ -292,6 +292,14 @@ class Command(BaseCommand):
         brand_index = {}
 
         with transaction.atomic():
+            # Reset, the same way _seed_inventory already resets products: this
+            # is a one-shot seeder meant to be re-run before each meeting, and
+            # nothing here goes through the create/edit views, so
+            # JobCard.get_active_conflict() never sees what it writes. Without
+            # this, a second run just stacks another completed=False copy on
+            # the same 16 plates instead of replacing the first.
+            JobCard.objects.filter(registration_number__in=[c['reg'] for c in CARS]).delete()
+
             for i, car in enumerate(CARS):
                 brand = car['brand']
                 idx = brand_index.get(brand, 0)
