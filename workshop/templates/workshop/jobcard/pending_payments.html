@@ -1,10 +1,11 @@
 {% extends 'workshop/base.html' %}
+{% load static %}
 {% load custom_filters %}
 
 {% block title %}Pending Bills{% endblock %}
 
 {% block extra_css %}
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="{% static 'vendor/fonts/barlow.css' %}" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -843,13 +844,20 @@ document.addEventListener('DOMContentLoaded', function () {
         const url = new URL(window.location.href);
         url.searchParams.set('q', q);
         url.searchParams.set('page', page);
-        const delay = (event && event.type === 'submit') ? 0 : 300;
+        // Debounce TYPING only. This page has no date filter — its one discrete
+        // action is the pager — and running a pager tap through the keystroke
+        // timer added 300ms of nothing to it. Same fix as Completed and Paid
+        // Bills, which share this function's shape.
+        const delay = (event && event.type === 'input') ? 300 : 0;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
             // Responses do not necessarily arrive in the order they were sent,
             // so each carries its request number and a stale one is dropped —
             // otherwise a slow reply for "KL" lands after the one for "KL 10".
             const mine = ++seq;
+            // The bar paints only if this outlasts navProgress's threshold, so a
+            // fast reply on the shop laptop still shows nothing at all.
+            var doneProgress = window.navProgress ? window.navProgress.begin() : function () {};
             fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(res => res.text())
                 .then(html => {
@@ -857,11 +865,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     resultsContainer.innerHTML = html;
                     window.history.pushState({}, '', url);
                 })
-                .catch(err => console.error('Search error:', err));
+                .catch(err => console.error('Search error:', err))
+                .finally(doneProgress);
         }, delay);
     }
 
-    input.addEventListener('input', function () { updateResults(this.value); });
+    input.addEventListener('input', function (e) { updateResults(this.value, 1, e); });
     searchForm.addEventListener('submit', function (e) { updateResults(input.value, 1, e); });
 
     resultsContainer.addEventListener('click', function (e) {

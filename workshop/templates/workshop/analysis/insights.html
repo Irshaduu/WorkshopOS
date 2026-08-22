@@ -1,4 +1,5 @@
 {% extends 'workshop/base.html' %}
+{% load static %}
 {% load custom_filters %}
 
 {% comment %}
@@ -165,7 +166,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <script>
   const IA_QS = "range={{ range_key }}&start={{ custom_start }}&end={{ custom_end }}";
   // Built from the URL config rather than hardcoded, so the fetch keeps working

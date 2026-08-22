@@ -31,12 +31,8 @@ PASSWORD = 'correct-horse-battery-1'
 WRONG = 'not-the-password'
 
 
-# A `NoOutboundAlerts` base class used to live here, stubbing the Twilio/Telegram
-# broadcast that fired on every successful sign-in. Without it these tests made a
-# live call to the real Twilio API and collected a 401 apiece — slow, flaky, and
-# traffic a test suite has no business generating. The channel was deleted on
-# 2026-07-29 and the login alert is now an in-app notification, which is a plain
-# database write, so there is nothing left to stub.
+# The login alert is an in-app notification — a plain database write — so
+# nothing in this file reaches the network and there is nothing to stub.
 
 
 class LoginFacesTests(TestCase):

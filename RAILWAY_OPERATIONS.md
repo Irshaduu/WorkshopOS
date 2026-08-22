@@ -205,7 +205,7 @@ Storage needs none and speaks the same protocol, so it is a drop-in: set
 `PHOTO_S3_ENDPOINT=<project-ref>.storage.supabase.co`,
 `PHOTO_S3_PATH_PREFIX=storage/v1/s3`, `PHOTO_S3_REGION=<your region>`, and the
 three keys above. Moving to R2 later is the same three settings again. Verified
-end to end against Supabase on 2026-08-19: signed PUT, signed GET, signed
+end to end against Supabase: signed PUT, signed GET, signed
 DELETE, and the `Content-Disposition` filename override all behave as S3 does,
 and the browser upload needs no CORS configuration there.
 
@@ -295,6 +295,11 @@ Things worth knowing:
   version never takes traffic. This is the behaviour you want.
 - **`collectstatic` runs at build time**, so `staticfiles/` is baked into the
   image. That is why it survives, while runtime-written files do not.
+- ⚠ **Without the Build Command the app does not start degraded — it 500s.**
+  Every frontend asset now ships from `static/vendor/` instead of a CDN, and the
+  manifest storage raises on a missing entry rather than emitting a dead link.
+  The setting lives in the Railway dashboard, not in the repo, so a new service
+  starts without it.
 - Deploy logs and build logs are separate tabs. Build problems are in Build.
 
 ---
@@ -566,8 +571,8 @@ Documented so they are not rediscovered as emergencies.
 
 ### Uploaded images do not work in production
 
-`CarBrand.logo_image` and `CarModel.sample_image` accept uploads, and the brand
-form exposes one. In production they are **silently broken**:
+`CarBrand.logo_image` is the **one** `ImageField` left in the codebase, and
+`CarBrandForm` exposes it. In production it is **silently broken**:
 `formulad_workshop/urls.py` serves media through Django's `static()` helper,
 which returns an empty list when `DEBUG=False` — so the file is written, never
 servable (404), and destroyed by the next deploy.
@@ -575,7 +580,14 @@ servable (404), and destroyed by the next deploy.
 Decorative master data, so not a go-live blocker. If you want it working, it
 needs a Railway Volume mounted at `/app/media` plus a way to serve `MEDIA_URL`.
 If you do not, removing `logo_image` from `CarBrandForm` is more honest than an
-upload button that does nothing. Logged in `TECH_DEBT.md`.
+upload button that does nothing. Logged as `AUD-0088` in `TECH_DEBT.md`.
+
+*(An earlier version of this note also named `CarModel.sample_image`. That field
+does not exist — `CarModel` carries only `brand`, `name` and `created_at`.)*
+
+⚠ **This is not the photo path.** Job-card photos never touch the Django
+filesystem — the browser PUTs them straight to the bucket on a presigned URL, so
+they are unaffected by any of the above. See §3 "Required for photos".
 
 ### No staging environment
 
@@ -606,7 +618,7 @@ There is a brief switchover. At this traffic level nobody will see it.
 $env:DJANGO_ENV = "development"        # PowerShell
 python manage.py runserver
 
-# Full test suite (SQLite, ~30-55 min)
+# Full test suite (SQLite, 20-80 min — load-dependent)
 python manage.py test workshop inventory
 
 # Ship an update

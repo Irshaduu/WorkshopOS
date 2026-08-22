@@ -16,9 +16,9 @@ every `send_mail()` through `EMAIL_BACKEND`, so swapping that one setting moves
 the mail onto HTTPS, which no host blocks.
 
 Deliberately written against `urllib.request` from the standard library rather
-than `requests` or the `resend` SDK. `requests` was removed from this project
-when Twilio went; re-adding a dependency to send five emails a year is a poor
-trade, and this is the whole of the API surface we use.
+than `requests` or the `resend` SDK. This project carries no HTTP client
+dependency, and re-adding one to send single-digit emails a year is a poor trade
+— this is the whole of the API surface we use.
 
 CONFIGURE (production only)
 ---------------------------

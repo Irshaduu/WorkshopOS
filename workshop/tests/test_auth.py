@@ -11,10 +11,7 @@ class AuthFlowTests(TestCase):
     """
     Sign-in gates: the IP backstop and identifier resolution.
 
-    This file used to patch `workshop.auth_views.config` to blank the Twilio SID
-    and force the SMS sender into terminal mock mode. Both the sender and that
-    `config` import were deleted on 2026-07-29 — nothing here reaches the network
-    any more, so there is nothing left to stub.
+    Nothing here reaches the network, so there is nothing to stub.
     """
 
     def setUp(self):
@@ -66,16 +63,13 @@ class AuthFlowTests(TestCase):
         )
         self.assertContains(response, "Invalid credentials")
 
-    # The old step 4 of this test asserted that a *valid* owner password was
-    # rejected on the staff face with a fake "Invalid credentials". That was
-    # removed on 2026-07-28: the owner door sat one link below the form, so the
-    # lie protected nothing while guaranteeing a baffling support call the first
-    # time an owner typed correct details on the wrong page. Either face now
-    # accepts any role — see `test_login.LoginFacesTests`.
+    # There is ONE sign-in door and it accepts any role — see
+    # `test_login.LoginFacesTests`. An earlier version faked "Invalid
+    # credentials" for a valid owner password on the staff face; the lie
+    # protected nothing, because the owner door sat one link below the form.
 
-    # The SMS/Telegram broadcast test was removed on 2026-07-29 along with the
-    # channel itself. A successful sign-in still alerts the owners — it just does
-    # it through the in-app feed now, covered by
+    # A successful sign-in alerts the other owners through the in-app feed,
+    # covered by
     # `test_notifications.EventHookTests.test_successful_login_notifies_the_other_owner`.
 
     def test_sign_in_by_mobile_reads_the_database(self):
@@ -101,16 +95,13 @@ class AuthFlowTests(TestCase):
 
         self.assertEqual(self.client.session.get('_auth_user_id'), str(self.owner.pk))
 
-    # Password-reset coverage moved to `test_password_reset.py` on 2026-07-28.
+    # Password-reset coverage lives in `test_password_reset.py`.
     #
-    # The old `test_password_reset_flow_edge_cases` was deleted rather than
-    # updated: it drove a mechanism that no longer exists (the OTP hash and its
-    # expiry stored in `request.session`, delivery over SMS/Telegram) and it
-    # asserted a behaviour that was removed *on purpose* — a distinct
-    # "Please wait ..." reply on the cooldown path. That reply only appeared for
-    # accounts that actually exist, which made the forgot-password form an
-    # account-existence oracle. The cooldown is now folded into the one generic
-    # response, and the limits are counted per account in the database.
+    # Worth knowing if you are tempted to add a friendlier cooldown message
+    # here: a distinct "Please wait ..." reply was removed *on purpose*. It only
+    # appeared for accounts that actually exist, which made the forgot-password
+    # form an account-existence oracle. The cooldown is folded into the one
+    # generic response, and the limits are counted per account in the database.
     #
     # Every case it covered has a successor, with the new semantics:
     #   non-existent user  -> ResetFlowTests.test_unknown_account_is_indistinguishable

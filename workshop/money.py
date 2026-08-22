@@ -13,10 +13,15 @@ rather than being re-derived per view:
     same typo is a 500. Neither is an answer to a fat finger. The bound is read
     from `max_digits`/`decimal_places`, so it cannot drift from the schema.
 
-  * **NaN and Infinity.** Both parse as perfectly valid `Decimal`s. `NaN`
-    compares False against everything, so a bare `amount > 0` guard lets it
-    through in one direction and `Infinity` sails through in the other. Either
-    one in a money column makes every aggregate that touches it meaningless.
+  * **NaN and Infinity.** Both parse as perfectly valid `Decimal`s, and they
+    defeat a bare `amount > 0` guard in opposite ways. `Infinity` is honestly
+    greater than zero, so the guard agrees and it is written — and every
+    aggregate touching that column is meaningless afterwards. `NaN` is worse to
+    diagnose and less damaging: an *ordered* comparison against it raises
+    `InvalidOperation` (only `==` answers False quietly, unlike float NaN), so
+    the guard itself raises — usually outside whatever `try` wrapped the
+    parsing — and the page 500s. Refusing both here is one check instead of two
+    different post-mortems.
 
   * **Not a number at all.** Returns None rather than raising, so callers stay
     a simple `if amount is None: <message>` instead of each inventing its own

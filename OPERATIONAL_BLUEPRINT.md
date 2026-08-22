@@ -1,9 +1,10 @@
 # 🔧 WorkshopOS (Titan) — OPERATIONAL BLUEPRINT
 ## How Every Feature Connects & Works Together
 
-> **Accurate as of**: 2026-07-27 (v8)
->
-> This is the **workflow narrative** doc — how features connect for a human reading top to bottom. For exact model/route/template tables see `MASTER_BLUEPRINT.md`; for roadmap and status see `TITAN_MASTER_HANDOVER.md`.
+> This is the **workflow narrative** doc — how features connect, for a human
+> reading top to bottom. For exact model/route/template tables see
+> `MASTER_BLUEPRINT.md`; for roadmap and status see `TITAN_MASTER_HANDOVER.md`;
+> for the rules behind these behaviours see `CLAUDE.md`.
 
 ---
 
@@ -58,8 +59,12 @@ graph TD
    - View the Paid Bills Dashboard over ANY period, with the grand Total Collected (Office sees the last 7 days and no grand total)
    - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
-   - Monitor all active login sessions
-   - Remotely revoke any staff access
+   - Monitor all active login sessions, and remotely revoke any staff access
+   - **The whole Control Hub (`/manage/`)** — create, delete and reset staff logins;
+     unlock a locked account; add, edit and retire staff on the roster. Office cannot
+     reach any of it, by URL or otherwise. Owner accounts are never managed *from*
+     here: an owner changes their own password at `/change-password/` or recovers it
+     by emailed code
    - Receive notifications in-app (nav bell): sign-ins, discounts over **₹3,500**, permanent deletions, archives, salary activity, and the account-security events (lockouts, resets, reset-code abuse, login created/deleted, staff password changed)
    - Change their own password, or recover it by emailed 6-digit code
    - **No** Django Admin access — `is_staff=False` on purpose; see `CLAUDE.md`
@@ -77,21 +82,19 @@ graph TD
    - Manage Spare Shops (create, edit, pay, view ledger, print) and edit or delete rows in the Unassigned Spares Hub
    - Manage Master Lists (Brands, Models, Spares, Concerns)
    - View Car Profiles (vehicle history)
-   - Create/Delete/Reset passwords for staff accounts
-   - Add/Edit/Toggle mechanics
    - Run Data Cleanup (rename, merge, delete duplicates)
    - Manage inventory Categories (add/list/edit) + create/edit products via Supplier Shops (Add Product); all supplier-shop management
    - Record and review Cashbook entries (income & expenses ledger)
 
 
  FLOOR (Mechanics / Floor Manager)
-   - View Dashboard (active cars on floor), including each car's live details — the same four lists (Customer Concerns, Job Performed, Inventory Items, Spare Parts) the read-only job card shows. **This is where Floor reads a card**: the Live Report and the read-only card view at `/jobcards/<pk>/` are both Office/Owner (the Live Report since 2026-08-16, the card view since 2026-08-18)
+   - View Dashboard (active cars on floor), including each car's live details — the same four lists (Customer Concerns, Job Performed, Inventory Items, Spare Parts) the read-only job card shows. **This is where Floor reads a card**: the Live Report and the read-only card view at `/jobcards/<pk>/` are both Office/Owner
    - Create new Job Cards
    - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Total Labour included, is Office/Owner only and is enforced on the server)
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
    - Put a car On Hold / take it off hold, and Mark it Completed
-   - Record a purchase in the **Unassigned Spares Hub** — add only. No price box is shown and none is stored (the row is saved unpriced, and Office fills the figure in from the shop's bill); existing rows cannot be edited or deleted, and no price on the page is visible to Floor. Floor *can* fill in **Ordered For** — a free-text note saying which car the part is for ("BMW 320d"), added 2026-08-18 because a part is usually ordered before there is a job card to attach it to. It is a note, not a link: it moves no money and joins nothing
+   - Record a purchase in the **Unassigned Spares Hub** — add only. No price box is shown and none is stored (the row is saved unpriced, and Office fills the figure in from the shop's bill); existing rows cannot be edited or deleted, and no price on the page is visible to Floor. Floor *can* fill in **Ordered For** — a free-text note saying which car the part is for ("BMW 320d"), because a part is usually ordered before there is a job card to attach it to. It is a note, not a link: it moves no money and joins nothing
 ```
 
 ---
@@ -219,6 +222,70 @@ that fires for housekeeping stops being read for the things that matter.
 
 ---
 
+## 3C. PHOTOS — EVIDENCE, ATTACHED TO NOTHING
+
+A photograph answers one question later: *what did this car look like when it came
+in?* It is evidence in a pre-existing-damage argument, and nothing else in the system
+depends on it.
+
+### Where they are taken
+
+| Surface | Who | What they can do |
+|---|---|---|
+| **Job card → car photos** | Floor, Office, Owner | take, view, delete (while the bill is open) |
+| **Job card → a Spare Parts row** | Floor, Office, Owner | take, view, delete (while the bill is open) |
+| **Spare Shop → Purchase History** | Office, Owner | **view only** |
+
+The mechanic walking round the car with the tablet is who takes them, which is why
+Floor has full access here even though Floor is shown no prices anywhere in the app —
+a photo of a car says nothing about whose it is or what it cost.
+
+### How it works
+
+1. The person taps the box; the camera opens; **one tap takes the photo** — there is
+   no shutter-then-confirm review step, because that doubles the taps on a ten-photo
+   walk-around.
+2. The browser asks the server to **sign** an upload URL. The server mints the photo's
+   id and hands back a URL pointing straight at the storage bucket.
+3. **The browser uploads to the bucket directly.** The bytes never pass through
+   Django, so a slow upload on bad shop wifi never occupies a server worker.
+4. Only once the bucket confirms does the browser tell the server to **commit** the
+   row.
+
+That ordering is the whole design. Writing the row first would mean a browser closed
+mid-upload leaves a record pointing at a photo that does not exist — a broken image
+nobody can explain or remove. This way **a row always means a real photograph**, and
+the worst case is an unreferenced object in the bucket, which a housekeeping command
+sweeps up.
+
+Because the frame is held in memory until the server confirms, a failed upload
+retries once by itself, and anything still broken becomes a **visible** failed item
+plus a warning if you try to leave the page. **A photo never disappears silently.**
+
+### The rules that matter operationally
+
+- **Nothing in the business depends on a photo.** No job card column points at one, no
+  money, no stock, no ledger, no report, and nothing on the printed bill. Settlement
+  never asks for one — a card with no photographs is a perfectly ordinary card.
+- **Limits: 10 per car, 4 per spare.** The count is only shown once the limit is hit;
+  a permanent "3/10" badge just invites filling it.
+- **Settling the bill freezes the photos.** Once a card is PAID or FLEET PAID its
+  photographs can be looked at but not added to or deleted — money and evidence stop
+  moving together, the same principle as the Financial Lock. The only delete there is
+  removes a mis-shot from an open card.
+- **A new job card, and a newly added spare row, offer no photo box** — there is no
+  saved record yet to attach one to. The card says "save the job card first". This is
+  the real workflow, not a workaround: nobody photographs a car while typing its
+  registration.
+- **Photos are kept for a year, then purged** — the owner's rule is that complaints
+  stop after a year. `purge_old_photos` does it, and it **skips any bill still
+  unpaid**, whatever its age: an unpaid bill is an open argument, and those
+  photographs are the evidence in it.
+- **The whole section is optional.** With no storage configured the box simply does
+  not appear, and every other thing on the job card behaves identically.
+
+---
+
 ## 4. BILLING & FINANCIAL FLOW
 
 ### Cost Accumulation
@@ -302,7 +369,7 @@ Payment history is recorded; Owner can reverse any payment.
 ## 5. INVENTORY <-> JOB CARD AUTO-SYNC
 
 ### Two sections, because a part arrives by one of two routes
-A Job Card records parts in **two separate sections** (rebuilt 2026-07-30):
+A Job Card records parts in **two separate sections**:
 
 | | **Inventory Items** | **Spare Parts** |
 |---|---|---|
@@ -312,7 +379,7 @@ A Job Card records parts in **two separate sections** (rebuilt 2026-07-30):
 | Moves warehouse stock? | **yes** | never |
 | Who already paid for it | a Supplies Shop restock bill, earlier | the spare shop, per this job |
 
-They were one section until 2026-07-30, which meant five of the eight columns were
+They were one section, which meant five of the eight columns were
 permanently blank for a warehouse draw and staff were invited to fill boxes that
 meant nothing. Worse, the system had to *guess* which route a row took, and guessed
 differently in two places — so a shop-bought part that happened to share a name with
@@ -356,7 +423,7 @@ Delete a job card              -->   (guarded: a card holding spares can't be de
                                       clear/unassign its spares first, so no stock moves)
 ```
 
-Stock sync runs on **three signal groups** (8 handlers): warehouse draws (above — Inventory-section rows only), a whole-job-card soft-delete/restore reversal that is **now dormant** (job cards are hard-deleted and a card holding spares can't be deleted), and supplier restock (§5B). All stock changes are signal-driven, never mutated directly in views — and there is **no manual stock-number editing anywhere** (Low Stock is read-only).
+Stock sync runs on **three signal groups** (10 handlers): warehouse draws (above — Inventory-section rows only), a whole-job-card soft-delete/restore reversal that is **now dormant** (job cards are hard-deleted and a card holding spares can't be deleted), and supplier restock (§5B — 5 handlers there: 3 that move stock, plus a bill-level pair that re-costs when a bill's date or discount changes). All stock changes are signal-driven, never mutated directly in views — and there is **no manual stock-number editing anywhere** (Low Stock is read-only).
 
 ### Where inventory items come from
 Items are created **only** via **Supplier → Add Product** (which requires an Average Stock — see below); there is no separate "add item" screen, and "Manage Database" is a read-only Category browser (add/list/edit/delete Category; drill in to see products + their shops). Category names can't be duplicated in any casing, and a category can only be deleted while it is **empty** — Delete simply isn't offered once it holds products. Product name and Average Stock are edited on the supplier catalog, where a product can also be **deactivated** (kept and listed, but excluded from restock bills — enforced when the bill is saved, not merely hidden from the picker).
@@ -453,12 +520,24 @@ Purpose:            Buy parts INTO warehouse    Buy parts FOR specific jobs
 Linked To:          Inventory Items (FK)        Job Card Spare Items (FK)
 Stock Effect:       Increases stock             N/A (tracked separately)
 Bill Structure:     Restock Bills + Line Items  Per-job spare items
-Payment System:     Quick payments + soft-delete Cascade waterfall + JSON snapshot
-Access:             Staff+ (Floor/Office/Owner) Office+ for most; Owner-only
-                    — matches Inventory app     for delete/reverse/permanent-delete
+Payment System:     Running balance; delete     Cascade waterfall; delete
+                    reverses + logs             reverses + logs (JSON snapshot)
+Access:             Office+ (all 23 views)      Office+ for most; Owner-only
+                                                for delete/reverse/permanent-delete
 ```
 
-> ⚠️ **Access asymmetry — worth a design review:** every Supplies-Shop view (including delete-restock-bill and delete-payment) is `@staff_required`, so **Floor mechanics can create/delete supplier bills and payments** — because the whole Inventory app is staff-level. The sibling Spare-Shop module restricts destructive actions to Office/Owner. This is the *current code behavior*, documented here honestly; if Floor should not be touching supplier financial records, the fix is in the code (tighten the decorators), not this doc.
+> **The two modules now agree, and they did not always.** Every Supplies-Shop view —
+> the catalog, restock bills, payments, the AJAX partials, and both deletes — is
+> `@office_required`. **Floor cannot reach any of it.** What Floor keeps in the
+> Inventory app is the read-only side: the stock list, Low Stock, Stock History and
+> the per-mechanic drill-down, five routes in all.
+>
+> This used to be an asymmetry worth flagging: the whole Inventory app was
+> staff-level, so a mechanic could create *and delete* supplier bills and payments
+> while the sibling Spare-Shop module already restricted destructive actions to
+> Office. The decorators were tightened; the recorded fix is that **money-side
+> screens are Office/Owner in both modules, and Floor's inventory access is
+> read-only in both.**
 
 ---
 
@@ -647,15 +726,18 @@ MAIN DASHBOARD (home)
            card"). The heading keeps the true count, so the two add back up.
            Floor is shown no shop name and no price in it.
 
-JOB LIST
-  Shows: ALL job cards (active + completed, not trash)
+JOB LIST (Office / Owner)
+  Shows: ALL job cards (active + completed)
   Searchable, Paginated (45 per page), AJAX live search
 
-LIVE REPORT
-  Shows: The live state of the workshop, read on a phone. Two stacked parts
-         with two different audiences.
+LIVE REPORT — Office / Owner only, WHOLE PAGE
+  Shows: The live state of the workshop, read on a phone. Two stacked parts.
+         Floor gets none of it: every box on the page is supplier names,
+         ordering state or a money-side gap, none of which Floor is shown
+         anywhere else. Floor reads a card from the dashboard car card's own
+         live-details drawer, which is these same four lists.
 
-  Operations board (Office / Owner only)
+  Operations board
     ON THE FLOOR    Mechanics as panels — four names across on a laptop, three
                     on a tablet, two on a phone, wrapping to a second row for
                     the fifth, all panels on a row ending level — with that
@@ -675,7 +757,7 @@ LIVE REPORT
     already fitted and has no ordering workflow to wait on — and only for cars
     still in the workshop.
 
-  Live Jobs (Floor / Office / Owner)
+  Live Jobs
     The detailed card per active car: make, model, registration, the mechanic
     on it, how long it has been in, whether it is on hold, and progress across
     the customer's concerns — then FOUR sections, in the order the work
@@ -819,28 +901,44 @@ SUPPLIES SHOPS (Inventory App — distinct from Spare Shops, see §5B)
   Actions: Create restock bills (auto stock increase), record payments, manage catalog
 
 AUDITS (Owner only)
-  Shows: Security and financial logs
-  High Discounts: Flags jobs where received amount is significantly lower than total bill
-  Deleted Bulk Payers: Tracks manually deleted bulk payer records for accountability
+  High Discounts (/audits/high-discounts/) — the ONE audit view.
+  Lists every card whose shortfall (bill - received) is at or over the flat
+  ₹3,500 in JobCard.HIGH_DISCOUNT_AMOUNT, sorted by amount. It is the
+  compensating control for the rule that books a walk-in's shortfall as a
+  discount, so it reads as what the workshop settled for against what it
+  billed — which is why it is Owner-only while Paid Bills is not.
+  The same constant drives the HIGH_DISCOUNT alert and the settle dialog,
+  so none of the three can disagree about where the line is.
 
 SPARE SHOPS
   Shows: Supplier list with balances
   Drill-down: Full ledger per shop
   Actions: Pay individual items, lump-sum cascade, print ledger
 
-TRASH (Owner only)
-  Shows: Soft-deleted items across 5 tabs
-  Action: Restore or permanently delete
+DELETION HISTORY (Owner only, read-only)
+  Shows: One unified list of every permanent deletion, filterable by entity
+         type, click through to the JSON snapshot taken before the delete.
+  Action: NONE. There is deliberately no restore anywhere in the system —
+          reviving stale financial data corrupts running balances. Accounts
+          that other records point at are ARCHIVED instead, and reactivate
+          from their own per-module Archived list.
+  (This replaced an older Trash screen that offered restore across five tabs.
+   If you are looking for that, it is gone on purpose — see §11.)
 
 CAR PROFILES
   Shows: Unique vehicles grouped by registration
   Drill-down: Full visit history with chronological numbering
 
 INVENTORY
-  Restock: View all stock levels with health bars
-  Manage: Add/edit categories and items
-  Low Stock: Critical items needing reorder
-  History: Who used what, when
+  Stock list: All stock levels with health bars (Floor+, read-only)
+  Manage Database: a READ-ONLY Category browser (Office/Owner) — add, rename
+    and delete categories, and drill in to see the products in one. There is
+    no "add item" screen here: a product is created only through
+    Supplier -> Add Product, which is what makes Average Stock mandatory.
+  Low Stock: below 25% of Average Stock (Floor+, read-only). Negative stock is
+    reported separately as a "stock discrepancy" — it means a supplier bill is
+    missing, not that anything needs reordering.
+  Stock History: who used what, when (Floor+, live query, read-only)
 
 MANAGEMENT DASHBOARD (Owner Control Hub, /manage/)
   Accounts: Create/delete/reset passwords for Office and Floor login accounts
@@ -982,8 +1080,16 @@ graph TD
 
 ## 🛠️ OPERATIONAL TOOLING
 
-- **Automated SQLite Backups** — Run `python manage.py backup_db` to securely clone the database into a timestamped archive (automatically retains the 7 most recent backups).
-- **Production Static Serving** — Integrated `WhiteNoiseMiddleware` to seamlessly serve static assets directly from the application in production environments.
+- **Database backups** — `python manage.py backup_db` follows whichever database is
+  active: `pg_dump` for PostgreSQL, a file copy for SQLite. It keeps the 14 most
+  recent, and the file extension tells you how to restore it (`.dump` needs
+  `pg_restore`, `.sql` needs `psql`, `.sqlite3` is a plain copy).
+  ⚠ On Railway this writes to the container's **ephemeral** filesystem — see
+  `RAILWAY_OPERATIONS.md` §6 for the procedure that actually persists.
+- **Production static serving** — WhiteNoise serves static assets from the
+  application layer, through `STORAGES` with a content-hashing manifest.
+- **Before real books go in** — `purge_business_data --yes` clears every business
+  table. It never touches logins, groups or the master lists.
 
 ---
 

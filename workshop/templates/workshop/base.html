@@ -1,4 +1,6 @@
 <!-- base.html -->
+{% load static %}
+{% load custom_filters %}
 <!DOCTYPE html>
 <html lang="en">
 
@@ -9,15 +11,12 @@
     <title>{% block title %}Workshop{% endblock %}</title>
 
     <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{% static 'vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
 
     <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap-icons/bootstrap-icons.css' %}">
 
     <!-- Custom CSS -->
-    {% load static %}
-    {% load custom_filters %}
-
     <!-- PWA: icons + manifest, for "Add to Home Screen" -->
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/icons/icon-32.png' %}">
     <link rel="icon" type="image/png" sizes="16x16" href="{% static 'images/icons/icon-16.png' %}">
@@ -967,6 +966,66 @@
                 padding-bottom: 12px;
             }
         }
+
+        {% comment %}
+        NAVIGATION PROGRESS — the installed app has no browser chrome to borrow.
+
+        `manifest.json` declares `"display": "standalone"`, which is what makes
+        this necessary rather than decorative: in a browser tab the address bar
+        and the tab spinner both report that a page is on its way, and in
+        standalone mode there is neither. So a tap on a job card was answered
+        with nothing at all until the new page painted — and since every page
+        here is a full server-rendered navigation over a `no-store` response,
+        that gap is a real network round trip, not a few milliseconds.
+
+        Three properties keep it weightless:
+
+          * It is ONE `<div>`, three pixels tall, created on first use and never
+            hidden again — the navigation replaces the whole document, so the
+            bar leaves with the page that owns it. There is no "finish"
+            animation to get wrong and no state to keep in sync.
+          * It animates `transform` only, which is composited: it cannot reflow
+            the page it is reporting on, and it costs no layout.
+          * It NEVER reaches the end. Nothing here knows how far along the
+            request is, so it eases towards 90% and waits. A bar that completes
+            and then sits there is a bar that has lied.
+
+        Sits at 1090, above the notification panel's 1080 — it is a 3px line at
+        the very top edge, so it can obstruct nothing, and a navigation started
+        from inside a modal still has to be visible.
+        {% endcomment %}
+        .nav-progress {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            z-index: 1090;
+            background: var(--color-primary, #2563eb);
+            transform: scaleX(0);
+            transform-origin: left center;
+            will-change: transform;
+            pointer-events: none;
+        }
+        .nav-progress.is-running {
+            animation: navProgressCreep 10s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+        }
+        @keyframes navProgressCreep {
+            0%   { transform: scaleX(0); }
+            40%  { transform: scaleX(0.55); }
+            100% { transform: scaleX(0.9); }
+        }
+
+        {% comment %}
+        Reduced motion keeps the BAR and drops the CREEP — the information is
+        "something is happening", and that is exactly what someone who has
+        turned motion down still needs. Same call the job card's save button
+        makes: drop the movement, keep the signal.
+        {% endcomment %}
+        @media (prefers-reduced-motion: reduce) {
+            .nav-progress.is-running {
+                animation: none;
+                transform: scaleX(0.35);
+            }
+        }
     </style>
 
     {% block extra_css %}{% endblock %}
@@ -1548,8 +1607,8 @@ owner to type the password back in.
     </main>
 
     <!-- SCRIPTS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{% static 'js/script.js' %}?v=6"></script>
+    <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+    <script src="{% static 'js/script.js' %}?v=8"></script>
     {% comment %}
     Loaded for every role, not just owners: the sounds confirm Office's
     payments and Floor's saves, which is most of what happens in a day. It
