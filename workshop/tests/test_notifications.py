@@ -6,10 +6,12 @@ the actor is spared their own event, and a notification survives the deletion of
 whatever it was about — most of them announce a deletion, so a ForeignKey would
 have cascaded away exactly the record that mattered.
 
-Second the audience. Owners are resolved by **group membership**, and that has
-already gone wrong once: both owner accounts were superusers in no group, so the
-query returned nobody and every notification would have silently reached no one
-while appearing to work.
+Second the audience. An owner is `is_superuser` **or** in the `Owner` group —
+matching `has_group`/`owner_required` elsewhere — because group-membership-only
+has already gone wrong once: a reseeded database routinely leaves both owner
+accounts superuser with no group until `sync_owner_identity --yes` is re-run,
+and in that window the old query returned nobody, so every notification
+silently reached no one while appearing to work.
 """
 
 from decimal import Decimal
@@ -62,16 +64,18 @@ class NotifyTests(TestCase):
 
         self.assertFalse(Notification.objects.filter(recipient=self.office).exists())
 
-    def test_owners_are_found_by_group_not_superuser(self):
+    def test_a_lone_superuser_is_still_notified_without_group_membership(self):
         """
-        The regression that started all this: a superuser in no group is not an
-        owner as far as this query is concerned.
+        The regression that started all this: a reseeded database leaves an
+        owner superuser with no group until `sync_owner_identity --yes` catches
+        up. The feed must not go dark for that entire window, so `is_superuser`
+        alone is enough — the same either-or `has_group`/`owner_required` use.
         """
         User.objects.create_user(username='lonesuper', password=PASSWORD, is_superuser=True)
 
         notify('LOGIN', 'something happened')
 
-        self.assertFalse(Notification.objects.filter(recipient__username='lonesuper').exists())
+        self.assertTrue(Notification.objects.filter(recipient__username='lonesuper').exists())
 
     def test_inactive_owner_is_skipped(self):
         self.owner_b.is_active = False

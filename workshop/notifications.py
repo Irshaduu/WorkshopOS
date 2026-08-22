@@ -23,6 +23,7 @@ INFO — worth finding in the feed, not worth interrupting for.
 import logging
 
 from django.contrib.auth.models import User
+from django.db.models import Q
 
 from .models import Notification
 
@@ -94,16 +95,28 @@ def _recipients(audience, exclude=None):
     """
     Resolve an audience to real accounts, minus whoever caused the event.
 
-    Owners are found by **group membership**, not `is_superuser`. That
-    distinction bit once already: both owner accounts were superusers in no
-    group, so this query returned an empty list and every owner-addressed
-    notification would have reached nobody while appearing to work.
-    `sync_owner_identity` keeps the group populated.
+    An owner is `is_superuser=True` **or** in the `Owner` group — the same
+    either-or every other RBAC check in this app already uses
+    (`has_group`, `owner_required`'s `is_owner`). This used to be
+    group-membership only, which is the *narrower* of the two and broke twice
+    in practice: a fresh or reseeded database routinely leaves both owner
+    accounts superuser with **empty** group membership until someone
+    remembers to run `sync_owner_identity --yes`, and in that window this
+    query returned nobody — every owner-addressed notification silently
+    reached no one while appearing to work. `is_superuser` is the bit every
+    decorator already trusts and nothing resets it, so checking it here too
+    means the feed can't go dark just because the group sync was skipped.
+    `sync_owner_identity` is still worth running — it's what closes
+    `/admin/` and keeps the mobile number current — it just isn't a
+    precondition for notifications to work.
     """
     if audience != AUDIENCE_OWNERS:
         return User.objects.none()
 
-    people = User.objects.filter(groups__name='Owner', is_active=True).distinct()
+    people = User.objects.filter(
+        Q(is_superuser=True) | Q(groups__name='Owner'),
+        is_active=True,
+    ).distinct()
     if exclude is not None and getattr(exclude, 'pk', None):
         people = people.exclude(pk=exclude.pk)
     return people

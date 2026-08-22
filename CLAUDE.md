@@ -1613,7 +1613,17 @@ nothing — a notification a mechanic can't act on trains everyone to ignore the
 bell. The bell in `base.html` is Owner-gated to match; widen the gate and the
 audience together or you get a bell that can never fill.
 
-**Audience is resolved by group membership, not `is_superuser`.**
+**Audience is resolved by `is_superuser` OR group membership — the same
+either-or `has_group`/`owner_required` use everywhere else, not group
+membership alone.** A reseeded or freshly copied database routinely leaves
+both owner accounts superuser with an empty `Owner` group until someone
+re-runs `sync_owner_identity --yes` (see "Which database am I on?"), and
+group-only resolution went dark for that entire window — twice, in practice,
+on two different demo deployments — reaching nobody while `notify()` reported
+success. `is_superuser` is the bit nothing resets, so checking it here too
+means a skipped sync degrades nothing. `sync_owner_identity` is still worth
+running — it closes `/admin/` and keeps the mobile number current — it is
+just no longer a precondition for the bell to work.
 
 **Abusing the password-reset form tells BOTH owners.** `RESET_CODE_LIMIT` and
 `RESET_CODE_ATTEMPTS_SPENT` are CRITICAL and are the only events raised with **no
