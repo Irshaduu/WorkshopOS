@@ -86,7 +86,20 @@ class ArchivedShopKeepsItsDebtTests(SpareFlowBase):
     """
 
     def archive(self):
-        self.client.post(reverse('spare_shop_delete', args=[self.shop.pk]), {'reason': 'closed'})
+        """Archive the shop AROUND the view, because the view now refuses it.
+
+        `spare_shop_delete` blocks archiving a shop that is still owed money
+        (`AUD-0082`) — the same guard `bulk_payer_delete` carries, and for the
+        same reason: `spare_shop_detail` 404s on an archived shop, so archiving
+        one with a balance leaves that debt with no screen to settle it from.
+
+        The archived-and-still-owed state is NOT unreachable, though, which is
+        why these tests still matter: every shop archived before that guard
+        existed is sitting in exactly this state, and the resolution pass and
+        the payment guard both have to keep handling it. Writing the flag
+        directly is how that legacy row is reproduced.
+        """
+        SpareShop.objects.filter(pk=self.shop.pk).update(is_trashed=True)
         self.shop.refresh_from_db()
 
     def test_archiving_alone_changes_nothing(self):
@@ -256,8 +269,11 @@ class ShopPaymentTests(SpareFlowBase):
         self.assertEqual(self.owed(), D('1000.00'))
 
     def test_an_archived_shop_takes_no_new_payment(self):
+        # Archived directly, not through `spare_shop_delete` — that view now
+        # refuses a shop still owed money. See ArchivedShopKeepsItsDebtTests
+        # .archive() for why this state still has to be handled.
         self.spare()
-        self.client.post(reverse('spare_shop_delete', args=[self.shop.pk]), {'reason': 'closed'})
+        SpareShop.objects.filter(pk=self.shop.pk).update(is_trashed=True)
         resp = self.client.post(reverse('spare_shop_pay', args=[self.shop.pk]),
                                 {'lump_sum': '500', 'payment_method': 'CASH'})
         self.assertEqual(resp.status_code, 404)

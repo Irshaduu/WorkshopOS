@@ -319,8 +319,24 @@ def edit_supplier_shop(request, shop_id):
 
 @office_required
 def deactivate_supplier_shop(request, shop_id):
+    """POST: Archive a Supplies Shop — reversible, keeps every bill.
+
+    REFUSED WHILE THE SHOP IS STILL OWED MONEY, the same rule as
+    `spare_shop_delete` and `bulk_payer_delete`. Archiving used to hide the shop
+    from the active list AND drop its balance out of the Profit page's "We owe
+    supplies shops", so one click made a real debt invisible everywhere at once
+    — and a PAYABLE that vanishes RAISES reported profit. (`AUD-0082`.)
+    """
     if request.method == 'POST':
         shop = get_object_or_404(SupplierShop, pk=shop_id)
+        balance = shop.total_billed_amount - shop.total_paid_amount
+        if balance > Decimal('0'):
+            messages.error(
+                request,
+                f"'{shop.name}' still has ₹{balance:,.2f} outstanding. "
+                f"Settle the balance before archiving the shop."
+            )
+            return redirect('supplier_shop_detail', shop_id=shop.id)
         shop.is_active = False
         shop.save()
         notify(
@@ -607,12 +623,32 @@ def update_bill_discount(request, shop_id, bill_id):
         discount = request.POST.get('discount_amount', '0')
         try:
             discount = Decimal(str(discount).strip())
-            if discount >= 0:
-                SupplierRestockBill.objects.filter(pk=bill.pk).update(discount_amount=discount)
-                shop.update_totals()
-                messages.success(request, f"Discount updated for Bill #{bill.id}.")
         except (ValueError, InvalidOperation):
             messages.error(request, "Invalid discount amount.")
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
+        if discount < 0:
+            messages.error(request, "Discount cannot be negative.")
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
+        # THE SAME RULE THE BILL FORMS ENFORCE, and this door was open.
+        # `_reject_impossible_discount` guards bill creation and bill editing;
+        # this endpoint validated only `discount >= 0`, so a mistyped extra
+        # zero here made `total − discount` negative and the Profit page
+        # reported a NEGATIVE Supplies Shops expense, RAISING profit on the one
+        # page profit is distributed from. Stated as a refusal rather than a
+        # clamp, so nobody has to guess which number the system kept.
+        if discount > bill.total_amount:
+            messages.error(
+                request,
+                f"Discount ₹{discount:,.2f} is more than the bill total "
+                f"₹{bill.total_amount:,.2f}, so it was NOT applied."
+            )
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
+        SupplierRestockBill.objects.filter(pk=bill.pk).update(discount_amount=discount)
+        shop.update_totals()
+        messages.success(request, f"Discount updated for Bill #{bill.id}.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
 @office_required

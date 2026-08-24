@@ -293,3 +293,71 @@ class DeferredBillingTests(SupplierCostingBase):
 
         s, e, _k, _l = engine.resolve_period('all_time')
         self.assertEqual(engine.uncosted_draw_count(s, e), 1)
+
+
+class EveryDoorIntoADiscountEnforcesTheSameRuleTests(SupplierCostingBase):
+    """
+    `_reject_impossible_discount` guards bill CREATION and bill EDITING. The
+    standalone "update discount" endpoint validated only `discount >= 0` and was
+    therefore the one door left open: a mistyped extra zero there made
+    `total - discount` negative, the Supplies Shops expense went negative, and
+    reported profit ROSE on the page profit is distributed from.
+
+    Tested as a PROPERTY of the whole module rather than of one view — the rule
+    is "no route can leave a bill worth less than nothing", and the way this was
+    missed the first time is that two of the three routes were covered.
+    """
+
+    def setUp(self):
+        super().setUp()
+        g, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='off_upd', password='pw')
+        self.user.groups.add(g)
+        self.client = Client()
+        self.client.login(username='off_upd', password='pw')
+
+    def test_the_update_endpoint_refuses_a_discount_above_the_bill(self):
+        b, _line = self.bill(qty='10', total='5000')
+        self.client.post(
+            reverse('update_bill_discount', args=[self.shop.id, b.id]),
+            {'discount_amount': '50000'})
+        b.refresh_from_db()
+        self.assertEqual(b.discount_amount, D('0'), "the impossible discount was applied")
+        self.assertEqual(b.get_effective_amount, D('5000.00'))
+
+    def test_a_legitimate_discount_still_goes_through(self):
+        b, _line = self.bill(qty='10', total='5000')
+        self.client.post(
+            reverse('update_bill_discount', args=[self.shop.id, b.id]),
+            {'discount_amount': '500'})
+        b.refresh_from_db()
+        self.assertEqual(b.discount_amount, D('500'))
+        self.assertEqual(b.get_effective_amount, D('4500.00'))
+
+    def test_a_negative_discount_is_refused(self):
+        b, _line = self.bill(qty='10', total='5000')
+        self.client.post(
+            reverse('update_bill_discount', args=[self.shop.id, b.id]),
+            {'discount_amount': '-900'})
+        b.refresh_from_db()
+        self.assertEqual(b.discount_amount, D('0'))
+
+    def test_the_supplier_ledger_never_goes_negative_through_this_door(self):
+        b, _line = self.bill(qty='10', total='5000')
+        self.client.post(
+            reverse('update_bill_discount', args=[self.shop.id, b.id]),
+            {'discount_amount': '50000'})
+        self.shop.refresh_from_db()
+        self.assertGreaterEqual(self.shop.total_billed_amount, D('0'))
+
+    def test_the_profit_page_survives_a_bad_row_already_in_the_database(self):
+        """
+        The view guards are the first line; the engine floor is the second. A
+        row that predates the guard — or one left behind when `update_totals()`
+        recomputed a bill's total downward without re-checking its discount —
+        must still not produce a negative expense.
+        """
+        b, _line = self.bill(qty='10', total='5000')
+        SupplierRestockBill.objects.filter(pk=b.pk).update(discount_amount=D('50000'))
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertEqual(engine.inventory_expense(s, e), D('0'))

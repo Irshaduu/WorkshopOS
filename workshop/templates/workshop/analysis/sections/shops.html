@@ -22,7 +22,8 @@
         <td class="num">{{ r.parts }}</td>
         <td class="num">₹{{ r.spend|inr }}</td>
         <td class="num">₹{{ r.revenue|inr }}</td>
-        <td class="num pos">₹{{ r.profit|inr }} <span style="font-weight:400; color:var(--color-text-muted);">({{ r.margin|floatformat:0 }}%)</span></td>
+        {# Coloured by SIGN. It was hard-coded `pos`, so a shop the workshop lost money on printed its loss in green. #}
+        <td class="num {% if r.profit < 0 %}neg{% else %}pos{% endif %}">₹{{ r.profit|inr }} <span style="font-weight:400; color:var(--color-text-muted);">({{ r.margin|floatformat:0 }}%)</span></td>
         <td class="num {% if r.due > 0 %}neg{% endif %}">₹{{ r.due|inr }}</td>
       </tr>
       {% endfor %}
@@ -56,7 +57,6 @@
 
 <div class="ia-note">
   <i class="bi bi-info-circle-fill text-primary mt-1"></i>
-  <span>These are the two separate ways parts are paid for, and they never overlap: a spare shop
-    part is bought for one job, a supplies shop bill fills the warehouse shelf. <strong>Owed now</strong>
-    is the live outstanding balance, not a figure for this date range.</span>
+  <span>A spare shop part is bought for one job; a supplies shop bill fills the warehouse shelf.
+    The two never overlap. <strong>Owed now</strong> is the live balance, not this date range.</span>
 </div>

@@ -780,7 +780,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (54 files · 1,524 tests)
+## 13. TEST SUITE (54 files · 1,566 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -807,7 +807,7 @@ base classes.*
 | `test_cashbook.py` | Cashbook ledger |
 | `test_financial.py` | Financial logic & calculations |
 | `test_spare_shop_views.py` | Spare shop views & operations |
-| `test_analysis.py` | Profit engine arithmetic, the double-count rule, periods, RBAC, Insights sections |
+| `test_analysis.py` | Profit engine arithmetic, the double-count rule, periods, RBAC, Insights sections. Plus the 2026-08-25 pass: a supplier discount that cannot raise profit, like-for-like comparison of an unfinished period, unsettled salary months named on screen, All Time reaching every salary month, balances in credit said in words, the fleet line as a true slice of `receivable`, unassigned shop purchases disclosed, and archiving unable to hide a debt |
 | `test_render_smoke.py` | Template render smoke tests |
 | `test_owner_identity.py` | Unique mobile constraint; `sync_owner_identity` (.env → DB owner migration) |
 | `test_change_password.py` | Owner-only password change, session survival, other-device sign-out |
@@ -851,7 +851,7 @@ base classes.*
 | `test_signals.py` | Stock sync signals (advanced scenarios) |
 | `tests_suppliers.py` | Supplier shop models, signals, views, AJAX, edge cases |
 | `test_costing.py` | The weighted-average replay in `inventory/costing.py`: date ordering, negative stock, NULL-not-zero for an uncosted draw |
-| `test_supplier_costing.py` | Restock-bill cost attribution — pro-rata discount apportionment, an over-large discount dropped and reported, and re-costing when a bill's date or discount changes |
+| `test_supplier_costing.py` | Restock-bill cost attribution — pro-rata discount apportionment, an over-large discount dropped and reported **on every one of the three routes that can set one**, and re-costing when a bill's date or discount changes |
 
 Run with `python manage.py test workshop inventory` (or `workshop.tests.<file>` / `inventory.<file>` for a subset — see `CLAUDE.md`).
 
@@ -980,4 +980,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin; 157 under `DEBUG=True`, which adds the media path) · **106 Templates** (83 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **54 Test Files / 1,524 tests** · **78 Migrations** (70 workshop + 8 inventory)
+> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin; 157 under `DEBUG=True`, which adds the media path) · **106 Templates** (83 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **54 Test Files / 1,566 tests** · **78 Migrations** (70 workshop + 8 inventory)

@@ -164,6 +164,10 @@
   .pf-pos-item .v { font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
   .pf-pos-item.in { border-left: 3px solid var(--color-success); }
   .pf-pos-item.out { border-left: 3px solid #dc2626; }
+  /* A balance that has gone the other way is neither owed nor owing — it is
+     money already sitting with the other side. Neutral rail, so it cannot be
+     read as a debt in whichever direction the tile normally points. */
+  .pf-pos-item.credit { border-left: 3px solid var(--color-text-muted); }
 
   /* Insights CTA */
   .pf-cta {
@@ -186,6 +190,21 @@
     background: var(--color-hover); border-radius: 10px; padding: 9px 12px;
     display: flex; gap: 8px; align-items: flex-start;
   }
+
+  /* THE INCOMPLETE-WAGES BANNER.
+     Amber and directly under the equation, because it is the one thing on this
+     page that changes what the profit figure MEANS: the wage bill for an
+     unsettled month is not in it. Everything else here is a footnote about a
+     figure that is already right. It is a separate class rather than a `pf-note`
+     variant so it cannot be quietened by a change aimed at the footnotes. */
+  .pf-gap {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #d97706;
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px;
+    color: #7c2d12; font-size: 0.8rem; line-height: 1.45;
+  }
+  .pf-gap i { color: #d97706; font-size: 0.95rem; flex-shrink: 0; margin-top: 1px; }
+  .pf-gap strong { color: #78350f; }
 
   /* ── Phones ───────────────────────────────────────────────── */
   @media (max-width: 575.98px) {
@@ -271,10 +290,17 @@
   <div class="pf-hero-exact">₹{{ report.profit|inr }}</div>
   <div class="pf-hero-meta">
     <span class="pf-chip">{{ report.margin|floatformat:1 }}% margin</span>
+    {% comment %}
+      The wording comes from `engine.comparison_window`, not from here. An
+      unfinished period is compared against the SAME DAYS of the period before
+      it, so the chip has to say which — "vs previous" on a part-year silently
+      compared 8 months against 12 and reported a decline on a workshop that
+      was growing.
+    {% endcomment %}
     {% if delta_profit is not None %}
       <span class="pf-chip {% if delta_profit >= 0 %}up{% else %}down{% endif %}">
         <i class="bi bi-arrow-{% if delta_profit >= 0 %}up{% else %}down{% endif %}-right"></i>
-        {{ delta_profit|floatformat:1 }}% vs previous
+        {{ delta_profit_text }} {{ comparison_label }}
       </span>
     {% endif %}
     <span class="pf-chip">{{ report.bills.cards }} job card{{ report.bills.cards|pluralize }}</span>
@@ -298,6 +324,34 @@
     <div class="pf-eq-value profit {% if report.profit < 0 %}neg{% endif %}">₹{{ report.profit|inr }}</div>
   </div>
 </div>
+
+{% if report.salary.unsettled_months %}
+{% comment %}
+  THE ONE WARNING ON THIS PAGE THAT CHANGES THE PROFIT FIGURE'S MEANING.
+
+  A salary month is settled in the first days of the NEXT one, so for the whole
+  of any month the DEFAULT filter contains a month with no settlement and the
+  wage bill for it is genuinely not in the total. Measured on 25 Aug 2026: the
+  page read ₹4,90,577 at a 44.4% margin with wages at ₹0, against a real wage
+  bill of about ₹1,20,000 a month.
+
+  It names the months and stops. No estimate — putting a figure nobody paid into
+  the profit equation is how this page would start being wrong instead of
+  incomplete, and it is the same rule that reports an uncosted warehouse draw as
+  unknown rather than as ₹0.
+{% endcomment %}
+<div class="pf-gap">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  <span>
+    <strong>Wages for
+      {% for m in report.salary.unsettled_months %}{{ m }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      are not in this profit</strong> —
+    {{ report.salary.unsettled_months|length|pluralize:"that month is,those months are" }} not settled yet.
+    Settle {{ report.salary.unsettled_months|length|pluralize:"it,them" }} in Salary &amp; Advance
+    to see the real figure.
+  </span>
+</div>
+{% endif %}
 
 <div class="row g-0 g-md-3">
   <!-- ── Turnover ───────────────────────────────────────────── -->
@@ -326,6 +380,14 @@
       </div>
       {% endif %}
 
+      {% comment %}
+        Only when there IS some. Cashbook income is scrap and black oil — a
+        handful of entries a month at most, so on most periods this row was a
+        permanent "₹0" between two figures that matter. It is not hiding
+        anything: the row appears the moment the money does, and Total Turnover
+        below is unchanged either way.
+      {% endcomment %}
+      {% if report.cashbook_income %}
       <div class="pf-row">
         <span class="lbl"><i class="bi bi-journal-plus"></i>
           <span><span class="name">Cashbook Income</span>
@@ -333,6 +395,7 @@
         </span>
         <span class="amt">₹{{ report.cashbook_income|inr }}</span>
       </div>
+      {% endif %}
 
       <div class="pf-row total">
         <span class="lbl"><span class="name">Total Turnover</span></span>
@@ -403,6 +466,13 @@
   <div class="col-12 col-lg-7">
     <div class="pf-card">
       <div class="pf-card-title">
+        {% comment %}
+          The plain settled COUNT here, not the unsettled warning — that is said
+          twice already, in the amber banner and on the expense line beside the
+          ₹0. This card breaks down what WAS paid, so what belongs in its
+          subtitle is how many months are in it. A third copy of one sentence is
+          how a warning stops being read.
+        {% endcomment %}
         <i class="bi bi-cash-coin text-primary"></i>Salary &amp; Advance
         <span class="sub">{{ report.salary.settled_months }} month{{ report.salary.settled_months|pluralize }} settled</span>
       </div>
@@ -485,11 +555,10 @@
     <i class="bi bi-exclamation-triangle-fill mt-1" style="color: #d97706;"></i>
     <span>
       <strong>Wages may be counted twice.</strong>
-      Wages come from Salary &amp; Advance (₹{{ report.salary.total|inr }} here), but
-      ₹{{ report.cashbook.wage_suspect_total|inr }} of Cashbook expense is also filed under
-      {% for c in report.cashbook.wage_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}.
-      Nothing has been removed automatically — move or rename those Cashbook entries if they
-      are the same money, and this warning will clear.
+      ₹{{ report.cashbook.wage_suspect_total|inr }} of Cashbook expense is filed under
+      {% for c in report.cashbook.wage_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %},
+      and wages are already counted from Salary &amp; Advance. Nothing was removed — move those
+      entries if they are the same money.
     </span>
   </div>
   {% endif %}
@@ -501,56 +570,86 @@
     <i class="bi bi-bank text-primary"></i>Position Right Now
     <span class="sub">Not affected by the filter</span>
   </div>
+  {% comment %}
+    Every one of these can legitimately go negative — a shop paid ahead of its
+    purchases is in CREDIT. The tile used to print the minus sign as-is, so an
+    overpaid shop read "We owe spare shops ₹-7,65,938", which looks like a
+    broken figure rather than a real position. `financial_position()` now hands
+    over the label and a positive magnitude with the sign already interpreted:
+    deciding what a minus means is arithmetic, and arithmetic lives in the
+    engine. The template prints what it is given.
+  {% endcomment %}
   <div class="pf-pos">
-    <div class="pf-pos-item in">
-      <div class="k">Customers owe us</div>
-      <div class="v" style="color: var(--color-success);">₹{{ position.receivable|inr }}</div>
+    {% for t in position.tiles %}
+    <div class="pf-pos-item {{ t.direction }}">
+      <div class="k">{{ t.label }}</div>
+      <div class="v"{% if t.direction == 'out' %} style="color: #dc2626;"{% elif t.direction == 'in' and forloop.first %} style="color: var(--color-success);"{% endif %}>₹{{ t.amount|inr }}</div>
     </div>
-    <div class="pf-pos-item in">
-      <div class="k">Of that, fleet accounts</div>
-      <div class="v">₹{{ position.fleet_due|inr }}</div>
-    </div>
-    <div class="pf-pos-item out">
-      <div class="k">We owe spare shops</div>
-      <div class="v" style="color: #dc2626;">₹{{ position.payable_spare|inr }}</div>
-    </div>
-    <div class="pf-pos-item out">
-      <div class="k">We owe supplies shops</div>
-      <div class="v" style="color: #dc2626;">₹{{ position.payable_supplier|inr }}</div>
-    </div>
+    {% endfor %}
   </div>
 </div>
 
 {% if report.uncosted_draws %}
 {% comment %}
-Draws whose cost is unknown, not zero. They contribute nothing to the figure in
-the note below, so without this they would quietly read as free parts. Normally
-this only appears right after go-live, while opening stock has no supplier bill
-behind it yet.
+  Draws whose cost is UNKNOWN, not zero — they count as ₹0, so without this line
+  they read as free parts. Normally only appears just after go-live, while
+  opening stock has no supplier bill behind it yet.
+
+  Shortened deliberately. The first version explained where an uncosted draw
+  comes from, what it does to the margin and how to fix it — three true things
+  that made a rare, minor footnote the longest block on the page.
 {% endcomment %}
 <div class="pf-card">
   <div class="pf-note">
     <i class="bi bi-question-circle-fill text-warning mt-1"></i>
     <span>
-      <strong>{{ report.uncosted_draws }}</strong> warehouse draw{{ report.uncosted_draws|pluralize }} in
-      this period {{ report.uncosted_draws|pluralize:"has,have" }} <strong>no cost recorded</strong> —
-      the stock was on the shelf before any Supplies Shop bill existed for it, so nothing
-      established what it cost. Those parts count as ₹0 below, which understates cost and
-      overstates their margin. Enter a restock bill for the product to fix it going forward.
+      <strong>{{ report.uncosted_draws }}</strong> warehouse draw{{ report.uncosted_draws|pluralize }}
+      {{ report.uncosted_draws|pluralize:"has,have" }} no cost recorded, so
+      {{ report.uncosted_draws|pluralize:"it counts,they count" }} as ₹0 here.
+      Add a Supplies Shop bill for the product to give it a cost.
+    </span>
+  </div>
+</div>
+{% endif %}
+
+{% if report.unassigned_spares.amount %}
+{% comment %}
+  Why "We owe spare shops" above does not reconcile with the Spare Shops
+  expense. These are parts ordered for one car, not used on it, and waiting on
+  the shelf for the next one. The shop is owed for them now; the cost lands
+  when the part goes onto a job card — see `unassigned_spare_purchases` for why
+  expensing them while they wait would make a PAST month's profit move.
+
+  "NOT YET", never "not counted" — the earlier wording read as though the money
+  disappeared, which would have sent somebody looking for a bug that is not
+  there. Only rendered when such rows exist.
+{% endcomment %}
+<div class="pf-card">
+  <div class="pf-note">
+    <i class="bi bi-inbox-fill text-primary mt-1"></i>
+    <span>
+      <strong>₹{{ report.unassigned_spares.amount|inr }}</strong> of the spare-shop balance is
+      {{ report.unassigned_spares.count }} part{{ report.unassigned_spares.count|pluralize }}
+      bought but not yet fitted to a car. Owed to the shop now;
+      {{ report.unassigned_spares.count|pluralize:"it becomes,they become" }} an expense on the
+      job card {{ report.unassigned_spares.count|pluralize:"it goes,they go" }} onto.
     </span>
   </div>
 </div>
 {% endif %}
 
 {% if report.warehouse_drawn %}
+{% comment %}
+  Says WHY a real figure is missing from the expenses, which is the one thing a
+  reader cannot work out from the page. Kept to a sentence: the reasoning behind
+  the rule belongs in CLAUDE.md, not on a screen an owner reads monthly.
+{% endcomment %}
 <div class="pf-card">
   <div class="pf-note">
     <i class="bi bi-info-circle-fill text-primary mt-1"></i>
     <span>
-      <strong>₹{{ report.warehouse_drawn|inr }}</strong> of parts came off warehouse stock in this
-      period. That is deliberately <strong>not</strong> counted as an expense here — it was already
-      paid for when those parts were bought on a Supplies Shop restock bill. Counting it again
-      would charge the workshop twice for one part.
+      <strong>₹{{ report.warehouse_drawn|inr }}</strong> of parts came off warehouse stock and is
+      not an expense here — it was already paid for on a Supplies Shop bill.
     </span>
   </div>
 </div>

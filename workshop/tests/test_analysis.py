@@ -21,6 +21,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from workshop import analysis_engine as engine
+from workshop.analysis_engine import _month_end
 from workshop.models import (
     JobCard, JobCardSpareItem, JobCardLabourItem, Mechanic, SpareShop,
     CashbookEntry, BulkPayer, SalaryAdvance, SalaryPayment, SalaryPaymentLine,
@@ -540,3 +541,445 @@ class InsightSectionTests(AnalysisBase):
         self.assertEqual(out['distinct_vehicles'], 1)
         self.assertEqual(out['named_count'], 0)     # card was created without a customer name
         self.assertEqual(out['named_pct'], 0)
+
+
+# =============================================================================
+# THE FIXES OF 2026-08-25
+#
+# Everything below guards something the Profit page got WRONG on real data,
+# found by reading the rendered page against the database rather than by a test
+# failing. Each class names the figure that was wrong and by how much, because
+# "why is this asserted" is the part that goes stale first.
+# =============================================================================
+_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+           'July', 'August', 'September', 'October', 'November', 'December']
+
+
+class ASupplierDiscountCannotRaiseProfitTests(AnalysisBase):
+    """
+    A discount bigger than the bill it sits on made the Supplies Shops expense
+    NEGATIVE, which *raised* reported profit — a mistyped extra zero was enough.
+
+    `SupplierRestockBill.get_effective_amount` has always floored this at zero.
+    Three aggregates on the analysis pages hand-rolled `total - discount` and
+    did not, so the model and the page disagreed about the same bill.
+    """
+
+    def _impossible_bill(self):
+        shop = SupplierShop.objects.create(name='Ninoos')
+        cat = Category.objects.create(name='Fluids')
+        item = Item.objects.create(name='5W-30', category=cat, average_stock=D('10'))
+        bill = SupplierRestockBill.objects.create(supplier=shop, bill_date=self.today)
+        SupplierRestockItem.objects.create(bill=bill, item=item, quantity=D('1'),
+                                           total_price=D('5000'))
+        # Straight to the column, the way a bad row already in the database
+        # looks — the point is that the PAGE survives it, not that the form
+        # allows it.
+        SupplierRestockBill.objects.filter(pk=bill.pk).update(discount_amount=D('50000'))
+        return shop, bill
+
+    def test_the_expense_is_floored_at_zero_never_negative(self):
+        self._impossible_bill()
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertEqual(engine.inventory_expense(s, e), D('0'),
+                         "a negative expense would raise reported profit")
+
+    def test_the_engine_agrees_with_the_model_property(self):
+        _shop, bill = self._impossible_bill()
+        s, e, _k, _l = engine.resolve_period('this_month')
+        bill.refresh_from_db()
+        self.assertEqual(engine.inventory_expense(s, e), bill.get_effective_amount)
+
+    def test_the_chart_cannot_disagree_with_the_headline(self):
+        self._impossible_bill()
+        s, e, _k, _l = engine.resolve_period('this_month')
+        report = engine.build_profit_report(s, e)
+        series = engine.monthly_series(s, e)
+        self.assertEqual(sum((m['expenses'] for m in series), D('0')),
+                         report['expense_total'])
+
+    def test_the_shops_insight_uses_the_same_floor(self):
+        self._impossible_bill()
+        from workshop.analysis_views import _insight_shops
+        s, e, _k, _l = engine.resolve_period('this_month')
+        rows = _insight_shops(s, e)['supplier_rows']
+        self.assertEqual(rows[0]['spend'], D('0'))
+
+
+class AnIncompletePeriodIsComparedLikeForLikeTests(AnalysisBase):
+    """
+    THE NUMBER THAT SAID "DOWN" ON A WORKSHOP THAT WAS GROWING.
+
+    `this_year` resolves to the whole calendar year, but the data only reaches
+    today. Comparing that against a FULL previous year compared 8 months against
+    12: the page reported "-8.5% vs previous" while turnover per trading day was
+    running ~11% AHEAD, on the page profit distribution is decided from.
+    """
+
+    def test_a_part_year_is_compared_against_the_same_part_of_last_year(self):
+        s, e, _k, _l = engine.resolve_period('this_year')
+        prev_start, prev_end, read_to, label, partial = engine.comparison_window(s, e)
+        today = timezone.localdate()
+        self.assertTrue(partial)
+        self.assertEqual(read_to, today,
+                         "an unfinished year is only measured as far as it has data")
+        self.assertEqual(prev_start, s.replace(year=s.year - 1))
+        self.assertEqual(prev_end, today.replace(year=today.year - 1))
+        self.assertEqual(label, 'vs same period last year')
+
+    def test_a_part_month_is_compared_against_the_same_days_last_month(self):
+        s, e, _k, _l = engine.resolve_period('this_month')
+        prev_start, prev_end, read_to, label, partial = engine.comparison_window(s, e)
+        self.assertTrue(partial)
+        self.assertEqual(read_to, timezone.localdate())
+        self.assertEqual(prev_start.day, 1)
+        self.assertEqual(label, 'vs same days last month')
+        self.assertEqual((prev_end.year, prev_end.month),
+                         (prev_start.year, prev_start.month))
+
+    def test_a_finished_month_compares_against_the_previous_CALENDAR_month(self):
+        """
+        Not "31 days earlier". July is 31 days, so the day-count version put
+        Last Month's comparison at 31 May - 30 June — a window straddling two
+        months, labelled as the month before.
+        """
+        s, e, _k, _l = engine.resolve_period('last_month')
+        prev_start, prev_end, read_to, _label, partial = engine.comparison_window(s, e)
+        self.assertFalse(partial)
+        self.assertEqual(read_to, e)
+        self.assertEqual(prev_start.day, 1)
+        self.assertEqual(prev_end, s - timedelta(days=1))
+        self.assertEqual((prev_start.year, prev_start.month),
+                         (prev_end.year, prev_end.month),
+                         "the comparison window must sit inside ONE calendar month")
+
+    def test_a_finished_year_compares_against_the_whole_previous_year(self):
+        """A leap year made the day-count version start on 2 January and quietly
+        drop New Year's Day."""
+        s, e, _k, _l = engine.resolve_period('last_year')
+        prev_start, prev_end, _read_to, _label, _partial = engine.comparison_window(s, e)
+        self.assertEqual((prev_start.month, prev_start.day), (1, 1))
+        self.assertEqual((prev_end.month, prev_end.day), (12, 31))
+        self.assertEqual(prev_start.year, s.year - 1)
+
+    def test_a_mistyped_year_does_not_500_the_page(self):
+        """
+        `prev_start = prev_end - span` raised OverflowError off the bottom of
+        the calendar. A mis-keyed year in a date box is enough, and a 500 on the
+        profit page is not an acceptable answer to a typo.
+        """
+        for bad in ('0001-01-01', '1000-01-01'):
+            s, e, _k, _l = engine.resolve_period('custom', bad, '2026-12-31')
+            engine.comparison_window(s, e)          # must not raise
+            r = self.client.get(reverse('analysis_dashboard'),
+                                {'range': 'custom', 'start': bad, 'end': '2026-12-31'})
+            self.assertEqual(r.status_code, 200, f"{bad} 500'd the profit page")
+
+
+class UnsettledWagesAreNamedNotHiddenTests(AnalysisBase):
+    """
+    THE WARNING THAT FIRES ON THE DEFAULT VIEW, EVERY MONTH.
+
+    A salary month is settled in the first days of the NEXT one, so for the
+    whole of any month "This Month" contains a month with no settlement and its
+    wages are genuinely not in the profit. Measured on real data: Rs 4,90,577 at
+    a 44.4% margin with the salary line reading Rs 0, against a true wage bill
+    of about Rs 1,20,000 a month — a third of the profit. All the page said was
+    "0 month(s) settled".
+    """
+
+    def setUp(self):
+        super().setUp()
+        # One advance, so the workshop has salary history at all — the warning
+        # is bounded to months at or after the first wage activity.
+        SalaryAdvance.objects.create(staff=self.mech, amount=D('500'),
+                                     date=self.today.replace(day=1))
+
+    def test_the_current_month_is_named_when_it_has_no_settlement(self):
+        s, e, _k, _l = engine.resolve_period('this_month')
+        salary = engine.salary_expense(s, e)
+        self.assertEqual(salary['unsettled_months'], [self.today.strftime('%B %Y')])
+
+    def test_nothing_is_named_once_the_month_is_settled(self):
+        SalaryPayment.objects.create(month=self.today.replace(day=1))
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertEqual(engine.salary_expense(s, e)['unsettled_months'], [])
+
+    def test_a_future_month_is_never_called_unsettled(self):
+        """`this_year` runs to 31 December. Reporting ten months that have not
+        happened would bury the one that matters."""
+        s, e, _k, _l = engine.resolve_period('this_year')
+        for name in engine.salary_expense(s, e)['unsettled_months']:
+            word, year = name.split()
+            month = date(int(year), _MONTHS.index(word) + 1, 1)
+            self.assertLessEqual(month, self.today.replace(day=1),
+                                 f"{name} has not happened yet")
+
+    def test_months_before_the_workshop_had_any_wages_are_not_flagged(self):
+        """A window wider than the section's own history would otherwise flag
+        every month up to the day Salary & Advance was first used."""
+        SalaryAdvance.objects.all().delete()
+        s, e, _k, _l = engine.resolve_period('this_year')
+        self.assertEqual(engine.salary_expense(s, e)['unsettled_months'], [])
+
+    def test_no_wage_figure_is_ever_invented(self):
+        """The page names the gap; it never estimates into it. A number nobody
+        paid inside the profit equation is how this page would go from
+        incomplete to wrong."""
+        s, e, _k, _l = engine.resolve_period('this_month')
+        salary = engine.salary_expense(s, e)
+        self.assertTrue(salary['unsettled_months'])
+        self.assertEqual(salary['settled_net'], D('0'))
+        self.assertEqual(salary['total'], D('500'),
+                         "only the real advance, nothing estimated")
+
+    def test_the_hint_says_what_is_MISSING_not_what_was_counted(self):
+        s, e, _k, _l = engine.resolve_period('this_month')
+        report = engine.build_profit_report(s, e)
+        line = next(l for l in report['expense_lines'] if l['key'] == 'salary')
+        self.assertIn('not settled', line['hint'])
+        self.assertNotIn('month(s) settled', line['hint'])
+
+    def test_the_page_names_the_month_on_screen(self):
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('are not in this profit', html)
+        self.assertIn(self.today.strftime('%B %Y'), html)
+
+    def test_a_midmonth_window_does_not_flag_a_month_that_IS_settled(self):
+        """
+        A salary month is dated the 1st, so a window that does not start on a
+        1st — any mid-month custom range — excludes that month's settlement from
+        `salary_expense`'s own filter. That is the dating rule working. Reading
+        the gap off that same filter would then raise the banner on a month that
+        HAS been settled, and a false warning on this page is worse than none.
+        """
+        first = self.today.replace(day=1)
+        SalaryPayment.objects.create(month=first)
+        start = first + timedelta(days=16)
+        end = _month_end(first)
+        self.assertEqual(engine.unsettled_months(start, end), [],
+                         "flagged a month that was settled on the 1st")
+
+    def test_a_midmonth_window_still_flags_a_month_that_is_NOT_settled(self):
+        first = self.today.replace(day=1)
+        start = first + timedelta(days=9)
+        end = min(_month_end(first), self.today)
+        self.assertEqual(engine.unsettled_months(start, end),
+                         [first.strftime('%B %Y')])
+
+    def test_a_wholly_future_window_says_nothing(self):
+        start = date(self.today.year + 1, 1, 1)
+        self.assertEqual(engine.unsettled_months(start, date(self.today.year + 1, 12, 31)), [])
+
+
+class AllTimeReachesEverySalaryMonthTests(AnalysisBase):
+    """
+    "All Time" anchored its window to job cards, cashbook and restock bills, and
+    never to salary. A salary month is dated the 1st; the earliest job card fell
+    on the 17th — so the window opened on the 17th, that month's settlement sat
+    outside it, and All Time reported the wage bill Rs 1,22,167 short while
+    claiming to cover everything.
+    """
+
+    def test_a_settlement_before_the_first_job_card_is_still_counted(self):
+        # Card mid-month, settlement on the 1st — the exact shape that failed.
+        first = self.today.replace(day=1)
+        JobCard.objects.all().delete()
+        self.make_card(bill='1000', when=first + timedelta(days=16))
+        payment = SalaryPayment.objects.create(month=first)
+        SalaryPaymentLine.objects.create(payment=payment, staff=self.mech,
+                                         salary_used=D('9000'), leave_days=0,
+                                         advance_used=D('1000'), net_amount=D('8000'))
+
+        start, end, _k, _l = engine.resolve_period('all_time')
+        self.assertLessEqual(start, first, "All Time must reach the salary month")
+        self.assertEqual(engine.salary_expense(start, end)['total'], D('9000'))
+
+    def test_all_time_still_reaches_back_past_the_first_job_card(self):
+        """The original behaviour, kept: opening stock and shop balances are
+        seeded before the first card."""
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Opening',
+                                     amount=D('100'),
+                                     date=self.today - timedelta(days=400))
+        start, _e, _k, _l = engine.resolve_period('all_time')
+        self.assertLessEqual(start, self.today - timedelta(days=400))
+
+
+class ABalanceThatWentTheOtherWayIsSaidInWordsTests(AnalysisBase):
+    """
+    A spare shop paid ahead of its purchases is in CREDIT. The tile printed the
+    minus sign as-is — "We owe spare shops Rs -7,65,938" — which reads as a
+    broken figure rather than a real position.
+    """
+
+    def test_an_overpaid_shop_reads_as_paid_ahead_with_a_positive_figure(self):
+        SpareShop.objects.filter(pk=self.shop.pk).update(
+            total_purchased_amount=D('1000'), total_paid_amount=D('4000'))
+        tiles = {t['label']: t for t in engine.financial_position()['tiles']}
+        self.assertIn('Spare shops paid ahead', tiles)
+        self.assertEqual(tiles['Spare shops paid ahead']['amount'], D('3000'))
+        self.assertEqual(tiles['Spare shops paid ahead']['direction'], 'credit')
+        self.assertNotIn('We owe spare shops', tiles)
+
+    def test_a_normal_balance_still_reads_as_owed(self):
+        SpareShop.objects.filter(pk=self.shop.pk).update(
+            total_purchased_amount=D('4000'), total_paid_amount=D('1000'))
+        tiles = {t['label']: t for t in engine.financial_position()['tiles']}
+        self.assertEqual(tiles['We owe spare shops']['amount'], D('3000'))
+        self.assertEqual(tiles['We owe spare shops']['direction'], 'out')
+
+    def test_no_tile_ever_prints_a_negative(self):
+        SpareShop.objects.filter(pk=self.shop.pk).update(
+            total_purchased_amount=D('0'), total_paid_amount=D('9000'))
+        for t in engine.financial_position()['tiles']:
+            self.assertGreaterEqual(t['amount'], D('0'),
+                                    f"{t['label']} printed a minus sign")
+
+    def test_the_page_does_not_render_a_minus_rupee_figure(self):
+        SpareShop.objects.filter(pk=self.shop.pk).update(
+            total_purchased_amount=D('0'), total_paid_amount=D('9000'))
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertNotIn('₹-', html)
+
+
+class TheFleetLineIsASliceOfTheLineAboveItTests(AnalysisBase):
+    """
+    The page labels this "Of that, fleet accounts" directly under "Customers owe
+    us", so it claims to be a slice of it. It was cut from a different
+    population by a different expression: `BulkPayer`'s stored totals are GROSS
+    of discount and span settled cards too, while `receivable` is net of
+    discount over unsettled cards only.
+    """
+
+    def test_a_discounted_fleet_card_cannot_make_the_slice_exceed_the_whole(self):
+        payer = BulkPayer.objects.create(customer_name='Fleet Co')
+        self.make_card(bill='10000', discount='2000', received='0',
+                       payment_status='PENDING', bulk_payer=payer)
+        payer.update_totals()
+        pos = engine.financial_position()
+        self.assertEqual(pos['fleet_due'], D('8000'), "net of discount, like receivable")
+        self.assertLessEqual(pos['fleet_due'], pos['receivable'])
+
+    def test_a_settled_fleet_card_leaves_the_slice(self):
+        payer = BulkPayer.objects.create(customer_name='Fleet Co')
+        self.make_card(bill='5000', received='5000',
+                       payment_status='BULK_PAID', bulk_payer=payer)
+        payer.update_totals()
+        self.assertEqual(engine.financial_position()['fleet_due'], D('0'))
+
+
+class UnassignedShopPurchasesAreDisclosedTests(AnalysisBase):
+    """
+    A part ordered from a spare shop for one car, not used on it, and kept for
+    the next car that needs it. It counts in `SpareShop.update_totals()` — so it
+    is inside "We owe spare shops" — and `spare_shop_expense` filters
+    `job_card__isnull=False`, so it is in no period's expenses. The page showed
+    a debt with no cost behind it.
+
+    NOT counting it is correct, and not merely conservative: nothing in the app
+    attaches an unassigned row to a job card, so the part is fitted by typing it
+    onto the card and deleting the unassigned row. Expensing it while it waits
+    would therefore make a PAST month's profit MOVE on the day somebody fits the
+    part — the earlier expense leaves with the deleted row. A settled month's
+    profit changing weeks later is worse than a cost arriving a month late.
+    """
+
+    def _unassigned(self, amount='2500'):
+        return JobCardSpareItem.objects.create(
+            job_card=None, shop=self.shop, spare_part_name='Brake disc (spare)',
+            source=JobCardSpareItem.SOURCE_SHOP, quantity=D('1'), unit_price=D(amount))
+
+    def test_it_is_still_not_an_expense(self):
+        self._unassigned()
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertEqual(engine.spare_shop_expense(s, e), D('0'))
+        self.assertEqual(engine.unattributed_spare_expense(s, e), D('0'))
+
+    def test_it_is_reported_so_the_shop_balance_reconciles(self):
+        self._unassigned()
+        self.shop.update_totals()
+        out = engine.unassigned_spare_purchases()
+        self.assertEqual(out['amount'], D('2500'))
+        self.assertEqual(out['count'], 1)
+        # The whole point: this is exactly the part of the payable with no
+        # matching expense YET.
+        self.assertEqual(engine.financial_position()['payable_spare'], D('2500'))
+
+    def test_the_page_says_so(self):
+        self.make_card(bill='4000', received='4000', payment_status='PAID')
+        self._unassigned()
+        self.shop.update_totals()
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('not yet fitted to a car', html)
+
+    def test_an_ordinary_period_says_nothing_about_it(self):
+        """No unassigned rows, no line — the page must not carry a footnote
+        about something that has not happened."""
+        self.make_card(bill='4000', received='4000', payment_status='PAID')
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertNotIn('not yet fitted to a car', html)
+
+
+class ArchivingAShopCannotHideWhatIsOwedTests(AnalysisBase):
+    """
+    `AUD-0082`. `payable_spare` filtered `is_trashed=False` and
+    `payable_supplier` filtered `is_active=True`, and nothing else counted that
+    money — so archiving a shop the workshop owed removed the debt from the only
+    screen that reports it.
+
+    STRICTLY WORSE THAN THE FLEET TWIN that was fixed first: a receivable that
+    vanishes understates what is owed TO the workshop, but a PAYABLE that
+    vanishes silently RAISES reported profit.
+
+    Fixed on both sides at once, and both halves are load-bearing — the filter
+    is gone so an already-archived shop still counts, and the archive views
+    refuse a shop carrying a balance so nothing new gets into that state.
+    """
+
+    def _owed_spare_shop(self, owed='50000'):
+        SpareShop.objects.filter(pk=self.shop.pk).update(
+            total_purchased_amount=D(owed), total_paid_amount=D('0'))
+        self.shop.refresh_from_db()
+        return self.shop
+
+    def test_an_archived_spare_shops_debt_still_counts(self):
+        shop = self._owed_spare_shop()
+        SpareShop.objects.filter(pk=shop.pk).update(is_trashed=True)
+        self.assertEqual(engine.financial_position()['payable_spare'], D('50000'),
+                         "archiving hid a real debt and raised reported profit")
+
+    def test_an_archived_supplies_shops_debt_still_counts(self):
+        SupplierShop.objects.create(name='Old Supplier', is_active=False,
+                                    total_billed_amount=D('9000'),
+                                    total_paid_amount=D('1000'))
+        self.assertEqual(engine.financial_position()['payable_supplier'], D('8000'))
+
+    def test_a_spare_shop_carrying_a_balance_cannot_be_archived(self):
+        shop = self._owed_spare_shop()
+        self.client.post(reverse('spare_shop_delete', args=[shop.pk]))
+        shop.refresh_from_db()
+        self.assertFalse(shop.is_trashed, "a shop still owed money was archived")
+
+    def test_a_settled_spare_shop_archives_normally(self):
+        SpareShop.objects.filter(pk=self.shop.pk).update(
+            total_purchased_amount=D('5000'), total_paid_amount=D('5000'))
+        self.client.post(reverse('spare_shop_delete', args=[self.shop.pk]))
+        self.shop.refresh_from_db()
+        self.assertTrue(self.shop.is_trashed)
+
+    def test_a_supplies_shop_carrying_a_balance_cannot_be_archived(self):
+        shop = SupplierShop.objects.create(name='Ninoos',
+                                           total_billed_amount=D('9000'),
+                                           total_paid_amount=D('1000'))
+        self.client.post(reverse('deactivate_supplier_shop', args=[shop.id]))
+        shop.refresh_from_db()
+        self.assertTrue(shop.is_active, "a supplier still owed money was archived")
+
+    def test_a_shop_paid_AHEAD_can_still_be_archived(self):
+        """A credit balance is not a debt — refusing it would trap a shop that
+        has been overpaid and has no more purchases coming."""
+        SpareShop.objects.filter(pk=self.shop.pk).update(
+            total_purchased_amount=D('1000'), total_paid_amount=D('4000'))
+        self.client.post(reverse('spare_shop_delete', args=[self.shop.pk]))
+        self.shop.refresh_from_db()
+        self.assertTrue(self.shop.is_trashed)

@@ -51,11 +51,25 @@
   </table>
 </div>
 
+{% comment %}
+  ⚠ This note used to read "Cost is the shop price × quantity", which stopped
+  being true on 2026-08-17 when a shop line's cost became the LINE TOTAL as
+  typed, with nothing multiplying it (`SHOP_LINE_COST`). The figures in the
+  table were already right; the sentence under them was describing the old rule
+  and would have had an owner checking the arithmetic by hand and finding it
+  "wrong".
+
+  It no longer restates the formula at all. `SPARE_COST` is route-aware — a
+  shop line and a warehouse draw are costed by different rules on purpose — so
+  any one-line version of it is either incomplete or out of date the next time
+  either route changes. What the reader actually needs is which parts are in
+  here and why the total differs from the Profit page.
+{% endcomment %}
 <div class="ia-note">
   <i class="bi bi-info-circle-fill text-primary mt-1"></i>
-  <span>Cost is the shop price × quantity; revenue is what the customer was charged. This covers
-    <strong>every</strong> part fitted to a car, including stock pulled off the shelf — so it is a
-    parts-trading view, not the same figure as the Profit page's Spare Shops expense.</span>
+  <span>Cost is what the workshop paid; revenue is what the customer was charged. This covers
+    <strong>every</strong> part fitted to a car, including stock off the shelf — so it is a
+    parts-trading view, not the Profit page's Spare Shops expense.</span>
 </div>
 
 {{ chart_labels|json_script:"spareLabels" }}

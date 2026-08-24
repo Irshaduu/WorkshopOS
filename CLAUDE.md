@@ -739,10 +739,25 @@ spare reaches a car by one of two routes and is paid for exactly once:
   Supplies Shop restock bill, so it must **never** be charged again.
 
 Adding the second would overstate expenses by roughly ₹9.8M against the seeded
-data. Don't "fix" it by summing all spare cost. Anything with no shop *and* no
-stock match is surfaced as its own "Other Spare Purchases" line rather than
-silently dropped.
+data. Don't "fix" it by summing all spare cost. A `source='SHOP'` row with **no
+shop recorded** is surfaced as its own "Other Spare Purchases" line rather than
+silently dropped. (Its hint said "no shop and no stock match" until 2026-08-25 —
+the pre-`source`-column wording, describing a name match that no longer exists.)
 → `DoubleCountRuleTests` — if it fails, the workshop is being charged twice.
+
+**A SUPPLIES SHOP BILL IS FLOORED AT ZERO, and the expression is
+`SUPPLIER_BILL_COST` — one declaration, three former copies.** A discount larger
+than the bill makes `total − discount` negative, and a negative EXPENSE *raises*
+reported profit. `SupplierRestockBill.get_effective_amount` always floored it;
+`inventory_expense`, `monthly_series` and `_insight_shops` each hand-rolled the
+subtraction and did not, so the model and the page disagreed about the same bill.
+Two ways a bill reaches that state even though the forms reject it:
+`update_bill_discount` validated only `discount >= 0` (closed in the same edit),
+and `update_totals()` recomputes `total_amount` from the lines **without
+re-checking the discount**, so deleting a line from a discounted bill can push
+the discount above the new total.
+→ `ASupplierDiscountCannotRaiseProfitTests`,
+`EveryDoorIntoADiscountEnforcesTheSameRuleTests`
 
 **Revenue is `total_bill_amount − discount_amount`.** A discount is money never
 earned, not an expense; for a settled card this equals `received_amount` exactly.
@@ -751,20 +766,137 @@ earned, not an expense; for a settled card this equals `received_amount` exactly
 month is `net_amount + advance_used` (an advance is cash already out; the
 settlement pays the remainder), plus loose advances in months not yet settled.
 
+**AN UNSETTLED MONTH'S WAGES ARE NOT IN THE PROFIT, AND THE PAGE HAS TO SAY SO —
+this fires on the DEFAULT view, every month.** A salary month is settled in the
+first days of the *next* one, so for the whole of any month "This Month" contains
+a month with no settlement. Measured on 25 Aug 2026: ₹4,90,577 profit at a 44.4%
+margin with the salary line reading ₹0, against a real wage bill of about
+₹1,20,000 a month — a third of the profit missing, and all the page said was
+"0 month(s) settled", which is the count of what IS in the figure and therefore
+says nothing about what is missing from it.
+
+`unsettled_months()` names them and an amber banner sits under the equation.
+**Nothing is estimated** — a wage figure nobody paid inside the profit equation
+is how this page would go from *incomplete* to *wrong*, the same rule that reports
+an uncosted warehouse draw as unknown rather than as ₹0. Two bounds keep it from
+becoming noise: never a **future** month (This Year runs to 31 December), and
+never a month **before** the workshop's first salary activity (All Time reaches
+back to the earliest record).
+→ `UnsettledWagesAreNamedNotHiddenTests`
+
+**"ALL TIME" IS ANCHORED BY EVERY STREAM, SALARY INCLUDED.** `_stream_bounds()`
+takes five MINs. It used to take three — job cards, cashbook, restock bills — and
+a salary month is dated the 1st while the earliest job card fell on the 17th, so
+the window opened on the 17th, that month's settlement sat outside it, and All
+Time reported the wage bill **₹1,22,167 short** while claiming to cover
+everything. Any stream this list forgets is money the widest filter cannot see.
+→ `AllTimeReachesEverySalaryMonthTests`
+
 **Every stream is dated by its own natural date**, so a period never mixes bases.
 `monthly_series()` must always total to `build_profit_report()` — asserted in
 `ConsistencyTests`, so the chart can never contradict the headline.
 
-**`financial_position()` is deliberately NOT filtered by archive flags on the
-fleet side.** The page labels `fleet_due` "Of that, fleet accounts" directly under
-`receivable`, so it claims to be a *slice* of the figure above it and both must be
-drawn from the same population. `fleet_due` used to filter `is_trashed=False`
-while `receivable` did not, so an archived account with an unpaid card made the
-page contradict itself. A balance must not depend on whether someone tidied a list.
+**`fleet_due` IS CUT FROM `receivable`'S OWN POPULATION BY `receivable`'S OWN
+EXPRESSION.** The page labels it "Of that, fleet accounts" directly under
+`receivable`, so it claims to be a *slice* of the figure above it. It was
+`Sum(BulkPayer.total_billed_amount − total_paid_amount)`, which differs twice
+over: those stored totals are **gross of discount** (`update_totals` sums
+`total_bill_amount` alone) and they span **every** card on the account including
+settled ones, while `receivable` is net of discount over unsettled cards only.
+The two agree only while no fleet card carries a discount — the first one that
+does would have the page claiming a slice bigger than the whole. Still
+deliberately **not** filtered by `is_trashed`, for the original reason:
+`receivable` has no such filter, and a balance must not depend on whether
+somebody tidied a list.
+→ `TheFleetLineIsASliceOfTheLineAboveItTests`
 
-> ⚠ `payable_spare` and `payable_supplier` still carry the equivalent filter and
-> are still wrong — `AUD-0082` in `TECH_DEBT.md`, and worse than the fleet version
-> was, because a vanishing *payable* raises reported profit.
+**EVERY BALANCE ON "POSITION RIGHT NOW" CAN GO NEGATIVE, AND THE SIGN IS TURNED
+INTO WORDS IN THE ENGINE.** A spare shop paid ahead of its purchases is in
+*credit*, not owed ₹-7,65,938 — which is what the tile printed, and reads as a
+broken figure rather than a real position. `financial_position()` returns
+`tiles`, each with a label, a **positive** magnitude and a direction
+(`in` / `out` / `credit`), so the template prints what it is handed. Deciding
+what a minus sign means is arithmetic, and arithmetic does not live in a
+template.
+→ `ABalanceThatWentTheOtherWayIsSaidInWordsTests`
+
+**AN UNASSIGNED SHOP PURCHASE IS DISCLOSED, AND EXPENSED ONLY WHEN IT REACHES A
+CAR.** These are parts ordered from a spare shop for one car, not used on it,
+and kept on the shelf for the next car that needs it. The shop is owed for them
+either way; returning one is the only other exit, and that deletes the row.
+`SpareShop.update_totals()` counts them — so they sit inside "We owe spare
+shops" — while `spare_shop_expense` filters `job_card__isnull=False` and leaves
+them out. **The arithmetic was right and the page said nothing**, so it showed a
+debt with no cost anywhere behind it.
+
+Leaving them out matches every other spare-shop purchase, which is dated by
+`job_card__admitted_date` so a part's cost sits in the month of the revenue it
+helped earn.
+
+> ⚠ **Do not "fix" this by counting them — the alternative is worse than it
+> looks.** Nothing in the app attaches an unassigned row to a job card
+> (`unassigned_spare_edit` never writes `job_card`), so a part is fitted by
+> typing it onto the card and deleting the unassigned row. Expensing it while it
+> waits would therefore make a **past month's profit change** on the day
+> somebody fits the part: the August expense leaves with the deleted row and
+> reappears in September. A settled month moving weeks later is far worse than a
+> cost arriving a month late.
+
+**The wording on screen is "not yet fitted", never "not counted".** The first
+draft read "not counted as an expense in any period", which says the money
+vanished and would send somebody hunting a bug that is not there.
+
+*Not to be confused with go-live opening balances* — those are a separate
+one-time exercise for Supplies Shops and warehouse stock, done on go-live day,
+and they do not come through this table.
+→ `UnassignedShopPurchasesAreDisclosedTests`
+
+**THE "VS PREVIOUS" CHIP COMPARES LIKE WITH LIKE, and `comparison_window()` is
+the one place that decides.** `this_month` and `this_year` resolve to the WHOLE
+calendar month/year so the header is honest and a forward-dated card is never
+outside the window — but the data only reaches today, and comparing that against
+a **full** previous period compared 8 months against 12. The page read "−8.5% vs
+previous" for 2026 while turnover per trading day was running ~11% **ahead**. A
+number that says *down* on a growing workshop, on the page profit distribution is
+decided from, is the worst thing this section could do.
+
+Four rules:
+- An **incomplete** period is measured only as far as it has data (`read_to`) and
+  compared against the **same days** of the period before — labelled "vs same
+  period last year" / "vs same days last month". The headline still covers the
+  full window; only the two figures being compared are trimmed.
+- A **finished calendar** period compares against the previous **calendar**
+  period, never "the same number of days earlier". July is 31 days, so the
+  day-count version put Last Month at 31 May – 30 June; 2024 being a leap year put
+  Last Year at 2 Jan – 31 Dec and quietly dropped New Year's Day.
+- **No comparison at all** when there is nothing honest to compare against — All
+  Time (its window already starts at the first record) and any previous window
+  reaching back **past** the first record, which is only partly covered. Last Year
+  read "7.1× vs previous" against a 2024 the system holds five months of: true
+  arithmetic, and not a fact about the workshop. Clears itself as history
+  accumulates.
+- The date arithmetic is **clamped**. `prev_start = prev_end − span` raised
+  OverflowError on a custom range starting near year 1 — a mis-keyed year in a
+  date box is enough — and a 500 on the profit page is not an acceptable answer
+  to a typo.
+
+A percentage past 300% is written as a **multiple** (`19.4×`): a true 1,838.9%
+carried to one decimal reads as a broken figure rather than a good month.
+→ `AnIncompletePeriodIsComparedLikeForLikeTests`
+
+**NEITHER PAYABLE IS FILTERED BY ITS ARCHIVE FLAG EITHER, and both archive views
+refuse a shop that still owes.** `payable_spare` filtered `is_trashed=False` and
+`payable_supplier` filtered `is_active=True`, and nothing else counted that money
+— so archiving a shop the workshop owed ₹50,000 removed the ₹50,000 from the
+only screen that reports it. Worse than the fleet version was, because a
+vanishing **payable** *raises* reported profit rather than understating a debt.
+Fixed on both sides at once and both halves are load-bearing: the filter is gone
+so an already-archived shop still counts, and `spare_shop_delete` /
+`deactivate_supplier_shop` now block on an outstanding balance — the same guard
+`bulk_payer_delete` carries, keeping the one rule that **money owed is always
+reachable from exactly one screen**. A shop paid *ahead* archives normally; a
+credit is not a debt.
+→ `ArchivingAShopCannotHideWhatIsOwedTests`
 
 **"GROSS PROFIT" on a car profile is GROSS, and the word is the whole safety of
 it.** `revenue − parts cost` — before wages, rent, power and every other overhead,
@@ -1846,6 +1978,15 @@ CASCADE-destroy their financial ledgers). The flag name differs by model
 (`is_trashed` on SpareShop/BulkPayer, `is_active` on SupplierShop/Mechanic) —
 internal only. They drop out of active lists and dropdowns and reactivate from a
 per-module **Archived** list.
+
+**ARCHIVING IS REFUSED WHILE THE ACCOUNT STILL OWES OR IS OWED** — all three of
+`bulk_payer_delete`, `spare_shop_delete` and `deactivate_supplier_shop`. One rule:
+**money owed is always reachable from exactly one screen**, and archiving used to
+hide the account from every list *and* drop its balance out of the Profit page at
+the same time. Blocking rather than opening a back door is the deliberate call
+(see the Fleet Accounts section). A balance in **credit** does not block — it is
+not a debt, and refusing would trap an overpaid account with no purchases left to
+come.
 
 **Transactions & records** — Job Cards, Fleet/Shop/Supplier payments, Restock
 bills, Cashbook entries — are **permanently deleted**, but every delete first
@@ -3413,7 +3554,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 54 files, 1,524 tests. Always SQLite (see below).
+# Full test suite — 54 files, 1,566 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -3505,7 +3646,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 | `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
-whole database — not something to point at hosted Postgres — and 1,524 tests at ~75 ms
+whole database — not something to point at hosted Postgres — and 1,566 tests at ~75 ms
 per round-trip would take hours. There is deliberately no flag to remember and no way to
 run the suite against live data by accident (`development.py` keys off
 `sys.argv[1] == 'test'`).
@@ -3724,7 +3865,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **54 files, 1,524 tests**.
+files) — **54 files, 1,566 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

@@ -25,7 +25,6 @@ become a bug in the profit figure.
 Owner-only throughout (@owner_required); Office and Floor never see this.
 """
 
-from datetime import timedelta
 from decimal import Decimal
 
 from django.db.models import Sum, Count, Q, F, Value, DecimalField
@@ -38,7 +37,7 @@ from .models import (
     JobCard, JobCardSpareItem, BulkPayer, SpareShop,
 )
 from . import analysis_engine as engine
-from .analysis_engine import MONEY, ZERO, SPARE_COST, live_jobcards, _sum
+from .analysis_engine import MONEY, ZERO, SPARE_COST, SUPPLIER_BILL_COST, live_jobcards, _sum
 
 
 # =============================================================================
@@ -50,10 +49,21 @@ def analysis_dashboard(request):
     """
     The Profit page.
 
-    Computed eagerly (unlike Insights): it is a small number of indexed
-    aggregates — ~14 queries across five years of history — and an owner
-    checking profit should get the whole picture in one load rather than
+    Computed eagerly (unlike Insights): indexed aggregates whose cost is a
+    function of how many months are in range, not how many rows exist, and an
+    owner checking profit should get the whole picture in one load rather than
     watching cards populate one by one.
+
+    Measured 2026-08-25 against 1,479 job cards over two years: **59 queries**
+    for an unfinished period, 48 for a finished one, 47 for All Time. (The
+    docstring said "~14" for a month, which had not been true for a long time.)
+    The spread is the comparison: an unfinished period builds the report three
+    times — the window, the comparison period, and the window trimmed to today —
+    and the last two pass `disclosures=False`, which drops six footnote-only
+    queries each. All Time builds it once, because it has no previous period.
+
+    ⚠ Re-measure rather than trusting that line; it has gone stale once already:
+        with CaptureQueriesContext(connection) as ctx: analysis_dashboard(req)
     """
     start, end, range_key, label = engine.resolve_period(
         request.GET.get('range'),
@@ -65,17 +75,74 @@ def analysis_dashboard(request):
     series = engine.monthly_series(start, end)
     position = engine.financial_position()
 
-    # The same-length window immediately before this one, for the "vs previous"
-    # delta. Comparing equal spans keeps the percentage honest.
-    span = (end - start).days + 1
-    prev_end = start - timedelta(days=1)
-    prev_start = prev_end - timedelta(days=span - 1)
-    prev = engine.build_profit_report(prev_start, prev_end)
+    # WHAT TO COMPARE AGAINST, and how far into THIS window to read. Both come
+    # from one place (`engine.comparison_window`) because they are one decision:
+    # an unfinished period is measured only as far as it has data, and against
+    # the same days of the period before — see that function for why the old
+    # whole-against-part comparison reported a decline on a workshop that was
+    # growing.
+    prev_start, prev_end, read_to, comparison_label, _partial = engine.comparison_window(start, end)
+    # WHEN THERE IS NOTHING HONEST TO COMPARE AGAINST, DON'T.
+    #
+    # Two cases, one rule — the comparison period has to be one the system has
+    # a WHOLE history for, or the percentage measures how much data exists
+    # rather than how the workshop did:
+    #
+    #   • All Time already starts at the first record, so "the period before" is
+    #     empty by definition.
+    #   • A previous window reaching back past the first record is only PARTLY
+    #     covered. Last Year read "7.1× vs previous" against a 2024 the system
+    #     only holds five months of — true arithmetic, and not a fact about the
+    #     workshop. This clears itself as history accumulates.
+    #
+    # A window with NO overlap at all is already handled: `pct_change` drops a
+    # chip whose baseline is zero.
+    first_record = engine.first_record_date()
+    compare = range_key != 'all_time' and not (
+        first_record is not None and prev_start < first_record <= prev_end
+    )
+    prev = engine.build_profit_report(prev_start, prev_end, disclosures=False) if compare else None
+    # On a finished period `read_to` IS `end`, so this is the report already
+    # built above; only a part-period pays for the second one.
+    current = report if read_to == end else engine.build_profit_report(start, read_to, disclosures=False)
 
     def pct_change(now, before):
+        """Percentage movement, or None when there is nothing to move from.
+
+        A zero baseline has no percentage — "up from ₹0" is not 100%, it is
+        undefined — so the chip is dropped rather than printing a made-up
+        figure. `abs()` on the denominator keeps the SIGN meaningful when the
+        previous period was a loss: recovering from −₹1,000 to +₹500 reads as
+        an increase, which it is.
+        """
         if not before:
             return None
         return float((now - before) / abs(before) * 100)
+
+    def pct_text(pct):
+        """How a movement is WRITTEN, which is not the same as how big it is.
+
+        A small baseline makes an honest percentage enormous — July 1–25 made
+        ₹25,301 and August 1–25 made ₹4,90,577, which is a true 1,838.9%. But a
+        four-digit percentage carried to one decimal reads as a broken figure
+        rather than a good month, and the tenth of a percent is noise at that
+        size. Past 300% it is said as a multiple, which is how anybody would say
+        it out loud; under 10% the decimal is kept, because there the difference
+        between 2% and 2.4% is real.
+        """
+        if pct is None:
+            return None
+        size = abs(pct)
+        if size >= 300:
+            return f"{1 + size / 100:.1f}×".replace('.0×', '×')
+        if size >= 10:
+            return f"{pct:.0f}%"
+        return f"{pct:.1f}%"
+
+    # Computed once. `delta` decides the up/down arrow and its colour; `text`
+    # is the wording beside it. Both come off the same number so they can never
+    # point one way and read the other.
+    delta = pct_change(current['profit'], prev['profit']) if compare else None
 
     return render(request, 'workshop/analysis/profit.html', {
         'report': report,
@@ -87,10 +154,12 @@ def analysis_dashboard(request):
         'end': end,
         'custom_start': request.GET.get('start', ''),
         'custom_end': request.GET.get('end', ''),
-        'prev': prev,
-        'prev_label': f"{prev_start.strftime('%d %b %Y')} — {prev_end.strftime('%d %b %Y')}",
-        'delta_profit': pct_change(report['profit'], prev['profit']),
-        'delta_turnover': pct_change(report['turnover'], prev['turnover']),
+        # Only what the template reads. `prev`, `prev_label` and a turnover
+        # delta were all passed and none was ever rendered — dead context on a
+        # page whose whole point is that every figure on it is arguable.
+        'comparison_label': comparison_label,
+        'delta_profit': delta,
+        'delta_profit_text': pct_text(delta),
         # Charts — handed to JS via json_script in the template, never |safe.
         'chart_labels': [m['label'] for m in series],
         'chart_turnover': [float(m['turnover']) for m in series],
@@ -406,7 +475,7 @@ def _insight_shops(start, end):
     supplier_rows = list(
         SupplierRestockBill.objects.filter(bill_date__range=(start, end))
         .values('supplier', 'supplier__name')
-        .annotate(spend=Coalesce(Sum(F('total_amount') - F('discount_amount'), output_field=MONEY),
+        .annotate(spend=Coalesce(Sum(SUPPLIER_BILL_COST, output_field=MONEY),
                                  Value(ZERO, output_field=MONEY), output_field=MONEY),
                   bills=Count('id'))
         .order_by('-spend')

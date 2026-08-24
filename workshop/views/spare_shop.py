@@ -361,9 +361,26 @@ def spare_shop_payment_reverse(request, shop_pk, payment_pk):
 
 @office_required
 def spare_shop_delete(request, pk):
-    """POST: Deactivate (archive) a spare shop — reversible, keeps all history."""
+    """POST: Deactivate (archive) a spare shop — reversible, keeps all history.
+
+    REFUSED WHILE THE SHOP IS STILL OWED MONEY, the same rule and the same
+    reason as `bulk_payer_delete`: money owed must always be reachable from
+    exactly one screen. Archiving used to hide the shop from the active list
+    AND drop its balance out of the Profit page's "We owe spare shops" — so one
+    click made a real debt invisible everywhere at once, and because it was a
+    PAYABLE that vanished, reported profit went UP. Blocking is what keeps the
+    balance and the screen that settles it together.
+    """
     if request.method == 'POST':
         shop = get_object_or_404(SpareShop, pk=pk, is_trashed=False)
+        balance = shop.total_purchased_amount - shop.total_paid_amount
+        if balance > Decimal('0'):
+            messages.error(
+                request,
+                f"'{shop.name}' still has ₹{balance:,.2f} outstanding. "
+                f"Settle the balance before archiving the shop."
+            )
+            return redirect('spare_shop_detail', pk=shop.pk)
         shop.is_trashed = True
         shop.save(update_fields=['is_trashed'])
         notify(
