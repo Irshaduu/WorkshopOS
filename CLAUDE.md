@@ -680,13 +680,26 @@ dropping any whose name already exists under the survivor (`CarModel` is
 `unique_together('brand','name')`). A model rename is **scoped to its brand**:
 Toyota's "Corola" and another make's are different cars.
 
-**The master list decides how its own entries are spelled.** `model_name` had no
-normalisation while `brand_name` and `registration_number` did, so 'corolla' and
-'COROLLA' were two models everywhere they were counted. It is deliberately **not**
-title-cased the way `brand_name` is — that turns 'i20' into 'I20' and 'CR-V' into
-'Cr-V'. `JobCard.clean()` collapses whitespace and then snaps to the master list's
-own spelling when that brand already has the model recorded; anything genuinely
-new stays exactly as typed.
+**The master list decides how its own entries are spelled — BOTH the brand and
+the model.** `model_name` had no normalisation while `brand_name` and
+`registration_number` did, so 'corolla' and 'COROLLA' were two models everywhere
+they were counted. It is deliberately **not** title-cased the way `brand_name` is
+— that turns 'i20' into 'I20' and 'CR-V' into 'Cr-V'. `JobCard.clean()` collapses
+whitespace and then snaps to the master list's own spelling when that brand
+already has the model recorded; anything genuinely new stays exactly as typed.
+
+**The BRAND gets the same snap, and title-casing is only its fallback.**
+`.title()` is right for 'toyota' and wrong for every acronym marque: **'BMW' was
+stored as 'Bmw' on every card in the system**, so the master list said BMW while
+Car Profiles, the brand chart and the Vehicles insight — all of which group by
+this free-text column — said Bmw. The fix is the model's own rule applied one
+field over: title-case, then let the curated list overrule it. A marque the list
+has never heard of is still tidied to 'Koenigsegg'.
+
+**`Estimate.clean()` carries the identical pair**, because the two documents are
+opened days apart for the same car and a quotation spelling a marque differently
+from the bill that follows reads as two different products.
+→ `TheMasterListDecidesHowABrandIsSpelledTests`
 → `RenamingABrandOrModelReachesTheJobCardsTests`,
 `TheMasterListDecidesHowItsOwnEntriesAreSpelledTests`
 
@@ -3595,6 +3608,7 @@ python manage.py migrate
 | `set_owner_email <user> <email>` | DRY RUN — preview (`--yes` to apply) |
 | `load_master_data` | brands / models / spare parts — **prerequisite for seeding** |
 | `seed_dummy_data` | demo data; `--start`, `--end`, `--cards-per-day` |
+| `seed_meeting_data` | DRY RUN — wipes every financial record and rebuilds a **uniform** 100-day set (`--yes`). Keeps the inventory catalog, shops, staff roster, master lists and logins |
 | `seed_salary_data` | salary months + advances only |
 | `purge_business_data` | DRY RUN — prints what it would delete (`--yes`) |
 | `copy_sqlite_to_postgres` | DRY RUN — prints the plan (`--yes` to replace Postgres) |
@@ -3616,6 +3630,20 @@ inventory, cashbook, staff roster, deletion history. It deliberately does *not* 
 distinguish "dummy" rows from real ones, because nothing in the schema marks them and a
 command claiming otherwise would be lying. It never touches login accounts, groups, or
 the master lists. **It is the thing to run against Postgres before go-live.**
+
+**`seed_meeting_data` is the opposite of `seed_dummy_data`, on purpose.** That one
+randomises to look like a real workshop; this one makes **every card identical** —
+same concerns, same job lines, same parts, same amounts — so any figure on any
+screen can be checked by multiplying one card by the number of cards. One card is
+`5 spares x 1,500 + inventory 6,500 + labour 8,000 = 22,000`, and 150 cards must
+total ₹33,00,000 everywhere it is reported. It keeps what `purge_business_data`
+would destroy (the inventory catalog, the shops, the staff roster), which is why
+it does its own narrower purge rather than calling that command.
+
+⚠ **Its opening restock bill is dated three days BEFORE the first job card, and
+that is load-bearing.** `inventory/costing.py` replays receipts in date order, so
+a draw dated on or before its first receipt has no cost basis, is stored NULL, and
+the Profit page reports it as "no cost recorded".
 
 **`seed_dummy_data`** writes everything through the ORM so signals fire, commits one day
 at a time with monthly bookends (never one long transaction — a remote Postgres would
