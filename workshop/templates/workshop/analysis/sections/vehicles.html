@@ -48,8 +48,15 @@
 
 <div class="ia-note">
   <i class="bi bi-person-badge text-primary mt-1"></i>
-  <span><strong>Customer names</strong> are filled in on {{ named_count }} of {{ total_cards }} job
-    cards ({{ named_pct }}%), so this section works off the registration number instead.</span>
+  {% comment %}
+    The "usually left blank" half is load-bearing at low percentages. Trimmed to
+    just the count, this read as an alarming statistic — 0 of 150 looks like
+    data went missing rather than like the workshop identifying cars by their
+    plate, which is how it actually works.
+  {% endcomment %}
+  <span><strong>Customer names</strong> are optional and usually left blank — filled in on
+    {{ named_count }} of {{ total_cards }} job cards here — so this section works off the
+    registration number instead.</span>
 </div>
 
 {{ chart_labels|json_script:"brandLabels" }}

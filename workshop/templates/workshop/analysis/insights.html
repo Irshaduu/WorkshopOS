@@ -75,6 +75,23 @@
   .ia-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
   .ia-chart { position: relative; height: 250px; margin-bottom: 14px; }
+
+  /* A subtotal row. Heavier ground and a rule above it, so it reads as the sum
+     of the rows rather than one more of them. */
+  .ia-tbl tr.ia-total td {
+    background: var(--color-hover); font-weight: 700;
+    border-top: 2px solid var(--color-border); border-bottom: 0;
+  }
+
+  /* Chart legend, written by the section's own script. Only where a chart
+     carries a second meaning in its colour. */
+  .ia-key {
+    display: flex; flex-wrap: wrap; gap: 6px 16px;
+    font-size: 0.72rem; color: var(--color-text-muted);
+    margin: -6px 0 14px 2px;
+  }
+  .ia-key span { display: inline-flex; align-items: center; gap: 6px; }
+  .ia-key i { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
   .ia-sub {
     font-size: 0.8rem; font-weight: 800; margin: 16px 0 8px;
     padding-bottom: 6px; border-bottom: 2px solid var(--color-border-light);

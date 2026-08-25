@@ -27,7 +27,7 @@ Owner-only throughout (@owner_required); Office and Floor never see this.
 
 from decimal import Decimal
 
-from django.db.models import Sum, Count, Q, F, Value, DecimalField
+from django.db.models import Sum, Count, Min, Q, F, Value, DecimalField
 from django.db.models.functions import Coalesce, Lower, TruncMonth
 from django.http import Http404
 from django.shortcuts import render
@@ -299,41 +299,96 @@ def _insight_mechanics(start, end):
 
 # ------------------------------------------------------------------- spares --
 def _insight_spares(start, end):
-    """Most-used parts by frequency, and the parts that actually earn."""
+    """
+    Which parts move and which earn — SPLIT BY ROUTE, because the two routes are
+    two different businesses and the Job Card edits them as two sections.
+
+    They were one merged list until 2026-08-25, which put "Castrol 5W-30" and
+    "Brake Pads - Front" in one table with one Cost column, and nothing on screen
+    said which was which. Three things were wrong with that:
+
+      • A SHOP part is bought for one car, from a named shop, and creates a
+        payable. A WAREHOUSE draw came off a shelf already paid for by a restock
+        bill. Only the first is chaseable, and the merged list could not say
+        which rows those were.
+      • The COST columns are not the same kind of number. A shop line's cost is
+        the LINE TOTAL as typed; a draw's is a derived weighted average x
+        quantity. `SPARE_COST` gets each right, but printing them in one column
+        invites dividing one by a quantity that does not price it.
+      • QUANTITY means different things. A draw's quantity is what left the
+        shelf; a shop row's moves no money at all and is only a description of
+        what was bought. It is shown for stock and left off the shop table for
+        exactly that reason.
+
+    The two subtotals add to the headline, so the split hides nothing.
+    """
     base = JobCardSpareItem.objects.filter(
         job_card__isnull=False, job_card__is_deleted=False,
         job_card__admitted_date__range=(start, end),
     )
 
-    most_used = list(
-        base.annotate(n=Lower('spare_part_name')).values('n')
-            .annotate(qty=Coalesce(Sum('quantity'), Value(ZERO, output_field=MONEY), output_field=MONEY),
-                      times=Count('id'),
-                      revenue=Coalesce(Sum('total_price', output_field=MONEY),
-                                       Value(ZERO, output_field=MONEY), output_field=MONEY))
-            .order_by('-times')[:15]
-    )
+    money = lambda expr: Coalesce(Sum(expr, output_field=MONEY),
+                                  Value(ZERO, output_field=MONEY), output_field=MONEY)
 
-    most_profitable = list(
-        base.annotate(n=Lower('spare_part_name')).values('n')
-            .annotate(revenue=Coalesce(Sum('total_price', output_field=MONEY),
-                                       Value(ZERO, output_field=MONEY), output_field=MONEY),
-                      cost=Coalesce(Sum(SPARE_COST, output_field=MONEY),
-                                    Value(ZERO, output_field=MONEY), output_field=MONEY),
-                      times=Count('id'))
+    # SHOP — grouped by the free-text name, lowered so 'brake pad' and 'Brake
+    # Pad' are one row. `Min` then hands back a REAL stored spelling: the old
+    # code displayed the lowered key re-title-cased, which turned 'DOT 4' into
+    # 'Dot 4' and 'CR-V' into 'Cr-V'.
+    shop_rows = list(
+        base.filter(source=JobCardSpareItem.SOURCE_SHOP)
+            .annotate(key=Lower('spare_part_name'))
+            .values('key')
+            .annotate(name=Min('spare_part_name'),
+                      times=Count('id'),
+                      revenue=money('total_price'),
+                      cost=money(SPARE_COST))
             .annotate(profit=F('revenue') - F('cost'))
             .order_by('-profit')[:15]
     )
-    for r in most_profitable:
+
+    # INVENTORY — grouped by the `item` FK, never by the name. The name on the
+    # row is a SNAPSHOT taken when the part was drawn and is not rewritten when
+    # a product is renamed, so grouping by it would split one product's history
+    # into two rows the day somebody corrects a spelling.
+    # NOT filtered by `item__isnull=False`. A draw with no product FK is
+    # malformed and should not exist — `InventoryDrawForm` requires one and
+    # `source` is not editable — but filtering it out here while the subtotal
+    # below still counted it would drop a row off the table with nothing saying
+    # so, and leave the two disagreeing. `name` is the fallback label for that
+    # case and costs nothing in the ordinary one.
+    stock_rows = list(
+        base.filter(source=JobCardSpareItem.SOURCE_INVENTORY)
+            .values('item', 'item__name', 'item__category__name')
+            .annotate(name=Min('spare_part_name'),
+                      times=Count('id'),
+                      qty=Coalesce(Sum('quantity'), Value(ZERO, output_field=MONEY),
+                                   output_field=MONEY),
+                      revenue=money('total_price'),
+                      cost=money(SPARE_COST))
+            .annotate(profit=F('revenue') - F('cost'))
+            .order_by('-profit')[:15]
+    )
+
+    for r in shop_rows + stock_rows:
         r['margin'] = float(r['profit'] / r['revenue'] * 100) if r['revenue'] else 0.0
 
-    totals = base.aggregate(
-        revenue=Coalesce(Sum('total_price', output_field=MONEY), Value(ZERO, output_field=MONEY), output_field=MONEY),
-        cost=Coalesce(Sum(SPARE_COST, output_field=MONEY), Value(ZERO, output_field=MONEY), output_field=MONEY),
-        lines=Count('id'),
-    )
-    totals['profit'] = totals['revenue'] - totals['cost']
-    totals['margin'] = float(totals['profit'] / totals['revenue'] * 100) if totals['revenue'] else 0.0
+    def subtotal(qs):
+        agg = qs.aggregate(revenue=money('total_price'), cost=money(SPARE_COST),
+                           lines=Count('id'))
+        agg['profit'] = agg['revenue'] - agg['cost']
+        agg['margin'] = (float(agg['profit'] / agg['revenue'] * 100)
+                         if agg['revenue'] else 0.0)
+        return agg
+
+    shop_totals = subtotal(base.filter(source=JobCardSpareItem.SOURCE_SHOP))
+    stock_totals = subtotal(base.filter(source=JobCardSpareItem.SOURCE_INVENTORY))
+    totals = subtotal(base)
+
+    # A draw with no `unit_price` costs ₹0 here, so it reads as a FREE part and
+    # pushes the margin up — the one way this table can be wrong without looking
+    # wrong. Counted so the section can say so, exactly as the Profit page does.
+    uncosted = base.filter(source=JobCardSpareItem.SOURCE_INVENTORY,
+                           unit_price__isnull=True).count()
 
     # Off the job card, not off its job lines: the labour charge moved onto
     # `JobCard.labour_amount` when the workshop's real practice — one price for
@@ -342,13 +397,25 @@ def _insight_spares(start, end):
     labour = _sum(JobCard.objects.filter(
         is_deleted=False, admitted_date__range=(start, end)), F('labour_amount'))
 
+    # One chart answering "which parts move", with the route carried as a colour
+    # rather than left to be guessed from the name.
+    movers = sorted(
+        [{'label': r['name'] or '—', 'times': r['times'], 'shop': True} for r in shop_rows]
+        + [{'label': r['item__name'] or r['name'] or '—', 'times': r['times'], 'shop': False}
+           for r in stock_rows],
+        key=lambda r: -r['times'])[:10]
+
     return {
-        'most_used': most_used,
-        'most_profitable': most_profitable,
+        'shop_rows': shop_rows,
+        'stock_rows': stock_rows,
+        'shop_totals': shop_totals,
+        'stock_totals': stock_totals,
         'totals': totals,
+        'uncosted_draws': uncosted,
         'labour_total': labour,
-        'chart_labels': [(r['n'] or '—').title() for r in most_used[:10]],
-        'chart_qty': [r['times'] for r in most_used[:10]],
+        'chart_labels': [m['label'] for m in movers],
+        'chart_qty': [m['times'] for m in movers],
+        'chart_is_shop': [m['shop'] for m in movers],
     }
 
 
@@ -430,14 +497,34 @@ def _insight_fleet(start, end):
     # Live running balance per account. Not window-scoped on purpose: a balance
     # is a running total, so slicing it by date would produce a meaningless
     # number.
+    #
+    # ⚠ CUT FROM THE SAME POPULATION AND THE SAME EXPRESSION AS THE PROFIT
+    # PAGE'S `fleet_due`, not from `BulkPayer`'s stored totals. Those are GROSS
+    # of discount (`update_totals` sums `total_bill_amount` alone) and span
+    # every card including settled ones — so beside a "Billed" column that IS
+    # net of discount, the two disagree the first time a fleet card carries one.
+    # Same defect as the Profit page's fleet line, same fix.
+    owed = F('total_bill_amount') - F('discount_amount') - F('received_amount')
     balances = {
-        b['id']: (b['total_billed_amount'] - b['total_paid_amount'], b['advance_balance'])
-        for b in BulkPayer.objects.values('id', 'total_billed_amount', 'total_paid_amount', 'advance_balance')
+        r['bulk_payer']: r['bal']
+        for r in (live_jobcards()
+                  .filter(bulk_payer__isnull=False)
+                  .exclude(payment_status__in=('PAID', 'BULK_PAID'))
+                  .values('bulk_payer')
+                  .annotate(bal=Coalesce(Sum(owed, output_field=MONEY),
+                                         Value(ZERO, output_field=MONEY), output_field=MONEY)))
     }
+    advances = dict(BulkPayer.objects.values_list('id', 'advance_balance'))
     for r in rows:
-        bal, adv = balances.get(r['bulk_payer'], (ZERO, ZERO))
-        r['balance'] = bal
-        r['advance'] = adv
+        owing = balances.get(r['bulk_payer'], ZERO)
+        credit = advances.get(r['bulk_payer'], ZERO)
+        # The account's true position: what its unsettled cards still owe, less
+        # any lump payment already banked ahead. `advance_balance` was computed
+        # and never rendered before, so an account paid ahead read as "₹0 owed"
+        # with the credit nowhere on the page.
+        net = owing - credit
+        r['owed'] = net if net > ZERO else ZERO
+        r['credit'] = -net if net < ZERO else ZERO
         r['collected_pct'] = float(r['received'] / r['billed'] * 100) if r['billed'] else 0.0
 
     walkin = _cards_in(start, end).filter(bulk_payer__isnull=True)
@@ -456,8 +543,14 @@ def _insight_shops(start, end):
     """Where the parts money goes — spare shops (per job) and supplies shops."""
     from inventory.models import SupplierShop, SupplierRestockBill
 
+    # `source=SHOP` stated OUTRIGHT rather than inferred from "has a shop".
+    # A warehouse draw carries no shop today, so the two filters select the same
+    # rows — but one of them is the rule and the other is a coincidence of how
+    # the data happens to look, and only the rule survives somebody adding a
+    # shop reference to the inventory route.
     spare_rows = list(
         JobCardSpareItem.objects.filter(
+            source=JobCardSpareItem.SOURCE_SHOP,
             shop__isnull=False, job_card__isnull=False, job_card__is_deleted=False,
             job_card__admitted_date__range=(start, end),
         ).values('shop', 'shop__name')
@@ -483,8 +576,22 @@ def _insight_shops(start, end):
 
     dues = {s['id']: s['total_purchased_amount'] - s['total_paid_amount']
             for s in SpareShop.objects.values('id', 'total_purchased_amount', 'total_paid_amount')}
+    # Parts bought from this shop and not yet fitted to a car. They are inside
+    # "Owed now" (the shop ledger counts them) and outside "Spent" (which is
+    # scoped to job cards in this window), so without them the two columns look
+    # like they should reconcile and do not. Normally zero.
+    waiting = {
+        r['shop']: r['t']
+        for r in (JobCardSpareItem.objects
+                  .filter(job_card__isnull=True,
+                          source=JobCardSpareItem.SOURCE_SHOP, shop__isnull=False)
+                  .values('shop')
+                  .annotate(t=Coalesce(Sum(SPARE_COST, output_field=MONEY),
+                                       Value(ZERO, output_field=MONEY), output_field=MONEY)))
+    }
     for r in spare_rows:
         r['due'] = dues.get(r['shop'], ZERO)
+        r['waiting'] = waiting.get(r['shop'], ZERO)
     sdues = {s['id']: s['total_billed_amount'] - s['total_paid_amount']
              for s in SupplierShop.objects.values('id', 'total_billed_amount', 'total_paid_amount')}
     for r in supplier_rows:
@@ -516,6 +623,12 @@ def _insight_operations(start, end):
     for s in status:
         s['label'] = status_map.get(s['payment_status'], s['payment_status'])
 
+    # HOW CUSTOMERS PAID — and the rows with no method are ACCOUNTED FOR, not
+    # dropped. `payment_method` is blank on two kinds of card: a fleet card
+    # (settled through its account, so the method sits on the fleet payment, not
+    # here) and a card nobody has settled yet. Excluding both silently made the
+    # table's own counts add to less than the job count with nothing on screen
+    # saying why — 13 of 150 in the demo data, all of them fleet.
     method_map = dict(JobCard.PAYMENT_METHOD_CHOICES)
     methods = list(
         cards.exclude(Q(payment_method__isnull=True) | Q(payment_method=''))
@@ -528,6 +641,12 @@ def _insight_operations(start, end):
     for m in methods:
         m['label'] = method_map.get(m['payment_method'], m['payment_method'])
 
+    no_method = cards.filter(Q(payment_method__isnull=True) | Q(payment_method=''))
+    unmethoded = {
+        'fleet': no_method.filter(bulk_payer__isnull=False).count(),
+        'unsettled': no_method.filter(bulk_payer__isnull=True).count(),
+    }
+
     total = cards.count()
     completed = cards.filter(completed=True).count()
 
@@ -535,6 +654,7 @@ def _insight_operations(start, end):
         'monthly': monthly,
         'status': status,
         'methods': methods,
+        'unmethoded': unmethoded,
         'total_cards': total,
         'completed': completed,
         'open_jobs': total - completed,

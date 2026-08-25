@@ -983,3 +983,279 @@ class ArchivingAShopCannotHideWhatIsOwedTests(AnalysisBase):
         self.client.post(reverse('spare_shop_delete', args=[self.shop.pk]))
         self.shop.refresh_from_db()
         self.assertTrue(self.shop.is_trashed)
+
+
+# =============================================================================
+# DEEP ANALYSIS — the 2026-08-25 pass over the insight sections
+#
+# The Profit page was audited first; these six sections were only read for
+# their wording. Going through the queries turned up four more defects, all of
+# the same shape: a figure that was arithmetically fine and could not be read
+# correctly off the screen it appeared on.
+# =============================================================================
+class TheTwoSpareRoutesAreNeverMergedIntoOneListTests(AnalysisBase):
+    """
+    The Spares section listed 'Castrol 5W-30' and 'Brake Pads - Front' in one
+    table under one Cost column, with nothing saying which shelf each came off.
+
+    They are two different businesses. The Job Card edits them as two sections,
+    the Live Report lists them as two sections, and only a shop part has a shop,
+    an ordering state and a payable behind it. The COST columns are not even the
+    same kind of number — a shop line's cost is the line total as typed, a
+    draw's is a weighted average times quantity.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.card = self.make_card(bill='0')
+        cat = Category.objects.create(name='Engine Oil')
+        self.item = Item.objects.create(name='Castrol 5W-30', category=cat,
+                                        average_stock=D('20'), avg_cost=D('500'))
+        JobCardSpareItem.objects.create(
+            job_card=self.card, spare_part_name='Brake Pads - Front',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('2'), unit_price=D('1000'), total_price=D('1500'))
+        JobCardSpareItem.objects.create(
+            job_card=self.card, spare_part_name='Castrol 5W-30',
+            source=JobCardSpareItem.SOURCE_INVENTORY, item=self.item,
+            quantity=D('5'), total_price=D('4000'))
+
+    def _out(self):
+        from workshop.analysis_views import _insight_spares
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return _insight_spares(s, e)
+
+    def test_a_shop_part_never_appears_in_the_stock_table(self):
+        out = self._out()
+        self.assertEqual([r['item__name'] for r in out['stock_rows']], ['Castrol 5W-30'])
+        self.assertNotIn('Brake Pads - Front',
+                         [r['item__name'] for r in out['stock_rows']])
+
+    def test_a_draw_never_appears_in_the_shop_table(self):
+        out = self._out()
+        self.assertEqual([r['name'] for r in out['shop_rows']], ['Brake Pads - Front'])
+
+    def test_each_route_is_costed_by_its_own_rule(self):
+        """The shop line cost 1,000 — the LINE TOTAL, not 1,000 x 2. The draw
+        cost 500 a litre x 5."""
+        out = self._out()
+        self.assertEqual(out['shop_totals']['cost'], D('1000'))
+        self.assertEqual(out['stock_totals']['cost'], D('2500'))
+
+    def test_the_two_subtotals_add_back_to_the_headline(self):
+        """The split may reorganise the screen; it may not change the total."""
+        out = self._out()
+        for key in ('revenue', 'cost', 'profit'):
+            self.assertEqual(out['shop_totals'][key] + out['stock_totals'][key],
+                             out['totals'][key], f"{key} does not reconcile")
+
+    def test_the_chart_carries_the_route_so_it_can_be_read(self):
+        out = self._out()
+        self.assertEqual(len(out['chart_labels']), len(out['chart_is_shop']))
+        by_label = dict(zip(out['chart_labels'], out['chart_is_shop']))
+        self.assertTrue(by_label['Brake Pads - Front'])
+        self.assertFalse(by_label['Castrol 5W-30'])
+
+    def test_a_stock_row_is_grouped_by_the_PRODUCT_not_its_name(self):
+        """
+        `spare_part_name` on a draw is a SNAPSHOT taken when the part left the
+        shelf, and it is not rewritten when the product is renamed. Grouping by
+        it would split one product's history in two the day somebody corrects a
+        spelling.
+        """
+        other = self.make_card(bill='0')
+        JobCardSpareItem.objects.create(
+            job_card=other, spare_part_name='Castrol 5W-30 (old label)',
+            source=JobCardSpareItem.SOURCE_INVENTORY, item=self.item,
+            quantity=D('5'), total_price=D('4000'))
+        rows = self._out()['stock_rows']
+        self.assertEqual(len(rows), 1, "one product split into two rows")
+        self.assertEqual(rows[0]['times'], 2)
+
+    def test_a_branded_SKU_keeps_its_real_casing(self):
+        """The old display lowered the name to group it and then re-title-cased
+        it, which turned 'DOT 4' into 'Dot 4' and would turn 'CR-V' into
+        'Cr-V'."""
+        cat = Category.objects.get(name='Engine Oil')
+        item = Item.objects.create(name='Bosch Brake Oil DOT 4', category=cat,
+                                   average_stock=D('8'), avg_cost=D('600'))
+        JobCardSpareItem.objects.create(
+            job_card=self.card, spare_part_name='Bosch Brake Oil DOT 4',
+            source=JobCardSpareItem.SOURCE_INVENTORY, item=item,
+            quantity=D('1'), total_price=D('1000'))
+        names = [r['item__name'] for r in self._out()['stock_rows']]
+        self.assertIn('Bosch Brake Oil DOT 4', names)
+        self.assertNotIn('Bosch Brake Oil Dot 4', names)
+
+    def test_an_uncosted_draw_is_counted_so_the_margin_can_be_doubted(self):
+        """A draw with no cost reads as a FREE part and pushes the margin up —
+        the one way this table is wrong without looking wrong."""
+        JobCardSpareItem.objects.filter(source=JobCardSpareItem.SOURCE_INVENTORY)\
+                                .update(unit_price=None)
+        self.assertEqual(self._out()['uncosted_draws'], 1)
+
+    def test_the_section_renders(self):
+        r = self.client.get(reverse('analysis_insight_section', args=['spares']))
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn('Spare Parts', html)
+        self.assertIn('Inventory Items', html)
+
+
+class TheFleetBalanceIsCutTheSameWayTheReceivableIsTests(AnalysisBase):
+    """
+    The Fleet section put a "Billed" column that is NET of discount beside a
+    "Balance now" taken from `BulkPayer`'s stored totals, which are GROSS of
+    discount and span settled cards too. Same defect as the Profit page's fleet
+    line, one screen over.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.payer = BulkPayer.objects.create(customer_name='Fleet Co')
+
+    def _rows(self):
+        from workshop.analysis_views import _insight_fleet
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return _insight_fleet(s, e)['rows']
+
+    def test_a_discount_does_not_inflate_the_balance(self):
+        self.make_card(bill='10000', discount='2000', received='0',
+                       payment_status='PENDING', bulk_payer=self.payer)
+        self.payer.update_totals()
+        row = self._rows()[0]
+        self.assertEqual(row['billed'], D('8000'))
+        self.assertEqual(row['owed'], D('8000'), "stored totals are gross of discount")
+
+    def test_a_settled_card_leaves_the_balance(self):
+        self.make_card(bill='5000', received='5000',
+                       payment_status='BULK_PAID', bulk_payer=self.payer)
+        self.payer.update_totals()
+        self.assertEqual(self._rows()[0]['owed'], D('0'))
+
+    def test_it_agrees_with_the_profit_pages_fleet_line(self):
+        """Two screens, one figure. If they disagree, one of them is lying."""
+        self.make_card(bill='10000', discount='1000', received='2000',
+                       payment_status='PARTIAL', bulk_payer=self.payer)
+        self.payer.update_totals()
+        self.assertEqual(sum((r['owed'] for r in self._rows()), D('0')),
+                         engine.financial_position()['fleet_due'])
+
+    def test_an_account_paid_ahead_reads_as_credit_not_a_minus(self):
+        """`advance_balance` was computed and never rendered, so a fleet account
+        paid ahead showed '₹0 owed' with its credit nowhere on the page."""
+        self.make_card(bill='5000', received='5000',
+                       payment_status='BULK_PAID', bulk_payer=self.payer)
+        BulkPayer.objects.filter(pk=self.payer.pk).update(advance_balance=D('3000'))
+        self.payer.update_totals()
+        row = self._rows()[0]
+        self.assertEqual(row['credit'], D('3000'))
+        self.assertEqual(row['owed'], D('0'))
+
+    def test_the_section_never_prints_a_minus_rupee_figure(self):
+        self.make_card(bill='5000', received='5000',
+                       payment_status='BULK_PAID', bulk_payer=self.payer)
+        BulkPayer.objects.filter(pk=self.payer.pk).update(advance_balance=D('3000'))
+        self.payer.update_totals()
+        r = self.client.get(reverse('analysis_insight_section', args=['fleet']))
+        self.assertNotIn('₹-', r.content.decode())
+
+
+class EveryJobCardIsAccountedForInHowCustomersPaidTests(AnalysisBase):
+    """
+    The table excluded any card with no `payment_method`, so its Jobs column
+    added to less than the job count with nothing on screen saying why. Two
+    kinds of card have none — a fleet card (the method sits on the fleet
+    payment) and a card nobody has settled yet — and in the demo data that was
+    13 of 150, silently.
+    """
+
+    def _out(self):
+        from workshop.analysis_views import _insight_operations
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return _insight_operations(s, e)
+
+    def test_a_fleet_card_is_named_rather_than_dropped(self):
+        payer = BulkPayer.objects.create(customer_name='Fleet Co')
+        self.make_card(bill='5000', received='5000',
+                       payment_status='BULK_PAID', bulk_payer=payer)
+        out = self._out()
+        self.assertEqual(out['unmethoded']['fleet'], 1)
+        self.assertEqual(out['unmethoded']['unsettled'], 0)
+
+    def test_an_unsettled_card_is_named_rather_than_dropped(self):
+        self.make_card(bill='5000', received='0', payment_status='PENDING')
+        out = self._out()
+        self.assertEqual(out['unmethoded']['unsettled'], 1)
+        self.assertEqual(out['unmethoded']['fleet'], 0)
+
+    def test_the_rows_add_up_to_the_job_count(self):
+        """The property that matters: nothing falls out of the table unseen."""
+        payer = BulkPayer.objects.create(customer_name='Fleet Co')
+        self.make_card(bill='5000', received='5000', payment_status='PAID',
+                       payment_method='CASH')
+        self.make_card(bill='5000', received='5000', payment_status='PAID',
+                       payment_method='UPI')
+        self.make_card(bill='5000', received='5000', payment_status='BULK_PAID',
+                       bulk_payer=payer)
+        self.make_card(bill='5000', received='0', payment_status='PENDING')
+        out = self._out()
+        counted = (sum(m['n'] for m in out['methods'])
+                   + out['unmethoded']['fleet'] + out['unmethoded']['unsettled'])
+        self.assertEqual(counted, out['total_cards'])
+
+
+class TheShopsSectionSelectsByRouteNotByCoincidenceTests(AnalysisBase):
+    """
+    `spare_rows` selected "has a shop" and relied on a warehouse draw never
+    having one. That is true of the data today and is not the rule — the rule is
+    `source=SHOP`, and only the rule survives somebody attaching a shop
+    reference to the inventory route.
+    """
+
+    def test_a_draw_carrying_a_shop_is_still_excluded(self):
+        from workshop.analysis_views import _insight_shops
+        card = self.make_card(bill='0')
+        cat = Category.objects.create(name='Engine Oil')
+        item = Item.objects.create(name='Castrol 5W-30', category=cat,
+                                   average_stock=D('10'), avg_cost=D('500'))
+        row = JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Castrol 5W-30',
+            source=JobCardSpareItem.SOURCE_INVENTORY, item=item,
+            quantity=D('5'), total_price=D('4000'))
+        # Straight to the column: the shape the filter has to survive.
+        JobCardSpareItem.objects.filter(pk=row.pk).update(shop=self.shop)
+
+        s, e, _k, _l = engine.resolve_period('this_month')
+        out = _insight_shops(s, e)
+        self.assertEqual(out['spare_total'], D('0'),
+                         "a warehouse draw was counted as a spare-shop purchase")
+
+    def test_the_spend_matches_the_profit_pages_spare_shops_expense(self):
+        from workshop.analysis_views import _insight_shops
+        card = self.make_card(bill='0')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Brake Pads',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('2'), unit_price=D('1000'), total_price=D('1500'))
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertEqual(_insight_shops(s, e)['spare_total'],
+                         engine.spare_shop_expense(s, e))
+
+    def test_parts_not_yet_fitted_are_disclosed_on_the_shops_row(self):
+        """"Owed now" counts them and "Spent" cannot, so the two columns look
+        like they should reconcile and do not."""
+        from workshop.analysis_views import _insight_shops
+        card = self.make_card(bill='0')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Brake Pads',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=D('1000'), total_price=D('1500'))
+        JobCardSpareItem.objects.create(
+            job_card=None, spare_part_name='Spare disc',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=D('2500'))
+        s, e, _k, _l = engine.resolve_period('this_month')
+        row = _insight_shops(s, e)['spare_rows'][0]
+        self.assertEqual(row['spend'], D('1000'))
+        self.assertEqual(row['waiting'], D('2500'))

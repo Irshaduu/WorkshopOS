@@ -911,6 +911,56 @@ reachable from exactly one screen**. A shop paid *ahead* archives normally; a
 credit is not a debt.
 → `ArchivingAShopCannotHideWhatIsOwedTests`
 
+## Deep Analysis — the six insight sections
+
+**THE TWO SPARE ROUTES ARE NEVER MERGED INTO ONE LIST.** The Spares section put
+a branded SKU and a bought-in part in one table under one Cost column, with
+nothing on screen saying which shelf each came off. Three reasons that is wrong,
+and they apply to any new section listing parts:
+- A SHOP part has a shop, an ordering state and a **payable**; a warehouse draw
+  came off a shelf already paid for. Only the first is chaseable.
+- The COST columns are **not the same kind of number** — a shop line's cost is
+  the line total as typed, a draw's is a weighted average × quantity. `SPARE_COST`
+  gets each right; printing them in one column invites dividing one by a quantity
+  that does not price it.
+- **QUANTITY means different things.** A draw's quantity is what left the shelf;
+  a shop row's moves no money at all. It is shown for stock and deliberately
+  **left off** the shop table.
+
+The two subtotals add back to the combined headline, so the split hides nothing,
+and the chart carries the route as a **colour** rather than leaving it to be
+guessed from the name.
+→ `TheTwoSpareRoutesAreNeverMergedIntoOneListTests`
+
+**A WAREHOUSE ROW IS GROUPED BY ITS `item` FK, NEVER BY `spare_part_name`.**
+That column is a **snapshot** taken when the part was drawn and is not rewritten
+when the product is renamed (`save()` only fills it when blank), so grouping by
+it splits one product's history into two rows the day somebody corrects a
+spelling. The shop side has no FK and is grouped by `Lower(spare_part_name)` —
+but the row is **displayed** from `Min(spare_part_name)`, a real stored spelling.
+Displaying the lowered key re-title-cased is what turned 'DOT 4' into 'Dot 4'.
+
+**EVERY JOB CARD IS ACCOUNTED FOR IN "HOW CUSTOMERS PAID".** The table excluded
+any card with no `payment_method`, so its Jobs column added to less than the job
+count with nothing saying why — 13 of 150 in the demo data. Two kinds have none:
+a **fleet card** (the method sits on the fleet payment) and a card **nobody has
+settled yet**. Each is named as its own row, and only when there is one.
+→ `EveryJobCardIsAccountedForInHowCustomersPaidTests`
+
+**THE FLEET SECTION'S "BALANCE NOW" IS CUT LIKE `receivable`, NOT FROM STORED
+TOTALS** — the same defect as the Profit page's fleet line, one screen over, and
+worse there because a **net** "Billed" column sat beside a **gross** balance.
+`advance_balance` is netted off and the sign is said in words: an account paid
+ahead reads "in credit", never as a minus. It had been computed and never
+rendered at all.
+→ `TheFleetBalanceIsCutTheSameWayTheReceivableIsTests`
+
+**THE SHOPS SECTION SELECTS BY `source=SHOP`, not by "has a shop".** A draw
+carries no shop today, so the two pick the same rows — but one is the rule and
+the other is a coincidence of the data. Parts **not yet fitted** are disclosed on
+the row, because they are inside "Owed now" and cannot be inside "Spent".
+→ `TheShopsSectionSelectsByRouteNotByCoincidenceTests`
+
 **"GROSS PROFIT" on a car profile is GROSS, and the word is the whole safety of
 it.** `revenue − parts cost` — before wages, rent, power and every other overhead,
 because this workshop attributes none of those to a car: labour is quoted whole
@@ -3567,7 +3617,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 54 files, 1,566 tests. Always SQLite (see below).
+# Full test suite — 54 files, 1,592 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -3674,7 +3724,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 | `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
-whole database — not something to point at hosted Postgres — and 1,566 tests at ~75 ms
+whole database — not something to point at hosted Postgres — and 1,592 tests at ~75 ms
 per round-trip would take hours. There is deliberately no flag to remember and no way to
 run the suite against live data by accident (`development.py` keys off
 `sys.argv[1] == 'test'`).
@@ -3893,7 +3943,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **54 files, 1,566 tests**.
+files) — **54 files, 1,592 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

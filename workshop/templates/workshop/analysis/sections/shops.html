@@ -24,7 +24,15 @@
         <td class="num">₹{{ r.revenue|inr }}</td>
         {# Coloured by SIGN. It was hard-coded `pos`, so a shop the workshop lost money on printed its loss in green. #}
         <td class="num {% if r.profit < 0 %}neg{% else %}pos{% endif %}">₹{{ r.profit|inr }} <span style="font-weight:400; color:var(--color-text-muted);">({{ r.margin|floatformat:0 }}%)</span></td>
-        <td class="num {% if r.due > 0 %}neg{% endif %}">₹{{ r.due|inr }}</td>
+        <td class="num {% if r.due > 0 %}neg{% endif %}">₹{{ r.due|inr }}
+          {% comment %}
+            Why "Owed now" can exceed "Spent": parts bought from this shop and
+            not yet fitted to a car are in the ledger but not in a window's
+            spend. Only printed when there are some — normally none.
+          {% endcomment %}
+          {% if r.waiting %}<span class="d-block" style="font-weight:400; font-size:0.72rem; color:var(--color-text-muted);">
+            incl. ₹{{ r.waiting|inr }} not yet fitted</span>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

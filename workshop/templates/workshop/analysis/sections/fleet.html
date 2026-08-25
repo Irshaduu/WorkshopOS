@@ -29,7 +29,15 @@
         <td class="num">₹{{ r.billed|inr }}</td>
         <td class="num">₹{{ r.received|inr }}</td>
         <td class="num">{{ r.collected_pct|floatformat:0 }}%</td>
-        <td class="num {% if r.balance > 0 %}neg{% else %}pos{% endif %}">₹{{ r.balance|inr }}</td>
+        {% comment %}
+          The sign is turned into WORDS, the same rule the Profit page's
+          position tiles follow: an account paid ahead is in credit, not owed a
+          negative amount. Zero is neither, so it stays plain rather than
+          borrowing the green that means "nothing outstanding".
+        {% endcomment %}
+        <td class="num {% if r.owed %}neg{% elif r.credit %}pos{% endif %}">
+          {% if r.credit %}₹{{ r.credit|inr }} in credit{% else %}₹{{ r.owed|inr }}{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -39,8 +47,8 @@
 <div class="ia-note">
   <i class="bi bi-info-circle-fill text-primary mt-1"></i>
   <span><strong>Billed / Received / Collected</strong> cover only jobs in this date range.
-    <strong>Balance now</strong> is the account's whole history; a negative one means it is in
-    credit.</span>
+    <strong>Balance now</strong> is what the account still owes across its whole history, less
+    anything it has paid ahead.</span>
 </div>
 {% else %}
 <p class="text-muted mb-0" style="font-size:0.84rem;">No fleet account jobs in this period.</p>

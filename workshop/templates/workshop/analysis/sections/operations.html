@@ -33,6 +33,27 @@
           <td class="num">₹{{ m.total|inr }}</td>
         </tr>
         {% endfor %}
+        {% comment %}
+          A card with no method is not dropped. Two kinds have none — a fleet
+          card, settled through its account so the method sits on the fleet
+          payment, and a card nobody has settled yet. Leaving them out made the
+          Jobs column add to less than the job count with nothing saying why.
+          Each line appears only when there is one.
+        {% endcomment %}
+        {% if unmethoded.fleet %}
+        <tr>
+          <td style="color:var(--color-text-muted);">Fleet account</td>
+          <td class="num" style="color:var(--color-text-muted);">{{ unmethoded.fleet }}</td>
+          <td class="num" style="color:var(--color-text-muted);">paid on the account</td>
+        </tr>
+        {% endif %}
+        {% if unmethoded.unsettled %}
+        <tr>
+          <td style="color:var(--color-text-muted);">Not settled yet</td>
+          <td class="num" style="color:var(--color-text-muted);">{{ unmethoded.unsettled }}</td>
+          <td class="num" style="color:var(--color-text-muted);">—</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
     {% else %}
