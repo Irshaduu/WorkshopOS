@@ -78,3 +78,7 @@ Aditing files/
 # Claude Code local workspace: session settings, launch config, and git
 # worktrees created for background tasks. Machine-specific, never shared.
 .claude/
+
+# Repomix output
+repomix-output.*
+repomix.config.json
