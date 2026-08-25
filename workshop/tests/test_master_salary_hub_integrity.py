@@ -19,6 +19,7 @@ from workshop.models import (
     JobCard, JobCardSpareItem, JobCardLabourItem, JobCardConcern, Mechanic,
     SparePart, ConcernSolution, CarBrand, CarModel, SpareShop, DeletionLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine, Notification, FailedAttempt,
+    Estimate,
 )
 from workshop import analysis_engine as ae
 
@@ -1992,3 +1993,64 @@ class TheStaffAdvancePageOpensAsAPageTests(WorkshopTestCase):
         """`@office_required`, like every other salary screen — wages are not
         Floor's business."""
         self.assertEqual(self.client_for('floor').get(self.url).status_code, 403)
+
+
+class TheMasterListDecidesHowABrandIsSpelledTests(TestCase):
+    """
+    `clean()` title-cases `brand_name`, which is right for 'toyota' and WRONG
+    for every acronym marque: 'BMW' was stored as 'Bmw' on every card in the
+    system, so the master list said BMW while all 39 BMW job cards said Bmw —
+    and Car Profiles, the brand chart and the Vehicles insight all group by that
+    column.
+
+    The model already had this exact rule for `model_name`, added when 'corolla'
+    and 'COROLLA' turned out to be two models everywhere they were counted. The
+    brand simply never got it: title-case is now the FALLBACK for a genuinely
+    new marque, and the curated list is the authority on its own entries.
+    """
+
+    def setUp(self):
+        self.brand = CarBrand.objects.create(name='BMW')
+        CarModel.objects.create(brand=self.brand, name='320d')
+
+    def _card(self, brand, model='320d', reg=None):
+        return JobCard.objects.create(
+            registration_number=reg or f'KL 10 ZZ {JobCard.objects.count():04d}',
+            brand_name=brand, model_name=model,
+            admitted_date=timezone.localdate(),
+        )
+
+    def test_an_acronym_marque_is_not_title_cased_into_nonsense(self):
+        self.assertEqual(self._card('BMW').brand_name, 'BMW')
+
+    def test_any_casing_snaps_to_the_master_lists_spelling(self):
+        for typed in ('bmw', 'Bmw', 'bMw', '  BMW  '):
+            self.assertEqual(self._card(typed).brand_name, 'BMW',
+                             f"{typed!r} did not snap to the master list")
+
+    def test_a_brand_the_list_has_never_heard_of_is_still_tidied(self):
+        """Title-case remains the fallback — it is only overruled by the list."""
+        self.assertEqual(self._card('  koenigsegg  ', model='Jesko').brand_name,
+                         'Koenigsegg')
+
+    def test_one_brand_cannot_end_up_as_two_in_a_report(self):
+        """The property that actually matters: every card for one marque groups
+        under a single spelling, whatever anybody typed."""
+        for typed in ('BMW', 'bmw', 'Bmw'):
+            self._card(typed)
+        self.assertEqual(
+            sorted(set(JobCard.objects.values_list('brand_name', flat=True))),
+            ['BMW'])
+
+    def test_the_model_snap_still_works_alongside_it(self):
+        """Both snaps run in the same clean(); the brand lookup must not break
+        the model lookup that reads `brand_name` right after it."""
+        card = self._card('bmw', model='320D')
+        self.assertEqual(card.brand_name, 'BMW')
+        self.assertEqual(card.model_name, '320d')
+
+    def test_an_estimate_spells_a_marque_the_same_way_a_job_card_does(self):
+        """The two are opened days apart for the same car. A quotation saying
+        'Bmw' beside a bill saying 'BMW' reads as two different products."""
+        est = Estimate.objects.create(brand_name='bmw', model_name='320d')
+        self.assertEqual(est.brand_name, self._card('bmw').brand_name)

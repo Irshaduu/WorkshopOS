@@ -992,8 +992,19 @@ class JobCard(CarColourMixin, models.Model):
             # Strip whitespace and uppercase: 'kl 01 ab 1234' → 'KL 01 AB 1234'
             self.registration_number = self.registration_number.strip().upper()
         if self.brand_name:
-            # Strip and title-case: 'toyota  ' → 'Toyota'
+            # Strip and title-case: 'toyota  ' → 'Toyota'.
+            # ⚠ Title-casing is WRONG for an acronym marque — 'BMW' becomes
+            # 'Bmw' — so it is only the fallback. The master list gets the final
+            # say immediately below, exactly as it already does for the model.
             self.brand_name = ' '.join(self.brand_name.split()).title()
+            canonical_brand = (
+                CarBrand.objects
+                .filter(name__iexact=self.brand_name)
+                .values_list('name', flat=True)
+                .first()
+            )
+            if canonical_brand:
+                self.brand_name = canonical_brand
         if self.model_name:
             # Whitespace only — deliberately NOT .title() like brand_name.
             # Model names are alphanumeric in ways title-casing destroys:
@@ -1837,7 +1848,18 @@ class Estimate(CarColourMixin, models.Model):
         if self.registration_number:
             self.registration_number = self.registration_number.strip().upper()
         if self.brand_name:
+            # Same rule as JobCard.clean(): title-case, then let the master list
+            # decide, so an estimate and the job card that follows it cannot
+            # spell the same marque two different ways.
             self.brand_name = ' '.join(self.brand_name.split()).title()
+            canonical_brand = (
+                CarBrand.objects
+                .filter(name__iexact=self.brand_name)
+                .values_list('name', flat=True)
+                .first()
+            )
+            if canonical_brand:
+                self.brand_name = canonical_brand
         if self.model_name:
             # Whitespace only — NOT title-cased. 'i20' → 'I20' and 'CR-V' →
             # 'Cr-V' is why JobCard.clean does the same.
