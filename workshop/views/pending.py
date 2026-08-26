@@ -20,8 +20,26 @@ def pending_payments_list(request):
     """
     # 1. Base Query with Filtering by Payment Status (Indexed)
     # Hide any jobs that are assigned to a bulk payer group
+    #
+    # A CAR STILL ON THE FLOOR IS NOT A PENDING BILL. This is the chase list —
+    # cars handed over that nobody has settled — and it used to carry every
+    # live card as well, because a card starts PENDING the moment it is
+    # created. Those are not bills yet: no figure is final, nothing was
+    # handed to a customer, and there is nothing to chase. They buried the
+    # cards that ARE chaseable, so the page had to be searched to be used.
+    #
+    # Nothing is stranded by this. A live card is on the dashboard board the
+    # whole time it is on the floor, and it appears here the moment it is
+    # marked completed.
+    #
+    # ⚠ CONSEQUENCE: `total_outstanding` is now what has been handed over and
+    # not settled, which is SMALLER than the Profit page's "Customers owe us"
+    # — that counts every unsettled card, fleet and still-on-the-floor
+    # included. The two were already different (this page excludes fleet), and
+    # the subtitle under the title says which question this one answers.
     pending_jobs = JobCard.objects.filter(
-        payment_status__in=['PENDING', 'PARTIAL']
+        completed=True,
+        payment_status__in=['PENDING', 'PARTIAL'],
     ).exclude(bulk_payer__isnull=False)
 
     # 2. AJAX Search (Smart Reset: Clear on full refresh)

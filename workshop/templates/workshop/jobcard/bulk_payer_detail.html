@@ -781,17 +781,32 @@
                 <span class="bd-count-pill">{{ card_count }} car{{ card_count|pluralize }}</span>
             </div>
         </div>
-        {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+        {% comment %}
+          The MENU is gated to match `bulk_payer_edit`'s own decorator
+          (@office_required), because Office is the role that creates these
+          accounts and settles them. Delete keeps the tighter Owner gate it
+          already had, inside. Nothing widened: every fleet view is
+          @office_required, so this only makes visible a door Office could
+          already open.
+        {% endcomment %}
+        {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
         <div class="dropdown">
             <button class="bd-page-menu-btn" type="button" data-bs-toggle="dropdown">
                 <i class="bi bi-three-dots-vertical"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end bd-dropdown">
                 <li>
+                    <button type="button" class="dropdown-item" onclick="showRenameConfirm()">
+                        <i class="bi bi-pencil-square me-2"></i>Rename Account
+                    </button>
+                </li>
+                {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+                <li>
                     <button type="button" class="dropdown-item text-danger" onclick="showDeleteGroupConfirm()">
                         <i class="bi bi-trash3 me-2"></i>Delete Group
                     </button>
                 </li>
+                {% endif %}
             </ul>
         </div>
         {% endif %}
@@ -1086,6 +1101,32 @@
     </div>
 </div>
 
+<!-- Rename Fleet Account (Owner + Office) -->
+{% comment %}
+  A real form, not a confirm(): the person is supplying a value, not agreeing
+  to one. `maxlength` mirrors the column so the box cannot accept what the
+  server would trim, and `required` keeps an empty submit off the wire — the
+  view refuses both anyway, since neither is a control.
+{% endcomment %}
+<div class="bd-confirm-overlay" id="renameOverlay">
+    <div class="bd-confirm-box">
+        <h6><i class="bi bi-pencil-square text-primary me-1"></i> Rename Fleet Account</h6>
+        <p>Every screen follows the new name — the account page, the picker, the
+           fleet report and the invoice chip. Past alerts and deletion records keep
+           the old one.</p>
+        <form method="POST" action="{% url 'bulk_payer_edit' pk=bulk_payer.pk %}">
+            {% csrf_token %}
+            <input type="text" name="customer_name" id="renameInput"
+                   class="form-control mb-3" maxlength="150" required
+                   value="{{ bulk_payer.customer_name }}" autocomplete="off">
+            <div class="btn-group">
+                <button type="button" class="bd-confirm-cancel" onclick="hideRenameConfirm()">Cancel</button>
+                <button type="submit" class="bd-confirm-remove">Save Name</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Deactivate Fleet Account Confirmation Overlay (Owner + Office) -->
 {% if request.user|has_group:"Owner" or request.user|has_group:"Office" or request.user.is_superuser %}
 <div class="bd-confirm-overlay" id="deleteGroupOverlay">
@@ -1188,6 +1229,21 @@ function hideDeleteGroupConfirm() {
 }
 var dgo = document.getElementById('deleteGroupOverlay');
 if (dgo) dgo.addEventListener('click', function(e) { if (e.target === this) hideDeleteGroupConfirm(); });
+
+// Rename the account. The field is selected on open, so the common edit —
+// replacing the whole name — is one keystroke rather than a manual clear.
+function showRenameConfirm() {
+    var overlay = document.getElementById('renameOverlay');
+    if (!overlay) return;
+    overlay.classList.add('active');
+    var box = document.getElementById('renameInput');
+    if (box) { box.focus(); box.select(); }
+}
+function hideRenameConfirm() {
+    document.getElementById('renameOverlay')?.classList.remove('active');
+}
+var rno = document.getElementById('renameOverlay');
+if (rno) rno.addEventListener('click', function(e) { if (e.target === this) hideRenameConfirm(); });
 
 // Delete history entry (owner)
 function showHistoryDeleteConfirm(historyPk, amount) {

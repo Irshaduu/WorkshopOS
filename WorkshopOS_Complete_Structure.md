@@ -3,12 +3,15 @@
 │   └── Live Cars
 │
 ├── Job Card
-│   └── Create, Update
+│   ├── Create, Update
+│   ├── Auto suggetion
+│   └── Photos
 │
 ├── Live Report
-│   ├── Mech + Cars (who is working on what)
-│   ├── On the Way
-│   └── Not Ordered
+│   ├── Not filled in Bills
+│   ├── Car list under Mech
+│   ├── On the Way (spares)
+│   └── Not Ordered (spares)
 │
 ├── Completed
 │   └── Done cars, ready to bill
@@ -16,7 +19,7 @@
 ├── Pending Payments
 │   └── Fleet Accounts
 │       ├── Fleet Job Cards
-│       └── Payment, History
+│       └── Payments, History
 │
 ├── Paid Bills
 │
@@ -25,18 +28,20 @@
 ├── Deletion History
 │
 ├── Spare Shops
-│   ├── Unassigned Spares
 │   ├── Shop List
 │   ├── Shop Details
 │   ├── Payments
+│   ├── Purchase History
 │   └── Print Ledger
+│
+├── Unassigned Spares
 │
 ├── Supplies Shops
 │   ├── Shop List
 │   ├── Shop Details
 │   ├── Shop Catalog
 │   ├── Restock / Purchase Bills
-│   └── Shop Payments
+│   └── Payments
 │
 ├── Inventory
 │   ├── Categories
@@ -46,11 +51,20 @@
 │   └── Usage by Mechanic
 │
 ├── Car Profiles
+│   ├── Car Jobcards
+│   ├── Gross bill 
+│   └── Gross Profit
+│
 ├── Estimates
+│
 ├── Invoice
+│   └── Unfilled tracking
 │
 ├── Salary & Advance
+│
 ├── Cashbook
+│   ├── General expenses (Bus, food)
+│   └── General income (Black Oil)
 │
 ├── Notifications
 │
@@ -67,8 +81,9 @@
 ├── Control Hub
 │   ├── User Management
 │   ├── Staff / Roster
-│   ├── Sessions / Security
-│   └── Master Data
+│   └── Sessions / Security
+│
+├── Master Data
 │       ├── Car Brands
 │       ├── Car Models
 │       ├── Used Concerns
@@ -76,7 +91,5 @@
 │           └── Edit, Delete, Merge
 │
 └── Account / Security
-    ├── Login
-    ├── Password Reset
-    └── Logout
-
+    ├── Login, Logout
+    └── Password Reset

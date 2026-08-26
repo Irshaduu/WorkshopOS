@@ -226,7 +226,7 @@ INSIGHT_SECTIONS = [
     ('inventory',   'Inventory',   'bi-box-seam',            'Parts off the warehouse shelf — what they earn'),
     ('vehicles',    'Vehicles',    'bi-car-front',           'Repeat cars, brands, and how often they return'),
     ('fleet',       'Fleet',       'bi-buildings',           'Fleet account volume, settlement and balances'),
-    ('shops',       'Shops',       'bi-shop',                'Spare shops and supplies shops, by spend'),
+    ('shops',       'Shops',       'bi-shop',                'Spare shops and supplies shops — supplied, owed and paid'),
     ('cashbook',    'Cashbook',    'bi-journal-text',        'General running costs by category, and scrap income'),
     ('operations',  'Operations',  'bi-speedometer2',        'Workload, completion and how customers pay'),
 ]
@@ -731,7 +731,23 @@ def _insight_fleet(start, end):
 
 # -------------------------------------------------------------------- shops --
 def _insight_shops(start, end):
-    """Where the parts money goes — spare shops (per job) and supplies shops."""
+    """
+    Where the parts money goes — spare shops (per job) and supplies shops.
+
+    ⚠ THE TWO HALVES ARE ON DIFFERENT BASES AND ARE NAMED DIFFERENTLY FOR IT.
+    A spare-shop row is a COST: the part went straight onto a car, so it is
+    dated by that card and it is exactly what the Profit page charges. A
+    supplies-shop row is a PURCHASE: the goods went onto the warehouse shelf,
+    which raises the shelf and the payable and is charged NOWHERE — the cost
+    lands later, when a mechanic draws the part, and is reported by the
+    Inventory section as "Stock used".
+
+    Both were called `spend` and both tiles said "spend", under a footnote
+    promising that spend is "the figure the Profit page charges". That was
+    true of one half and false of the other, so an owner comparing ₹85,000 of
+    supplies against ₹1.88L of stock used had no way to reconcile two figures
+    the page said were the same kind of number. The supplies half is `billed`.
+    """
     from inventory.models import SupplierShop, SupplierRestockBill, SupplierPayment
 
     # `source=SHOP` stated OUTRIGHT rather than inferred from "has a shop".
@@ -759,10 +775,10 @@ def _insight_shops(start, end):
     supplier_rows = list(
         SupplierRestockBill.objects.filter(bill_date__range=(start, end))
         .values('supplier', 'supplier__name')
-        .annotate(spend=Coalesce(Sum(SUPPLIER_BILL_COST, output_field=MONEY),
-                                 Value(ZERO, output_field=MONEY), output_field=MONEY),
+        .annotate(billed=Coalesce(Sum(SUPPLIER_BILL_COST, output_field=MONEY),
+                                  Value(ZERO, output_field=MONEY), output_field=MONEY),
                   bills=Count('id'))
-        .order_by('-spend')
+        .order_by('-billed')
     )
 
     dues = {s['id']: s['total_purchased_amount'] - s['total_paid_amount']
@@ -792,7 +808,12 @@ def _insight_shops(start, end):
         'spare_rows': spare_rows,
         'supplier_rows': supplier_rows,
         'spare_total': sum((r['spend'] for r in spare_rows), ZERO),
-        'supplier_total': sum((r['spend'] for r in supplier_rows), ZERO),
+        # `billed`, NOT `spend`, and the name is the whole point: calling the
+        # variable `spend` is what produced a tile reading "Supplies spend"
+        # beside a footnote defining spend as what the Profit page charges.
+        # This is what the Supplies Shops billed onto the SHELF in the window.
+        # Nothing charges it. See the docstring.
+        'supplier_billed': sum((r['billed'] for r in supplier_rows), ZERO),
         # A SHOP purchase with nobody recorded as the payee. This section is
         # grouped BY shop, so such a row has no group to sit in and drops out
         # of the total above — while the Spare Parts section counts every

@@ -40,6 +40,7 @@ urlpatterns = [
     path('pending-payments/bulk-payers/create/', views.bulk_payer_create, name='bulk_payer_create'),
     path('pending-payments/bulk-payers/<int:pk>/', views.bulk_payer_detail, name='bulk_payer_detail'),
     path('pending-payments/jobcards/move-to-bulk/', views.move_jobcard_to_bulk, name='move_jobcard_to_bulk'),
+    path('pending-payments/bulk-payers/<int:pk>/edit/', views.bulk_payer_edit, name='bulk_payer_edit'),
     path('pending-payments/bulk-payers/<int:pk>/remove-card/', views.bulk_payer_remove_card, name='bulk_payer_remove_card'),
     path('pending-payments/bulk-payers/<int:pk>/pay/', views.bulk_payer_pay, name='bulk_payer_pay'),
     path('pending-payments/bulk-payers/<int:pk>/delete/', views.bulk_payer_delete, name='bulk_payer_delete'),

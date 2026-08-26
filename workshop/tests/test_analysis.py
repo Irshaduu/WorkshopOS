@@ -645,7 +645,7 @@ class ASupplierDiscountCannotRaiseProfitTests(AnalysisBase):
         from workshop.analysis_views import _insight_shops
         s, e, _k, _l = engine.resolve_period('this_month')
         rows = _insight_shops(s, e)['supplier_rows']
-        self.assertEqual(rows[0]['spend'], D('0'))
+        self.assertEqual(rows[0]['billed'], D('0'))
 
     def test_the_shops_own_BALANCE_uses_the_same_floor(self):
         """
@@ -1724,6 +1724,52 @@ class OneWordOneMeaningAcrossBothPagesTests(AnalysisBase):
             html = self._section(key)
             self.assertIn('Margin', html, key)
             self.assertNotIn('<th class="num">Profit</th>', html, key)
+
+    def test_a_SUPPLIES_figure_is_never_called_SPEND(self):
+        """
+        THE THIRD WORD, and the one an owner hits when two sections refuse to
+        reconcile. SPEND is a cost: the spare-shop half of the Shops section
+        is exactly what the Profit page charges, because a spare-shop part
+        goes straight onto a car. A Supplies Shop bill is a PURCHASE — it
+        puts goods on the warehouse shelf, and the cost lands later, on the
+        day a mechanic draws the part.
+
+        Both halves were labelled "spend", under a footnote defining spend as
+        "the figure the Profit page charges". True of one half, false of the
+        other, and on the demo data the supplies tile read ₹85,000 against
+        ₹1.88L of stock actually used — two figures the page said were the
+        same kind of number, which an owner could not reconcile because they
+        are not.
+
+        Asserted as the PROPERTY first: a bill raised in the window with
+        nothing drawn against it is reported here in full and charged
+        nowhere. The label check follows, so the word cannot drift back.
+        """
+        shop = SupplierShop.objects.create(name='Ninoos')
+        cat = Category.objects.create(name='Fluids')
+        item = Item.objects.create(name='5W-30', category=cat, average_stock=D('10'))
+        bill = SupplierRestockBill.objects.create(supplier=shop, bill_date=self.today)
+        SupplierRestockItem.objects.create(bill=bill, item=item,
+                                           quantity=D('4'), total_price=D('20000'))
+
+        s, e, _k, _l = engine.resolve_period('this_month')
+        from workshop.analysis_views import _insight_shops
+        out = _insight_shops(s, e)
+
+        self.assertEqual(
+            out['supplier_billed'], D('20000'),
+            'the section must report what the shelf was filled with')
+        self.assertEqual(
+            engine.warehouse_drawn_spare_cost(s, e), D('0'),
+            'a supplies bill is not a cost — the DRAW is. If this ever equals '
+            'the bill, one delivery is being charged twice')
+
+        html = self._section('shops')
+        self.assertIn('Supplies billed', html)
+        self.assertNotIn(
+            'Supplies spend', html,
+            'a figure the Profit page charges nowhere must not wear the word '
+            'this page defines as what it charges')
 
     def test_PAID_means_cash_and_SPEND_means_cost_in_every_section(self):
         """

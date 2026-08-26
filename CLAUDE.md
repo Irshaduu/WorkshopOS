@@ -587,6 +587,37 @@ settled month forever.
 The UI says **"Fleet Account"**; the model, fields and URLs all say `BulkPayer`.
 Don't rename them to match the copy. `BULK_PAID` displays as **"Fleet Paid"**.
 
+**A FLEET ACCOUNT CAN BE RENAMED, AND THAT IS SAFE FOR A REASON WORTH KNOWING
+BEFORE COPYING IT ANYWHERE ELSE.** `bulk_payer_edit` is one `UPDATE` with no
+propagation step, because **everything points AT the account by ForeignKey** —
+`JobCard.bulk_payer`, `BulkPaymentHistory.bulk_payer`, and the Deep Analysis
+fleet section, which groups by the FK id and pulls the name through the join.
+So the account page, the picker, the fleet report and the **"Fleet · <name>"
+chip on a printed invoice** all follow with nothing to keep in step.
+
+⚠ **That is the OPPOSITE of a brand, model, spare or concern**, which are free
+text copied onto every job card and therefore need `master_data.py` to carry a
+new spelling across the history. Do not reason from one to the other.
+
+Two things deliberately keep the OLD name: a `DeletionLog` snapshot and a
+`Notification` body. Both are frozen records of what was true when written.
+
+It mirrors `spare_shop_edit` on the sibling model, and the two halves of that
+are both load-bearing: **`__iexact`** because the column's `unique=True` is
+case-sensitive, so "Acme Fleet" and "acme fleet" are both insertable and the
+picker would list one account twice; and **`.exclude(pk=pk)`** because without
+it the model-level uniqueness check fires before the view runs and refuses the
+account its own name back — so fixing the capitalisation of the only account of
+that name would be impossible. The name is `fit_text`-trimmed to its 150-char
+column rather than 500ing on Postgres.
+
+The ⋮ menu is gated to **Office and Owner**, matching the view's own
+`@office_required` — Office creates these accounts and settles them. **Delete
+keeps its tighter Owner-only gate inside that menu.** Nothing was widened:
+every fleet view is `@office_required`, so this only made visible a door Office
+could already open.
+→ `RenamingAFleetAccountReachesEveryScreenTests`
+
 **A Fleet Account holding unsettled job cards cannot be ARCHIVED, and an archived
 one takes no new cards, no new payments and no reversals.** Archiving used to be
 unguarded and hid the account from every screen at once: `bulk_payer_detail` 404s
@@ -1274,6 +1305,39 @@ is `cost`/`cost_word`, because calling the variable `paid` is what produced the
 label.
 → `test_PAID_means_cash_and_SPEND_means_cost_in_every_section` scans the section
 templates, so only the Shops section may label a figure "Paid".
+
+**AND THERE IS A THIRD WORD — "BILLED" — BECAUSE THE SHOPS SECTION'S TWO HALVES
+ARE NOT ON ONE BASIS.** The same collision one level down, and the one an owner
+hits when two sections refuse to reconcile. A **spare-shop** row is a COST: the
+part goes straight onto a car, it is dated by that job, and it is exactly what
+the Profit page charges — "spend" is right. A **Supplies Shop** row is a
+PURCHASE: it puts goods on the warehouse SHELF, which raises the shelf and the
+payable and **is charged nowhere**, because the cost lands later, on the day a
+mechanic draws the part. That is the "THREE DATES, AND ONLY ONE OF THEM IS AN
+EXPENSE" rule showing up in a label.
+
+Both halves said **"spend"**, under a footnote defining spend as *"the figure
+the Profit page charges"* — so the supplies tile made a promise the figure does
+not keep. Measured on the demo data: ₹85,000 billed against ₹1,88,000 of stock
+actually used and charged, two numbers the page said were the same kind of
+number. There is no arithmetic that reconciles them, and an owner reading
+"Charged ₹3.06L" in Inventory beside "Supplies spend ₹85,000" here had no route
+to find that out.
+
+Four things carry it, and the variable name is one of them:
+- The tile is **"Supplies billed"** with the basis under it ("onto the shelf, by
+  bill date"), and **every one of the four tiles now names its own basis** — a
+  tile that has to be reconciled against another screen must say what it is.
+- The engine field is **`billed`**, never `spend`, and the total is
+  `supplier_billed`. Calling the variable `spend` is what produced the label,
+  exactly as calling one `paid` did a level up.
+- The footnote defines **all three words** and says where the supplies cost
+  actually lives (the Inventory section's "Stock used").
+- The section subtitle dropped **"by spend"**, which claimed one basis for both
+  halves in four characters.
+→ `test_a_SUPPLIES_figure_is_never_called_SPEND` asserts the PROPERTY first — a
+bill raised in the window with nothing drawn against it is reported in full and
+charged ₹0 — then the label, so the word cannot drift back.
 
 **BOTH PART ROUTES DISCLOSE AN UNCOSTED PART, and only one used to.**
 `SPARE_COST` costs a NULL `unit_price` at ₹0 on either route, so on either one a
@@ -3648,6 +3712,38 @@ straight to a `__date__gte` lookup, `?start_date=abc` reaches `get_prep_value` a
 raises. The pickers are `type="date"`, so this only fires on a crafted URL, but a 500 is
 a 500.
 
+**COMPLETED IS NEWEST-FIRST, AND THE TIEBREAKER IS `-id`.** `completed_date` is
+a **DateField**, so every car handed over today carries the same value and the
+order inside that day was whatever the database returned — which, on the
+default `today` filter, is the whole page. The car somebody opened the list to
+see could be anywhere in it, so it was found by scrolling.
+`order_by('-completed_date', '-id')`.
+
+⚠ **Not `-updated_at`.** It is `auto_now=True`, so an old card edited for an
+unrelated reason would jump to the top of today — the exact defect `paid_date`
+exists to keep off Paid Bills, one list over. `-id` never moves after creation.
+Within a day it orders by newest card rather than by true completion time;
+there is no completion timestamp to sort by, and adding one is a migration for
+a precision nobody has asked for.
+→ `TheCompletedListPutsTheNewestFirstTests`
+
+**A CAR STILL ON THE FLOOR IS NOT A PENDING BILL.** `pending_payments_list`
+filters `completed=True`. A card is `PENDING` from the moment it is created, so
+every live card sat in the chase list: nothing about them is chaseable — no
+figure is final and no bill was handed to anybody — and they buried the bills
+that are. Nothing is stranded, which is what makes this safe against the
+money-owed-is-always-reachable rule: a live card is on the dashboard board the
+whole time it is on the floor, and it joins this list the moment it is marked
+completed.
+
+⚠ **CONSEQUENCE: `total_outstanding` is deliberately SMALLER than the Profit
+page's "Customers owe us".** That figure counts every unsettled card, fleet and
+still-on-the-floor included; this page excluded fleet already and now excludes
+live cards too. The subtitle under the title — *"Handed over and not yet
+settled"* — is what stops the total quietly meaning something new. Don't
+"reconcile" the two by widening either: they answer different questions.
+→ `PendingBillsListsOnlyHandedOverCarsTests`
+
 **List views paginate at 45 items/page** (10 for inventory category grids) and use
 `select_related`/`prefetch_related`.
 
@@ -4141,7 +4237,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 54 files, 1,685 tests. Always SQLite (see below).
+# Full test suite — 55 files, 1,699 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -4249,7 +4345,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,685-test run
+want. SQLite's test database is also in-memory, which is most of why a 1,699-test run
 is ~70 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
@@ -4480,8 +4576,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **54 files, 1,685 tests**.
+Tests live in `workshop/tests/` (49 `test_*.py` plus `tests.py`) and `inventory/` (5
+files) — **55 files, 1,699 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

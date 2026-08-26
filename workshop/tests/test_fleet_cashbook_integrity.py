@@ -394,6 +394,98 @@ class FleetDueIsTheFleetSliceOfReceivableTests(FleetLedgerTestCase):
         self.assertEqual(position['receivable'], Decimal('1000.00'))
 
 
+class RenamingAFleetAccountReachesEveryScreenTests(FleetLedgerTestCase):
+    """
+    A Fleet Account had no rename at all — the ⋮ menu offered Delete and
+    nothing else, so a typo in an account name was permanent unless somebody
+    archived the account and rebuilt it, which would strand its ledger.
+
+    Renaming is safe here in a way renaming a BRAND or a SPARE is not, and the
+    difference is the schema: those are free text copied onto every job card,
+    so `master_data.py` has to carry the new spelling across the history. A
+    Fleet Account is a row everything points AT by ForeignKey, so one UPDATE
+    reaches every screen and none of them can fall out of step.
+    """
+
+    def rename(self, payer, name):
+        return self.client.post(reverse('bulk_payer_edit', args=[payer.pk]),
+                                {'customer_name': name}, follow=True)
+
+    def test_the_new_name_reaches_a_printed_invoice(self):
+        """
+        The end of the longest chain: job card → FK → the "Fleet · <name>"
+        chip on the customer's own document. Nothing propagates it; there is
+        nothing to propagate.
+        """
+        payer = BulkPayer.objects.create(customer_name='Acme Transprot')
+        card = self.make_card('KL01AAA', 5000)
+        self.assign(payer, card)
+
+        self.rename(payer, 'Acme Transport')
+
+        payer.refresh_from_db()
+        self.assertEqual(payer.customer_name, 'Acme Transport')
+        html = self.client.get(reverse('invoice_view', args=[card.pk])).content.decode()
+        self.assertIn('Acme Transport', html)
+        self.assertNotIn('Acme Transprot', html)
+
+    def test_a_name_already_in_use_is_refused_whatever_its_case(self):
+        """`customer_name` is `unique=True`, which is CASE-SENSITIVE in the
+        database — so 'acme fleet' and 'Acme Fleet' would both be insertable
+        and the picker would show one account twice."""
+        BulkPayer.objects.create(customer_name='Acme Fleet')
+        other = BulkPayer.objects.create(customer_name='Beta Cars')
+
+        self.rename(other, 'acme fleet')
+
+        other.refresh_from_db()
+        self.assertEqual(other.customer_name, 'Beta Cars')
+
+    def test_an_account_can_be_given_its_own_name_back(self):
+        """
+        Guards the `.exclude(pk=pk)`. Without it the account collides with
+        ITSELF, so correcting the capitalisation of the only account of that
+        name would be refused — the trap this codebase already records for
+        `CarBrandForm`.
+        """
+        payer = BulkPayer.objects.create(customer_name='acme fleet')
+
+        self.rename(payer, 'Acme Fleet')
+
+        payer.refresh_from_db()
+        self.assertEqual(payer.customer_name, 'Acme Fleet')
+
+    def test_an_empty_name_is_refused(self):
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+
+        self.rename(payer, '   ')
+
+        payer.refresh_from_db()
+        self.assertEqual(payer.customer_name, 'Acme Fleet')
+
+    def test_an_oversized_name_is_trimmed_rather_than_crashing(self):
+        """The SQLite-accepts / Postgres-500s split, on a 150-char column."""
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+
+        res = self.rename(payer, 'X' * 400)
+
+        self.assertEqual(res.status_code, 200)
+        payer.refresh_from_db()
+        self.assertEqual(len(payer.customer_name), 150)
+
+    def test_an_archived_account_is_not_renameable(self):
+        """Matches `bulk_payer_detail`, which 404s on an archived account —
+        there is no page to rename it from."""
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet', is_trashed=True)
+
+        res = self.client.post(reverse('bulk_payer_edit', args=[payer.pk]),
+                               {'customer_name': 'Renamed'})
+
+        self.assertEqual(res.status_code, 404)
+        payer.refresh_from_db()
+        self.assertEqual(payer.customer_name, 'Acme Fleet')
+
+
 class CashbookEntriesAreDatedByTheDayTheMoneyMovedTests(TestCase):
     """
     A Cashbook entry carries the date the money moved, not the date it was

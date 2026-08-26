@@ -19,7 +19,7 @@ from ..models import (
 )
 from ..decorators import office_required, owner_required
 from ..notifications import notify
-from ..money import parse_money
+from ..money import parse_money, fit_text
 
 
 @office_required
@@ -125,6 +125,55 @@ def bulk_payer_create(request):
         return redirect('bulk_payer_detail', pk=bulk_payer.pk)
     
     return redirect('pending_payments_list')
+
+
+@office_required
+def bulk_payer_edit(request, pk):
+    """
+    POST: rename a Fleet Account.
+
+    SAFE BY CONSTRUCTION, and worth saying why, because renaming a brand or a
+    spare part in this app is NOT. Those are free text copied onto every job
+    card, so `master_data.py` has to carry the new spelling across the history.
+    A Fleet Account is a real row that everything points AT: `JobCard.bulk_payer`
+    and `BulkPaymentHistory.bulk_payer` are ForeignKeys, and the Deep Analysis
+    fleet section groups by the FK id and pulls the name through the join. So
+    one UPDATE reaches the account page, the picker, the fleet insight table and
+    the "Fleet · <name>" chip on a printed invoice, with nothing to propagate
+    and nothing that can fall out of step.
+
+    Two things deliberately keep the OLD name and must not be "fixed": a
+    `DeletionLog` snapshot and a `Notification` body. Both are frozen records of
+    what was true when they were written.
+
+    Mirrors `spare_shop_edit`, which is the same shape on the sibling model:
+    `__iexact` because the column's `unique=True` is case-sensitive, and
+    `.exclude(pk=pk)` because without it a model-level uniqueness check fires
+    before the view runs and refuses the account its own name back — so fixing
+    the capitalisation of the only account of that name would be impossible.
+    """
+    payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=False)
+    if request.method == 'POST':
+        # Trimmed to the column rather than crashing: `customer_name` is
+        # max_length=150, and an oversized value is the SQLite-accepts /
+        # Postgres-500s split this codebase keeps hitting.
+        name = fit_text(request.POST.get('customer_name', '').strip(),
+                        BulkPayer, 'customer_name')
+
+        if not name:
+            messages.error(request, "Fleet account name cannot be empty.")
+            return redirect('bulk_payer_detail', pk=pk)
+
+        if BulkPayer.objects.filter(customer_name__iexact=name).exclude(pk=pk).exists():
+            messages.error(request, f"Another fleet account named '{name}' already exists.")
+            return redirect('bulk_payer_detail', pk=pk)
+
+        was = payer.customer_name
+        payer.customer_name = name
+        payer.save(update_fields=['customer_name'])
+        if was != name:
+            messages.success(request, f"Renamed '{was}' to '{name}'.")
+    return redirect('bulk_payer_detail', pk=pk)
 
 
 @office_required
