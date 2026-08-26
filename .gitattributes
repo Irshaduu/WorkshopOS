@@ -12,6 +12,11 @@
 static/vendor/** -text
 
 # Belt and braces: font and image payloads are binary whatever the path says.
+# db.sqlite3 is here for the same reason and matters more: it is a COMMITTED
+# database that the render-demo deploy actually serves, and `core.autocrlf` is
+# true on the developer machine. Git auto-detects it as binary today because
+# there is a NUL byte early in the file, which is luck rather than a guarantee.
+db.sqlite3 binary
 *.woff  binary
 *.woff2 binary
 *.ttf   binary
