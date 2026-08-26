@@ -195,6 +195,38 @@
       color: var(--color-primary);
   }
   .shop-dropdown-menu .dropdown-divider { margin: 4px 8px; }
+
+  /* The payment date box — the Cashbook's own control, values copied rather
+     than approximated. Almost every payment is dated today, so the field that
+     is nearly always right is a 46px calendar glyph with the real
+     <input type="date"> lying invisible on top of it: one tap opens the OS
+     picker on every platform. The moment the date is NOT today it turns amber
+     and spells the day out, so a wrong month can never be posted unseen. */
+  .ssp-datebox {
+      position: relative; display: inline-flex; align-items: center;
+      justify-content: center; gap: 6px;
+      min-width: 46px; height: 44px; padding: 0 11px;
+      border: 1px solid var(--color-border); border-radius: 10px;
+      background: var(--color-card); cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+  }
+  .ssp-datebox:hover { border-color: var(--color-primary); }
+  .ssp-datebox:focus-within {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.1);
+  }
+  .ssp-datebox i { font-size: 1.02rem; color: var(--color-text-muted); }
+  .ssp-datebox input[type="date"] {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      opacity: 0; border: none; padding: 0; margin: 0; cursor: pointer;
+      background: transparent;
+  }
+  .ssp-date-txt {
+      display: none; font-size: 0.78rem; font-weight: 700; white-space: nowrap;
+  }
+  .ssp-datebox.is-custom { border-color: #f59e0b; background: #fffbeb; }
+  .ssp-datebox.is-custom i { color: #b45309; }
+  .ssp-datebox.is-custom .ssp-date-txt { display: inline; color: #b45309; }
 </style>
 
 <!-- ── Back breadcrumb & Filters ── -->
@@ -376,6 +408,15 @@
     <form method="post" action="{% url 'spare_shop_pay' shop.pk %}">
       {% csrf_token %}
       <div class="d-flex gap-2 flex-wrap align-items-end">
+        <div>
+          <label for="id_pay_date" class="form-label small text-muted mb-1 d-block">Date</label>
+          <span class="ssp-datebox" id="sspDateBox" title="Date the money moved — defaults to today">
+            <i class="bi bi-calendar-event"></i>
+            <span class="ssp-date-txt" id="sspDateTxt"></span>
+            <input type="date" name="date" id="id_pay_date" value="{{ today_iso }}"
+                   max="{{ today_iso }}" required aria-label="Date the money moved">
+          </span>
+        </div>
         <div style="flex: 2; min-width: 130px;">
           <label for="id_pay_lump_sum" class="form-label small text-muted mb-1">Amount (₹)</label>
           <input type="number" id="id_pay_lump_sum" name="lump_sum" class="form-control fw-bold"
@@ -397,7 +438,7 @@
         </div>
         <div>
           <button type="submit" class="btn btn-primary fw-bold rounded-pill px-4"
-                  onclick="confirmSubmit(event, 'Pay <strong class=\'text-success\'>₹' + this.form.lump_sum.value + '</strong> to {{ shop.name|escapejs }}?', this.form, 'success', 'bi-cash-stack');">
+                  onclick="confirmPayment(event, this.form);">
             <i class="bi bi-send-fill me-1"></i> Pay
           </button>
         </div>
@@ -625,8 +666,15 @@
           LEFT the workshop and settled a debt.
           {% endcomment %}
           <div class="fw-bold text-success" style="font-size: 1.1rem;">₹{{ pay.amount|floatformat:0|intcomma }}</div>
+          {% comment %}
+          THE DAY THE MONEY MOVED, not the day it was keyed. `created_at` is
+          still stored — it is the audit trail — but it answers a different
+          question and reading it here filed a month-end payment under the
+          following month. Printed `d/m/Y`, the same shape the Supplies Shop
+          history uses: the two are one screen.
+          {% endcomment %}
           <div class="text-muted" style="font-size: 0.75rem;">
-            {{ pay.created_at|date:"d/m/Y, g:i A" }}<br>
+            {{ pay.date|date:"d/m/Y" }}<br>
             {{ pay.get_payment_method_display }}
             {% if pay.note %}<br><i class="bi bi-chat-text me-1"></i>{{ pay.note }}{% endif %}
           </div>
@@ -743,6 +791,64 @@
   // Global form confirmation logic
   let formToSubmit = null;
   let confirmActionModalInstance = null;
+
+  /* ── The payment date box ──────────────────────────────────────────────
+     A calendar glyph while the payment is dated today, an amber box spelling
+     the day out as soon as it is not. Nothing is hidden either way: the
+     confirmation below repeats the date whenever it is not today, because
+     this is the figure that decides which month the money is reported in.
+     Values copied from the Cashbook's own box rather than approximated —
+     the two are the same control asking the same question. */
+  const SSP_TODAY_ISO = '{{ today_iso|escapejs }}';
+  const sspDateInput  = document.getElementById('id_pay_date');
+  const sspDateBox    = document.getElementById('sspDateBox');
+  const sspDateTxt    = document.getElementById('sspDateTxt');
+
+  function sspPrettyDate(iso) {
+      if (!iso) return '';
+      const [y, m, d] = iso.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      if (isNaN(dt)) return iso;
+      return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+  function sspSyncDateBox() {
+      const custom = sspDateInput.value && sspDateInput.value !== SSP_TODAY_ISO;
+      sspDateBox.classList.toggle('is-custom', !!custom);
+      sspDateTxt.textContent = custom ? sspPrettyDate(sspDateInput.value) : '';
+      sspDateBox.title = custom
+          ? 'Back-dated to ' + sspPrettyDate(sspDateInput.value) + ' — tap to change'
+          : 'Dated today — tap to change';
+  }
+  // The whole payment card is absent once the shop is settled, so every one of
+  // these can legitimately be null — guarded once here rather than per line.
+  if (sspDateInput && sspDateBox && sspDateTxt) {
+      sspDateInput.addEventListener('change', sspSyncDateBox);
+      sspSyncDateBox();
+      // A tap on a phone opens the OS picker by itself (the invisible input
+      // covers the whole box). Desktop Chrome opens it only from the calendar
+      // glyph, which is exactly what the transparent overlay hides — so ask
+      // for it. Throws if it is already opening; that is the mobile case.
+      sspDateBox.addEventListener('click', function () {
+          if (typeof sspDateInput.showPicker === 'function') {
+              try { sspDateInput.showPicker(); } catch (err) { /* already open */ }
+          }
+      });
+  }
+
+  function confirmPayment(event, formElement) {
+      const amount = formElement.lump_sum.value;
+      const iso    = sspDateInput ? sspDateInput.value : '';
+      // The date is repeated ONLY when it is not today. Restating "today" on
+      // every payment is how a confirmation stops being read — the same
+      // reasoning as the settle dialog and the master-list merge gate.
+      const dated  = (iso && iso !== SSP_TODAY_ISO)
+          ? '<br><small class="fw-bold" style="color:#b45309;">Dated ' + sspPrettyDate(iso) + '</small>'
+          : '';
+      confirmSubmit(
+          event,
+          'Pay <strong class="text-success">₹' + amount + '</strong> to {{ shop.name|escapejs }}?' + dated,
+          formElement, 'success', 'bi-cash-stack');
+  }
 
   function confirmSubmit(event, message, formElement, theme='warning', icon='bi-exclamation-triangle-fill') {
     event.preventDefault();

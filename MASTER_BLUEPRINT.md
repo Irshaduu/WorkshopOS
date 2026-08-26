@@ -127,7 +127,7 @@ erDiagram
 | 17b | **OrphanedPhotoBlob** | storage_key (unique), created_at, attempts | Storage keys whose rows are gone, awaiting `sweep_photo_blobs`. Written in the same transaction as a photo delete so a key cannot be lost between the two — a DELETE to R2 is a network call and never runs on the request path. |
 | 18 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), advance_balance, is_trashed | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
 | 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
-| 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed | Ledger payment record |
+| 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed, **date**, created_at | Ledger payment record. `date` is the day the money MOVED — typed on the payment form, defaulting to today — and is what every date window on the shop page and its print sheet filters and orders by; `created_at` (`auto_now_add`) stays as the audit trail. Added by migration `0071`, which backfills existing rows from `created_at`. Ordering `['-date', '-created_at']`. |
 | 21 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
 | 22 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers Job Card, Fleet/Spare-Shop/Supplier payments, Restock Bill, Cashbook Entry and **Inventory Product**. No restore. |
 | 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
@@ -780,7 +780,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (54 files · 1,661 tests)
+## 13. TEST SUITE (54 files · COUNT_TESTS tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -823,7 +823,7 @@ base classes.*
 | `test_email_backend.py` | The Resend HTTPS transport under password reset: the delivered count `send_mail` reports back, a missing key raising rather than looking like a delivery failure, `fail_silently` semantics, and the owner's address never reaching the logs |
 | `test_fleet_cashbook_integrity.py` | Fleet Account + Cashbook invariants |
 | `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants |
-| `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants |
+| `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants. Plus the 2026-08-26 pass: a payment is dated by the day the money MOVED — stored, windowed and ordered by `date` rather than the keystroke, a future date refused outright, the balance still ignoring the window — and the Cashbook and the payment form answering that question by one rule (`workshop/money_dates.py`) |
 | `test_ui_regressions.py` | Layout and markup invariants that a functional test cannot see — the double-render rule, a list row never nesting a `<button>` inside an `<a>`, and the drawer/Manage-pill coverage |
 | `test_live_report.py` | The Live Report, Office/Owner only (Floor 403s): cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), each box's count matching the rows beneath it, and nothing on the page narrowed by a query string |
 | `test_billed_but_not_filled.py` | The critical container at the top of the Live Report: which billed cards are chased (PAID / FLEET PAID / PART PAID, never an unbilled or deleted one), what it says is missing on each, the two spare dates as ONE chip, a warehouse draw chased only for its customer price, and the DB narrowing never disagreeing with `settlement.unfilled` |
@@ -900,6 +900,7 @@ WorkshopOS (Titan)/
 │   ├── spare_dates.py          ← The ordered/received pair rule, shared by the job card and the Unassigned Spares hub (pure, no views)
 │   ├── master_data.py          ← The ONE rename/merge rule, shared by Master Lists and Data Cleanup (pure, no views)
 │   ├── money.py                ← Is this typed rupee amount acceptable for its column? Bounds READ from the column (pure, no views)
+│   ├── money_dates.py          ← What day did this money move? Shared by the Cashbook and the spare-shop payment form (pure, no views)
 │   ├── photos.py               ← Where the bytes go and how the URL is signed — SigV4 on stdlib hmac/hashlib (pure, no views)
 │   ├── notifications.py        ← The EVENTS catalogue + the single notify() entry point
 │   ├── push.py                 ← Web Push sending, handed off on transaction.on_commit
@@ -933,7 +934,7 @@ WorkshopOS (Titan)/
 │   ├── static/js/              ← script.js (formsets + service-worker registration),
 │   │                             estimate.js, spare_autofill.js, sound.js,
 │   │                             photos.js + photos-core.js (camera / upload)
-│   ├── migrations/             ← 70 migrations
+│   ├── migrations/             ← 71 migrations
 │   └── tests/                  ← 49 test files (package) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
@@ -980,4 +981,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin; 157 under `DEBUG=True`, which adds the media path) · **108 Templates** (85 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **54 Test Files / 1,661 tests** · **78 Migrations** (70 workshop + 8 inventory)
+> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin; 157 under `DEBUG=True`, which adds the media path) · **108 Templates** (85 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **54 Test Files / COUNT_TESTS tests** · **79 Migrations** (71 workshop + 8 inventory)

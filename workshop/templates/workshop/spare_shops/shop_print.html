@@ -246,7 +246,8 @@
       <tbody>
         {% for pay in payments %}
         <tr>
-          <td>{{ pay.created_at|date:"d/m/Y g:i A" }}</td>
+          {# The day the money moved — what this ledger is filed under. #}
+          <td>{{ pay.date|date:"d/m/Y" }}</td>
           <td>
             <strong>{{ pay.payment_method|default:"CASH" }}</strong>
             {% if pay.note %}<br><small style="color: #666;">{{ pay.note }}</small>{% endif %}

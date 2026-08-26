@@ -499,7 +499,12 @@ class Command(BaseCommand):
                         SpareShopPayment.objects.create(
                             shop=shop, amount=pay,
                             payment_method=random.choice(["CASH", "UPI", "TRANSFER"]),
-                            note="Monthly settlement",
+                            # Dated month end like its SupplierPayment twin
+                            # above. Without it every seeded payment lands on
+                            # the day the seeder RAN, so the whole ledger piles
+                            # into one date and the Last Month filter reads
+                            # empty on a database full of payments.
+                            date=month_end, note="Monthly settlement",
                         )
 
             self._create_cashbook_entries(month_start, month_end)

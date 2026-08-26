@@ -364,6 +364,14 @@ Lump sum distributed across unpaid items chronologically.
 Payment history is recorded; Owner can reverse any payment.
 ```
 
+**Each payment is dated by the day the money moved.** The shop's collector comes at
+month end and the payment is often keyed the following week, so the form opens with a
+small calendar box — today by default, turning amber and spelling the day out the
+moment it is back-dated. That date, not the day it was typed, is what the shop page's
+Today / Last Month / Last Year filters and its printed history read. A date in the
+future is refused. The balance is never windowed: whichever filter is on, what the
+shop is owed is every purchase against every payment.
+
 ---
 
 ## 5. INVENTORY <-> JOB CARD AUTO-SYNC

@@ -18,6 +18,9 @@ from ..decorators import office_required, owner_required, staff_required, is_off
 from ..notifications import notify
 from ..spare_dates import pair_problem
 from ..money import parse_money, fit_text
+# The day the money moved, parsed by the same rule the Cashbook uses — one
+# implementation, because two would disagree at a month boundary.
+from ..money_dates import posted_date, is_future
 # What a shop-bought line cost, in the one place it is defined. This page's
 # running balance, its grand total and `SpareShop.total_purchased_amount` are
 # three views of the same money, and they used to be three hand-written copies
@@ -137,7 +140,9 @@ def spare_shop_detail(request, pk):
         .order_by(F('group_date').desc(nulls_first=True), '-pk')
     )
 
-    payment_qs = shop.payments.filter(is_trashed=False).order_by('-created_at')
+    # Newest by the day the money MOVED; `created_at` only breaks ties inside a
+    # day, so two payments back-dated to the same date still read in entry order.
+    payment_qs = shop.payments.filter(is_trashed=False).order_by('-date', '-created_at')
 
     # Date Filtering — calendar-aligned, consistent with Paid Bills & Completed sections
     # Filter applies to group_field so "Today" in Received mode = received today,
@@ -163,41 +168,41 @@ def spare_shop_detail(request, pk):
 
     if filter_type == 'today':
         items_qs   = items_qs.filter(_date_q(exact=today))
-        payment_qs = payment_qs.filter(created_at__date=today)
+        payment_qs = payment_qs.filter(date=today)
 
     elif filter_type == 'this_week':
         start = today - timedelta(days=today.weekday())  # Monday of current week
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(created_at__date__gte=start)
+        payment_qs = payment_qs.filter(date__gte=start)
 
     elif filter_type == 'this_month':
         start = today.replace(day=1)
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(created_at__date__gte=start)
+        payment_qs = payment_qs.filter(date__gte=start)
 
     elif filter_type == 'this_year':
         start = today.replace(month=1, day=1)
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(created_at__date__gte=start)
+        payment_qs = payment_qs.filter(date__gte=start)
 
     elif filter_type == 'last_week':
         start = today - timedelta(days=today.weekday() + 7)  # Previous Mon
         end   = start + timedelta(days=6)                     # Previous Sun
         items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
-        payment_qs = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+        payment_qs = payment_qs.filter(date__gte=start, date__lte=end)
 
     elif filter_type == 'last_month':
         first_of_this_month = today.replace(day=1)
         last_of_last_month  = first_of_this_month - timedelta(days=1)
         first_of_last_month = last_of_last_month.replace(day=1)
         items_qs   = items_qs.filter(_date_q(gte=first_of_last_month, lte=last_of_last_month))
-        payment_qs = payment_qs.filter(created_at__date__gte=first_of_last_month, created_at__date__lte=last_of_last_month)
+        payment_qs = payment_qs.filter(date__gte=first_of_last_month, date__lte=last_of_last_month)
 
     elif filter_type == 'last_year':
         start = today.replace(year=today.year - 1, month=1,  day=1)
         end   = today.replace(year=today.year - 1, month=12, day=31)
         items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
-        payment_qs = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+        payment_qs = payment_qs.filter(date__gte=start, date__lte=end)
 
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
@@ -211,7 +216,7 @@ def spare_shop_detail(request, pk):
                 sd = ed = None
             if sd and ed:
                 items_qs   = items_qs.filter(_date_q(gte=sd, lte=ed))
-                payment_qs = payment_qs.filter(created_at__date__gte=sd, created_at__date__lte=ed)
+                payment_qs = payment_qs.filter(date__gte=sd, date__lte=ed)
     # filter_type == 'all' → no date filter applied
 
 
@@ -283,6 +288,9 @@ def spare_shop_detail(request, pk):
         'sort_by': sort_by,
         'start_date': start_date_str if filter_type == 'custom' else '',
         'end_date': end_date_str if filter_type == 'custom' else '',
+        # Backs the payment form's date box: its value, its `max`, and what the
+        # script compares against to decide whether the entry is back-dated.
+        'today_iso': today.isoformat(),
         # Photos here are VIEW ONLY — no camera, no delete, whatever state the
         # card behind the row is in. Recording a part is the floor's job and it
         # happens on the job card; this page is a ledger, and giving it a second
@@ -320,11 +328,22 @@ def spare_shop_pay(request, pk):
         messages.error(request, "Invalid payment amount.")
         return redirect('spare_shop_detail', pk=pk)
 
+    # THE DAY THE MONEY MOVED, not the day it was typed. A shop is settled at
+    # month end and the payment is often keyed the following week; without this
+    # the row was stamped with the keystroke and reported under the wrong month
+    # by this page's own Last Month filter, with no way to correct it.
+    # `workshop/money_dates.py` — the same rule the Cashbook applies.
+    pay_date = posted_date(request.POST.get('date'))
+    if is_future(pay_date):
+        messages.error(request, "A payment can't be dated in the future.")
+        return redirect('spare_shop_detail', pk=pk)
+
     SpareShopPayment.objects.create(
         shop=shop,
         amount=lump_sum,
         payment_method=payment_method,
         note=note or None,
+        date=pay_date,
     )
 
     messages.success(request, f"₹{lump_sum:,.0f} payment recorded for {shop.name}.")
@@ -459,41 +478,41 @@ def spare_shop_print(request, pk):
 
     if filter_type == 'today':
         items_qs   = items_qs.filter(_date_q(exact=today))
-        payment_qs = payment_qs.filter(created_at__date=today)
+        payment_qs = payment_qs.filter(date=today)
 
     elif filter_type == 'this_week':
         start = today - timedelta(days=today.weekday())
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(created_at__date__gte=start)
+        payment_qs = payment_qs.filter(date__gte=start)
 
     elif filter_type == 'this_month':
         start = today.replace(day=1)
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(created_at__date__gte=start)
+        payment_qs = payment_qs.filter(date__gte=start)
 
     elif filter_type == 'this_year':
         start = today.replace(month=1, day=1)
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(created_at__date__gte=start)
+        payment_qs = payment_qs.filter(date__gte=start)
 
     elif filter_type == 'last_week':
         start = today - timedelta(days=today.weekday() + 7)
         end   = start + timedelta(days=6)
         items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
-        payment_qs = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+        payment_qs = payment_qs.filter(date__gte=start, date__lte=end)
 
     elif filter_type == 'last_month':
         first_of_this_month = today.replace(day=1)
         last_of_last_month  = first_of_this_month - timedelta(days=1)
         first_of_last_month = last_of_last_month.replace(day=1)
         items_qs   = items_qs.filter(_date_q(gte=first_of_last_month, lte=last_of_last_month))
-        payment_qs = payment_qs.filter(created_at__date__gte=first_of_last_month, created_at__date__lte=last_of_last_month)
+        payment_qs = payment_qs.filter(date__gte=first_of_last_month, date__lte=last_of_last_month)
 
     elif filter_type == 'last_year':
         start = today.replace(year=today.year - 1, month=1,  day=1)
         end   = today.replace(year=today.year - 1, month=12, day=31)
         items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
-        payment_qs = payment_qs.filter(created_at__date__gte=start, created_at__date__lte=end)
+        payment_qs = payment_qs.filter(date__gte=start, date__lte=end)
 
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
@@ -508,18 +527,18 @@ def spare_shop_print(request, pk):
             if sd and ed:
                 items_qs   = items_qs.filter(_date_q(gte=sd, lte=ed))
                 payment_qs = payment_qs.filter(
-                    created_at__date__gte=sd,
-                    created_at__date__lte=ed,
+                    date__gte=sd,
+                    date__lte=ed,
                 )
     # Legacy aliases for any old bookmarked print URLs
     elif filter_type == 'month':
         sd = today - timedelta(days=30)
         items_qs   = items_qs.filter(_date_q(gte=sd))
-        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+        payment_qs = payment_qs.filter(date__gte=sd)
     elif filter_type == 'year':
         sd = today - timedelta(days=365)
         items_qs   = items_qs.filter(_date_q(gte=sd))
-        payment_qs = payment_qs.filter(created_at__date__gte=sd)
+        payment_qs = payment_qs.filter(date__gte=sd)
     # filter_type == 'all' → no date filter applied
 
     # Grand totals (pure SQL)
@@ -549,7 +568,7 @@ def spare_shop_print(request, pk):
     return render(request, 'workshop/spare_shops/shop_print.html', {
         'shop': shop,
         'items': items_qs,
-        'payments': payment_qs.order_by('-created_at'),
+        'payments': payment_qs.order_by('-date', '-created_at'),
         'filter_type': filter_type,
         'sort_by': sort_by,
         'start_date_obj': start_date_obj,

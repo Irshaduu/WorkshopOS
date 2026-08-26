@@ -10,6 +10,10 @@ from decimal import Decimal, InvalidOperation
 from .decorators import office_required
 from .models import CashbookEntry, DeletionLog
 from .money import parse_money, fit_text
+# The day the money moved, parsed in ONE place — the spare-shop payment form
+# asks the same question, and two copies would drift apart at a month boundary,
+# which is exactly where an owner reads the difference.
+from .money_dates import posted_date, is_future
 
 
 # One page of the ledger. 45 matches every other list view in the app.
@@ -265,26 +269,6 @@ def _canonical_category(name, exclude_pk=None):
     return qs.values_list('category', flat=True).first() or name
 
 
-def _entry_date(raw):
-    """
-    'YYYY-MM-DD' from the form → date, falling back to today.
-
-    The date is what the Profit page files this money under, so it has to be the
-    day the money moved, not the day someone got round to typing it. Bad input
-    falls back to today rather than 400ing — the field is `required` and
-    `type=date` in the template, so anything unparseable arriving here is a
-    crafted POST, and today is the same answer the field used to hardcode.
-    """
-    parsed = None
-    if raw:
-        try:
-            parsed = date.fromisoformat(raw.strip())
-        except (ValueError, AttributeError):
-            parsed = None
-    return parsed or timezone.localdate()
-
-
-
 @office_required
 def add_cashbook_entry(request):
     """Add a new income or expense entry to the ledger."""
@@ -312,8 +296,8 @@ def add_cashbook_entry(request):
             messages.error(request, "Enter a valid amount.")
             return redirect('cashbook')
 
-        entry_date = _entry_date(request.POST.get('date'))
-        if entry_date > timezone.localdate():
+        entry_date = posted_date(request.POST.get('date'))
+        if is_future(entry_date):
             messages.error(request, "A cashbook entry can't be dated in the future.")
             return redirect('cashbook')
 
@@ -367,8 +351,8 @@ def edit_cashbook_entry(request, pk):
             messages.error(request, "Enter a valid amount.")
             return redirect('cashbook')
 
-        entry_date = _entry_date(request.POST.get('date'))
-        if entry_date > timezone.localdate():
+        entry_date = posted_date(request.POST.get('date'))
+        if is_future(entry_date):
             messages.error(request, "A cashbook entry can't be dated in the future.")
             return redirect('cashbook')
 

@@ -1674,6 +1674,18 @@ class SpareShopPayment(models.Model):
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='CASH')
     note = models.CharField(max_length=255, blank=True, null=True, help_text="Optional description or reference")
     is_trashed = models.BooleanField(default=False, db_index=True)
+    # THE DAY THE MONEY MOVED, which is not the day it was typed. A shop is
+    # settled on the 30th and the payment is often keyed the following week, so
+    # `created_at` — the keystroke — filed it under the wrong month on every
+    # date window the shop page and its print sheet offer, with no way to
+    # correct it. The same defect `CashbookEntry.date` exists to stop, and the
+    # same column its sibling `inventory.SupplierPayment` already had.
+    # `created_at` stays: it is the audit trail, and the two answer different
+    # questions. Nothing here reaches the Profit page — a payment settles a
+    # debt that was expensed when the part reached a car — which is why the
+    # defect survived this long.
+    date = models.DateField(default=timezone.now, db_index=True,
+                            help_text="The day the money actually moved.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
@@ -1688,7 +1700,10 @@ class SpareShopPayment(models.Model):
             shop.update_totals()
 
     class Meta:
-        ordering = ['-created_at']
+        # Newest payment first BY THE DAY IT WAS MADE, with `created_at` only
+        # breaking ties within a day — two payments back-dated to the same date
+        # still read in the order they were entered.
+        ordering = ['-date', '-created_at']
         constraints = [
             # AUD-0030: Database-level guard against negative payment amounts.
             models.CheckConstraint(

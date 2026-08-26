@@ -313,6 +313,54 @@ on `document`, because a per-element version works on saved rows and silently do
 nothing on every row added by "+ Add Spare".
 → `test_the_status_is_derived_from_the_dates_by_one_rule`
 
+**A SPARE-SHOP PAYMENT IS DATED BY THE DAY THE MONEY MOVED, and that date is
+typed.** `SpareShopPayment` carried only `created_at` (`auto_now_add`) while its
+sibling `inventory.SupplierPayment` has had a `date` column since day one — so
+the two ledgers, which are deliberately one screen, disagreed about what a
+payment date even is. A shop's collector comes at month end and the payment is
+often keyed the following week — and the keystroke date is what every window on
+this page filtered and ordered by. So a payment made on the 30th and keyed on
+the 3rd fell out of Last Month and turned up in This Month, with no route to
+correct it. The same defect `CashbookEntry.date` exists to stop.
+
+Four things about it:
+
+- **The window follows `date`; the BALANCE follows nothing.** Every
+  `created_at__date` filter on the shop detail and print views moved over in the
+  same edit, because a column nothing reads is worse than no column — it looks
+  fixed. What the shop is owed is still every purchase against every payment
+  whatever filter is on: a debt is not a period.
+- **`created_at` stays and is still written.** It is the audit trail and it
+  breaks ties inside a day, which is why the ordering is `['-date',
+  '-created_at']` rather than `date` alone — two payments back-dated to the same
+  day still read in the order they were entered.
+- **Lower stakes than the Cashbook, and that is why it survived so long.** A
+  payment settles a debt that was already expensed when the part reached a car,
+  so nothing here reaches the Profit page. The blast radius is reporting: this
+  shop's own page, and its printed history.
+- **Done BEFORE go-live deliberately.** Migration `0071` backfills existing rows
+  from `created_at`, which is an approximation by construction — the keystroke
+  date is precisely what the column exists to stop trusting. Doing it while
+  nothing but demo data is being approximated is the whole point; after go-live
+  it would bake a guess into the workshop's real books for ever.
+
+The date box is the **Cashbook's own control**, values copied rather than
+approximated — 46px calendar glyph, invisible `<input type="date">` over it,
+amber and spelled out the moment it is not today, `showPicker()` for desktop
+Chrome. The two are the same control asking the same question, and a box that
+changed shape between two screens opened in one sitting reads as two different
+products. The Pay confirmation repeats the date **only when it is not today**,
+on the settle-dialog reasoning: confirming what cannot surprise anyone is how
+confirmations stop being read.
+→ `APaymentIsDatedByTheDayTheMoneyMovedTests`
+
+⚠ **The Supplies Shop side is only half-fixed and was never in scope here:**
+`inventory.SupplierPayment` has the column and still renders no date input, so
+every supplier payment is stamped with the keystroke exactly as this one used
+to be. Logged as `AUD-0097` in `TECH_DEBT.md`, which owns it — this is a defect,
+not a decision, and the reason to do it before go-live is the same one above.
+
+
 ## Warehouse stock & costing
 
 **Warehouse stock is allowed to go NEGATIVE. The old `Greatest(…, ZERO)` clamp is
@@ -605,11 +653,22 @@ editable.** `CashbookEntry.date` has always existed and driven every filter, but
 stamped with the day it was typed and a crafted POST carrying a date was ignored.
 A month-end expense keyed the following week landed in the wrong month on the
 Profit page permanently, because the edit form could not move it either. Both
-views take `date` through `_entry_date()`, falling back to today on anything
+views take `date` through `posted_date()`, falling back to today on anything
 unparseable. (`default=timezone.now` on a `DateField` **is** safe here —
 `DateField.to_python` converts the aware datetime to `TIME_ZONE` before taking
 `.date()`, so it lands on the correct IST calendar day.)
-→ `CashbookEntriesAreDatedByTheDayTheMoneyMovedTests`
+
+**That rule now lives in `workshop/money_dates.py`, not in this view.** It was
+written here first as `_entry_date`, which is exactly the shape a second copy
+gets made from — and one was needed the moment the spare-shop payment form
+turned out to have the same defect. Two implementations of "which day is this
+money filed under" would be two answers free to disagree, and they would
+disagree at a **month boundary**, which is the only place anybody would notice.
+`posted_date()` and `is_future()` are kept **separate** on purpose: the fallback
+is about input that cannot be read, the refusal about input that reads fine and
+is wrong, and only the caller knows what each should say.
+→ `CashbookEntriesAreDatedByTheDayTheMoneyMovedTests`,
+`BothLedgersDateMoneyByOneRuleTests`
 
 **The date box is small, first, and silent only while it is right.** Almost every
 entry is dated today, so the field that is nearly always correct is a 46px
@@ -3976,7 +4035,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 54 files, 1,661 tests. Always SQLite (see below).
+# Full test suite — 54 files, COUNT_TESTS tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -4083,7 +4142,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 | `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
-whole database — not something to point at hosted Postgres — and 1,661 tests at ~75 ms
+whole database — not something to point at hosted Postgres — and COUNT_TESTS tests at ~75 ms
 per round-trip would take hours. There is deliberately no flag to remember and no way to
 run the suite against live data by accident (`development.py` keys off
 `sys.argv[1] == 'test'`).
@@ -4208,7 +4267,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Seven modules hold no views at all** — this is the codebase's main structural idea, and
+**Eight modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -4218,6 +4277,7 @@ each exists so that one rule has exactly one implementation:
 | `settlement.py` | what is still unfilled before this bill should be settled? |
 | `master_data.py` | the rename/merge rule, shared by Master Lists and Data Cleanup |
 | `money.py` | is this typed rupee amount acceptable for its column? |
+| `money_dates.py` | what day did this money move? — the Cashbook and the spare-shop payment form |
 | `spare_dates.py` | is this ordered/received pair the right way round? |
 | `photos.py` | where do the bytes go, and how is the URL signed? |
 
@@ -4302,7 +4362,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **54 files, 1,661 tests**.
+files) — **54 files, COUNT_TESTS tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

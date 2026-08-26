@@ -475,9 +475,14 @@ class Command(BaseCommand):
             if owing <= 0:
                 continue
             half = (owing / 2).quantize(D('1'))
-            for n, amount in enumerate((half, owing - half), start=1):
+            # Dated inside the window and spaced like the supplier instalments
+            # below, so "a month apart" is true of the rows and not just of the
+            # docstring. Undated, both would land on the day the seeder ran.
+            for n, (amount, offset) in enumerate(
+                    ((half, 30), (owing - half, 70)), start=1):
                 SpareShopPayment.objects.create(
                     shop=shop, amount=amount, payment_method='TRANSFER',
+                    date=self.start + timedelta(days=offset),
                     note=f"Instalment {n}")
             shop.update_totals()
             shop.refresh_from_db()

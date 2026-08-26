@@ -9,16 +9,18 @@ Two defects found by audit on 2026-07-31 and fixed here:
   * an unassigned spare could never be deleted, so a mistyped ledger entry
     inflated what the workshop owed that shop for ever
 """
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal as D
 
 from django.contrib.auth.models import Group, User
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from workshop import analysis_engine as engine
-from workshop.models import (DeletionLog, JobCard, JobCardSpareItem, Mechanic,
-                             SpareShop, SpareShopPayment)
+from workshop.models import (CashbookEntry, DeletionLog, FailedAttempt, JobCard,
+                             JobCardSpareItem, Mechanic, SpareShop,
+                             SpareShopPayment)
 
 SHOP = JobCardSpareItem.SOURCE_SHOP
 
@@ -541,3 +543,167 @@ class AddingFromTheHubTests(SpareFlowBase):
         self.assertEqual(shop2.total_purchased_amount, D('800.00'))
         self.assertEqual(shop2.get_pending_balance, D('800.00'))
 
+
+class APaymentIsDatedByTheDayTheMoneyMovedTests(SpareFlowBase):
+    """
+    A spare-shop payment carries the day the money moved, not the day it was
+    typed.
+
+    `SpareShopPayment` had only `created_at` (`auto_now_add`), while its
+    sibling `inventory.SupplierPayment` has had a `date` column since day one.
+    A shop settled on the 30th and keyed on the 3rd was therefore reported
+    under the following month by this shop's own Last Month filter — the same
+    defect `CashbookEntry.date` exists to stop, and with the same absence of
+    any route to correct it.
+
+    Nothing here touches profit: a payment settles a debt that was already
+    expensed when the part reached a car. The blast radius is reporting, which
+    is exactly why it went unnoticed.
+    """
+
+    def _pay(self, **over):
+        data = {'lump_sum': '4000', 'payment_method': 'CASH'}
+        data.update(over)
+        return self.client.post(reverse('spare_shop_pay', args=[self.shop.pk]), data)
+
+    def _owing_spare(self):
+        return self.spare(unit_price=D('10000'), quantity=D('1'), total_price=D('12000'))
+
+    def test_the_payment_form_renders_a_date_input(self):
+        """Guards the half a server-side test cannot see: a browser posts only
+        what is rendered."""
+        self._owing_spare()
+        page = self.client.get(reverse('spare_shop_detail', args=[self.shop.pk])).content.decode()
+        self.assertIn('name="date"', page)
+
+    def test_a_payment_is_stored_on_the_posted_date(self):
+        self._owing_spare()
+        backdated = timezone.localdate() - timedelta(days=40)
+        self._pay(date=str(backdated))
+        self.assertEqual(SpareShopPayment.objects.get().date, backdated)
+
+    def test_a_missing_or_unparseable_date_falls_back_to_today(self):
+        for payload_date in ('', 'not-a-date', '2026-13-45'):
+            with self.subTest(posted=payload_date):
+                SpareShopPayment.objects.all().delete()
+                self._pay(date=payload_date)
+                self.assertEqual(SpareShopPayment.objects.get().date,
+                                 timezone.localdate())
+
+    def test_a_future_dated_payment_is_refused(self):
+        """Far more often a mistyped year than a plan, and this workshop
+        settles at the counter — nothing is paid ahead of being recorded."""
+        self._owing_spare()
+        self._pay(date=str(timezone.localdate() + timedelta(days=1)))
+        self.assertEqual(SpareShopPayment.objects.count(), 0)
+        self.assertEqual(self.owed(), D('10000.00'), "and no money moved")
+
+    def test_the_shops_own_window_follows_the_payment_date(self):
+        """
+        The whole point of the column. A payment made last month and keyed
+        today has to leave the This Month window and appear in Last Month —
+        under `created_at` it did the exact opposite, on the one screen that
+        reports it.
+        """
+        self._owing_spare()
+        last_month_day = timezone.localdate().replace(day=1) - timedelta(days=1)
+        self._pay(date=str(last_month_day))
+
+        url = reverse('spare_shop_detail', args=[self.shop.pk])
+        this_month = self.client.get(url, {'filter': 'this_month'})
+        last_month = self.client.get(url, {'filter': 'last_month'})
+
+        self.assertEqual(this_month.context['pay_count'], 0,
+                         "a payment made last month is not this month's")
+        self.assertEqual(last_month.context['pay_count'], 1,
+                         "and it has to be reachable where it belongs")
+
+    def test_the_balance_ignores_the_window_entirely(self):
+        """A debt is not a period. Whichever filter is on, what the shop is
+        owed is every purchase against every payment."""
+        self._owing_spare()
+        self._pay(date=str(timezone.localdate() - timedelta(days=400)))
+        for window in ('today', 'this_month', 'last_year', 'all'):
+            with self.subTest(filter=window):
+                page = self.client.get(reverse('spare_shop_detail', args=[self.shop.pk]),
+                                       {'filter': window})
+                self.assertEqual(page.context['total_balance'], D('6000.00'))
+
+    def test_the_history_reads_newest_first_by_the_day_it_was_paid(self):
+        """Ordering follows the money, not the keystroke — a back-dated
+        payment entered second still sorts under the one it precedes."""
+        self._owing_spare()
+        recent = timezone.localdate() - timedelta(days=2)
+        older = timezone.localdate() - timedelta(days=30)
+        self._pay(lump_sum='1000', date=str(recent))
+        self._pay(lump_sum='2000', date=str(older))  # entered LAST, dated FIRST
+        self.assertEqual([p.amount for p in SpareShopPayment.objects.all()],
+                         [D('1000.00'), D('2000.00')])
+
+
+class BothLedgersDateMoneyByOneRuleTests(TestCase):
+    """
+    The Cashbook and the spare-shop payment form ask the same question, so
+    they must not answer it differently.
+
+    `workshop/money_dates.py` is the one implementation. The rule started life
+    inside `cashbook_views._entry_date`, which is exactly the shape a second
+    copy gets made from — and two copies would drift apart at a month
+    boundary, which is the only place anybody would notice.
+
+    Asserted as BEHAVIOUR on both screens rather than as a shared import: the
+    failure worth catching is the two disagreeing, and an import can be
+    perfectly correct while a caller adds a clause of its own.
+    """
+
+    def setUp(self):
+        FailedAttempt.objects.all().delete()
+        group, _ = Group.objects.get_or_create(name='Office')
+        user = User.objects.create_user(username='off_dates', password='pw')
+        user.groups.add(group)
+        self.client = Client()
+        self.client.login(username='off_dates', password='pw')
+
+        self.shop = SpareShop.objects.create(name='Ajmal Auto Parts')
+        card = JobCard.objects.create(registration_number='KL20AA0009',
+                                      admitted_date=timezone.localdate())
+        JobCardSpareItem.objects.create(
+            job_card=card, source=SHOP, shop=self.shop, shop_name=self.shop.name,
+            spare_part_name='Brake Pad', quantity=D('1'),
+            unit_price=D('10000'), total_price=D('12000'))
+
+    def _add_cashbook(self, raw_date):
+        self.client.post(reverse('manage_add_cashbook_entry'), {
+            'entry_type': 'EXPENSE', 'category': 'Electricity', 'amount': '500',
+            'payment_method': 'CASH', 'date': raw_date,
+        })
+        entry = CashbookEntry.objects.order_by('-pk').first()
+        return entry.date if entry else None
+
+    def _add_payment(self, raw_date):
+        self.client.post(reverse('spare_shop_pay', args=[self.shop.pk]), {
+            'lump_sum': '500', 'payment_method': 'CASH', 'date': raw_date,
+        })
+        payment = SpareShopPayment.objects.order_by('-pk').first()
+        return payment.date if payment else None
+
+    def test_both_read_a_good_date(self):
+        wanted = timezone.localdate() - timedelta(days=17)
+        self.assertEqual(self._add_cashbook(str(wanted)), wanted)
+        self.assertEqual(self._add_payment(str(wanted)), wanted)
+
+    def test_both_fall_back_to_today_on_junk(self):
+        for raw in ('', 'not-a-date', '2026-13-45'):
+            with self.subTest(posted=raw):
+                CashbookEntry.objects.all().delete()
+                SpareShopPayment.objects.all().delete()
+                self.assertEqual(self._add_cashbook(raw), timezone.localdate())
+                self.assertEqual(self._add_payment(raw), timezone.localdate())
+
+    def test_both_refuse_a_future_date_outright(self):
+        """Refused, never clamped to today — a clamp stores a day nobody
+        typed, and this is the field that decides which month the money is
+        reported in."""
+        tomorrow = str(timezone.localdate() + timedelta(days=1))
+        self.assertIsNone(self._add_cashbook(tomorrow))
+        self.assertIsNone(self._add_payment(tomorrow))
