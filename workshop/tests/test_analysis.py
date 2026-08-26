@@ -2095,20 +2095,49 @@ class SpendAndPaidAreTwoQuestionsTests(AnalysisBase):
                                        date=self.today)
         self.assertEqual(engine.build_profit_report(s, e)['expense_total'], before)
 
-    def test_the_two_sides_are_kept_apart_because_they_are_dated_apart(self):
+    def test_both_sides_are_cut_by_the_day_the_money_moved(self):
         """
-        `SupplierPayment.date` is a real date the office sets; `SpareShopPayment`
-        has no date field at all, only `created_at`. One combined "paid to all
-        shops" total would mean two different things at once, so the page shows
-        two figures and labels each.
+        This replaces a tripwire that asserted `SpareShopPayment` had NO `date`
+        column — written so that the day it grew one, the choice got revisited
+        deliberately rather than by accident. It grew one, and this is that
+        revisit: both ledgers are now cut by `date`, never `created_at`.
+
+        The assertion is the BEHAVIOUR, not the schema. A payment keyed today
+        and dated into last month must fall OUT of this month on both sides —
+        which is the whole point of the column, and the one thing a filter
+        quietly left on `created_at` would get wrong. Every payment these
+        objects create is keystroke-stamped NOW, so a `created_at` filter would
+        count all four.
         """
-        self.assertFalse(
-            any(f.name == 'date' for f in SpareShopPayment._meta.get_fields()),
-            'SpareShopPayment grew a date field - the two sides can now be summed')
+        last_month = self.today.replace(day=1) - timedelta(days=1)
+
+        # Dated into this window: must count.
+        SpareShopPayment.objects.create(shop=self.shop, amount=D('700'),
+                                        date=self.today)
+        SupplierPayment.objects.create(supplier=self.supplier, amount=D('300'),
+                                       date=self.today)
+        # Back-dated out of it: must not, on either side.
+        SpareShopPayment.objects.create(shop=self.shop, amount=D('5000'),
+                                        date=last_month)
+        SupplierPayment.objects.create(supplier=self.supplier, amount=D('9000'),
+                                       date=last_month)
+
+        out = self._out()
+        self.assertEqual(out['spare_paid'], D('1900'))      # 1200 + 700
+        self.assertEqual(out['supplier_paid'], D('4300'))   # 4000 + 300
+
+    def test_the_two_sides_stay_two_figures_even_on_one_basis(self):
+        """
+        The basis is shared now, so the ORIGINAL reason for splitting them is
+        gone. They stay split for a different one: a spare shop and a Supplies
+        Shop are two trades on two instalment rhythms, and the rest of this
+        section is already organised that way. Both tiles say the same thing
+        about their date, because they now mean the same thing by it.
+        """
         html = self.client.get(
             reverse('analysis_insight_section', args=['shops'])).content.decode()
-        self.assertIn('cash out, by entry date', html)
-        self.assertIn('cash out, by payment date', html)
+        self.assertEqual(html.count('cash out, by payment date'), 2)
+        self.assertNotIn('cash out, by entry date', html)
 
     def test_the_profit_page_points_at_the_position_card_not_at_a_cash_figure(self):
         html = self.client.get(reverse('analysis_dashboard')).content.decode()

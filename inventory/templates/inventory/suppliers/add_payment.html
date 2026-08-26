@@ -2,6 +2,24 @@
 {% load humanize %}
 {% block title %}Add Payment - {{ shop.name }}{% endblock %}
 {% block content %}
+{% comment %}
+⚠ The amber state MUST be a class with `!important`, not an inline style. The
+input carries Bootstrap's `bg-light` and `border-0`, and both of those are
+`!important` utilities — which beat a normal inline declaration. Setting
+`el.style.borderColor` and `el.style.background` from script therefore changed
+`el.style.*` and rendered NOTHING: measured computed `0px none` on the border
+and the unchanged grey on the background, while the inline property read back
+amber exactly as intended. Read the COMPUTED value when checking this, never
+`el.style.*` — and note `.form-control` transitions both properties, so a read
+taken mid-transition reports the old colour whatever the rule says.
+{% endcomment %}
+<style>
+  .pay-date-custom {
+      border: 1px solid #f59e0b !important;
+      background-color: #fffbeb !important;
+      color: #b45309 !important;
+  }
+</style>
 <div class="container mt-5" style="max-width: 600px;">
     <div class="d-flex align-items-center mb-4">
         <a href="{% url 'supplier_shop_detail' shop.id %}" class="btn btn-outline-secondary rounded-circle me-3" style="width:40px; height:40px; padding:0; display:flex; align-items:center; justify-content:center;">
@@ -19,6 +37,29 @@
 
             <form method="post" action="">
                 {% csrf_token %}
+                {% comment %}
+                THE DAY THE MONEY MOVED, not the day it was typed. The column
+                has existed since day one; nothing rendered an input for it, so
+                every payment was keystroke-stamped and a month-end settlement
+                keyed the following week reported in the wrong month for ever.
+
+                Deliberately NOT the spare shop's 46px calendar glyph. That box
+                is compact because it sits in an inline row beside the amount;
+                this page is a column of stacked full-width `form-control-lg`
+                fields, and a glyph dropped into it would be the odd control
+                out. What is copied is the BEHAVIOUR, which is the half that
+                keeps a wrong month from being posted unseen: capped at today,
+                and amber with the day spelled out the moment it is not today.
+                {% endcomment %}
+                <div class="mb-4">
+                    <label for="id_payment_date" class="form-label fw-bold">Payment Date *</label>
+                    <input type="date" name="date" id="id_payment_date"
+                           class="form-control form-control-lg bg-light border-0"
+                           value="{{ today_iso }}" max="{{ today_iso }}" required>
+                    <div class="form-text d-none fw-bold" id="paymentDateNote"
+                         style="color:#b45309;"></div>
+                </div>
+
                 <div class="mb-4">
                     <label class="form-label fw-bold">Payment Amount (₹) *</label>
                     <input type="number" name="amount" class="form-control form-control-lg bg-light border-0" step="0.01" min="0.01" required placeholder="0.00">
@@ -48,4 +89,39 @@
         </div>
     </div>
 </div>
+
+{% comment %}
+Amber the moment the payment is not dated today, with the day spelled out
+underneath. The native input already shows the date on this page — unlike the
+spare shop's collapsed glyph — so this is confirmation rather than disclosure,
+and it is the reason no modal was added here: the figure that decides the
+reporting month is legible without one.
+
+`toLocaleDateString` on parts parsed out of the ISO string, never
+`new Date(iso)` — that parses a bare YYYY-MM-DD as UTC midnight, which renders
+as the PREVIOUS day for the whole of an IST morning.
+{% endcomment %}
+<script>
+(function () {
+    var input = document.getElementById('id_payment_date');
+    var note  = document.getElementById('paymentDateNote');
+    if (!input || !note) return;
+    var TODAY = '{{ today_iso|escapejs }}';
+
+    function pretty(iso) {
+        var p = iso.split('-').map(Number);
+        var d = new Date(p[0], p[1] - 1, p[2]);
+        return isNaN(d) ? iso : d.toLocaleDateString('en-GB',
+            { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+    function sync() {
+        var custom = !!(input.value && input.value !== TODAY);
+        note.classList.toggle('d-none', !custom);
+        input.classList.toggle('pay-date-custom', custom);
+        note.textContent = custom ? 'Back-dated to ' + pretty(input.value) : '';
+    }
+    input.addEventListener('change', sync);
+    sync();
+})();
+</script>
 {% endblock %}

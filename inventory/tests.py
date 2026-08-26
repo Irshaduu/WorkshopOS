@@ -29,7 +29,7 @@ class InventorySignalTests(TestCase):
             registration_number='DL10AB1234',
             brand_name='Honda',
             model_name='City',
-            admitted_date=timezone.now().date(),
+            admitted_date=timezone.localdate(),
             mileage='50000'
         )
 
@@ -175,7 +175,7 @@ class InventoryWorkflowTests(TestCase):
         """
         ci = self._catalog()
         item_id = ci.item_id
-        job = JobCard.objects.create(admitted_date=timezone.now().date(),
+        job = JobCard.objects.create(admitted_date=timezone.localdate(),
                                      registration_number='KL01PR0001')
         JobCardSpareItem.objects.create(
             job_card=job, source=JobCardSpareItem.SOURCE_INVENTORY,
@@ -614,7 +614,7 @@ class JobCardNormalizationTests(TestCase):
             registration_number='kl-01-ab-1234',
             brand_name='toyota',
             model_name='Camry',
-            admitted_date=timezone.now().date(),
+            admitted_date=timezone.localdate(),
         )
         jc.clean()
         self.assertEqual(jc.registration_number, 'KL-01-AB-1234')
@@ -627,7 +627,7 @@ class JobCardNormalizationTests(TestCase):
             registration_number='MH12AB1234',
             brand_name='  hyundai  ',
             model_name='i20',
-            admitted_date=timezone.now().date(),
+            admitted_date=timezone.localdate(),
         )
         jc.clean()
         self.assertEqual(jc.brand_name, 'Hyundai')
@@ -640,7 +640,7 @@ class JobCardNormalizationTests(TestCase):
             registration_number=' kl 01 ab 1234 ',
             brand_name='Honda',
             model_name='City',
-            admitted_date=timezone.now().date(),
+            admitted_date=timezone.localdate(),
         )
         jc.clean()
         # .strip().upper() — only leading/trailing stripped, internal preserved

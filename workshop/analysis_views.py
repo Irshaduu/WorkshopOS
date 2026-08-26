@@ -803,18 +803,22 @@ def _insight_shops(start, end):
         # an owner ends up subtracting one of five terms and trusting the
         # answer.
         #
-        # ⚠ THE TWO SIDES ARE DATED DIFFERENTLY AND THE PAGE SAYS SO.
-        # `SupplierPayment.date` is a real date the office sets;
-        # `SpareShopPayment` has only `created_at`, the moment it was keyed —
-        # there is no date field on that model. Summing them into one "paid to
-        # all shops" figure would mean two different things at once, so they
-        # stay two figures.
+        # ⚠ BOTH SIDES ARE DATED BY THE DAY THE MONEY MOVED — `date`, never
+        # `created_at`. This read `created_at__date__range` while the shop's
+        # own page had already moved to `date`, so one payment back-dated at
+        # month end sat in Last Month there and in This Month here: two screens
+        # an owner opens in one sitting, quoting two figures for one ledger.
+        #
+        # They stay TWO figures even now that the basis is one, and the reason
+        # changed rather than went away: a spare shop and a Supplies Shop are
+        # two different trades on two different instalment rhythms, which is
+        # how this whole section is already organised. Summing them would be a
+        # product decision, not a consequence of the column landing.
         'supplier_paid': _sum(
             SupplierPayment.objects.filter(is_trashed=False, date__range=(start, end)),
             F('amount')),
         'spare_paid': _sum(
-            SpareShopPayment.objects.filter(
-                is_trashed=False, created_at__date__range=(start, end)),
+            SpareShopPayment.objects.filter(is_trashed=False, date__range=(start, end)),
             F('amount')),
     }
 

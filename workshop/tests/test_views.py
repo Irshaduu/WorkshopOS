@@ -43,7 +43,7 @@ class WorkshopViewTests(TestCase):
             registration_number='KL01AB1111',
             brand_name='Honda',
             model_name='City',
-            admitted_date=timezone.now().date(),
+            admitted_date=timezone.localdate(),
             lead_mechanic=self.mechanic
         )
 
@@ -55,7 +55,7 @@ class WorkshopViewTests(TestCase):
                 registration_number=f'KL01AB{i}',
                 brand_name='Honda',
                 model_name='City',
-                admitted_date=timezone.now().date()
+                admitted_date=timezone.localdate()
             )
         response = self.client.get(url, {'page': 2})
         self.assertEqual(response.status_code, 200)
@@ -68,7 +68,7 @@ class WorkshopViewTests(TestCase):
             'registration_number': 'KL01AB1111',
             'brand_name': 'Honda',
             'model_name': 'City',
-            'admitted_date': str(timezone.now().date()),
+            'admitted_date': str(timezone.localdate()),
             'lead_mechanic': self.mechanic.id,
             # Concern Formset
             'concerns-TOTAL_FORMS': '1',
@@ -115,7 +115,7 @@ class WorkshopViewTests(TestCase):
             'registration_number': 'KL01AB1111',
             'brand_name': 'Honda',
             'model_name': 'City',
-            'admitted_date': str(timezone.now().date()),
+            'admitted_date': str(timezone.localdate()),
             'lead_mechanic': self.mechanic.id,
             'concerns-TOTAL_FORMS': '0',
             'concerns-INITIAL_FORMS': '0',
@@ -152,7 +152,7 @@ class WorkshopViewTests(TestCase):
         """
         url = reverse('live_report')
         JobCard.objects.create(
-            registration_number='PAID001', admitted_date=timezone.now().date(),
+            registration_number='PAID001', admitted_date=timezone.localdate(),
             completed=False, payment_status='PAID')
 
         for params in ({}, {'q': 'NOBODY'}, {'status': 'PENDING'}):
@@ -183,7 +183,7 @@ class WorkshopViewTests(TestCase):
 
     def test_completed_view_search(self):
         self.jobcard.completed = True
-        self.jobcard.completed_date = timezone.now().date()
+        self.jobcard.completed_date = timezone.localdate()
         self.jobcard.save()
         
         url = reverse('completed_list')

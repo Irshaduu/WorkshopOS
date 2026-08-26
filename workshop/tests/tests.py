@@ -156,7 +156,7 @@ class JobCardModelTests(TestCase):
 
     def test_job_card_bill_generation(self):
         """Verify that bill numbers are generated in the JB-YY-NNN format."""
-        today = timezone.now().date()
+        today = timezone.localdate()
         year_str = str(today.year)[2:]
         
         job = JobCard.objects.create(
@@ -175,7 +175,7 @@ class JobCardModelTests(TestCase):
             registration_number='KA01AB1234',
             brand_name='Toyota',
             model_name='Camry',
-            admitted_date=timezone.now().date()
+            admitted_date=timezone.localdate()
         )
         self.assertFalse(job.is_deleted)
         job.is_deleted = True
@@ -236,7 +236,7 @@ class SpareShopPaymentTests(TestCase):
             registration_number='DL01AA1111',
             brand_name='Ford',
             model_name='Mustang',
-            admitted_date=timezone.now().date()
+            admitted_date=timezone.localdate()
         )
         # Create an unpaid spare item for this shop
         self.item1 = JobCardSpareItem.objects.create(

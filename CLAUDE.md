@@ -354,11 +354,29 @@ on the settle-dialog reasoning: confirming what cannot surprise anyone is how
 confirmations stop being read.
 → `APaymentIsDatedByTheDayTheMoneyMovedTests`
 
-⚠ **The Supplies Shop side is only half-fixed and was never in scope here:**
-`inventory.SupplierPayment` has the column and still renders no date input, so
-every supplier payment is stamped with the keystroke exactly as this one used
-to be. Logged as `AUD-0097` in `TECH_DEBT.md`, which owns it — this is a defect,
-not a decision, and the reason to do it before go-live is the same one above.
+**THE SUPPLIES SHOP SIDE CARRIES THE SAME RULE, and its control is a DIFFERENT
+SHAPE on purpose.** `inventory.SupplierPayment` had the column since day one and
+nothing ever wrote to it — no input on the form, nothing read in
+`add_shop_payment` — so every supplier payment fell back to
+`default=timezone.now` and was keystroke-stamped exactly as the spare-shop one
+used to be. Closed in the same pass; it was the worse of the two by workflow,
+since this is the side whose collector comes round *weekly or monthly*.
+
+Everything downstream already read `date` — `Meta.ordering` is
+`['-date', '-created_at']`, both list views order by it, the history partial
+prints it — so the whole defect was the one missing input. The view now reads
+`posted_date()` and refuses `is_future()` before writing the row.
+
+⚠ **It does NOT copy the 46px calendar glyph, and that is not drift.** The
+spare-shop box is compact because it sits in an *inline row* beside the amount;
+`add_payment.html` is a separate page of stacked full-width `form-control-lg`
+fields, and a glyph dropped into that column would be the one control that does
+not match its neighbours. **What is copied is the behaviour, which is the half
+that matters**: capped at today, amber with the day spelled out the moment it is
+not today. No confirmation modal was added — the native input is plainly legible
+at full width here, unlike a collapsed glyph, so there is nothing a dialog would
+disclose that the field does not.
+→ `ASupplierPaymentIsDatedByTheDayTheMoneyMovedTests`
 
 
 ## Warehouse stock & costing
@@ -1358,13 +1376,26 @@ bills unpaid), so printing one of them invites exactly the incomplete arithmetic
 the earnings card was rebuilt to stop. The Profit page carries a **pointer** to
 Position Right Now instead of a number.
 
-⚠ **THE TWO SIDES STAY TWO FIGURES BECAUSE THEY ARE DATED DIFFERENTLY.**
-`SupplierPayment.date` is a real date the office sets; **`SpareShopPayment` has
-no date field at all**, only `created_at` — the moment it was keyed. One combined
-"paid to all shops" total would mean two different things at once. A test asserts
-that model still has no `date`, so the day it grows one, the choice can be
-revisited deliberately rather than by accident.
-→ `SpendAndPaidAreTwoQuestionsTests`
+⚠ **BOTH SIDES ARE DATED BY THE DAY THE MONEY MOVED, AND THEY STILL STAY TWO
+FIGURES — the reason changed rather than went away.** This rule used to read
+"they are dated differently": `SupplierPayment.date` was a real date the office
+set while **`SpareShopPayment` had no date column at all**, so one combined
+"paid to all shops" total would have meant two things at once. A test asserted
+that absence deliberately, **so that the day the column landed the choice got
+revisited rather than drifting**. It landed; this is the revisit.
+
+Both now read `date`, never `created_at`. They stay two figures because **a
+spare shop and a Supplies Shop are two different trades on two different
+instalment rhythms**, which is how the whole Shops section is already split.
+Combining them is a product decision for the owner, not a consequence of the
+basis lining up.
+
+The tripwire was replaced with the stronger assertion, not deleted: a payment
+back-dated out of the window must drop out of BOTH figures. Every payment these
+tests create is keystroke-stamped *now*, so a filter quietly left on
+`created_at` counts all of them and fails.
+→ `test_both_sides_are_cut_by_the_day_the_money_moved`,
+`test_the_two_sides_stay_two_figures_even_on_one_basis`
 
 *Considered and rejected:* **a "total company debt" tile.** `payable_total` is
 computed in `financial_position()` and deliberately NOT rendered. Spare +
@@ -3581,7 +3612,21 @@ a 500.
 **Use `timezone.localdate()`, never `date.today()`**, for any "today"/date-range logic
 — the server can run in UTC while the business operates in IST (`TIME_ZONE =
 'Asia/Kolkata'`), and `date.today()` silently returns the wrong calendar day near
-midnight IST.
+midnight IST. The same rule with the same reason covers `timezone.localtime()` in
+place of a bare `datetime.now()`, and it reaches past views: a **management command**
+is the easy miss, because it is written and read on an IST laptop where the two agree.
+`backup_db` stamped its filenames with `datetime.now()` for months, so on Railway a
+backup taken at 02:00 on a Kerala morning was filed under the PREVIOUS day — noticed
+only on the day somebody picks a file by eye out of fourteen and needs "yesterday" to
+mean yesterday.
+
+**Two things that look like the same defect and are not.** `timezone.now()` is
+correct wherever a `DateTimeField` is being *set* — it is UTC-aware and Django
+localises it on the way out. And an ORM `__date` lookup is already IST: Django
+converts to `TIME_ZONE` in SQL, so `created_at__date` picks the right calendar day.
+Where `created_at` is wrong it is wrong for a *business* reason — it records the
+keystroke rather than the day the money moved — never a timezone one. **AWS SigV4
+signing in `photos.py` must stay UTC**; that is protocol, not display.
 
 **Never pass template variables through `|safe`**; use `json_script` to hand data to JS.
 
@@ -3740,6 +3785,25 @@ state, so while a transition is in flight the computed background is the OLD col
 whatever the rule says. The four spare-status classes carry `transition: none`,
 scoped to the classes rather than the control so a select moving between two of them
 matches on both sides and cannot animate in either direction.
+
+**AN `!important` BOOTSTRAP UTILITY BEATS A NORMAL INLINE STYLE, so painting an
+element from `el.style.*` in script can render nothing at all.** Inline styles
+outrank stylesheet rules — but only *normal* ones; an important-author
+declaration wins over an inline declaration that is not itself `!important`.
+Bootstrap's utilities are all `!important`, so on an input carrying `bg-light`
+and `border-0`, setting `el.style.borderColor` and `el.style.background`
+changed `el.style.*` and painted **nothing**: computed `0px none` on the border
+and the unchanged grey behind it. Note `border-0` zeroes the WIDTH, so a colour
+alone could never have shown even without the specificity problem.
+
+⚠ **The reason it survived a browser check is the check.** Reading back
+`el.style.borderColor` returns the amber that was just assigned and says
+nothing about what rendered — the same shape of mistake as measuring a
+transitioned property mid-flight. **Assert on `getComputedStyle`, and disable
+the transition first** (`.form-control` transitions both of these). The fix is a
+real scoped class carrying `!important`, which is what the spare shop's
+`.ssp-datebox.is-custom` was already doing.
+→ `test_the_amber_state_can_actually_beat_bootstrap`
 
 **A `<tr>` background is INVISIBLE on a Bootstrap table.** Bootstrap 5.3 gives every
 cell `background-color: var(--bs-table-bg)` — an opaque cell sitting on top of its
@@ -4035,7 +4099,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 54 files, COUNT_TESTS tests. Always SQLite (see below).
+# Full test suite — 54 files, 1,679 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -4142,7 +4206,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 | `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
-whole database — not something to point at hosted Postgres — and COUNT_TESTS tests at ~75 ms
+whole database — not something to point at hosted Postgres — and 1,679 tests at ~75 ms
 per round-trip would take hours. There is deliberately no flag to remember and no way to
 run the suite against live data by accident (`development.py` keys off
 `sys.argv[1] == 'test'`).
@@ -4362,7 +4426,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **54 files, COUNT_TESTS tests**.
+files) — **54 files, 1,679 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 
@@ -4401,11 +4465,25 @@ review had caught were lifted straight out of it: a duplicate-name 500 in the
 Supplies Shop form (40 occurrences), and Resend rejecting every outbound message that
 day with HTTP 422.
 
-**A stale Claude worktree can hold unmerged work.** `.claude/worktrees/` is
-gitignored machine-local state, but a worktree whose branch is already merged can
-still carry **uncommitted** edits that were never applied to `main`. Run
-`git -C <worktree> status` before pruning one; the branch being merged says nothing
-about the working tree.
+**A stale Claude worktree can hold unmerged work, in TWO different ways.**
+`.claude/worktrees/` is gitignored machine-local state, and both failures look
+like nothing is wrong.
+
+- **Uncommitted edits.** A worktree whose branch is already merged can still
+  carry working-tree changes that were never applied to `main`. Run
+  `git -C <worktree> status` before pruning one; the branch being merged says
+  nothing about the working tree.
+- **Committed but never merged** — the one that actually happened. A session
+  ended reporting a clean tree and a finished commit, and it was both: the
+  commit simply sat on `claude/<branch>` while `main` moved on without it. A
+  clean `git status` in the main checkout says nothing either way. **Check
+  `git worktree list` and `git log main..<branch>` at the start of any session
+  that picks up earlier work.**
+
+⚠ **A migration in such a commit is a second thing left behind.** Landing the
+code does not apply it — `9e5eab7` added `0071` and the dev Neon database was
+still on `0070`, so every spare-shop page 500'd on a column that existed only in
+`models.py`. `manage.py migrate` is part of landing the branch, not a follow-up.
 
 ---
 

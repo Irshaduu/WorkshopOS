@@ -1,10 +1,10 @@
 import os
 import shutil
-import datetime
 import glob
 import subprocess
 from django.core.management.base import BaseCommand
 from django.conf import settings
+from django.utils import timezone
 
 # One retention pool across both engines, swept by the `db_backup_*` glob.
 KEEP = 14
@@ -18,7 +18,17 @@ class Command(BaseCommand):
         engine = db_config.get('ENGINE', '')
         backup_dir = os.path.join(settings.BASE_DIR, 'backups')
         os.makedirs(backup_dir, exist_ok=True)
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        # IST, via localtime() — never a bare datetime.now(), which reads the
+        # SERVER's clock. Railway runs its containers in UTC, so a backup taken
+        # at 02:00 on a Kerala morning was filed as 20:30 the PREVIOUS day: the
+        # one moment the name matters is the day somebody is restoring from it,
+        # picking a file by eye out of fourteen and needing "yesterday" to mean
+        # yesterday. Nothing else in the command reads the clock, and the
+        # retention sweep globs on the `db_backup_*` prefix and sorts by mtime
+        # rather than parsing the stamp, so this is the whole of it — existing
+        # backups keep their old names and the two spellings rotate together
+        # through the changeover.
+        timestamp = timezone.localtime().strftime('%Y%m%d_%H%M%S')
 
         if 'postgresql' in engine:
             if not self._backup_postgres(db_config, backup_dir, timestamp):

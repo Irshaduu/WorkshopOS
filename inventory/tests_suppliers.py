@@ -4,11 +4,13 @@ Full Test Suite for the Supplies Shops Section.
 Covers: Shop CRUD, Catalog, Restock Bills, Stock Signals,
         Payments, Discounts, Bulk Pay Status, AJAX Pagination, Edge Cases.
 """
+from datetime import timedelta
 from decimal import Decimal
 from django.test import TestCase, Client
 from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.db import transaction
+from django.utils import timezone
 
 from .models import (
     Category, Item, SupplierShop, ShopCatalogItem,
@@ -901,3 +903,138 @@ class RenamingASupplierShopOntoAnotherIsRefusedTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.a.refresh_from_db()
         self.assertEqual(self.a.name, 'Depot A')
+
+
+class ASupplierPaymentIsDatedByTheDayTheMoneyMovedTests(TestCase):
+    """
+    `SupplierPayment.date` has existed since day one and nothing ever wrote to
+    it: the form rendered no date input and the view read none, so every
+    payment fell back to `default=timezone.now` and was stamped with the
+    KEYSTROKE.
+
+    The collector on this side comes round weekly or monthly, so a bill settled
+    at month end and keyed the following week landed in the wrong month on this
+    shop's own Last Month filter, with no route to correct it — the same defect
+    `CashbookEntry.date` exists to stop, and the one its spare-shop sibling was
+    fixed for. Nothing here reaches the Profit page: a payment settles a debt
+    the restock bill already expensed.
+
+    The rule itself lives in `workshop/money_dates.py` and is tested there.
+    What is asserted here is that this view actually CALLS it — an import can
+    be right while the caller adds a clause of its own.
+    """
+
+    def setUp(self):
+        office, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='sup_dates', password='pw')
+        self.user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='sup_dates', password='pw')
+
+        self.shop = SupplierShop.objects.create(name='Depot Dates')
+        SupplierRestockBill.objects.create(supplier=self.shop, total_amount=50000)
+        self.today = timezone.localdate()
+
+    def _pay(self, **extra):
+        data = {'amount': '1000', 'payment_method': 'CASH'}
+        data.update(extra)
+        return self.client.post(
+            reverse('add_shop_payment', args=[self.shop.id]), data)
+
+    def test_a_back_dated_payment_is_stored_on_the_day_it_was_typed_for(self):
+        """The whole point: the office keys last month's settlement this week."""
+        moved = self.today - timedelta(days=12)
+        self._pay(date=moved.isoformat())
+
+        payment = SupplierPayment.objects.get(supplier=self.shop)
+        self.assertEqual(payment.date, moved)
+        # created_at stays as the audit trail — it records the keystroke, and
+        # the two now answer different questions rather than one badly.
+        self.assertEqual(timezone.localdate(payment.created_at), self.today)
+
+    def test_a_payment_with_no_date_posted_still_lands_on_today(self):
+        """
+        Every existing caller and test posts no date. Falling back rather than
+        400ing keeps them right, and today is the same answer the column gave
+        when it was not editable at all.
+        """
+        self._pay()
+
+        self.assertEqual(
+            SupplierPayment.objects.get(supplier=self.shop).date, self.today)
+
+    def test_an_unreadable_date_falls_back_instead_of_500ing(self):
+        self._pay(date='not-a-date')
+
+        self.assertEqual(
+            SupplierPayment.objects.get(supplier=self.shop).date, self.today)
+
+    def test_a_future_dated_payment_is_refused_outright(self):
+        """
+        Money dated forward is a mistyped year far more often than a plan, and
+        this workshop pays at the counter. Refused BEFORE the row is written —
+        nothing is clamped, because a clamp saves a date nobody typed.
+        """
+        response = self._pay(date=(self.today + timedelta(days=1)).isoformat())
+
+        self.assertEqual(SupplierPayment.objects.filter(supplier=self.shop).count(), 0)
+        self.assertContains(response, 'cannot be dated in the future')
+
+    def test_the_form_offers_a_date_box_capped_at_today(self):
+        """
+        The control is this page's own idiom — a stacked full-width input, not
+        the spare shop's 46px glyph, which is compact because it sits in an
+        inline row. `max` is the browser half of the refusal above.
+        """
+        html = self.client.get(
+            reverse('add_shop_payment', args=[self.shop.id])).content.decode()
+
+        self.assertIn('name="date"', html)
+        self.assertIn(f'max="{self.today.isoformat()}"', html)
+        self.assertIn(f'value="{self.today.isoformat()}"', html)
+
+    def test_the_amber_state_can_actually_beat_bootstrap(self):
+        """
+        The back-dated cue is a CLASS carrying `!important`, never an inline
+        style — and that is not a preference, it is the only thing that works.
+        The input wears Bootstrap's `bg-light` and `border-0`, both `!important`
+        utilities, and an `!important` stylesheet rule beats a normal inline
+        declaration. Driving the colours from `el.style.*` therefore set the
+        inline properties and rendered NOTHING: measured computed `0px none`
+        on the border and the unchanged grey behind it, while reading back
+        amber from `el.style.borderColor` exactly as intended.
+
+        Nothing in this suite executes CSS, so what is asserted is the shape
+        that made it work: a real rule, marked important, and a script that
+        toggles the class instead of painting the element directly.
+        """
+        html = self.client.get(
+            reverse('add_shop_payment', args=[self.shop.id])).content.decode()
+
+        self.assertIn('.pay-date-custom', html)
+        rule = html.split('.pay-date-custom', 1)[1].split('}', 1)[0]
+        self.assertIn('!important', rule)
+        self.assertIn('#f59e0b', rule)          # the border
+        self.assertIn('#fffbeb', rule)          # the ground
+
+        self.assertIn("classList.toggle('pay-date-custom'", html)
+        # The inline route is the one that silently does nothing here.
+        self.assertNotIn('style.borderColor', html)
+        self.assertNotIn('style.background', html)
+
+    def test_the_shop_page_windows_payments_by_that_date(self):
+        """
+        The column is only worth having if what reads it agrees. A payment
+        back-dated out of the window must drop out of the shop's own page.
+        """
+        self._pay(amount='4000', date=(self.today - timedelta(days=400)).isoformat())
+        self._pay(amount='1500')
+
+        self.shop.refresh_from_db()
+        # The BALANCE is never windowed - a debt is not a period.
+        self.assertEqual(self.shop.total_paid_amount, Decimal('5500'))
+
+        payments = list(SupplierPayment.objects.filter(
+            supplier=self.shop, date__range=(self.today.replace(day=1), self.today)))
+        self.assertEqual(len(payments), 1)
+        self.assertEqual(payments[0].amount, Decimal('1500'))

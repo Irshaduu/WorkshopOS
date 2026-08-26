@@ -6,10 +6,11 @@ seed_demo_meeting — One-shot seeder for the client-meeting demo.
 Resets inventory categories/products and creates 16 live job cards.
 """
 from decimal import Decimal
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from inventory.models import Category, Item
 from workshop.models import (
@@ -288,7 +289,7 @@ class Command(BaseCommand):
             'Mercedes-Benz': [Decimal('9500'), Decimal('8800'), Decimal('7500'), Decimal('10200')],
         }
 
-        today = date.today()
+        today = timezone.localdate()   # IST; never date.today() on a UTC server
         brand_index = {}
 
         with transaction.atomic():

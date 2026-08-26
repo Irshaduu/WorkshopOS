@@ -11,6 +11,7 @@ from workshop.decorators import office_required
 from workshop.models import DeletionLog, JobCardSpareItem
 from workshop.notifications import notify
 from workshop.money import parse_money, fit_text
+from workshop.money_dates import posted_date, is_future
 from django.urls import reverse
 from workshop.templatetags.custom_filters import clean_qty
 from django.db import transaction, IntegrityError
@@ -883,19 +884,42 @@ def add_shop_payment(request, shop_id):
         # and passed an 11-digit fat finger to a numeric(12,2) column, which
         # Postgres refuses with an overflow — a 500 instead of a message.
         amount = parse_money(request.POST.get('amount') or '0', SupplierPayment, 'amount')
+
+        # THE DAY THE MONEY MOVED, through the one implementation of that rule
+        # (`workshop/money_dates.py`, shared with the Cashbook and the spare
+        # shop). This column has existed since day one and nothing ever wrote
+        # to it: every payment fell back to `default=timezone.now` and was
+        # stamped with the KEYSTROKE. The collector on this side comes round
+        # weekly or monthly, so a bill settled at month end and keyed the
+        # following week landed in the wrong month on this shop's own Last
+        # Month filter, with no route to correct it.
+        #
+        # Refused rather than clamped, and refused BEFORE the row is written:
+        # money dated forward is a mistyped year far more often than a plan,
+        # and this workshop pays at the counter. `posted_date` already falls
+        # back to today on anything unparseable, so the only thing left to
+        # answer for is a date that reads fine and is wrong.
+        moved_on = posted_date(request.POST.get('date'))
+
         if amount is None:
             messages.error(request, "Invalid payment amount.")
+        elif is_future(moved_on):
+            messages.error(request, "A payment cannot be dated in the future.")
         else:
             SupplierPayment.objects.create(
                 supplier=shop,
                 amount=amount,
                 payment_method=request.POST.get('payment_method'),
+                date=moved_on,
                 note=fit_text(request.POST.get('note'), SupplierPayment, 'note'),
             )
             messages.success(request, "Payment recorded successfully.")
             return redirect('supplier_shop_detail', shop_id=shop.id)
-            
-    return render(request, 'inventory/suppliers/add_payment.html', {'shop': shop})
+
+    return render(request, 'inventory/suppliers/add_payment.html', {
+        'shop': shop,
+        'today_iso': timezone.localdate().isoformat(),
+    })
 
 @office_required
 @transaction.atomic

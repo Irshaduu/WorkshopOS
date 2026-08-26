@@ -44,7 +44,7 @@ ORDER IS LOAD-BEARING
     weighted average is exactly that price and a draw's cost is arithmetic
     anybody can repeat.
 """
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
@@ -417,10 +417,17 @@ class Command(BaseCommand):
                 card.refresh_from_db()
 
                 card.completed = True
-                card.completed_date = admitted + timedelta(days=2)
+                handover = admitted + timedelta(days=2)
+                card.completed_date = handover            # DateField
                 card.received_amount = card.total_bill_amount
                 card.discount_amount = D('0')
-                card.paid_date = admitted + timedelta(days=2)
+                # paid_date is a DateTimeField. Handing it a bare date makes
+                # Django build a NAIVE midnight and warn, so pin the moment in
+                # IST the way seed_dummy_data already does — the counter is
+                # open in the afternoon, and midnight would be the one instant
+                # that flips across a day boundary in another timezone.
+                card.paid_date = timezone.make_aware(
+                    datetime.combine(handover, time(14, 30)))
                 if payer:
                     card.payment_status = 'BULK_PAID'
                     fleet_cards[payer.id].append((card, admitted))

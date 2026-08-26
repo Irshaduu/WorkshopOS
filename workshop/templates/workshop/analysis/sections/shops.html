@@ -14,16 +14,17 @@
   where is the money?" — and it answers it beside the shops it concerns rather
   than under the profit it does not.
 
-  ⚠ THE TWO SIDES ARE DATED DIFFERENTLY, so they stay two figures.
-  `SupplierPayment.date` is a real date the office sets; `SpareShopPayment` has
-  no date field at all, only `created_at` — the moment it was keyed. One
-  combined "paid to all shops" total would mean two things at once.
+  ⚠ BOTH SIDES ARE NOW DATED THE SAME WAY — by the day the money moved, off
+  each model's own `date` column. They stay two figures anyway: a spare shop
+  and a Supplies Shop are two different trades on two different instalment
+  rhythms, which is how the rest of this section is already split. Combining
+  them is a product decision, not something the shared basis decides.
 {% endcomment %}
 <div class="ia-stats">
   <div class="ia-stat"><div class="k">Spare shop spend</div><div class="v">₹{{ spare_total|inr_compact }}</div></div>
   <div class="ia-stat"><div class="k">Paid to spare shops</div>
     <div class="v" style="color:#dc2626;">₹{{ spare_paid|inr_compact }}</div>
-    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">cash out, by entry date</div></div>
+    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">cash out, by payment date</div></div>
   <div class="ia-stat"><div class="k">Supplies spend</div><div class="v">₹{{ supplier_total|inr_compact }}</div></div>
   <div class="ia-stat"><div class="k">Paid to supplies shops</div>
     <div class="v" style="color:#dc2626;">₹{{ supplier_paid|inr_compact }}</div>

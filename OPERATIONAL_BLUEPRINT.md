@@ -519,6 +519,19 @@ Edit bill qty to 8                   →   Oil Filter: 15 to 18  (auto +3 delta)
 Delete bill entirely                 →   Oil Filter: 18 to 10  (auto -8 reverse)
 ```
 
+**A Supplies Shop payment is dated the same way, on the same rule.** Record Payment
+carries a Payment Date field — today by default, capped at today, turning amber and
+spelling the day out the moment it is back-dated. This side matters more, not less:
+the collector here comes round weekly or monthly, so a bill settled at month end is
+routinely keyed the following week. That date is what the shop page's date filters
+and its printed history read. Paying a supplier never touches the Profit page — it
+settles a debt the restock bill already expensed.
+
+The control is a full-width field rather than the spare shop's compact calendar
+glyph, because Record Payment is its own page of stacked full-width boxes while the
+spare-shop form is an inline row. Same rule, same behaviour, shape that matches the
+page it is on.
+
 ### Supplies Shops vs Spare Shops
 
 ```

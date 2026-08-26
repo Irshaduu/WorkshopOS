@@ -612,10 +612,15 @@
     (stock bought but unused, stock used but bought earlier, bills unpaid,
     bills paid from earlier periods, customer bills unpaid) — so printing one
     of them invites exactly the incomplete arithmetic this card was rebuilt to
-    stop. And it could not be built honestly today anyway:
-    `SupplierPayment.date` is a real date the office sets, while
-    `SpareShopPayment` has only `created_at`, the moment it was keyed. One
-    figure spanning both would mean two different things at once.
+    stop.
+
+    That reason stands ALONE now. It used to be propped up by a second one —
+    that the two ledgers were dated differently, `SupplierPayment.date` against
+    `SpareShopPayment`'s keystroke-only `created_at`, so no honest combined
+    figure existed. Both are dated by the day the money moved since 2026-08-26,
+    so that objection is gone and the card is unchanged: it was never the
+    load-bearing half. Do not read the column landing as permission to add the
+    figure here.
 
     The balance-sheet answer already exists, one card down, and it is the
     actionable one: what is owed to the workshop, what it owes, and what it
