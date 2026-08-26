@@ -546,7 +546,7 @@
         `display: block` and so costs a blank line. "₹0 charged − ₹0 paid to
         shops" is both true and the same height as every other row.
       {% endcomment %}
-      {% if 'charged' in r %}<span class="hint">₹{{ r.charged|inr }} charged − ₹{{ r.paid|inr }} {{ r.paid_word }}</span>
+      {% if 'charged' in r %}<span class="hint">₹{{ r.charged|inr }} charged − ₹{{ r.cost|inr }} {{ r.cost_word }}</span>
       {% else %}<span class="hint">{{ r.hint }}</span>{% endif %}</span>
     </span>
     {% comment %}
@@ -781,6 +781,32 @@
       which makes this profit look higher than it is. Add a Supplies Shop bill for
       {{ report.uncosted_draws|pluralize:"that product,those products" }} to give
       {{ report.uncosted_draws|pluralize:"it,them" }} a cost.
+    </span>
+  </div>
+</div>
+{% endif %}
+
+{% if report.uncosted_shop %}
+{% comment %}
+  The SHOP twin of the warehouse warning directly above, and it was missing.
+  Both routes cost a NULL `unit_price` at ₹0, so both report a part as FREE and
+  both push this profit UP — but only the warehouse one was ever counted, which
+  made an uncosted shop part the last way this figure could be wrong without
+  looking wrong. Measured: one such row left July ₹1,000 light on cost while the
+  page said "0 uncosted".
+
+  The fix is different from the warehouse one, so the wording is too: there is
+  no supplier bill to add, somebody just has to key what the shop charged.
+{% endcomment %}
+<div class="pf-card">
+  <div class="pf-gap">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <span>
+      <strong>{{ report.uncosted_shop }} spare-shop part{{ report.uncosted_shop|pluralize }}
+      {{ report.uncosted_shop|pluralize:"has,have" }} no price recorded</strong>, so
+      {{ report.uncosted_shop|pluralize:"it is,they are" }} counted as ₹0 —
+      which makes this profit look higher than it is. Open the job card and enter
+      what the shop charged.
     </span>
   </div>
 </div>

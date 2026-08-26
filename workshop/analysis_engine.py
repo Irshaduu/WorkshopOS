@@ -635,6 +635,31 @@ def uncosted_draw_count(start, end):
     ).count()
 
 
+def uncosted_shop_count(start, end):
+    """
+    SHOP rows whose cost is genuinely UNKNOWN — `unit_price` is NULL.
+
+    The twin of `uncosted_draw_count`, and it was missing while its sibling
+    existed. Both routes cost a NULL `unit_price` at ₹0 through `SPARE_COST`,
+    both therefore report a part as FREE, and both push profit UP by exactly
+    that much — but only the warehouse one was counted and warned about, so an
+    uncosted SHOP part was the last remaining way this page could be wrong
+    without looking wrong.
+
+    Measured on the demo data: one shop row with no price left July's Spare
+    Shops expense ₹1,000 short and its profit ₹1,000 high, while the page
+    reported "0 uncosted" because that count only ever looked at draws.
+
+    On this route a NULL means the office has not keyed the shop's bill yet.
+    `unassigned_spare_add` deliberately stores NULL rather than 0 when Floor
+    records a part, because zero would say the shop gave it away — so this is
+    the queue of rows waiting for a figure, not a fault.
+    """
+    return _live_spares(start, end).filter(
+        source=JobCardSpareItem.SOURCE_SHOP, unit_price__isnull=True
+    ).count()
+
+
 def supplier_billed(start, end):
     """
     What the Supplies Shops BILLED in this window — reported, NOT an expense.
@@ -961,15 +986,23 @@ def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_tota
         {'key': 'labour', 'label': 'Labour', 'icon': 'bi-tools',
          'hint': 'Charged on the job cards, with no parts cost behind it',
          'amount': labour, 'negative': False},
+        # ⚠ `cost`/`cost_word`, NOT `paid`. These are what the parts COST, and
+        # the field was called `paid` with the shop row reading "paid to
+        # shops" — which is cash on every other screen in Analysis. The Shops
+        # section prints actual cash out as "Paid to spare shops", and on the
+        # demo data the two read 1.85L and 6L: one word, two meanings, two
+        # figures, on pages an owner opens in one sitting. The two are
+        # deliberately different numbers, because shops are settled in
+        # instalments, so the WORD is the only thing telling them apart.
         {'key': 'spare_margin', 'label': 'Spare Parts margin',
          'icon': 'bi-gear-wide-connected', 'hint': '',
-         'charged': parts['shop']['revenue'], 'paid': parts['shop']['cost'],
-         'paid_word': 'paid to shops',
+         'charged': parts['shop']['revenue'], 'cost': parts['shop']['cost'],
+         'cost_word': 'spent at shops',
          'amount': parts['shop']['profit'], 'negative': False},
         {'key': 'stock_margin', 'label': 'Inventory margin',
          'icon': 'bi-box-seam', 'hint': '',
-         'charged': parts['stock']['revenue'], 'paid': parts['stock']['cost'],
-         'paid_word': 'of stock used',
+         'charged': parts['stock']['revenue'], 'cost': parts['stock']['cost'],
+         'cost_word': 'of stock used',
          'amount': parts['stock']['profit'], 'negative': False},
     ]
     # Both of these are normally absent, and a permanent ₹0 between two figures
@@ -1103,6 +1136,7 @@ def build_profit_report(start, end, disclosures=True):
             start, end, bills, cb_income, salary['total'], cashbook['total'],
         ) if disclosures else None,
         'uncosted_draws': uncosted_draw_count(start, end) if disclosures else 0,
+        'uncosted_shop': uncosted_shop_count(start, end) if disclosures else 0,
         'unassigned_spares': unassigned_spare_purchases() if disclosures else {'amount': ZERO, 'count': 0},
         'profit': profit,
         'margin': margin,

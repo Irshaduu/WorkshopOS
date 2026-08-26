@@ -25,7 +25,20 @@
 
 <div class="ia-stats">
   <div class="ia-stat"><div class="k">Charged</div><div class="v">₹{{ totals.revenue|inr_compact }}</div></div>
-  <div class="ia-stat"><div class="k">Paid to shops</div><div class="v">₹{{ totals.cost|inr_compact }}</div></div>
+  {% comment %}
+  ⚠ "SHOP SPEND", NOT "PAID TO SHOPS". This is what the parts COST — the figure
+  the Profit page charges — and it is the identical number the Shops section
+  prints as "Spare shop spend". It was labelled "Paid to shops", which made the
+  page contradict itself in the one place an owner is most likely to look:
+  Shops prints "Paid to spare shops" for CASH THAT LEFT, and on this data those
+  two read 1.85L and 6L. Same word, two meanings, two figures, one screen — and
+  the Shops section's own footnote defines Paid as cash, so the page disagreed
+  with its own glossary.
+
+  Spend and Paid are deliberately different numbers (shops are settled in
+  instalments), so they can only be told apart by their words.
+  {% endcomment %}
+  <div class="ia-stat"><div class="k">Shop spend</div><div class="v">₹{{ totals.cost|inr_compact }}</div></div>
   <div class="ia-stat"><div class="k">Margin</div>
     <div class="v" style="color:var(--color-success);">₹{{ totals.profit|inr_compact }}</div></div>
   <div class="ia-stat"><div class="k">Margin %</div><div class="v">{{ totals.margin|floatformat:1 }}%</div></div>
@@ -36,6 +49,22 @@
 </div>
 
 {% if rows %}
+
+{% if uncosted_shop %}
+{% comment %}
+  Mirrors the Inventory section's own note. A row with no price counts as ₹0,
+  so it reads as a FREE part and pushes the margin UP - the one way this table
+  can be wrong without looking wrong. The remedy differs from the warehouse
+  one: nothing needs costing, somebody needs to key the shop's bill.
+{% endcomment %}
+<div class="ia-note" style="margin-top:8px;">
+  <i class="bi bi-question-circle-fill text-warning mt-1"></i>
+  <span><strong>{{ uncosted_shop }}</strong> part{{ uncosted_shop|pluralize }}
+    {{ uncosted_shop|pluralize:"has,have" }} no price recorded, so
+    {{ uncosted_shop|pluralize:"it counts,they count" }} as ₹0 — which overstates the
+    margin above. Open the job card and enter what the shop charged.</span>
+</div>
+{% endif %}
 
 <div class="ia-sub">Most Used Parts</div>
 {% comment %}

@@ -428,6 +428,12 @@ def _insight_spare_parts(start, end):
         # SOURCE_SHOP row is — but it is NOT inside the Profit page's Spare
         # Shops line, which is where an owner would go looking for it.
         'no_shop': base.filter(shop__isnull=True).count(),
+        # A row with no `unit_price` costs ₹0, so it reads as a FREE part and
+        # pushes the margin UP. Exactly what `uncosted_draws` does for the
+        # warehouse route one section over — this side had no equivalent, so
+        # the identical defect was disclosed on one route and silent on the
+        # other.
+        'uncosted_shop': engine.uncosted_shop_count(start, end),
     }
 
 

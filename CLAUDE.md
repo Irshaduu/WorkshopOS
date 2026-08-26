@@ -1257,6 +1257,42 @@ the identical words.
 → `OneWordOneMeaningAcrossBothPagesTests` scans the section templates, so a
 section added later cannot quietly reintroduce a fourth meaning.
 
+**"PAID" MEANS CASH AND ONLY CASH; what a part COST is "spend".** A second
+word-collision, on the same two pages and worse than the Profit one because the
+two figures are *meant* to differ. The Spare Parts section labelled its COST
+tile **"Paid to shops"** while the Shops section labels actual cash out **"Paid
+to spare shops"** — on the demo data ₹1,85,000 against ₹6,00,000. One word, two
+meanings, two figures, on a screen an owner scrolls in one sitting. The Shops
+section's own footnote *defines* Paid as cash, so the page contradicted its own
+glossary. The Profit page carried it too, in the earnings card's
+`paid`/`paid_word` fields, which rendered "− ₹1,85,000 paid to shops".
+
+Shops are settled in instalments, so what was bought and what was paid rarely
+land in one month — **the word is the only thing telling them apart.** The tile
+is "Shop spend", the earnings hint reads "spent at shops", and the engine field
+is `cost`/`cost_word`, because calling the variable `paid` is what produced the
+label.
+→ `test_PAID_means_cash_and_SPEND_means_cost_in_every_section` scans the section
+templates, so only the Shops section may label a figure "Paid".
+
+**BOTH PART ROUTES DISCLOSE AN UNCOSTED PART, and only one used to.**
+`SPARE_COST` costs a NULL `unit_price` at ₹0 on either route, so on either one a
+part with no price reads as **free** and pushes profit UP by exactly that much —
+the one way these pages can be wrong without looking wrong. `uncosted_draw_count`
+filtered `source=INVENTORY`, so the warehouse half was counted and warned about
+while an uncosted **shop** part was silent. Measured on the demo data: a single
+unpriced shop row left July's Spare Shops expense ₹1,000 short and its profit
+₹1,000 high, while the page reported "0 uncosted".
+
+`uncosted_shop_count()` is its twin and both are rendered — on the Profit page
+and in their own insight sections. **The wording differs because the remedy
+does**: a warehouse draw needs a Supplies Shop bill to establish a cost, a shop
+row just needs somebody to key what the shop charged. A NULL here is not a
+fault — `unassigned_spare_add` stores NULL rather than 0 when Floor records a
+part, because zero would say the shop gave it away — so the count is a queue,
+not an error.
+→ `BothPartRoutesDiscloseAnUncostedPartTests`
+
 **THE TWO SPARE ROUTES ARE TWO SECTIONS, not two tables in one.** They were one
 merged table until 2026-08-25; splitting the tables fixed most of it and left
 the **headline** merged, so a per-job trading margin was still being averaged
@@ -4105,7 +4141,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 54 files, 1,679 tests. Always SQLite (see below).
+# Full test suite — 54 files, 1,685 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -4213,7 +4249,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,679-test run
+want. SQLite's test database is also in-memory, which is most of why a 1,685-test run
 is ~70 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
@@ -4445,7 +4481,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **54 files, 1,679 tests**.
+files) — **54 files, 1,685 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

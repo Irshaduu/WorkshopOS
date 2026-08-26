@@ -11,6 +11,7 @@ Convention reminder (TITAN_MASTER_HANDOVER.md): when one of these fails, fix
 the code, not the test.
 """
 
+import io
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -1724,6 +1725,46 @@ class OneWordOneMeaningAcrossBothPagesTests(AnalysisBase):
             self.assertIn('Margin', html, key)
             self.assertNotIn('<th class="num">Profit</th>', html, key)
 
+    def test_PAID_means_cash_and_SPEND_means_cost_in_every_section(self):
+        """
+        The second word-collision on these pages, and the one an owner hits
+        first. Spare Parts labelled its COST tile "Paid to shops" while Shops
+        labels actual CASH OUT "Paid to spare shops" - on the demo data those
+        read 1.85L and 6L, so the same word carried two meanings and two
+        figures on one screen. Worse, the Shops section's own footnote defines
+        Paid as cash, so the page contradicted its own glossary.
+
+        The two are deliberately different numbers - shops are settled in
+        instalments, so what was bought and what was paid rarely land in one
+        month - which means the WORD is the only thing telling them apart.
+
+        Scans the templates rather than a rendered page, so a section added
+        later cannot reintroduce it.
+        """
+        import glob
+        import os
+        import re
+
+        offenders = []
+        for path in sorted(glob.glob(
+                'workshop/templates/workshop/analysis/sections/*.html')):
+            body = io.open(path, encoding='utf-8').read()
+            # Strip {% comment %} blocks - they discuss the rule by name.
+            body = re.sub(r'\{%\s*comment\s*%\}.*?\{%\s*endcomment\s*%\}',
+                          '', body, flags=re.S)
+            for label in re.findall(r'<div class="k">([^<]{0,40}?)</div>', body):
+                if 'paid' not in label.lower():
+                    continue
+                # A "Paid" tile must render a cash field, never a cost/spend one.
+                if os.path.basename(path) != 'shops.html':
+                    offenders.append((os.path.basename(path), label.strip()))
+
+        self.assertEqual(
+            offenders, [],
+            'Only the Shops section may label a figure "Paid", because only it '
+            'reports cash that actually left. These tiles say Paid outside it: '
+            f'{offenders}')
+
     def test_no_insight_section_uses_the_bare_word_as_a_column(self):
         """
         Scans the templates rather than one rendered page, so a section added
@@ -2488,3 +2529,85 @@ class TheShopsSectionSelectsByRouteNotByCoincidenceTests(AnalysisBase):
             quantity=D('1'), unit_price=D('1000'), total_price=D('1500'))
         html = self.client.get(_rev('analysis_insight_section', args=['shops'])).content.decode()
         self.assertNotIn('no shop recorded', html)
+
+
+class BothPartRoutesDiscloseAnUncostedPartTests(AnalysisBase):
+    """
+    `SPARE_COST` costs a NULL `unit_price` at ₹0 on BOTH routes, so on both a
+    part with no price recorded reads as FREE and pushes profit UP by exactly
+    that much. It is the one way this page can be wrong without looking wrong.
+
+    Only the warehouse route was counted. `uncosted_draw_count` filtered
+    `source=INVENTORY`, so an uncosted SHOP part was silently ₹0 and the page
+    still reported "0 uncosted" - measured on the demo data as July's Spare
+    Shops expense running ₹1,000 short with nothing saying so.
+
+    Both are counted now. These tests assert the SYMMETRY rather than either
+    number, because the failure worth catching is the two drifting apart again.
+    """
+
+    def _shop_part(self, card, price):
+        return JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Brake Disc',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=price, total_price=D('2000'))
+
+    def _window(self):
+        return engine.resolve_period('this_month')[:2]
+
+    def test_an_unpriced_shop_part_is_counted(self):
+        self._shop_part(self.make_card(bill='2000'), None)
+        s, e = self._window()
+
+        self.assertEqual(engine.uncosted_shop_count(s, e), 1)
+        self.assertEqual(engine.build_profit_report(s, e)['uncosted_shop'], 1)
+
+    def test_a_priced_shop_part_is_not_counted(self):
+        self._shop_part(self.make_card(bill='2000'), D('1200'))
+        s, e = self._window()
+
+        self.assertEqual(engine.uncosted_shop_count(s, e), 0)
+
+    def test_the_two_routes_are_counted_separately_not_together(self):
+        """
+        A shop gap must not inflate the warehouse count or the reverse - the
+        remedies differ (key the shop's bill vs add a Supplies Shop bill), so
+        a reader has to be able to tell which one they are looking at.
+        """
+        card = self.make_card(bill='4000')
+        self._shop_part(card, None)
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Engine Oil',
+            source=JobCardSpareItem.SOURCE_INVENTORY,
+            quantity=D('1'), unit_price=None, total_price=D('2000'))
+        s, e = self._window()
+
+        self.assertEqual(engine.uncosted_shop_count(s, e), 1)
+        self.assertEqual(engine.uncosted_draw_count(s, e), 1)
+
+    def test_the_unpriced_part_really_does_cost_zero(self):
+        """
+        The reason the count has to exist: the row IS charged at ₹0, so profit
+        is genuinely overstated rather than merely unexplained.
+        """
+        card = self.make_card(bill='2000')
+        s, e = self._window()
+        before = engine.build_profit_report(s, e)['expense_total']
+
+        self._shop_part(card, None)
+        after = engine.build_profit_report(s, e)['expense_total']
+
+        self.assertEqual(after, before, 'an unpriced shop part added no cost')
+        self.assertEqual(engine.build_profit_report(s, e)['uncosted_shop'], 1)
+
+    def test_both_warnings_reach_the_page(self):
+        card = self.make_card(bill='4000')
+        self._shop_part(card, None)
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Engine Oil',
+            source=JobCardSpareItem.SOURCE_INVENTORY,
+            quantity=D('1'), unit_price=None, total_price=D('2000'))
+
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('no price recorded', html)      # the shop half
+        self.assertIn('no cost recorded', html)       # the warehouse half
