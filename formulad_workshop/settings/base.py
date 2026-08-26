@@ -35,7 +35,17 @@ CSRF_TRUSTED_ORIGINS = config(
 # the other.
 
 def postgres_db():
-    """The PostgreSQL connection, read from .env (Neon in this deployment)."""
+    """
+    The PostgreSQL connection, read from .env — a LOCAL instance in development,
+    Railway's own Postgres in production.
+
+    ⚠ `DB_SSLMODE` defaults to `require`, which is wrong for both of those and
+    right for neither by accident: it dates from a hosted Neon instance reached
+    over the public internet. Local Postgres wants `disable` and Railway's
+    private network wants `prefer`, so BOTH environments override it in their
+    own `.env`. The default is left alone deliberately — changing it would make
+    the insecure case the one you get by forgetting.
+    """
     return {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': config('DB_NAME', default='titan_db'),

@@ -1,7 +1,7 @@
 # 🏗️ WorkshopOS (Titan) — SUPER MASTER BLUEPRINT
 
 > **Project**: WorkshopOS (Titan) · Django project package name `formulad_workshop`
-> **Framework**: Django 5.2 · Python 3.13 · **PostgreSQL** in development *and* production (development on Neon, production on Railway's own Postgres alongside the app; SQLite retained only for bulk dummy-data seeding and the test suite)
+> **Framework**: Django 5.2 · Python 3.13 · **PostgreSQL** in development *and* production (development on a local instance, production on Railway's own Postgres alongside the app; SQLite retained only for bulk dummy-data seeding and the test suite)
 > **Apps**: `workshop` (core) + `inventory` (warehouse)
 >
 > **Every count in this file is re-derived from the code** — the suite built with
@@ -762,7 +762,7 @@ graph TB
 | `EMAIL_REAL` | Development only. False (default) prints mail to the console instead of sending |
 | `DJANGO_ENV` | Environment selector (development/production) |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL config |
-| `DB_SSLMODE` | `require` by default (correct for Neon over the public internet); Railway's private network needs `prefer` |
+| `DB_SSLMODE` | `require` by default — a leftover from a hosted database over the public internet, wrong for every environment in use now. Local development sets `disable`; Railway's private network needs `prefer` |
 | `USE_SQLITE` | Development only. Switches `default` to the SQLite file for bulk seeding. **Ignored by `manage.py test`, which always uses SQLite anyway** |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL` | Web Push. **Optional** — with none set, push is skipped and the in-app feed is unaffected. The public key ships to the browser and is not a secret. **Regenerating them invalidates every existing subscription**, so treat them as permanent |
 | `PHOTO_S3_ACCESS_KEY_ID`, `PHOTO_S3_SECRET_ACCESS_KEY`, `PHOTO_S3_BUCKET` | Photo storage. **Optional** — with none set the photo box is not rendered and the endpoints answer 503 |

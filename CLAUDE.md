@@ -14,10 +14,16 @@ servicing, roughly 50 cars a month, seven staff, two owners. That is why RBAC
 needs only three tiers, and why performance work is judged against realistic
 load rather than generic "web scale" assumptions.
 
-**PostgreSQL in both development and production.** Development runs against Neon
-(Singapore); production is Railway's own PostgreSQL in the same project as the
-app. SQLite survives only for bulk dummy-data seeding and the test suite — see
-"Which database am I on?".
+**PostgreSQL in both development and production.** Development runs against a
+**local PostgreSQL** (`localhost:5432`, `titan_db`); production is Railway's own
+PostgreSQL in the same project as the app. SQLite survives only for bulk
+dummy-data seeding and the test suite — see "Which database am I on?".
+
+⚠ *Development used to run against a hosted Neon instance in Singapore, and
+several docs said so long after it stopped being true.* The move to local
+Postgres removed the ~3.5 s of per-page network latency those docs warned about
+and made `DB_SSLMODE=disable` correct locally. **If a doc mentions Neon, it is
+stale — check `.env`.**
 
 **Still pre-go-live.** Neither instance holds a real workshop's books, so don't
 describe either as live production data. Deployment: `GO_LIVE_RUNBOOK.md`
@@ -4194,8 +4200,8 @@ possible double count.
 
 # Which database am I on?
 
-`DJANGO_ENV=development` runs against **PostgreSQL** (the Neon instance in `.env`), not
-SQLite. Development matches what ships, so Postgres-only behaviour — stricter GROUP BY,
+`DJANGO_ENV=development` runs against **PostgreSQL** (the local instance in `.env` —
+`localhost:5432`, `titan_db`), not SQLite. Development matches what ships, so Postgres-only behaviour — stricter GROUP BY,
 real numeric types, case sensitivity, sequences — surfaces while it is cheap to fix.
 
 | Situation | Database | How |
@@ -4206,14 +4212,23 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 | `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
-whole database — not something to point at hosted Postgres — and 1,679 tests at ~75 ms
-per round-trip would take hours. There is deliberately no flag to remember and no way to
-run the suite against live data by accident (`development.py` keys off
-`sys.argv[1] == 'test'`).
+whole database, which is not something to point at a database holding anything you
+want. SQLite's test database is also in-memory, which is most of why a 1,679-test run
+is ~70 minutes rather than considerably worse. There is deliberately no flag to
+remember and no way to run the suite against live data by accident
+(`development.py` keys off `sys.argv[1] == 'test'`).
 
-**Seed on SQLite, then copy up.** `seed_dummy_data` writes every row through the ORM so
-signals fire; over a network that is tens of thousands of round-trips. Set
-`USE_SQLITE=true`, seed, unset it, then `copy_sqlite_to_postgres --yes`.
+*(This used to justify itself with "~75 ms per round-trip", which was the latency of
+the hosted Singapore database. That number is dead; the rule is not.)*
+
+**Seed on SQLite, then copy up — now a choice rather than a necessity.**
+`seed_dummy_data` writes every row through the ORM so signals fire, which is tens of
+thousands of round-trips. That was unusable against the hosted Singapore database and
+is the reason this two-step exists. Against **local** Postgres the round trip is
+sub-millisecond, so seeding straight into it is viable. Set `USE_SQLITE=true`, seed,
+unset it, then `copy_sqlite_to_postgres --yes` — or skip the dance and seed directly.
+**Measure before assuming you still need the two-step**, and note the copy carries the
+three access-and-recovery hazards below that seeding directly does not.
 
 **`copy_sqlite_to_postgres` REPLACES the target tables.** It refuses to run if the two
 databases are on different migration states, orders tables by a topological sort of their
@@ -4247,9 +4262,13 @@ types, permissions, sessions and admin log.
 The `sqlite` alias is always present in `DATABASES` under development, which is how the
 copy command reads the file while `default` points at Postgres.
 
-**Expect page loads to feel slow from a dev machine**: the database is in Singapore, so a
-47-query page costs ~3.5 s of pure latency. That is distance, not the code — colocating
-app and database removes it. It is still a reason to keep query counts low.
+**Page loads are fast now, and that removed a signal rather than a problem.** This
+said a 47-query page cost ~3.5 s of pure latency because the database was in
+Singapore. It is on `localhost`, so that latency is gone — but the query counts
+that produced it have not changed, and production reaches Railway's Postgres over
+a real network. **A page that feels instant here can still be slow there**, so keep
+query counts low on the evidence (`AUD-0096` measures the job-card form), not on
+how it feels locally.
 
 ## Environment variables
 
@@ -4481,8 +4500,8 @@ like nothing is wrong.
   that picks up earlier work.**
 
 ⚠ **A migration in such a commit is a second thing left behind.** Landing the
-code does not apply it — `9e5eab7` added `0071` and the dev Neon database was
-still on `0070`, so every spare-shop page 500'd on a column that existed only in
+code does not apply it — `9e5eab7` added `0071` and the dev database was still on
+`0070`, so every spare-shop page 500'd on a column that existed only in
 `models.py`. `manage.py migrate` is part of landing the branch, not a follow-up.
 
 ---

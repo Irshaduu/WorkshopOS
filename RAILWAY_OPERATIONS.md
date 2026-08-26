@@ -163,10 +163,11 @@ python -c "import secrets; print(secrets.token_urlsafe(64))"
 substitutes them at deploy time, so rotating the database password does not
 silently break the app.
 
-**Why `DB_SSLMODE=prefer`:** `base.py` defaults to `require`, which is correct
-for Neon over the public internet. Railway's Postgres is reached over the
-project's private network, where TLS may not be offered — `require` then refuses
-to connect at all. `prefer` uses TLS when available and plain when not, and the
+**Why `DB_SSLMODE=prefer`:** `base.py` defaults to `require`, which suited a
+hosted database reached over the public internet and is wrong for every
+environment in use today. Railway's Postgres is reached over the project's
+private network, where TLS may not be offered — `require` then refuses to connect
+at all. (Local development sets `disable`.) `prefer` uses TLS when available and plain when not, and the
 traffic never leaves Railway's network either way.
 
 ### Required for email (password reset)

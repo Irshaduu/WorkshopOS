@@ -287,8 +287,8 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
 - **Split settings**: `settings/` selects development or production via `DJANGO_ENV`,
   which has **no default** — an unset value raises `ImproperlyConfigured` rather than
   silently choosing a database.
-- **Both environments run PostgreSQL** — development on Neon, production on Railway's
-  own Postgres in the same project as the app. SQLite is used only for bulk seeding
+- **Both environments run PostgreSQL** — development on a local instance, production
+  on Railway's own Postgres in the same project as the app. SQLite is used only for bulk seeding
   (`USE_SQLITE=true`) and automatically for `manage.py test`.
 - **Modular views**: the `workshop` app's views live in a `views/` package of **18
   focused modules**, with full backward compatibility via re-exports in `__init__.py`.

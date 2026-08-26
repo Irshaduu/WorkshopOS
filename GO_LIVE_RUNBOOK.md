@@ -29,7 +29,7 @@ that one is what you come back to.
 
 Two things people expect to happen here, which do **not**:
 
-- **The demo data does not move.** You are not migrating the Neon database.
+- **The demo data does not move.** You are not migrating the development database.
   The real system starts with an empty database and the workshop's real
   opening figures. Copying demo data across and then deleting it leaves far
   more room for a mistake than never copying it.
@@ -120,9 +120,10 @@ python -c "import secrets; print(secrets.token_urlsafe(64))"
 Notes that will save you time:
 
 - **`DB_SSLMODE=prefer`, not `require`.** The default in `base.py` is `require`,
-  which suits Neon over the public internet. Railway's Postgres is reached over
-  its private network where TLS may not be offered, and `require` then fails to
-  connect. `prefer` uses TLS when available and plain when not; the traffic
+  which suited a hosted database reached over the public internet and suits
+  nothing in use today. Railway's Postgres is reached over its private network
+  where TLS may not be offered, and `require` then fails to connect. (Local
+  development sets `disable` for the same reason, one step further.) `prefer` uses TLS when available and plain when not; the traffic
   never leaves Railway's own network either way.
 - **Use the Railway-provided `PG*` variables** to fill `DB_*` — reference them
   rather than pasting values, so a credential rotation does not silently break
