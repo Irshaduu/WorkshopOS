@@ -53,6 +53,15 @@
         gap: 4px;
     }
 
+    /* The list no longer carries cars still on the floor, so it says what it
+       does carry — otherwise the total quietly means something new. */
+    .pp-page-subtitle {
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: var(--color-text-muted);
+        line-height: 1.2;
+    }
+
     .pp-page-title {
         font-family: var(--font-display);
         font-size: 1.6rem;
@@ -647,6 +656,7 @@
                 <i class="bi bi-exclamation-octagon-fill"></i>
                 Pending Bills
             </div>
+            <div class="pp-page-subtitle">Handed over and not yet settled</div>
         </div>
 
         <!-- Outstanding total -->

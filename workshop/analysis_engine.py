@@ -984,7 +984,7 @@ def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_tota
 
     earn = [
         {'key': 'labour', 'label': 'Labour', 'icon': 'bi-tools',
-         'hint': 'Charged on the job cards, with no parts cost behind it',
+         'hint': 'The Job Performed charge on every card',
          'amount': labour, 'negative': False},
         # ⚠ `cost`/`cost_word`, NOT `paid`. These are what the parts COST, and
         # the field was called `paid` with the shop row reading "paid to

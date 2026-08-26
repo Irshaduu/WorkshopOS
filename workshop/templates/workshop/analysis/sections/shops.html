@@ -1,14 +1,25 @@
 {% load custom_filters %}
 
 {% comment %}
-  SPEND AND PAID ARE TWO DIFFERENT QUESTIONS, and this is the right screen for
-  the second one.
+  SPEND, BILLED AND PAID ARE THREE DIFFERENT QUESTIONS, and this is the right
+  screen for the last two.
 
   "Spend" is what the work cost — the figure the Profit page charges. "Paid" is
   cash that actually left the drawer against these shops' ledgers, on their own
   instalment rhythm. Neither affects the other and neither belongs inside the
   profit equation: an owner who subtracts a cash figure from a profit figure
   gets a number that is not anything.
+
+  ⚠ "BILLED" IS THE THIRD WORD AND IT EXISTS BECAUSE THE TWO HALVES OF THIS
+  SECTION ARE NOT ON ONE BASIS. A spare-shop part goes straight onto a car, so
+  what the shop billed IS the cost, on the day of that job. A Supplies Shop
+  bill puts goods on the WAREHOUSE SHELF: it raises the shelf and the payable
+  and is charged nowhere, because the cost lands later, on the day a mechanic
+  draws the part — the Inventory section's "Stock used". Both were labelled
+  "spend" under a footnote defining spend as what the Profit page charges, so
+  the supplies tile made a promise the figure does not keep, and the two
+  numbers (₹85,000 billed against ₹1.88L drawn, on the demo data) could not be
+  reconciled by anybody reading them. Same word, two bases, one screen.
 
   It answers the thought an owner has right after reading a profit — "then
   where is the money?" — and it answers it beside the shops it concerns rather
@@ -21,11 +32,15 @@
   them is a product decision, not something the shared basis decides.
 {% endcomment %}
 <div class="ia-stats">
-  <div class="ia-stat"><div class="k">Spare shop spend</div><div class="v">₹{{ spare_total|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Spare shop spend</div>
+    <div class="v">₹{{ spare_total|inr_compact }}</div>
+    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">cost of parts fitted, by job date</div></div>
   <div class="ia-stat"><div class="k">Paid to spare shops</div>
     <div class="v" style="color:#dc2626;">₹{{ spare_paid|inr_compact }}</div>
     <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">cash out, by payment date</div></div>
-  <div class="ia-stat"><div class="k">Supplies spend</div><div class="v">₹{{ supplier_total|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Supplies billed</div>
+    <div class="v">₹{{ supplier_billed|inr_compact }}</div>
+    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">onto the shelf, by bill date</div></div>
   <div class="ia-stat"><div class="k">Paid to supplies shops</div>
     <div class="v" style="color:#dc2626;">₹{{ supplier_paid|inr_compact }}</div>
     <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">cash out, by payment date</div></div>
@@ -33,10 +48,13 @@
 
 <div class="ia-note" style="margin-bottom:14px;">
   <i class="bi bi-info-circle-fill text-primary mt-1"></i>
-  <span><strong>Spend</strong> is what the parts cost the workshop — the figure the Profit page
-    charges. <strong>Paid</strong> is cash that left against these shops' ledgers in the same
-    period. They are not meant to match: shops are paid in instalments, so what is bought and
-    what is settled rarely land in one month. Neither affects profit.</span>
+  <span><strong>Spend</strong> is what spare-shop parts cost — they go straight onto a car, so
+    it is the figure the Profit page charges. <strong>Billed</strong> is what the Supplies Shops
+    delivered onto the warehouse shelf; nothing charges that, because shelf stock becomes a cost
+    when a mechanic <em>draws</em> it — which is <strong>Stock used</strong> in the Inventory
+    section. <strong>Paid</strong> is cash that actually left the drawer. The three are not meant
+    to match: stock is bought in one month and used in another, and shops are settled in
+    instalments.</span>
 </div>
 
 <div class="ia-sub">Spare Shops — parts bought per job</div>
@@ -104,13 +122,18 @@
 {% if supplier_rows %}
 <div class="ia-scroll">
   <table class="ia-tbl">
-    <thead><tr><th>Shop</th><th class="num">Bills</th><th class="num">Spent</th><th class="num">Owed now</th></tr></thead>
+    {% comment %}
+      "Billed", not "Spent". The spare table one screen up says Spent and means
+      cost; this column is goods delivered onto the shelf, which is charged
+      nowhere. Same word, two bases, on one screen is the whole defect.
+    {% endcomment %}
+    <thead><tr><th>Shop</th><th class="num">Bills</th><th class="num">Billed</th><th class="num">Owed now</th></tr></thead>
     <tbody>
       {% for r in supplier_rows %}
       <tr>
         <td class="strong">{{ r.supplier__name }}</td>
         <td class="num">{{ r.bills }}</td>
-        <td class="num">₹{{ r.spend|inr }}</td>
+        <td class="num">₹{{ r.billed|inr }}</td>
         <td class="num {% if r.due > 0 %}neg{% endif %}">₹{{ r.due|inr }}</td>
       </tr>
       {% endfor %}

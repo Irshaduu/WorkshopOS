@@ -21,7 +21,19 @@ def completed_list(request):
         .filter(completed=True, is_deleted=False)
         .select_related('lead_mechanic')
         .prefetch_related('spares', 'labours')
-        .order_by('-completed_date')
+        # NEWEST COMPLETED FIRST, AND `-id` IS THE TIEBREAKER RATHER THAN
+        # DECORATION. `completed_date` is a DateField, so every car handed over
+        # today carries the SAME value and the order within that day is
+        # whatever the database happens to return — which on the default
+        # 'today' filter is the whole list. The car just completed could land
+        # anywhere in it, so the one somebody opened this page to see was found
+        # by scrolling.
+        #
+        # NOT `-updated_at`: it is `auto_now=True` and moves on ANY save, so an
+        # old card edited for an unrelated reason would jump to the top of
+        # today. That is the exact defect `paid_date` exists to keep off Paid
+        # Bills. `-id` never moves after the card is created.
+        .order_by('-completed_date', '-id')
     )
 
     # 2. Read filter from URL always — non-AJAX and AJAX both respect the same param

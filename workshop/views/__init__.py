@@ -18,7 +18,7 @@ from .deletion_history import (
 )
 from .billing import invoice_view, update_bill_status
 from .bulk_payer import (
-    bulk_payer_list, bulk_payer_create, bulk_payer_detail,
+    bulk_payer_list, bulk_payer_create, bulk_payer_detail, bulk_payer_edit,
     move_jobcard_to_bulk, bulk_payer_remove_card, bulk_payer_pay,
     bulk_payer_delete, bulk_payer_archived, bulk_payer_restore,
     bulk_payment_history_delete,
