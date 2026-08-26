@@ -25,9 +25,11 @@ from workshop.analysis_engine import _month_end
 from workshop.models import (
     JobCard, JobCardSpareItem, JobCardLabourItem, Mechanic, SpareShop,
     CashbookEntry, BulkPayer, SalaryAdvance, SalaryPayment, SalaryPaymentLine,
+    SpareShopPayment,
 )
 from inventory.models import (
     Category, Item, SupplierShop, SupplierRestockBill, SupplierRestockItem,
+    SupplierPayment,
 )
 
 User = get_user_model()
@@ -216,14 +218,22 @@ class ProfitEquationTests(AnalysisBase):
 # =============================================================================
 class DoubleCountRuleTests(AnalysisBase):
     """
-    A part is paid for exactly once, by exactly one route:
+    A part is charged EXACTLY ONCE, at the moment it is fitted to a car:
 
-      source=SHOP + a shop     → charged as a Spare Shops expense
+      source=SHOP + a shop     → the Spare Shops expense
       source=SHOP, no shop     → real money with no payee, its own line
-      source=INVENTORY         → already paid via a restock bill, so NOT charged
+      source=INVENTORY         → the Inventory Used expense, at shelf cost
 
     If this class starts failing, the Profit page has begun charging the
     workshop twice for the same part. Do not "fix" it by counting both.
+
+    ⚠ THE SECOND HELPING TO GUARD AGAINST IS THE RESTOCK BILL (changed
+    2026-08-25). Until then the BILL was the expense and the draw was excluded;
+    now it is the other way round, because the spare-shop route had always
+    charged parts when they were FITTED and the warehouse route was the odd one
+    out. The invariant is the same shape — every rupee of parts cost in exactly
+    one bucket — it just names a different thing that must not be added on top.
+    `test_a_restock_bill_is_not_an_expense_by_itself` is that guard.
 
     The fixtures below declare their route explicitly (2026-07-30). They used to
     imply it — a NULL shop plus a name matching an inventory product — back when
@@ -248,8 +258,8 @@ class DoubleCountRuleTests(AnalysisBase):
         # beside it does not multiply it (see SHOP_LINE_COST).
         self.assertEqual(engine.spare_shop_expense(s, e), D('500'))
 
-    def test_warehouse_drawn_spare_is_never_an_expense(self):
-        """source=INVENTORY ⇒ already paid for by a restock bill."""
+    def test_a_warehouse_draw_is_charged_at_shelf_cost_when_it_is_FITTED(self):
+        """source=INVENTORY ⇒ charged here, once, at the weighted average."""
         JobCardSpareItem.objects.create(
             job_card=self.card, source=JobCardSpareItem.SOURCE_INVENTORY, item=self.item,
             quantity=D('3'), unit_price=D('400'), total_price=D('1800'))
@@ -257,8 +267,31 @@ class DoubleCountRuleTests(AnalysisBase):
         self.assertEqual(engine.spare_shop_expense(s, e), D('0'))
         self.assertEqual(engine.unattributed_spare_expense(s, e), D('0'))
         self.assertEqual(engine.warehouse_drawn_spare_cost(s, e), D('1200'))
-        # …and it must not have leaked into the expense total by another door.
+        # 400 x 3, and it reaches the total by exactly one door.
+        self.assertEqual(engine.build_profit_report(s, e)['expense_total'], D('1200'))
+
+    def test_a_restock_bill_is_not_an_expense_by_itself(self):
+        """
+        THE DOUBLE COUNT THIS PAGE NOW HAS TO GUARD AGAINST.
+
+        Buying stock turns cash (or a promise to pay) into goods on a shelf. It
+        is not a cost until the goods are used, and the draw above is what
+        charges them. Adding the bill on top charges one delivery twice.
+        """
+        from inventory.models import SupplierRestockBill, SupplierRestockItem, SupplierShop
+        supplier = SupplierShop.objects.create(name='Bulk Oils')
+        bill = SupplierRestockBill.objects.create(supplier=supplier, bill_date=self.today)
+        SupplierRestockItem.objects.create(bill=bill, item=self.item,
+                                           quantity=D('50'), total_price=D('25000'))
+        s, e, _k, _l = engine.resolve_period('this_month')
+
+        # Billed, and reported — but nothing was fitted to a car, so nothing
+        # was spent on doing work.
+        self.assertEqual(engine.supplier_billed(s, e), D('25000'))
         self.assertEqual(engine.build_profit_report(s, e)['expense_total'], D('0'))
+
+        # It moved the payable instead. That is where a purchase belongs.
+        self.assertEqual(engine.financial_position()['payable_supplier'], D('25000'))
 
     def test_orphan_spare_is_surfaced_not_swallowed(self):
         """A shop purchase with no shop recorded — real money, so it gets its own line."""
@@ -295,8 +328,10 @@ class DoubleCountRuleTests(AnalysisBase):
             + engine.warehouse_drawn_spare_cost(s, e)
             + engine.unattributed_spare_expense(s, e),
             total)
-        # Only the two genuinely-unpaid routes reach the expense total.
-        self.assertEqual(engine.build_profit_report(s, e)['expense_total'], D('1250'))
+        # ALL THREE reach the expense total now, because all three are parts
+        # fitted to a car in this period. The bucket totals and the expense
+        # total are the same number seen twice.
+        self.assertEqual(engine.build_profit_report(s, e)['expense_total'], total)
 
     def test_a_missing_quantity_changes_nothing_on_a_shop_line(self):
         """
@@ -324,7 +359,13 @@ class DoubleCountRuleTests(AnalysisBase):
 # =============================================================================
 # INVENTORY / SUPPLIES STREAM
 # =============================================================================
-class InventoryExpenseTests(AnalysisBase):
+class SupplierBilledTests(AnalysisBase):
+    """
+    `supplier_billed()` reports what the Supplies Shops billed in a window. It
+    is NOT a profit stream — see `DoubleCountRuleTests` — but the floored
+    expression behind it still has to be right, because the shop's own balance
+    and the payment waterfall read the same declaration.
+    """
 
     def test_restock_bill_counts_at_its_effective_amount(self):
         cat = Category.objects.create(name='Filters')
@@ -336,7 +377,7 @@ class InventoryExpenseTests(AnalysisBase):
                                            total_price=D('2000'))
         s, e, _k, _l = engine.resolve_period('this_month')
         # total_amount is denormalized to 2000 by the item save; less 200 discount
-        self.assertEqual(engine.inventory_expense(s, e), D('1800'))
+        self.assertEqual(engine.supplier_billed(s, e), D('1800'))
 
 
 # =============================================================================
@@ -581,14 +622,14 @@ class ASupplierDiscountCannotRaiseProfitTests(AnalysisBase):
     def test_the_expense_is_floored_at_zero_never_negative(self):
         self._impossible_bill()
         s, e, _k, _l = engine.resolve_period('this_month')
-        self.assertEqual(engine.inventory_expense(s, e), D('0'),
+        self.assertEqual(engine.supplier_billed(s, e), D('0'),
                          "a negative expense would raise reported profit")
 
     def test_the_engine_agrees_with_the_model_property(self):
         _shop, bill = self._impossible_bill()
         s, e, _k, _l = engine.resolve_period('this_month')
         bill.refresh_from_db()
-        self.assertEqual(engine.inventory_expense(s, e), bill.get_effective_amount)
+        self.assertEqual(engine.supplier_billed(s, e), bill.get_effective_amount)
 
     def test_the_chart_cannot_disagree_with_the_headline(self):
         self._impossible_bill()
@@ -604,6 +645,286 @@ class ASupplierDiscountCannotRaiseProfitTests(AnalysisBase):
         s, e, _k, _l = engine.resolve_period('this_month')
         rows = _insight_shops(s, e)['supplier_rows']
         self.assertEqual(rows[0]['spend'], D('0'))
+
+    def test_the_shops_own_BALANCE_uses_the_same_floor(self):
+        """
+        THE FOURTH COPY, and the one left behind.
+
+        `SupplierShop.update_totals()` hand-rolled `total − discount` with no
+        floor, so an underwater bill SUBTRACTED from the shop's balance: real
+        debt on its other bills read as smaller than it is, or vanished. That
+        is the payable understating what is owed — and `deactivate_supplier_shop`
+        reads this figure, so it would also let a shop the workshop still owes
+        be archived.
+        """
+        shop, bill = self._impossible_bill()
+        # A second, ordinary bill: the whole point is that the broken one
+        # cannot eat into what this one genuinely owes.
+        good = SupplierRestockBill.objects.create(supplier=shop, bill_date=self.today)
+        SupplierRestockItem.objects.create(
+            bill=good, item=Item.objects.first(), quantity=D('1'), total_price=D('8000'))
+        shop.refresh_from_db()
+        self.assertEqual(shop.total_billed_amount, D('8000'))
+        self.assertEqual(shop.get_pending_balance, D('8000'))
+
+    def test_the_payable_tile_agrees_with_the_expense_expression(self):
+        """The model and the Profit page must not describe one bill two ways."""
+        shop, _bill = self._impossible_bill()
+        shop.refresh_from_db()
+        self.assertEqual(engine.financial_position()['payable_supplier'],
+                         shop.get_pending_balance)
+
+
+class ThreeDatesThreeJobsTests(AnalysisBase):
+    """
+    THE SCENARIO THE OWNER ASKED ABOUT, end to end.
+
+    A Supplies Shop delivers, the workshop pays in instalments over following
+    months, and mechanics draw the stock down all the while — so one physical
+    delivery carries THREE different dates. Each has exactly one job and they
+    never overlap:
+
+        bill date     the cost enters the equation (Total Expenses)
+        draw date     the cost enters the margin view (Inventory margin)
+        payment date  moves the payable ONLY — it never touches profit
+
+    That last one is the one that looks wrong and is right: paying a supplier
+    converts a liability into cash out. It changes what you owe, not what you
+    earned. `SupplierPayment` appears nowhere in `analysis_engine`, and these
+    tests are what keeps it that way.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.shop = SupplierShop.objects.create(name='Bulk Oils')
+        cat = Category.objects.create(name='Engine Oil')
+        self.item = Item.objects.create(name='Castrol 5W-30', category=cat,
+                                        average_stock=D('50'))
+        self.m1 = self.today.replace(day=1) - timedelta(days=1)      # last month
+        self.m1 = self.m1.replace(day=1)
+        self.m2 = self.today.replace(day=1)                          # this month
+
+        # MONTH 1 — the delivery. 40 units at ₹500 = ₹20,000 billed, unpaid.
+        self.bill = SupplierRestockBill.objects.create(
+            supplier=self.shop, bill_date=self.m1)
+        SupplierRestockItem.objects.create(
+            bill=self.bill, item=self.item, quantity=D('40'), total_price=D('20000'))
+
+    def _window(self, day):
+        return day, _month_end(day)
+
+    def _report(self, day):
+        s, e = self._window(day)
+        return engine.build_profit_report(s, e)
+
+    def _draw(self, day, qty, charged):
+        card = self.make_card(bill='0', when=day)
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Castrol 5W-30',
+            source=JobCardSpareItem.SOURCE_INVENTORY, item=self.item,
+            quantity=D(qty), total_price=D(charged))
+        card.update_totals()
+        return card
+
+    def test_a_delivery_nobody_has_used_yet_costs_NOTHING(self):
+        """
+        Month 1 took a ₹20,000 delivery and fitted none of it. Buying stock
+        turns cash into goods on a shelf; it is not a cost until the goods are
+        used. So month 1's expense is ₹0 and the ₹20,000 sits in the payable
+        and on the shelf, where it belongs.
+        """
+        r1 = self._report(self.m1)
+        self.assertEqual(
+            [l['amount'] for l in r1['expense_lines'] if l['key'] == 'inventory'][0], D('0'))
+        self.assertEqual(engine.supplier_billed(*self._window(self.m1)), D('20000'))
+        self.assertEqual(engine.financial_position()['payable_supplier'], D('20000'))
+
+    def test_paying_the_instalment_changes_the_payable_and_not_the_profit(self):
+        """
+        THE ONE THAT LOOKS WRONG AND IS RIGHT. An instalment is a liability
+        turning into cash out; it is not a cost being incurred a second time.
+        """
+        before = self._report(self.m2)
+        owed_before = engine.financial_position()['payable_supplier']
+
+        SupplierPayment.objects.create(supplier=self.shop, amount=D('12000'),
+                                       date=self.today)
+        self.shop.update_totals()
+
+        after = self._report(self.m2)
+        self.assertEqual(after['profit'], before['profit'],
+                         'a supplier instalment moved the profit')
+        self.assertEqual(after['expense_total'], before['expense_total'])
+        self.assertEqual(engine.financial_position()['payable_supplier'],
+                         owed_before - D('12000'))
+
+    def test_the_cost_lands_in_the_month_the_stock_was_USED(self):
+        """
+        70% drawn in month 2, against a bill dated month 1. The cost belongs to
+        month 2, with the revenue those parts earned — which is the whole
+        point of the basis. Month 1 carries nothing.
+        """
+        self._draw(self.m2 + timedelta(days=2), '28', '22400')
+
+        r1, r2 = self._report(self.m1), self._report(self.m2)
+        line = lambda r: [l['amount'] for l in r['expense_lines']
+                          if l['key'] == 'inventory'][0]
+
+        self.assertEqual(line(r1), D('0'))
+        self.assertEqual(line(r2), D('14000'))      # 28 units x ₹500
+
+        # And BOTH months close with no reconciling line, because both halves
+        # of the page now charge stock at the same moment.
+        for r in (r1, r2):
+            self.assertEqual(r['earnings']['profit'], r['profit'])
+            self.assertEqual([x['key'] for x in r['earnings']['spend']],
+                             ['salary', 'cashbook'])
+
+    def test_the_remaining_stock_is_still_on_the_shelf_and_still_valued(self):
+        """The 30% nobody has used yet is an asset, not a loss."""
+        self._draw(self.m2 + timedelta(days=2), '28', '22400')
+        pos = engine.financial_position()
+        self.assertEqual(pos['stock_value'], D('6000'))       # 12 units x ₹500
+        self.assertEqual(pos['uncosted_products'], 0)
+
+    def test_a_second_delivery_before_the_first_is_paid_keeps_both_straight(self):
+        """
+        The loop the owner described: they come again before the last bill is
+        settled. The payable carries both; neither delivery is an expense until
+        it is used; the average cost is a full date-ordered replay, so the earlier
+        draw is NOT re-priced by the later delivery.
+        """
+        self._draw(self.m2 + timedelta(days=2), '28', '22400')
+        second = SupplierRestockBill.objects.create(
+            supplier=self.shop, bill_date=self.m2 + timedelta(days=5))
+        SupplierRestockItem.objects.create(
+            bill=second, item=self.item, quantity=D('40'), total_price=D('40000'))
+
+        self.shop.refresh_from_db()
+        self.assertEqual(self.shop.get_pending_balance, D('60000'))
+
+        # The month-2 draw was priced off month-1 receipts and stays there.
+        drawn = JobCardSpareItem.objects.get(source=JobCardSpareItem.SOURCE_INVENTORY)
+        drawn.refresh_from_db()
+        self.assertEqual(drawn.unit_price, D('500'),
+                         'a later delivery re-priced an earlier draw')
+        r2 = self._report(self.m2)
+        self.assertEqual(r2['earnings']['profit'], r2['profit'])
+
+
+class WhatWeOweAndWhatWeHoldSitTogetherTests(AnalysisBase):
+    """
+    The owner's question, in their words: "we have to pay Supplies Shops
+    ₹1,00,000, but we have ₹1,20,000 worth of stock in the workshop." Both
+    figures existed and lived on two different pages — the payable on Profit,
+    the stock value in Deep Analysis — so the comparison could not be made.
+
+    ⚠ THEY ARE STATED, NEVER NETTED. There is no accounting identity between
+    them: the payable covers every unpaid bill whether or not those goods are
+    still on the shelf, and the shelf holds goods from bills long since paid.
+    A "net" figure would be arithmetic on two numbers that do not belong to
+    each other.
+    """
+
+    def setUp(self):
+        super().setUp()
+        shop = SupplierShop.objects.create(name='Bulk Oils')
+        cat = Category.objects.create(name='Engine Oil')
+        self.item = Item.objects.create(name='Castrol 5W-30', category=cat,
+                                        average_stock=D('50'))
+        bill = SupplierRestockBill.objects.create(supplier=shop, bill_date=self.today)
+        SupplierRestockItem.objects.create(
+            bill=bill, item=self.item, quantity=D('40'), total_price=D('20000'))
+        SupplierPayment.objects.create(supplier=shop, amount=D('8000'), date=self.today)
+        shop.update_totals()
+
+        # A JOB CARD, because a stock purchase is no longer "activity". Buying
+        # stock is not an expense, so a period containing only a delivery has a
+        # turnover and an expense total of ₹0 — and the page correctly shows its
+        # "Nothing recorded" empty state, which hides every card including this
+        # one. That is right, and it means a fixture testing what the page
+        # PRINTS has to contain real work.
+        card = self.make_card(bill='6000', received='6000')
+        card.labour_amount = D('6000')
+        card.save()
+
+    def _tiles(self):
+        return {t['label']: t for t in engine.financial_position()['tiles']}
+
+    def test_both_figures_are_on_the_profit_page_together(self):
+        tiles = self._tiles()
+        self.assertEqual(tiles['We owe supplies shops']['amount'], D('12000'))
+        self.assertEqual(tiles['Stock on the shelf']['amount'], D('20000'))
+
+    def test_the_page_prints_them_and_says_the_stock_is_at_cost(self):
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('We owe supplies shops', html)
+        self.assertIn('Stock on the shelf', html)
+        self.assertIn('at what it cost', html)
+
+    def test_nothing_nets_the_two(self):
+        """A difference between them would be arithmetic on unrelated numbers."""
+        pos = engine.financial_position()
+        for key in pos:
+            self.assertNotIn('net', key.lower())
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        # ₹8,000 is stock 20,000 − payable 12,000. It must appear nowhere.
+        self.assertNotIn('₹8,000</div>', html)
+
+    def test_the_shelf_and_the_inventory_section_quote_one_figure(self):
+        from workshop.analysis_views import _insight_inventory
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertEqual(_insight_inventory(s, e)['stock_value']['value'],
+                         engine.financial_position()['stock_value'])
+
+    def test_an_uncosted_product_is_left_out_and_SAID_so_on_the_tile(self):
+        """
+        Left out because "we don't know" is the honest answer and ₹0 is a wrong
+        one — but a shelf that reads low with nothing saying why is worse than
+        either. Expect this on go-live day.
+        """
+        cat = Category.objects.get(name='Engine Oil')
+        Item.objects.create(name='Opening Stock Oil', category=cat,
+                            average_stock=D('20'), avg_cost=D('0'),
+                            current_stock=D('8'))
+        tile = self._tiles()['Stock on the shelf']
+        self.assertEqual(tile['amount'], D('20000'))
+        self.assertEqual(tile['uncosted_products'], 1)
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('not yet costed, left out', html)
+
+    def test_a_shelf_that_went_negative_is_said_in_words_like_every_other_tile(self):
+        """Overdrawn stock means Supplies Shop bills are missing, not that the
+        workshop holds a negative asset. No tile on this card prints a minus."""
+        Item.objects.filter(pk=self.item.pk).update(current_stock=D('-4'))
+        tile = self._tiles()['Stock recorded short']
+        self.assertEqual(tile['amount'], D('2000'))
+
+        # SCOPED TO THE POSITION CARD, not the whole page. This fixture has a
+        # ₹20,000 restock bill and no revenue, so the period is a genuine LOSS
+        # and the hero prints −₹20,000 — which is correct and has its own test.
+        # The rule being asserted is that no BALANCE prints a minus.
+        # SPLIT ON THE SECTION COMMENT, not on the card's own heading. The
+        # earnings card's pointer line names "Position Right Now" too, so
+        # splitting on the phrase now slices at that sentence and hands back
+        # everything AFTER it — which no longer contains the tiles.
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        card = html.split('<!-- ── Position right now')[1].split('pf-cta')[0]
+        self.assertNotIn('₹-', card)
+        self.assertIn('Stock recorded short', card)
+
+    def test_the_expense_lines_say_what_date_they_are_counted_on(self):
+        """
+        Both shops are paid in instalments and both have a payment screen of
+        their own, so a parts line beside a ledger showing a different figure
+        paid this month invites exactly the wrong reading.
+        """
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('Parts taken off the warehouse shelf', html)
+        self.assertIn('Parts bought per job, not payments', html)
+        # And the bill itself is nowhere in the expense list — it raised the
+        # payable and the shelf, which is what a purchase does.
+        self.assertNotIn('Restock bills', html)
 
 
 class AnIncompletePeriodIsComparedLikeForLikeTests(AnalysisBase):
@@ -993,16 +1314,22 @@ class ArchivingAShopCannotHideWhatIsOwedTests(AnalysisBase):
 # the same shape: a figure that was arithmetically fine and could not be read
 # correctly off the screen it appeared on.
 # =============================================================================
-class TheTwoSpareRoutesAreNeverMergedIntoOneListTests(AnalysisBase):
+class TheTwoSpareRoutesAreTwoSectionsTests(AnalysisBase):
     """
     The Spares section listed 'Castrol 5W-30' and 'Brake Pads - Front' in one
     table under one Cost column, with nothing saying which shelf each came off.
+    Splitting the TABLES (2026-08-25) fixed most of it and left the headline
+    above them merged, so a per-job trading margin was still being averaged
+    against a shelf margin that depends on `avg_cost` being right.
 
     They are two different businesses. The Job Card edits them as two sections,
-    the Live Report lists them as two sections, and only a shop part has a shop,
-    an ordering state and a payable behind it. The COST columns are not even the
-    same kind of number — a shop line's cost is the line total as typed, a
-    draw's is a weighted average times quantity.
+    the Live Report lists them as two sections, only a shop part has a shop, an
+    ordering state and a payable behind it — and the OWNER names them
+    separately when asked what the workshop earns from. So they are two
+    sections, each with its own honest headline.
+
+    The COST columns are not even the same kind of number: a shop line's cost
+    is the line total as typed, a draw's is a weighted average times quantity.
     """
 
     def setUp(self):
@@ -1020,41 +1347,46 @@ class TheTwoSpareRoutesAreNeverMergedIntoOneListTests(AnalysisBase):
             source=JobCardSpareItem.SOURCE_INVENTORY, item=self.item,
             quantity=D('5'), total_price=D('4000'))
 
-    def _out(self):
-        from workshop.analysis_views import _insight_spares
+    def _shop(self):
+        from workshop.analysis_views import _insight_spare_parts
         s, e, _k, _l = engine.resolve_period('this_month')
-        return _insight_spares(s, e)
+        return _insight_spare_parts(s, e)
 
-    def test_a_shop_part_never_appears_in_the_stock_table(self):
-        out = self._out()
-        self.assertEqual([r['item__name'] for r in out['stock_rows']], ['Castrol 5W-30'])
-        self.assertNotIn('Brake Pads - Front',
-                         [r['item__name'] for r in out['stock_rows']])
+    def _stock(self):
+        from workshop.analysis_views import _insight_inventory
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return _insight_inventory(s, e)
 
-    def test_a_draw_never_appears_in_the_shop_table(self):
-        out = self._out()
-        self.assertEqual([r['name'] for r in out['shop_rows']], ['Brake Pads - Front'])
+    def test_a_shop_part_never_appears_in_the_stock_section(self):
+        names = [r['item__name'] for r in self._stock()['rows']]
+        self.assertEqual(names, ['Castrol 5W-30'])
+        self.assertNotIn('Brake Pads - Front', names)
+
+    def test_a_draw_never_appears_in_the_shop_section(self):
+        self.assertEqual([r['name'] for r in self._shop()['rows']],
+                         ['Brake Pads - Front'])
 
     def test_each_route_is_costed_by_its_own_rule(self):
         """The shop line cost 1,000 — the LINE TOTAL, not 1,000 x 2. The draw
         cost 500 a litre x 5."""
-        out = self._out()
-        self.assertEqual(out['shop_totals']['cost'], D('1000'))
-        self.assertEqual(out['stock_totals']['cost'], D('2500'))
+        self.assertEqual(self._shop()['totals']['cost'], D('1000'))
+        self.assertEqual(self._stock()['totals']['cost'], D('2500'))
 
-    def test_the_two_subtotals_add_back_to_the_headline(self):
-        """The split may reorganise the screen; it may not change the total."""
-        out = self._out()
-        for key in ('revenue', 'cost', 'profit'):
-            self.assertEqual(out['shop_totals'][key] + out['stock_totals'][key],
-                             out['totals'][key], f"{key} does not reconcile")
-
-    def test_the_chart_carries_the_route_so_it_can_be_read(self):
-        out = self._out()
-        self.assertEqual(len(out['chart_labels']), len(out['chart_is_shop']))
-        by_label = dict(zip(out['chart_labels'], out['chart_is_shop']))
-        self.assertTrue(by_label['Brake Pads - Front'])
-        self.assertFalse(by_label['Castrol 5W-30'])
+    def test_the_two_sections_add_back_to_every_part_fitted(self):
+        """
+        The split may reorganise the screen; it may not change the total. Both
+        sections read `engine.parts_trading`, so this also pins that the two
+        sides partition the spare rows exactly — no row counted twice, none
+        dropped.
+        """
+        s, e, _k, _l = engine.resolve_period('this_month')
+        every_row = engine._live_spares(s, e)
+        shop, stock = self._shop()['totals'], self._stock()['totals']
+        self.assertEqual(shop['revenue'] + stock['revenue'],
+                         engine._sum(every_row, 'total_price'))
+        self.assertEqual(shop['cost'] + stock['cost'],
+                         engine._sum(every_row, engine.SPARE_COST))
+        self.assertEqual(shop['lines'] + stock['lines'], every_row.count())
 
     def test_a_stock_row_is_grouped_by_the_PRODUCT_not_its_name(self):
         """
@@ -1068,7 +1400,7 @@ class TheTwoSpareRoutesAreNeverMergedIntoOneListTests(AnalysisBase):
             job_card=other, spare_part_name='Castrol 5W-30 (old label)',
             source=JobCardSpareItem.SOURCE_INVENTORY, item=self.item,
             quantity=D('5'), total_price=D('4000'))
-        rows = self._out()['stock_rows']
+        rows = self._stock()['rows']
         self.assertEqual(len(rows), 1, "one product split into two rows")
         self.assertEqual(rows[0]['times'], 2)
 
@@ -1083,7 +1415,7 @@ class TheTwoSpareRoutesAreNeverMergedIntoOneListTests(AnalysisBase):
             job_card=self.card, spare_part_name='Bosch Brake Oil DOT 4',
             source=JobCardSpareItem.SOURCE_INVENTORY, item=item,
             quantity=D('1'), total_price=D('1000'))
-        names = [r['item__name'] for r in self._out()['stock_rows']]
+        names = [r['item__name'] for r in self._stock()['rows']]
         self.assertIn('Bosch Brake Oil DOT 4', names)
         self.assertNotIn('Bosch Brake Oil Dot 4', names)
 
@@ -1092,14 +1424,834 @@ class TheTwoSpareRoutesAreNeverMergedIntoOneListTests(AnalysisBase):
         the one way this table is wrong without looking wrong."""
         JobCardSpareItem.objects.filter(source=JobCardSpareItem.SOURCE_INVENTORY)\
                                 .update(unit_price=None)
-        self.assertEqual(self._out()['uncosted_draws'], 1)
+        self.assertEqual(self._stock()['uncosted_draws'], 1)
 
-    def test_the_section_renders(self):
+    def test_a_shop_purchase_with_no_shop_is_named_on_the_shop_section(self):
+        """
+        It IS inside this section's cost — every SOURCE_SHOP row is — and it is
+        NOT inside the Profit page's Spare Shops line, which splits it out as
+        "Other Spare Purchases". Without the count on screen the two pages
+        quote different spare-shop costs for one period and nothing says why.
+        """
+        JobCardSpareItem.objects.create(
+            job_card=self.card, spare_part_name='Mystery Part',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=None,
+            quantity=D('1'), unit_price=D('300'), total_price=D('400'))
+        out = self._shop()
+        self.assertEqual(out['no_shop'], 1)
+        self.assertEqual(out['totals']['cost'], D('1300'))
+
+    def test_both_sections_render(self):
+        for key, must_say in (('spare_parts', 'Brake Pads - Front'),
+                              ('inventory', 'Castrol 5W-30')):
+            r = self.client.get(reverse('analysis_insight_section', args=[key]))
+            self.assertEqual(r.status_code, 200, key)
+            self.assertIn(must_say, r.content.decode(), key)
+
+    def test_the_old_merged_section_is_gone(self):
+        """A stale bookmark or a half-updated link must 404, not render an
+        empty page that looks like a period with no parts in it."""
         r = self.client.get(reverse('analysis_insight_section', args=['spares']))
-        self.assertEqual(r.status_code, 200)
-        html = r.content.decode()
-        self.assertIn('Spare Parts', html)
-        self.assertIn('Inventory Items', html)
+        self.assertEqual(r.status_code, 404)
+
+
+class TheMostUsedChartIsItsOwnQuestionTests(AnalysisBase):
+    """
+    The merged section built its "Parts That Move" chart by re-sorting the
+    fifteen rows it had already cut by PROFIT. So a cheap part fitted to every
+    car in the workshop could not appear in a chart of what moves unless it
+    also happened to be one of the fifteen biggest earners — the chart was
+    answering "which of the top earners is used most" under a heading that says
+    something else.
+
+    It is its own query now, over the whole route, ordered by how often the
+    part was used.
+    """
+
+    def setUp(self):
+        super().setUp()
+        card = self.make_card(bill='0')
+        # One part that EARNS a lot and is used once.
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Turbocharger',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=D('1000'), total_price=D('90000'))
+        # Enough distinct middling parts to fill the 15-row table, so the cheap
+        # workhorse below is pushed off it entirely.
+        for i in range(20):
+            JobCardSpareItem.objects.create(
+                job_card=card, spare_part_name=f'Filler Part {i:02d}',
+                source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+                quantity=D('1'), unit_price=D('100'), total_price=D('900'))
+        # The workhorse: used more than anything else, earns almost nothing.
+        for _ in range(30):
+            JobCardSpareItem.objects.create(
+                job_card=card, spare_part_name='Washer',
+                source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+                quantity=D('1'), unit_price=D('5'), total_price=D('6'))
+
+    def _out(self):
+        from workshop.analysis_views import _insight_spare_parts
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return _insight_spare_parts(s, e)
+
+    def test_the_most_used_part_is_in_the_chart_even_though_it_earns_least(self):
+        out = self._out()
+        self.assertNotIn('Washer', [r['name'] for r in out['rows']],
+                         'fixture is wrong — the workhorse must be off the table')
+        self.assertEqual(out['movers'][0]['label'], 'Washer')
+        self.assertEqual(out['movers'][0]['times'], 30)
+
+    def test_the_chart_is_ordered_by_use_not_by_money(self):
+        times = [r['times'] for r in self._out()['movers']]
+        self.assertEqual(times, sorted(times, reverse=True))
+
+
+class TheProfitIsAlsoSaidTheOwnersWayTests(AnalysisBase):
+    """
+    The owner does not think "turnover minus expenses". They think: labour,
+    the margin on parts bought per job, the margin on parts off the shelf, and
+    the odd bit of scrap income — less the running costs.
+
+    Both are true of the same workshop, so the page states both. The whole
+    safety of the second one is that IT LANDS ON THE SAME PROFIT: an owner who
+    subtracts the wage bill and the cashbook from a bare "Gross earnings" would
+    land somewhere else, because the two views disagree about WHEN warehouse
+    stock is expensed.
+    """
+
+    def setUp(self):
+        super().setUp()
+        cat = Category.objects.create(name='Engine Oil')
+        self.item = Item.objects.create(name='Castrol 5W-30', category=cat,
+                                        average_stock=D('20'), avg_cost=D('500'))
+        self.card = self.make_card(bill='20000', discount='1500', received='18500')
+        self.card.labour_amount = D('8000')
+        self.card.save()
+        JobCardSpareItem.objects.create(
+            job_card=self.card, spare_part_name='Brake Pads',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('2'), unit_price=D('3000'), total_price=D('7000'))
+        JobCardSpareItem.objects.create(
+            job_card=self.card, spare_part_name='Castrol 5W-30',
+            source=JobCardSpareItem.SOURCE_INVENTORY, item=self.item,
+            quantity=D('5'), unit_price=D('500'), total_price=D('5000'))
+        CashbookEntry.objects.create(entry_type='INCOME', category='Scrap',
+                                     amount=D('2000'), date=self.today)
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Electricity',
+                                     amount=D('3000'), date=self.today)
+
+    def _report(self):
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return engine.build_profit_report(s, e)
+
+    def test_the_breakdown_lands_on_the_headline_profit(self):
+        rep = self._report()
+        self.assertEqual(rep['earnings']['profit'], rep['profit'])
+
+    def test_it_still_reconciles_when_a_discount_was_given(self):
+        """
+        The discount is the easy thing to leave out, and the identity does not
+        close without it: it is given on the WHOLE bill, so it belongs to
+        neither the labour line nor either margin and has to be its own row.
+        """
+        rep = self._report()
+        self.assertEqual(rep['bills']['discount'], D('1500'))
+        keys = [r['key'] for r in rep['earnings']['earn']]
+        self.assertIn('discount', keys)
+        self.assertEqual(rep['earnings']['profit'], rep['profit'])
+
+    def test_it_still_reconciles_when_a_shop_purchase_has_no_shop(self):
+        """
+        `unattributed_spare_expense` is its own EXPENSE line on the equation and
+        is already inside the shop MARGIN here, because `parts_trading` costs
+        every SOURCE_SHOP row whether or not a shop was named. Deducting it a
+        second time would understate profit by that amount.
+        """
+        JobCardSpareItem.objects.create(
+            job_card=self.card, spare_part_name='Mystery Part',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=None,
+            quantity=D('1'), unit_price=D('900'), total_price=D('1200'))
+        self.card.update_totals()
+        rep = self._report()
+        self.assertTrue(any(l['key'] == 'other_spares' for l in rep['expense_lines']))
+        self.assertEqual(rep['earnings']['profit'], rep['profit'])
+
+    def test_the_four_income_streams_are_the_ones_the_owner_named(self):
+        earn = {r['key'] for r in self._report()['earnings']['earn']}
+        self.assertEqual(earn,
+                         {'labour', 'spare_margin', 'stock_margin',
+                          'cashbook_income', 'discount'})
+
+    def test_labour_comes_off_the_card_not_off_its_job_lines(self):
+        """
+        `JobCardLabourItem.amount` is a dormant column — work is quoted whole
+        and the figure lives on the card. Summing the lines would report every
+        card created since that change as ₹0 of labour.
+        """
+        # `amount` is the dormant column, written here on purpose: if labour
+        # ever went back to summing the lines, this row would make the figure
+        # 9,500 instead of 8,000 and the test would catch it.
+        JobCardLabourItem.objects.create(job_card=self.card,
+                                         job_description='Oil change',
+                                         amount=D('1500'))
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertEqual(engine.labour_revenue(s, e), D('8000'))
+
+    def test_there_is_NO_reconciling_line_between_the_two_halves(self):
+        """
+        THE POINT OF THE WHOLE CARD.
+
+        It first shipped with a "stock movement" line at the bottom, converting
+        between an equation that charged a Supplies Shop BILL and a card that
+        charged stock when it was USED. It reconciled to the rupee and the
+        owner's verdict was "I am more confused now" — a page that has to
+        explain itself to itself is a page nobody trusts.
+
+        Both halves now charge stock at the same moment, so `gross − salary −
+        cashbook` IS the profit. If a third row ever reappears here, the two
+        bases have drifted apart and that is the bug.
+        """
+        supplier = SupplierShop.objects.create(name='Bulk Oils')
+        bill = SupplierRestockBill.objects.create(supplier=supplier, bill_date=self.today)
+        # `per_unit_price` is a read-only PROPERTY — the stored column is the
+        # line total, which is what the discount apportionment divides.
+        SupplierRestockItem.objects.create(bill=bill, item=self.item,
+                                           quantity=D('40'), total_price=D('20000'))
+        rep = self._report()
+        self.assertEqual([r['key'] for r in rep['earnings']['spend']],
+                         ['salary', 'cashbook'])
+        self.assertEqual(
+            rep['earnings']['gross'] - rep['salary']['total'] - rep['cashbook']['total'],
+            rep['profit'])
+
+    def test_a_big_delivery_does_not_move_the_profit_at_all(self):
+        """
+        The lumpiness that made this basis worth changing. A ₹20,000 delivery
+        nobody has used is cash converted into goods, not a cost — so the month
+        it lands in reads exactly as it would have without it.
+        """
+        before = self._report()['profit']
+        supplier = SupplierShop.objects.create(name='Bulk Oils')
+        bill = SupplierRestockBill.objects.create(supplier=supplier, bill_date=self.today)
+        SupplierRestockItem.objects.create(bill=bill, item=self.item,
+                                           quantity=D('40'), total_price=D('20000'))
+        self.assertEqual(self._report()['profit'], before)
+
+    def test_no_row_in_the_breakdown_ever_prints_a_negative_rupee_figure(self):
+        rep = self._report()
+        for row in rep['earnings']['earn'] + rep['earnings']['spend']:
+            self.assertGreaterEqual(row['amount'], 0, row['label'])
+
+    def test_the_comparison_report_skips_it_rather_than_computing_it_twice(self):
+        """`disclosures=False` is the footnote-only path — the comparison
+        report reads nothing but turnover and profit."""
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertIsNone(engine.build_profit_report(s, e, disclosures=False)['earnings'])
+
+    def test_the_page_prints_it_and_the_two_profits_agree(self):
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('What Earned The Profit', html)
+        self.assertIn('Gross Earnings', html)
+        rep = self._report()
+        # The same figure has to appear for the hero and for the breakdown's
+        # last line, or the page contradicts itself in the owner's own words.
+        from workshop.templatetags.custom_filters import inr
+        self.assertGreaterEqual(html.count(inr(rep['profit'])), 2)
+
+    def test_the_subtitle_names_the_figure_rather_than_describing_itself(self):
+        """
+        It read "Same profit, by what earned it" — true, and only legible once
+        you already knew what the card was for. Printing the profit itself says
+        the same thing in a form that needs no explaining: the reader can see
+        it matches the hero above.
+        """
+        from workshop.templatetags.custom_filters import inr
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        rep = self._report()
+        self.assertIn(f"The same ₹{inr(rep['profit'])}, broken down", html)
+        self.assertNotIn('Same profit, by what earned it', html)
+
+    def test_both_deductions_are_real_running_costs(self):
+        """
+        There is no sub-heading over them, and now nothing that would need one:
+        both rows below Gross Earnings are money that genuinely went out this
+        period. The row that was neither — the stock-basis conversion — is gone
+        with the basis mismatch that created it.
+        """
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertNotIn('pf-block', html)
+        for row in self._report()['earnings']['spend']:
+            self.assertTrue(row['negative'], f"{row['label']} is not a cost")
+
+
+class OneWordOneMeaningAcrossBothPagesTests(AnalysisBase):
+    """
+    FOUR different figures were all called "Profit" across two pages an owner
+    reads in one sitting: the bottom line, a car's gross profit, a mechanic's,
+    and a parts trading margin. `test_it_is_never_called_plain_profit` already
+    fixed the car profile; its neighbours had drifted.
+
+      Profit        the bottom line — the Profit page's word alone
+      Gross profit  revenue − parts cost (car profiles, mechanics)
+      Margin        parts sold − parts cost (spare parts, inventory, shops)
+    """
+
+    def setUp(self):
+        super().setUp()
+        card = self.make_card(bill='5000')
+        card.labour_amount = D('2000')
+        card.save()
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Brake Pads',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=D('2000'), total_price=D('3000'))
+
+    def _section(self, key):
+        return self.client.get(
+            reverse('analysis_insight_section', args=[key])).content.decode()
+
+    def test_a_mechanics_figure_is_called_GROSS_profit(self):
+        """The identical calculation a car profile prints, where the word is
+        already fixed. Wages are not in it and cannot be."""
+        html = self._section('mechanics')
+        self.assertIn('Gross profit', html)
+        self.assertNotIn('<th class="num">Profit</th>', html)
+
+    def test_a_parts_trading_figure_is_called_MARGIN(self):
+        for key in ('spare_parts', 'inventory', 'shops'):
+            html = self._section(key)
+            self.assertIn('Margin', html, key)
+            self.assertNotIn('<th class="num">Profit</th>', html, key)
+
+    def test_no_insight_section_uses_the_bare_word_as_a_column(self):
+        """
+        Scans the templates rather than one rendered page, so a section added
+        later cannot quietly reintroduce a fourth meaning of "Profit" on a
+        screen the owner reads beside the real one.
+        """
+        import glob
+        offenders = [
+            path for path in glob.glob(
+                'workshop/templates/workshop/analysis/sections/*.html')
+            if '<th class="num">Profit</th>' in
+               open(path, encoding='utf-8').read()
+        ]
+        self.assertEqual(offenders, [],
+                         'an insight section is calling something plain "Profit" again')
+
+
+class TheCashbookBreakdownLivesInDeepAnalysisTests(AnalysisBase):
+    """
+    It was the one open-ended drill-down on a page whose rule is that it has
+    none — a collapsed tail and a "Show all" button between the owner and the
+    position tiles, on a page read for one thing.
+
+    Nothing was lost: the Cashbook page lists ENTRIES and has never totalled
+    them by category, so this is the only place that view exists.
+    """
+
+    def setUp(self):
+        super().setUp()
+        for i, (cat, amt) in enumerate([('Rent', '25000'), ('Electricity', '4000'),
+                                        ('Tea', '300'), ('Tools', '1200')]):
+            CashbookEntry.objects.create(entry_type='EXPENSE', category=cat,
+                                         amount=D(amt), date=self.today)
+        CashbookEntry.objects.create(entry_type='INCOME', category='Scrap',
+                                     amount=D('2200'), date=self.today)
+
+    def _out(self):
+        from workshop.analysis_views import _insight_cashbook
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return _insight_cashbook(s, e)
+
+    def test_the_section_totals_what_the_profit_page_expenses(self):
+        s, e, _k, _l = engine.resolve_period('this_month')
+        rep = engine.build_profit_report(s, e)
+        cashbook_line = [l for l in rep['expense_lines'] if l['key'] == 'cashbook'][0]
+        self.assertEqual(self._out()['expense_total'], cashbook_line['amount'])
+
+    def test_the_rows_add_up_to_the_total_with_nothing_capped_away(self):
+        out = self._out()
+        self.assertEqual(sum(r['total'] for r in out['expense_rows']),
+                         out['expense_total'])
+        self.assertEqual(len(out['expense_rows']), 4)
+
+    def test_the_income_side_is_broken_down_too(self):
+        """Scrap and black oil are the whole of it, and it existed nowhere as a
+        breakdown before — the Profit page only ever showed one figure."""
+        out = self._out()
+        self.assertEqual([r['category'] for r in out['income_rows']], ['Scrap'])
+        self.assertEqual(out['income_total'], D('2200'))
+
+    def test_the_section_renders_every_category(self):
+        html = self.client.get(
+            reverse('analysis_insight_section', args=['cashbook'])).content.decode()
+        for cat in ('Rent', 'Electricity', 'Tea', 'Tools', 'Scrap'):
+            self.assertIn(cat, html)
+
+    def test_the_profit_page_no_longer_lists_them(self):
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertNotIn('Show all', html)
+        self.assertNotIn('pf-cat-hidden', html)
+
+    def test_but_the_WAGE_WARNING_stayed_on_the_profit_page(self):
+        """
+        The one line in that card that said the profit figure above it may be
+        WRONG — the same money counted from Salary & Advance and again from a
+        cashbook category. A warning that changes what the headline means has
+        to live beside the headline.
+        """
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Staff Salaries',
+                                     amount=D('40000'), date=self.today)
+        month = self.today.replace(day=1)
+        pay = SalaryPayment.objects.create(month=month)
+        SalaryPaymentLine.objects.create(
+            payment=pay, staff=self.mech, salary_used=D('20000'),
+            leave_days=0, advance_used=D('0'), net_amount=D('20000'))
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('Wages may be counted twice', html)
+        self.assertIn('Staff Salaries', html)
+
+
+class ThePageCarriesNoDrillDownsTests(AnalysisBase):
+    """
+    The Profit page's rule is that it carries none, and it was carrying two:
+    the Cashbook category list (open-ended) and the Salary & Advance card (four
+    rows explaining one expense line). Keeping one and deleting the other would
+    have been the page applying its own rule to whichever was noticed.
+
+    Both left, to DIFFERENT places, and that is the point: the cashbook
+    breakdown existed nowhere else so it became a Deep Analysis section; wages
+    already have a whole module at `/salary-advance/`, so a ninth insight
+    section would have been a thinner second copy of it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.card = self.make_card(bill='60000', received='60000')
+        self.card.labour_amount = D('60000')
+        self.card.save()
+        month = self.today.replace(day=1)
+        SalaryAdvance.objects.create(staff=self.mech, amount=D('9000'), date=self.today)
+        pay = SalaryPayment.objects.create(month=month)
+        SalaryPaymentLine.objects.create(
+            payment=pay, staff=self.mech, salary_used=D('25000'),
+            leave_days=0, advance_used=D('9000'), net_amount=D('16000'))
+
+    def _html(self):
+        return self.client.get(reverse('analysis_dashboard')).content.decode()
+
+    def test_the_salary_card_is_gone(self):
+        html = self._html()
+        for row in ('Total Wage Cost', 'Paid at settlement',
+                    'Advances within settled months'):
+            self.assertNotIn(row, html, f'the salary drill-down is back: {row}')
+
+    def test_but_the_wage_cost_still_explains_itself_on_the_expense_line(self):
+        """
+        THE ONE FACT WORTH KEEPING. Salary is the only expense line here whose
+        composition is not self-evident and which reads like a double count:
+        the wage cost is NET PLUS ADVANCES. An owner seeing ₹25,000 here and a
+        ₹16,000 settlement in Salary & Advance has to be able to tell the
+        ₹9,000 difference is advances already handed over, not an error.
+
+        It replaced "1 month settled" — a count of months, which said nothing
+        about the figure beside it.
+        """
+        html = self._html()
+        self.assertIn('₹16,000 settled + ₹9,000 advances', html)
+        self.assertNotIn('1 month settled', html)
+
+    def test_an_unsettled_month_keeps_the_warning_instead(self):
+        """A bigger fact than how the counted part splits: on an unsettled
+        month the wage bill is missing from the figure altogether."""
+        SalaryPayment.objects.all().delete()
+        html = self._html()
+        self.assertIn('not settled', html)
+        self.assertNotIn('settled + ₹', html)
+
+    def test_a_month_with_no_advances_says_nothing_extra(self):
+        """Nothing to explain — net IS the wage cost — so the line falls back
+        to the plain count rather than printing 'x settled + ₹0 advances'."""
+        SalaryPaymentLine.objects.all().update(advance_used=D('0'), net_amount=D('25000'))
+        SalaryAdvance.objects.all().delete()
+        html = self._html()
+        self.assertNotIn('advances</span>', html)
+        self.assertIn('1 month settled', html)
+
+
+class TheExpenseListNeedsNoFootnoteTests(AnalysisBase):
+    """
+    The Expenses card carried a note: "Parts worth ₹1,88,000 came off warehouse
+    stock and are not charged here — they were paid for earlier, on a Supplies
+    Shop bill." Every word of it was true, and it should never have needed
+    saying.
+
+    It existed because the card charged a Supplies Shop BILL while the card
+    below it charged stock when it was USED, so roughly a third of the parts
+    fitted had their cost in neither of the four lines — and the honest reading
+    of the total, with nothing said, was that profit was overstated by that
+    much. The note was there to stop that reading.
+
+    Both halves now charge parts when they are fitted. There is no gap left to
+    explain, so there is nothing to explain it with.
+    """
+
+    def setUp(self):
+        super().setUp()
+        cat = Category.objects.create(name='Engine Oil')
+        item = Item.objects.create(name='Castrol 5W-30', category=cat,
+                                   average_stock=D('20'), avg_cost=D('500'))
+        card = self.make_card(bill='9000')
+        card.labour_amount = D('4000')
+        card.save()
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Castrol 5W-30',
+            source=JobCardSpareItem.SOURCE_INVENTORY, item=item,
+            quantity=D('5'), unit_price=D('500'), total_price=D('5000'))
+
+    def test_the_note_is_gone(self):
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertNotIn('came off warehouse', html)
+        self.assertNotIn('not charged here', html)
+
+    def test_because_the_warehouse_parts_ARE_charged_now(self):
+        """What the note used to excuse is simply an expense line."""
+        s, e, _k, _l = engine.resolve_period('this_month')
+        rep = engine.build_profit_report(s, e)
+        line = [l for l in rep['expense_lines'] if l['key'] == 'inventory'][0]
+        self.assertEqual(line['label'], 'Inventory Used')
+        self.assertEqual(line['amount'], D('2500'))       # 5 x ₹500
+        self.assertEqual(rep['expense_total'], D('2500'))
+
+    def test_the_line_says_it_is_not_about_bills_or_payments(self):
+        """
+        Both parts lines name their basis, because both shops are paid in
+        instalments and both have a payment screen of their own — so a ledger
+        showing a different figure this month invites the wrong reading.
+        """
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('Parts taken off the warehouse shelf', html)
+        self.assertIn('Parts bought per job, not payments', html)
+
+
+class TheFleetBoxesReadAsOneSplitTests(AnalysisBase):
+    """
+    Five stat boxes, two different kinds of number, and nothing saying so. Four
+    of them are the period's work SPLIT between fleet and walk-in; the fifth is
+    a live count of accounts the date filter never touches. Read as a flat row,
+    "Fleet accounts 2" sat first and the two walk-in boxes looked like unrelated
+    facts rather than the other half of the two beside them.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.payer = BulkPayer.objects.create(customer_name='Malabar Cabs')
+        for _ in range(3):
+            self.make_card(bill='10000', received='10000', bulk_payer=self.payer)
+        for _ in range(7):
+            self.make_card(bill='10000', received='10000')
+
+    def _out(self):
+        from workshop.analysis_views import _insight_fleet
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return _insight_fleet(s, e)
+
+    def test_the_fleet_boxes_carry_their_share_of_the_whole(self):
+        out = self._out()
+        self.assertEqual(out['fleet_jobs'], 3)
+        self.assertEqual(out['walkin_jobs'], 7)
+        self.assertEqual(out['total_jobs'], 10)
+        self.assertEqual(out['fleet_job_pct'], 30.0)
+        self.assertAlmostEqual(out['fleet_revenue_pct'], 30.0, places=6)
+
+    def test_the_share_is_of_CAR_BILLS_not_of_turnover(self):
+        """
+        The denominator is fleet + walk-in revenue, which is car bills only.
+        Turnover on the Profit page also carries cashbook income, so calling
+        this a share of turnover would be a share of a figure it was not
+        divided by — the arithmetic right and the word wrong.
+        """
+        CashbookEntry.objects.create(entry_type='INCOME', category='Scrap',
+                                     amount=D('50000'), date=self.today)
+        out = self._out()
+        self.assertEqual(out['fleet_job_pct'], 30.0)
+        self.assertAlmostEqual(out['fleet_revenue_pct'], 30.0, places=6,
+                               msg='scrap income moved a share of CAR BILLS')
+        html = self.client.get(
+            reverse('analysis_insight_section', args=['fleet'])).content.decode()
+        self.assertIn('car bills', html)
+        self.assertNotIn('of turnover', html)
+        # The walk-in boxes are gone: this is the FLEET section, and walk-in
+        # revenue was the largest figure on it.
+        self.assertNotIn('Walk-in revenue', html)
+
+    def test_the_account_count_says_it_ignores_the_filter(self):
+        """The only figure in the section the date range does not touch."""
+        html = self.client.get(
+            reverse('analysis_insight_section', args=['fleet'])).content.decode()
+        self.assertIn('active now, not filtered', html)
+
+
+class AFleetAccountThatOwesIsAlwaysListedTests(AnalysisBase):
+    """
+    `rows` is built from job cards IN THE WINDOW while "Balance now" is a live
+    figure spanning the account's whole history — so an account that brought no
+    cars in this period vanished from the table, taking its debt off the only
+    screen that lists fleet balances. The Profit page's fleet line still counted
+    it, so an owner adding up this column got less than the tile said.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.quiet = BulkPayer.objects.create(customer_name='Quiet Fleet')
+        # Billed last year, never settled, and nothing since.
+        self.make_card(bill='40000', received='15000', bulk_payer=self.quiet,
+                       when=self.today - timedelta(days=400),
+                       payment_status='PARTIAL')
+        self.busy = BulkPayer.objects.create(customer_name='Busy Fleet')
+        self.make_card(bill='10000', received='10000', bulk_payer=self.busy)
+
+    def _rows(self):
+        from workshop.analysis_views import _insight_fleet
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return {r['bulk_payer__customer_name']: r
+                for r in _insight_fleet(s, e)['rows']}
+
+    def test_the_quiet_account_is_still_there_with_its_debt(self):
+        rows = self._rows()
+        self.assertIn('Quiet Fleet', rows)
+        self.assertEqual(rows['Quiet Fleet']['owed'], D('25000'))
+        self.assertEqual(rows['Quiet Fleet']['jobs'], 0)
+        self.assertTrue(rows['Quiet Fleet']['no_jobs_here'])
+
+    def test_its_activity_columns_are_blank_rather_than_zero(self):
+        """
+        Zero billed with 100% collected reads as "billed nothing and collected
+        it all", which is a claim about a period this account was not in.
+        """
+        html = self.client.get(
+            reverse('analysis_insight_section', args=['fleet'])).content.decode()
+        self.assertIn('brought no cars in', html)
+        self.assertIn('Quiet Fleet', html)
+
+    def test_the_column_now_adds_up_to_the_profit_pages_fleet_line(self):
+        """The two screens quote one number for one debt."""
+        rows = self._rows()
+        total = sum((r['owed'] for r in rows.values()), D('0'))
+        self.assertEqual(total, engine.financial_position()['fleet_due'])
+
+
+class SpendAndPaidAreTwoQuestionsTests(AnalysisBase):
+    """
+    An owner reading a profit figure asks "then where is the money?" within
+    seconds. The answer is not a term subtracted from profit — profit and cash
+    differ by five things at once — so the cash figure lives beside the shops it
+    concerns, and the Profit page carries a pointer instead of a number.
+    """
+
+    def setUp(self):
+        super().setUp()
+        card = self.make_card(bill='5000')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Brake Pads',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=D('3000'), total_price=D('5000'))
+        SpareShopPayment.objects.create(shop=self.shop, amount=D('1200'))
+
+        self.supplier = SupplierShop.objects.create(name='Bulk Oils')
+        cat = Category.objects.create(name='Engine Oil')
+        item = Item.objects.create(name='Castrol 5W-30', category=cat,
+                                   average_stock=D('20'))
+        bill = SupplierRestockBill.objects.create(supplier=self.supplier,
+                                                 bill_date=self.today)
+        SupplierRestockItem.objects.create(bill=bill, item=item, quantity=D('10'),
+                                           total_price=D('9000'))
+        SupplierPayment.objects.create(supplier=self.supplier, amount=D('4000'),
+                                       date=self.today)
+
+    def _out(self):
+        from workshop.analysis_views import _insight_shops
+        s, e, _k, _l = engine.resolve_period('this_month')
+        return _insight_shops(s, e)
+
+    def test_cash_paid_is_reported_beside_what_was_spent(self):
+        out = self._out()
+        self.assertEqual(out['spare_total'], D('3000'))     # what the work cost
+        self.assertEqual(out['spare_paid'], D('1200'))      # what left the drawer
+        self.assertEqual(out['supplier_paid'], D('4000'))
+
+    def test_neither_paid_figure_touches_the_profit(self):
+        """
+        A payment settles a liability. Adding it to the expense list would
+        charge the workshop for one delivery twice — once when it was used and
+        again when it was paid for.
+        """
+        s, e, _k, _l = engine.resolve_period('this_month')
+        before = engine.build_profit_report(s, e)['expense_total']
+        SpareShopPayment.objects.create(shop=self.shop, amount=D('900'))
+        SupplierPayment.objects.create(supplier=self.supplier, amount=D('2500'),
+                                       date=self.today)
+        self.assertEqual(engine.build_profit_report(s, e)['expense_total'], before)
+
+    def test_the_two_sides_are_kept_apart_because_they_are_dated_apart(self):
+        """
+        `SupplierPayment.date` is a real date the office sets; `SpareShopPayment`
+        has no date field at all, only `created_at`. One combined "paid to all
+        shops" total would mean two different things at once, so the page shows
+        two figures and labels each.
+        """
+        self.assertFalse(
+            any(f.name == 'date' for f in SpareShopPayment._meta.get_fields()),
+            'SpareShopPayment grew a date field - the two sides can now be summed')
+        html = self.client.get(
+            reverse('analysis_insight_section', args=['shops'])).content.decode()
+        self.assertIn('cash out, by entry date', html)
+        self.assertIn('cash out, by payment date', html)
+
+    def test_the_profit_page_points_at_the_position_card_not_at_a_cash_figure(self):
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('not cash in hand', html)
+        self.assertIn('Position Right Now', html)
+
+
+class MoneyInIsGreenMoneyOutIsRedTests(AnalysisBase):
+    """
+    The earnings card's right-hand column reads straight down: green in, red
+    out. The colour sits on the AMOUNT, not the label, because the two cost
+    rows already carry theirs there - putting it on the label above would make
+    the two halves of one card disagree about where colour lives.
+    """
+
+    def setUp(self):
+        super().setUp()
+        card = self.make_card(bill='20000', discount='1500', received='18500')
+        card.labour_amount = D('12000')
+        card.save()
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Brake Pads',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=D('5000'), total_price=D('8000'))
+        CashbookEntry.objects.create(entry_type='INCOME', category='Scrap',
+                                     amount=D('2000'), date=self.today)
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Rent',
+                                     amount=D('3000'), date=self.today)
+
+    def _card(self):
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        return html.split('Where the profit came from')[1].split('Trend')[0]
+
+    def test_every_earning_row_is_green_and_every_cost_row_is_red(self):
+        import re
+        classes = re.findall(r'class="amt (plus|minus)"', self._card())
+        s, e, _k, _l = engine.resolve_period('this_month')
+        earn = engine.build_profit_report(s, e)['earnings']
+        # One class per row, in page order: the earn block then the spend block.
+        expected = ['minus' if r['negative'] else 'plus'
+                    for r in earn['earn'] + earn['spend']]
+        self.assertEqual(classes, expected)
+        self.assertIn('plus', classes)
+        self.assertIn('minus', classes)
+
+    def test_a_discount_stays_RED_even_though_it_sits_in_the_earning_half(self):
+        """It is money never earned, so it is coloured for the direction it
+        goes, not the half it lives in."""
+        s, e, _k, _l = engine.resolve_period('this_month')
+        earn = engine.build_profit_report(s, e)['earnings']['earn']
+        discount = [r for r in earn if r['key'] == 'discount'][0]
+        self.assertTrue(discount['negative'])
+
+    def test_gross_earnings_is_deliberately_not_green(self):
+        """A structural waypoint, not a fifth thing that earned money - and
+        with green above and green below, a green subtotal between them leaves
+        nothing for the eye to land on."""
+        gross = self._card().split('Gross Earnings')[1][:200]
+        self.assertNotIn('amt plus', gross)
+
+
+class TheVehiclesSectionSaysWhatItRunsOnTests(AnalysisBase):
+    """
+    It used to print the customer coverage - "filled in on 0 of 47 job cards
+    here" - which reads as a shortfall to go and fix. It is not: a customer name
+    is optional by design and this workshop mostly does not record one, because
+    a car is identified by its plate. Reporting the count invited an owner to
+    chase staff into filling boxes that change nothing on this screen.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.make_card(bill='5000')
+
+    def _html(self):
+        return self.client.get(
+            reverse('analysis_insight_section', args=['vehicles'])).content.decode()
+
+    def test_it_states_the_rule_instead_of_a_coverage_count(self):
+        html = self._html()
+        self.assertIn('works off the', html)
+        self.assertIn('registration number', html)
+        self.assertNotIn('job cards here', html)
+
+    def test_the_figures_do_not_move_when_a_customer_name_is_added(self):
+        """The claim the note makes, asserted rather than trusted."""
+        from workshop.analysis_views import _insight_vehicles
+        s, e, _k, _l = engine.resolve_period('this_month')
+        before = _insight_vehicles(s, e)
+        JobCard.objects.all().update(customer_name='Someone', customer_contact='999')
+        after = _insight_vehicles(s, e)
+        for key in ('top_vehicles', 'brands', 'total_cards', 'distinct_vehicles',
+                    'repeat_vehicles', 'repeat_pct', 'avg_visits'):
+            self.assertEqual(before[key], after[key], key)
+
+
+class TheShelfIsValuedHonestlyOrNotAtAllTests(AnalysisBase):
+    """
+    The Inventory section reports what LEFT the shelf, so what is still ON it
+    belongs beside that — and it is what the Profit page's "Stock added to the
+    shelf" line is adding to.
+
+    ⚠ Unknown cost on an `Item` is `avg_cost == 0`, NOT NULL: the column is
+    `default=0, null=False`. An `isnull` filter would match nothing and quietly
+    value opening stock that has never had a supplier bill behind it at ₹0 —
+    reporting it as worthless rather than as unknown.
+    """
+
+    def setUp(self):
+        super().setUp()
+        cat = Category.objects.create(name='Engine Oil')
+        self.costed = Item.objects.create(name='Castrol 5W-30', category=cat,
+                                          average_stock=D('20'), avg_cost=D('500'),
+                                          current_stock=D('10'))
+        self.uncosted = Item.objects.create(name='Opening Stock Oil', category=cat,
+                                            average_stock=D('20'), avg_cost=D('0'),
+                                            current_stock=D('8'))
+
+    def _value(self):
+        # In the ENGINE, not a view: it is money math, and the Profit page's
+        # position tile and the Inventory section both read it — two copies
+        # would be two answers to "what is the stock worth" on two screens an
+        # owner reads together.
+        return engine.warehouse_stock_value()
+
+    def test_a_product_with_no_cost_is_counted_not_valued_at_zero(self):
+        out = self._value()
+        self.assertEqual(out['value'], D('5000'))
+        self.assertEqual(out['uncosted_products'], 1)
+
+    def test_a_zero_stock_product_is_not_reported_as_a_gap(self):
+        """Nothing on the shelf means nothing to put a cost against — listing
+        it would make the caveat permanent and therefore unread."""
+        self.uncosted.current_stock = D('0')
+        self.uncosted.save()
+        self.assertEqual(self._value()['uncosted_products'], 0)
+
+    def test_negative_stock_is_left_negative(self):
+        """It is allowed by design and it means a Supplies Shop bill is
+        missing, so flooring it would delete the signal."""
+        self.costed.current_stock = D('-2')
+        self.costed.save()
+        self.assertEqual(self._value()['value'], D('-1000'))
 
 
 class TheFleetBalanceIsCutTheSameWayTheReceivableIsTests(AnalysisBase):
@@ -1259,3 +2411,51 @@ class TheShopsSectionSelectsByRouteNotByCoincidenceTests(AnalysisBase):
         row = _insight_shops(s, e)['spare_rows'][0]
         self.assertEqual(row['spend'], D('1000'))
         self.assertEqual(row['waiting'], D('2500'))
+
+    def test_a_purchase_with_no_shop_is_disclosed_rather_than_dropped(self):
+        """
+        This section groups BY shop, so a row with no shop has no group to sit
+        in and falls out of the total — while the Spare Parts section counts
+        every SOURCE_SHOP row and therefore reports MORE spent on the same
+        parts in the same period. Two screens disagreeing about one figure with
+        nothing saying why is what the disclosure prevents.
+        """
+        from workshop.analysis_views import _insight_shops, _insight_spare_parts
+        card = self.make_card(bill='0')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Brake Pads',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=D('1000'), total_price=D('1500'))
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Mystery Part',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=None,
+            quantity=D('1'), unit_price=D('400'), total_price=D('600'))
+
+        s, e, _k, _l = engine.resolve_period('this_month')
+        shops = _insight_shops(s, e)
+        self.assertEqual(shops['spare_total'], D('1000'))
+        self.assertEqual(shops['unattributed'], D('400'))
+        # The disclosure is exactly the difference between the two sections.
+        self.assertEqual(shops['spare_total'] + shops['unattributed'],
+                         _insight_spare_parts(s, e)['totals']['cost'])
+
+    def test_the_page_says_so_when_there_is_one(self):
+        from django.urls import reverse as _rev
+        card = self.make_card(bill='0')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Mystery Part',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=None,
+            quantity=D('1'), unit_price=D('400'), total_price=D('600'))
+        html = self.client.get(_rev('analysis_insight_section', args=['shops'])).content.decode()
+        self.assertIn('no shop recorded', html)
+
+    def test_an_ordinary_period_says_nothing_about_it(self):
+        """Normally there are none, and a permanent notice is an unread one."""
+        from django.urls import reverse as _rev
+        card = self.make_card(bill='0')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Brake Pads',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            quantity=D('1'), unit_price=D('1000'), total_price=D('1500'))
+        html = self.client.get(_rev('analysis_insight_section', args=['shops'])).content.decode()
+        self.assertNotIn('no shop recorded', html)

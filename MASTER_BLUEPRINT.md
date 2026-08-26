@@ -525,9 +525,9 @@ stateDiagram-v2
 |-----------|-------|---------|
 | `/` | `base.html`, `home.html` | Base layout with nav + redirector |
 | `/salary_advance/` | 5 files: `home.html`, `staff_detail.html`, `payment_form.html`, `payment_confirm_delete.html`, `partials/staff_advances.html` | Salary & Advance: roster with advances, one person's page (the destination of a `SALARY_ADVANCE` alert — a **full page** on navigation, the bare partial only on `X-Requested-With`), month-end settlement form, Owner-only delete confirmation |
-| `/analysis/` | `profit.html` | The protected Profit page: Turnover − Expenses = Profit, monthly trend, expense split, position |
-| `/analysis/` | `insights.html` | Deep Analysis shell — six AJAX-loaded accordion sections. **8 files in this tree in total** (2 pages + 6 section partials) |
-| `/analysis/sections/` | `mechanics.html`, `spares.html`, `vehicles.html`, `fleet.html`, `shops.html`, `operations.html` (6) | One partial per Insights section, each rendered by `analysis_insight_section` |
+| `/analysis/` | `profit.html` | The protected Profit page: Turnover − Expenses = Profit, the same profit decomposed by what earned it, monthly trend, position. *Changed 2026-08-25: the expense-split donut, the General Cashbook category list and the Salary & Advance card all left — the page carries no drill-downs.* |
+| `/analysis/` | `insights.html` | Deep Analysis shell — eight AJAX-loaded accordion sections. **10 files in this tree in total** (2 pages + 8 section partials) |
+| `/analysis/sections/` | `mechanics.html`, `spare_parts.html`, `inventory.html`, `vehicles.html`, `fleet.html`, `shops.html`, `cashbook.html`, `operations.html` (8) | One partial per Insights section, each rendered by `analysis_insight_section`. *Changed 2026-08-25: `spares.html` became `spare_parts.html` + `inventory.html` — the two routes are two businesses; `cashbook.html` is new, taking the category breakdown off the Profit page.* |
 | `/auth/` | `base_auth.html`, `login.html`, `forgot_password.html`, `reset_password.html`, `change_password.html` | 5 files — the shared shell plus 4 screens. There is one sign-in face; a second `admin_login.html` and an `otp_verify.html` were both removed with the flows they belonged to |
 | `/dashboard/` | `dashboard_home.html` | Main floor dashboard with active jobs |
 | `/jobcard/` | **16 files**: CRUD (`jobcard_form` / `jobcard_detail` / `jobcard_list` / `jobcard_confirm_delete`), `job_list_partial`, `live_report`, pending + paid bills with their partials, Fleet Accounts (`bulk_payer_detail`, `bulk_payer_panel`, `bulk_payer_archived`, `bulk_payments` + partial), and `audit_high_discounts` | Job, payment and audit screens. *Corrected 2026-08-22: this row claimed 23 files, counting a unified Trash with four tab partials and an `audit_deleted_bulk_payers` screen — none of which exist any more.* |
@@ -780,7 +780,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (54 files · 1,592 tests)
+## 13. TEST SUITE (54 files · 1,661 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -807,7 +807,7 @@ base classes.*
 | `test_cashbook.py` | Cashbook ledger |
 | `test_financial.py` | Financial logic & calculations |
 | `test_spare_shop_views.py` | Spare shop views & operations |
-| `test_analysis.py` | Profit engine arithmetic, the double-count rule, periods, RBAC, Insights sections. Plus the 2026-08-25 pass: a supplier discount that cannot raise profit, like-for-like comparison of an unfinished period, unsettled salary months named on screen, All Time reaching every salary month, balances in credit said in words, the fleet line as a true slice of `receivable`, unassigned shop purchases disclosed, and archiving unable to hide a debt |
+| `test_analysis.py` | Profit engine arithmetic, the double-count rule, periods, RBAC, Insights sections. Plus the 2026-08-25 pass: a supplier discount that cannot raise profit, like-for-like comparison of an unfinished period, unsettled salary months named on screen, All Time reaching every salary month, balances in credit said in words, the fleet line as a true slice of `receivable`, unassigned shop purchases disclosed, and archiving unable to hide a debt. Plus the Analysis restructure of the same day: the profit stated a second way and landing on the same figure, the two spare routes as two sections, a "most used" chart that is its own query, the shelf valued honestly or not at all, the cashbook breakdown moved here, and one word per meaning across both pages |
 | `test_render_smoke.py` | Template render smoke tests |
 | `test_owner_identity.py` | Unique mobile constraint; `sync_owner_identity` (.env → DB owner migration) |
 | `test_change_password.py` | Owner-only password change, session survival, other-device sign-out |
@@ -980,4 +980,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin; 157 under `DEBUG=True`, which adds the media path) · **106 Templates** (83 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **54 Test Files / 1,592 tests** · **78 Migrations** (70 workshop + 8 inventory)
+> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin; 157 under `DEBUG=True`, which adds the media path) · **108 Templates** (85 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **54 Test Files / 1,661 tests** · **78 Migrations** (70 workshop + 8 inventory)

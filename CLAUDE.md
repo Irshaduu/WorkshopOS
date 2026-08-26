@@ -733,29 +733,54 @@ protect, and a great deal of correctness to gain. Spare-shop rows stay free text
 ## Owner Analysis & Reports
 
 Two pages. **`/analysis/` — Profit**: `Total Turnover − Total Expenses = Profit`
-for one date window, with the equation shown literally on screen. Owners read it
-to decide **profit distribution**, so keep it plain — no drill-downs. Filters are
-This Month / Last Month / This Year / Last Year / All Time / Custom, deliberately
-*not* the Today/This Week vocabulary of the day-to-day lists — profit isn't a
-daily number. **`/analysis/insights/` — Deep Analysis**: everything else, one
-AJAX-loaded section at a time.
+for one date window, with the equation shown literally on screen, and then that
+same profit decomposed by **what earned it**. Owners read it to decide **profit
+distribution**, so keep it plain — no drill-downs, and a new card earns its
+place only by removing one. Filters are This Month / Last Month / This Year /
+Last Year / All Time / Custom, deliberately *not* the Today/This Week vocabulary
+of the day-to-day lists — profit isn't a daily number.
+**`/analysis/insights/` — Deep Analysis**: everything else, one AJAX-loaded
+section at a time.
 
 **All money math lives in `workshop/analysis_engine.py`, never in the views or
 templates** — pure functions taking a date window, so the arithmetic is testable
 without a request. Views resolve the window, call the engine, and render.
 
 **THE DOUBLE-COUNT RULE — the thing most likely to get "fixed" into a bug.** A
-spare reaches a car by one of two routes and is paid for exactly once:
-- `source='SHOP'` → bought from a spare shop for that job → charged as the
-  **Spare Shops** expense, `unit_price` as typed (the shop's line total).
-- `source='INVENTORY'` → taken off warehouse stock → **already paid for** by a
-  Supplies Shop restock bill, so it must **never** be charged again.
+part is charged **exactly once, at the moment it is fitted to a car**:
+- `source='SHOP'` → bought from a spare shop for that job → the **Spare Shops**
+  expense, `unit_price` as typed (the shop's line total).
+- `source='INVENTORY'` → taken off the warehouse shelf → the **Inventory Used**
+  expense, at the shelf's weighted-average cost.
 
-Adding the second would overstate expenses by roughly ₹9.8M against the seeded
-data. Don't "fix" it by summing all spare cost. A `source='SHOP'` row with **no
+The two routes partition the spare rows exactly, so every rupee of parts cost
+lands in one bucket: none lost, none doubled. A `source='SHOP'` row with **no
 shop recorded** is surfaced as its own "Other Spare Purchases" line rather than
-silently dropped. (Its hint said "no shop and no stock match" until 2026-08-25 —
-the pre-`source`-column wording, describing a name match that no longer exists.)
+silently dropped.
+
+⚠ **THE SECOND HELPING TO GUARD AGAINST IS THE RESTOCK BILL.** Buying stock
+turns cash (or a promise to pay) into goods on a shelf — it is not a cost until
+the goods are used. `supplier_billed()` reports what was billed and **must never
+be added alongside the draw cost**: that charges one delivery twice, ~₹6.9L
+against the seeded data.
+
+**This reversed on 2026-08-25, on the owner's decision.** Until then the BILL
+was the expense and the draw was excluded. Two things were wrong with that:
+
+- **The other parts route never worked that way.** `spare_shop_expense` is dated
+  by `job_card__admitted_date` and counts only rows attached to a card — a shop
+  part is expensed when it is FITTED, and `unassigned_spare_purchases` exists
+  precisely to hold back the ones that are not. The warehouse route was the odd
+  one out, so the workshop had two parts routes on two different bases.
+- **It made monthly profit lumpy for no reason an owner could act on.** A month
+  with a big delivery carried the whole bill; the months that consumed it looked
+  rich. July 2026 read ₹5,36,500 where the work done that month earned
+  ₹4,33,500.
+
+The trade, accepted knowingly: profit now leans on `avg_cost` being right, so
+**`uncosted_draw_count()` is load-bearing rather than decorative** — a draw with
+no cost is charged ₹0 and pushes profit UP. It is drawn as a warning on the page
+for that reason. Expect it on go-live day.
 → `DoubleCountRuleTests` — if it fails, the workshop is being charged twice.
 
 **A SUPPLIES SHOP BILL IS FLOORED AT ZERO, and the expression is
@@ -774,6 +799,222 @@ the discount above the new total.
 
 **Revenue is `total_bill_amount − discount_amount`.** A discount is money never
 earned, not an expense; for a settled card this equals `received_amount` exactly.
+
+**THREE DATES, AND ONLY ONE OF THEM IS AN EXPENSE.** A Supplies Shop delivers,
+the workshop pays in instalments over the following months, and mechanics draw
+the stock down throughout — so one delivery carries three different dates:
+
+| Date | What it does |
+|---|---|
+| **bill date** | raises the shelf and the payable; sets `avg_cost` via the date-ordered replay. **Not an expense.** |
+| **draw date** | **the expense** — `warehouse_drawn_spare_cost`, at shelf cost |
+| **payment date** | moves the payable **only**; never touches profit |
+
+The last row is the one that looks wrong and is right: paying a supplier turns a
+liability into cash out. It changes what you owe, not what you earned.
+**`SupplierPayment` appears nowhere in `analysis_engine.py`, and it must stay
+that way**; the same holds for spare-shop payments.
+
+**Both parts lines NAME their basis** — "Parts taken off the warehouse shelf"
+and "Parts bought per job, not payments" — because both shops are paid in
+instalments and both have a payment screen of their own, so a ledger showing a
+different figure that month invites exactly the wrong reading.
+→ `ThreeDatesThreeJobsTests`
+
+**A JOB CARD'S WHOLE LIFE LANDS ON ITS `admitted_date`.** A car admitted in
+June, completed in July and paid in August sits entirely in **June** — revenue
+and BOTH parts costs, because `_live_spares` dates by `job_card__admitted_date`.
+`completed_date` is read by the Completed list and `paid_date` by Paid Bills;
+**neither is read by the Profit page.** That is what keeps a month's margin
+internally consistent: a job's revenue and that job's parts cost never land in
+different months. Verified against the data — 3 July cards completed in August
+kept their revenue in July.
+
+Consequence worth knowing: a card admitted on the 30th and still being worked on
+keeps ADDING to that month as parts are typed in, so a month is not final while
+cards admitted in it are still open. Bounded and visible (the Live Report lists
+open cards), and currently zero on this data — revisit only if settling profit in
+the first days of a month starts catching open cards.
+
+**A NEW PURCHASE NEVER CHANGES A PAST MONTH.** `inventory/costing.py` replays
+receipts in **date order**, so every draw is priced by the bills preceding *its
+own* date. Two shops at different prices, or one shop raising its price, only
+move draws from that day forward. Demonstrated against live data: a Feb draw at
+₹1,000 was untouched by a March delivery at ₹1,500 (which correctly blended the
+average to ₹1,312.50 for April draws), and moved only when a forgotten bill was
+**backdated to before it** — which is the workshop learning what those goods
+actually cost, and is the workshop's real rhythm.
+→ `test_a_second_delivery_before_the_first_is_paid_keeps_both_straight`,
+`inventory/test_supplier_costing.py`
+
+**WHAT WE OWE AND WHAT WE HOLD SIT TOGETHER, and are never netted.** The
+owner's question, in their words: *"we have to pay Supplies Shops ₹1,00,000,
+but we have ₹1,20,000 worth of stock in the workshop."* Both figures existed
+and lived on two different pages, so the comparison could not be made. "Stock
+on the shelf" is now the fifth tile in Position Right Now — full width, its own
+rail colour, directly under the supplies-shops payable.
+
+⚠ **There is no accounting identity between them, so no net is computed.** The
+payable covers every unpaid bill whether or not those goods are still on the
+shelf; the shelf holds goods from bills long since paid. Printed side by side
+they answer the real question — is the debt backed by goods we still hold — and
+the owner does that reading, not the page. The tile says **"at what it cost"**,
+because valuing the shelf at retail would put an unearned margin into a balance
+figure.
+
+**Unknown cost on an `Item` is `avg_cost == 0`, NOT NULL** (`default=0,
+null=False`), so an `isnull` filter matches nothing and would value opening
+stock that has never had a supplier bill at ₹0 — worthless rather than unknown.
+Those products are excluded and **counted on the tile**, because a shelf that
+reads low with nothing saying why is worse than either. **Expect a count on
+go-live day.** Negative stock is left negative: it means a bill is missing.
+`warehouse_stock_value()` is in the engine and read by both the tile and the
+Inventory section, so one shelf cannot have two values.
+→ `WhatWeOweAndWhatWeHoldSitTogetherTests`
+
+⚠ **`SUPPLIER_BILL_COST` had FIVE hand-rolled copies, not three.** The audit
+that consolidated `inventory_expense`, `monthly_series` and `_insight_shops`
+missed two, and both were in `inventory/`:
+
+- **`SupplierShop.update_totals()`** — an underwater bill *subtracted* from the
+  shop's balance, so real debt on its other bills read smaller than it is, and
+  `deactivate_supplier_shop` (which reads this figure) would let a shop the
+  workshop still owes be archived.
+- **The payment WATERFALL** in `views_suppliers.py`, twice — the supplier page
+  allocates payments across bills oldest-first, and the cumulative total it
+  allocates against was un-floored **while `get_effective_amount`, used for the
+  per-bill figure in the same loop, has always floored it.** The two halves of
+  one calculation disagreed about the same bill. Measured: a negative amount in
+  the running sum shifts the allocation for every bill after it and marks a
+  bill nobody has paid for as **COVERED** — the ledger telling the workshop a
+  live debt is settled.
+
+Both now import the declaration. **Before adding a sixth: the expression is
+`SUPPLIER_BILL_COST`, and `inventory/` may import it from `workshop`.**
+→ `test_the_shops_own_BALANCE_uses_the_same_floor`,
+`test_the_payment_WATERFALL_floors_it_too`
+
+**THE PROFIT PAGE STATES THE SAME PROFIT TWICE, AND THE SECOND ONE LANDS ON THE
+FIRST WITH NOTHING IN BETWEEN.** The equation is streams of money out; "What
+Earned The Profit" is the owner's own view — asked what the workshop earns from,
+the answer was **labour, spare-parts commission, inventory commission, cashbook
+income**, less the running costs:
+
+```
+LABOUR + SPARE PARTS MARGIN + INVENTORY MARGIN + CASHBOOK INCOME
+    (less discounts given)            = GROSS EARNINGS
+less SALARY and GENERAL CASHBOOK      = THE SAME PROFIT
+```
+
+⚠ **THERE IS NO RECONCILING LINE, AND ITS ABSENCE IS THE POINT.** This card
+first shipped beside an equation on a *different* basis — bills vs draws — so a
+"stock movement" row sat at the bottom converting between them. It reconciled to
+the rupee, and the owner's verdict was **"I am more confused now."** A page that
+has to explain itself to itself is a page nobody trusts. The fix was to pick one
+basis, not to word the bridge better. **If a third row ever reappears in
+`spend`, the two bases have drifted apart and that is the bug.**
+
+Three things that make the identity close, each of which was an easy miss:
+- **The discount is its own line.** It is given on the whole bill, so it belongs
+  to neither the labour line nor either margin. Shown only when there is some.
+- **`unattributed_spare_expense` is NOT deducted again.** `parts_trading` costs
+  every `SOURCE_SHOP` row whether or not a shop was named, so it is already
+  inside the shop margin. The equation splits it out; this absorbs it.
+- **Every shared figure is handed in**, never re-queried — a breakdown that
+  looked up its own salary could disagree with the equation directly above it.
+→ `TheProfitIsAlsoSaidTheOwnersWayTests`
+
+**The Expenses card carries NO footnote about warehouse stock, and needs none.**
+It used to read *"Parts worth ₹1,88,000 came off warehouse stock and are not
+charged here."* True, and it should never have needed saying: it existed only
+because a third of the parts fitted had their cost in none of the four lines.
+Both halves now charge parts when they are fitted, so there is no gap to
+explain.
+→ `TheExpenseListNeedsNoFootnoteTests`
+
+**Nothing else earns money.** `total_bill_amount` is `Σ spares.total_price +
+labour_amount` and nothing else — no GST, no service charge, no consumables
+line — so those four streams (plus the discount, which reduces them) are the
+complete income side. Verified against the model, not assumed.
+
+**THE PAGE CARRIES NO DRILL-DOWNS, and it was carrying two.** Both left, to
+**different** places, and that difference is the rule:
+
+- **General Cashbook category list → Deep Analysis → Cashbook.** Free-text
+  categories have no ceiling, so it carried a collapsed tail and a "Show all"
+  button between the owner and the position tiles. It existed nowhere else —
+  the Cashbook page lists *entries* and has never totalled them by category —
+  so it became a whole section rather than a truncated card.
+- **Salary & Advance card → nowhere; the module already owns it.** Four rows
+  explaining one expense line. `/salary-advance/` owns settlements, advances
+  and per-person history, and the amber banner already links there by name, so
+  a ninth insight section would have been a thinner second copy of it.
+
+Keeping one and deleting the other would have been the page applying its own
+rule to whichever card somebody noticed.
+
+⚠ **TWO THINGS WERE KEPT OUT OF THOSE CARDS, and each for its own reason:**
+- **The wage double-count warning stays on the Profit page.** Everything else
+  in that card was detail; that line says the profit figure above it may be
+  counting the wage bill twice. **A warning that changes what the headline
+  means lives beside the headline.**
+- **The wage cost's composition moved into the expense line's own hint.**
+  Salary is the only expense line here whose composition is not self-evident
+  and which reads like a double count: it is **net + advances**. An owner
+  seeing ₹1,24,000 here against a ₹1,15,000 settlement has to be able to tell
+  the ₹9,000 gap is advances already handed out, not an error. It **replaced**
+  "1 month settled" — a count of months, which said nothing about the figure
+  beside it — so it costs no extra line, and it only renders on a fully settled
+  month that actually had advances. An unsettled month keeps the warning
+  instead, which is the bigger fact.
+→ `ThePageCarriesNoDrillDownsTests`, `TheCashbookBreakdownLivesInDeepAnalysisTests`
+
+**The "Where It Went" donut was REMOVED.** It plotted `expense_lines`, which
+the Expenses card already prints with a share percentage *and* a proportional
+bar per line — the same four numbers drawn twice.
+
+**THE WAREHOUSE-STOCK NOTE LIVES INSIDE THE EXPENSES CARD, under the total it
+explains.** It sat at the foot of the page, several screens below that total:
+a reader who wondered had stopped reading, and one who got that far was no
+longer asking. The question it answers is real, not pedantic — roughly a third
+of the parts fitted come off the shelf and their cost is in none of the four
+expense lines, so the honest reading of the total with nothing said is that
+expenses are short by that amount and the profit above them is overstated.
+(They are not: that stock was paid for on a Supplies Shop bill, and charging it
+again is the double-count rule being broken — ~₹9.8M against the seeded data.)
+→ `TheWarehouseNoteSitsUnderTheFigureItExplainsTests`
+
+**MONEY IN IS GREEN, MONEY OUT IS RED, AND THE COLOUR SITS ON THE AMOUNT.** The
+earnings card's right-hand column reads straight down. It is on the amount and
+not the label because the two cost rows already carry theirs there — colouring
+the label above would make the two halves of one card disagree about where
+colour lives. Full-strength `--color-success`, not a tint: at low opacity green
+reads as disabled text rather than as a colour.
+
+Two deliberate exceptions: **Gross Earnings is not green** (a structural
+waypoint, and with green above and below it there would be nothing for the eye
+to land on), and a **discount stays red** even though it sits in the earning
+half — it is coloured for the direction it goes, not the half it lives in.
+→ `MoneyInIsGreenMoneyOutIsRedTests`
+
+**THE EARNINGS CARD'S SUBTITLE NAMES THE FIGURE.** It read "Same profit, by
+what earned it" — what the card does, written so it only parses once you
+already know. It now prints the profit itself ("The same ₹4,81,500, broken
+down"), which the reader can match against the hero without being told. Its
+glyph is `text-primary` like every other card title: **green is reserved on
+this page for money that IS profit** — the hero, and this card's last row.
+
+⚠ **There is no "Running costs" heading over the deductions, and it was removed
+rather than reworded.** Two of the three rows are running costs and the third
+is a timing adjustment that goes **either way** — on a month that drew the
+shelf down it is a PLUS. A heading must be true of every row under it, and any
+wording covering all three is either wrong on that row or vague enough to say
+nothing. The − and + signs carry it, and the two rules (Gross Earnings, then
+Profit) give the block its shape.
+
+⚠ **Never park retired copy in a CSS comment here.** `<style>` is served to the
+browser, so a phrase quoted in one is still on the page — which is how a test
+asserting the old subtitle was gone kept failing after it had been changed.
 
 **Wages come from Salary & Advance, never the Cashbook.** Wage cost for a settled
 month is `net_amount + advance_used` (an advance is cash already out; the
@@ -911,14 +1152,36 @@ reachable from exactly one screen**. A shop paid *ahead* archives normally; a
 credit is not a debt.
 → `ArchivingAShopCannotHideWhatIsOwedTests`
 
-## Deep Analysis — the six insight sections
+## Deep Analysis — the eight insight sections
 
-**THE TWO SPARE ROUTES ARE NEVER MERGED INTO ONE LIST.** The Spares section put
-a branded SKU and a bought-in part in one table under one Cost column, with
-nothing on screen saying which shelf each came off. Three reasons that is wrong,
+Mechanics · Spare Parts · Inventory · Vehicles · Fleet · Shops · Cashbook ·
+Operations. Lazy-loaded one at a time; `INSIGHT_SECTIONS` in `analysis_views.py`
+is the one list that defines them, and the Profit page's Deep Analysis link
+builds its subtitle from it rather than naming them a second time.
+
+**ONE WORD, ONE MEANING — across BOTH pages.** Four different figures were all
+called "Profit" on two screens an owner reads in one sitting. The vocabulary:
+
+| Word | Means | Where |
+|---|---|---|
+| **Profit** | the bottom line, after every expense | the Profit page, and nowhere else in Analysis |
+| **Gross profit** | revenue − parts cost, no overhead off it | car profiles, Mechanics |
+| **Margin** | parts sold − parts cost (no labour either) | Spare Parts, Inventory, Shops |
+
+`test_it_is_never_called_plain_profit` already fixed the car profile; its
+neighbours had drifted, and Mechanics is the *identical* calculation so it takes
+the identical words.
+→ `OneWordOneMeaningAcrossBothPagesTests` scans the section templates, so a
+section added later cannot quietly reintroduce a fourth meaning.
+
+**THE TWO SPARE ROUTES ARE TWO SECTIONS, not two tables in one.** They were one
+merged table until 2026-08-25; splitting the tables fixed most of it and left
+the **headline** merged, so a per-job trading margin was still being averaged
+against a shelf margin that depends on `avg_cost` being right. Four reasons,
 and they apply to any new section listing parts:
-- A SHOP part has a shop, an ordering state and a **payable**; a warehouse draw
-  came off a shelf already paid for. Only the first is chaseable.
+- A SHOP part has a shop, an ordering state and a **per-job payable**; a
+  warehouse draw came off the shelf, and whatever is owed for filling that shelf
+  belongs to a bill, not to this car. Only the first is chaseable per job.
 - The COST columns are **not the same kind of number** — a shop line's cost is
   the line total as typed, a draw's is a weighted average × quantity. `SPARE_COST`
   gets each right; printing them in one column invites dividing one by a quantity
@@ -926,11 +1189,45 @@ and they apply to any new section listing parts:
 - **QUANTITY means different things.** A draw's quantity is what left the shelf;
   a shop row's moves no money at all. It is shown for stock and deliberately
   **left off** the shop table.
+- **The owner already splits them.** Asked what the workshop earns from, the
+  answer named inventory commission and spare-parts commission as two things —
+  and the Profit page's earnings card now does too, so both pages describe the
+  business the same way.
 
-The two subtotals add back to the combined headline, so the split hides nothing,
-and the chart carries the route as a **colour** rather than leaving it to be
-guessed from the name.
-→ `TheTwoSpareRoutesAreNeverMergedIntoOneListTests`
+Both sections read `engine.parts_trading`, so the two sides partition the spare
+rows exactly and a margin quoted here cannot disagree with the same margin on
+the Profit page.
+→ `TheTwoSpareRoutesAreTwoSectionsTests`
+
+⚠ **The Spares glyph was `bi-tools`** — the JOB PERFORMED icon, so the section
+that *buys* parts wore the icon of the section that *fits* them, the same
+mistake CLAUDE.md records fixing on the Spare Shops pages. It survived because
+`SparePartsWearsOneGlyphTests` scans templates and `INSIGHT_SECTIONS` is Python.
+
+**A "MOST USED" CHART IS ITS OWN QUERY, never a re-sort of the table above it.**
+The merged section built its movers list from the fifteen rows it had already
+cut by **profit**, so a cheap part fitted to every car could not appear in a
+chart of what moves unless it also happened to be a top earner — the chart
+answered "which of the top earners is used most" under a heading saying
+something else.
+→ `TheMostUsedChartIsItsOwnQuestionTests`
+
+**THE INVENTORY SECTION VALUES THE SHELF, and unknown cost is `avg_cost == 0`,
+NOT NULL.** `Item.avg_cost` is `default=0, null=False`, so an `isnull` filter
+matches nothing and would quietly value opening stock that has never had a
+supplier bill at ₹0 — reporting it as *worthless* rather than as *unknown*.
+Those products are excluded and **counted** instead, the rule
+`uncosted_draw_count()` follows. Negative stock is left negative: it is allowed
+by design and means a Supplies Shop bill is missing, so flooring it deletes the
+signal. It is a **position**, the only figure in the section the date filter
+does not touch, and the tile says so.
+→ `TheShelfIsValuedHonestlyOrNotAtAllTests`
+
+**A SHOP PURCHASE WITH NO SHOP IS NAMED ON THE SPARE PARTS SECTION.** It is
+inside that section's cost — every `SOURCE_SHOP` row is — and it is *not* inside
+the Profit page's Spare Shops line, which splits it out as "Other Spare
+Purchases". Without the count on screen the two pages quote different
+spare-shop costs for one period and nothing says why.
 
 **A WAREHOUSE ROW IS GROUPED BY ITS `item` FK, NEVER BY `spare_part_name`.**
 That column is a **snapshot** taken when the part was drawn and is not rewritten
@@ -955,11 +1252,73 @@ ahead reads "in credit", never as a minus. It had been computed and never
 rendered at all.
 → `TheFleetBalanceIsCutTheSameWayTheReceivableIsTests`
 
+**AN ACCOUNT THAT OWES BUT BROUGHT NO CARS IN IS STILL LISTED.** `rows` is built
+from job cards IN THE WINDOW while "Balance now" is live and spans the account's
+whole history — so a quiet account vanished from the table, taking its debt off
+the only screen that lists fleet balances while the Profit page's fleet line
+still counted it. Its activity columns print **dashes, not ₹0**: zero billed at
+100% collected reads as "billed nothing and collected it all", a claim about a
+period the account was not in. Not filtered by `is_trashed`, for the reason
+`receivable` is not.
+→ `AFleetAccountThatOwesIsAlwaysListedTests`
+
+**THE FLEET SECTION SHOWS ONLY FLEET FIGURES, and it did not.** The largest
+number on a card headed *Fleet* was **walk-in revenue** — ₹7.48L of business the
+section is not about. The two walk-in boxes existed only as the other half of a
+comparison, and once the fleet boxes carry their **share** the comparison is
+already made in the place the reader is looking: *"8.7% of ₹33L car bills"* says
+everything the second box said. Three boxes remain — how much of the work is
+fleet, what it earned, how many accounts — and the denominator is printed, so
+walk-in is the visible remainder rather than a competing headline. The account
+count sits last and says *"active now, not filtered"*, because it is the only
+figure here the date range does not touch.
+
+⚠ The share is **"of car bills"**, not "of turnover". The denominator is fleet +
+walk-in revenue; Turnover on the Profit page also carries cashbook income, so the
+other wording would be a share of a figure it was not divided by — arithmetic
+right, word wrong.
+→ `TheFleetBoxesReadAsOneSplitTests`
+
 **THE SHOPS SECTION SELECTS BY `source=SHOP`, not by "has a shop".** A draw
 carries no shop today, so the two pick the same rows — but one is the rule and
 the other is a coincidence of the data. Parts **not yet fitted** are disclosed on
 the row, because they are inside "Owed now" and cannot be inside "Spent".
 → `TheShopsSectionSelectsByRouteNotByCoincidenceTests`
+
+**SPEND AND PAID ARE TWO QUESTIONS, and the cash one lives HERE, not on the
+Profit page.** "Spend" is what the work cost — the figure the equation charges.
+"Paid" is cash that actually left against these shops' ledgers, on their own
+instalment rhythm. Neither affects the other and neither belongs in the profit
+equation.
+
+It exists because an owner reading a profit figure asks *"then where is the
+money?"* within seconds. **The answer is not a term subtracted from profit** —
+profit and cash differ by five things at once (stock bought but unused, stock
+used but bought earlier, bills unpaid, bills paid from earlier periods, customer
+bills unpaid), so printing one of them invites exactly the incomplete arithmetic
+the earnings card was rebuilt to stop. The Profit page carries a **pointer** to
+Position Right Now instead of a number.
+
+⚠ **THE TWO SIDES STAY TWO FIGURES BECAUSE THEY ARE DATED DIFFERENTLY.**
+`SupplierPayment.date` is a real date the office sets; **`SpareShopPayment` has
+no date field at all**, only `created_at` — the moment it was keyed. One combined
+"paid to all shops" total would mean two different things at once. A test asserts
+that model still has no `date`, so the day it grows one, the choice can be
+revisited deliberately rather than by accident.
+→ `SpendAndPaidAreTwoQuestionsTests`
+
+*Considered and rejected:* **a "total company debt" tile.** `payable_total` is
+computed in `financial_position()` and deliberately NOT rendered. Spare +
+supplies payable is not the whole debt — wages owed for an unsettled month are
+not tracked as a payable anywhere — so a figure labelled "total debt" would
+quietly exclude the largest monthly obligation the workshop has. Two honest
+tiles beat one incomplete total.
+
+*Also considered and rejected:* **a dedicated shop-money section.** Everything it
+would carry already exists: what was paid this period is in Shops, what is still
+owed is in Position Right Now, and what left the shelf is the Inventory Used
+expense line plus the Inventory section. A fourth screen would be a thinner copy
+of three.
 
 **"GROSS PROFIT" on a car profile is GROSS, and the word is the whole safety of
 it.** `revenue − parts cost` — before wages, rent, power and every other overhead,
@@ -3617,7 +3976,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 54 files, 1,592 tests. Always SQLite (see below).
+# Full test suite — 54 files, 1,661 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -3724,7 +4083,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 | `DJANGO_ENV=production` | PostgreSQL | + SSL/HSTS enforcement |
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
-whole database — not something to point at hosted Postgres — and 1,592 tests at ~75 ms
+whole database — not something to point at hosted Postgres — and 1,661 tests at ~75 ms
 per round-trip would take hours. There is deliberately no flag to remember and no way to
 run the suite against live data by accident (`development.py` keys off
 `sys.argv[1] == 'test'`).
@@ -3943,7 +4302,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (48 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **54 files, 1,592 tests**.
+files) — **54 files, 1,661 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

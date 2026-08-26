@@ -1,0 +1,145 @@
+{% load custom_filters %}
+
+{% comment %}
+  THE SHOP ROUTE, ON ITS OWN SECTION.
+
+  A part bought from a spare shop for one car: it has a shop, an ordering
+  state, and a payable behind it. Its twin section, Inventory, has none of
+  those — a draw comes off a shelf already paid for by a restock bill.
+
+  They were one section with two tables until 2026-08-25, and before that one
+  merged table. The split finished here: the HEADLINE was still combined, so a
+  per-job trading margin was being averaged against a shelf margin that depends
+  on `avg_cost` being right, and the blended figure described nothing.
+
+  ⚠ NO QUANTITY COLUMN, deliberately. A shop row's quantity moves no money —
+  the cost IS the line total as typed off the shop's own bill — so a quantity
+  beside a cost invites dividing one by the other and reading a rate the
+  workshop was never billed. Inventory has the column, because there a
+  quantity is what actually left the shelf.
+
+  ⚠ "MARGIN", NOT "PROFIT". Parts sold less parts cost, with no labour in it
+  and no overhead off it. `Profit` is the Profit page's word; `Gross profit`
+  is revenue less parts cost (car profiles, mechanics); this is neither.
+{% endcomment %}
+
+<div class="ia-stats">
+  <div class="ia-stat"><div class="k">Charged</div><div class="v">₹{{ totals.revenue|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Paid to shops</div><div class="v">₹{{ totals.cost|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Margin</div>
+    <div class="v" style="color:var(--color-success);">₹{{ totals.profit|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Margin %</div><div class="v">{{ totals.margin|floatformat:1 }}%</div></div>
+  <div class="ia-stat"><div class="k">Parts fitted</div><div class="v">{{ totals.lines }}</div></div>
+  {% if shops_used %}
+  <div class="ia-stat"><div class="k">Shops used</div><div class="v">{{ shops_used }}</div></div>
+  {% endif %}
+</div>
+
+{% if rows %}
+
+<div class="ia-sub">Most Used Parts</div>
+{% comment %}
+  ⚠ ITS OWN QUERY, not a re-sort of the table below.
+
+  The merged section built this chart by re-sorting the fifteen rows it had
+  already cut by MARGIN, so a cheap part fitted to every car in the workshop
+  could not appear in a chart of what moves unless it also happened to be one
+  of the fifteen biggest earners. It was answering "which of the top earners is
+  used most" under a heading that says something else.
+{% endcomment %}
+<div class="ia-chart"><canvas id="spChart"></canvas></div>
+
+<div class="ia-sub">What Each Part Earns</div>
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr><th>Part</th><th class="num">Times used</th><th class="num">Charged</th>
+          <th class="num">Shop cost</th><th class="num">Margin</th><th class="num">%</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="strong">{{ r.name|default:"—" }}</td>
+        <td class="num">{{ r.times }}</td>
+        <td class="num">₹{{ r.revenue|inr }}</td>
+        <td class="num" style="color:var(--color-text-muted);">₹{{ r.cost|inr }}</td>
+        <td class="num {% if r.profit < 0 %}neg{% else %}pos{% endif %}">₹{{ r.profit|inr }}</td>
+        <td class="num">{{ r.margin|floatformat:1 }}%</td>
+      </tr>
+      {% endfor %}
+      {% comment %}
+        The totals row is the WHOLE route, not the visible rows — it comes from
+        `engine.parts_trading`, the same aggregate the Profit page's earnings
+        card reads. The table above it is capped at the top 15, so this line is
+        deliberately larger than the rows add to, and the heading below says so.
+      {% endcomment %}
+      <tr class="ia-total">
+        <td class="strong">All spare-shop parts</td>
+        <td class="num">{{ totals.lines }}</td>
+        <td class="num">₹{{ totals.revenue|inr }}</td>
+        <td class="num">₹{{ totals.cost|inr }}</td>
+        <td class="num {% if totals.profit < 0 %}neg{% else %}pos{% endif %}">₹{{ totals.profit|inr }}</td>
+        <td class="num">{{ totals.margin|floatformat:1 }}%</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% if rows|length >= 15 %}
+<p class="text-muted" style="font-size:0.75rem; margin:6px 0 0;">
+  Top 15 by margin. The total row covers every spare-shop part in this period.</p>
+{% endif %}
+
+<div class="ia-note">
+  <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+  <span>This is a <strong>trading</strong> view — what the parts sold for against what the shops
+    billed. It is not the Profit page's bottom line: wages, rent and the rest come off there.</span>
+</div>
+
+{% if no_shop %}
+{% comment %}
+  Real money with no payee. It IS inside this section's cost — every SOURCE_SHOP
+  row is — but it is NOT inside the Profit page's "Spare Shops" expense, which
+  splits it out as "Other Spare Purchases". Without this line the two screens
+  quote different spare-shop costs for one period and nothing says why.
+{% endcomment %}
+<div class="ia-note" style="margin-top:8px;">
+  <i class="bi bi-question-circle-fill text-warning mt-1"></i>
+  <span><strong>{{ no_shop }}</strong> part{{ no_shop|pluralize }}
+    {{ no_shop|pluralize:"has,have" }} no shop recorded. The cost is counted above, but on the
+    Profit page {{ no_shop|pluralize:"it sits,they sit" }} under
+    <strong>Other Spare Purchases</strong> rather than Spare Shops.</span>
+</div>
+{% endif %}
+
+{{ movers|json_script:"spMovers" }}
+<script>
+(function () {
+  const el = document.getElementById('spChart');
+  if (!el || typeof Chart === 'undefined') return;
+  const rows = JSON.parse(document.getElementById('spMovers').textContent);
+  new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.label || '—'),
+      datasets: [{
+        label: 'Times used',
+        data: rows.map(r => r.times),
+        backgroundColor: 'rgba(37,99,235,0.78)',
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, precision: 0 } },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } },
+      },
+    },
+  });
+})();
+</script>
+
+{% else %}
+<p class="text-muted mb-0" style="font-size:0.84rem;">No spare-shop parts in this period.</p>
+{% endif %}

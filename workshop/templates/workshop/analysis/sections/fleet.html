@@ -1,11 +1,38 @@
 {% load custom_filters %}
 
+{% comment %}
+  THE WALK-IN BOXES WERE REMOVED, and that is what this card was getting wrong.
+
+  It is the FLEET section, and the largest figure on it was walk-in revenue —
+  ₹7.48L of business this section is not about, shouting from a card headed
+  Fleet. The two walk-in boxes were only ever there as the other half of a
+  comparison, and once the fleet boxes carry their SHARE the comparison is
+  already made: "8.1% of ₹8.14L" says everything the second box said, in the
+  place the reader is already looking.
+
+  What is left is three boxes answering the three questions this section
+  exists for: how much of the work is fleet, what it earned, and how many
+  accounts there are. Nothing is lost — walk-in is the remainder, and the
+  denominator is printed.
+
+  ⚠ THE LAST BOX IS NOT WINDOW-SCOPED and says so. Everything else here moves
+  with the date filter; the account count does not.
+{% endcomment %}
 <div class="ia-stats">
-  <div class="ia-stat"><div class="k">Fleet accounts</div><div class="v">{{ accounts }}</div></div>
-  <div class="ia-stat"><div class="k">Fleet jobs</div><div class="v">{{ fleet_jobs }}</div></div>
-  <div class="ia-stat"><div class="k">Fleet revenue</div><div class="v">₹{{ fleet_revenue|inr_compact }}</div></div>
-  <div class="ia-stat"><div class="k">Walk-in jobs</div><div class="v">{{ walkin_jobs }}</div></div>
-  <div class="ia-stat"><div class="k">Walk-in revenue</div><div class="v">₹{{ walkin_revenue|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Fleet jobs</div><div class="v">{{ fleet_jobs }}</div>
+    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">{{ fleet_job_pct|floatformat:1 }}% of {{ total_jobs }} job{{ total_jobs|pluralize }}</div></div>
+  <div class="ia-stat"><div class="k">Fleet revenue</div>
+    <div class="v" style="color:var(--color-success);">₹{{ fleet_revenue|inr_compact }}</div>
+    {% comment %}
+      "OF CAR BILLS", not "of turnover". The denominator is fleet + walk-in
+      revenue, which is car bills only — the Profit page's Turnover also carries
+      cashbook income, so calling this a share of turnover would be a share of a
+      figure it was not divided by. The arithmetic was right and the word was
+      wrong, which is the harder kind to catch.
+    {% endcomment %}
+    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">{{ fleet_revenue_pct|floatformat:1 }}% of ₹{{ all_revenue|inr_compact }} car bills</div></div>
+  <div class="ia-stat"><div class="k">Fleet accounts</div><div class="v">{{ accounts }}</div>
+    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">active now, not filtered</div></div>
 </div>
 
 {% if rows %}
@@ -25,10 +52,29 @@
       {% for r in rows %}
       <tr>
         <td class="strong">{{ r.bulk_payer__customer_name }}</td>
+        {% comment %}
+          AN ACCOUNT THAT OWES BUT BROUGHT NO CARS IN IS STILL LISTED, with its
+          activity columns left blank rather than printed as ₹0. It used to be
+          dropped entirely — `rows` is built from job cards in the window while
+          "Balance now" spans the account's whole history — so its debt left the
+          only screen that lists fleet balances, and this column stopped adding
+          up to the Profit page's fleet line.
+
+          Blank, not ₹0: nothing was billed here, and ₹0 reads as "billed
+          nothing and collected it all", which a 100% in the next column would
+          have agreed with.
+        {% endcomment %}
+        {% if r.no_jobs_here %}
+        <td class="num" style="color:var(--color-text-muted);">—</td>
+        <td class="num" style="color:var(--color-text-muted);">—</td>
+        <td class="num" style="color:var(--color-text-muted);">—</td>
+        <td class="num" style="color:var(--color-text-muted);">—</td>
+        {% else %}
         <td class="num">{{ r.jobs }}</td>
         <td class="num">₹{{ r.billed|inr }}</td>
         <td class="num">₹{{ r.received|inr }}</td>
         <td class="num">{{ r.collected_pct|floatformat:0 }}%</td>
+        {% endif %}
         {% comment %}
           The sign is turned into WORDS, the same rule the Profit page's
           position tiles follow: an account paid ahead is in credit, not owed a
@@ -46,10 +92,12 @@
 
 <div class="ia-note">
   <i class="bi bi-info-circle-fill text-primary mt-1"></i>
-  <span><strong>Billed / Received / Collected</strong> cover only jobs in this date range.
-    <strong>Balance now</strong> is what the account still owes across its whole history, less
-    anything it has paid ahead.</span>
+  <span><strong>Jobs / Billed / Received / Collected</strong> cover only this date range, so a
+    row with dashes in them brought no cars in. <strong>Balance now</strong> ignores the range
+    entirely: it is what the account still owes across its whole history, less anything it has
+    paid ahead.</span>
 </div>
 {% else %}
-<p class="text-muted mb-0" style="font-size:0.84rem;">No fleet account jobs in this period.</p>
+<p class="text-muted mb-0" style="font-size:0.84rem;">No fleet account jobs in this period,
+  and no account carrying a balance.</p>
 {% endif %}

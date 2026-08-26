@@ -29,7 +29,7 @@ leave days are typed once a month instead of tracked daily, and why performance 
 judged against real volume rather than generic "web scale".
 
 **The standard:** functional integrity across every operation that touches money or
-access. Backed by **54 test files / 1,592 tests** covering security, views, signals,
+access. Backed by **54 test files / 1,661 tests** covering security, views, signals,
 financial logic, cashbook, spare shops, salary settlement, the profit engine, the
 printed documents, photos and the email transport behind password reset.
 
@@ -186,14 +186,27 @@ self-healing and is the signal that a Supplies Shop bill is missing. See `CLAUDE
 
 Two pages: **`/analysis/`** (Profit — `Turnover − Expenses = Profit` for one date
 window, used for profit distribution, deliberately plain) and **`/analysis/insights/`**
-(Deep Analysis — mechanics, spares, vehicles, fleet, shops, operations, one
-AJAX-loaded section at a time).
+(Deep Analysis — mechanics, spare parts, inventory, vehicles, fleet, shops,
+cashbook, operations, one AJAX-loaded section at a time).
 
 - **Turnover** = car bills (`total_bill_amount − discount_amount`) + cashbook income.
   A discount is money never earned, so it reduces turnover rather than appearing as an
   expense; for a settled card the result equals `received_amount` to the rupee.
-- **Expenses** are four non-overlapping streams: Spare Shops, Supplies Shops, Salary &
-  Advance, General Cashbook.
+- **Expenses** are four non-overlapping streams, all on ONE basis — what the work done
+  in this period cost: Spare Shops, Inventory Used, Salary & Advance, General Cashbook.
+  A part is charged when it is **fitted to a car**, whichever shelf it came off.
+- **A Supplies Shop bill is NOT an expense.** Buying stock turns cash into goods on a
+  shelf; it raises the payable and the shelf and nothing else. A supplier *payment*
+  moves the payable again. Neither touches profit.
+- **The same profit is then stated a second way**, in the owner's own terms: Labour +
+  Spare Parts margin + Inventory margin + Cashbook Income = Gross Earnings, less salary
+  and general cashbook. It closes with **no reconciling line** — which is only true
+  because both halves charge stock at the same moment. A bridging row reappearing there
+  means the two bases have drifted apart. → `TheProfitIsAlsoSaidTheOwnersWayTests`
+- **Changed 2026-08-25, on the owner's decision.** The bill used to be the expense and
+  the draw excluded — which put the two parts routes on two different bases (the spare
+  route has always charged on fitting) and made monthly profit lumpy. The trade: profit
+  now leans on `avg_cost`, so the uncosted-draw warning is load-bearing.
 - **The double-count rule** — a warehouse-drawn spare is *already* paid for by its
   restock bill, so its cost is never charged again. Counting all job-spare cost on top
   would overstate expenses by ~₹9.8M against the seeded data.

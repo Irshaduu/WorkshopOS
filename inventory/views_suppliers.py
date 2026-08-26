@@ -6,6 +6,7 @@ from django.db.models.functions import Coalesce
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date
 from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill, SupplierRestockItem, SupplierPayment
+from workshop.analysis_engine import SUPPLIER_BILL_COST
 from workshop.decorators import office_required
 from workshop.models import DeletionLog, JobCardSpareItem
 from workshop.notifications import notify
@@ -169,7 +170,19 @@ def supplier_shop_detail(request, shop_id):
         Q(bill_date__lt=OuterRef('bill_date')) |
         Q(bill_date=OuterRef('bill_date'), id__lte=OuterRef('id'))
     ).values('supplier').annotate(
-        total=Sum(F('total_amount') - F('discount_amount'))
+        # FLOORED PER BILL, via the one declaration in `analysis_engine`.
+        #
+        # This is the running total the payment waterfall below allocates
+        # against, and it was a hand-rolled `total_amount - discount_amount`
+        # with no floor — while `bill.get_effective_amount`, used for the
+        # per-bill figure IN THE SAME LOOP, has always floored it. So the two
+        # halves of one calculation disagreed about the same bill.
+        #
+        # An underwater bill (discount above total, reachable by deleting a
+        # line from a discounted bill) then carried a NEGATIVE amount into the
+        # cumulative sum, shifting the allocation for every bill after it and
+        # marking bills COVERED that are not paid.
+        total=Sum(SUPPLIER_BILL_COST)
     ).values('total')
 
     bills_qs = (
@@ -922,7 +935,19 @@ def ajax_supplier_bills(request, shop_id):
         Q(bill_date__lt=OuterRef('bill_date')) | 
         Q(bill_date=OuterRef('bill_date'), id__lte=OuterRef('id'))
     ).values('supplier').annotate(
-        total=Sum(F('total_amount') - F('discount_amount'))
+        # FLOORED PER BILL, via the one declaration in `analysis_engine`.
+        #
+        # This is the running total the payment waterfall below allocates
+        # against, and it was a hand-rolled `total_amount - discount_amount`
+        # with no floor — while `bill.get_effective_amount`, used for the
+        # per-bill figure IN THE SAME LOOP, has always floored it. So the two
+        # halves of one calculation disagreed about the same bill.
+        #
+        # An underwater bill (discount above total, reachable by deleting a
+        # line from a discounted bill) then carried a NEGATIVE amount into the
+        # cumulative sum, shifting the allocation for every bill after it and
+        # marking bills COVERED that are not paid.
+        total=Sum(SUPPLIER_BILL_COST)
     ).values('total')
 
     bills_qs = shop.bills.prefetch_related('items__item').annotate(

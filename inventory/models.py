@@ -106,14 +106,42 @@ class SupplierShop(models.Model):
         return self.total_billed_amount - self.total_paid_amount
 
     def update_totals(self):
-        from django.db.models import Sum, F
+        """
+        Recompute what this shop has billed and been paid.
+
+        ⚠ THE BILLED SIDE IS FLOORED PER BILL, and the expression is IMPORTED.
+        This was a fourth hand-rolled copy of `total_amount − discount_amount`
+        — the exact defect CLAUDE.md records fixing in `supplier_billed`,
+        `monthly_series` and `_insight_shops` — and it was the copy that had
+        been left behind, so the model and the Profit page disagreed about the
+        same bill.
+
+        A discount larger than the bill it sits on makes that bill NEGATIVE,
+        and here that subtracts from the shop's own balance: a real debt on
+        other bills reads as smaller than it is, or vanishes. That breaks the
+        rule that money owed is always reachable from exactly one screen, and
+        it also lets `deactivate_supplier_shop` archive a shop the workshop
+        still owes, because the guard reads this figure.
+
+        The entry forms reject that input, but it is still reachable: this very
+        method's sibling `SupplierRestockBill.update_totals()` recomputes
+        `total_amount` from the bill's lines WITHOUT re-checking the discount,
+        so deleting a line from an already-discounted bill pushes the discount
+        above the new total.
+
+        Imported locally rather than at module level: `analysis_engine` imports
+        `workshop.models`, and this is the same guard `JobCard.update_totals`
+        uses for `SHOP_LINE_COST`.
+        """
+        from django.db.models import Sum
         from django.db.models.functions import Coalesce
-        
-        # Billed amount = Sum(total_amount - discount_amount)
+
+        from workshop.analysis_engine import SUPPLIER_BILL_COST
+
         billed = self.bills.aggregate(
-            total=Coalesce(Sum(F('total_amount') - F('discount_amount')), 0, output_field=models.DecimalField())
+            total=Coalesce(Sum(SUPPLIER_BILL_COST), 0, output_field=models.DecimalField())
         )['total']
-        
+
         # Paid amount = Sum(amount) where is_trashed=False
         paid = self.payments.filter(is_trashed=False).aggregate(
             total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField())

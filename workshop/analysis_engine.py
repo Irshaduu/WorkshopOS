@@ -23,13 +23,14 @@ TURNOVER
                          "what the workshop actually earned" figure.
   • Cashbook Income .... CashbookEntry(entry_type=INCOME) — scrap sales etc.
 
-EXPENSES — four real, non-overlapping money-out streams
+EXPENSES — four real, non-overlapping money-out streams, ALL ON ONE BASIS:
+what the work done in this period cost.
   1. Spare Shops ....... Parts bought from a spare shop *for a specific job*:
                          the `unit_price` LINE TOTAL on JobCardSpareItem rows
                          that have source=SHOP and a shop recorded. Not
                          multiplied by quantity — see SHOP_LINE_COST.
-  2. Supplies Shops .... Warehouse restocking: SupplierRestockBill effective
-     (Inventory)         amount (total − discount).
+  2. Inventory Used .... Parts taken off the warehouse shelf onto a job card:
+                         source=INVENTORY rows at their weighted-average cost.
   3. Salary ............ From the Salary & Advance section — never from the
                          Cashbook. See salary_expense() for how advances are
                          folded in without double counting.
@@ -39,24 +40,52 @@ EXPENSES — four real, non-overlapping money-out streams
   (+) Other spare purchases — a *transparency* line, normally ₹0. See
       unattributed_spare_expense().
 
+⚠ A SUPPLIES SHOP BILL IS NOT AN EXPENSE. Buying stock converts cash (or a
+promise to pay) into goods on a shelf; it is not a cost until the goods are
+used. The bill moves the payable in `financial_position()` and raises the
+shelf; an instalment paid against it moves the payable again. NEITHER TOUCHES
+PROFIT. `supplier_billed()` still reports what was billed, and must never be
+added back alongside stream 2 — that is one delivery charged twice.
+
+--------------------------------------------------------------------------
+AND THE SAME PROFIT, SAID THE OWNER'S WAY
+--------------------------------------------------------------------------
+The owners do not think "turnover minus expenses". Asked what the workshop
+earns from, the answer is four things:
+
+    LABOUR + SPARE PARTS MARGIN + INVENTORY MARGIN + CASHBOOK INCOME
+        (less discounts given)          =  GROSS EARNINGS
+    less SALARY and GENERAL CASHBOOK    =  THE SAME PROFIT
+
+`earnings_breakdown()` builds the second, and it closes with NOTHING in
+between — no conversion, no reconciling line. That is only true because both
+descriptions charge stock at the same moment. If a bridging line ever has to
+come back, the two bases have drifted apart and that is the bug.
+
 --------------------------------------------------------------------------
 THE DOUBLE-COUNT RULE — the single most important thing in this file
 --------------------------------------------------------------------------
-A spare fitted to a car reaches the workshop by one of two routes, and each
-route is paid for exactly once. Which route it took is **stored**, in
-`JobCardSpareItem.source`, and is never inferred:
+A part is charged EXACTLY ONCE, at the moment it is fitted to a car. Which
+route it took is **stored**, in `JobCardSpareItem.source`, and never inferred:
 
-  SHOP      — ordered from a spare shop for that job
-            → the money leaves via the SPARE SHOP stream (stream 1)
+  SHOP      — ordered from a spare shop for that job   → stream 1
+  INVENTORY — taken off the warehouse shelf            → stream 2
 
-  INVENTORY — taken off the warehouse shelf
-            → the money already left earlier, when the shelf was filled by a
-              supplier restock bill (stream 2)
+The two routes partition the spare rows exactly, so every rupee of parts cost
+lands in exactly one stream: none lost, none doubled.
 
-So INVENTORY spare cost must NEVER be added as an expense: it would charge the
-workshop twice for one part. The two routes partition the spare rows exactly,
-and adding the warehouse side on top would overstate expenses by roughly the
-entire value of stock consumed in the period.
+⚠ THE DOUBLE COUNT TO GUARD AGAINST IS THE RESTOCK BILL. Stream 2 charges the
+shelf when it is emptied; adding `supplier_billed()` on top would charge the
+same goods again when they were bought. Against the seeded data that is roughly
+₹6.9L of invented expense.
+
+(Until 2026-08-25 the rule pointed the other way: the BILL was the expense and
+the draw was excluded. It changed on the owner's decision, because it put the
+two parts routes on two different bases — the spare route has always been dated
+by `job_card__admitted_date`, with `unassigned_spare_purchases` holding back
+what is not yet fitted — and because it made monthly profit lumpy: a delivery
+month carried a whole bill while the months that consumed it looked rich. The
+guard is the same shape, it just names a different second helping.)
 
 Until 2026-07-30 there was no `source` column and this module GUESSED the route:
 a NULL shop plus a case-insensitive match of `spare_part_name` against
@@ -74,12 +103,16 @@ unattributed_spare_expense() is for.
 DATING RULE
 --------------------------------------------------------------------------
 Every stream is dated by its own natural date, so a period never mixes bases:
-    car bills + their spare cost  → JobCard.admitted_date
-    cashbook (income & expense)   → CashbookEntry.date
-    restock bills                 → SupplierRestockBill.bill_date
-    salary                        → SalaryPayment.month (the 1st)
-Keeping a job's revenue and that job's spare cost on the same date is what
-makes a month's margin internally consistent.
+    car bills + ALL their parts cost → JobCard.admitted_date
+    cashbook (income & expense)      → CashbookEntry.date
+    salary                           → SalaryPayment.month (the 1st)
+Keeping a job's revenue and that job's parts cost on the same date is what
+makes a month's margin internally consistent — and it is now true of BOTH
+parts routes, which is what let the reconciling line go.
+
+`SupplierRestockBill.bill_date` still dates two things, neither of which is an
+expense: the shelf's average cost (`inventory/costing.py` replays receipts in
+date order) and `supplier_billed()`.
 
 --------------------------------------------------------------------------
 PERFORMANCE
@@ -446,6 +479,30 @@ def cashbook_income(start, end):
     return _sum(CashbookEntry.objects.filter(entry_type='INCOME', date__range=(start, end)), 'amount')
 
 
+def cashbook_income_by_category(start, end):
+    """
+    The income side, broken down — scrap, black oil, the occasional oddity.
+
+    Deliberately NOT folded into `cashbook_income()`: the Profit page needs one
+    figure and nothing else, and making it carry a list it never reads would
+    put a `values().annotate()` on the hot path of the page that has to load
+    fastest. Deep Analysis is the only caller, and it is the mirror of
+    `cashbook_expense()`'s own `by_category`.
+
+    No wage flagging here, unlike the expense side — money coming IN cannot be
+    a duplicate of the wage bill going out.
+    """
+    return list(
+        CashbookEntry.objects
+        .filter(entry_type='INCOME', date__range=(start, end))
+        .values('category')
+        .annotate(total=Coalesce(Sum('amount', output_field=MONEY),
+                                 Value(ZERO, output_field=MONEY), output_field=MONEY),
+                  count=Count('id'))
+        .order_by('-total')
+    )
+
+
 # =============================================================================
 # EXPENSES
 # =============================================================================
@@ -488,13 +545,36 @@ def unattributed_spare_expense(start, end):
 
 def warehouse_drawn_spare_cost(start, end):
     """
-    Value of stock pulled off the shelf onto job cards in this window.
+    Stream 2 — the cost of stock pulled off the shelf onto job cards here.
 
-    NOT an expense — it was paid for by a restock bill. Reported only so the
-    Profit page can show *why* it is excluded instead of appearing to lose it.
+    Costed from each row's own `unit_price`: the weighted-average warehouse cost
+    as at that draw's own date, written by `JobCardSpareItem.save()` and kept
+    true by `inventory/costing.py`'s date-ordered replay.
 
-    Costed from each row's own `unit_price`, which is the weighted-average
-    warehouse cost frozen onto the line the moment the part was drawn.
+    ⚠ CHANGED 2026-08-25, ON THE OWNER'S DECISION. This used to be reported and
+    NOT charged, while the Supplies Shop BILL was charged on its bill date. Two
+    things were wrong with that, and the second is what settled it:
+
+      • It made monthly profit lumpy for no reason an owner could act on. A
+        month with a big delivery carried the whole bill; the months that
+        consumed it looked rich. Measured against the meeting data, July read
+        ₹5,36,500 where the work done that month actually earned ₹4,33,500.
+      • THE OTHER PARTS ROUTE NEVER WORKED THAT WAY. `spare_shop_expense` is
+        dated by `job_card__admitted_date` and only counts rows attached to a
+        card — a shop part is expensed when it is FITTED, not when the shop
+        billed it, and `unassigned_spare_purchases` exists precisely to hold
+        the ones not yet fitted out of the figure. So the workshop had two
+        parts routes on two different bases, and this was the odd one out.
+
+    Both routes now answer one question: what did the parts fitted to cars in
+    this period cost us. That is also what makes the earnings breakdown close
+    with no conversion line — see `earnings_breakdown`.
+
+    ⚠ A DRAW WITH NO COST COUNTS AS ₹0, so it reads as a free part and pushes
+    profit UP. That was a footnote when this figure was only reported; it now
+    moves the headline, which is why `uncosted_draw_count()` is load-bearing
+    rather than decorative. Expect a count on go-live day, until each product
+    has its first restock bill.
     """
     qs = _live_spares(start, end).filter(source=JobCardSpareItem.SOURCE_INVENTORY)
     return _sum(qs, SPARE_COST)
@@ -555,9 +635,23 @@ def uncosted_draw_count(start, end):
     ).count()
 
 
-def inventory_expense(start, end):
+def supplier_billed(start, end):
     """
-    Stream 2 — warehouse restocking, at the bill's effective (post-discount)
+    What the Supplies Shops BILLED in this window — reported, NOT an expense.
+
+    ⚠ THIS IS NO LONGER A PROFIT STREAM (changed 2026-08-25, owner's decision).
+    It was `inventory_expense`, and it fed the equation directly: a bill hit
+    profit on its bill date, whether or not any of that stock had been used.
+    The cost of a warehouse part now lands when the part is FITTED — see
+    `warehouse_drawn_spare_cost` — which is the rule the spare-shop route has
+    always followed.
+
+    Kept because "what did the supplies shops bill us this period" is a real
+    question with a real answer, and because it is the guard that keeps the
+    floored expression honest. Do NOT add it back alongside the draw cost: that
+    is the double count, one delivery charged twice.
+
+    At the bill's effective (post-discount)
     amount, mirroring SupplierRestockBill.get_effective_amount.
     """
     from inventory.models import SupplierRestockBill
@@ -741,6 +835,186 @@ def cashbook_expense(start, end):
 
 
 # =============================================================================
+# WHAT EARNED THE MONEY  —  the same profit, decomposed a second way
+# =============================================================================
+# Added 2026-08-25 on the owner's instruction. The owner does not think of this
+# business as "turnover minus expenses"; they think of it as FOUR THINGS THAT
+# EARN — labour, the margin on parts bought per job, the margin on parts taken
+# off the shelf, and the occasional bit of scrap income — less the running
+# costs. Both descriptions are true of the same workshop, and the page states
+# both rather than making the owner translate between them.
+#
+#     LABOUR + SPARE PARTS MARGIN + INVENTORY MARGIN + CASHBOOK INCOME
+#         (less discounts given)              =  GROSS EARNINGS
+#     less SALARY and GENERAL CASHBOOK        =  THE SAME PROFIT
+#
+# ⚠ THAT IS THE WHOLE ARITHMETIC, and it closes with nothing in between.
+#
+# It did not, briefly. This card first shipped alongside an equation that
+# charged a Supplies Shop BILL on its bill date while the card charged stock
+# when it was USED, so a "stock movement" line had to sit at the bottom
+# converting one basis into the other. It reconciled to the rupee and it was
+# the wrong answer to the problem: a page that has to explain itself to itself
+# is a page nobody trusts, and the owner said so plainly — "I am more confused
+# now."
+#
+# The fix was to pick ONE basis, not to word the bridge better. Both parts
+# routes now cost what was FITTED to cars in the period, which is what
+# `spare_shop_expense` had always done — that route is dated by
+# `job_card__admitted_date` and `unassigned_spare_purchases` exists to hold
+# back the parts not yet fitted. The warehouse route was the odd one out.
+#
+# THE DISCOUNT IS ITS OWN LINE, and leaving it out was the easy mistake here —
+# the identity does not close without it. A discount is given on the WHOLE
+# bill, so it belongs to neither the labour line nor either margin. Shown only
+# when there is some, exactly as the Turnover card shows it.
+#
+# NOT DEDUCTED TWICE: `unattributed_spare_expense` — a shop purchase with no
+# shop recorded — is already inside the shop side's cost here, because
+# `parts_trading` costs every SOURCE_SHOP row whether or not a shop was named.
+# The equation splits it out as its own expense line; this one absorbs it.
+# Deducting it here as well would understate profit by that amount.
+
+def labour_revenue(start, end):
+    """
+    Labour charged on cards admitted in the window.
+
+    Off `JobCard.labour_amount`, never off the job lines — work is quoted whole
+    at this workshop and `JobCardLabourItem.amount` is a dormant column, so
+    summing the lines would report every card created since that change as ₹0.
+    """
+    return _sum(live_jobcards().filter(admitted_date__range=(start, end)), F('labour_amount'))
+
+
+def parts_trading(start, end):
+    """
+    What parts SOLD for and what they COST, split by route.
+
+    One implementation, read by three surfaces: the Profit page's earnings
+    breakdown and the two Deep Analysis parts sections. They ask one question
+    at two depths, and a second copy would be two answers free to disagree —
+    which, one tap apart, reads as the app contradicting itself about a margin.
+
+    Revenue is `total_price`, the customer price, on both routes. Cost is
+    `SPARE_COST`, which is route-aware and must stay that way: a shop line's
+    cost is the line total as typed, a warehouse draw's is a weighted average
+    x quantity.
+
+    ⚠ An uncosted draw (`unit_price` NULL) costs ₹0 here, so it reads as a FREE
+    part and pushes the stock margin UP. `uncosted_draw_count()` is what says
+    so — do not quietly exclude those rows instead, or the subtotal would stop
+    adding up from the table printed above it.
+
+    It returns BOTH sides even though each parts section reads only one, which
+    costs that section one extra aggregate. That is the price of the guarantee
+    and it is worth paying: because both sides come out of one call, they
+    partition the spare rows exactly — no row counted twice, none dropped — and
+    the Profit page's two margin lines are the same two figures the sections
+    print. Splitting this into a per-route function to save the query would
+    hand that guarantee back.
+    """
+    base = _live_spares(start, end)
+
+    def side(qs):
+        agg = qs.aggregate(
+            revenue=Coalesce(Sum('total_price', output_field=MONEY),
+                             Value(ZERO, output_field=MONEY), output_field=MONEY),
+            cost=Coalesce(Sum(SPARE_COST, output_field=MONEY),
+                          Value(ZERO, output_field=MONEY), output_field=MONEY),
+            lines=Count('id'),
+        )
+        agg['profit'] = agg['revenue'] - agg['cost']
+        agg['margin'] = float(agg['profit'] / agg['revenue'] * 100) if agg['revenue'] else 0.0
+        return agg
+
+    return {
+        'shop': side(base.filter(source=JobCardSpareItem.SOURCE_SHOP)),
+        'stock': side(base.filter(source=JobCardSpareItem.SOURCE_INVENTORY)),
+    }
+
+
+def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_total):
+    """
+    The same profit, said the owner's way. Every shared figure is HANDED IN.
+
+    Nothing already computed by `build_profit_report` is fetched again, and
+    that is correctness rather than thrift: a breakdown that looked up its own
+    salary or its own cashbook total could disagree with the equation printed
+    directly above it. Only the two figures the equation has no use for —
+    labour, and the parts split — are fetched here.
+
+    Returns `earn` (what came in) and `spend` (what it cost to run) as lists of
+    rows the template prints in order, plus both totals. `negative` says which
+    way a row goes, so the template never decides a sign. Sub-figures are
+    handed over RAW, never pre-formatted: rupees are written with the `inr`
+    filter's Indian grouping everywhere in this app, and an f-string here would
+    print '1,125,000' beside the same figure written '11,25,000'.
+    """
+    labour = labour_revenue(start, end)
+    parts = parts_trading(start, end)
+    discount = bills['discount']
+
+    gross = (labour + parts['shop']['profit'] + parts['stock']['profit']
+             + cb_income - discount)
+
+    earn = [
+        {'key': 'labour', 'label': 'Labour', 'icon': 'bi-tools',
+         'hint': 'Charged on the job cards, with no parts cost behind it',
+         'amount': labour, 'negative': False},
+        {'key': 'spare_margin', 'label': 'Spare Parts margin',
+         'icon': 'bi-gear-wide-connected', 'hint': '',
+         'charged': parts['shop']['revenue'], 'paid': parts['shop']['cost'],
+         'paid_word': 'paid to shops',
+         'amount': parts['shop']['profit'], 'negative': False},
+        {'key': 'stock_margin', 'label': 'Inventory margin',
+         'icon': 'bi-box-seam', 'hint': '',
+         'charged': parts['stock']['revenue'], 'paid': parts['stock']['cost'],
+         'paid_word': 'of stock used',
+         'amount': parts['stock']['profit'], 'negative': False},
+    ]
+    # Both of these are normally absent, and a permanent ₹0 between two figures
+    # that matter is how a row stops being read. They appear the moment the
+    # money does; `gross` is unchanged either way.
+    if cb_income:
+        earn.append({'key': 'cashbook_income', 'label': 'Cashbook Income',
+                     'icon': 'bi-journal-plus', 'hint': 'Scrap, black oil, misc',
+                     'amount': cb_income, 'negative': False})
+    if discount:
+        earn.append({'key': 'discount', 'label': 'Less: discounts given',
+                     'icon': 'bi-scissors', 'hint': 'Billed but never earned',
+                     'amount': discount, 'negative': True})
+
+    # ⚠ THERE IS NO STOCK-MOVEMENT LINE HERE ANY MORE, and its absence is the
+    # point rather than an omission. It existed to convert between two bases —
+    # the equation charged a Supplies Shop BILL on its bill date while this
+    # card charged stock when it was USED — and a page that has to reconcile
+    # itself to itself is a page nobody trusts. Both now charge stock when it
+    # is used, so `gross − salary − cashbook` IS the profit, with nothing in
+    # between. If a conversion line ever needs to come back, the two bases have
+    # drifted apart again and that is the bug.
+    spend = [
+        {'key': 'salary', 'label': 'Salary & Advance', 'icon': 'bi-cash-coin',
+         'hint': 'The wage bill', 'amount': salary_total, 'negative': True},
+        {'key': 'cashbook', 'label': 'General Cashbook', 'icon': 'bi-journal-text',
+         'hint': 'Rent, power, consumables', 'amount': cashbook_total, 'negative': True},
+    ]
+
+    net_spend = sum((r['amount'] if r['negative'] else -r['amount']) for r in spend)
+
+    return {
+        'labour': labour,
+        'parts': parts,
+        'discount': discount,
+        'cashbook_income': cb_income,
+        'earn': earn,
+        'spend': spend,
+        'gross': gross,
+        'net_spend': net_spend,
+        'profit': gross - net_spend,
+    }
+
+
+# =============================================================================
 # THE REPORT
 # =============================================================================
 
@@ -770,20 +1044,32 @@ def build_profit_report(start, end, disclosures=True):
     turnover = bills['net'] + cb_income
 
     spares = spare_shop_expense(start, end)
-    inventory = inventory_expense(start, end)
+    # THE COST OF STOCK USED, not of stock bought. Always computed — it is part
+    # of the equation now, so `disclosures=False` must never skip it or the
+    # comparison period would be measuring a different definition of profit.
+    stock_used = warehouse_drawn_spare_cost(start, end)
     salary = salary_expense(start, end, gaps=disclosures)
     cashbook = cashbook_expense(start, end)
     other_spares = unattributed_spare_expense(start, end)
 
-    expense_total = spares + inventory + salary['total'] + cashbook['total'] + other_spares
+    expense_total = spares + stock_used + salary['total'] + cashbook['total'] + other_spares
     profit = turnover - expense_total
 
     # Ordered biggest-first so the page reads as "where the money went".
+    #
+    # ⚠ BOTH PARTS LINES ARE THE SAME QUESTION ON THE SAME BASIS: what did the
+    # parts fitted to cars in this period cost us. One route was bought from a
+    # spare shop for the job, the other came off the warehouse shelf. Neither
+    # is "what we were billed this period" and neither is "what we paid this
+    # period" — a Supplies Shop bill moves the payable in
+    # `financial_position()`, and an instalment paid against it moves the
+    # payable again. Neither touches profit. That is why both hints say so.
     expense_lines = [
         {'key': 'spare_shops', 'label': 'Spare Shops',
-         'hint': 'Parts bought per job', 'amount': spares, 'icon': 'bi-tools'},
-        {'key': 'inventory', 'label': 'Supplies Shops',
-         'hint': 'Warehouse restocking', 'amount': inventory, 'icon': 'bi-truck'},
+         'hint': 'Parts bought per job, not payments', 'amount': spares, 'icon': 'bi-tools'},
+        {'key': 'inventory', 'label': 'Inventory Used',
+         'hint': 'Parts taken off the warehouse shelf', 'amount': stock_used,
+         'icon': 'bi-box-seam'},
         {'key': 'salary', 'label': 'Salary & Advance',
          'hint': salary['hint'], 'amount': salary['total'], 'icon': 'bi-cash-coin'},
         {'key': 'cashbook', 'label': 'General Cashbook',
@@ -810,7 +1096,12 @@ def build_profit_report(start, end, disclosures=True):
         'expense_lines': expense_lines,
         'salary': salary,
         'cashbook': cashbook,
-        'warehouse_drawn': warehouse_drawn_spare_cost(start, end) if disclosures else ZERO,
+        'warehouse_drawn': stock_used,
+        # Skipped with the footnotes on the comparison reports, which read
+        # nothing but `turnover` and `profit`.
+        'earnings': earnings_breakdown(
+            start, end, bills, cb_income, salary['total'], cashbook['total'],
+        ) if disclosures else None,
         'uncosted_draws': uncosted_draw_count(start, end) if disclosures else 0,
         'unassigned_spares': unassigned_spare_purchases() if disclosures else {'amount': ZERO, 'count': 0},
         'profit': profit,
@@ -836,8 +1127,6 @@ def monthly_series(start, end):
             if r['m']
         }
 
-    from inventory.models import SupplierRestockBill
-
     rev = grouped(live_jobcards().filter(admitted_date__range=(start, end)),
                   'admitted_date', F('total_bill_amount') - F('discount_amount'))
     inc = grouped(CashbookEntry.objects.filter(entry_type='INCOME', date__range=(start, end)),
@@ -845,8 +1134,14 @@ def monthly_series(start, end):
     sp = grouped(_live_spares(start, end).filter(
                      source=JobCardSpareItem.SOURCE_SHOP, shop__isnull=False),
                  'job_card__admitted_date', SPARE_COST)
-    inv = grouped(SupplierRestockBill.objects.filter(bill_date__range=(start, end)),
-                  'bill_date', SUPPLIER_BILL_COST)
+    # BOTH PARTS ROUTES GROUPED BY THE JOB CARD'S DATE, because both are now
+    # charged when the part is fitted. This used to group `SupplierRestockBill`
+    # by `bill_date`; leaving it that way would have put the chart on a
+    # different basis from the headline, which `ConsistencyTests` catches — the
+    # chart must always total to `build_profit_report`.
+    inv = grouped(_live_spares(start, end).filter(
+                      source=JobCardSpareItem.SOURCE_INVENTORY),
+                  'job_card__admitted_date', SPARE_COST)
     cb = grouped(CashbookEntry.objects.filter(entry_type='EXPENSE', date__range=(start, end)),
                  'date', F('amount'))
     sal = grouped(SalaryPaymentLine.objects.filter(payment__month__range=(start, end)),
@@ -884,6 +1179,39 @@ def monthly_series(start, end):
 # =============================================================================
 # FINANCIAL POSITION  (a balance "right now", not a windowed figure)
 # =============================================================================
+
+def warehouse_stock_value():
+    """
+    What is ON the shelf right now, at what the shelf paid for it.
+
+    A POSITION, not a flow — deliberately not window-scoped, like every other
+    figure in `financial_position()`. Read by two surfaces: the Profit page's
+    position tiles and the Inventory insight section. It lives here rather than
+    in a view because it is money math, and because two copies would be two
+    answers to "what is the stock worth" on two screens an owner reads together.
+
+    ⚠ UNKNOWN COST IS `avg_cost == 0`, NOT NULL. The column is
+    `default=0, null=False`, so an `isnull` filter matches nothing and would
+    quietly value opening stock that has never had a supplier bill behind it at
+    ₹0 — reporting it as worthless rather than as unknown. Those products are
+    excluded from the figure and COUNTED instead, the rule
+    `uncosted_draw_count()` follows: "we don't know" is the correct answer and
+    ₹0 is a wrong one. **Expect a count here on go-live day**, until the first
+    restock bill for each product is entered.
+
+    Negative stock is left NEGATIVE, not clamped. It is allowed by design and
+    it means a Supplies Shop bill is missing, so flooring it would delete the
+    signal — the same defect the old `Greatest(…, ZERO)` clamp caused on the
+    shelf itself.
+    """
+    from inventory.models import Item
+
+    qs = Item.objects.all()
+    return {
+        'value': _sum(qs.exclude(avg_cost=0), F('current_stock') * F('avg_cost')),
+        'uncosted_products': qs.filter(avg_cost=0).exclude(current_stock=0).count(),
+    }
+
 
 def financial_position():
     """
@@ -939,12 +1267,47 @@ def financial_position():
             return {'label': credit_label, 'amount': -amount, 'direction': 'credit'}
         return {'label': owed_label, 'amount': amount, 'direction': direction}
 
+    # WHAT THE WORKSHOP HOLDS, beside what it owes for it.
+    #
+    # The owner's question, in their words: "we have to pay Supplies Shops
+    # ₹1,00,000, but we have ₹1,20,000 worth of stock in the workshop." That is
+    # two facts about one relationship, and until now they lived on two
+    # different pages — the payable here, the stock value in Deep Analysis.
+    #
+    # ⚠ THEY ARE STATED, NEVER NETTED, and that restraint is the whole of it.
+    # There is no accounting identity between them: the payable covers every
+    # unpaid bill whether or not those goods are still on the shelf, and the
+    # shelf holds goods from bills long since paid. A "net" figure would be
+    # arithmetic on two numbers that do not belong to each other. Printed side
+    # by side they answer the real question — is the debt backed by goods we
+    # still hold — and the owner does that reading, not the page.
+    #
+    # It is also AT COST, not at what it would sell for, which is why the tile
+    # says so: valuing the shelf at retail would put an unearned margin into a
+    # balance figure.
+    stock = warehouse_stock_value()
+    if stock['value'] < ZERO:
+        # Only reachable when overdrawn products outweigh the rest — a data
+        # state meaning several Supplies Shop bills are missing, not a real
+        # negative asset. Said in words like every other tile here, so the card
+        # can never print a minus.
+        stock_tile = {'label': 'Stock recorded short', 'amount': -stock['value'],
+                      'direction': 'hold'}
+    else:
+        stock_tile = {'label': 'Stock on the shelf', 'amount': stock['value'],
+                      'direction': 'hold'}
+    stock_tile['wide'] = True
+    stock_tile['note'] = 'at what it cost'
+    stock_tile['uncosted_products'] = stock['uncosted_products']
+
     return {
         'receivable': receivable,
         'fleet_due': fleet_due,
         'payable_spare': spare_due,
         'payable_supplier': supplier_due,
         'payable_total': spare_due + supplier_due,
+        'stock_value': stock['value'],
+        'uncosted_products': stock['uncosted_products'],
         'tiles': [
             tile(receivable, 'Customers owe us', 'Customers paid ahead', 'in'),
             # "Of that" only holds while it IS a slice of a positive figure. In
@@ -953,5 +1316,10 @@ def financial_position():
             tile(fleet_due, 'Of that, fleet accounts', 'Fleet accounts in credit', 'in'),
             tile(spare_due, 'We owe spare shops', 'Spare shops paid ahead', 'out'),
             tile(supplier_due, 'We owe supplies shops', 'Supplies shops paid ahead', 'out'),
+            # LAST, and full width. It sits directly under the supplies-shops
+            # payable it is read against, and its own row says what the other
+            # four cannot: this one is a thing the workshop HOLDS, not a debt in
+            # either direction.
+            stock_tile,
         ],
     }

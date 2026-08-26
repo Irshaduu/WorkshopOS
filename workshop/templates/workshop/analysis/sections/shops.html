@@ -1,8 +1,41 @@
 {% load custom_filters %}
 
+{% comment %}
+  SPEND AND PAID ARE TWO DIFFERENT QUESTIONS, and this is the right screen for
+  the second one.
+
+  "Spend" is what the work cost — the figure the Profit page charges. "Paid" is
+  cash that actually left the drawer against these shops' ledgers, on their own
+  instalment rhythm. Neither affects the other and neither belongs inside the
+  profit equation: an owner who subtracts a cash figure from a profit figure
+  gets a number that is not anything.
+
+  It answers the thought an owner has right after reading a profit — "then
+  where is the money?" — and it answers it beside the shops it concerns rather
+  than under the profit it does not.
+
+  ⚠ THE TWO SIDES ARE DATED DIFFERENTLY, so they stay two figures.
+  `SupplierPayment.date` is a real date the office sets; `SpareShopPayment` has
+  no date field at all, only `created_at` — the moment it was keyed. One
+  combined "paid to all shops" total would mean two things at once.
+{% endcomment %}
 <div class="ia-stats">
   <div class="ia-stat"><div class="k">Spare shop spend</div><div class="v">₹{{ spare_total|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Paid to spare shops</div>
+    <div class="v" style="color:#dc2626;">₹{{ spare_paid|inr_compact }}</div>
+    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">cash out, by entry date</div></div>
   <div class="ia-stat"><div class="k">Supplies spend</div><div class="v">₹{{ supplier_total|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Paid to supplies shops</div>
+    <div class="v" style="color:#dc2626;">₹{{ supplier_paid|inr_compact }}</div>
+    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">cash out, by payment date</div></div>
+</div>
+
+<div class="ia-note" style="margin-bottom:14px;">
+  <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+  <span><strong>Spend</strong> is what the parts cost the workshop — the figure the Profit page
+    charges. <strong>Paid</strong> is cash that left against these shops' ledgers in the same
+    period. They are not meant to match: shops are paid in instalments, so what is bought and
+    what is settled rarely land in one month. Neither affects profit.</span>
 </div>
 
 <div class="ia-sub">Spare Shops — parts bought per job</div>
@@ -11,8 +44,15 @@
   <table class="ia-tbl">
     <thead>
       <tr>
+        {% comment %}
+          "MARGIN", not "Profit" — parts sold from this shop less what the shop
+          billed, with no labour in it and no overhead off it. It is the same
+          number the Spare Parts section calls Margin, cut by shop instead of
+          by part, so it has to wear the same word. `Profit` is the Profit
+          page's alone; `Gross profit` means revenue less parts cost.
+        {% endcomment %}
         <th>Shop</th><th class="num">Parts</th><th class="num">Spent</th>
-        <th class="num">Charged on</th><th class="num">Profit</th><th class="num">Owed now</th>
+        <th class="num">Charged on</th><th class="num">Margin</th><th class="num">Owed now</th>
       </tr>
     </thead>
     <tbody>
@@ -40,6 +80,23 @@
 </div>
 {% else %}
 <p class="text-muted" style="font-size:0.84rem;">No spare-shop purchases in this period.</p>
+{% endif %}
+
+{% if unattributed %}
+{% comment %}
+  A shop purchase with nobody recorded as the payee. This table is grouped BY
+  shop, so such a row has no group to sit in and drops out of the total above —
+  while the Spare Parts section counts every SOURCE_SHOP row and so reports
+  MORE spent, on the same parts, in the same period. Two screens disagreeing
+  about one figure with nothing saying why is what this line prevents.
+  Normally absent.
+{% endcomment %}
+<div class="ia-note" style="margin-top:8px;">
+  <i class="bi bi-question-circle-fill text-warning mt-1"></i>
+  <span>A further <strong>₹{{ unattributed|inr }}</strong> of spare-shop parts has
+    <strong>no shop recorded</strong>, so it belongs to none of the rows above. It is counted in
+    the Spare Parts section and on the Profit page under <strong>Other Spare Purchases</strong>.</span>
+</div>
 {% endif %}
 
 <div class="ia-sub">Supplies Shops — warehouse restocking</div>

@@ -6,21 +6,37 @@ Owner → Analysis & Reports.
 Two pages, and the split between them is the whole point of the design:
 
   /analysis/            PROFIT — the protected page.
-                        Turnover − Expenses = Profit, for one date window.
+                        Turnover − Expenses = Profit, for one date window, and
+                        then THE SAME PROFIT decomposed by what earned it.
                         This is what the owners open to decide profit
                         distribution, so it stays deliberately plain: no
                         drill-downs, no cleverness, nothing that needs
                         explaining. Every rupee on it traces to one of four
                         expense streams.
 
-  /analysis/insights/   INSIGHTS — everything else. Mechanics, spares,
-                        vehicles, fleet accounts, shops, operations. Loads one
-                        section at a time over AJAX so the heavy Top-N queries
-                        only run for the section actually being looked at.
+  /analysis/insights/   INSIGHTS — everything else. Mechanics, spare parts,
+                        inventory, vehicles, fleet accounts, shops, cashbook,
+                        operations. Loads one section at a time over AJAX so
+                        the heavy Top-N queries only run for the section
+                        actually being looked at.
 
 All money math lives in analysis_engine.py, not here. These views resolve the
 date window, call the engine, and render — so a bug in a chart can never
 become a bug in the profit figure.
+
+--------------------------------------------------------------------------
+ONE WORD, ONE MEANING — across both pages
+--------------------------------------------------------------------------
+Four different figures were all called "Profit" across these two screens, an
+owner reading both in one sitting. The vocabulary is now fixed:
+
+  Profit          the bottom line, after every expense. The Profit page's
+                  word, and nothing else in Analysis may use it bare.
+  Gross profit    revenue − parts cost, no overhead taken off. Car profiles
+                  and the Mechanics section — the same calculation, so the
+                  same words.
+  Margin          parts sold − parts cost. Spare Parts, Inventory, Shops.
+                  Thinner than gross profit: no labour in it either.
 
 Owner-only throughout (@owner_required); Office and Floor never see this.
 """
@@ -34,7 +50,7 @@ from django.shortcuts import render
 
 from .decorators import owner_required
 from .models import (
-    JobCard, JobCardSpareItem, BulkPayer, SpareShop,
+    JobCard, JobCardSpareItem, BulkPayer, SpareShop, SpareShopPayment,
 )
 from . import analysis_engine as engine
 from .analysis_engine import MONEY, ZERO, SPARE_COST, SUPPLIER_BILL_COST, live_jobcards, _sum
@@ -161,14 +177,21 @@ def analysis_dashboard(request):
         'delta_profit': delta,
         'delta_profit_text': pct_text(delta),
         # Charts — handed to JS via json_script in the template, never |safe.
+        # ONE chart on this page now. The "Where It Went" donut plotted
+        # `expense_lines`, which the Expenses card already prints with a share
+        # percentage and a proportional bar per line — the same four numbers
+        # drawn twice. Its two context keys went with it rather than being left
+        # behind as payload nothing reads.
         'chart_labels': [m['label'] for m in series],
         'chart_turnover': [float(m['turnover']) for m in series],
         'chart_expenses': [float(m['expenses']) for m in series],
         'chart_profit': [float(m['profit']) for m in series],
-        'chart_expense_labels': [l['label'] for l in report['expense_lines']],
-        'chart_expense_values': [float(l['amount']) for l in report['expense_lines']],
         'has_data': report['turnover'] != ZERO or report['expense_total'] != ZERO,
         'multi_month': len(series) > 1,
+        # The Deep Analysis link's subtitle, off the one list that defines
+        # them. It used to be a hand-typed string in the template and went
+        # stale the moment the sections changed.
+        'insight_section_names': [label for _key, label, _icon, _blurb in INSIGHT_SECTIONS],
     })
 
 
@@ -176,13 +199,36 @@ def analysis_dashboard(request):
 # PAGE 2 — INSIGHTS
 # =============================================================================
 
+# THE TWO PARTS ROUTES ARE TWO SECTIONS, not two tables in one.
+#
+# They were one "Spares" section carrying both, and before 2026-08-25 one
+# merged TABLE. Splitting the tables fixed the worst of it and left the thing
+# above them still merged: a combined headline reading "Parts revenue / Parts
+# cost / Parts profit / Margin" across both routes. That blended margin is a
+# number with no business behind it — it averages a per-job trading margin
+# against a shelf margin that depends on `avg_cost` being right — on a section
+# whose own reasoning says the two are different businesses.
+#
+# The deciding argument is that THE OWNER ALREADY SPLITS THEM: asked what the
+# workshop earns from, the answer was "labour, inventory commission, spare
+# parts commission, cashbook income" — four streams, of which these are two.
+# The Profit page's earnings card now names them separately too, so the two
+# pages describe the business the same way.
+#
+# ⚠ The Spares glyph was `bi-tools`, which is the JOB PERFORMED icon — the
+# section that BUYS parts wearing the icon of the section that FITS them, the
+# exact mistake CLAUDE.md records being fixed on the Spare Shops pages. The
+# app-wide Spare Parts glyph is `bi-gear-wide-connected`. It survived because
+# `SparePartsWearsOneGlyphTests` scans templates and this list is Python.
 INSIGHT_SECTIONS = [
-    ('mechanics',  'Mechanics',  'bi-person-gear',  'Who generates the work, and the profit on it'),
-    ('spares',     'Spares',     'bi-tools',        'Which parts move, and which actually earn'),
-    ('vehicles',   'Vehicles',   'bi-car-front',    'Repeat cars, brands, and how often they return'),
-    ('fleet',      'Fleet',      'bi-buildings',    'Fleet account volume, settlement and balances'),
-    ('shops',      'Shops',      'bi-shop',         'Spare shops and supplies shops, by spend'),
-    ('operations', 'Operations', 'bi-speedometer2', 'Workload, completion and how customers pay'),
+    ('mechanics',   'Mechanics',   'bi-person-gear',         'Who generates the work, and the gross profit on it'),
+    ('spare_parts', 'Spare Parts', 'bi-gear-wide-connected', 'Parts bought per job — what they cost and what they earn'),
+    ('inventory',   'Inventory',   'bi-box-seam',            'Parts off the warehouse shelf — what they earn'),
+    ('vehicles',    'Vehicles',    'bi-car-front',           'Repeat cars, brands, and how often they return'),
+    ('fleet',       'Fleet',       'bi-buildings',           'Fleet account volume, settlement and balances'),
+    ('shops',       'Shops',       'bi-shop',                'Spare shops and supplies shops, by spend'),
+    ('cashbook',    'Cashbook',    'bi-journal-text',        'General running costs by category, and scrap income'),
+    ('operations',  'Operations',  'bi-speedometer2',        'Workload, completion and how customers pay'),
 ]
 
 
@@ -215,10 +261,12 @@ def analysis_insight_section(request, section):
     """
     handlers = {
         'mechanics': _insight_mechanics,
-        'spares': _insight_spares,
+        'spare_parts': _insight_spare_parts,
+        'inventory': _insight_inventory,
         'vehicles': _insight_vehicles,
         'fleet': _insight_fleet,
         'shops': _insight_shops,
+        'cashbook': _insight_cashbook,
         'operations': _insight_operations,
     }
     if section not in handlers:
@@ -297,137 +345,222 @@ def _insight_mechanics(start, end):
     }
 
 
-# ------------------------------------------------------------------- spares --
-def _insight_spares(start, end):
-    """
-    Which parts move and which earn — SPLIT BY ROUTE, because the two routes are
-    two different businesses and the Job Card edits them as two sections.
+# -------------------------------------------------------------- spare parts --
+# THE TWO ROUTES ARE TWO SECTIONS. What is shared between them is the money
+# rule, and that lives in `engine.parts_trading` — one aggregate pair read by
+# both sections AND by the Profit page's earnings card, so a margin quoted on
+# one screen cannot disagree with the same margin one tap away.
+#
+# What is NOT shared is the shape of the table, and that is the whole reason
+# they are separate:
+#
+#   • A shop row has a shop, an ordering state and a payable behind it. A draw
+#     came off a shelf already paid for by a restock bill. Only the first is
+#     chaseable.
+#   • The COST columns are not the same kind of number. A shop line's cost is
+#     the LINE TOTAL as typed; a draw's is a derived weighted average x
+#     quantity. `SPARE_COST` gets each right, and printing them in one column
+#     invites dividing one by a quantity that does not price it.
+#   • QUANTITY means different things. A draw's quantity is what left the
+#     shelf; a shop row's moves no money at all. Shown for stock, and left off
+#     the shop table for exactly that reason.
+#
+# ⚠ THE MONEY COLUMN IS CALLED "MARGIN", NEVER "PROFIT". Four different things
+# were called Profit across these two pages — the bottom line, a car's gross
+# profit, a mechanic's, and this. This one is the thinnest of them: parts sold
+# less parts cost, with no labour in it and no overhead taken off. `Profit` is
+# now the Profit page's word alone, `Gross profit` means revenue less parts
+# cost (car profiles and mechanics), and `Margin` means this.
 
-    They were one merged list until 2026-08-25, which put "Castrol 5W-30" and
-    "Brake Pads - Front" in one table with one Cost column, and nothing on screen
-    said which was which. Three things were wrong with that:
+#: Rows in a parts table. Long enough to see the tail of what matters, short
+#: enough to stay one screen on a phone.
+PARTS_ROW_CAP = 15
+#: Bars in the "most used" chart.
+PARTS_CHART_CAP = 10
 
-      • A SHOP part is bought for one car, from a named shop, and creates a
-        payable. A WAREHOUSE draw came off a shelf already paid for by a restock
-        bill. Only the first is chaseable, and the merged list could not say
-        which rows those were.
-      • The COST columns are not the same kind of number. A shop line's cost is
-        the LINE TOTAL as typed; a draw's is a derived weighted average x
-        quantity. `SPARE_COST` gets each right, but printing them in one column
-        invites dividing one by a quantity that does not price it.
-      • QUANTITY means different things. A draw's quantity is what left the
-        shelf; a shop row's moves no money at all and is only a description of
-        what was bought. It is shown for stock and left off the shop table for
-        exactly that reason.
 
-    The two subtotals add to the headline, so the split hides nothing.
-    """
-    base = JobCardSpareItem.objects.filter(
+def _parts_base(start, end):
+    """Spare rows on real job cards admitted in the window, either route."""
+    return JobCardSpareItem.objects.filter(
         job_card__isnull=False, job_card__is_deleted=False,
         job_card__admitted_date__range=(start, end),
     )
 
-    money = lambda expr: Coalesce(Sum(expr, output_field=MONEY),
-                                  Value(ZERO, output_field=MONEY), output_field=MONEY)
 
-    # SHOP — grouped by the free-text name, lowered so 'brake pad' and 'Brake
-    # Pad' are one row. `Min` then hands back a REAL stored spelling: the old
-    # code displayed the lowered key re-title-cased, which turned 'DOT 4' into
-    # 'Dot 4' and 'CR-V' into 'Cr-V'.
-    shop_rows = list(
-        base.filter(source=JobCardSpareItem.SOURCE_SHOP)
-            .annotate(key=Lower('spare_part_name'))
+def _money(expr):
+    return Coalesce(Sum(expr, output_field=MONEY),
+                    Value(ZERO, output_field=MONEY), output_field=MONEY)
+
+
+def _with_margin(rows):
+    for r in rows:
+        r['margin'] = float(r['profit'] / r['revenue'] * 100) if r['revenue'] else 0.0
+    return rows
+
+
+def _insight_spare_parts(start, end):
+    """
+    The SHOP route — parts ordered from a spare shop for one car.
+
+    Grouped by the free-text name, lowered so 'brake pad' and 'Brake Pad' are
+    one row. `Min` then hands back a REAL stored spelling: displaying the
+    lowered key re-title-cased is what turned 'DOT 4' into 'Dot 4'.
+    """
+    base = _parts_base(start, end).filter(source=JobCardSpareItem.SOURCE_SHOP)
+
+    rows = _with_margin(list(
+        base.annotate(key=Lower('spare_part_name'))
             .values('key')
             .annotate(name=Min('spare_part_name'),
                       times=Count('id'),
-                      revenue=money('total_price'),
-                      cost=money(SPARE_COST))
+                      revenue=_money('total_price'),
+                      cost=_money(SPARE_COST))
             .annotate(profit=F('revenue') - F('cost'))
-            .order_by('-profit')[:15]
-    )
+            .order_by('-profit')[:PARTS_ROW_CAP]
+    ))
 
-    # INVENTORY — grouped by the `item` FK, never by the name. The name on the
-    # row is a SNAPSHOT taken when the part was drawn and is not rewritten when
-    # a product is renamed, so grouping by it would split one product's history
-    # into two rows the day somebody corrects a spelling.
-    # NOT filtered by `item__isnull=False`. A draw with no product FK is
-    # malformed and should not exist — `InventoryDrawForm` requires one and
-    # `source` is not editable — but filtering it out here while the subtotal
-    # below still counted it would drop a row off the table with nothing saying
-    # so, and leave the two disagreeing. `name` is the fallback label for that
-    # case and costs nothing in the ordinary one.
-    stock_rows = list(
-        base.filter(source=JobCardSpareItem.SOURCE_INVENTORY)
-            .values('item', 'item__name', 'item__category__name')
+    return {
+        'rows': rows,
+        'totals': engine.parts_trading(start, end)['shop'],
+        'movers': _parts_movers(base, Lower('spare_part_name'), 'spare_part_name'),
+        'shops_used': base.filter(shop__isnull=False).values('shop').distinct().count(),
+        # Real money with no payee. It is inside this section's cost — every
+        # SOURCE_SHOP row is — but it is NOT inside the Profit page's Spare
+        # Shops line, which is where an owner would go looking for it.
+        'no_shop': base.filter(shop__isnull=True).count(),
+    }
+
+
+def _insight_inventory(start, end):
+    """
+    The WAREHOUSE route — parts drawn off the shelf.
+
+    Grouped by the `item` FK, never by the name. `spare_part_name` on a draw is
+    a SNAPSHOT taken when the part was drawn and is not rewritten when the
+    product is renamed, so grouping by it would split one product's history
+    into two rows the day somebody corrects a spelling.
+
+    NOT filtered by `item__isnull=False`. A draw with no product FK is
+    malformed and should not exist — `InventoryDrawForm` requires one and
+    `source` is not editable — but filtering it out here while the subtotal
+    still counted it would drop a row with nothing saying so and leave the two
+    disagreeing. `name` is the fallback label for that case.
+    """
+    base = _parts_base(start, end).filter(source=JobCardSpareItem.SOURCE_INVENTORY)
+
+    rows = _with_margin(list(
+        base.values('item', 'item__name', 'item__category__name')
             .annotate(name=Min('spare_part_name'),
                       times=Count('id'),
                       qty=Coalesce(Sum('quantity'), Value(ZERO, output_field=MONEY),
                                    output_field=MONEY),
-                      revenue=money('total_price'),
-                      cost=money(SPARE_COST))
+                      revenue=_money('total_price'),
+                      cost=_money(SPARE_COST))
             .annotate(profit=F('revenue') - F('cost'))
-            .order_by('-profit')[:15]
-    )
-
-    for r in shop_rows + stock_rows:
-        r['margin'] = float(r['profit'] / r['revenue'] * 100) if r['revenue'] else 0.0
-
-    def subtotal(qs):
-        agg = qs.aggregate(revenue=money('total_price'), cost=money(SPARE_COST),
-                           lines=Count('id'))
-        agg['profit'] = agg['revenue'] - agg['cost']
-        agg['margin'] = (float(agg['profit'] / agg['revenue'] * 100)
-                         if agg['revenue'] else 0.0)
-        return agg
-
-    shop_totals = subtotal(base.filter(source=JobCardSpareItem.SOURCE_SHOP))
-    stock_totals = subtotal(base.filter(source=JobCardSpareItem.SOURCE_INVENTORY))
-    totals = subtotal(base)
-
-    # A draw with no `unit_price` costs ₹0 here, so it reads as a FREE part and
-    # pushes the margin up — the one way this table can be wrong without looking
-    # wrong. Counted so the section can say so, exactly as the Profit page does.
-    uncosted = base.filter(source=JobCardSpareItem.SOURCE_INVENTORY,
-                           unit_price__isnull=True).count()
-
-    # Off the job card, not off its job lines: the labour charge moved onto
-    # `JobCard.labour_amount` when the workshop's real practice — one price for
-    # the whole job — replaced the per-line column. Summing the lines here would
-    # now report every card created since as ₹0 of labour.
-    labour = _sum(JobCard.objects.filter(
-        is_deleted=False, admitted_date__range=(start, end)), F('labour_amount'))
-
-    # One chart answering "which parts move", with the route carried as a colour
-    # rather than left to be guessed from the name.
-    movers = sorted(
-        [{'label': r['name'] or '—', 'times': r['times'], 'shop': True} for r in shop_rows]
-        + [{'label': r['item__name'] or r['name'] or '—', 'times': r['times'], 'shop': False}
-           for r in stock_rows],
-        key=lambda r: -r['times'])[:10]
+            .order_by('-profit')[:PARTS_ROW_CAP]
+    ))
 
     return {
-        'shop_rows': shop_rows,
-        'stock_rows': stock_rows,
-        'shop_totals': shop_totals,
-        'stock_totals': stock_totals,
-        'totals': totals,
-        'uncosted_draws': uncosted,
-        'labour_total': labour,
-        'chart_labels': [m['label'] for m in movers],
-        'chart_qty': [m['times'] for m in movers],
-        'chart_is_shop': [m['shop'] for m in movers],
+        'rows': rows,
+        'totals': engine.parts_trading(start, end)['stock'],
+        'movers': _parts_movers(base, F('item'), 'item__name'),
+        # A draw with no `unit_price` costs ₹0, so it reads as a FREE part and
+        # pushes the margin UP — the one way this table can be wrong without
+        # looking wrong. Counted so the section can say so, exactly as the
+        # Profit page does.
+        'uncosted_draws': base.filter(unit_price__isnull=True).count(),
+        # What the shelf is worth right now, so the section that reports what
+        # LEFT the shelf also reports what is still on it. Not window-scoped —
+        # a stock level is a position, not a flow.
+        # From the engine, so this section and the Profit page's position tile
+        # can never quote different figures for one shelf.
+        'stock_value': engine.warehouse_stock_value(),
+    }
+
+
+def _parts_movers(base, key_expr, label_field):
+    """
+    The most-USED parts, counted over the whole route.
+
+    ⚠ NOT taken from the table above it. The old merged section built its
+    "Parts That Move" chart by re-sorting the fifteen rows it had already cut
+    by PROFIT — so a cheap part fitted to every car in the workshop could not
+    appear in the chart of what moves unless it also happened to be one of the
+    fifteen most profitable. The chart was answering "which of the top earners
+    is used most", under a heading that says something else. It is its own
+    query, and its own ordering.
+    """
+    return list(
+        base.annotate(mkey=key_expr)
+            .values('mkey')
+            .annotate(times=Count('id'), label=Min(label_field))
+            .order_by('-times')[:PARTS_CHART_CAP]
+    )
+
+
+# ------------------------------------------------------------------ cashbook --
+def _insight_cashbook(start, end):
+    """
+    General running costs by category, and the small income side.
+
+    MOVED HERE FROM THE PROFIT PAGE. Categories are free text with no master
+    list, so the list has no ceiling — All Time on a real workshop's books runs
+    to dozens, and it sat on a page whose rule is that it carries no
+    drill-downs, behind a "Show all" button, between the owner and the position
+    tiles. Which of forty categories rent fell into is not a question anybody
+    asks while settling the month's profit.
+
+    Nothing was lost by moving it: the Cashbook page lists ENTRIES and has
+    never totalled them by category, so this is the only place that view
+    exists. It gets a whole accordion section here instead of a truncated card,
+    so there is no cap and no reveal button — the total always adds up from the
+    rows under it.
+
+    ⚠ THE WAGE WARNING DID NOT MOVE. `cashbook_expense()` still flags a
+    wage-looking category and the Profit page still prints that warning, because
+    it says the profit figure may be double-counting the wage bill — and a
+    warning that changes what the headline means belongs beside the headline.
+    The flag is repeated on the row here so the two screens agree about which
+    category is the suspect one.
+    """
+    expense = engine.cashbook_expense(start, end)
+    income_rows = engine.cashbook_income_by_category(start, end)
+    income_total = engine.cashbook_income(start, end)
+
+    # A share per row, so the list reads for SHAPE and not only for figures —
+    # the same bar the Profit page's expense lines carry. Computed here because
+    # the template does no arithmetic.
+    total = expense['total']
+    for row in expense['by_category']:
+        row['share'] = float(row['total'] / total * 100) if total else 0.0
+
+    return {
+        'expense_rows': expense['by_category'],
+        'expense_total': total,
+        'wage_suspects': expense['wage_suspects'],
+        'wage_suspect_total': expense['wage_suspect_total'],
+        'income_rows': income_rows,
+        'income_total': income_total,
+        'entries': sum(r['count'] for r in expense['by_category']),
+        'income_entries': sum(r['count'] for r in income_rows),
     }
 
 
 # ----------------------------------------------------------------- vehicles --
 def _insight_vehicles(start, end):
     """
-    Repeat vehicles and brand mix, plus a deliberately small customer note.
+    Repeat vehicles and brand mix, keyed on the registration number.
 
     Customer name/contact are optional on a normal job card and usually left
-    blank on the floor, so there is no customer-level analysis here — only a
-    coverage line, so the owner can see how thin that data is instead of being
-    shown a confident chart built on a fraction of the rows.
+    blank on the floor, so there is no customer-level analysis here — a car is
+    identified by its plate.
+
+    ⚠ THE SECTION STATES THAT RULE; IT NO LONGER PRINTS THE COVERAGE. It used to
+    read "filled in on 0 of 47 job cards here", which is a true count and reads
+    as a shortfall to go and fix — inviting an owner to chase staff into filling
+    boxes that change nothing on this screen. `named_count` / `named_pct` are
+    still computed and simply not rendered: they cost one query already in
+    flight, and the day somebody wants the coverage back it is there.
     """
     cards = _cards_in(start, end)
 
@@ -527,13 +660,65 @@ def _insight_fleet(start, end):
         r['credit'] = -net if net < ZERO else ZERO
         r['collected_pct'] = float(r['received'] / r['billed'] * 100) if r['billed'] else 0.0
 
+    # AN ACCOUNT THAT OWES BUT DID NO WORK THIS PERIOD IS STILL LISTED.
+    #
+    # `rows` is built from job cards IN THE WINDOW, while "Balance now" is a
+    # live figure spanning the account's whole history — so an account that
+    # settled nothing and brought no cars in this month simply vanished, taking
+    # its debt off the only screen that lists fleet balances. The Profit page's
+    # fleet line counts it, so the two disagreed, and an owner adding up this
+    # column got less than the tile.
+    #
+    # Not filtered by `is_trashed`, for the same reason `receivable` is not: a
+    # balance must not depend on whether somebody tidied a list.
+    seen = {r['bulk_payer'] for r in rows}
+    outstanding = {pk for pk, bal in balances.items() if bal} | {
+        pk for pk, adv in advances.items() if adv}
+    missing = outstanding - seen
+    if missing:
+        names = dict(BulkPayer.objects.filter(id__in=missing)
+                     .values_list('id', 'customer_name'))
+        for pk in missing:
+            owing, credit = balances.get(pk, ZERO), advances.get(pk, ZERO)
+            net = owing - credit
+            if net == ZERO:
+                continue
+            rows.append({
+                'bulk_payer': pk,
+                'bulk_payer__customer_name': names.get(pk, '—'),
+                'jobs': 0, 'billed': ZERO, 'received': ZERO,
+                'owed': net if net > ZERO else ZERO,
+                'credit': -net if net < ZERO else ZERO,
+                'collected_pct': 0.0,
+                'no_jobs_here': True,
+            })
+        rows.sort(key=lambda r: (-r['billed'], -r['owed']))
+
     walkin = _cards_in(start, end).filter(bulk_payer__isnull=True)
+    fleet_jobs, walkin_jobs = cards.count(), walkin.count()
+    fleet_revenue = _sum(cards, _net_revenue())
+    walkin_revenue = _sum(walkin, _net_revenue())
+    all_jobs = fleet_jobs + walkin_jobs
+    all_revenue = fleet_revenue + walkin_revenue
+
     return {
         'rows': rows,
-        'fleet_jobs': cards.count(),
-        'fleet_revenue': _sum(cards, _net_revenue()),
-        'walkin_jobs': walkin.count(),
-        'walkin_revenue': _sum(walkin, _net_revenue()),
+        'fleet_jobs': fleet_jobs,
+        'fleet_revenue': fleet_revenue,
+        'walkin_jobs': walkin_jobs,
+        'walkin_revenue': walkin_revenue,
+        # THE SHARE IS THE POINT OF THE FOUR BOXES. Without it they are two
+        # unrelated pairs of numbers; with it they read as one split, which is
+        # the question this section exists to answer — how much of the work is
+        # fleet. Computed here because the template does no arithmetic.
+        'fleet_job_pct': round(fleet_jobs / all_jobs * 100, 1) if all_jobs else 0.0,
+        'fleet_revenue_pct': (float(fleet_revenue / all_revenue * 100)
+                              if all_revenue else 0.0),
+        'total_jobs': all_jobs,
+        # The two denominators, printed beside each share so "8.1%" is a
+        # fraction of something the reader can see rather than of a figure they
+        # have to go and find.
+        'all_revenue': all_revenue,
         'accounts': BulkPayer.objects.filter(is_trashed=False).count(),
     }
 
@@ -541,7 +726,7 @@ def _insight_fleet(start, end):
 # -------------------------------------------------------------------- shops --
 def _insight_shops(start, end):
     """Where the parts money goes — spare shops (per job) and supplies shops."""
-    from inventory.models import SupplierShop, SupplierRestockBill
+    from inventory.models import SupplierShop, SupplierRestockBill, SupplierPayment
 
     # `source=SHOP` stated OUTRIGHT rather than inferred from "has a shop".
     # A warehouse draw carries no shop today, so the two filters select the same
@@ -602,6 +787,35 @@ def _insight_shops(start, end):
         'supplier_rows': supplier_rows,
         'spare_total': sum((r['spend'] for r in spare_rows), ZERO),
         'supplier_total': sum((r['spend'] for r in supplier_rows), ZERO),
+        # A SHOP purchase with nobody recorded as the payee. This section is
+        # grouped BY shop, so such a row has no group to sit in and drops out
+        # of the total above — while the Spare Parts section counts every
+        # SOURCE_SHOP row and therefore reports MORE spent at the same shops,
+        # in the same period. Two screens disagreeing about one figure with
+        # nothing saying why is exactly what this section must not do.
+        # Normally ₹0.
+        'unattributed': engine.unattributed_spare_expense(start, end),
+        # WHAT ACTUALLY LEFT THE DRAWER, which is a different question from
+        # every other figure on this page and belongs HERE rather than on the
+        # Profit page. Spend is what the work cost; this is cash paid against
+        # the shops' ledgers, on their own instalment rhythm. Neither touches
+        # profit, and putting a cash figure inside the profit equation is how
+        # an owner ends up subtracting one of five terms and trusting the
+        # answer.
+        #
+        # ⚠ THE TWO SIDES ARE DATED DIFFERENTLY AND THE PAGE SAYS SO.
+        # `SupplierPayment.date` is a real date the office sets;
+        # `SpareShopPayment` has only `created_at`, the moment it was keyed —
+        # there is no date field on that model. Summing them into one "paid to
+        # all shops" figure would mean two different things at once, so they
+        # stay two figures.
+        'supplier_paid': _sum(
+            SupplierPayment.objects.filter(is_trashed=False, date__range=(start, end)),
+            F('amount')),
+        'spare_paid': _sum(
+            SpareShopPayment.objects.filter(
+                is_trashed=False, created_at__date__range=(start, end)),
+            F('amount')),
     }
 
 

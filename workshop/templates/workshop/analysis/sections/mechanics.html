@@ -19,7 +19,17 @@
         <th class="num">Jobs</th>
         <th class="num">Revenue</th>
         <th class="num">Parts cost</th>
-        <th class="num">Profit</th>
+        {% comment %}
+          "GROSS profit", never plain "Profit", and the word is the whole
+          safety of it. This is the identical calculation a car profile prints
+          — revenue less the parts fitted — where the label is already fixed by
+          `test_it_is_never_called_plain_profit`. Wages, rent and power are not
+          in it and cannot be: labour is quoted whole with no hours recorded,
+          so there is nothing to apportion an overhead by. Measured against the
+          current data it reads well above what the business actually makes.
+          The Profit page's figure is the one true profit.
+        {% endcomment %}
+        <th class="num">Gross profit</th>
         <th class="num">Margin</th>
         <th class="num">Avg / job</th>
       </tr>
@@ -45,9 +55,11 @@
 
 <div class="ia-note">
   <i class="bi bi-info-circle-fill text-primary mt-1"></i>
-  <span>Profit here is the job's revenue minus the parts fitted to it — labour carries no parts
-    cost, so it flows through whole. Wages are <strong>not</strong> divided across mechanics; they
-    stay on the Profit page.</span>
+  <span><strong>Gross</strong> profit is the job's revenue minus the parts fitted to it — labour
+    carries no parts cost, so it flows through whole. Wages, rent and power are
+    <strong>not</strong> divided across mechanics: splitting a workshop-wide bill across job cards
+    would be a choice, not a measurement. They stay on the Profit page, which is where the one
+    true profit figure lives.</span>
 </div>
 
 {{ chart_labels|json_script:"mechLabels" }}
@@ -70,7 +82,10 @@
       labels: read('mechLabels'),
       datasets: [
         { label: 'Revenue', data: read('mechRevenue'), backgroundColor: 'rgba(37,99,235,0.7)', borderRadius: 4 },
-        { label: 'Profit',  data: read('mechProfit'),  backgroundColor: 'rgba(22,163,74,0.85)', borderRadius: 4 },
+        // The chart legend carries the same word the column header does — a
+        // legend reading "Profit" beside a column reading "Gross profit" is
+        // two names for one series on one screen.
+        { label: 'Gross profit', data: read('mechProfit'), backgroundColor: 'rgba(22,163,74,0.85)', borderRadius: 4 },
       ],
     },
     options: {

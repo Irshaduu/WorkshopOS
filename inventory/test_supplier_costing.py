@@ -17,8 +17,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from inventory.costing import average_cost_for
-from inventory.models import (Category, Item, ShopCatalogItem, SupplierRestockBill,
-                              SupplierRestockItem, SupplierShop)
+from inventory.models import (Category, Item, ShopCatalogItem, SupplierPayment,
+                              SupplierRestockBill, SupplierRestockItem, SupplierShop)
 from workshop import analysis_engine as engine
 from workshop.models import JobCard, JobCardSpareItem
 
@@ -360,4 +360,51 @@ class EveryDoorIntoADiscountEnforcesTheSameRuleTests(SupplierCostingBase):
         b, _line = self.bill(qty='10', total='5000')
         SupplierRestockBill.objects.filter(pk=b.pk).update(discount_amount=D('50000'))
         s, e, _k, _l = engine.resolve_period('this_month')
-        self.assertEqual(engine.inventory_expense(s, e), D('0'))
+        self.assertEqual(engine.supplier_billed(s, e), D('0'))
+
+    def test_the_shops_stored_BALANCE_floors_it_too(self):
+        """
+        `SupplierShop.update_totals()` was a fourth hand-rolled copy with no
+        floor, so an underwater bill SUBTRACTED from the shop's balance — real
+        debt on its other bills reading smaller than it is. The archive guard
+        reads this figure, so it would also let a shop the workshop still owes
+        be archived.
+        """
+        bad, _ = self.bill(qty='10', total='5000')
+        SupplierRestockBill.objects.filter(pk=bad.pk).update(discount_amount=D('50000'))
+        good, _ = self.bill(qty='4', total='8000')
+
+        self.shop.update_totals()
+        self.shop.refresh_from_db()
+        self.assertEqual(self.shop.total_billed_amount, D('8000'),
+                         'a broken bill ate into what another bill genuinely owes')
+        self.assertEqual(self.shop.get_pending_balance, D('8000'))
+
+    def test_the_payment_WATERFALL_floors_it_too(self):
+        """
+        THE FIFTH COPY, and the subtlest: the supplier page allocates payments
+        across bills oldest-first, and the cumulative total it allocates
+        against was hand-rolled with no floor — while `get_effective_amount`,
+        used for the per-bill figure IN THE SAME LOOP, has always floored it.
+        The two halves of one calculation disagreed about the same bill.
+
+        A negative amount in the running sum shifts the allocation for every
+        bill after it, which marks bills COVERED that nobody has paid for.
+        """
+        older, _ = self.bill(qty='10', total='5000', days_ago=10)
+        SupplierRestockBill.objects.filter(pk=older.pk).update(discount_amount=D('50000'))
+        newer, _ = self.bill(qty='4', total='8000', days_ago=1)
+        SupplierPayment.objects.create(supplier=self.shop, amount=D('3000'),
+                                       date=self.today)
+        self.shop.update_totals()
+
+        resp = self.client.get(reverse('supplier_shop_detail', args=[self.shop.id]))
+        self.assertEqual(resp.status_code, 200)
+        rows = {b.id: b for b in resp.context['bills']}
+
+        # ₹3,000 paid against a real debt of ₹8,000 — partly covered, never
+        # "covered". Un-floored, the broken bill's −₹45,000 made the pool look
+        # enormous and marked it paid in full.
+        self.assertEqual(rows[newer.id].covered_status, 'PARTIAL')
+        self.assertEqual(rows[newer.id].pending_amount, D('5000'))
+        self.assertEqual(rows[older.id].get_effective_amount, D('0'))

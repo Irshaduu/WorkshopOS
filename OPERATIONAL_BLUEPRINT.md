@@ -54,7 +54,7 @@ graph TD
 ```
  OWNER
    Can do EVERYTHING below + these exclusive actions:
-   - Access Owner Analysis & Reports: the **Profit** page (Turnover − Expenses = Profit, filtered by month/year/custom — what profit distribution is decided from) and, from it, the **Deep Analysis** page (mechanics, spares, vehicles, fleet, shops, operations).
+   - Access Owner Analysis & Reports: the **Profit** page (Turnover − Expenses = Profit, filtered by month/year/custom — what profit distribution is decided from) and, from it, the **Deep Analysis** page (mechanics, spare parts, inventory, vehicles, fleet, shops, cashbook, operations).
    - Delete a whole month's salary settlement (Office can create and correct one, only an Owner can un-record it)
    - View the Paid Bills Dashboard over ANY period, with the grand Total Collected (Office sees the last 7 days and no grand total)
    - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
@@ -377,7 +377,7 @@ A Job Card records parts in **two separate sections**:
 | Columns | Item, Qty, Unit Price, Customer Price | Part Name, Qty, Status, Ordered, Received, Shop, Shop Price, Customer Price |
 | How the part is chosen | **picked** from stock (search, then select) | typed freely |
 | Moves warehouse stock? | **yes** | never |
-| Who already paid for it | a Supplies Shop restock bill, earlier | the spare shop, per this job |
+| Who supplied it | a Supplies Shop restock bill, earlier | the spare shop, per this job |
 
 They were one section, which meant five of the eight columns were
 permanently blank for a warehouse draw and staff were invited to fill boxes that
@@ -885,15 +885,30 @@ CASHBOOK
 OWNER ANALYSIS — PROFIT (Owner only)
   Shows: Total Turnover − Total Expenses = Profit for one date window, stated as an equation
   Turnover: Car Bills (bills less discounts) + Cashbook Income
-  Expenses: Spare Shops · Supplies Shops · Salary & Advance · General Cashbook (by category)
-  Also: month-by-month trend, expense split, and what is owed to/by the workshop right now
+  Expenses: Spare Shops · Inventory Used · Salary & Advance · General Cashbook
+    — all four are the cost of work DONE in the period. A part is charged when it is
+    fitted to a car, whichever shelf it came off.
+  Then the SAME profit a second way — "What Earned The Profit": Labour + Spare Parts
+    margin + Inventory margin + Cashbook Income = Gross Earnings, less salary and
+    general cashbook = the same Profit, with no reconciling line in between
+  Also: month-by-month trend, and Position Right Now — what is owed to/by the workshop,
+    plus what the warehouse shelf holds at cost, so the supplies-shop debt can be read
+    against the stock it bought (stated side by side, never netted)
+  Dating: BOTH parts routes count on the job card's date. A Supplies Shop BILL is not an
+    expense at all — it raises the shelf and the payable; a supplier PAYMENT moves the
+    payable again. Neither touches profit.
   Filters: This Month / Last Month / This Year / Last Year / All Time / Custom
   Purpose: the figure the owners distribute profit from — kept deliberately plain
 
 OWNER ANALYSIS — DEEP ANALYSIS (Owner only, reached from the Profit page)
-  Sections (each loaded on demand): Mechanics · Spares · Vehicles · Fleet · Shops · Operations
-  Note: customer-level analysis is deliberately minimal — names/contacts are optional on a
-  job card and usually blank, so vehicle registration is used as the identity instead
+  Sections (each loaded on demand): Mechanics · Spare Parts · Inventory · Vehicles · Fleet
+    · Shops · Cashbook · Operations
+  Note: a car is identified by its REGISTRATION NUMBER throughout. Customer name and
+  contact are optional on a job card and usually blank, and no figure in Analysis
+  depends on them either way.
+  Shops carries two questions side by side: SPEND (what the parts cost — the figure the
+  Profit page charges) and PAID (cash that left against the shops' ledgers). They are
+  not meant to match, and neither touches profit.
 
 SUPPLIES SHOPS (Inventory App — distinct from Spare Shops, see §5B)
   Shows: Supplier dashboard with per-supplier billed/paid/pending totals

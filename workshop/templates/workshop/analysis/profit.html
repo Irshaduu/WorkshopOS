@@ -101,6 +101,20 @@
     font-size: 0.72rem; font-weight: 500; color: var(--color-text-muted);
     margin-left: auto; text-align: right;
   }
+  /* ON A PHONE THE SUBTITLE TAKES ITS OWN LINE.
+     `margin-left: auto` pins it to the right of the title, so on a 375px
+     screen a four-word heading and a five-word subtitle both wrap and
+     interleave into a ragged four-line block. Given the whole width each
+     reads as one line, and neither has to be shortened to fit a phone.
+     Applied to every card here, not just one, so the headings stay a set.
+     (Nothing in this file quotes retired copy: a CSS comment is served to
+     every visitor, so a phrase parked in one is still on the page.) */
+  @media (max-width: 480px) {
+    .pf-card-title { flex-wrap: wrap; }
+    .pf-card-title .sub {
+      flex: 0 0 100%; margin-left: 0; text-align: left; margin-top: 1px;
+    }
+  }
 
   /* Ledger rows */
   .pf-row {
@@ -121,27 +135,23 @@
   }
   .pf-row.total .name, .pf-row.total .amt { font-weight: 800; }
 
-  /* Collapsed tail of the Cashbook category list. Written with both classes
-     so it beats `.pf-row { display: flex }` outright rather than relying on
-     which rule happens to come later in the file. */
-  .pf-row.pf-cat-hidden { display: none; }
-  .pf-more {
-    display: flex; align-items: center; justify-content: center; gap: 7px;
-    width: 100%; margin-top: 10px;
-    min-height: 44px;              /* tapped on a phone — the owners read this page there */
-    border: 1px dashed var(--color-border); border-radius: 11px;
-    background: transparent; color: var(--color-text-muted);
-    font-size: 0.79rem; font-weight: 700;
-    /* Paint only. `transition: all` here would animate layout too — the same
-       trap that pinned the Cashbook's own filter chips at content width. */
-    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  /* ── Earnings breakdown ───────────────────────────────────────
+     A MID-total, lighter than `.total`: Gross earnings is a staging post on
+     the way to Profit, and drawing it at the same weight as the final line
+     would put two equally loud totals in one card and invite reading the
+     first one as the answer. */
+  .pf-row.subtotal {
+    border-top: 1px solid var(--color-border); border-bottom: 0;
+    /* The gap under it is what separates the two halves of the card now that
+       the block heading is gone — earnings above, what comes off below. */
+    margin: 4px 0 7px; padding-top: 10px;
   }
-  .pf-more:hover {
-    border-color: var(--color-primary); color: var(--color-primary);
-    background: var(--color-primary-light);
-  }
-  .pf-more i { font-size: 0.8rem; transition: transform 0.18s ease; }
-  .pf-more[aria-expanded="true"] i { transform: rotate(180deg); }
+  .pf-row.subtotal .name, .pf-row.subtotal .amt { font-weight: 800; }
+  /* MONEY IN. Paired with `.minus` below it so the amount column reads
+     straight down — green in, red out — which is the whole structure of the
+     earnings card in one glance. A full-strength green, not a tint: at low
+     opacity it reads as disabled text rather than as a colour. */
+  .pf-row .amt.plus { color: var(--color-success); }
 
   /* Expense share bar */
   .pf-bar { height: 5px; border-radius: 999px; background: var(--color-border-light); margin-top: 6px; }
@@ -150,7 +160,6 @@
 
   /* Charts */
   .pf-chart-wrap { position: relative; height: 260px; }
-  .pf-chart-wrap.donut { height: 230px; }
 
   /* Position (as-of-now) grid */
   .pf-pos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
@@ -168,6 +177,15 @@
      money already sitting with the other side. Neutral rail, so it cannot be
      read as a debt in whichever direction the tile normally points. */
   .pf-pos-item.credit { border-left: 3px solid var(--color-text-muted); }
+  /* WHAT THE WORKSHOP HOLDS — neither owed nor owing, so neither green nor
+     red. Full width on its own row, directly under the supplies-shops payable
+     it is read against: five tiles in a two-column grid would otherwise leave
+     it orphaned in a half-width box, looking like a fifth debt. */
+  .pf-pos-item.hold { border-left: 3px solid var(--color-primary); }
+  .pf-pos-item.wide { grid-column: 1 / -1; }
+  .pf-pos-item .n {
+    font-size: 0.68rem; color: var(--color-text-muted); margin-top: 2px;
+  }
 
   /* Insights CTA */
   .pf-cta {
@@ -418,7 +436,26 @@
           <i class="bi {{ line.icon }}"></i>
           <span style="flex: 1; min-width: 0;">
             <span class="name">{{ line.label }}<span class="pf-share">{{ line.share|floatformat:0 }}%</span></span>
+            {% comment %}
+              THE SALARY LINE EXPLAINS ITSELF; the other three do not need to.
+              Spare Shops is parts bought, Supplies Shops is restock bills,
+              General Cashbook is the entries — each is what its label says.
+              The wage cost is NET PLUS ADVANCES, which is the one composition
+              on this card that looks like a double count until it is spelled
+              out: an owner comparing ₹1,24,000 here against a ₹1,15,000
+              settlement needs to see that the gap is advances already handed
+              over. This replaced a whole card that said it in four rows.
+
+              Only when a month is fully settled and there ARE advances. An
+              unsettled month keeps `line.hint`, which carries the warning that
+              wages are missing from the figure entirely — a bigger fact than
+              how the counted part splits.
+            {% endcomment %}
+            {% if line.key == 'salary' and not report.salary.unsettled_months and report.salary.settled_advance %}
+            <span class="hint">₹{{ report.salary.settled_net|inr }} settled + ₹{{ report.salary.settled_advance|inr }} advances</span>
+            {% else %}
             <span class="hint">{{ line.hint }}</span>
+            {% endif %}
             <span class="pf-bar"><span style="width: {{ line.share|floatformat:0 }}%;"></span></span>
           </span>
         </span>
@@ -430,9 +467,168 @@
         <span class="lbl"><span class="name">Total Expenses</span></span>
         <span class="amt minus">₹{{ report.expense_total|inr }}</span>
       </div>
+
+      {% comment %}
+        THE WAREHOUSE NOTE IS GONE, and it is not hiding anywhere else.
+
+        It read "Parts worth ₹1,88,000 came off warehouse stock and are not
+        charged here — they were paid for earlier, on a Supplies Shop bill."
+        Every word of that was true and it should never have needed saying: it
+        existed only because this list charged a Supplies Shop BILL while the
+        card below charged stock when it was USED, so the page had to explain
+        itself to itself.
+
+        Both now charge parts when they are fitted, so there is no gap left to
+        explain. Every line here is the cost of work done in this period, and
+        the four of them are the whole of it.
+      {% endcomment %}
     </div>
   </div>
 </div>
+
+<!-- ── Where the profit came from ───────────────────────────── -->
+{% comment %}
+  THE SAME PROFIT, SAID THE OWNER'S WAY — and it must LAND ON THE SAME FIGURE
+  as the hero above. That is the whole constraint on this card.
+
+  The equation at the top of the page is the cash view: every rupee in it
+  traces to a document the workshop can put its hand on. This card answers the
+  different question the owners actually ask each month — what earned it. Four
+  things do: labour, the margin on parts bought per job, the margin on parts
+  off the shelf, and the odd bit of scrap income.
+
+  ⚠ DO NOT "SIMPLIFY" THIS BY STOPPING AT GROSS EARNINGS. That was the first
+  draft and it was the one genuinely dangerous version: an owner subtracts the
+  wage bill and the cashbook from it and lands somewhere that is not the
+  profit — ₹63,000 out in August 2026 — because the two views disagree about
+  when warehouse stock is expensed. `analysis_engine.earnings_breakdown`
+  carries it down to Profit and names the line that closes the gap.
+
+  Every figure here is computed in the engine, including which way the stock
+  line points and what it is then called. The template prints what it is
+  handed and does no arithmetic — see `financial_position()` for the same rule.
+{% endcomment %}
+{% if report.earnings %}
+<div class="pf-card">
+  {% comment %}
+    THE SUBTITLE NAMES THE FIGURE, and that is the whole job of it.
+
+    It read "Same profit, by what earned it" — which is what the card DOES,
+    written in a way that only makes sense once you already know. Printing the
+    profit itself answers the question a reader actually has ("what am I
+    looking at, and how does it relate to the number at the top?") in a form
+    that needs no explaining: they can see it matches the hero, and then the
+    rows underneath show how it was reached.
+
+    The glyph is `text-primary` like every other card title here. Green is
+    reserved on this page for money that IS profit — the final row of this
+    card, and the hero. A green heading spent it on decoration.
+  {% endcomment %}
+  <div class="pf-card-title">
+    <i class="bi bi-graph-up-arrow text-primary"></i>What Earned The Profit
+    <span class="sub">The same ₹{{ report.profit|inr }}, broken down</span>
+  </div>
+
+  {% for r in report.earnings.earn %}
+  <div class="pf-row">
+    <span class="lbl"><i class="bi {{ r.icon }}"></i>
+      <span><span class="name">{{ r.label }}</span>
+      {% comment %}
+        A margin row states its own two sides, so "Spare Parts margin
+        ₹3,75,000" can be checked without opening another screen. Written with
+        the `inr` filter like every other rupee figure in the app — the engine
+        hands these over raw for exactly that reason.
+      {% endcomment %}
+      {% comment %}
+        Keyed on the KEY BEING PRESENT, not on it being truthy. A period with
+        no parts has `charged` of ₹0, and a truthiness test would drop to the
+        empty `hint` those rows carry — rendering an empty `.hint`, which is
+        `display: block` and so costs a blank line. "₹0 charged − ₹0 paid to
+        shops" is both true and the same height as every other row.
+      {% endcomment %}
+      {% if 'charged' in r %}<span class="hint">₹{{ r.charged|inr }} charged − ₹{{ r.paid|inr }} {{ r.paid_word }}</span>
+      {% else %}<span class="hint">{{ r.hint }}</span>{% endif %}</span>
+    </span>
+    {% comment %}
+      GREEN ON THE AMOUNT, NOT ON THE LABEL, and the two cost rows below are
+      why. They already carry their colour on the figure — a red ₹ against a
+      black label — so putting green on the label here would make the two
+      halves of one card disagree about where colour lives. On the amount, the
+      right-hand column reads straight down: green in, red out.
+
+      A DISCOUNT ROW STAYS RED. It sits in this half but it is money never
+      earned, so it goes the other way and is coloured for the direction it
+      goes, not the half it lives in.
+    {% endcomment %}
+    <span class="amt {% if r.negative %}minus{% else %}plus{% endif %}">{% if r.negative %}− {% endif %}₹{{ r.amount|inr }}</span>
+  </div>
+  {% endfor %}
+
+  {% comment %}
+    Gross Earnings is deliberately NOT green. It is a structural waypoint, not
+    a fifth thing that earned money — and with the four rows above it green and
+    Profit green below, a green subtotal in between would leave nothing for the
+    eye to land on.
+  {% endcomment %}
+  <div class="pf-row subtotal">
+    <span class="lbl"><span class="name">Gross Earnings</span></span>
+    <span class="amt">₹{{ report.earnings.gross|inr }}</span>
+  </div>
+
+  {% comment %}
+    NO "RUNNING COSTS" HEADING HERE, and it was removed rather than reworded.
+
+    Two of these three rows are running costs and the third is not: the stock
+    line is a timing adjustment that goes either way, and on a month that drew
+    the shelf down it is a PLUS. A heading has to be true of every row under
+    it, and any wording covering all three ("what came off", "less") is either
+    wrong on that row or vague enough to say nothing.
+
+    The signs already carry it — every row is written − or +, and the two rules
+    above (Gross Earnings, then Profit) give the block its shape. A label that
+    can contradict one of its own rows is worse than no label.
+  {% endcomment %}
+  {% for r in report.earnings.spend %}
+  <div class="pf-row">
+    <span class="lbl"><i class="bi {{ r.icon }}"></i>
+      <span><span class="name">{{ r.label }}</span>
+      <span class="hint">{{ r.hint }}</span></span>
+    </span>
+    <span class="amt {% if r.negative %}minus{% else %}plus{% endif %}">{% if r.negative %}− {% else %}+ {% endif %}₹{{ r.amount|inr }}</span>
+  </div>
+  {% endfor %}
+
+  <div class="pf-row total">
+    <span class="lbl"><span class="name">Profit</span></span>
+    <span class="amt" style="color: {% if report.profit < 0 %}#dc2626{% else %}var(--color-success){% endif %};">₹{{ report.earnings.profit|inr }}</span>
+  </div>
+
+  {% comment %}
+    PROFIT IS NOT CASH, and an owner reading a big figure will wonder where it
+    is before they wonder anything else. This is a POINTER, not a number.
+
+    A "paid to the shops this period" figure was considered and rejected. It
+    would not close the gap — profit and cash differ by five things at once
+    (stock bought but unused, stock used but bought earlier, bills unpaid,
+    bills paid from earlier periods, customer bills unpaid) — so printing one
+    of them invites exactly the incomplete arithmetic this card was rebuilt to
+    stop. And it could not be built honestly today anyway:
+    `SupplierPayment.date` is a real date the office sets, while
+    `SpareShopPayment` has only `created_at`, the moment it was keyed. One
+    figure spanning both would mean two different things at once.
+
+    The balance-sheet answer already exists, one card down, and it is the
+    actionable one: what is owed to the workshop, what it owes, and what it
+    holds on the shelf. So the line sends them there.
+  {% endcomment %}
+  <div class="pf-note" style="margin-top: 12px;">
+    <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+    <span>This is what the work <strong>earned</strong> — not cash in hand. Money still owed to
+      the workshop, money it still owes, and stock sitting on the shelf are in
+      <strong>Position Right Now</strong> below.</span>
+  </div>
+</div>
+{% endif %}
 
 <!-- ── Trend ────────────────────────────────────────────────── -->
 {% if multi_month %}
@@ -445,113 +641,65 @@
 </div>
 {% endif %}
 
-<div class="row g-0 g-md-3">
-  <!-- ── Expense split ──────────────────────────────────────── -->
-  <div class="col-12 col-lg-5">
-    <div class="pf-card">
-      <div class="pf-card-title"><i class="bi bi-pie-chart-fill text-danger"></i>Where It Went</div>
-      <div class="pf-chart-wrap donut"><canvas id="pfSplit"></canvas></div>
-    </div>
-  </div>
+{% comment %}
+  THE "WHERE IT WENT" DONUT WAS REMOVED, and it is not hiding anywhere else.
 
-  {% comment %}
-  Salary sits beside the donut and the Cashbook runs full width beneath it —
-  the reverse of how they were first laid out, on the owner's instruction.
-  Salary is a FIXED four-line calculation, so it fits the narrow column
-  exactly and never outgrows it. The Cashbook is an open-ended list of
-  free-text categories that grows with the period being read, and a list that
-  can be forty rows long does not belong in the smaller half of a split row.
-  {% endcomment %}
-  <!-- ── Salary detail ──────────────────────────────────────── -->
-  <div class="col-12 col-lg-7">
-    <div class="pf-card">
-      <div class="pf-card-title">
-        {% comment %}
-          The plain settled COUNT here, not the unsettled warning — that is said
-          twice already, in the amber banner and on the expense line beside the
-          ₹0. This card breaks down what WAS paid, so what belongs in its
-          subtitle is how many months are in it. A third copy of one sentence is
-          how a warning stops being read.
-        {% endcomment %}
-        <i class="bi bi-cash-coin text-primary"></i>Salary &amp; Advance
-        <span class="sub">{{ report.salary.settled_months }} month{{ report.salary.settled_months|pluralize }} settled</span>
-      </div>
-      <div class="pf-row">
-        <span class="lbl"><i class="bi bi-wallet2"></i>
-          <span><span class="name">Paid at settlement</span>
-          <span class="hint">Net handed over at month end</span></span>
-        </span>
-        <span class="amt">₹{{ report.salary.settled_net|inr }}</span>
-      </div>
-      <div class="pf-row">
-        <span class="lbl"><i class="bi bi-cash"></i>
-          <span><span class="name">Advances within settled months</span>
-          <span class="hint">Already taken during the month</span></span>
-        </span>
-        <span class="amt">₹{{ report.salary.settled_advance|inr }}</span>
-      </div>
-      {% if report.salary.unsettled_advance %}
-      <div class="pf-row">
-        <span class="lbl"><i class="bi bi-hourglass-split"></i>
-          <span><span class="name">Advances in unsettled months</span>
-          <span class="hint">Cash out, month not settled yet</span></span>
-        </span>
-        <span class="amt">₹{{ report.salary.unsettled_advance|inr }}</span>
-      </div>
-      {% endif %}
-      <div class="pf-row total">
-        <span class="lbl"><span class="name">Total Wage Cost</span></span>
-        <span class="amt minus">₹{{ report.salary.total|inr }}</span>
-      </div>
-    </div>
-  </div>
-</div>
+  It plotted `report.expense_lines` — the same four numbers the Expenses card
+  directly above it already prints, each with its own share percentage AND its
+  own proportional bar. Four slices restating four bars is not a second view of
+  the data, it is the same view drawn twice, and it cost a Chart.js instance
+  plus a screenful on the phone the owners actually read this page on.
 
-<!-- ── Cashbook detail ──────────────────────────────────────── -->
+  The bars stayed rather than the donut because they sit beside the rupee
+  figures they describe, which a separate chart cannot do.
+{% endcomment %}
+{% comment %}
+  THE SALARY & ADVANCE CARD MOVED OUT TOO, and it went to the Salary & Advance
+  module rather than to Deep Analysis.
+
+  It was four rows explaining one expense line, on a page whose rule is that it
+  carries no drill-downs — the same reason the Cashbook category list left.
+  Keeping one drill-down and deleting the other would have been the page
+  applying its own rule to whichever card was noticed.
+
+  Deep Analysis was the wrong destination: wages already have a whole module,
+  `/salary-advance/`, which owns settlements, advances and the per-person
+  history. A ninth insight section would have been a second, thinner copy of
+  it — and the amber banner above already links there by name.
+
+  ⚠ ONE FACT FROM IT WAS KEPT, because it is the only expense line on this
+  page whose composition is not self-evident and reads like a double count:
+  the wage cost is NET PLUS ADVANCES. An owner who sees ₹1,24,000 here and a
+  ₹1,15,000 settlement in Salary & Advance has to be able to tell that the
+  ₹9,000 difference is advances already handed out, not an error. It now sits
+  in the expense line's own hint slot, REPLACING "1 month settled" — which was
+  a count of months, not an explanation of the figure beside it. One line for
+  one line, and only when there are advances to explain.
+{% endcomment %}
+
+{% comment %}
+  THE GENERAL CASHBOOK CATEGORY LIST MOVED TO DEEP ANALYSIS → CASHBOOK.
+
+  It was the one open-ended list on a page whose whole rule is that it carries
+  no drill-downs. Categories are free text with no master list, so All Time on
+  a real workshop's books runs to dozens of them — a collapsible tail, a "Show
+  all" button and a scroll's worth of ₹200 one-offs, sitting between the owner
+  and "Position Right Now" on a phone. Which of forty categories rent fell
+  into is not a question anybody asks while settling the month's profit.
+
+  Nothing was lost: the Cashbook page itself lists ENTRIES but has never
+  totalled them by category, so Deep Analysis is now the only place that view
+  exists, and it is a whole section rather than a truncated card.
+
+  ⚠ THE WAGE WARNING STAYED, and that split is deliberate. Everything else in
+  that card was detail; this one line says the profit figure above it may be
+  WRONG — the same money counted once from Salary & Advance and again from a
+  Cashbook category called "Staff Salaries". A warning that changes what the
+  headline means has to live beside the headline, not one page away.
+{% endcomment %}
+{% if report.cashbook.wage_suspects and report.salary.total %}
 <div class="pf-card">
-  <div class="pf-card-title">
-    <i class="bi bi-journal-text text-primary"></i>General Cashbook
-    <span class="sub">₹{{ report.cashbook.total|inr }}</span>
-  </div>
-  {% comment %}
-  Categories are free text with no master list, so this list has no ceiling —
-  All Time on a real workshop's books runs to dozens of them, and the tail is
-  a long run of one-off ₹200 lines that push everything below this card off
-  the screen. The biggest few are shown and the rest are one tap away.
-
-  NOT truncated, though — every row is in the page, only hidden, so the total
-  in the heading always adds up from what "Show all" reveals. A capped list
-  that silently dropped its tail would print a figure the rows beneath it
-  could not account for.
-
-  A wage-looking category is never collapsed, whatever its size: the warning
-  underneath names it and tells the owner to go and move it, and flagging a
-  row while hiding it is the page arguing with itself.
-  {% endcomment %}
-  {% for c in report.cashbook.by_category %}
-    <div class="pf-row{% if forloop.counter > 6 and not c.looks_like_wages %} pf-cat-hidden{% endif %}">
-      <span class="lbl">
-        <i class="bi {% if c.looks_like_wages %}bi-exclamation-triangle-fill text-warning{% else %}bi-dot{% endif %}"></i>
-        <span><span class="name">{{ c.category }}</span>
-        <span class="hint">{{ c.count }} entr{{ c.count|pluralize:"y,ies" }}</span></span>
-      </span>
-      <span class="amt minus">₹{{ c.total|inr }}</span>
-    </div>
-  {% empty %}
-    <p class="text-muted mb-0" style="font-size: 0.84rem;">No cashbook expenses in this range.</p>
-  {% endfor %}
-
-  {% if report.cashbook.by_category|length > 6 %}
-  <button type="button" class="pf-more" id="pfCatMore"
-          data-more="Show all {{ report.cashbook.by_category|length }} categories"
-          data-less="Show fewer" aria-expanded="false">
-    <span class="pf-more-text">Show all {{ report.cashbook.by_category|length }} categories</span>
-    <i class="bi bi-chevron-down"></i>
-  </button>
-  {% endif %}
-
-  {% if report.cashbook.wage_suspects and report.salary.total %}
-  <div class="pf-note mt-3" style="background: #fffbeb; color: #92400e;">
+  <div class="pf-note" style="background: #fffbeb; color: #92400e;">
     <i class="bi bi-exclamation-triangle-fill mt-1" style="color: #d97706;"></i>
     <span>
       <strong>Wages may be counted twice.</strong>
@@ -561,8 +709,8 @@
       entries if they are the same money.
     </span>
   </div>
-  {% endif %}
 </div>
+{% endif %}
 
 <!-- ── Position right now ───────────────────────────────────── -->
 <div class="pf-card">
@@ -581,9 +729,24 @@
   {% endcomment %}
   <div class="pf-pos">
     {% for t in position.tiles %}
-    <div class="pf-pos-item {{ t.direction }}">
+    <div class="pf-pos-item {{ t.direction }}{% if t.wide %} wide{% endif %}">
       <div class="k">{{ t.label }}</div>
       <div class="v"{% if t.direction == 'out' %} style="color: #dc2626;"{% elif t.direction == 'in' and forloop.first %} style="color: var(--color-success);"{% endif %}>₹{{ t.amount|inr }}</div>
+      {% comment %}
+        AT COST, and the tile says so. Valuing the shelf at what it would sell
+        for would put an unearned margin into a balance figure, beside four
+        tiles that are all real money.
+
+        The uncosted count travels WITH the number rather than sitting in a
+        footnote: a product whose cost nobody has recorded is left OUT of the
+        figure — "we don't know" being the honest answer, and ₹0 a wrong one —
+        so without this line the shelf reads low, and it reads low exactly when
+        the workshop is newest and least able to notice. Expect it on go-live
+        day, until each product has its first restock bill.
+      {% endcomment %}
+      {% if t.note %}
+      <div class="n">{{ t.note }}{% if t.uncosted_products %} · {{ t.uncosted_products }} product{{ t.uncosted_products|pluralize }} not yet costed, left out{% endif %}</div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
@@ -591,22 +754,28 @@
 
 {% if report.uncosted_draws %}
 {% comment %}
-  Draws whose cost is UNKNOWN, not zero — they count as ₹0, so without this line
-  they read as free parts. Normally only appears just after go-live, while
-  opening stock has no supplier bill behind it yet.
+  ⚠ THIS NOW MOVES THE PROFIT FIGURE, and it did not before.
 
-  Shortened deliberately. The first version explained where an uncosted draw
-  comes from, what it does to the margin and how to fix it — three true things
-  that made a rare, minor footnote the longest block on the page.
+  While warehouse parts were merely reported, an uncosted draw was a footnote
+  about a number nobody spent. They are an EXPENSE LINE now, so a draw with no
+  cost is charged at ₹0 — a part fitted for free — and profit is overstated by
+  exactly that much. It is the one way the headline can be wrong without
+  looking wrong, so it is drawn as a warning rather than a note and it names
+  the fix.
+
+  Normally only appears just after go-live, while opening stock has no supplier
+  bill behind it yet — and it clears itself as each product gets its first one.
 {% endcomment %}
 <div class="pf-card">
-  <div class="pf-note">
-    <i class="bi bi-question-circle-fill text-warning mt-1"></i>
+  <div class="pf-gap">
+    <i class="bi bi-exclamation-triangle-fill"></i>
     <span>
-      <strong>{{ report.uncosted_draws }}</strong> warehouse draw{{ report.uncosted_draws|pluralize }}
-      {{ report.uncosted_draws|pluralize:"has,have" }} no cost recorded, so
-      {{ report.uncosted_draws|pluralize:"it counts,they count" }} as ₹0 here.
-      Add a Supplies Shop bill for the product to give it a cost.
+      <strong>{{ report.uncosted_draws }} warehouse draw{{ report.uncosted_draws|pluralize }}
+      {{ report.uncosted_draws|pluralize:"has,have" }} no cost recorded</strong>, so
+      {{ report.uncosted_draws|pluralize:"it is,they are" }} counted as ₹0 —
+      which makes this profit look higher than it is. Add a Supplies Shop bill for
+      {{ report.uncosted_draws|pluralize:"that product,those products" }} to give
+      {{ report.uncosted_draws|pluralize:"it,them" }} a cost.
     </span>
   </div>
 </div>
@@ -638,28 +807,28 @@
 </div>
 {% endif %}
 
-{% if report.warehouse_drawn %}
 {% comment %}
-  Says WHY a real figure is missing from the expenses, which is the one thing a
-  reader cannot work out from the page. Kept to a sentence: the reasoning behind
-  the rule belongs in CLAUDE.md, not on a screen an owner reads monthly.
+  THE WAREHOUSE-STOCK NOTE MOVED UP, INTO THE EXPENSES CARD.
+
+  It answers one question — "why is the cost of warehouse parts not in Total
+  Expenses?" — and it was sitting at the very bottom of the page, several
+  screens below the total it is about. A reader who wondered had already
+  stopped reading; a reader who got that far was no longer asking. Now it sits
+  directly under the figure it explains.
 {% endcomment %}
-<div class="pf-card">
-  <div class="pf-note">
-    <i class="bi bi-info-circle-fill text-primary mt-1"></i>
-    <span>
-      <strong>₹{{ report.warehouse_drawn|inr }}</strong> of parts came off warehouse stock and is
-      not an expense here — it was already paid for on a Supplies Shop bill.
-    </span>
-  </div>
-</div>
-{% endif %}
 
 <a href="{% url 'analysis_insights' %}?range={{ range_key }}&start={{ custom_start }}&end={{ custom_end }}" class="pf-cta">
   <span class="pf-cta-ico"><i class="bi bi-compass"></i></span>
   <span style="flex:1; min-width:0;">
     <span class="pf-cta-t d-block">Deep Analysis</span>
-    <span class="pf-cta-s">Mechanics · Spares · Vehicles · Fleet · Shops · Operations</span>
+    {% comment %}
+      BUILT FROM `INSIGHT_SECTIONS`, never typed out. It was a hand-written
+      string and it went stale the moment the sections changed — the page
+      advertised "Spares" to a screen that no longer has one, and named six
+      sections where there are eight. A list that has to be edited in two
+      places is a list that will disagree with itself.
+    {% endcomment %}
+    <span class="pf-cta-s">{% for name in insight_section_names %}{{ name }}{% if not forloop.last %} · {% endif %}{% endfor %}</span>
   </span>
   <i class="bi bi-chevron-right"></i>
 </a>
@@ -668,37 +837,12 @@
 {{ chart_turnover|json_script:"pfTurnover" }}
 {{ chart_expenses|json_script:"pfExpenses" }}
 {{ chart_profit|json_script:"pfProfit" }}
-{{ chart_expense_labels|json_script:"pfSplitLabels" }}
-{{ chart_expense_values|json_script:"pfSplitValues" }}
 
 {% endif %}
 {% endblock %}
 
 {% block extra_js %}
 {% if has_data %}
-{% comment %}
-Deliberately its own script, ahead of the Chart.js tag: the category list is
-plain HTML that has nothing to do with the charts, and a CDN that fails to
-answer must not leave the "Show all" button inert.
-{% endcomment %}
-<script>
-(function () {
-  var btn = document.getElementById('pfCatMore');
-  if (!btn) return;
-  var hidden = document.querySelectorAll('.pf-cat-hidden');
-  // Every row past the cut-off can be a wage suspect, which is never
-  // collapsed — then there is nothing to reveal and no button to show.
-  if (!hidden.length) { btn.remove(); return; }
-
-  var text = btn.querySelector('.pf-more-text');
-  btn.addEventListener('click', function () {
-    var open = btn.getAttribute('aria-expanded') === 'true';
-    hidden.forEach(function (row) { row.classList.toggle('pf-cat-hidden', open); });
-    btn.setAttribute('aria-expanded', open ? 'false' : 'true');
-    text.textContent = open ? btn.dataset.more : btn.dataset.less;
-  });
-})();
-</script>
 <script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <script>
 (function () {
@@ -744,28 +888,6 @@ answer must not leave the "Show all" button inert.
     });
   }
 
-  const split = document.getElementById('pfSplit');
-  if (split) {
-    new Chart(split, {
-      type: 'doughnut',
-      data: {
-        labels: read('pfSplitLabels'),
-        datasets: [{
-          data: read('pfSplitValues'),
-          backgroundColor: ['#dc2626', '#f59e0b', '#2563eb', '#7c3aed', '#0891b2'],
-          borderWidth: 0, hoverOffset: 6,
-        }],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, cutout: '58%',
-        plugins: {
-          legend: { position: 'bottom',
-                    labels: { usePointStyle: true, boxWidth: 8, padding: 12, font: { size: 11 } } },
-          tooltip: { callbacks: { label: c => c.label + ': ' + compact(c.parsed) } },
-        },
-      },
-    });
-  }
 })();
 </script>
 {% endif %}

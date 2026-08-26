@@ -54,9 +54,21 @@
     data went missing rather than like the workshop identifying cars by their
     plate, which is how it actually works.
   {% endcomment %}
-  <span><strong>Customer names</strong> are optional and usually left blank — filled in on
-    {{ named_count }} of {{ total_cards }} job cards here — so this section works off the
-    registration number instead.</span>
+  {% comment %}
+    IT USED TO PRINT THE COVERAGE — "filled in on 0 of 47 job cards here" — which
+    read as a shortfall to go and fix. It is not: a customer name is optional by
+    design and this workshop mostly does not record one, because a car is
+    identified by its plate. Reporting a count invited an owner to chase staff
+    into filling boxes that would change nothing on this screen.
+
+    What is worth saying is the rule: nothing here depends on that field either
+    way. `named_count` / `named_pct` are still computed and are simply not
+    printed — that is one query already in flight, and the moment somebody wants
+    the coverage back it is there.
+  {% endcomment %}
+  <span>This section works off the <strong>registration number</strong>. Customer name and
+    contact do not affect anything here — filled in or blank, every figure above is the
+    same.</span>
 </div>
 
 {{ chart_labels|json_script:"brandLabels" }}

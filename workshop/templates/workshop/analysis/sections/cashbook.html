@@ -1,0 +1,120 @@
+{% load custom_filters %}
+
+{% comment %}
+  MOVED HERE FROM THE PROFIT PAGE, 2026-08-25.
+
+  It was the one open-ended list on a page whose whole rule is that it carries
+  no drill-downs. Categories are free text with no master list, so All Time on
+  a real workshop's books runs to dozens of them — a collapsed tail, a "Show
+  all" button and a scroll of one-off ₹200 lines sitting between the owner and
+  the position tiles. Which of forty categories rent fell into is not a
+  question anybody asks while settling the month's profit.
+
+  Nothing was lost. The Cashbook page itself lists ENTRIES and has never
+  totalled them by category, so this is the only place that view exists — and
+  here it gets a whole section, so there is no cap and no reveal button and the
+  total always adds up from the rows beneath it.
+
+  ⚠ THE WAGE WARNING DID NOT MOVE. It stays on the Profit page, because it says
+  the profit figure above it may be counting the wage bill twice — and a
+  warning that changes what the headline MEANS has to live beside the headline.
+  The flag is repeated on the row here so the two screens name the same suspect.
+
+  The workshop's cashbook is ~98% expenses (income is scrap and black oil, a
+  handful of entries a year), so Money Out leads and the income table recedes.
+{% endcomment %}
+
+<div class="ia-stats">
+  <div class="ia-stat"><div class="k">Money out</div>
+    <div class="v" style="color:#dc2626;">₹{{ expense_total|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Categories</div><div class="v">{{ expense_rows|length }}</div></div>
+  <div class="ia-stat"><div class="k">Entries</div><div class="v">{{ entries }}</div></div>
+  <div class="ia-stat"><div class="k">Money in</div>
+    <div class="v"{% if income_total %} style="color:var(--color-success);"{% endif %}>₹{{ income_total|inr_compact }}</div></div>
+</div>
+
+<div class="ia-sub">Money Out — by category</div>
+{% if expense_rows %}
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr><th>Category</th><th class="num">Entries</th><th class="num">Spent</th><th class="num">Share</th></tr>
+    </thead>
+    <tbody>
+      {% for c in expense_rows %}
+      <tr>
+        <td class="strong">
+          {% if c.looks_like_wages %}<i class="bi bi-exclamation-triangle-fill text-warning"></i> {% endif %}{{ c.category|default:"—" }}
+        </td>
+        <td class="num">{{ c.count }}</td>
+        <td class="num neg">₹{{ c.total|inr }}</td>
+        <td class="num">{{ c.share|floatformat:0 }}%</td>
+      </tr>
+      {% endfor %}
+      <tr class="ia-total">
+        <td class="strong">All running costs</td>
+        <td class="num">{{ entries }}</td>
+        <td class="num neg">₹{{ expense_total|inr }}</td>
+        <td class="num">100%</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted" style="font-size:0.84rem;">No cashbook expenses in this period.</p>
+{% endif %}
+
+{% if wage_suspects %}
+{% comment %}
+  Named here as well as on the Profit page, because this is the screen where
+  the offending category is actually visible and can be recognised. The Profit
+  page carries the consequence; this carries the row.
+{% endcomment %}
+<div class="ia-note" style="margin-top:8px; background:#fffbeb; color:#92400e;">
+  <i class="bi bi-exclamation-triangle-fill mt-1" style="color:#d97706;"></i>
+  <span>₹{{ wage_suspect_total|inr }} is filed under
+    {% for c in wage_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %},
+    which looks like wages. Wages are already counted from Salary &amp; Advance, so this may be
+    the same money twice. Nothing was removed — move the entries if it is.</span>
+</div>
+{% endif %}
+
+<div class="ia-sub">Money In</div>
+{% if income_rows %}
+<div class="ia-scroll">
+  <table class="ia-tbl">
+    <thead>
+      <tr><th>Category</th><th class="num">Entries</th><th class="num">Received</th></tr>
+    </thead>
+    <tbody>
+      {% for c in income_rows %}
+      <tr>
+        <td class="strong">{{ c.category|default:"—" }}</td>
+        <td class="num">{{ c.count }}</td>
+        <td class="num pos">₹{{ c.total|inr }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="ia-total">
+        <td class="strong">All cashbook income</td>
+        <td class="num">{{ income_entries }}</td>
+        <td class="num pos">₹{{ income_total|inr }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% else %}
+{% comment %}
+  Not an apology. Most periods genuinely have none — scrap goes out roughly
+  once every couple of months — so an empty income table has to read as normal
+  rather than as something missing.
+{% endcomment %}
+<p class="text-muted" style="font-size:0.84rem;">Nothing came in this period — normal.
+  Cashbook income is scrap and black oil, a few times a year.</p>
+{% endif %}
+
+<div class="ia-note">
+  <i class="bi bi-info-circle-fill text-primary mt-1"></i>
+  <span>Category names are free text — the Cashbook form suggests the spellings already in use,
+    so a name typed a second way becomes a second line here. <strong>Wages never belong in the
+    Cashbook</strong>; they are counted from Salary &amp; Advance.</span>
+</div>
