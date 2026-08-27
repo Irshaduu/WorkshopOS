@@ -71,35 +71,12 @@
         margin-left: 4px;
     }
 
-    .pb-total-block {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 2px;
-    }
     /* Smaller than it was (0.62rem / 1.2px), on the owner's instruction, and
        there is a measurement behind why it was worth doing. This label is a
        CAPTION on the figure below it, but "TOTAL COLLECTED THIS MONTH" set at
        0.62rem was 140px wide — WIDER than the ₹ amount it describes — and this
        row also holds the page title, which needs 189px of a 343px phone. The
        caption was the thing deciding whether the header fitted on one line. */
-    .pb-total-label {
-        font-family: var(--font-body);
-        font-size: 0.54rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.7px;
-        color: #94a3b8;
-        line-height: 1.35;
-    }
-    .pb-total-amount {
-        font-family: var(--font-display);
-        font-size: 1.8rem;
-        font-weight: 800;
-        letter-spacing: -0.5px;
-        color: var(--pb-green);
-        line-height: 1;
-    }
 
     /* ── Controls Row ─────────────────────────────── */
     .pb-controls {
@@ -277,24 +254,27 @@
             {% endif %}
         </div>
 
-        <!-- Total collected stat (Owner only) -->
-        {% if is_owner_user and total_collected is not None %}
-        <div class="pb-total-block">
-            <span class="pb-total-label" id="pbTotalLabel">Total Collected
-                {% if filter_type == 'today' %}Today
-                {% elif filter_type == 'this_week' %}This Week
-                {% elif filter_type == 'this_month' %}This Month
-                {% elif filter_type == 'this_year' %}This Year
-                {% elif filter_type == 'last_week' %}Last Week
-                {% elif filter_type == 'last_month' %}Last Month
-                {% elif filter_type == 'last_year' %}Last Year
-                {% elif filter_type == 'custom' %}{% if start_date and end_date %}{{ start_date }} – {{ end_date }}{% else %}Custom{% endif %}
-                {% elif filter_type == 'all' %}All Time
-                {% else %}Today{% endif %}
-            </span>
-            <span class="pb-total-amount">₹{{ total_collected|floatformat:2 }}</span>
-        </div>
-        {% endif %}
+        {% comment %}
+          THE "TOTAL COLLECTED" FIGURE WAS REMOVED, and the replacement is why.
+
+          It summed `received_amount` over cards that reached fully-settled
+          status in the window. Exact for a walk-in, who has one payment event
+          at pickup — and wrong for a fleet three ways at once: a card closed
+          this month showed its WHOLE cumulative receipt including instalments
+          collected in earlier months, a PARTIAL card holding real cash showed
+          nowhere at all, and banked advance credit showed nowhere either. On
+          the demo data a 1,20,000 fleet payment could report as 20,000 here.
+
+          The question it was reaching for — how much cash came in this period
+          — is now answered properly by Cash Tracking at the top of the Profit
+          page, which reads fleet money from `BulkPaymentHistory` (one row per
+          payment, dated by the day the money moved) instead of from the cards.
+          Removing this rather than relabelling it is the page's own rule: a
+          new card earns its place by removing one.
+
+          The COUNT stays. This page is a lookup list of settled bills, and how
+          many there are is a fact about the list itself.
+        {% endcomment %}
     </div>
 
     <!-- Controls: Search + Date Filter -->
@@ -445,7 +425,6 @@ document.addEventListener('DOMContentLoaded', function () {
         };
         const label = document.getElementById('pbFilterLabel');
         const filterPill = document.getElementById('pbFilterPillLabel');
-        const totalLabel = document.getElementById('pbTotalLabel');
         let labelText;
         if (currentFilter === 'custom') {
             const s = document.getElementById('pb_start_date')?.value;
@@ -456,7 +435,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (label) label.textContent = labelText;
         if (filterPill) filterPill.textContent = labelText;
-        if (totalLabel) totalLabel.textContent = 'Total Collected ' + labelText;
 
         // Debounce TYPING only. A filter tap, a pager tap and the custom-date
         // Apply are each one discrete decision, and running them through the
@@ -475,17 +453,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (mine !== seq) return;
                     resultsContainer.innerHTML = html;
                     window.history.pushState({}, '', url);
-                    // Sync count and total collected from hidden data carrier in partial
+                    // Sync the count from the hidden data carrier in the partial.
                     const sync = resultsContainer.querySelector('#pbSyncData');
                     if (sync) {
                         const countVal = document.getElementById('pbCountVal');
                         if (countVal && sync.dataset.count !== undefined) {
                             countVal.textContent = sync.dataset.count;
-                        }
-                        const totalEl = document.querySelector('.pb-total-amount');
-                        if (totalEl && sync.dataset.total) {
-                            const val = parseFloat(sync.dataset.total);
-                            if (!isNaN(val)) totalEl.textContent = '₹' + val.toFixed(2);
                         }
                     }
                 })

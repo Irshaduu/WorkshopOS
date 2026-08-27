@@ -49,15 +49,13 @@ class PaidBillsRBACTests(TestCase):
             admitted_date=self.today - timedelta(days=25),
         )
 
-    def test_owner_can_see_full_history_and_total_collected(self):
+    def test_owner_can_see_the_full_history(self):
         self.client.force_login(self.owner_user)
         response = self.client.get(reverse('paid_bills_list') + '?filter=all')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'KL01RECENT')
         self.assertContains(response, 'KL01OLD')
-        self.assertContains(response, 'Total Collected')
-        self.assertIsNotNone(response.context['total_collected'])
-        self.assertEqual(response.context['total_collected'], 20000)
+        self.assertEqual(response.context['total_count'], 2)
 
     def test_office_user_is_restricted_to_last_7_days(self):
         self.client.force_login(self.office_user)
@@ -67,16 +65,32 @@ class PaidBillsRBACTests(TestCase):
         self.assertContains(response, 'KL01RECENT')
         self.assertNotContains(response, 'KL01OLD')
 
-    def test_office_user_has_total_collected_completely_hidden(self):
-        self.client.force_login(self.office_user)
-        response = self.client.get(reverse('paid_bills_list'))
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.context['total_collected'])
-        self.assertFalse(response.context['is_owner_user'])
-        # pb-total-block and total labels should not be rendered in HTML
-        self.assertNotContains(response, 'class="pb-total-block"')
-        self.assertNotContains(response, 'id="pbTotalLabel"')
-        self.assertNotContains(response, 'id="pbTotalAmount"')
+    def test_the_page_carries_no_money_total_for_anyone(self):
+        """
+        THE GRAND TOTAL WAS REMOVED, not re-gated, so this is no longer an
+        RBAC rule at all — it is the same for both roles.
+
+        It summed `received_amount` over cards that reached fully-settled
+        status in the window: exact for a walk-in, who pays once at pickup,
+        and wrong for a fleet three ways over — a card closed this month
+        carried its whole cumulative receipt, a PARTIAL card holding real cash
+        appeared nowhere, and banked advance credit appeared nowhere. The
+        question it reached for is answered by Cash Tracking on the Profit
+        page, which reads fleet money one payment at a time.
+
+        The COUNT stays: how many bills are in the list is a fact about the
+        list, not a business figure.
+        """
+        for user in (self.owner_user, self.office_user):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(reverse('paid_bills_list'))
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn('total_collected', response.context)
+                self.assertNotContains(response, 'Total Collected')
+                self.assertNotContains(response, 'class="pb-total-block"')
+                self.assertNotContains(response, 'id="pbTotalLabel"')
+                self.assertIsNotNone(response.context['total_count'])
 
     def test_office_user_headline_and_no_filter_dropdown(self):
         self.client.force_login(self.office_user)
@@ -117,7 +131,6 @@ class PaidBillsRBACTests(TestCase):
                 response = self.client.get(reverse('paid_bills_list') + query)
                 self.assertContains(response, 'KL01RECENT')
                 self.assertNotContains(response, 'KL01OLD')
-                self.assertIsNone(response.context['total_collected'])
 
     def test_a_junk_custom_range_does_not_500(self):
         """

@@ -134,7 +134,7 @@ from django.utils import timezone
 from .models import (
     JobCard, JobCardSpareItem, CashbookEntry,
     SalaryPayment, SalaryPaymentLine, SalaryAdvance,
-    SpareShop, BulkPayer,
+    SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
 )
 
 # Wide enough that a multi-year Sum of 10-digit money columns cannot overflow.
@@ -1028,7 +1028,10 @@ def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_tota
     spend = [
         {'key': 'salary', 'label': 'Salary & Advance', 'icon': 'bi-cash-coin',
          'hint': 'The wage bill', 'amount': salary_total, 'negative': True},
-        {'key': 'cashbook', 'label': 'General Cashbook', 'icon': 'bi-journal-text',
+        # "Cashbook Expense", not "General Cashbook": `Cashbook Income` sits
+        # four rows above it in this same card. One ledger, two directions,
+        # and the two names have to say so.
+        {'key': 'cashbook', 'label': 'Cashbook Expense', 'icon': 'bi-journal-text',
          'hint': 'Rent, power, consumables', 'amount': cashbook_total, 'negative': True},
     ]
 
@@ -1105,7 +1108,7 @@ def build_profit_report(start, end, disclosures=True):
          'icon': 'bi-box-seam'},
         {'key': 'salary', 'label': 'Salary & Advance',
          'hint': salary['hint'], 'amount': salary['total'], 'icon': 'bi-cash-coin'},
-        {'key': 'cashbook', 'label': 'General Cashbook',
+        {'key': 'cashbook', 'label': 'Cashbook Expense',
          'hint': 'Rent, power, consumables', 'amount': cashbook['total'], 'icon': 'bi-journal-text'},
     ]
     if other_spares > ZERO:
@@ -1245,6 +1248,144 @@ def warehouse_stock_value():
         'value': _sum(qs.exclude(avg_cost=0), F('current_stock') * F('avg_cost')),
         'uncosted_products': qs.filter(avg_cost=0).exclude(current_stock=0).count(),
     }
+
+
+def cash_position(start, end):
+    """
+    MONEY IN AND MONEY OUT — cash, by the day it actually moved.
+
+    ⚠ THIS IS NOT PROFIT AND MUST NEVER BE MIXED INTO IT. Profit and cash
+    differ by five things at once — stock bought but unused, stock used but
+    bought earlier, bills unpaid, bills paid from earlier periods, and customer
+    bills unpaid — so an owner who subtracts one from the other gets a number
+    that is not anything. Nothing here appears in `build_profit_report`, and
+    nothing from the profit equation is reported here as though it were cash.
+    The card that draws this says so on its face.
+
+    THE THREE TRAPS, each of which would break it silently:
+
+    1. A FLEET CARD'S `received_amount` IS CUMULATIVE. Summing job cards for
+       fleet money counts a card's whole life on the day it finally closed — a
+       1,10,000 card collected over three months landing entirely in the third.
+       Fleet cash comes from `BulkPaymentHistory`, one row per payment, dated
+       by the day the money moved (the column added in `0072` for this). So the
+       walk-in half is `payment_status='PAID'` ONLY: including `BULK_PAID`
+       would count every fleet rupee twice.
+
+    2. WAGES ARE DATED BY THE SALARY MONTH, not the day they were handed over,
+       and that is deliberate. Settlement happens at month end or the 1st or
+       2nd of the next month — it straddles the boundary — so the same wage
+       bill would land in different months depending on which side of midnight
+       somebody pressed a button. The salary month never moves, the owners
+       already think of August's wages as August's cost, and every other figure
+       in this app agrees (`salary_expense` filters `SalaryPayment.month`).
+       Accepted consequence: August's wages are shown in August though the cash
+       left in early September — a constant one-month shift that repeats
+       identically every month, so it never accumulates.
+
+    3. IT REUSES `salary_expense`, it does not restate it. That function
+       already carries the guard that an advance inside a settled month is not
+       counted twice — once inside its settlement and again as a loose advance.
+       A second implementation here would be a second answer, free to drift.
+
+    Everything else is dated by its own `date` column: both shop ledgers, the
+    Cashbook, and now fleet payments. Every one of those is the day the money
+    moved, so the streams are on one basis and can honestly be added.
+    """
+    from inventory.models import SupplierPayment
+
+    # ---- in ----------------------------------------------------------------
+    walkin = _sum(
+        live_jobcards().filter(payment_status='PAID',
+                               paid_date__date__range=(start, end)),
+        F('received_amount'))
+    fleet = _sum(
+        BulkPaymentHistory.objects.filter(is_trashed=False, date__range=(start, end)),
+        F('amount'))
+    other_income = cashbook_income(start, end)
+
+    # ---- out ---------------------------------------------------------------
+    spare_paid = _sum(
+        SpareShopPayment.objects.filter(is_trashed=False, date__range=(start, end)),
+        F('amount'))
+    supplies_paid = _sum(
+        SupplierPayment.objects.filter(is_trashed=False, date__range=(start, end)),
+        F('amount'))
+    # `gaps=True`: an UNSETTLED month has had only its advances handed out, so
+    # the wage line reads far below a real month's pay — 9,000 against 1,24,000
+    # on the demo data. That is arithmetically right and reads as a windfall,
+    # so the card names the months exactly as the profit equation does. Same
+    # fact, same signal, one implementation.
+    salary = salary_expense(start, end)
+    wages = salary['total']
+    running = cashbook_expense(start, end)   # a dict: the card wants its total
+
+    money_in = [
+        {'label': 'Customer bills settled', 'hint': 'walk-in, by the day it was settled',
+         'amount': walkin},
+        {'label': 'Fleet account payments', 'hint': 'by the day the money moved',
+         'amount': fleet},
+        {'label': 'Scrap and other income', 'hint': 'from the cashbook',
+         'amount': other_income},
+    ]
+    money_out = [
+        {'label': 'Spare shops', 'hint': 'paid against their ledgers', 'amount': spare_paid},
+        {'label': 'Supplies shops', 'hint': 'paid against their ledgers', 'amount': supplies_paid},
+        {'label': 'Wages and advances', 'hint': 'counted in the month they are for',
+         'amount': wages},
+        {'label': 'Rent, power, consumables', 'hint': 'from the cashbook',
+         'amount': running['total']},
+    ]
+
+    total_in = sum((r['amount'] for r in money_in), ZERO)
+    total_out = sum((r['amount'] for r in money_out), ZERO)
+    movement = total_in - total_out
+
+    return {
+        'money_in': money_in,
+        'money_out': money_out,
+        'total_in': total_in,
+        'total_out': total_out,
+        # THE SIGN IS TURNED INTO WORDS HERE, never in the template — the same
+        # rule `financial_position` follows. `movement` is kept signed for
+        # tests and any future caller; `direction` and `magnitude` are what the
+        # card prints.
+        'movement': movement,
+        'magnitude': abs(movement),
+        'direction': 'in' if movement >= ZERO else 'out',
+        # ⚠ NOT A BALANCE, AND THE CARD MUST NEVER CALL IT ONE. There is no
+        # opening cash figure anywhere in this system, so what can be reported
+        # is the CHANGE over the window and never the position. An owner who
+        # reads "in the account", checks the bank and sees something else stops
+        # believing the whole app.
+        'is_balance': False,
+        # The Cashbook is free text, so "Paid Ninoos 20,000" typed there is
+        # counted twice — once as a cashbook expense, once as a shop payment.
+        # Flagged, never filtered, exactly as the wage double-count is on the
+        # profit page: a keyword filter would hide real money.
+        'shoplike_cashbook': _shoplike_cashbook_count(start, end),
+        # Named, never estimated. A wage figure nobody paid, inside a figure
+        # labelled cash, is how this card would go from incomplete to wrong.
+        'unsettled_months': salary['unsettled_months'],
+    }
+
+
+SHOP_WORDS = ('shop', 'spare', 'parts', 'supplier', 'supplies')
+
+
+def _shoplike_cashbook_count(start, end):
+    """Cashbook expenses whose category reads like a shop payment.
+
+    Both would then be counted: the cashbook row here, and the shop payment
+    itself. Reported so the owner can move it, never filtered out — a category
+    is free text, so a keyword filter would quietly drop real running costs
+    that happen to mention a shop.
+    """
+    qs = CashbookEntry.objects.filter(entry_type='EXPENSE', date__range=(start, end))
+    match = Q()
+    for word in SHOP_WORDS:
+        match |= Q(category__icontains=word)
+    return qs.filter(match).count()
 
 
 def financial_position():

@@ -271,6 +271,11 @@ def supplier_shop_detail(request, shop_id):
 
     return render(request, 'inventory/suppliers/shop_detail.html', {
         'shop': shop,
+        # The inline Record a Payment form needs today for its date box's value
+        # and `max`. Without it the box posts blank and `posted_date` falls
+        # back to today anyway — but silently, which is how this form went so
+        # long writing the keystroke date.
+        'today_iso': timezone.localdate().isoformat(),
         'catalog': catalog,
         'bills': bills_list,
         'bills_count': bills_count,

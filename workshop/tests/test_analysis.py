@@ -25,7 +25,7 @@ from workshop import analysis_engine as engine
 from workshop.analysis_engine import _month_end
 from workshop.models import (
     JobCard, JobCardSpareItem, JobCardLabourItem, Mechanic, SpareShop,
-    CashbookEntry, BulkPayer, SalaryAdvance, SalaryPayment, SalaryPaymentLine,
+    CashbookEntry, BulkPayer, BulkPaymentHistory, SalaryAdvance, SalaryPayment, SalaryPaymentLine,
     SpareShopPayment,
 )
 from inventory.models import (
@@ -1684,6 +1684,240 @@ class TheProfitIsAlsoSaidTheOwnersWayTests(AnalysisBase):
         self.assertNotIn('pf-block', html)
         for row in self._report()['earnings']['spend']:
             self.assertTrue(row['negative'], f"{row['label']} is not a cost")
+
+
+class CashIsTrackedSeparatelyFromProfitTests(AnalysisBase):
+    """
+    MONEY MOVED, NOT PROFIT. The two differ by five things at once, so an
+    owner who subtracts one from the other gets a number that is not anything.
+    This card sits on the Profit page because owners read cash more often than
+    profit - which makes keeping the two distinguishable a correctness
+    requirement rather than a styling one.
+    """
+
+    def _cash(self, key='this_month'):
+        s, e, _k, _l = engine.resolve_period(key)
+        return engine.cash_position(s, e)
+
+    def _line(self, cash, side, needle):
+        return next(r['amount'] for r in cash[side] if needle in r['label'])
+
+    def test_a_fleet_payment_is_counted_ONCE_from_its_own_row(self):
+        """
+        THE TRAP THIS CARD EXISTS TO AVOID. A fleet card's `received_amount`
+        is CUMULATIVE, so summing job cards would count a card's whole life on
+        the day it finally closed - and would count it a second time against
+        the payment that closed it. Fleet cash comes from `BulkPaymentHistory`,
+        and the walk-in half is `payment_status='PAID'` only.
+        """
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        card = self.make_card(bill='10000')
+        card.bulk_payer = payer
+        card.received_amount = D('10000')
+        card.payment_status = 'BULK_PAID'
+        card.paid_date = timezone.now()
+        card.save()
+        BulkPaymentHistory.objects.create(
+            bulk_payer=payer, amount=D('10000'), jobs_affected=1,
+            date=timezone.localdate())
+
+        cash = self._cash()
+        self.assertEqual(self._line(cash, 'money_in', 'Fleet'), D('10000'))
+        self.assertEqual(
+            self._line(cash, 'money_in', 'Customer bills'), D('0'),
+            'a BULK_PAID card must not also count as a walk-in settlement - '
+            'that is the same fleet rupee twice')
+
+    def test_a_part_paid_fleet_card_still_reports_its_cash(self):
+        """The 2,000 Paid Bills could never show: money received on a card
+        that has not closed. It is a payment, so it is here."""
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        card = self.make_card(bill='10000')
+        card.bulk_payer = payer
+        card.received_amount = D('2000')
+        card.payment_status = 'PARTIAL'
+        card.save()
+        BulkPaymentHistory.objects.create(
+            bulk_payer=payer, amount=D('2000'), jobs_affected=1,
+            date=timezone.localdate())
+
+        self.assertEqual(self._line(self._cash(), 'money_in', 'Fleet'), D('2000'))
+
+    def test_a_back_dated_fleet_payment_leaves_the_window(self):
+        """Dated by the day the money moved - the whole point of `0072`.
+        Every row here is keystroke-stamped now, so a filter still reading
+        `created_at` would count it and fail."""
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        BulkPaymentHistory.objects.create(
+            bulk_payer=payer, amount=D('50000'), jobs_affected=0,
+            date=timezone.localdate() - timedelta(days=400))
+
+        self.assertEqual(self._line(self._cash(), 'money_in', 'Fleet'), D('0'))
+
+    def test_wages_are_counted_in_the_month_they_are_FOR(self):
+        """
+        Settlement straddles the month boundary - month end, or the 1st or 2nd
+        of the next - so the settlement date would put one wage bill in
+        different months depending on which side of midnight somebody pressed
+        a button. The salary month never moves, and every other figure in this
+        app already agrees.
+        """
+        staff = self.mech
+        staff.current_salary = D('20000')
+        staff.save()
+        month = timezone.localdate().replace(day=1)
+        payment = SalaryPayment.objects.create(month=month)
+        SalaryPaymentLine.objects.create(
+            payment=payment, staff=staff, salary_used=D('20000'),
+            leave_days=0, advance_used=D('0'), net_amount=D('20000'))
+
+        self.assertEqual(self._line(self._cash(), 'money_out', 'Wages'), D('20000'))
+
+    def test_the_wage_line_says_when_a_month_is_not_settled(self):
+        """An unsettled month has had only its advances handed out, so the
+        line reads far below a real month's pay. Named, never estimated."""
+        staff = self.mech
+        SalaryAdvance.objects.create(staff=staff, amount=D('3000'),
+                                     date=timezone.localdate())
+
+        cash = self._cash()
+        self.assertEqual(self._line(cash, 'money_out', 'Wages'), D('3000'))
+        self.assertTrue(cash['unsettled_months'],
+                        'a wage line short of a real month must say so')
+
+    def test_the_direction_is_decided_here_and_never_in_the_template(self):
+        """A movement that went the other way is said in WORDS with a positive
+        magnitude - the rule `financial_position` already follows."""
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Rent',
+                                     amount=D('5000'), date=timezone.localdate())
+
+        cash = self._cash()
+        self.assertEqual(cash['direction'], 'out')
+        self.assertEqual(cash['magnitude'], D('5000'))
+        self.assertGreater(D('0'), cash['movement'])
+        self.assertFalse(
+            cash['is_balance'],
+            'there is no opening cash figure anywhere in this system, so this '
+            'is a movement and must never be called a balance')
+
+    def test_nothing_here_reaches_the_profit_report(self):
+        """
+        THE INVARIANT. Cash and profit now share a page and must never share a
+        number: paying a supplier moves cash and changes no profit.
+        """
+        from inventory.models import SupplierShop, SupplierPayment
+        shop = SupplierShop.objects.create(name='Ninoos')
+        s, e, _k, _l = engine.resolve_period('this_month')
+        before = engine.build_profit_report(s, e)['profit']
+
+        SupplierPayment.objects.create(supplier=shop, amount=D('40000'),
+                                       date=timezone.localdate())
+
+        self.assertEqual(
+            engine.build_profit_report(s, e)['profit'], before,
+            'paying a supplier settles a debt already expensed when the part '
+            'reached a car - it cannot move profit')
+        self.assertEqual(
+            self._line(engine.cash_position(s, e), 'money_out', 'Supplies'),
+            D('40000'))
+
+    def test_the_EXPENSES_card_does_not_claim_the_money_left_the_drawer(self):
+        """
+        THE SPEND/PAID COLLISION, one page over and worse. The Expenses card
+        read "Money spent" over four lines of which only ONE is cash:
+
+          Spare Shops      cost of parts fitted, dated by the job card - the
+                           shops are settled in instalments, often months on
+          Inventory Used   stock drawn at weighted-average cost, bought and
+                           paid for on an earlier bill
+          Salary & Advance the wage bill for the salary MONTH; the settlement
+                           cash leaves in the first days of the next one
+          General Cashbook the only line that is actually cash out
+
+        It became untenable the moment Cash Tracking landed directly above it:
+        two adjacent cards, one saying "Money moved" and one "Money spent",
+        over figures on entirely different bases and differing by lakhs.
+
+        The Turnover card is checked here too. "Money earned" was not false -
+        revenue is earned rather than received - but beside a cash card it
+        invites being read as "came in", so it names its basis as well.
+        """
+        # The Turnover and Expenses cards live behind the page's `has_data`
+        # gate, so the window needs something in it. (Cash Tracking renders
+        # either way — see `cash_position`.)
+        self.make_card(bill='5000', received='5000')
+
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertNotIn('>Money spent<', html)
+        self.assertIn('What the work cost, not cash out', html)
+        self.assertIn('Billed for work done, paid or not', html)
+
+    def test_every_card_subtitle_is_marked_as_context_info(self):
+        """
+        A subtitle on this page answers "what am I looking at" - which basis,
+        which period, what it is NOT - and as plain grey type at the end of a
+        heading that reads as decoration and gets skipped.
+
+        The glyph is a real element, never a font codepoint in CSS `content`:
+        an icon stylesheet that failed to arrive would leave a blank box
+        exactly where the explanation should be.
+        """
+        import re
+        self.make_card(bill='5000', received='5000')
+
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        subs = re.findall(r'<span class="sub">(.*?)</span>', html, re.S)
+        self.assertGreaterEqual(len(subs), 5, 'the page lost its subtitles')
+        for sub in subs:
+            self.assertIn('bi-info-circle', sub,
+                          'every subtitle is context info and must carry the '
+                          'glyph that says so: %r' % sub[:60])
+
+    def test_the_two_halves_are_two_columns_with_the_rail_on_each(self):
+        """
+        THE RAIL IS PER HALF AND ALWAYS ON THAT HALF'S LEFT. It labels the
+        block it introduces, at every width, from ONE declaration — so the
+        stacked layout cannot disagree with the wide one, and stacked the two
+        simply become a single left rail that turns red exactly where Money
+        Out begins.
+
+        The red spent one revision on the card's RIGHT edge, which put it a
+        column's width from the rows it described: the eye had to travel past
+        the Money Out figures to reach the colour naming them.
+
+        Nothing in the Django suite executes CSS, so this asserts the
+        STRUCTURE the stylesheet hangs off — both columns present, each
+        carrying its own direction class — plus the two declarations that
+        cannot be inferred from the markup.
+        """
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('pf-cash-col in', html)
+        self.assertIn('pf-cash-col out', html)
+
+        sheet = io.open(
+            'workshop/templates/workshop/analysis/profit.html',
+            encoding='utf-8').read()
+        self.assertIn('.pf-cash-col.in  { border-left-color:', sheet)
+        self.assertIn('.pf-cash-col.out { border-left-color:', sheet)
+        self.assertNotIn(
+            'border-right: 3px solid #dc2626;', sheet,
+            'the red rail belongs on the Money Out block it labels, not on '
+            'the card edge a column away from it — and keeping it on the left '
+            'at every width is what removes the media-query swap, so the '
+            'stacked view cannot disagree with the wide one')
+        self.assertIn('@media (min-width: 640px)', sheet,
+                      "640px is the app's own phone line — the nav bar moves "
+                      "to the bottom at the same width")
+        self.assertIn('border: 2px dashed #cbd5e1;', sheet,
+                      'the dashed border is what says this is a different '
+                      'kind of object from the profit cards; in '
+                      '--color-border it is invisible on the page background')
+
+    def test_the_page_draws_it_as_cash_and_never_as_a_balance(self):
+        html = self.client.get(reverse('analysis_dashboard')).content.decode()
+        self.assertIn('Cash Tracking', html)
+        self.assertIn('not profit', html)
+        self.assertNotIn('in company account', html)
 
 
 class OneWordOneMeaningAcrossBothPagesTests(AnalysisBase):

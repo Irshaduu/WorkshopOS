@@ -373,16 +373,44 @@ Everything downstream already read `date` — `Meta.ordering` is
 prints it — so the whole defect was the one missing input. The view now reads
 `posted_date()` and refuses `is_future()` before writing the row.
 
-⚠ **It does NOT copy the 46px calendar glyph, and that is not drift.** The
-spare-shop box is compact because it sits in an *inline row* beside the amount;
-`add_payment.html` is a separate page of stacked full-width `form-control-lg`
-fields, and a glyph dropped into that column would be the one control that does
-not match its neighbours. **What is copied is the behaviour, which is the half
-that matters**: capped at today, amber with the day spelled out the moment it is
-not today. No confirmation modal was added — the native input is plainly legible
-at full width here, unlike a collapsed glyph, so there is nothing a dialog would
-disclose that the field does not.
+⚠ **It does NOT copy the 46px calendar glyph on `add_payment.html`, and that is
+not drift.** That page is stacked full-width `form-control-lg` fields, and a
+glyph dropped into that column would be the one control that does not match its
+neighbours. **What is copied is the behaviour**: capped at today, amber with the
+day spelled out the moment it is not today. No confirmation modal — the native
+input is plainly legible at full width there, unlike a collapsed glyph.
 → `ASupplierPaymentIsDatedByTheDayTheMoneyMovedTests`
+
+⚠ **THE SHOP PAGE'S OWN INLINE FORM WAS MISSED ENTIRELY, and it is the door
+people actually use.** The fix above landed on `add_payment.html`; the "Record a
+Payment" row on `supplier_shop_detail` posts through a HIDDEN form carrying
+amount, method and note, so no date ever reached the view and every payment made
+there fell straight back to `default=timezone.now` — the keystroke, the exact
+thing the column exists to stop trusting. `add_shop_payment` had read
+`posted_date()` all along, which is why it survived: **a view test passes either
+way, so the test has to go through the FORM.**
+→ `TheShopPageOwnPayFormCarriesTheDateTests`
+
+**ALL THREE PAYMENT FORMS ARE ONE CONTROL NOW** — spare shop, Supplies Shop and
+Fleet. All three say **"Record a Payment"** (they said "Make a Bulk Payment",
+"Record Payment" and nothing, for one act on screens an owner opens in one
+sitting), and all three carry the same date box.
+
+**The box has NO container and no "Date" caption.** A bordered, filled 46px box
+made the date look like a third input beside Amount and Method, when the whole
+point is that it is almost always right and should cost nothing. It is the glyph
+alone — still a 44px target, still amber with the day spelled out the moment it
+is not today. A calendar glyph does not need a caption saying it is a date.
+
+⚠ **NO TRANSITION ON ITS COLOUR, and that is the recorded rule rather than
+taste.** The amber IS the state, and a running transition outranks everything in
+the cascade — so while it is in flight the computed colour is still the OLD one,
+which is both a lie to the eye and unmeasurable in any tool that is not painting
+frames. Caught exactly that way here: the first measurement read slate on a
+back-dated box and only turned amber once the transition was disabled. Hover has
+none either; on a glyph it needs none. `!important` is no longer needed on the
+amber, because all that is left is `color` on an element carrying no Bootstrap
+utilities.
 
 
 ## Warehouse stock & costing
@@ -641,6 +669,33 @@ which payment to reverse first.
 **The invariant to assert in any new fleet test:**
 `Σ(card.received_amount) + advance_balance == Σ(history.amount)`.
 → `ReversingAFleetPaymentOutOfOrderIsRefusedTests`
+
+**A FLEET PAYMENT IS DATED BY THE DAY THE MONEY MOVED — the third and last
+ledger to get the column, and the one where it mattered most.**
+`inventory.SupplierPayment` has had `date` since day one and `SpareShopPayment`
+gained it in `0071`; `BulkPaymentHistory` carried only `created_at`, the
+keystroke. A fleet collector comes round and the office keys the receipt when it
+gets to it, and these are the **largest single receipts the workshop takes**.
+
+Nothing filtered fleet payments by date before, so the defect was invisible —
+which is exactly why it survived two passes that fixed its siblings. The moment
+any cash figure is cut by period it would file a six-figure receipt in the wrong
+month, and Cash Tracking does precisely that.
+
+Four things, all mirroring `0071`: the migration **backfills from `created_at`**,
+an approximation by construction, which is why it belongs **before go-live**;
+`created_at` stays as the audit trail and breaks ties inside a day
+(`ordering = ['-date', '-created_at']`); the detail view's own explicit
+`order_by` had to move too, or the column would have been one nothing reads,
+which is worse than no column because it looks fixed; and **the balance follows
+nothing** — what an account owes is not a period, so a heavily back-dated
+payment must not change it.
+
+The control is the **spare shop's own** — 46px calendar glyph, invisible
+`<input type="date">` over it, capped at today, amber and spelled out when it is
+not today — because this is an inline row like that one, not a stacked page. The
+Pay confirmation repeats the date **only when it is not today**.
+→ `AFleetPaymentIsDatedByTheDayTheMoneyMovedTests`
 
 **A job card can't be removed from a Fleet Account once it has
 `received_amount > 0`.** Blocked, not auto-reversed: that money may be part of a
@@ -1037,6 +1092,150 @@ Three things that make the identity close, each of which was an easy miss:
 - **Every shared figure is handed in**, never re-queried — a breakdown that
   looked up its own salary could disagree with the equation directly above it.
 → `TheProfitIsAlsoSaidTheOwnersWayTests`
+
+**CASH TRACKING SITS ABOVE THE EQUATION, AND IS DRAWN AS A DIFFERENT KIND OF
+OBJECT SO THE TWO CAN NEVER BE ADDED TOGETHER.** `cash_position()` in
+`analysis_engine.py`: money in and money out for the window, by the day each
+rupee actually moved. It is first on the page because owners read it more often
+than they read profit.
+
+**Three traps, each of which would break it silently:**
+
+- **A fleet card's `received_amount` is CUMULATIVE.** Summing job cards for
+  fleet money counts a card's whole life on the day it finally closed — a
+  ₹1,10,000 card collected over three months landing entirely in the third —
+  and counts it again against the payment that closed it. Fleet cash comes from
+  **`BulkPaymentHistory`**, one row per payment. So the walk-in half is
+  `payment_status='PAID'` **only**: including `BULK_PAID` counts every fleet
+  rupee twice.
+- **Wages are dated by the SALARY MONTH**, not the day they were handed over.
+  Settlement happens at month end or the 1st or 2nd of the next — it straddles
+  the boundary — so the settlement date would put one wage bill in different
+  months depending on which side of midnight somebody pressed a button. The
+  salary month never moves, the owners already think of August's wages as
+  August's cost, and `salary_expense` has always filtered `SalaryPayment.month`.
+  Accepted consequence: August's wages show in August though the cash left in
+  early September — a constant one-month shift that repeats every month, so it
+  never accumulates.
+- **It REUSES `salary_expense`, it does not restate it.** That function already
+  carries the guard that an advance inside a settled month is not counted twice,
+  once inside its settlement and again as a loose advance.
+
+**It is NEVER called a balance.** There is no opening cash figure anywhere in
+this system, so what can honestly be reported is the CHANGE over the window,
+never the position. An owner who reads "in the account", checks the bank and
+sees something else stops believing the whole app. `is_balance` is returned as
+`False` to say so out loud.
+
+**And the last line is not labelled "Net"** — the Cashbook's own Net card was
+removed for exactly this reason, and here the thing it would be misread as sits
+directly below it. The direction is said in **words** ("More came in than went
+out"), decided in the engine with a positive magnitude, the rule
+`financial_position` already follows.
+
+**It renders ABOVE the `has_data` gate**, which is `turnover != 0 or
+expense_total != 0` — both PROFIT figures. A month whose only activity was
+paying off old bills moves real cash and touches neither, so inside the gate the
+page would say "Nothing recorded" while the drawer emptied.
+
+**THE TWO HALVES ARE TWO COLUMNS, AND EACH RAIL SITS ON ITS OWN HALF'S LEFT,
+at every width.** It labels the block it introduces. The red spent one revision
+on the card's RIGHT edge, which put it a column's width from the rows it
+described — the eye had to travel past the Money Out figures to reach the
+colour naming them. On the left, **one declaration serves both layouts**: side
+by side they are two matched bars, and stacked they become a single left rail
+that turns red exactly where Money Out begins. There is no media-query swap
+left to contradict itself.
+
+`align-items: stretch` is doing real work: it makes the two rails the same
+length whatever each half holds, so they read as a pair rather than as one bar
+that ran out.
+
+**The breakpoint is 640px, the app's own phone line** — the nav bar moves to
+the bottom at the same width, so "mobile" means one thing across the whole app.
+It also clears the content: the longest line ("Rent, power, consumables" plus
+its figure) needs ~250px, and 640px leaves each column ~275px. Measured at
+1024 / 768 / 375: two 352px columns, two 329px columns, then stacked with the
+red starting 240px down.
+
+**A rule sits under the heading**, because the card carries two independent
+halves under one title and without it the title reads as the first line of the
+left-hand one. Each column heading carries its own hairline for the same
+reason, one level down.
+
+**A CARD SUBTITLE ON THIS PAGE IS CONTEXT INFO, AND IS DRAWN AS ONE** — an
+info glyph and muted type, **no box**. A bordered chip was tried and dropped:
+the glyph alone already says "this is a note", and the border made a second
+object competing with the card's own frame on a page that already carries a
+dashed card, solid cards and an equation panel. Every one answers
+*what am I looking at*: which basis, which period, what it is NOT. As plain
+grey type at the end of a heading that reads as decoration and gets skipped,
+which is how a card came to claim something untrue for months. **The glyph is a
+real element in the markup, never a font codepoint in CSS `content`**: an icon
+stylesheet that failed to arrive would leave a blank box exactly where the
+explanation should be.
+→ `test_every_card_subtitle_is_marked_as_context_info`
+
+**TURNOVER AND EXPENSES ARE `col-md-6`, NOT `col-lg-6`.** At `lg` the two
+cards went side by side only past 992px, so a **tablet stacked them while a
+laptop did not** — the one place on this page where the two devices disagreed,
+on a page all three form factors read. Everything else already switches at or
+below tablet width: the cash columns at 640, the position tiles and the
+equation at 576. At 768px each card gets ~369px against a ~175px hint beside a
+~75px figure.
+
+**"GENERAL CASHBOOK" IS "CASHBOOK EXPENSE",** because `Cashbook Income` sits
+four rows above it in the same card. One ledger, two directions, and the two
+names have to say so. Renamed in **both** places the engine prints it — the
+equation's expense line and the earnings card — since it is one figure.
+
+⚠ **"MONEY SPENT" ON THE EXPENSES CARD WAS FALSE, and it is the spend/paid
+collision again.** Only **one** of its four lines is cash: General Cashbook.
+Spare Shops is the cost of parts fitted, dated by the job card, while the shops
+are settled in instalments months later; Inventory Used is stock drawn at
+weighted-average cost, bought and paid for on an earlier bill; Salary & Advance
+is the wage bill for the salary MONTH, whose settlement cash leaves in the
+first days of the next one. It became untenable the moment Cash Tracking landed
+directly above it — two adjacent cards, one saying "Money moved" and one "Money
+spent", over figures on entirely different bases and differing by lakhs. It now
+reads **"What the work cost, not cash out"**.
+
+**Turnover's "Money earned" was NOT false and changed anyway.** Revenue is
+earned rather than received, so the word was right — but beside a cash card it
+invites being read as "came in", so it names its basis: **"Billed for work
+done, paid or not"**. The other three subtitles were checked and were accurate
+as they stood.
+→ `test_the_EXPENSES_card_does_not_claim_the_money_left_the_drawer`
+
+**The dashed border is `2px #cbd5e1`, the card is SQUARE while every card below
+it is 16px-rounded, and both values matter.**
+`--color-border` is `#e2e8f0` against an `#f3f4f6` page — invisible at 1px — so
+the card meant to read as a DIFFERENT KIND OF OBJECT from the solid profit
+cards below read as no object at all, which is the whole safety of putting cash
+on this page.
+
+**The period is said ONCE, in the card title.** Both column headings carried
+"AUGUST 2026" while the page header and the active filter pill already state
+it: four tellings of one fact, and the two longest were competing with the
+totals beside them for the same line. The headings are now just MONEY IN and
+MONEY OUT.
+
+**Two disclosures ride on it**, both flagged and never filtered: an unsettled
+salary month (the wage line is then only advances — ₹9,000 against ₹1,24,000 on
+the demo data), and cashbook expenses whose free-text category reads like a shop
+payment, which would be counted twice.
+→ `CashIsTrackedSeparatelyFromProfitTests`
+
+**THE PAID BILLS GRAND TOTAL WAS REMOVED IN THE SAME CHANGE**, because this
+replaced it. It summed `received_amount` over cards that reached fully-settled
+status in the window — exact for a walk-in, who pays once at pickup, and wrong
+for a fleet three ways at once: a card closed this month carried its whole
+cumulative receipt, a `PARTIAL` card holding real cash appeared nowhere, and
+banked advance credit appeared nowhere. A ₹1,20,000 fleet payment could report
+there as ₹20,000. **The row COUNT stays** — how many bills are in the list is a
+fact about the list, not a business figure — and it is no longer an RBAC rule at
+all, since neither role now sees a money total.
+→ `test_the_page_carries_no_money_total_for_anyone`
 
 **The Expenses card carries NO footnote about warehouse stock, and needs none.**
 It used to read *"Parts worth ₹1,88,000 came off warehouse stock and are not
@@ -1468,19 +1667,24 @@ the other is a coincidence of the data. Parts **not yet fitted** are disclosed o
 the row, because they are inside "Owed now" and cannot be inside "Spent".
 → `TheShopsSectionSelectsByRouteNotByCoincidenceTests`
 
-**SPEND AND PAID ARE TWO QUESTIONS, and the cash one lives HERE, not on the
-Profit page.** "Spend" is what the work cost — the figure the equation charges.
-"Paid" is cash that actually left against these shops' ledgers, on their own
-instalment rhythm. Neither affects the other and neither belongs in the profit
-equation.
+**SPEND AND PAID ARE TWO QUESTIONS, and this section answers the per-shop
+one.** "Spend" is what the work cost — the figure the equation charges. "Paid"
+is cash that actually left against these shops' ledgers, on their own instalment
+rhythm. Neither affects the other and **neither belongs in the profit
+equation**: profit and cash differ by five things at once (stock bought but
+unused, stock used but bought earlier, bills unpaid, bills paid from earlier
+periods, customer bills unpaid), so subtracting one from the other gives a
+number that is not anything.
 
-It exists because an owner reading a profit figure asks *"then where is the
-money?"* within seconds. **The answer is not a term subtracted from profit** —
-profit and cash differ by five things at once (stock bought but unused, stock
-used but bought earlier, bills unpaid, bills paid from earlier periods, customer
-bills unpaid), so printing one of them invites exactly the incomplete arithmetic
-the earnings card was rebuilt to stop. The Profit page carries a **pointer** to
-Position Right Now instead of a number.
+⚠ **THE WORKSHOP-WIDE cash answer now lives on the PROFIT PAGE, and that
+reverses what this file used to say.** It read "the cash one lives HERE, not on
+the Profit page", and the page carried a pointer to Position Right Now instead
+of a number — on the reasoning that any cash figure printed beside profit
+invites the incomplete arithmetic above. **The owner's call overruled it: they
+read cash more often than they read profit**, so keeping it two taps away was
+costing more than the risk. The risk did not go away; it is answered by making
+the two impossible to confuse rather than by separating them — see "CASH
+TRACKING" below. This section is unchanged and still the per-shop view.
 
 ⚠ **BOTH SIDES ARE DATED BY THE DAY THE MONEY MOVED, AND THEY STILL STAY TWO
 FIGURES — the reason changed rather than went away.** This rule used to read
@@ -2668,8 +2872,9 @@ inputs exist to prevent.
 **PAID BILLS is Office-visible with a 7-day window; the HIGH DISCOUNT AUDIT is
 not.** Office settles bills, so it needs to look one up. The window is enforced in
 `paid_bills_list`, **not** by hiding the filter dropdown — `?filter=all` is one URL
-edit away. Office sees per-card amounts in full; what is withheld is the **grand
-total**, a business figure rather than a settlement one. `audit_high_discounts`
+edit away. Office sees per-card amounts in full. **There is no grand total on that page
+any more, for either role** — see "Cash Tracking" above for why it went and
+what replaced it — so this is now purely a window rule. `audit_high_discounts`
 stays **`@owner_required`** — it reads as what the workshop settled for against
 what it billed, the compensating control for the shortfall-as-discount rule. Its
 entry in the ⋮ menu is gated to match, because a door Office can see but not open
@@ -4237,7 +4442,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 55 files, 1,699 tests. Always SQLite (see below).
+# Full test suite — 55 files, 1,718 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -4345,7 +4550,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,699-test run
+want. SQLite's test database is also in-memory, which is most of why a 1,718-test run
 is ~70 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
@@ -4577,7 +4782,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (49 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **55 files, 1,699 tests**.
+files) — **55 files, 1,718 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 
