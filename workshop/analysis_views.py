@@ -90,6 +90,10 @@ def analysis_dashboard(request):
     report = engine.build_profit_report(start, end)
     series = engine.monthly_series(start, end)
     position = engine.financial_position()
+    # CASH, and deliberately NOT folded into `report`. It is a different
+    # question on a different basis, it is drawn as its own object above the
+    # equation, and nothing in `build_profit_report` may ever read it.
+    cash = engine.cash_position(start, end)
 
     # WHAT TO COMPARE AGAINST, and how far into THIS window to read. Both come
     # from one place (`engine.comparison_window`) because they are one decision:
@@ -163,6 +167,7 @@ def analysis_dashboard(request):
     return render(request, 'workshop/analysis/profit.html', {
         'report': report,
         'position': position,
+        'cash': cash,
         'range_key': range_key,
         'range_label': label,
         'period_choices': engine.PERIOD_CHOICES,

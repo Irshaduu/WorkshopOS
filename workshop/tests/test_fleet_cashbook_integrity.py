@@ -394,6 +394,102 @@ class FleetDueIsTheFleetSliceOfReceivableTests(FleetLedgerTestCase):
         self.assertEqual(position['receivable'], Decimal('1000.00'))
 
 
+class AFleetPaymentIsDatedByTheDayTheMoneyMovedTests(FleetLedgerTestCase):
+    """
+    THE THIRD AND LAST LEDGER TO GET THE COLUMN, and the one where it matters
+    most. `inventory.SupplierPayment` has had `date` since day one and
+    `SpareShopPayment` gained it in `0071`; `BulkPaymentHistory` was still
+    stamped with `created_at`, the keystroke.
+
+    A fleet collector comes round and the office keys the receipt when it gets
+    to it, so the two routinely fall in different months — and these are the
+    LARGEST single receipts the workshop takes. Nothing cut fleet payments by
+    date before, so the defect was invisible; the moment any cash figure is
+    cut by period it would file a six-figure receipt in the wrong month.
+    """
+
+    def pay_on(self, payer, amount, when):
+        return self.client.post(
+            reverse('bulk_payer_pay', args=[payer.pk]),
+            {'lump_sum': str(amount), 'payment_method': 'CASH',
+             'date': when.isoformat() if when else ''},
+            follow=True)
+
+    def test_a_back_dated_payment_is_stored_under_the_day_it_moved(self):
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self.assign(payer, self.make_card('KL01AAA', 5000))
+        moved = timezone.localdate() - timedelta(days=9)
+
+        self.pay_on(payer, 5000, moved)
+
+        h = payer.payment_history.get()
+        self.assertEqual(h.date, moved)
+        # THE KEYSTROKE STAYS: it is the audit trail, and it breaks ties inside
+        # a day.
+        #
+        # ⚠ Read through `localtime`, and compare against `localdate`. This
+        # assertion first shipped as `h.created_at.date() == date.today()` and
+        # passed for a day: `created_at` is stored in UTC, so its naive
+        # `.date()` reports YESTERDAY for the whole of an IST morning, and
+        # `date.today()` is the wrong question besides. Exactly the split
+        # CLAUDE.md records, caught by the clock rather than by review.
+        self.assertEqual(timezone.localtime(h.created_at).date(),
+                         timezone.localdate())
+
+    def test_it_defaults_to_today_when_nothing_is_typed(self):
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self.assign(payer, self.make_card('KL01AAA', 5000))
+
+        self.pay_on(payer, 5000, None)
+
+        self.assertEqual(payer.payment_history.get().date, timezone.localdate())
+
+    def test_a_future_date_is_refused_and_no_money_moves(self):
+        """A date ahead of today is a mistyped year far more often than a
+        plan, and this workshop is never paid in advance of recording it."""
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        card = self.make_card('KL01AAA', 5000)
+        self.assign(payer, card)
+
+        self.pay_on(payer, 5000, timezone.localdate() + timedelta(days=1))
+
+        self.assertEqual(payer.payment_history.count(), 0)
+        card.refresh_from_db()
+        self.assertEqual(card.received_amount, Decimal('0'))
+
+    def test_the_history_reads_newest_first_by_the_day_the_money_moved(self):
+        """
+        The page's own `order_by` overrode `Meta.ordering`, so adding the
+        column without changing it there would have left a field nothing reads
+        — worse than no field, because it looks fixed.
+        """
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self.assign(payer, self.make_card('KL01AAA', 5000))
+        self.assign(payer, self.make_card('KL01BBB', 5000))
+
+        old = timezone.localdate() - timedelta(days=20)
+        self.pay_on(payer, 3000, timezone.localdate())   # keyed first, moved LATER
+        self.pay_on(payer, 3000, old)            # keyed second, moved EARLIER
+
+        res = self.client.get(reverse('bulk_payer_detail', args=[payer.pk]))
+        dates = [h.date for h in res.context['payment_history']]
+        self.assertEqual(dates, sorted(dates, reverse=True),
+                         'the history must lead with the most recent payment')
+
+    def test_the_balance_ignores_the_date_entirely(self):
+        """What an account owes is not a period. Back-dating a payment out of
+        any window must never change what is still owed."""
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self.assign(payer, self.make_card('KL01AAA', 5000))
+
+        self.pay_on(payer, 2000, timezone.localdate() - timedelta(days=400))
+
+        payer.refresh_from_db()
+        self.assertEqual(payer.total_billed_amount - payer.total_paid_amount,
+                         Decimal('3000'))
+        self.assert_ledger_balances(payer, 'after a heavily back-dated payment')
+
+
 class RenamingAFleetAccountReachesEveryScreenTests(FleetLedgerTestCase):
     """
     A Fleet Account had no rename at all — the ⋮ menu offered Delete and

@@ -97,10 +97,26 @@
     font-size: 0.92rem; font-weight: 800; margin: 0 0 12px;
     display: flex; align-items: center; gap: 8px;
   }
-  .pf-card-title .sub {
-    font-size: 0.72rem; font-weight: 500; color: var(--color-text-muted);
-    margin-left: auto; text-align: right;
+  /* A SUBTITLE HERE IS CONTEXT INFO, so it is drawn as a note rather than
+     as quieter title text. Every one of them answers "what am I looking at" -
+     which basis, which period, what it is NOT - and as plain grey type at the
+     end of a heading that reads as decoration and gets skipped. The glyph is
+     a real element in the markup, never a font codepoint in `content`: an
+     icon stylesheet that fails to arrive would leave a blank box exactly
+     where the explanation should be.
+
+     Square-cornered, matching the cash card it also serves. Muted, because it
+     must never outweigh the figure the card is about. */
+  .pf-card-title .sub,
+  .pf-cash-title .sub {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 0.7rem; font-weight: 600; line-height: 1.35;
+    color: var(--color-text-muted);
+    text-align: left;
   }
+  .pf-card-title .sub i,
+  .pf-cash-title .sub i { font-size: 0.78rem; opacity: 0.75; flex-shrink: 0; }
   /* ON A PHONE THE SUBTITLE TAKES ITS OWN LINE.
      `margin-left: auto` pins it to the right of the title, so on a 375px
      screen a four-word heading and a five-word subtitle both wrap and
@@ -114,6 +130,112 @@
     .pf-card-title .sub {
       flex: 0 0 100%; margin-left: 0; text-align: left; margin-top: 1px;
     }
+  }
+
+  /* ── CASH TRACKING ────────────────────────────────────────────
+     A DASHED RAIL, NOT THE SOLID CARD THE EQUATION USES, and that is the
+     whole safety of putting cash on this page at all. Profit and cash differ
+     by five things at once, so an owner who subtracts one from the other gets
+     a number that is not anything. Cash used to live two taps away in Deep
+     Analysis for exactly that reason; it is here because owners read it more
+     often than they read profit, and the answer to the risk is to make the
+     two impossible to mistake for one another rather than to hide one.
+
+     Everything about it is deliberately a different object: dashed border, no
+     card background, its own heading colour, and a rule that says what it is
+     on its face. It shares only the ROW shape with the earnings card, because
+     that shape is what the owner already reads comfortably. */
+  .pf-cash {
+    /* VISIBLY DASHED. `--color-border` (#e2e8f0) against the #f3f4f6 page is
+       invisible at 1px, so the card meant to read as a DIFFERENT KIND OF
+       OBJECT from the solid profit cards below read as no object at all — and
+       that distinction is the whole safety of putting cash on this page. */
+    border: 2px dashed #cbd5e1;
+    /* SQUARE, while every card below it is 16px-rounded. One more thing
+       saying this is not one of them. */
+    border-radius: 0; padding: 16px 18px 14px; margin-bottom: 18px;
+    background: transparent;
+  }
+  /* A RULE UNDER THE HEADING, not a gap. The card carries two independent
+     halves under one title, so the title has to read as a lid over both
+     rather than as the first line of the left-hand one. */
+  .pf-cash-title {
+    font-size: 0.92rem; font-weight: 800; margin: 0 0 4px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--color-border);
+    display: flex; align-items: center; gap: 8px; color: #0f766e;
+  }
+  @media (max-width: 560px) {
+    .pf-cash-title { flex-wrap: wrap; }
+    .pf-cash-title .sub { margin-left: 0; margin-top: 4px; }
+  }
+
+  /* THE TWO HALVES SIT SIDE BY SIDE, AND THE RAIL IS PER HALF RATHER THAN ON
+     THE CARD. One mechanism serves both layouts, which is the whole reason it
+     is built this way: side by side the green rail lands on the card's left
+     edge and the red on its right, and stacked they become a single rail down
+     the left that turns red exactly where Money Out begins. A container rail
+     could not do the second thing without a second rule to contradict.
+
+     640px is the app's own phone line — the nav bar moves to the bottom at the
+     same width — so "mobile" means one thing across the whole app. It is also
+     comfortably past where the columns stop fitting: the longest line here
+     ("Rent, power, consumables" plus its figure) needs ~250px, and 640px
+     leaves each column ~275px. */
+  .pf-cash-grid { display: grid; grid-template-columns: 1fr; gap: 18px 30px; }
+  /* EACH RAIL LABELS ITS OWN BLOCK, on that block's left, at every width.
+     The red used to sit on the card's right edge, a column's width from the
+     rows it describes — the eye had to travel past the Money Out figures to
+     reach the colour naming them. On the left it introduces them, and the
+     media-query swap disappears with it: ONE declaration now serves both
+     layouts, so the stacked view can never disagree with the wide one. */
+  .pf-cash-col {
+    padding-left: 14px; border-left: 3px solid transparent; min-width: 0;
+  }
+  .pf-cash-col.in  { border-left-color: var(--color-success); }
+  .pf-cash-col.out { border-left-color: #dc2626; }
+  @media (min-width: 640px) {
+    /* Equal columns, and `stretch` is doing real work: it makes the two rails
+       the same length whatever each half holds, so they read as a pair rather
+       than as one bar that ran out. */
+    .pf-cash-grid { grid-template-columns: 1fr 1fr; align-items: stretch; }
+  }
+  /* The block headings. Small, spaced, and quiet — the AMOUNTS are what the
+     eye should land on, exactly as in the earnings card. */
+  .pf-cash-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; margin: 0 0 5px; padding-bottom: 5px;
+    border-bottom: 1px solid var(--color-border-light);
+    font-size: 0.72rem; font-weight: 800; letter-spacing: 0.5px;
+    text-transform: uppercase; color: var(--color-text-muted);
+  }
+  .pf-cash-head .sum { font-size: 0.98rem; font-variant-numeric: tabular-nums; }
+  .pf-cash-head.in .sum  { color: var(--color-success); }
+  .pf-cash-head.out .sum { color: #dc2626; }
+  /* A LINE, not a row: no border, tighter, smaller. These are the parts of a
+     total, not entries in a ledger, and drawing them as ledger rows made the
+     card twice as tall as the equation it sits above. */
+  .pf-cash-line {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; padding: 3px 0; font-size: 0.78rem;
+  }
+  .pf-cash-line .nm { color: var(--color-text); }
+  .pf-cash-line .nm small { display: block; font-size: 0.68rem; color: var(--color-text-muted); }
+  .pf-cash-line .val {
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    color: var(--color-text-muted); font-weight: 600;
+  }
+  .pf-cash-move {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; margin-top: 14px; padding-top: 12px;
+    border-top: 2px solid var(--color-border);
+    font-size: 0.9rem; font-weight: 800;
+  }
+  .pf-cash-move .val { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pf-cash-move.up   .val { color: var(--color-success); }
+  .pf-cash-move.down .val { color: #dc2626; }
+  .pf-cash-note {
+    margin-top: 9px; font-size: 0.72rem; color: #b45309;
+    display: flex; gap: 6px; align-items: flex-start;
   }
 
   /* Ledger rows */
@@ -289,6 +411,74 @@
   </div>
 </form>
 
+{% comment %}
+  CASH SITS ABOVE THE EQUATION, because owners read it more often than they
+  read profit — and it is drawn as a different KIND of object so the two can
+  never be added together. See `.pf-cash` for the full reasoning.
+
+  ⚠ IT IS NEVER CALLED A BALANCE. There is no opening cash figure anywhere in
+  this system, so what can honestly be reported is the CHANGE over the window,
+  never the position. An owner who reads "in the account", checks the bank and
+  sees something else stops believing the whole app.
+
+  ⚠ AND THE LAST LINE IS NOT LABELLED "NET". The Cashbook's own Net card was
+  removed for this exact reason: a figure labelled Net beside money totals gets
+  read as profit, which is a different calculation living directly below it.
+  The direction is said in WORDS, decided in the engine.
+{% endcomment %}
+<div class="pf-cash">
+  <div class="pf-cash-title">
+    <i class="bi bi-wallet2"></i> Cash Tracking &middot; {{ range_label }}
+    <span class="sub"><i class="bi bi-info-circle"></i>Money moved, not profit</span>
+  </div>
+
+  <div class="pf-cash-grid">
+    <div class="pf-cash-col in">
+      <div class="pf-cash-head in">
+        <span>Money in</span>
+        <span class="sum">₹{{ cash.total_in|inr }}</span>
+      </div>
+      {% for r in cash.money_in %}
+      <div class="pf-cash-line">
+        <span class="nm">{{ r.label }}<small>{{ r.hint }}</small></span>
+        <span class="val">₹{{ r.amount|inr }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="pf-cash-col out">
+      <div class="pf-cash-head out">
+        <span>Money out</span>
+        <span class="sum">₹{{ cash.total_out|inr }}</span>
+      </div>
+      {% for r in cash.money_out %}
+      <div class="pf-cash-line">
+        <span class="nm">{{ r.label }}<small>{{ r.hint }}</small></span>
+        <span class="val">₹{{ r.amount|inr }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="pf-cash-move {% if cash.direction == 'in' %}up{% else %}down{% endif %}">
+    <span>{% if cash.direction == 'in' %}More came in than went out{% else %}More went out than came in{% endif %}</span>
+    <span class="val">{% if cash.direction == 'in' %}+{% else %}−{% endif %}₹{{ cash.magnitude|inr }}</span>
+  </div>
+
+  {% if cash.unsettled_months %}
+  <div class="pf-cash-note">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <span>{% if cash.unsettled_months|length == 1 %}{{ cash.unsettled_months.0 }} is not settled, so only advances are counted in the wage line{% else %}{{ cash.unsettled_months|length }} months are not settled, so only advances are counted in the wage line{% endif %} — nothing is estimated.</span>
+  </div>
+  {% endif %}
+  {% if cash.shoplike_cashbook %}
+  <div class="pf-cash-note">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <span>{{ cash.shoplike_cashbook }} cashbook expense{{ cash.shoplike_cashbook|pluralize }} read{{ cash.shoplike_cashbook|pluralize:"s," }} like a shop payment. If a shop was paid through the cashbook as well as its own ledger, it is counted twice here.</span>
+  </div>
+  {% endif %}
+</div>
+
 {% if not has_data %}
   <div class="pf-card text-center py-5">
     <i class="bi bi-graph-up" style="font-size: 2.2rem; color: var(--color-text-muted); opacity: 0.4;"></i>
@@ -299,7 +489,7 @@
   </div>
 {% else %}
 
-<!-- ── Hero: PROFIT ─────────────────────────────────────────── -->
+<!-- ── Hero: PROFIT ─────────────────────────── -->
 <div class="pf-hero {% if report.profit < 0 %}loss{% endif %}">
   <div class="pf-hero-label">Profit · {{ range_label }}</div>
   <div class="pf-hero-value {% if report.profit < 0 %}neg{% else %}pos{% endif %}">
@@ -371,13 +561,21 @@
 </div>
 {% endif %}
 
+{% comment %}
+  `col-md-6`, NOT `col-lg-6`. At `lg` these two cards went side by side only
+  past 992px, so a TABLET stacked them while a laptop did not — the one place
+  on this page where the two devices disagreed. Everything else already
+  switches at or below tablet width: the cash columns at 640, the position
+  tiles and the equation at 576. At 768px each card gets ~352px, and the
+  widest thing in one is a ~175px hint beside a ~75px figure.
+{% endcomment %}
 <div class="row g-0 g-md-3">
   <!-- ── Turnover ───────────────────────────────────────────── -->
-  <div class="col-12 col-lg-6">
+  <div class="col-12 col-md-6">
     <div class="pf-card">
       <div class="pf-card-title">
         <i class="bi bi-arrow-down-circle-fill text-primary"></i>Turnover
-        <span class="sub">Money earned</span>
+        <span class="sub"><i class="bi bi-info-circle"></i>Billed for work done, paid or not</span>
       </div>
 
       <div class="pf-row">
@@ -423,11 +621,11 @@
   </div>
 
   <!-- ── Expenses ───────────────────────────────────────────── -->
-  <div class="col-12 col-lg-6">
+  <div class="col-12 col-md-6">
     <div class="pf-card">
       <div class="pf-card-title">
         <i class="bi bi-arrow-up-circle-fill text-danger"></i>Expenses
-        <span class="sub">Money spent</span>
+        <span class="sub"><i class="bi bi-info-circle"></i>What the work cost, not cash out</span>
       </div>
 
       {% for line in report.expense_lines %}
@@ -526,7 +724,7 @@
   {% endcomment %}
   <div class="pf-card-title">
     <i class="bi bi-graph-up-arrow text-primary"></i>What Earned The Profit
-    <span class="sub">The same ₹{{ report.profit|inr }}, broken down</span>
+    <span class="sub"><i class="bi bi-info-circle"></i>The same ₹{{ report.profit|inr }}, broken down</span>
   </div>
 
   {% for r in report.earnings.earn %}
@@ -640,7 +838,7 @@
 <div class="pf-card">
   <div class="pf-card-title">
     <i class="bi bi-bar-chart-line-fill text-primary"></i>Month by Month
-    <span class="sub">Turnover vs expenses</span>
+    <span class="sub"><i class="bi bi-info-circle"></i>Turnover vs expenses, by month</span>
   </div>
   <div class="pf-chart-wrap"><canvas id="pfTrend"></canvas></div>
 </div>
@@ -721,7 +919,7 @@
 <div class="pf-card">
   <div class="pf-card-title">
     <i class="bi bi-bank text-primary"></i>Position Right Now
-    <span class="sub">Not affected by the filter</span>
+    <span class="sub"><i class="bi bi-info-circle"></i>As of today, not affected by the filter</span>
   </div>
   {% comment %}
     Every one of these can legitimately go negative — a shop paid ahead of its

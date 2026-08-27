@@ -20,6 +20,7 @@ from ..models import (
 from ..decorators import office_required, owner_required
 from ..notifications import notify
 from ..money import parse_money, fit_text
+from ..money_dates import posted_date, is_future
 
 
 @office_required
@@ -183,6 +184,7 @@ def bulk_payer_detail(request, pk):
     Million-data optimized with SQL subqueries and annotations.
     """
     bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=False)
+    today_iso = timezone.localdate().isoformat()
     
     # Pending/Partial cards — used for totals and the main active list
     base_cards_query = bulk_payer.job_cards.filter(
@@ -271,7 +273,13 @@ def bulk_payer_detail(request, pk):
         'total_balance': total_balance_all,
         'advance_balance': bulk_payer.advance_balance,
         'card_count': card_count,
-        'payment_history': bulk_payer.payment_history.filter(is_trashed=False).order_by('-created_at')
+        'today_iso': today_iso,
+        # ORDERED BY THE DAY THE MONEY MOVED. This explicit `order_by` overrode
+        # `Meta.ordering`, so adding the column without changing it here would
+        # have left a field nothing reads — which is worse than no field,
+        # because it looks fixed. `created_at` still breaks ties inside a day.
+        'payment_history': bulk_payer.payment_history.filter(is_trashed=False)
+                                     .order_by('-date', '-created_at'),
     })
 
 
@@ -393,6 +401,17 @@ def bulk_payer_pay(request, pk):
     if lump_sum is None:
         messages.error(request, "Invalid payment amount.")
         return redirect('bulk_payer_detail', pk=pk)
+
+    # THE DAY THE MONEY MOVED, not the day it was keyed. A fleet collector
+    # comes round and the office keys the receipt when it gets to it, so the
+    # two routinely fall in different months — and these are the largest
+    # single receipts the workshop takes. Same rule, same helpers, as the
+    # Cashbook and both shop ledgers; refused forward, because a date ahead of
+    # today is a mistyped year far more often than a plan.
+    pay_date = posted_date(request.POST.get('date'))
+    if is_future(pay_date):
+        messages.error(request, "A payment cannot be dated in the future.")
+        return redirect('bulk_payer_detail', pk=pk)
     
 
     with transaction.atomic():
@@ -458,6 +477,7 @@ def bulk_payer_pay(request, pk):
             bulk_payer=bulk_payer,
             amount=lump_sum,
             payment_method=payment_method,
+            date=pay_date,
             jobs_affected=jobs_updated,
             details=json.dumps({
                 'jobs': history_details,

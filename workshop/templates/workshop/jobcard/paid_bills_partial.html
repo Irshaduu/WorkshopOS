@@ -1,6 +1,6 @@
 {% load custom_filters %}
 {# Hidden data carrier — JS reads this to sync the total collected in the page header #}
-<span id="pbSyncData" data-total="{% if is_owner_user and total_collected is not None %}{{ total_collected|floatformat:2 }}{% endif %}" data-count="{{ total_count }}" hidden></span>
+<span id="pbSyncData" data-count="{{ total_count }}" hidden></span>
 
 <style>
     :root {

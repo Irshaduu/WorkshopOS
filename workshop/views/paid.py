@@ -2,10 +2,7 @@ from datetime import date, timedelta
 
 from django.shortcuts import render
 from django.utils import timezone
-from django.db.models import (
-    Sum, Q, Value, F,
-    DecimalField,
-)
+from django.db.models import Q
 from django.core.paginator import Paginator
 
 from ..models import JobCard
@@ -17,17 +14,16 @@ def paid_bills_list(request):
     """
     Shows all fully paid job cards (PAID + BULK_PAID).
 
-    Owner: the full calendar-aligned filter vocabulary, plus the Total Collected
-    grand total.
+    Owner: the full calendar-aligned filter vocabulary.
 
-    Office: the last 7 days, and no grand total. Office settles bills, so it
-    needs to look one up and check what was taken for it — which is a few days'
-    worth, not the year's. The window is enforced HERE and not by hiding the
-    dropdown: `?filter=all` is one URL edit away, so the template only decides
-    whether to render a control the view already refuses to honour. The bills
-    inside the window are shown in full, per-card amounts included; what is
-    withheld is the aggregate, which is a business figure rather than a
-    settlement one.
+    Office: the last 7 days. Office settles bills, so it needs to look one up
+    and check what was taken for it — which is a few days' worth, not the
+    year's. The window is enforced HERE and not by hiding the dropdown:
+    `?filter=all` is one URL edit away, so the template only decides whether to
+    render a control the view already refuses to honour. The bills inside the
+    window are shown in full, per-card amounts included.
+
+    There is no grand total any more, for either role — see below.
     """
     user_is_owner = is_owner(request.user)
     today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
@@ -116,14 +112,25 @@ def paid_bills_list(request):
                 Q(bill_number__icontains=word)
             )
 
-    # 5. Grand total collected (Owner only — completely hidden for Office)
-    if user_is_owner:
-        total_collected = paid_jobs.aggregate(
-            total=Sum('received_amount', output_field=DecimalField())
-        )['total'] or 0
-    else:
-        total_collected = None
-
+    # 5. THE GRAND TOTAL IS GONE, and Cash Tracking is why.
+    #
+    # It summed `received_amount` over cards that reached fully-settled status
+    # in the window — exact for a walk-in, who has one payment event at pickup,
+    # and wrong for a fleet three ways at once: a card closed this month
+    # carried its WHOLE cumulative receipt including instalments collected in
+    # earlier months, a PARTIAL card holding real cash appeared nowhere, and
+    # banked advance credit appeared nowhere. A 1,20,000 fleet payment could
+    # report here as 20,000.
+    #
+    # The question it was reaching for is answered properly by Cash Tracking on
+    # the Profit page, which reads fleet money from `BulkPaymentHistory` — one
+    # row per payment, dated by the day the money moved — rather than from the
+    # cards. Removed rather than relabelled: a page earns a new figure by
+    # dropping one.
+    #
+    # The COUNT stays for both roles. This is a lookup list of settled bills,
+    # and how many there are is a fact about the list itself, not a business
+    # figure. Office keeps its 7-day window above.
     total_count = paid_jobs.count()
 
     # 6. Pagination (45 per page)
@@ -137,7 +144,6 @@ def paid_bills_list(request):
 
     context = {
         'paid_jobs':       page_obj,
-        'total_collected': total_collected,
         'total_count':     total_count,
         'q':               q,
         'filter_type':     filter_type,

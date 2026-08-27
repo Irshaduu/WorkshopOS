@@ -1637,10 +1637,25 @@ class BulkPaymentHistory(models.Model):
     jobs_affected = models.PositiveIntegerField(default=0)
     details = models.TextField(blank=True, help_text="JSON snapshot of which jobs got how much")
     is_trashed = models.BooleanField(default=False)
+    # THE DAY THE MONEY MOVED — the third and last ledger in this app to get
+    # one, and the one where it matters most. `inventory.SupplierPayment` has
+    # had this column since day one and `SpareShopPayment` gained it in 0071;
+    # a fleet payment was still stamped with `created_at`, the keystroke.
+    #
+    # A fleet settles in lump sums and hands over cash on its own rhythm, so
+    # the gap between the day the money arrives and the day somebody keys it
+    # is routine — and these are the LARGEST single receipts the workshop
+    # takes, which is why the same defect is worse here than it was on either
+    # shop. `created_at` stays: it is the audit trail, it breaks ties inside a
+    # day, and the two answer different questions.
+    date = models.DateField(default=timezone.now, db_index=True,
+                            help_text="The day the money actually moved.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        # `-date` leads and `created_at` breaks ties, so two payments
+        # back-dated to one day still read in the order they were entered.
+        ordering = ['-date', '-created_at']
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

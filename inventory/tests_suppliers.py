@@ -905,6 +905,65 @@ class RenamingASupplierShopOntoAnotherIsRefusedTests(TestCase):
         self.assertEqual(self.a.name, 'Depot A')
 
 
+class TheShopPageOwnPayFormCarriesTheDateTests(TestCase):
+    """
+    THE OTHER DOOR, and the one people actually use.
+
+    `SupplierPayment` gained its date input on `add_payment.html` — a separate
+    stacked page — while the INLINE "Record a Payment" form on the shop's own
+    page was missed. It posts through a hidden form carrying amount, method and
+    note, so no date ever reached the view and every payment made from there
+    fell straight back to `default=timezone.now`: the keystroke, which is the
+    exact thing the column exists to stop trusting.
+
+    The view has read `posted_date()` all along, so nothing about the rule was
+    wrong — only that this form never handed it anything. That is why it
+    survived the pass that fixed the rule: a view test would pass either way.
+    So this asserts the FORM, through the page, not the view.
+    """
+
+    def setUp(self):
+        office, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='sup_inline', password='pw')
+        self.user.groups.add(office)
+        self.client = Client()
+        self.client.login(username='sup_inline', password='pw')
+
+        self.shop = SupplierShop.objects.create(name='Inline Depot')
+        SupplierRestockBill.objects.create(supplier=self.shop, total_amount=50000)
+        self.today = timezone.localdate()
+
+    def test_the_page_renders_a_date_box_wired_into_the_posted_form(self):
+        html = self.client.get(
+            reverse('supplier_shop_detail', args=[self.shop.id])).content.decode()
+
+        self.assertIn('id="quickPayDate"', html,
+                      'the inline form needs a visible date control')
+        self.assertIn('name="date" id="hfDate"', html,
+                      'and a hidden field, or the value never reaches the view')
+        self.assertIn(self.today.isoformat(), html,
+                      'the box defaults to today and is capped at it')
+
+    def test_a_back_dated_payment_from_this_form_is_stored_on_that_day(self):
+        moved = self.today - timedelta(days=11)
+
+        self.client.post(reverse('add_shop_payment', args=[self.shop.id]),
+                         {'amount': '1000', 'payment_method': 'CASH',
+                          'date': moved.isoformat()})
+
+        self.assertEqual(SupplierPayment.objects.get().date, moved)
+
+    def test_the_heading_matches_the_spare_shop_word_for_word(self):
+        """
+        Two screens an owner opens in one sitting called the same act two
+        things — "Record Payment" here, "Make a Bulk Payment" there.
+        """
+        html = self.client.get(
+            reverse('supplier_shop_detail', args=[self.shop.id])).content.decode()
+        self.assertIn('Record a Payment', html)
+        self.assertNotIn('Make a Bulk Payment', html)
+
+
 class ASupplierPaymentIsDatedByTheDayTheMoneyMovedTests(TestCase):
     """
     `SupplierPayment.date` has existed since day one and nothing ever wrote to
