@@ -196,38 +196,11 @@
   }
   .shop-dropdown-menu .dropdown-divider { margin: 4px 8px; }
 
-  /* The payment date box — the Cashbook's own control, values copied rather
-     than approximated. Almost every payment is dated today, so the field that
-     is nearly always right is a 46px calendar glyph with the real
-     <input type="date"> lying invisible on top of it: one tap opens the OS
-     picker on every platform. The moment the date is NOT today it turns amber
-     and spells the day out, so a wrong month can never be posted unseen. */
-  .ssp-datebox {
-    position: relative; display: inline-flex; align-items: center;
-    justify-content: center; gap: 5px;
-    min-width: 44px; height: 44px; padding: 0 4px;
-    border: 0; background: transparent; cursor: pointer;
-    color: var(--color-text-muted);
-    /* NO TRANSITION ON COLOUR. The amber IS the state — "this is not today" —
-       and a running transition outranks everything in the cascade, so while it
-       is in flight the computed colour is still the OLD one. That is the trap
-       this codebase already records for the spare-status classes, and it also
-       makes the state unmeasurable in any tool that is not painting frames.
-       Hover has no transition either; on a glyph it needs none. */
-  }
-  .ssp-datebox:hover { color: var(--color-primary); }
-  .ssp-datebox:focus-within { color: var(--color-primary); }
-  .ssp-datebox i { font-size: 1.15rem; }
-  .ssp-datebox input[type="date"] {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    opacity: 0; border: none; padding: 0; margin: 0; cursor: pointer;
-    background: transparent;
-  }
-  .ssp-date-txt {
-    display: none; font-size: 0.75rem; font-weight: 700; white-space: nowrap;
-  }
-  .ssp-datebox.is-custom { color: #b45309; }
-  .ssp-datebox.is-custom .ssp-date-txt { display: inline; }
+  /* The payment date box, the amount, the method, the note and the Pay button
+     are all the SHARED "Record a Payment" control now — `.rpay-*` in
+     static/css/style.css. They were three near-copies of one form across this
+     page, the Supplies Shop's and the Fleet Account's, which is the shape a
+     rule drifts out of; a page can no longer restyle its own half of it. */
 </style>
 
 <!-- ── Back breadcrumb & Filters ── -->
@@ -402,55 +375,93 @@
 </div>
 
 <!-- ── Bulk Payment Form ── -->
+{% comment %}
+  The shared "Record a Payment" control — markup and CSS both live in
+  static/css/style.css, so this form, the Supplies Shop's and the Fleet
+  Account's cannot drift apart. See the block there for why the row scrolls
+  sideways instead of wrapping, and why the Pay button sits outside the
+  scroller. Only the action, the field names and the footnote are this page's.
+{% endcomment %}
 {% if total_balance > 0 %}
-<div class="card border-0 shadow-sm mb-3" style="border-radius: 14px; border-left: 4px solid var(--color-primary) !important;">
-  <div class="card-body p-3">
-    <h6 class="fw-bold mb-3"><i class="bi bi-cash-stack me-2 text-primary"></i>Record a Payment</h6>
-    <form method="post" action="{% url 'spare_shop_pay' shop.pk %}">
-      {% csrf_token %}
-      <div class="d-flex gap-2 flex-wrap align-items-end">
-        <div>
-          <span class="ssp-datebox" id="sspDateBox" title="Date the money moved — defaults to today">
-            <i class="bi bi-calendar-event"></i>
-            <span class="ssp-date-txt" id="sspDateTxt"></span>
-            <input type="date" name="date" id="id_pay_date" value="{{ today_iso }}"
-                   max="{{ today_iso }}" required aria-label="Date the money moved">
-          </span>
-        </div>
-        <div style="flex: 2; min-width: 130px;">
-          <label for="id_pay_lump_sum" class="form-label small text-muted mb-1">Amount (₹)</label>
-          <input type="number" id="id_pay_lump_sum" name="lump_sum" class="form-control fw-bold"
-                 placeholder="Bulk Amount" min="1" step="1" required
-                 style="font-size: 1.1rem;">
-        </div>
-        <div style="flex: 1; min-width: 120px;">
-          <label for="id_pay_method" class="form-label small text-muted mb-1">Method</label>
-          <select id="id_pay_method" name="payment_method" class="form-select">
-            <option value="CASH">💵 Cash</option>
-            <option value="UPI">📱 UPI</option>
-            <option value="CARD">💳 Card</option>
-            <option value="TRANSFER">🏦 Transfer</option>
-          </select>
-        </div>
-        <div style="flex: 2; min-width: 150px;">
-          <label for="id_pay_note" class="form-label small text-muted mb-1">Note (Optional)</label>
-          <input type="text" id="id_pay_note" name="note" class="form-control" placeholder="Description/Note">
-        </div>
-        <div>
-          <button type="submit" class="btn btn-primary fw-bold rounded-pill px-4"
-                  onclick="confirmPayment(event, this.form);">
-            <i class="bi bi-send-fill me-1"></i> Pay
-          </button>
-        </div>
-      </div>
-      <div class="mt-2">
-        <small class="text-muted">
-          <i class="bi bi-info-circle me-1"></i>
-          Amount will cascade oldest items first. Max outstanding: ₹{{ total_balance|floatformat:0 }}
-        </small>
-      </div>
-    </form>
+<div class="rpay-card">
+  <div class="rpay-head">
+    <h6 class="rpay-title"><i class="bi bi-cash-stack"></i>Record a Payment</h6>
+    {% comment %}
+      The chip names WHICH SHOP, and nothing else. The balance is already the
+      largest figure on the page, in the dark bar directly above this card, so
+      repeating it here said one fact twice. What that bar cannot answer from
+      inside this card is which account the Pay button is about to settle.
+    {% endcomment %}
+    <span class="rpay-owed">{{ shop.name }}</span>
   </div>
+  <form method="post" action="{% url 'spare_shop_pay' shop.pk %}">
+    {% csrf_token %}
+    <div class="rpay-body">
+      <div class="rpay-scrollwrap">
+        <div class="rpay-scroll">
+          <div class="rpay-row">
+            <span class="rpay-date" id="sspDateBox" title="Date the money moved — defaults to today">
+              <i class="bi bi-calendar-event"></i>
+              <span class="rpay-date-txt" id="sspDateTxt"></span>
+              <input type="date" name="date" id="id_pay_date" value="{{ today_iso }}"
+                     max="{{ today_iso }}" required aria-label="Date the money moved">
+            </span>
+            <div class="rpay-field rpay-f-amount">
+              <label for="id_pay_lump_sum">Amount</label>
+              {% comment %}
+                The ₹ is a visual adornment, so it is hidden from assistive tech
+                and the currency is carried in the input's own accessible name
+                instead. The label used to read "Amount (₹)"; printing the
+                symbol both in the caption and inside the box would be the same
+                fact twice on a row that is already scrolling for width.
+              {% endcomment %}
+              <span class="rpay-cur" aria-hidden="true">₹</span>
+              <input type="number" id="id_pay_lump_sum" name="lump_sum"
+                     class="rpay-input rpay-amount" placeholder="Enter amount"
+                     aria-label="Amount in rupees"
+                     min="1" step="1" required inputmode="numeric">
+            </div>
+            <div class="rpay-field rpay-f-method">
+              <label for="id_pay_method">Method</label>
+              {% comment %}
+                ONE PAYMENT-METHOD LIST FOR THE WHOLE APP — the same four
+                labels, glyph for glyph, on all eight selects: the invoice's
+                Settle Bill dialog, both Cashbook forms, both Supplies Shop
+                forms, the spare shop's, and the Fleet Account's. They had
+                drifted into five spellings of four values ("Transfer",
+                "Bank", "Bank Transfer"; "UPI", "UPI / GPay", "UPI / QR Code"),
+                which on screens an owner opens in one sitting reads as
+                different options rather than one vocabulary.
+
+                What is deliberately NOT uniform is which one is selected
+                first: a customer bill is settled by UPI, a shop is paid in
+                cash, and a fleet settles by UPI — so each list opens on what
+                actually happens on that screen.
+              {% endcomment %}
+              <select id="id_pay_method" name="payment_method" class="rpay-select">
+                <option value="CASH">💵 Cash</option>
+                <option value="UPI">📱 UPI</option>
+                <option value="CARD">💳 Card</option>
+                <option value="TRANSFER">🏦 Bank Transfer</option>
+              </select>
+            </div>
+            <div class="rpay-field rpay-f-note">
+              <label for="id_pay_note">Note (Optional)</label>
+              <input type="text" id="id_pay_note" name="note" class="rpay-input"
+                     maxlength="255" placeholder="Add note">
+            </div>
+            <button type="submit" class="rpay-btn rpay-btn-out" onclick="confirmPayment(event, this.form);">
+              <i class="bi bi-send-fill"></i> Pay
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="rpay-foot">
+      <i class="bi bi-info-circle"></i>
+      <span>Applied to the oldest unpaid items first.</span>
+    </p>
+  </form>
 </div>
 {% else %}
 <div class="alert alert-success border-0 mb-3" style="border-radius: 12px;">

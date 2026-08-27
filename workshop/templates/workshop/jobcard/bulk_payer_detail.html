@@ -172,79 +172,14 @@
     .bd-summary-value.danger { color: #e11d48; }
     .bd-summary-value.success { color: #059669; }
 
-    /* ── Pay + Add Controls ──────────────────────── */
-    .bd-controls {
-        margin-bottom: 24px;
-    }
-    .bd-pay-form {
-        display: flex;
-        align-items: center;
-        background: #ffffff;
-        padding: 8px;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.025);
-        border: 1px solid rgba(226, 232, 240, 0.8);
-        gap: 8px;
-        transition: box-shadow 0.2s ease, border-color 0.2s ease;
-    }
-    .bd-pay-form:focus-within {
-        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.1), 0 4px 6px -4px rgba(37, 99, 235, 0.05);
-        border-color: #93c5fd;
-    }
-    .bd-pay-input {
-        flex: 1;
-        min-width: 150px;
-        border: none;
-        background: transparent;
-        font-family: var(--font-display);
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: #0f172a;
-        padding: 10px 16px;
-        outline: none;
-        -moz-appearance: textfield; /* Firefox */
-    }
-    .bd-pay-input::-webkit-inner-spin-button, 
-    .bd-pay-input::-webkit-outer-spin-button { 
-        -webkit-appearance: none; 
-        margin: 0; 
-    }
-    .bd-pay-input::placeholder { color: #94a3b8; font-weight: 500; font-size: 1rem; }
-
-    .bd-method-select {
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        background: #f8fafc;
-        font-family: var(--font-body);
-        font-size: 0.85rem;
-        font-weight: 700;
-        color: #475569;
-        padding: 10px 14px;
-        outline: none;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-    .bd-method-select:hover { background: #f1f5f9; }
-
-    .bd-pay-btn {
-        border: none;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-        color: #fff;
-        font-family: var(--font-body);
-        font-size: 0.9rem;
-        font-weight: 700;
-        padding: 10px 24px;
-        cursor: pointer;
-        white-space: nowrap;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-        transition: all 0.2s ease;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .bd-pay-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4); }
-    .bd-pay-btn:active { transform: translateY(0); }
+    /* ── Pay Controls ────────────────────────────────
+       The pay row is the SHARED "Record a Payment" control now — `.rpay-*` in
+       static/css/style.css, the same one the spare shop and the Supplies Shop
+       render. What used to live here was the third near-copy of one form, and
+       the only one that squeezed rather than wrapped: `display: flex` with no
+       `flex-wrap` and no scroller put 397px of content in a 343px box on a
+       phone and pushed the Pay button onto the viewport edge. A page can no
+       longer restyle its own half of a control the other two also draw. */
 
     /* Premium Pill Buttons */
     .bd-add-btn {
@@ -343,6 +278,17 @@
         color: #94a3b8;
     }
     .bd-history-meta span { margin-right: 10px; }
+    /* The note is the one line here somebody TYPED, so it reads a shade darker
+       than the machine-generated facts above it, and it WRAPS rather than
+       truncating — a reference cut off mid-cheque-number is worse than a
+       second line. */
+    .bd-history-note {
+        display: inline-block;
+        margin-top: 3px;
+        color: #64748b;
+        font-style: italic;
+        overflow-wrap: anywhere;
+    }
     .bd-history-empty {
         text-align: center;
         padding: 1.5rem;
@@ -772,39 +718,10 @@
 </style>
 
 <style>
-/* THE DATE BOX IS THE CASHBOOK'S OWN CONTROL, values copied rather than
-   approximated. It is compact here for the same reason it is compact on the
-   spare-shop page: it sits in an INLINE row beside the amount and the method,
-   so a full-width field would be the one control that does not match its
-   neighbours. Almost every payment is dated today, so the field that is nearly
-   always right costs 46px and says nothing — until it is not today, when it
-   turns amber and spells the day out. */
-  .bd-datebox {
-    position: relative; display: inline-flex; align-items: center;
-    justify-content: center; gap: 5px;
-    min-width: 44px; height: 44px; padding: 0 4px;
-    border: 0; background: transparent; cursor: pointer;
-    color: var(--color-text-muted);
-    /* NO TRANSITION ON COLOUR. The amber IS the state — "this is not today" —
-       and a running transition outranks everything in the cascade, so while it
-       is in flight the computed colour is still the OLD one. That is the trap
-       this codebase already records for the spare-status classes, and it also
-       makes the state unmeasurable in any tool that is not painting frames.
-       Hover has no transition either; on a glyph it needs none. */
-  }
-  .bd-datebox:hover { color: var(--color-primary); }
-  .bd-datebox:focus-within { color: var(--color-primary); }
-  .bd-datebox i { font-size: 1.15rem; }
-  .bd-datebox input[type="date"] {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    opacity: 0; border: none; padding: 0; margin: 0; cursor: pointer;
-    background: transparent;
-  }
-  .bd-date-txt {
-    display: none; font-size: 0.75rem; font-weight: 700; white-space: nowrap;
-  }
-  .bd-datebox.is-custom { color: #b45309; }
-  .bd-datebox.is-custom .bd-date-txt { display: inline; }
+/* THE DATE BOX IS THE CASHBOOK'S OWN CONTROL, and it is now literally the same
+   control rather than a copy of one: `.rpay-date` in static/css/style.css,
+   rendered identically by this page, the spare shop's and the Supplies Shop's.
+   The ids are unchanged, so the script below is untouched. */
 </style>
 
 <!-- Page Header -->
@@ -877,27 +794,92 @@
         </button>
     </div>
 
-    <!-- Pay Control (Unique Row) -->
-    <div class="bd-controls">
-        <form id="masterPaymentForm" method="POST" action="{% url 'bulk_payer_pay' pk=bulk_payer.pk %}" class="bd-pay-form w-100">
+    {% comment %}
+      The shared "Record a Payment" control — markup and CSS both live in
+      static/css/style.css, so this form, the spare shop's and the Supplies
+      Shop's cannot drift apart. See the block there for why the row scrolls
+      sideways instead of wrapping, and why the Pay button sits outside the
+      scroller.
+
+      This was the worst of the three on a phone and the only one that was not
+      merely tall: `display: flex` with no wrap and no scroller squeezed the
+      row and pushed the Pay button's right edge onto the viewport edge —
+      measured 397px of content inside a 343px box. It is also the one that
+      never carried the heading CLAUDE.md records for all three, and the one
+      whose ledger had no `note` column until 0073 — so the shared control drew
+      a Note box on two screens out of three.
+
+      Its Pay button is GREEN where both shops' are RED: a fleet payment is the
+      only one of the three that is money coming IN. The Profit page's own rule.
+    {% endcomment %}
+    <div class="rpay-card">
+        <div class="rpay-head">
+            <h6 class="rpay-title"><i class="bi bi-cash-stack"></i>Record a Payment</h6>
+            {% comment %}
+              The chip names WHICH ACCOUNT, and nothing else — see the note on
+              the spare shop's copy. Balance and Advance Credit already have
+              their own boxes in the summary bar above, so this needs no branch
+              on the sign either: one line, always the same shape.
+            {% endcomment %}
+            <span class="rpay-owed">{{ bulk_payer.customer_name }}</span>
+        </div>
+        <form id="masterPaymentForm" method="POST" action="{% url 'bulk_payer_pay' pk=bulk_payer.pk %}">
             {% csrf_token %}
-            <span class="bd-datebox" id="bdDateBox" title="Date the money moved — defaults to today">
-                <i class="bi bi-calendar-event"></i>
-                <span class="bd-date-txt" id="bdDateTxt"></span>
-                <input type="date" name="date" id="bdPayDate" value="{{ today_iso }}"
-                       max="{{ today_iso }}" required aria-label="Date the money moved">
-            </span>
-            <input type="number" name="lump_sum" id="lumpSumInput" step="0.01" class="bd-pay-input"
-                   placeholder="₹ Enter Amount" required min="1">
-            <select name="payment_method" class="bd-method-select">
-                <option value="CASH">Cash</option>
-                <option value="UPI">UPI</option>
-                <option value="CARD">Card</option>
-                <option value="TRANSFER">Bank</option>
-            </select>
-            <button type="button" class="bd-pay-btn" onclick="initiatePayment()">
-                <i class="bi bi-wallet2"></i> Pay
-            </button>
+            <div class="rpay-body">
+                <div class="rpay-scrollwrap">
+                    <div class="rpay-scroll">
+                        <div class="rpay-row">
+                            <span class="rpay-date" id="bdDateBox" title="Date the money moved — defaults to today">
+                                <i class="bi bi-calendar-event"></i>
+                                <span class="rpay-date-txt" id="bdDateTxt"></span>
+                                <input type="date" name="date" id="bdPayDate" value="{{ today_iso }}"
+                                       max="{{ today_iso }}" required aria-label="Date the money moved">
+                            </span>
+                            <div class="rpay-field rpay-f-amount">
+                                <label for="lumpSumInput">Amount</label>
+                                {# The ₹ is a visual adornment; the currency rides in the input's own accessible name. #}
+                                <span class="rpay-cur" aria-hidden="true">₹</span>
+                                <input type="number" name="lump_sum" id="lumpSumInput" step="0.01"
+                                       class="rpay-input rpay-amount" placeholder="Enter amount"
+                                       aria-label="Amount in rupees"
+                                       required min="1" inputmode="decimal">
+                            </div>
+                            <div class="rpay-field rpay-f-method">
+                                <label for="bdPayMethod">Method</label>
+                                {% comment %}
+                                  One payment-method list for the whole app —
+                                  the same four labels, glyph for glyph, on all
+                                  eight selects. See the note on the spare
+                                  shop's copy for what had drifted.
+
+                                  A fleet settles by UPI, so UPI is marked
+                                  `selected` rather than moved to the top: the
+                                  ORDER stays identical everywhere and only the
+                                  DEFAULT follows the screen.
+                                {% endcomment %}
+                                <select name="payment_method" id="bdPayMethod" class="rpay-select">
+                                    <option value="CASH">💵 Cash</option>
+                                    <option value="UPI" selected>📱 UPI</option>
+                                    <option value="CARD">💳 Card</option>
+                                    <option value="TRANSFER">🏦 Bank Transfer</option>
+                                </select>
+                            </div>
+                            <div class="rpay-field rpay-f-note">
+                                <label for="bdPayNote">Note (Optional)</label>
+                                <input type="text" name="note" id="bdPayNote" class="rpay-input"
+                                       maxlength="255" placeholder="Add note">
+                            </div>
+                            <button type="button" class="rpay-btn rpay-btn-in" onclick="initiatePayment()">
+                                <i class="bi bi-wallet2"></i> Pay
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="rpay-foot">
+                <i class="bi bi-info-circle"></i>
+                <span>Oldest unsettled cars first; any surplus is banked as credit.</span>
+            </p>
         </form>
     </div>
 </div>
@@ -1078,6 +1060,13 @@
                         <span><i class="bi bi-calendar3 me-1"></i>{{ h.date|date:"d M, Y" }}</span><br>
                         <span><i class="bi bi-credit-card me-1"></i>{{ h.get_payment_method_display }}</span>
                         <span><i class="bi bi-car-front me-1"></i>{{ h.jobs_affected }} job{{ h.jobs_affected|pluralize }}</span>
+                        {% comment %}
+                          Rendered only when there IS one — a "no note" line on
+                          every row is furniture, and most payments carry none.
+                          A column nothing reads is worse than no column, so the
+                          note box on the form above only earns its place here.
+                        {% endcomment %}
+                        {% if h.note %}<br><span class="bd-history-note"><i class="bi bi-chat-left-text me-1"></i>{{ h.note }}</span>{% endif %}
                     </div>
                 </div>
                 {% if request.user|has_group:"Owner" or request.user.is_superuser %}
