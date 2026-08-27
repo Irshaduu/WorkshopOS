@@ -391,16 +391,128 @@ thing the column exists to stop trusting. `add_shop_payment` had read
 way, so the test has to go through the FORM.**
 → `TheShopPageOwnPayFormCarriesTheDateTests`
 
-**ALL THREE PAYMENT FORMS ARE ONE CONTROL NOW** — spare shop, Supplies Shop and
-Fleet. All three say **"Record a Payment"** (they said "Make a Bulk Payment",
-"Record Payment" and nothing, for one act on screens an owner opens in one
-sitting), and all three carry the same date box.
+**ALL THREE PAYMENT FORMS ARE ONE CONTROL NOW — LITERALLY ONE, NOT THREE COPIES
+KEPT IN STEP.** Spare shop, Supplies Shop and Fleet. All three say **"Record a
+Payment"** (they said "Make a Bulk Payment", "Record Payment" and nothing, for
+one act on screens an owner opens in one sitting), and since **2026-08-28** all
+three render the same `.rpay-*` markup over one declaration in
+**`static/css/style.css`** — the shared stylesheet `base.html` links on every
+page. It had been three near-copies of the same form in three templates, which
+is the shape a rule drifts out of, and they had already drifted three ways:
+
+| | before | after |
+|---|---|---|
+| **spare shop** | 309px tall on a 375px phone, row wrapped to **three** ragged lines | 159px |
+| **Supplies Shop** | 285px, the same three lines | 159px |
+| **Fleet Account** | 397px of content in a 343px box — `flex` with no wrap **and no scroller**, so the row squeezed and the Pay button's right edge landed on the viewport edge | 159px |
+
+The date glyph was also top-aligned against the wrapped fields, sitting 24px
+below the box beside it; every control now bottom-aligns on one line.
+
+**THE ROW NEVER WRAPS AND NEVER SQUEEZES — IT SCROLLS SIDEWAYS**, at every
+width, the same single behaviour the Unassigned Hub's add form settled on and
+for the same reason: one shape beats a layout that rearranges itself between
+the tablet it is filled in on and the laptop it is checked on. Every field
+carries a **fixed** width so a wide screen cannot stretch the row back into a
+shape that wraps; only the Note grows, and it can only grow, because
+`flex-wrap: nowrap` leaves no wrap to fall back into. Measured on the spare
+shop's 502px row: 1280 and 820 hide nothing (the Note takes the slack at
+298px), 640 hides 5px, 375 hides 271px.
+
+**THE PAY BUTTON IS THE LAST THING IN THE SCROLLER, NOT PINNED BESIDE IT.** It
+was pinned for one revision on the reasoning that the action must always be
+reachable; the owner's call was that it scrolls with the row, and the row is
+better for it — the strip reads in the order it is filled (when, how much, how,
+why, **PAY**), and a bright red or green sliver at the right edge is a better
+"there is more this way" cue than the gradient fade that used to sit there.
+**That fade is gone with it**: laid over a coloured button at the end of the
+scroll it would dim the one control that must not be dimmed. `min-width: 0` on
+the scroll wrapper is still load-bearing — a flex item defaults to
+`min-width: auto`, so without it the wrapper grows to the row's full width and
+the card overflows the page instead of scrolling inside itself.
+
+**RED PAYS A SHOP, GREEN TAKES A FLEET'S MONEY.** The only thing that differs
+between the three forms, and it differs because the direction of the cash does:
+paying a shop is money OUT, a fleet paying us is money IN. It is the Profit
+page's own rule ("MONEY IN IS GREEN, MONEY OUT IS RED") applied to the button
+that moves it, so an owner reading a shop ledger and a fleet ledger in one
+sitting meets one vocabulary instead of a blue button that says nothing on
+either. Both colours come from **one pair of custom properties**
+(`--rpay-btn-a/b`), so a variant sets two values rather than restating the
+gradient and the focus ring.
+
+⚠ **The button carries NO DROP SHADOW**, at rest or on hover, on the owner's
+instruction — which puts it in line with the Job Card's submit, recorded above
+as carrying none either. A saturated red or green block on a white card needs
+no help being found. **Hover is a `filter: brightness()` change, not a lift**:
+a translate with nothing under it reads as the button coming loose.
+
+**THE CHIP IN THE HEADING IS THE ACCOUNT'S NAME, AND NOTHING ELSE.** It carried
+the balance beside the name for one revision and the figure came back out: the
+dark stat bar directly above already states it in the largest type on the page
+("BALANCE OWED", "Pending Balance", the fleet's "Balance" box), so printing it
+again a few pixels below said one fact twice and put a loud red number next to
+the only control on the card that should be pulling the eye. What the heading
+needed was the half that bar does *not* answer from inside this card: **which**
+account the Pay button is about to settle. It is **not uppercased** — a shop is
+called "Fluid manjeri", not "FLUID MANJERI"; a caps treatment invented for the
+four-letter word "OWED" makes a real proper noun harder to read — and it sits
+on neutral ground rather than the old red wash, because with no money in it
+there is nothing to warn about. It truncates rather than wraps, so the heading
+is one line whatever the account is called, and the fleet needs no branch on
+the sign of its balance. The footnote carries the thing the stat bar cannot
+say: that a payment is allocated **oldest-first**, true of all three waterfalls
+and previously written only on the spare shop's.
+
+**ONE PAYMENT-METHOD LIST FOR THE WHOLE APP — `💵 Cash`, `📱 UPI`, `💳 Card`,
+`🏦 Bank Transfer`, glyph for glyph, on ALL EIGHT selects.** The invoice's
+Settle Bill dialog, both Cashbook forms, both Supplies Shop forms, the spare
+shop's and the Fleet Account's. Four values (`CASH` / `UPI` / `CARD` /
+`TRANSFER`) had drifted into **five spellings**: "Transfer", "Bank" and "Bank
+Transfer" for one thing, "UPI", "UPI / GPay" and "UPI / QR Code" for another —
+which on screens an owner opens in one sitting reads as different options
+rather than one vocabulary. The glyph is what makes the row scannable at a
+glance on the Floor tablet, so it belongs on all of them or none.
+
+⚠ **What is deliberately NOT uniform is which one is selected first.** A
+customer bill is settled by **UPI**, a shop is paid in **cash**, and a fleet
+settles by **UPI**, so each list opens on what actually happens on that screen.
+The fleet marks `UPI` as `selected` rather than reordering its options, so the
+ORDER is identical everywhere and only the DEFAULT follows the screen.
+
+The unrendered `bulk_payments_partial.html` carries the same four labels. It is
+reachable from no view and no `{% include %}`, and was updated anyway so that
+reviving it cannot quietly reintroduce a sixth spelling.
+
+**A FLEET PAYMENT CAN CARRY A NOTE — `0073`, the last of the three ledgers to
+get one.** `SpareShopPayment.note` and `inventory.SupplierPayment.note` have
+existed since those models were written, so the shared control drew a Note box
+on two screens out of three — and the one it skipped takes the workshop's
+**largest single receipts**. A fleet collector hands over six figures against
+several months of cars, and a cheque number or "Aug + Sep" on that row is the
+only thing that later says which months it covered. Same column as its two
+siblings character for character (`CharField(255)`, blank, null), asserted by a
+test that reads all three widths rather than hard-coding one.
+
+The box was deliberately left **off** for a revision rather than rendered over a
+column that did not exist — an input whose value is silently dropped is the same
+defect as a column nothing reads, and it looks fixed. Three things travel with
+it: the view runs the note through **`fit_text`** (the SQLite-accepts /
+Postgres-500s split, on the one screen where money is about to move — trimmed,
+never crashed); **blank stores NULL**, because nobody wrote a note is a
+different fact from somebody writing nothing; and it is **rendered back** in the
+payment-history panel, only when there is one.
+→ `AFleetPaymentCanCarryANoteTests`
 
 **The box has NO container and no "Date" caption.** A bordered, filled 46px box
 made the date look like a third input beside Amount and Method, when the whole
 point is that it is almost always right and should cost nothing. It is the glyph
 alone — still a 44px target, still amber with the day spelled out the moment it
-is not today. A calendar glyph does not need a caption saying it is a date.
+is not today. A calendar glyph does not need a caption saying it is a date. The
+same reasoning now covers the **₹** inside the Amount box: it is `aria-hidden`
+decoration and the currency rides in the input's own `aria-label`, because
+printing the symbol in the caption *and* in the box is one fact twice on a row
+already scrolling for width.
 
 ⚠ **NO TRANSITION ON ITS COLOUR, and that is the recorded rule rather than
 taste.** The amber IS the state, and a running transition outranks everything in
@@ -411,6 +523,34 @@ back-dated box and only turned amber once the transition was disabled. Hover has
 none either; on a glyph it needs none. `!important` is no longer needed on the
 amber, because all that is left is `color` on an element carrying no Bootstrap
 utilities.
+
+**ALL THREE CONFIRMATIONS REPEAT THE DATE WHEN IT IS NOT TODAY**, and only two
+of them used to. The Supplies Shop's never did, so the one form whose collector
+comes round weekly could file a back-dated payment with nothing on screen naming
+the month it lands in. Restating "today" on every payment is how a confirmation
+stops being read — the settle dialog's own reasoning.
+
+⚠ **THE CARD CARRIES A SLOW TRAVELLING LIGHT ON ITS BORDER, and it is held to
+the Job Card's rule rather than exempted from it.** That page records "this is
+the ONLY looping animation" because an idle shimmer is noise on a screen staff
+work all day and costs battery on the Floor tablet. This one is the same
+`--jc-orbit` technique at a fraction of the contrast, and it earns its place
+four ways: **the card renders only when money is owed** (all three templates
+gate it, and a settled shop shows "All Clear" instead), so it is not permanent
+furniture; it is one ~1.5px pseudo-element; at **3.2s** it reads as a light
+going round rather than as an edge that might be a rendering artifact; and it
+quickens to 1.7s on `:focus-within`. `prefers-reduced-motion` drops the motion
+and keeps the ring. (It shipped at 7s for a day and was too slow to register as
+deliberate — the owner asked for it faster.)
+
+**Its progressive enhancement is THREE-way, and the middle case is the one that
+is easy to get wrong.** No `mask-composite` → the static inset ring.
+`mask-composite` but no registered `@property` → **`var(--rpay-orbit, 0deg)`
+falls back**, so the gradient still paints and the keyframe flips *discretely*
+between 0deg and 360deg, which render identically, so the jump is invisible.
+Both → the angle interpolates. **Without that `0deg` fallback the whole
+`background` is invalid at computed-value time**, and since the `@supports`
+block clears the static shadow the card would end up with no ring at all.
 
 
 ## Warehouse stock & costing
@@ -3379,6 +3519,14 @@ number or a note renders open, and so does one whose refused save put an error o
 one of those fields — otherwise the message hides behind a summary nobody thought
 to click, and the page says "not saved" while showing nothing wrong.
 
+⚠ **THERE IS NO "OPTIONAL" PILL ON EITHER FOLD any more, removed on the owner's
+instruction — the fold already says it.** A section that ships CLOSED, on a form
+where every other section is open, is one nobody is being asked to fill; the pill
+said the same thing a second time in the loudest treatment on the band, competing
+with the section's own name for a line that already truncates at 375px. The
+`.jc-fold-note` rule went with it, so a copy cannot come back by accident. Nothing
+about the fields changed — none of them was ever required.
+
 **The internal note is a TEXTAREA that grows.** `rows=1`, because most cards carry
 no note. Built as progressive enhancement: the CSS declares a draggable one-row
 textarea, and `autoGrow()` sets `overflow: hidden`, drops `resize` and sizes the box
@@ -4363,10 +4511,20 @@ and there is no build step.** Every outside review reaches the same suggestion, 
 reasoning is recorded here rather than re-argued.
 
 Roughly 188 KB of inline JS across 36 templates, and ~551 KB of inline CSS across 60
-of the 106 (most templates carry their own `<style>`). Seven shared files exist —
+of the 106 (most templates carry their own `<style>`). Seven shared JS files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
 `photos-core.js`, `spare_autofill.js` — and the rule for what goes in one is
 **used on more than one page**; what stays inline is genuinely page-specific.
+
+⚠ **`static/css/style.css` is the CSS side of that same rule, and it is easy to
+miss because most of this app's CSS is inline.** `base.html` links it on every
+page, so it is where a control drawn by more than one template belongs — the
+"Record a Payment" card (`.rpay-*`) lives there for exactly that reason, after
+three templates spent months keeping three copies of one form in step by hand
+and drifting three different ways. **A component in one place has none of the
+inline-JS objection**: no DOM entanglement, nothing to rewrite, and CSS cannot
+fail silently the way a moved event handler can. If a new thing is drawn on more
+than one page, put it here rather than pasting it a second time.
 
 The usual arguments do not apply here:
 - **There is no CSP**, so no hardening is unlocked today.

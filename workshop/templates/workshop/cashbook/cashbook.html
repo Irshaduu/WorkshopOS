@@ -341,9 +341,17 @@
 
     .cb-add-grid {
         display: grid; gap: 8px; align-items: center;
-        grid-template-columns: 46px minmax(190px, 1fr) 105px 95px auto;
+        /* The method column is 138px because it is MEASURED, not chosen: the
+           longest option, "🏦 Bank Transfer", renders 104px at this font, and
+           the select spends 11px + 20px on padding plus 2px of border. It sat
+           at 95px while the label read "Transfer" and clipped the moment the
+           app settled on one payment-method vocabulary — invisible until
+           somebody picked the one option that overflows. This grid is already
+           a horizontal scroller, so the extra 43px costs scroll and nothing
+           else; `min-width` moves with it or the column just squeezes. */
+        grid-template-columns: 46px minmax(190px, 1fr) 105px 138px auto;
         grid-template-areas: "date name amt meth go";
-        min-width: 520px;
+        min-width: 563px;
     }
     .cb-f-date { grid-area: date; }
     .cb-f-name { grid-area: name; position: relative; }
@@ -900,10 +908,10 @@
 
                 <div class="cb-f-meth">
                     <select name="payment_method" id="cbMethod" class="cb-select" required aria-label="Payment method">
-                        <option value="CASH" selected>Cash</option>
-                        <option value="UPI">UPI</option>
-                        <option value="CARD">Card</option>
-                        <option value="TRANSFER">Transfer</option>
+                        <option value="CASH" selected>💵 Cash</option>
+                        <option value="UPI">📱 UPI</option>
+                        <option value="CARD">💳 Card</option>
+                        <option value="TRANSFER">🏦 Bank Transfer</option>
                     </select>
                 </div>
 
@@ -1026,10 +1034,10 @@
                     <div class="cb-field">
                         <label for="cbEditMethod">Method</label>
                         <select name="payment_method" id="cbEditMethod" class="cb-select" required>
-                            <option value="CASH">Cash</option>
-                            <option value="UPI">UPI</option>
-                            <option value="CARD">Card</option>
-                            <option value="TRANSFER">Bank Transfer</option>
+                            <option value="CASH">💵 Cash</option>
+                            <option value="UPI">📱 UPI</option>
+                            <option value="CARD">💳 Card</option>
+                            <option value="TRANSFER">🏦 Bank Transfer</option>
                         </select>
                     </div>
                 </div>

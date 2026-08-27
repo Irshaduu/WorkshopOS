@@ -1634,6 +1634,19 @@ class BulkPaymentHistory(models.Model):
     bulk_payer = models.ForeignKey(BulkPayer, on_delete=models.CASCADE, related_name='payment_history')
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='CASH')
+    # THE LAST OF THE THREE LEDGERS TO GET A NOTE, and the one that carries the
+    # workshop's LARGEST single receipts. `SpareShopPayment.note` and
+    # `inventory.SupplierPayment.note` have had one since they were written, so
+    # the shared "Record a Payment" control drew a Note box on two of the three
+    # screens an owner settles from — and a fleet collector handing over six
+    # figures against several months of cars is exactly the payment somebody
+    # needs to write a cheque number or "Aug + Sep" against.
+    #
+    # Same column as its two siblings, character for character, so the three
+    # cannot disagree about how much may be written: CharField(255), blank and
+    # null. Blank means nobody wrote one — never an empty string standing in for
+    # a note that was typed and lost.
+    note = models.CharField(max_length=255, blank=True, null=True, help_text="Optional description or reference")
     jobs_affected = models.PositiveIntegerField(default=0)
     details = models.TextField(blank=True, help_text="JSON snapshot of which jobs got how much")
     is_trashed = models.BooleanField(default=False)

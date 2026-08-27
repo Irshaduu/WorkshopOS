@@ -356,3 +356,477 @@ select.status-fixed {
 .text-success-custom {
     color: #22C55E !important;
 }
+
+/* ==========================================================================
+   RECORD A PAYMENT — one control, three screens
+   ==========================================================================
+   The spare shop, the Supplies Shop and a Fleet Account are settled from three
+   different pages an owner opens in one sitting, and CLAUDE.md already records
+   that the three forms are ONE control. Until now that was three near-copies
+   of the same markup and CSS in three templates, kept in step by hand — the
+   shape a rule drifts out of. It lives here instead, because `base.html` links
+   this file on every page and the rule for a shared file in this codebase is
+   "used on more than one page".
+
+   WHAT WAS WRONG, measured at 375px before this change:
+
+     spare shop     card 309px tall, the row wrapped to THREE ragged lines
+     Supplies Shop  card 285px tall, the same three lines
+     Fleet Account  form content 397px inside a 343px box — `display:flex` with
+                    no wrap and no scroller, so the row was squeezed and the
+                    Pay button's right edge landed exactly on the viewport edge
+
+   So two of the three ate 38% of a phone screen to ask four short questions,
+   and the third quietly clipped its own action. The date glyph was also
+   top-aligned against the wrapped fields, sitting 24px below the box beside
+   it.
+
+   THE ROW NEVER WRAPS AND NEVER SQUEEZES — IT SCROLLS SIDEWAYS.
+   The gesture staff already use on the Job Card's Spare Parts table and on the
+   Unassigned Hub's add form, adopted here for the reason recorded there: one
+   shape at every width beats a layout that rearranges itself between the
+   tablet it is filled in on and the laptop it is checked on. Every field
+   carries a FIXED width so a wide screen cannot stretch the row back into a
+   shape that wraps; only the Note grows, and it can only grow, because
+   `flex-wrap: nowrap` leaves no wrap to fall back into.
+
+   THE PAY BUTTON IS THE LAST THING IN THE SCROLLER, NOT PINNED BESIDE IT.
+   It was pinned for one revision, on the reasoning that the action must always
+   be reachable; the owner's call was that it should scroll with the row, and
+   the row is better for it. The strip now reads in the order it is filled —
+   when, how much, how, why, PAY — and a bright red or green sliver at the
+   right-hand edge is a far better "there is more this way" cue than the fade
+   that used to sit there. That fade is gone with it: over a coloured button at
+   the end of the scroll it would have dimmed the one control that must not be.
+
+   RED FOR A SHOP, GREEN FOR A FLEET. Paying a shop is money OUT and a fleet
+   paying us is money IN — the Profit page's own rule ("MONEY IN IS GREEN,
+   MONEY OUT IS RED"), applied to the button that moves it. It is the one thing
+   that differs between the three forms, and it differs because the direction
+   of the money does.
+
+   ONE EYE SCAN: WHO and HOW MUCH ride in the heading, beside the box that
+   spends it, rather than in a footnote under the fields. The name matters as
+   much as the figure — an owner arrives from a list of shops, and ₹65,000
+   alone does not say which one is about to be paid. On a 375px phone the
+   scroller opens on exactly the date glyph and the amount — the two things
+   filled first — and the rest is one swipe away. */
+
+.rpay-card {
+    position: relative;
+    background: #fff;
+    border: 1px solid #e6ebf3;
+    border-radius: 16px;
+    padding: 0.95rem 1rem 0.85rem;
+    margin-bottom: 1rem;
+    /* The 4px accent rail is an INSET SHADOW, not a border-left. An absolutely
+       positioned ring is inset from the PADDING box, so a 4px border on one
+       side alone would push the ring 4px in on the left and 1px in everywhere
+       else — an off-centre ring nobody could explain. A shadow paints inside
+       the box and changes no geometry, so the ring stays square with the card
+       and the light passes over the rail. */
+    box-shadow: inset 4px 0 0 var(--color-primary, #2563eb),
+                0 2px 10px rgba(15, 23, 42, 0.04);
+    transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.rpay-card:focus-within {
+    border-color: #cfe0fb;
+    box-shadow: inset 4px 0 0 var(--color-primary, #2563eb),
+                0 8px 22px rgba(37, 99, 235, 0.10);
+}
+
+/* ── The travelling light ─────────────────────────────────────────────────
+   The Job Card's own `--jc-orbit` ring, at a third of the speed and a fraction
+   of the contrast. That page records "this is the ONLY looping animation" and
+   the reason — an idle shimmer is noise on a screen staff work all day, and it
+   costs battery on the Floor tablet. This one is held to the same bar rather
+   than exempted from it: the card RENDERS ONLY WHEN MONEY IS OWED (all three
+   templates gate it, and a settled shop shows "All Clear" instead), so it is
+   not permanent furniture; it is one ~1.5px pseudo-element; it runs at 3.2s,
+   fast enough to read as a light going round rather than an edge that might be
+   a rendering artifact; and it quickens again while somebody is in the form.
+   (It shipped at 7s for a day, which was too slow to register as deliberate.)
+
+   THREE-WAY PROGRESSIVE ENHANCEMENT, and the middle case is the one that is
+   easy to get wrong:
+     · no `mask-composite` → the static inset ring below, unchanged
+     · `mask-composite` but no registered `@property` → `var(--rpay-orbit, 0deg)`
+       falls back, so the gradient still paints; the keyframe then flips
+       DISCRETELY between 0deg and 360deg, which render identically, so the
+       jump is invisible rather than a lurch
+     · both → the angle interpolates and the light travels
+   Without that `0deg` fallback the whole `background` would be invalid at
+   computed-value time, and since the block below clears the static shadow the
+   card would end up with no ring at all. */
+@property --rpay-orbit {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+}
+@keyframes rpay-orbit { to { --rpay-orbit: 360deg; } }
+
+.rpay-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.10);
+}
+
+@supports ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
+    .rpay-card::before {
+        box-shadow: none;
+        /* The two masks cancel everything but the padding ring, which is what
+           confines the gradient to the BORDER instead of washing it across the
+           card's face. */
+        padding: 1.5px;
+        background: conic-gradient(from var(--rpay-orbit, 0deg),
+                    transparent 0 60%,
+                    rgba(37, 99, 235, 0.10) 73%,
+                    rgba(37, 99, 235, 0.32) 83%,
+                    rgba(96, 165, 250, 0.62) 89%,
+                    rgba(37, 99, 235, 0.14) 95%,
+                    transparent 100%);
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        /* The ANGLE turns, not the element — rotating the element would turn
+           the ring with it and skew a wide rectangle. */
+        animation: rpay-orbit 3.2s linear infinite;
+    }
+    .rpay-card:focus-within::before { animation-duration: 1.7s; }
+}
+
+/* The light is decoration; the rail and the ring are the information, and both
+   survive. */
+@media (prefers-reduced-motion: reduce) {
+    .rpay-card::before { animation: none !important; }
+}
+
+/* ── Heading ─────────────────────────────────────────────────────────────
+   The figure that governs what may be typed sits ON the title line, not in a
+   footnote under the fields — it is read before the box is filled, so it is
+   put where the eye already is. It wraps to its own line rather than
+   truncating: a balance cut off mid-figure is worse than a second line. */
+.rpay-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-bottom: 0.7rem;
+}
+.rpay-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-text, #0f172a);
+    line-height: 1.2;
+}
+.rpay-title i { color: var(--color-primary, #2563eb); font-size: 0.95rem; }
+/* THE CHIP IS THE ACCOUNT'S NAME AND NOTHING ELSE.
+
+   It carried the balance beside the name for one revision, and the figure came
+   back out: the dark stat bar directly above states it already — "BALANCE
+   OWED ₹65,000" on both shops, "Balance" on the fleet — in the largest type on
+   the page. Printing it again a few pixels below said one fact twice and put a
+   loud red number next to the only control on the card that should be pulling
+   the eye. What the heading needed was the half the stat bar does NOT answer
+   from inside this card: WHICH account is about to be paid.
+
+   Not uppercased and not letter-spaced, because a shop is called "Fluid
+   manjeri", not "FLUID MANJERI" — a caps treatment invented for the
+   four-letter word "OWED" makes a real proper noun harder to read. Neutral
+   ground rather than the old red wash: with no money in it there is nothing
+   here to warn about. It truncates rather than wrapping, so the heading row is
+   one line whatever the account is called. */
+.rpay-owed {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+    padding: 3px 11px;
+    border: 1px solid #e6ebf3;
+    border-radius: 999px;
+    background: #f8fafc;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── The row ─────────────────────────────────────────────────────────────
+   `min-width: 0` on the scroll wrapper is load-bearing: a flex item defaults
+   to `min-width: auto` and refuses to shrink below its content, so without it
+   the wrapper simply grows to the row's full width and pushes the Pay button
+   off the card instead of scrolling. The same trap the shop headers record. */
+.rpay-body {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+}
+.rpay-scrollwrap { position: relative; flex: 1 1 auto; min-width: 0; }
+.rpay-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    /* `overflow-x: auto` computes `overflow-y` to `auto` as well — the axes
+       cannot disagree — so this scroller clips VERTICALLY too. The padding is
+       what gives a focused control's 3px ring somewhere to be drawn; the
+       matching negative margin means it costs no layout. */
+    padding: 4px 0 6px;
+    margin: -4px 0 -6px;
+}
+.rpay-scroll::-webkit-scrollbar { height: 5px; }
+.rpay-scroll::-webkit-scrollbar-track { background: transparent; }
+.rpay-scroll::-webkit-scrollbar-thumb { background: #dde4ee; border-radius: 999px; }
+.rpay-scroll::-webkit-scrollbar-thumb:hover { background: #c6d0de; }
+
+.rpay-row {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: nowrap;
+    gap: 10px;
+}
+/* Fixed, never flexible — a growth rule would let a wide screen stretch the
+   boxes, and the row would stop being the same shape on the tablet and the
+   laptop. The Note is the one exception: it can only GROW, because with
+   `nowrap` there is no wrap for it to fall back into, and letting it take the
+   slack is what puts the Pay button at the RIGHT-HAND END of a wide card
+   instead of stranded mid-row with dead space after it. */
+.rpay-row > * { flex: 0 0 auto; }
+.rpay-field { position: relative; }
+.rpay-field label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-text-muted, #64748b);
+    white-space: nowrap;
+}
+.rpay-f-amount { width: 152px; }
+/* 158px is MEASURED, not chosen: the longest option, "🏦 Bank Transfer",
+   renders 113px at this font, and the box spends 12px + 30px on padding (the
+   chevron sits in the right-hand 30px) plus 2px of border. At the 116px this
+   started as, selecting Bank Transfer clipped its own label inside the closed
+   select — invisible until somebody picked the one option that overflows, and
+   the row scrolls sideways anyway, so the width costs nothing but scroll. */
+.rpay-f-method { width: 158px; }
+.rpay-f-note   { flex: 1 0 160px; min-width: 160px; }
+
+.rpay-input,
+.rpay-select {
+    width: 100%;
+    height: 44px;
+    padding: 0 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background-color: #fff;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--color-text, #0f172a);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.rpay-input:hover,
+.rpay-select:hover { border-color: #cbd5e1; }
+.rpay-input:focus,
+.rpay-select:focus {
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+/* Copied from the Supplies Shop's own rule rather than approximated, and
+   marked so it wins on all three pages whatever each template's page-level
+   placeholder rule happens to say — two of them carry `!important` already,
+   and three forms that are one control cannot have three placeholder sizes. */
+.rpay-input::placeholder {
+    font-size: 0.85rem !important;
+    font-weight: 400 !important;
+    opacity: 0.5 !important;
+    color: #64748b !important;
+}
+
+/* The amount is the hero of the row: bigger, heavier, and carrying its own ₹
+   so it reads as money before it is read as a number. `tabular-nums` keeps the
+   figure from changing width as it is typed. */
+.rpay-amount {
+    padding-left: 25px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+}
+.rpay-amount::-webkit-outer-spin-button,
+.rpay-amount::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* Inside the box on the left, so a long figure makes the input SCROLL rather
+   than paint over the mark. Nothing sits below the control, which would move
+   every row under it. */
+.rpay-cur {
+    position: absolute;
+    left: 11px;
+    bottom: 0;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+/* Written out rather than borrowed from `.form-select`, whose height, padding
+   and background-image are all `!important` utilities that would have to be
+   fought one at a time. The chevron is a data URI: the invoice's rule that a
+   page must fetch nothing in order to render correctly is a good one
+   everywhere. */
+.rpay-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 30px;
+    font-weight: 600;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 13px 13px;
+}
+
+/* ── The date glyph ──────────────────────────────────────────────────────
+   The Cashbook's own control, and the one place all three pages already
+   agreed. NO caption and no container: a bordered 46px box made the date look
+   like a third input beside Amount and Method, when the point is that it is
+   almost always right and should cost nothing. It bottom-aligns with the
+   controls rather than the labels, which is what was wrong on a phone before —
+   the glyph sat 24px below the box beside it. */
+.rpay-date {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0 4px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text-muted, #64748b);
+    /* NO TRANSITION ON COLOUR. The amber IS the state — "this is not today" —
+       and a running transition outranks everything in the cascade, so while it
+       is in flight the computed colour is still the OLD one. That is both a lie
+       to the eye and unmeasurable in any tool that is not painting frames. */
+}
+.rpay-date:hover,
+.rpay-date:focus-within { color: var(--color-primary, #2563eb); }
+.rpay-date i { font-size: 1.15rem; }
+.rpay-date input[type="date"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    background: transparent;
+}
+.rpay-date-txt {
+    display: none;
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.rpay-date.is-custom { color: #b45309; }
+.rpay-date.is-custom .rpay-date-txt { display: inline; }
+
+/* ── Pay ─────────────────────────────────────────────────────────────────
+   Hover behind `@media (hover: hover)`: the Floor tablet never fires it, and
+   where it does fire on a touch screen it STICKS. A finger gets `:active` as a
+   real press instead. `transform` and `box-shadow` only, so the control the
+   thumb is aiming at can never move the row underneath it. */
+.rpay-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 44px;
+    padding: 0 22px;
+    border: none;
+    border-radius: 11px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: filter 0.18s ease, transform 0.12s ease;
+    /* Every colour on this button comes from ONE pair of custom properties, so
+       a variant sets two values rather than restating the gradient and the
+       focus ring — two chances to change one and leave the other. */
+    --rpay-btn-a: #2563eb;
+    --rpay-btn-b: #1d4ed8;
+    background: linear-gradient(135deg, var(--rpay-btn-a) 0%, var(--rpay-btn-b) 100%);
+    /* NO DROP SHADOW, at rest or on hover, on the owner's instruction — and it
+       puts this button in line with the Job Card's submit, which CLAUDE.md
+       already records as carrying none. A saturated red or green block on a
+       white card needs no help being found; the shadow only smudged the edge
+       of the one control that should read as crisp. Hover is a brightness
+       change instead of a lift, because a lift with nothing under it reads as
+       the button coming loose. */
+}
+/* RED PAYS A SHOP, GREEN TAKES A FLEET'S MONEY — the direction of the cash,
+   not the page it is on. The Profit page already spends these two colours this
+   way ("MONEY IN IS GREEN, MONEY OUT IS RED"), so an owner reading a shop
+   ledger and a fleet ledger in one sitting meets one vocabulary rather than a
+   blue button that says nothing on either.
+
+   Both are dark enough for WHITE text: #b91c1c measures 6.9:1 and #047857
+   5.5:1 against white, so the label is legible at arm's length on the tablet
+   in a lit workshop. */
+.rpay-btn-out { --rpay-btn-a: #dc2626; --rpay-btn-b: #b91c1c; }
+.rpay-btn-in  { --rpay-btn-a: #059669; --rpay-btn-b: #047857; }
+
+@media (hover: hover) {
+    .rpay-btn:hover { filter: brightness(1.08); }
+}
+.rpay-btn:active { transform: scale(0.97); }
+.rpay-btn:focus-visible {
+    outline: 3px solid var(--rpay-btn-b);
+    outline-offset: 2px;
+}
+
+.rpay-foot {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0.6rem 0 0;
+    font-size: 0.74rem;
+    line-height: 1.35;
+    color: #94a3b8;
+}
+.rpay-foot i { font-size: 0.72rem; margin-top: 2px; flex-shrink: 0; }
+
+/* ── Phone ───────────────────────────────────────────────────────────────
+   640px is the app's own phone line — the nav bar moves to the bottom at the
+   same width — so "mobile" means one thing across the whole app.
+
+   There is NO right-edge fade any more. It was added while the Pay button was
+   pinned outside the scroller and the row ended in a pale Note field; now the
+   row ends in the button itself, and a red or green sliver at the edge says
+   "keep going" better than a gradient could — while a fade laid over that
+   button would dim the one control on the card that must not be dimmed. */
+@media (max-width: 640px) {
+    .rpay-card { padding: 0.85rem 0.85rem 0.75rem; }
+}

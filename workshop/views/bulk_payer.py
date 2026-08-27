@@ -390,6 +390,13 @@ def bulk_payer_pay(request, pk):
     bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=False)
     lump_sum_raw = request.POST.get('lump_sum', '0')
     payment_method = request.POST.get('payment_method', 'CASH')
+    # `fit_text` to the column, never a raw write: an over-long note is stored
+    # by SQLite in violation of the declared width and 500s on Postgres with
+    # `value too long for type character varying(255)`. The same split every
+    # other typed string in this app goes through, and trimming beats crashing
+    # on a screen where money is about to move. Blank stays NULL rather than
+    # becoming '' — nobody wrote a note is a different fact from an empty one.
+    note = fit_text(request.POST.get('note'), BulkPaymentHistory, 'note') or None
 
     # workshop/money.py, same as every other typed amount. 'Infinity' passes
     # `lump_sum <= 0` honestly and would have settled the whole account at an
@@ -477,6 +484,7 @@ def bulk_payer_pay(request, pk):
             bulk_payer=bulk_payer,
             amount=lump_sum,
             payment_method=payment_method,
+            note=note,
             date=pay_date,
             jobs_affected=jobs_updated,
             details=json.dumps({

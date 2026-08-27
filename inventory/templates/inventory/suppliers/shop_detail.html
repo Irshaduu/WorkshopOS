@@ -173,32 +173,11 @@
      utility classes as the Spare Shop payment history so the two screens
      cannot drift apart. `.pay-method-badge` below is still used elsewhere on
      this page. */
-  .sup-datebox {
-    position: relative; display: inline-flex; align-items: center;
-    justify-content: center; gap: 5px;
-    min-width: 44px; height: 44px; padding: 0 4px;
-    border: 0; background: transparent; cursor: pointer;
-    color: var(--color-text-muted);
-    /* NO TRANSITION ON COLOUR. The amber IS the state — "this is not today" —
-       and a running transition outranks everything in the cascade, so while it
-       is in flight the computed colour is still the OLD one. That is the trap
-       this codebase already records for the spare-status classes, and it also
-       makes the state unmeasurable in any tool that is not painting frames.
-       Hover has no transition either; on a glyph it needs none. */
-  }
-  .sup-datebox:hover { color: var(--color-primary); }
-  .sup-datebox:focus-within { color: var(--color-primary); }
-  .sup-datebox i { font-size: 1.15rem; }
-  .sup-datebox input[type="date"] {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    opacity: 0; border: none; padding: 0; margin: 0; cursor: pointer;
-    background: transparent;
-  }
-  .sup-date-txt {
-    display: none; font-size: 0.75rem; font-weight: 700; white-space: nowrap;
-  }
-  .sup-datebox.is-custom { color: #b45309; }
-  .sup-datebox.is-custom .sup-date-txt { display: inline; }
+  /* The payment date box, the amount, the method, the note and the Pay button
+     are all the SHARED "Record a Payment" control now — `.rpay-*` in
+     static/css/style.css. They were three near-copies of one form across this
+     page, the spare shop's and the Fleet Account's, which is the shape a rule
+     drifts out of; a page can no longer restyle its own half of it. */
 </style>
 
 <!-- ── BACK + FILTER ROW ── -->
@@ -362,44 +341,77 @@
 </div>
 
 <!-- ── QUICK PAYMENT ── -->
+{% comment %}
+  The shared "Record a Payment" control — markup and CSS both live in
+  static/css/style.css, so this form, the spare shop's and the Fleet Account's
+  cannot drift apart. See the block there for why the row scrolls sideways
+  instead of wrapping, and why the Pay button sits outside the scroller.
+
+  The outstanding figure moved from a footnote under the fields into the
+  heading, beside the box that spends it; the footnote now carries the thing
+  the stat bar above cannot say — that a payment is allocated oldest-first,
+  which has always been true of this page's waterfall and was only ever
+  written down on the spare shop's.
+{% endcomment %}
 {% if shop.get_pending_balance > 0 %}
-<div class="card border-0 shadow-sm mb-3" style="border-radius:14px; border-left:4px solid var(--color-primary) !important;">
-  <div class="card-body p-3">
-    <h6 class="fw-bold mb-3"><i class="bi bi-cash-stack me-2 text-primary"></i>Record a Payment</h6>
-    <div class="d-flex gap-2 flex-wrap align-items-end">
-      <div>
-        <span class="sup-datebox" id="supDateBox" title="Date the money moved — defaults to today">
-          <i class="bi bi-calendar-event"></i>
-          <span class="sup-date-txt" id="supDateTxt"></span>
-          <input type="date" id="quickPayDate" value="{{ today_iso }}"
-                 max="{{ today_iso }}" aria-label="Date the money moved">
-        </span>
-      </div>
-      <div style="flex:2; min-width:130px;">
-        <label class="form-label small text-muted mb-1">Amount (₹)</label>
-        <input type="number" id="quickPayAmount" class="form-control fw-bold" placeholder="Enter amount" min="1" step="0.01" style="font-size:1.1rem;">
-      </div>
-      <div style="flex:1; min-width:120px;">
-        <label class="form-label small text-muted mb-1">Method</label>
-        <select id="quickPayMethod" class="form-select">
-          <option value="CASH">💵 Cash</option>
-          <option value="UPI">📱 UPI</option>
-          <option value="CARD">💳 Card</option>
-          <option value="TRANSFER">🏦 Transfer</option>
-        </select>
-      </div>
-      <div style="flex:2; min-width:150px;">
-        <label class="form-label small text-muted mb-1">Note (Optional)</label>
-        <input type="text" id="quickPayNote" class="form-control" placeholder="Add note">
-      </div>
-      <div>
-        <button class="btn btn-primary fw-bold rounded-pill px-4" onclick="submitQuickPayment()">
-          <i class="bi bi-send-fill me-1"></i>Pay
-        </button>
+<div class="rpay-card">
+  <div class="rpay-head">
+    <h6 class="rpay-title"><i class="bi bi-cash-stack"></i>Record a Payment</h6>
+    {% comment %}
+      The chip names WHICH SHOP, and nothing else — see the note on the spare
+      shop's copy. The Pending Balance already sits in the dark bar above.
+    {% endcomment %}
+    <span class="rpay-owed">{{ shop.name }}</span>
+  </div>
+  <div class="rpay-body">
+    <div class="rpay-scrollwrap">
+      <div class="rpay-scroll">
+        <div class="rpay-row">
+          <span class="rpay-date" id="supDateBox" title="Date the money moved — defaults to today">
+            <i class="bi bi-calendar-event"></i>
+            <span class="rpay-date-txt" id="supDateTxt"></span>
+            <input type="date" id="quickPayDate" value="{{ today_iso }}"
+                   max="{{ today_iso }}" aria-label="Date the money moved">
+          </span>
+          <div class="rpay-field rpay-f-amount">
+            <label for="quickPayAmount">Amount</label>
+            {# The ₹ is a visual adornment; the currency rides in the input's own accessible name. #}
+            <span class="rpay-cur" aria-hidden="true">₹</span>
+            <input type="number" id="quickPayAmount" class="rpay-input rpay-amount"
+                   placeholder="Enter amount" aria-label="Amount in rupees"
+                   min="1" step="0.01" inputmode="decimal">
+          </div>
+          <div class="rpay-field rpay-f-method">
+            <label for="quickPayMethod">Method</label>
+            {% comment %}
+              One payment-method list for the whole app — the same four labels,
+              glyph for glyph, on all eight selects. See the note on the spare
+              shop's copy for what had drifted. The ORDER is per-screen on
+              purpose: a shop is paid in cash, so this one opens on Cash.
+            {% endcomment %}
+            <select id="quickPayMethod" class="rpay-select">
+              <option value="CASH">💵 Cash</option>
+              <option value="UPI">📱 UPI</option>
+              <option value="CARD">💳 Card</option>
+              <option value="TRANSFER">🏦 Bank Transfer</option>
+            </select>
+          </div>
+          <div class="rpay-field rpay-f-note">
+            <label for="quickPayNote">Note (Optional)</label>
+            <input type="text" id="quickPayNote" class="rpay-input"
+                   maxlength="255" placeholder="Add note">
+          </div>
+          <button type="button" class="rpay-btn rpay-btn-out" onclick="submitQuickPayment()">
+            <i class="bi bi-send-fill"></i> Pay
+          </button>
+        </div>
       </div>
     </div>
-    <div class="mt-2"><small class="text-muted"><i class="bi bi-info-circle me-1"></i>Outstanding: ₹{{ shop.get_pending_balance|floatformat:0|intcomma }}</small></div>
   </div>
+  <p class="rpay-foot">
+    <i class="bi bi-info-circle"></i>
+    <span>Applied to the oldest unpaid bills first.</span>
+  </p>
 </div>
 <form id="quickPayForm" method="post" action="{% url 'add_shop_payment' shop.id %}" style="display:none;">
   {% csrf_token %}
@@ -785,10 +797,21 @@
     document.getElementById('hfAmount').value = amount;
     document.getElementById('hfMethod').value = document.getElementById('quickPayMethod').value;
     document.getElementById('hfNote').value = document.getElementById('quickPayNote').value;
-    document.getElementById('hfDate').value = document.getElementById('quickPayDate').value;
-    
+    const iso = document.getElementById('quickPayDate').value;
+    document.getElementById('hfDate').value = iso;
+
+    // The date is repeated ONLY when it is not today — the spare shop's and the
+    // Fleet Account's confirmations have said so since they got the column, and
+    // this one never did, so one of the three could file a back-dated payment
+    // with nothing on screen naming the month it lands in. Restating "today" on
+    // every payment is how a confirmation stops being read, which is the same
+    // reasoning as the settle dialog and the master-list merge gate.
+    const dated = (iso && iso !== supTodayISO())
+      ? `<br><small class='fw-bold' style='color:#b45309;'>Dated ${supPrettyDate(iso)}</small>`
+      : '';
+
     // Call the global confirmation modal instead of direct submit
-    confirmSubmit(window.event, `Pay <strong class='text-success'>₹${amount}</strong> to {{ shop.name|escapejs }}?`, document.getElementById('quickPayForm'), 'success', 'bi-cash-stack');
+    confirmSubmit(window.event, `Pay <strong class='text-success'>₹${amount}</strong> to {{ shop.name|escapejs }}?${dated}`, document.getElementById('quickPayForm'), 'success', 'bi-cash-stack');
   }
 
   // Custom date range toggle

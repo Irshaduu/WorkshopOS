@@ -27,7 +27,7 @@ from django.utils import timezone
 
 from workshop.models import (
     JobCard, Mechanic, JobCardLabourItem, CashbookEntry, DeletionLog,
-    BulkPayer, FailedAttempt,
+    BulkPayer, BulkPaymentHistory, FailedAttempt,
 )
 from workshop import analysis_engine as ae
 
@@ -924,3 +924,118 @@ class DeleteFormsPostTheReasonTheirViewsRecordTests(TestCase):
 
         page = self.client.get(reverse('bulk_payer_detail', args=[payer.pk])).content.decode()
         self.assertIn('name="reason"', page)
+
+
+class AFleetPaymentCanCarryANoteTests(FleetLedgerTestCase):
+    """
+    THE LAST OF THE THREE LEDGERS TO GET A NOTE, closed in `0073`.
+
+    `SpareShopPayment.note` and `inventory.SupplierPayment.note` have existed
+    since those models were written, so the shared "Record a Payment" control
+    drew a Note box on two of the three screens an owner settles from — and the
+    one it skipped takes the LARGEST single receipts the workshop handles. A
+    fleet collector hands over six figures against several months of cars, and
+    a cheque number or "Aug + Sep" against that row is the only thing that says
+    which months it covered.
+
+    The box was deliberately left OFF for a day rather than rendered over a
+    column that did not exist: an input whose value is silently dropped is the
+    same defect as a column nothing reads, and it looks fixed.
+    """
+
+    def pay(self, payer, amount, **extra):
+        data = {'lump_sum': str(amount), 'payment_method': 'CASH'}
+        data.update(extra)
+        return self.client.post(
+            reverse('bulk_payer_pay', args=[payer.pk]), data, follow=True)
+
+    def _payer_owing(self, amount=5000, reg='KL01AAA'):
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self.assign(payer, self.make_card(reg, amount))
+        return payer
+
+    def test_the_form_offers_a_note_box_wired_to_the_column(self):
+        """
+        Asserted through the FORM, not the view. The view reading `note` says
+        nothing about whether anything ever hands it one — which is exactly how
+        the Supplies Shop's own date box was missed for a whole pass.
+        """
+        payer = self._payer_owing()
+
+        page = self.client.get(
+            reverse('bulk_payer_detail', args=[payer.pk])).content.decode()
+
+        self.assertIn('name="note"', page,
+                      'the fleet pay form needs a note input')
+
+    def test_a_typed_note_is_stored_on_the_payment(self):
+        payer = self._payer_owing()
+
+        self.pay(payer, 5000, note='Cheque 553114 — Aug + Sep')
+
+        self.assertEqual(payer.payment_history.get().note,
+                         'Cheque 553114 — Aug + Sep')
+
+    def test_no_note_stores_NULL_rather_than_an_empty_string(self):
+        """
+        Nobody wrote a note is a different fact from somebody writing nothing,
+        and the two must not both read as ''. Same rule as an unpriced spare
+        row storing NULL rather than 0.
+        """
+        payer = self._payer_owing()
+
+        self.pay(payer, 5000)
+
+        self.assertIsNone(payer.payment_history.get().note)
+
+    def test_a_blank_note_also_stores_NULL(self):
+        payer = self._payer_owing()
+
+        self.pay(payer, 5000, note='')
+
+        self.assertIsNone(payer.payment_history.get().note)
+
+    def test_an_over_long_note_is_TRIMMED_rather_than_500ing(self):
+        """
+        The SQLite-accepts / Postgres-500s split, on the one screen where money
+        is about to move. `fit_text` to the column's own width — the bound is
+        READ from the column, never restated here.
+        """
+        payer = self._payer_owing()
+        limit = BulkPaymentHistory._meta.get_field('note').max_length
+
+        self.pay(payer, 5000, note='x' * (limit + 200))
+
+        stored = payer.payment_history.get().note
+        self.assertEqual(len(stored), limit)
+        # And the money still moved — trimming must never cost the payment.
+        self.assertEqual(payer.payment_history.get().amount, Decimal('5000'))
+
+    def test_the_note_is_shown_back_on_the_page_that_recorded_it(self):
+        """
+        A column nothing reads is worse than no column, because it looks fixed.
+        """
+        payer = self._payer_owing()
+        self.pay(payer, 5000, note='Cheque 553114')
+
+        page = self.client.get(
+            reverse('bulk_payer_detail', args=[payer.pk])).content.decode()
+
+        self.assertIn('Cheque 553114', page)
+
+    def test_all_three_ledgers_now_agree_on_what_a_note_may_HOLD(self):
+        """
+        The three payment forms are one control, so a note that fits on one
+        screen and is silently cut on another would be the control disagreeing
+        with itself. Read from the columns rather than hard-coded, so widening
+        one alone fails here.
+        """
+        from inventory.models import SupplierPayment
+        from workshop.models import SpareShopPayment
+
+        widths = {
+            m.__name__: m._meta.get_field('note').max_length
+            for m in (BulkPaymentHistory, SpareShopPayment, SupplierPayment)
+        }
+
+        self.assertEqual(len(set(widths.values())), 1, widths)

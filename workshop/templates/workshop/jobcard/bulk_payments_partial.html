@@ -45,10 +45,10 @@
                         <input type="number" name="lump_sum" step="0.01" class="form-control fw-bold shadow-sm" placeholder="₹ Enter Amount" required>
                         
                         <select name="payment_method" class="form-select shadow-sm text-muted fw-bold" style="width: auto;">
-                            <option value="CASH">Cash</option>
-                            <option value="UPI">UPI</option>
-                            <option value="CARD">Card</option>
-                            <option value="TRANSFER">Bank</option>
+                            <option value="CASH">💵 Cash</option>
+                            <option value="UPI">📱 UPI</option>
+                            <option value="CARD">💳 Card</option>
+                            <option value="TRANSFER">🏦 Bank Transfer</option>
                         </select>
                         
                         <button type="submit" class="btn btn-primary fw-bold px-4 shadow-sm" onclick="return confirm('Distribute payment across these {{ group.jobs|length }} jobs (oldest first)?')">
