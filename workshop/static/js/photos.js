@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var gal = document.getElementById('photoGal');
     var galImg = document.getElementById('photoGalImg');
     var galMeta = document.getElementById('photoGalMeta');
+    var galCar = document.getElementById('photoGalCar');
     var galPos = document.getElementById('photoGalPos');
     var galEmpty = document.getElementById('photoGalEmpty');
     var galAdd = document.getElementById('photoGalAdd');
@@ -345,6 +346,17 @@ document.addEventListener('DOMContentLoaded', function () {
             var data = await res.json();
             active.limit = data.limit;
             /*
+             * WHICH CAR THIS GALLERY IS ABOUT, from the SERVER. The overlay is
+             * included on two screens and only one of them knows the car: the
+             * job card form has it on screen, while Purchase History is a
+             * shop's page where a row's car is whatever card that spare hangs
+             * off. Asking the page would mean two answers free to disagree.
+             *
+             * One label for the whole gallery, not one per photo — every photo
+             * here belongs to the same card by construction.
+             */
+            active.label = data.subject || '';
+            /*
              * BOTH have to agree. The server decides whether this subject may be
              * changed at all (a settled bill freezes its photos); the box decides
              * whether THIS page offers changing it. Purchase History is view-only
@@ -377,6 +389,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (!photo) {
             galMeta.textContent = '';
+            galCar.textContent = '';
             galPos.textContent = '';
             galMenu.hidden = true;
             paintAddButton();
@@ -385,10 +398,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
         galImg.src = photo.url;
         galImg.alt = 'Photo taken ' + photo.taken_at;
+        /*
+         * THE CAPTION READS TOP-DOWN: where you are, which car, then when and
+         * who. "1 of 4" leads and is the boldest of the three because it is the
+         * only line that changes as you swipe — it was under the date in
+         * small grey type, which is where the eye goes last.
+         *
+         * A single photo prints no position at all: "1 of 1" is a fact about
+         * nothing, the same rule the job card's own quantity follows.
+         */
+        galPos.textContent = many ? (gallery.index + 1) + ' of ' + gallery.count() : '';
+        galCar.textContent = active.label || '';
         galMeta.textContent = photo.taken_by
             ? photo.taken_at + ' · ' + photo.taken_by
             : photo.taken_at;
-        galPos.textContent = many ? (gallery.index + 1) + ' of ' + gallery.count() : '';
         galMenu.hidden = !active.canEdit;
         paintAddButton();
     }

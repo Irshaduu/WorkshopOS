@@ -52,7 +52,7 @@ cards rendered, which is the page size.
             {% else %}
             <span></span>
             {% endif %}
-            <span class="cp-date">{{ car.latest_date|date:"d M Y" }}</span>
+            <span class="cp-date">{{ car.last_activity|date:"d M Y" }}</span>
         </div>
     </a>
     {% endfor %}

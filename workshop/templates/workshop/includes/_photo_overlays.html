@@ -84,9 +84,16 @@ automatically, and a failure becomes visible rather than silent.
             </button>
         </div>
 
+        {% comment %}
+        THE CAPTION READS TOP-DOWN: where you are, which car, then when and who.
+        "1 of 4" leads because it is the only one of the three that changes as
+        you swipe — it used to sit UNDER the date in small grey type, which is
+        where the eye arrives last.
+        {% endcomment %}
         <div class="photo-gal-bottom">
-            <p class="photo-gal-meta" id="photoGalMeta"></p>
             <p class="photo-gal-pos" id="photoGalPos"></p>
+            <p class="photo-gal-car" id="photoGalCar"></p>
+            <p class="photo-gal-meta" id="photoGalMeta"></p>
             <button type="button" class="photo-gal-add" id="photoGalAdd" hidden>Add photo</button>
         </div>
     </div>
@@ -341,11 +348,34 @@ body.photo-open { overflow: hidden; }
     text-align: center;
     padding: 14px 16px calc(env(safe-area-inset-bottom) + 20px);
 }
-.photo-gal-meta { margin: 0; color: #e2e8f0; font-size: .9rem; }
+/* Where you are in the burst — the ONE line that changes as you swipe, so it is
+   the only one given any weight at all. `tabular-nums` so it cannot change width
+   counting from 9 to 10 and shift the two lines under it sideways.
+
+   The space below it is deliberately the only gap in the block: it separates the
+   figure that stands out from the two quiet lines that belong together. */
 .photo-gal-pos {
-    margin: 4px 0 0;
+    margin: 0 0 7px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+/* WHICH CAR, and WHEN AND WHO — one declaration, because they are two halves of
+   the same quiet caption and nothing should make one look more important than
+   the other. Only the position above them is meant to stand out. They sit
+   almost flush so they read as a pair rather than as two separate statements.
+
+   The car comes from the server: the overlay is included on the job card form
+   AND on a spare shop's Purchase History, and only one of those pages knows the
+   car. */
+.photo-gal-car,
+.photo-gal-meta {
+    margin: 0;
     color: #94a3b8;
-    font-size: .78rem;
+    font-size: .8rem;
+    font-weight: 400;
+    line-height: 1.45;
     font-variant-numeric: tabular-nums;
 }
 .photo-gal-add {
@@ -370,4 +400,4 @@ body.photo-open { overflow: hidden; }
 </style>
 
 <script src="{% static 'js/photos-core.js' %}?v=2"></script>
-<script src="{% static 'js/photos.js' %}?v=2"></script>
+<script src="{% static 'js/photos.js' %}?v=3"></script>

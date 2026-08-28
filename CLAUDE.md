@@ -2405,6 +2405,25 @@ result. The tone that actually reports a result is still `error`, still fires
 once per genuine failure rather than once per shot, and is unchanged by this.
 → `test_a_photo_that_never_uploads_becomes_VISIBLY_failed`
 
+**THE LIGHTBOX CAPTION READS TOP-DOWN: where you are, which car, then when and
+who.** "1 of 4" leads and is the ONLY one of the three given any weight,
+because it is the only line that CHANGES as you swipe — it sat under the date
+in small grey type, which is where the eye arrives last. The car and the date
+share a SINGLE declaration and sit flush together: they are two halves of one
+quiet caption, and a rule they both match cannot drift apart. The one gap in
+the block is under the position, separating what stands out from what does
+not. A single photo prints no position at all — "1 of 1" is a fact about
+nothing, the same rule the job card's own quantity follows.
+
+**The car comes from the SERVER, as one `subject` label for the whole gallery.**
+The overlay is included on two screens and only one of them knows the car: the
+job card form has it on screen, while Purchase History is a shop's page where a
+row's car is whatever card that spare hangs off. Asking the page would be two
+answers free to disagree. It is sent once rather than on every photo — every
+photo in one gallery belongs to the same card by construction, so per-photo it
+would be the same string ten times over the wire.
+→ `TheLightboxSaysWhichCarTests`
+
 **The box shows a COUNT and never a thumbnail** — which is what lets the feature
 skip thumbnail generation, a second object per photo, and any server-side image
 processing at all. **The limit is never printed until it is hit** — a "3/10" badge
@@ -3544,6 +3563,13 @@ somebody adds a generic field loop.
 
 It is **not** price-locked, so Floor may write one — that is the point of the box.
 
+**It is the one control on the form at `font-weight: 400`.** `.form-control`
+sets 500 on every control, which is right for the short data fields it was
+written for — a registration, a figure, a name — where the weight is what
+lifts the value off its label. It is wrong for the one box holding SENTENCES: a
+two-line note at 500 reads as shouted, and it is the only free text on the page.
+Scoped to `.jc-grow`, which only the note carries, so nothing else moved.
+
 **"Job Performed" is suggested from the parts already on THIS card.** Nearly every
 job line is a part on the same card plus a verb — "Engine Oil replaced" — so the
 source is the card's own two parts sections, not a master list. Four rules:
@@ -3898,6 +3924,38 @@ is on the job card the row already opens.
 
 ## Car Profiles
 
+**THE LIST LEADS WITH THE MOST RECENT ACTIVITY, not the most recent
+ADMISSION.** It ordered on `Max(admitted_date)` alone, so a car admitted in
+June, finished in July and settled in August sat below one admitted in July and
+untouched since. Everything that happens to a car after it arrives — being
+completed, being settled — is activity, and the list an owner opens to find
+*the car we were just dealing with* has to say so. `last_activity` is
+`Greatest` over the three date columns.
+
+⚠ **EVERY ARGUMENT TO `Greatest` IS COALESCED, and that is a cross-database
+correctness matter rather than tidiness.** On PostgreSQL `GREATEST` ignores
+NULLs and returns the largest non-null; on **SQLite — which the whole test suite
+runs on — it returns NULL if ANY argument is null.** A car with no
+`completed_date` would sort correctly in production and drop out of the ordering
+entirely under test, or the reverse. `admitted_date` is non-null on every card,
+so it is the floor under all three.
+
+⚠ **`TruncDate`, never `Cast(… DateField)`, for `paid_date`.** It is the one
+DateTimeField of the three and it is stored UTC, so a cast takes the UTC
+calendar day — which for anything settled after 18:30 IST is **yesterday**.
+`TruncDate` converts to `TIME_ZONE` first, the same thing a `__date` lookup
+does.
+
+**`-latest_id` breaks ties**, because most cars share a date with several others
+and the order inside a day would otherwise be whatever the database returns —
+which differs between PostgreSQL and SQLite, so the list would not even be
+stable between production and the tests. Same lesson the Completed list learned.
+
+**The card prints the date it is SORTED by**, not the admitted date. Printing
+one beside an ordering by the other puts the dates on screen out of order, which
+reads as a broken list rather than as two different facts.
+→ `CarProfilesLeadWithTheMostRecentActivityTests`
+
 **The totals come from the DATABASE, not the page.** A single aggregate over the
 whole history — with a pager, anything summed from the page would quietly start
 describing "this page" while labelled "this car". **"Billed to date" is
@@ -3951,20 +4009,220 @@ after every search *and* the pagination links carried the same dead name, meanin
 
 ## Read-only job card
 
-**DATA WITH NO LABELS.** The layout the owner drew:
+**DATA WITH NO LABELS.** The layout the owner drew, rebuilt 2026-08-28 into
+**one answer card** over the four lists:
 
 ```
-🟩 Audi A4, KL 10 AA 1000, 01/01/2026 – 25/01/2026
-10021 km, Amlah, customer name, contact
-note
+🟩 Audi A4                                              ⋮
+   [KL 10 AA 1000]  (JB-26-001)
+   10021 km · 👤 Amlah
+   ( customer name   contact )
+   note
+   ₹22,000                                          [ PAID ]
+   ─────────────────────────────────────────────────────────
+   ADMITTED        COMPLETED        SETTLED
+   01/01/2026      20/01/2026       09/03/2026
+   🛡 Settled — locked against editing
 
 Customer Concerns | Job Performed | Inventory Items | Spare Parts
 ```
 
-**There are no labels anywhere**, and the reasoning is load-bearing: *a caption is
-what you need the FIRST time and what costs you every time after*, on a page four
-people open twenty times a day. Under a part there is nothing but its two dates and
-its two figures.
+**ONE CARD WHERE THERE WERE THREE.** Identity, a date card, and a money line at
+the very foot of the page — each with its own border, shadow and radius. On a
+375×667 phone the first two alone were 190px before a single concern, and the
+total was thirty rows further down: **the most important figure on the page was
+the hardest one to reach.** The card now answers *which car, what it costs, where
+it is* without scrolling, and the four lists below it are pure detail.
+
+**The row order is the owner's own**, given as a list: car + ⋮ / plate + job card
+number / mileage + mechanic / customer / note / money / dates. Three things moved
+and each was asked for — the **car gets row 1 to itself** (it used to share the
+line with the plate, the dates and two filled buttons, and at 375px it was the
+thing that lost); the **job card number** joined row 2, because `bill_number` is
+what the workshop reads out on the phone and the one screen dedicated to a single
+card never printed it; and the **customer took a line of its own**, because the
+row above is about the car, this is about a person, and on a phone the two ran
+together and wrapped anyway.
+
+**A car with NO brand or model wears its plate ONCE.** The registration becomes
+the row-1 headline in that case, because there has to be something to call the
+car, and the chip on row 2 is then dropped rather than repeating it a line
+below. The job card number still prints — that is a different fact. It is the
+money line's own rule applied to the identity.
+
+**THREE DATES — `admitted_date`, `completed_date`, `paid_date`.** All three are
+always drawn, with a dash where nothing has happened yet: a fixed structure is
+what makes the page learnable, the same rule that keeps an empty section drawn
+rather than omitted, and a column that came and went would move the other two
+between one card and the next.
+
+They are **LABELLED, while nothing else on the page is, and that is not an
+inconsistency.** Every other unlabelled value here is unambiguous because it is
+the only one of its kind on its line; three dates of the same shape side by side
+are the one place *position carries the meaning* could not carry it. They were a
+bare range in the heading before this, which said neither which was which nor
+that a third existed.
+
+⚠ **THE THIRD ONE IS "SETTLED", NEVER "BILLED".** `paid_date` is written when the
+money is taken, and *billed* already means the opposite thing one screen over —
+Deep Analysis calls a Supplies Shop purchase "billed" precisely BECAUSE it is not
+yet a cost. There is no bill-issue date to point at either: `bill_number` is
+assigned on the card's first save, so a "Billed" stage would either restate the
+admitted date or quietly mean settled.
+
+⚠ **DO NOT "MEASURE" THIS DECISION AGAINST SEEDED DATA — the answer is baked in.**
+The settled column was dropped for a day on the evidence that 149 of 150 settled
+demo cards were settled on their completion day. That figure described the
+seeder, not the workshop: **all three seeders write `paid_date` from
+`completed_date`** (`seed_dummy_data.py:680` and `:725`, `seed_meeting_data.py:429`),
+the fleet path included. The real basis is the business rule — a **walk-in** has
+exactly one payment event and it happens at pickup, so settled repeats the
+handover day; a **fleet** collector comes round weeks or months later against
+several months of cars, and those are the largest single receipts the workshop
+takes. That is the case the column exists for, and it is exactly the case the
+seeders flatten.
+
+**THE COUNTER APPEARS ONLY WHILE THE CAR IS STILL HERE.** `_time_in_workshop()`
+prints "12 days in" under the dates on an open card, in amber. On a finished card
+both dates are printed an inch apart and the subtraction is trivial; on an open
+one there is no second date to subtract from, so the counter is **the only way to
+know** — that is the rule, not decoration that happens to be hidden sometimes.
+The view owns the words: a template cannot get "Same day" and "1 day" right, and
+the singular is exactly the case a naive `{{ n }} days` gets wrong on the
+commonest short job there is. A completion dated **before** the admission prints
+no gap at all — "−3 days" would make the page look like the broken thing rather
+than the data, and all three real dates still show, so the mistake stays visible.
+
+**Every date is read from its OWN column**, never inferred from the one before
+it, so a card that reached a state out of order — a fleet card settled before
+anybody pressed Completed — still prints honestly.
+
+**EVERY SECTION CARRIES ITS OWN SUBTOTAL, and the three of them add up to the
+bill EXACTLY.** `update_totals()` is `Σ spares.total_price + labour_amount` over
+both routes, so Job Performed + Inventory Items + Spare Parts total the figure in
+the answer card. That is the whole optimisation: the bill stops being something
+you take on trust. It costs **no query** — both parts figures are summed in the
+view off the very rows printed underneath, because a second aggregate is free to
+disagree with the rows above it.
+
+Three things travel with it: **labour sits in the section HEADING**, never on a
+job line, because labour is one charge on the card and a figure beside each
+description invites a line-by-line negotiation about work quoted whole; the
+spares subtotal is **`total_price`, the customer side**, since totalling
+`unit_price` would put a figure in the heading the bill does not contain; and a
+section worth nothing **prints no zero**.
+
+⚠ **EVERY ROW IN ALL FOUR LISTS CARRIES A STATUS MARK, and this reverses what
+this file said for one revision.** The tick was pulled from Job Performed and
+Inventory Items on the argument that a mark hard-coded to green says nothing —
+a job line has no state to be in, and a warehouse draw came off the shelf
+already fitted, so its `status` column is meaningless. **The owner's call
+overruled it**, and the reason is the one the argument missed: the mark is not
+only a STATUS, it is the row's **left anchor**. Without it, Job Performed read
+as a bare wall of sentences rather than a list of things that were done, and
+the two lists that kept theirs no longer lined up with the two that had lost
+them.
+
+**What survives from that pass is the WEIGHT, not the removal.** The tick was a
+saturated `#16a34a` at 1.02rem and was the loudest thing on every row — nine of
+them on an ordinary card, so a list of twenty read as twenty alarms. It is a
+lighter green at 0.9rem now, while the two marks that DO want attention keep
+their full strength: **red not started, amber under way**. The traffic light
+still means exactly what it means on the Live Report and in the dashboard
+drawer; only the one you expect to see is quiet.
+→ `test_every_row_in_all_four_lists_carries_a_status_mark`,
+`test_the_expected_mark_is_quieter_than_the_two_that_want_attention`
+
+**THE PRICE IS GREEN AND ALONE ON THE ROW'S FIRST LINE; THE COST DROPS TO THE
+SECOND.** They sat side by side with a dash between them, and five rows of
+"₹1,000 – ₹1,500" read as five **ranges** rather than five prices — two numbers
+competing where one is what the customer was charged and the other is the
+workshop's own side. The dash went with it; a range was never what it meant.
+
+Green because this is money **in** — the Profit page's own rule and the same
+`--color-success`.
+
+⚠ **THE BILL IS GREEN TOO, and it took a correction to get there.** It was left
+dark on the reasoning that the Profit page keeps Gross Earnings uncoloured
+because it is a structural waypoint — but that mapped the wrong figure. On
+that page the HERO is green and the intermediate waypoint is not; here the hero
+is the bill and the waypoints are the three **section subtotals**. A dark bill
+over green rows had it exactly inverted, so a settled card printed the amount
+actually taken in the one colour on the page that does not mean money. The
+subtotals stay dark, because with green above and below them there would be
+nothing for the eye to land on.
+
+Green means money in **paid or not** — revenue is earned rather than received,
+and whether it has arrived is what the state chip and `.dv-owed` are for.
+→ `test_money_in_is_green_and_the_waypoint_between_is_not` The cost sits on the **second grid row of the money column**,
+opposite the dates, so it costs no height at all on a row that already has a meta
+line — which is nearly all of them. Measured: nine prices right-aligning on one
+column you can run an eye down and add up.
+
+**A PART'S DATE DROPS THE CARD'S OWN YEAR — a width fix with a measurement
+behind it, not a formatting preference.** The full pair plus a shop name
+("16/07/2026 – 17/07/2026 · Spare club") is 38 characters and **wrapped to two
+lines on a 375px phone**, so rows in one list came out different heights and the
+list read as broken. Dropping a year already stated twice in the card above takes
+it to 30 and it fits; measured after, every meta line is 18px and every spare row
+52px.
+
+⚠ **The year is KEPT the moment it differs**, because then it is the whole point:
+a part ordered in December for a car admitted in January is the one case where
+the reader must not have to assume. Each half is compared **separately**, so a
+pair straddling New Year prints one short and one long rather than hiding the
+crossing. With no card year to compare against, `_short_date` prints in full
+rather than guessing.
+→ `test_a_mark_that_would_be_the_same_on_every_row_is_not_drawn`,
+`test_the_price_is_green_and_the_waypoints_are_not`,
+`test_a_part_date_drops_the_cards_own_year_and_keeps_a_different_one`
+
+**THE TWO ACTIONS LIVE IN A ⋮ MENU, and the trigger is small while the items are
+not.** They were filled Invoice and Edit buttons pinned to the head's top-right —
+the two loudest objects on a screen whose only job is to be read, both of them
+leaving it, and ~90px off the car's own name at 375px. The trigger is 32px (34px
+under `@media (hover: none)`) because it sits beside a heading and must not
+shout; the **menu items are 44px**, because those are what a thumb actually hits.
+Both items are **plain links**: a ⋮ elsewhere in this app routinely holds a POST
+form (Completed's Undo Completion), and copying that shape in here is the obvious
+way this page would stop being read-only.
+
+⚠ **THE WRAPPER NEEDS `display: flex` AND `line-height: 0`, or the ⋮ lands in
+the wrong place.** Bootstrap's `.dropdown` is a plain inline box, so inside the
+`<h1>` it inherits the heading's 36.8px line-height and the inline-block button
+sits on THAT line box's baseline: measured as a 40px wrapper around a 32px
+button, the button 8px below the top of its row — and since the strut then sets
+the row's height, the corner the button is meant to sit in carried 8px of empty
+space under it. Same cause and same fix as the table cell holding an inline-flex
+child, recorded under Traps.
+
+A settled card gets a lock glyph on the Edit item — the door is still open, since the form unlocks itself, so it
+**annotates rather than disables**.
+
+⚠ **`.dv-head` MUST NOT BE `overflow: hidden`, AND MUST STAY POSITIONED.** Two
+halves of one change, and the second cost a real defect. The clip had to go the
+moment the head grew a dropdown: a clipping ancestor is the one thing Popper
+cannot escape, and it fails invisibly and only sometimes. But the car's colour
+rail is an absolutely-positioned `::before` with `inset: 0 auto 0 0`, so it needs
+the head as its **containing block** — `position: sticky` was providing that for
+free. The card is no longer pinned (it carries the money now, and pinning ~240px
+of a 667px phone spends a third of the screen on something already read), and the
+first attempt at unpinning used `static`, which is not a positioned value: the
+rail measured itself against the VIEWPORT and rendered **812px of car colour down
+the left edge of the whole page**. `relative` unpins it and keeps the containing
+block. Nothing in the Django suite executes CSS, so this failed silently until it
+was measured in a browser.
+
+**THE STATE BANNER IS GONE**, folded into the foot of the answer card.
+"Completed" as a full-width amber bar said what a date under the word Completed
+says better. What survives is the **lock**, which is not derivable from a date —
+and **ON HOLD**, which was nowhere at all: a paused car drew exactly the same page
+as a running one, on the one screen that claims to say where the car is.
+
+**There are no labels anywhere else**, and the reasoning is load-bearing: *a
+caption is what you need the FIRST time and what costs you every time after*, on
+a page four people open twenty times a day. Under a part there is nothing but its
+two dates and its two figures.
 
 **A missing value leaves no trace** — no "Not recorded", no dash. The identity line's
 facts are separate elements with the separators drawn in CSS
@@ -4600,7 +4858,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 55 files, 1,718 tests. Always SQLite (see below).
+# Full test suite — 55 files, 1,764 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -4940,7 +5198,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (49 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **55 files, 1,718 tests**.
+files) — **55 files, 1,764 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

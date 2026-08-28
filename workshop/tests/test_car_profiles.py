@@ -12,12 +12,13 @@ than the styling that revealed them:
     while being labelled as the whole car.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal as D
 
 from django.contrib.auth.models import Group, User
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from workshop.models import JobCard, JobCardConcern, JobCardSpareItem, Mechanic
 from workshop.views.car_profiles import VISITS_PER_PAGE
@@ -500,3 +501,113 @@ class OneCarsHistoryTests(CarProfileBase):
         row_start = body.index('cd-visit-body')
         row = body[row_start:row_start + 2500]
         self.assertIn('stretched-link', row)
+
+
+class CarProfilesLeadWithTheMostRecentActivityTests(TestCase):
+    """
+    The list is ordered by what last HAPPENED to a car, not by when it last
+    arrived (2026-08-28).
+
+    It ordered on `Max(admitted_date)` alone, so a car admitted in June,
+    finished in July and settled in August sat below one admitted in July and
+    untouched since. Everything after arrival — being completed, being settled —
+    is activity, and the list an owner opens to find "the car we were just
+    dealing with" has to say so.
+    """
+
+    def setUp(self):
+        for name in ('Owner', 'Office', 'Floor'):
+            Group.objects.get_or_create(name=name)
+        self.office = User.objects.create_user('cp_office', password='pw')
+        self.office.groups.add(Group.objects.get(name='Office'))
+        self.client = Client()
+        self.client.force_login(self.office)
+
+    def card(self, reg, admitted, completed=None, paid=None):
+        job = JobCard.objects.create(
+            admitted_date=admitted, brand_name='Audi', model_name='A4',
+            registration_number=reg)
+        if completed:
+            job.completed = True
+            job.completed_date = completed
+        if paid:
+            job.payment_status = 'PAID'
+            job.received_amount = D('100')
+            job.paid_date = timezone.make_aware(
+                datetime.combine(paid, datetime.min.time().replace(hour=15)))
+        job.save()
+        return job
+
+    def order(self):
+        rows = self.client.get(reverse('car_profile_list')).context['car_profiles']
+        return [row['registration'] for row in rows]
+
+    def test_a_car_finished_later_outranks_one_admitted_later(self):
+        """The defect, stated as data: OLD arrived first and left last."""
+        self.card('KL01OLD0001', date(2026, 6, 1), completed=date(2026, 8, 20))
+        self.card('KL01NEW0001', date(2026, 7, 1))
+
+        self.assertEqual(self.order()[0], 'KL01OLD0001')
+
+    def test_settling_a_bill_counts_as_activity_too(self):
+        """
+        The case that matters most on a FLEET card: the work finished months
+        ago and the collector has only just been round.
+        """
+        self.card('KL01PAID001', date(2026, 5, 1), completed=date(2026, 5, 3),
+                  paid=date(2026, 8, 25))
+        self.card('KL01LATE001', date(2026, 7, 1), completed=date(2026, 7, 2))
+
+        self.assertEqual(self.order()[0], 'KL01PAID001')
+
+    def test_the_date_on_the_card_is_the_one_it_is_sorted_by(self):
+        """
+        Printing the admitted date beside an activity ordering would put the
+        dates on screen out of order, which reads as a broken list rather than
+        as two different facts.
+        """
+        self.card('KL01SHOW001', date(2026, 6, 1), completed=date(2026, 8, 20))
+        body = self.client.get(reverse('car_profile_list')).content.decode()
+        self.assertIn('20 Aug 2026', body)
+        self.assertNotIn('01 Jun 2026', body)
+
+    def test_a_car_with_nothing_but_an_admission_still_sorts(self):
+        """
+        ⚠ THE CROSS-DATABASE TRAP, and the reason every argument to `Greatest`
+        is coalesced.
+
+        On PostgreSQL `GREATEST` ignores NULLs and returns the largest non-null;
+        on SQLite — which the whole suite runs on — it returns NULL if ANY
+        argument is null. A car with no completed_date and no paid_date would
+        therefore sort correctly in production and drop out of the ordering
+        entirely under test, or the reverse. `admitted_date` is non-null on
+        every card, so it is the floor under all three.
+        """
+        self.card('KL01BARE001', date(2026, 9, 9))       # nothing else at all
+        self.card('KL01DONE001', date(2026, 6, 1), completed=date(2026, 6, 2))
+
+        rows = self.client.get(reverse('car_profile_list')).context['car_profiles']
+        bare = next(r for r in rows if r['registration'] == 'KL01BARE001')
+        self.assertEqual(bare['last_activity'], date(2026, 9, 9))
+        self.assertEqual([r['registration'] for r in rows][0], 'KL01BARE001')
+
+    def test_the_settled_date_is_read_in_IST_not_UTC(self):
+        """
+        `paid_date` is the one DateTimeField of the three and it is stored UTC,
+        so a plain cast to date takes the UTC calendar day — which for anything
+        settled after 18:30 IST is YESTERDAY. `TruncDate` converts to TIME_ZONE
+        first, the same thing a `__date` lookup does.
+
+        21:00 IST on the 25th is 15:30 UTC on the 25th; 01:00 IST on the 26th is
+        19:30 UTC on the 25th, and that second one is what a cast would file a
+        day early.
+        """
+        job = self.card('KL01TZ00001', date(2026, 8, 1))
+        job.payment_status = 'PAID'
+        job.received_amount = D('100')
+        job.paid_date = timezone.make_aware(datetime(2026, 8, 26, 1, 0))   # IST
+        job.save()
+
+        rows = self.client.get(reverse('car_profile_list')).context['car_profiles']
+        row = next(r for r in rows if r['registration'] == 'KL01TZ00001')
+        self.assertEqual(row['last_activity'], date(2026, 8, 26))

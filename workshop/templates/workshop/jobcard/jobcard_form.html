@@ -804,6 +804,17 @@
         resize: vertical;
         min-height: calc(1.5em + 0.75rem + 2px);   /* Bootstrap's own input height */
         line-height: 1.5;
+        /* PROSE, NOT A VALUE. `.form-control` sets `font-weight: 500` on every
+           control on this form, which is right for the short data fields it was
+           written for — a registration, a figure, a name — where the weight is
+           what makes the value stand out from its label. It is wrong for the
+           one box that holds SENTENCES: a two-line note rendered at 500 reads
+           as shouted, and it is the only free text on the page. 400 is the
+           weight running text is meant to be read at.
+
+           Scoped to `.jc-grow`, which only the internal note carries, so no
+           other control on the form changes. */
+        font-weight: 400;
     }
 
     /* ==========================================================
