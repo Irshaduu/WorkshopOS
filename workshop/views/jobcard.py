@@ -679,19 +679,140 @@ def jobcard_detail(request, pk):
     shop_spares = [s for s in all_spares if s.source == JobCardSpareItem.SOURCE_SHOP]
     draws = [s for s in all_spares if s.source == JobCardSpareItem.SOURCE_INVENTORY]
 
+    # The card's own year, so a part's dates can drop theirs. See
+    # `_describe_spare` — this is the comparison, not a formatting preference.
+    year = jobcard.admitted_date.year if jobcard.admitted_date else None
     for spare in shop_spares:
-        _describe_spare(spare, is_draw=False)
+        _describe_spare(spare, is_draw=False, card_year=year)
     for draw in draws:
-        _describe_spare(draw, is_draw=True)
+        _describe_spare(draw, is_draw=True, card_year=year)
+
+    # The three section subtotals, summed here off the SAME lists the page
+    # prints — never re-queried. `update_totals()` is
+    # `Σ spares.total_price + labour_amount` over BOTH routes, so these three
+    # add up to the bill on the money line at the foot, exactly. That is the
+    # point of showing them: the total becomes checkable by eye instead of
+    # taken on trust, and it costs no query, because a second aggregate could
+    # disagree with the rows above it.
+    def _sum(rows):
+        return sum((r.total_price or Decimal('0')) for r in rows)
 
     return render(request, 'workshop/jobcard/jobcard_detail.html', {
         'jobcard': jobcard,
         'inventory_draws': draws,
         'shop_spares': shop_spares,
+        'stages': _lifecycle(jobcard),
+        'span': _time_in_workshop(jobcard),
+        'draws_total': _sum(draws) or None,
+        'spares_total': _sum(shop_spares) or None,
     })
 
 
-def _describe_spare(spare, is_draw):
+#: The three moments a job card has, in order, paired with the column each one
+#: reads. Kept as data rather than as three branches so the template loops once
+#: and no date can be drawn differently from its neighbours.
+LIFECYCLE = ('Admitted', 'Completed', 'Settled')
+
+
+def _lifecycle(jobcard):
+    """
+    The card's three dates, ready to print: admitted, completed, settled.
+
+    THE THIRD IS CALLED **SETTLED**, NOT "BILLED", AND THE WORD IS THE POINT.
+    `paid_date` is written only when `payment_status` becomes PAID/BULK_PAID, so
+    it is the day the money was taken — and "billed" already means something else
+    on a screen an owner reads in the same sitting: Deep Analysis calls a
+    Supplies Shop purchase "billed" precisely BECAUSE it is not yet a cost. There
+    is no separate bill-issue date on a job card to point at either: the bill
+    exists from the moment the card does, since `bill_number` is assigned on
+    first save. So a stage called "Billed" would either restate the admitted date
+    or quietly mean settled. It means settled, so it says settled — the same word
+    the lock chip on this page and the settle dialog already use.
+
+    ALL THREE ARE ALWAYS RETURNED, with `date=None` where nothing has happened
+    yet, and the page prints a dash there. A fixed structure is what makes this
+    page learnable, the same rule that keeps an empty section drawn rather than
+    omitted.
+
+    The third one earns its column on FLEET cards. A walk-in has exactly one
+    payment event and it happens at pickup, so settled and completed are the same
+    day and the column repeats — but a fleet collector comes round weeks or
+    months later against several months of cars, and those are the largest single
+    receipts the workshop takes. That is the case worth having a column for, and
+    it is precisely the case the demo seeders flatten: all three of them write
+    `paid_date` from `completed_date`, so no measurement taken against seeded
+    data can say anything about this.
+
+    Each date is read from its OWN column and never inferred from the one before
+    it, so a card that reached a state out of order still prints honestly rather
+    than the page inventing a sequence the data does not support.
+    """
+    # `paid_date` is a DateTimeField while the other two are DateFields. Take it
+    # through localtime() or a payment made late on an IST evening is filed under
+    # the previous day — the same rule every "today" in this codebase follows.
+    paid_on = None
+    if jobcard.paid_date:
+        paid_on = timezone.localtime(jobcard.paid_date).date()
+
+    settled = jobcard.payment_status in ('PAID', 'BULK_PAID')
+    dates = (
+        jobcard.admitted_date,
+        jobcard.completed_date if jobcard.completed else None,
+        paid_on if settled else None,
+    )
+    return [{'label': label, 'date': when}
+            for label, when in zip(LIFECYCLE, dates)]
+
+
+def _time_in_workshop(jobcard):
+    """
+    How long this car has been here, as one ready phrase — or None when there
+    is nothing honest to say.
+
+    The page prints TWO dates, admitted and completed, and the fact worth having
+    between them is the one neither of them states: the gap. An owner reading
+    "06/06/2026" and "08/06/2026" is doing subtraction to answer "how long did we
+    hold this car", which is the question they actually opened the card with.
+
+    ONLY TWO DATES, DELIBERATELY. `paid_date` is tracked and is NOT shown here:
+    measured over the 150 settled cards in the demo set, 149 of them were settled
+    on the very day they were completed, so a third date would print the same
+    number twice on all but one card — the rule the money line at the foot of
+    this page already follows. What the payment side needs is a STATE, not a
+    date, and the chip down there already carries it.
+
+    An OPEN card counts to today and says so ("12 days in"), because a car still
+    on the floor is the case where the number is actually changing and worth
+    watching. `localdate()`, never `date.today()`: the server can run in UTC
+    while the workshop works in IST, and near midnight the two disagree about
+    which day it is — which on a counter that starts at "Today" would be a
+    visible off-by-one.
+
+    Nothing is returned when the arithmetic would be nonsense: no admitted date,
+    or a completion dated before the admission. A negative day count is a typo
+    somewhere upstream, and printing "-3 days" would make this page the one that
+    looks broken rather than the data.
+    """
+    if not jobcard.admitted_date:
+        return None
+
+    end = jobcard.completed_date if jobcard.completed else timezone.localdate()
+    if not end:
+        return None
+
+    days = (end - jobcard.admitted_date).days
+    if days < 0:
+        return None
+
+    if jobcard.completed:
+        text = 'Same day' if days == 0 else ('1 day' if days == 1 else '%d days' % days)
+    else:
+        text = 'Today' if days == 0 else ('1 day in' if days == 1 else '%d days in' % days)
+
+    return {'text': text, 'open': not jobcard.completed}
+
+
+def _describe_spare(spare, is_draw, card_year=None):
     """
     Everything the read-only card prints about one part, as three ready strings
     on the object: `meta_line`, `cost_str` and `price_str`.
@@ -724,8 +845,8 @@ def _describe_spare(spare, is_draw):
         # is finished when it has been ordered AND received, so half-filled is
         # still incomplete. Same rule the job card's date chip follows.
         if spare.ordered_date or spare.received_date:
-            ordered = spare.ordered_date.strftime('%d/%m/%Y') if spare.ordered_date else '—'
-            received = spare.received_date.strftime('%d/%m/%Y') if spare.received_date else '—'
+            ordered = _short_date(spare.ordered_date, card_year)
+            received = _short_date(spare.received_date, card_year)
             meta.append(f'{ordered} – {received}')
 
         if spare.shop_id and spare.shop:
@@ -742,6 +863,34 @@ def _describe_spare(spare, is_draw):
     spare.meta_line = ' · '.join(meta)
     spare.cost_str = None if is_draw else rupees(spare.unit_price)
     spare.price_str = rupees(spare.total_price)
+
+
+def _short_date(value, card_year):
+    """
+    A part's date, with the YEAR dropped when it is the card's own.
+
+    Not a formatting preference — a width fix with a measurement behind it. The
+    full pair plus a shop name ("16/07/2026 – 17/07/2026 · Spare club") is 38
+    characters and wrapped to two lines on a 375px phone, so rows in the same
+    list came out different heights and the list read as broken. Dropping a
+    year that is already stated twice in the card above takes it to 30 and it
+    fits.
+
+    The year is KEPT the moment it differs, because then it is the whole point:
+    a part ordered in December for a car admitted in January is the one case
+    where the reader must not have to assume. Both halves are compared
+    separately, so a pair that straddles New Year prints one short and one long
+    rather than hiding the crossing.
+
+    An em dash for the half not in yet: a spare is finished when it has been
+    ordered AND received, so half-filled is still incomplete — the rule the job
+    card's own date chip follows.
+    """
+    if value is None:
+        return '—'
+    if card_year is not None and value.year == card_year:
+        return value.strftime('%d/%m')
+    return value.strftime('%d/%m/%Y')
 
 
 @staff_required

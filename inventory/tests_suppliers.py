@@ -1097,3 +1097,58 @@ class ASupplierPaymentIsDatedByTheDayTheMoneyMovedTests(TestCase):
             supplier=self.shop, date__range=(self.today.replace(day=1), self.today)))
         self.assertEqual(len(payments), 1)
         self.assertEqual(payments[0].amount, Decimal('1500'))
+
+
+class TheCatalogActionWrapsUPWARDNotDownTests(TestCase):
+    """
+    On a narrow screen "New Stock Entry" sits ABOVE the Shop Catalog heading and
+    hard against the right edge (2026-08-28).
+
+    Left as it wrapped, it landed UNDER the heading and hard against the LEFT
+    margin — the loudest control on the page, below the thing it acts on, in the
+    column the page uses for headings.
+
+    Done with `flex-wrap: wrap-reverse` rather than a media query, and that is
+    the point: the row is untouched while it fits, and the moment it does not
+    the second item lands on the line above the first. No breakpoint to pick and
+    nothing to keep in step with the content's own width. Measured: one row at
+    1280 and 520, wrapped and flush right at 375 and 320.
+    """
+
+    TEMPLATE = 'inventory/templates/inventory/suppliers/shop_detail.html'
+
+    def source(self):
+        with open(self.TEMPLATE, encoding='utf-8') as fh:
+            return fh.read()
+
+    def test_the_header_wraps_upward(self):
+        rule = self.source().split('.sect-hdr {', 1)[1].split('}', 1)[0]
+        self.assertIn('flex-wrap: wrap-reverse', rule)
+
+    def test_the_bootstrap_wrap_utility_is_off_the_element(self):
+        """
+        ⚠ THE LOAD-BEARING HALF. Bootstrap's utilities are `!important`, so
+        `class="... flex-wrap ..."` on the element sets `flex-wrap: wrap` and
+        beats the `wrap-reverse` declared in the stylesheet — the rule would be
+        matched, computed and ignored, which looks exactly like a rule that is
+        not being applied at all. The class had to come off the element; the
+        same trap CLAUDE.md records for an important utility outranking a normal
+        inline style.
+        """
+        source = self.source()
+        self.assertIn('class="sect-hdr gap-3"', source)
+        self.assertNotIn('class="sect-hdr flex-wrap', source)
+
+    def test_the_action_is_pushed_to_the_right_edge(self):
+        """
+        `justify-content: space-between` does nothing for a line holding ONE
+        item, so the wrapped line would put it at flex-start. The auto margin
+        eats the free space to its left; on the single-row layout it changes
+        nothing, because space-between has already pushed it there.
+        """
+        source = self.source()
+        rule = source.split('.sect-hdr-action {', 1)[1].split('}', 1)[0]
+        self.assertIn('margin-left: auto', rule)
+        # …and the button actually carries the class.
+        self.assertIn('sect-hdr-action btn btn-primary', source)
+        self.assertIn('New Stock Entry', source)

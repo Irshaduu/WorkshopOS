@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.shortcuts import render
 from django.http import Http404
 from django.db.models import Count, Max, Q, Sum, F, DecimalField
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Greatest, TruncDate
 from django.core.paginator import Paginator
 
 from ..analysis_engine import MONEY, SPARE_COST
@@ -72,12 +72,43 @@ def _gross_profit(revenue, cost):
 @office_required
 def car_profile_list(request):
     """Show all unique cars (grouped by registration) with optimized queries and AJAX search."""
-    # 1. Base Query: Group by registration and get latest activity
+    # 1. Base Query: one row per registration, ordered by the car's most
+    #    recent ACTIVITY — not by when it was last admitted.
+    #
+    #    It ordered on `Max(admitted_date)` alone, so a car admitted in June,
+    #    finished in July and settled in August sat below one admitted in July
+    #    and still untouched since. Everything that happens to a car after it
+    #    arrives — being completed, being settled — is activity, and the list an
+    #    owner opens to find "the car we were just dealing with" has to say so.
+    #
+    #    ⚠ EVERY ARGUMENT TO `Greatest` IS COALESCED, and that is a
+    #    cross-database correctness matter rather than tidiness. On PostgreSQL
+    #    `GREATEST` ignores NULLs and returns the largest non-null; on SQLite —
+    #    which is what the test suite runs on — it returns NULL if ANY argument
+    #    is null. A car with no completed_date would therefore sort correctly in
+    #    production and vanish to the bottom under test, or the reverse.
+    #    `admitted_date` is non-null on every card, so it is the floor.
+    #
+    #    ⚠ `TruncDate`, never `Cast(... DateField)`, for `paid_date`. It is the
+    #    one DateTimeField of the three and it is stored UTC; casting takes the
+    #    UTC calendar day, which for anything settled after 18:30 IST is
+    #    yesterday. TruncDate converts to TIME_ZONE first, the same thing a
+    #    `__date` lookup does.
+    #
+    #    `-latest_id` breaks ties. Most cars share a date with several others,
+    #    and without it the order inside a day is whatever the database happens
+    #    to return — which differs between PostgreSQL and SQLite, so the list
+    #    would not even be stable between production and the tests. Same lesson
+    #    the Completed list learned.
     cars_query = JobCard.objects.values('registration_number').annotate(
         total_visits=Count('id'),
-        latest_date=Max('admitted_date'),
+        last_activity=Greatest(
+            Max('admitted_date'),
+            Coalesce(Max('completed_date'), Max('admitted_date')),
+            Coalesce(Max(TruncDate('paid_date')), Max('admitted_date')),
+        ),
         latest_id=Max('id')
-    ).order_by('-latest_date')
+    ).order_by('-last_activity', '-latest_id')
 
     # 2. The search term, read from the URL on EVERY request — not only on the
     #    AJAX one.
@@ -131,7 +162,11 @@ def car_profile_list(request):
                 'model': jc.model_name,
                 'customer': jc.customer_name,
                 'total_visits': car['total_visits'],
-                'latest_date': car['latest_date'],
+                # The card prints what the list is SORTED by. Printing the
+                # admitted date beside an activity ordering would put the dates
+                # on screen out of order, which reads as a broken list rather
+                # than as two different facts.
+                'last_activity': car['last_activity'],
                 'color_hex': jc.get_car_color_hex,
                 'color_name': jc.get_car_color_display,
                 # The two exceptions the colour wash has to know about, exactly

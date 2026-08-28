@@ -1165,3 +1165,94 @@ class ModelRuleTests(PhotoTestBase):
     def test_a_prefix_keeps_environments_apart(self):
         photo = JobCardPhoto.objects.create(job_card=self.card)
         self.assertEqual(photo.storage_key, f'dev/{photo.id}.jpg')
+
+
+class TheLightboxSaysWhichCarTests(PhotoTestBase):
+    """
+    The caption under a photo reads top-down: where you are in the burst, which
+    car, then when and who (2026-08-28).
+
+    "1 of 4" leads and is the boldest of the three because it is the only line
+    that CHANGES as you swipe — it used to sit under the date in small grey
+    type, which is where the eye arrives last. The car was not there at all.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.office)
+
+    def listing(self, card=None):
+        with override_settings(**R2_SETTINGS):
+            res = self.client.get(
+                reverse('photo_list'),
+                {'subject': 'card', 'id': (card or self.card).pk},
+                HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(res.status_code, 200, res.content[:200])
+        return json.loads(res.content)
+
+    def test_the_gallery_is_told_which_car_it_is_about(self):
+        self.assertEqual(self.listing()['subject'], 'Audi A4 · KL01AA1111')
+
+    def test_the_label_is_sent_once_for_the_gallery_not_once_per_photo(self):
+        """
+        Every photo in one gallery belongs to the same card by construction, so
+        per-photo it would be the same string ten times over the wire — and ten
+        chances to disagree if one were ever built differently.
+        """
+        data = self.listing()
+        self.assertIn('subject', data)
+        for photo in data['photos']:
+            self.assertNotIn('subject', photo)
+
+    def test_a_car_with_no_brand_falls_back_to_its_plate_alone(self):
+        """
+        Nothing blank is announced — the rule every screen in this app follows.
+        A missing brand leaves no separator behind, because the parts are joined
+        rather than concatenated.
+        """
+        bare = JobCard.objects.create(
+            registration_number='KL01CC3333', admitted_date=timezone.localdate())
+        label = self.listing(bare)['subject']
+        self.assertEqual(label, 'KL01CC3333')
+        self.assertNotIn('·', label)
+
+    def test_the_caption_reads_position_then_car_then_when(self):
+        """
+        DOM order is the reading order, so this is asserted on the markup rather
+        than on a stylesheet rule that could be overridden.
+        """
+        # The overlays are not rendered at all without storage configured —
+        # the section is optional end to end, which is its own rule.
+        with override_settings(**R2_SETTINGS):
+            html = self.client.get(
+                reverse('jobcard_edit', args=[self.card.pk])).content.decode()
+        bottom = html.split('photo-gal-bottom', 1)[1].split('</div>', 1)[0]
+        self.assertLess(bottom.index('photoGalPos'), bottom.index('photoGalCar'))
+        self.assertLess(bottom.index('photoGalCar'), bottom.index('photoGalMeta'))
+
+    def test_only_the_position_stands_out_and_the_other_two_are_one_pair(self):
+        """
+        "1 of 4" is the only line that changes as you swipe, so it is the only
+        one given any weight. The car and the date are two halves of one quiet
+        caption and share a single declaration — nothing should make one look
+        more important than the other, and a rule they both match cannot drift.
+
+        Asserted on the source because nothing in this suite executes CSS.
+        """
+        import re
+
+        with open('workshop/templates/workshop/includes/_photo_overlays.html',
+                  encoding='utf-8') as fh:
+            style = fh.read()
+
+        pos = style.split('.photo-gal-pos {', 1)[1].split('}', 1)[0]
+        self.assertIn('font-weight: 700', pos)
+
+        # ONE rule for the two quiet lines, not two rules that happen to
+        # agree. Matched without the newline between the selectors, because
+        # an escape for it inside this string is one more thing to get wrong.
+        pair_start = style.index('.photo-gal-car,')
+        pair = style[pair_start:].split('{', 1)[1].split('}', 1)[0]
+        self.assertIn('.photo-gal-meta', style[pair_start:pair_start + 60])
+        self.assertIn('font-weight: 400', pair)
+        self.assertNotIn('.photo-gal-car {', style)

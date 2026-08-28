@@ -262,6 +262,7 @@ def photo_list(request):
         'configured': True,
         'can_edit': not _card_is_frozen(card),
         'limit': limit,
+        'subject': _subject_label(card),
         'photos': [_serialise(p) for p in photos],
     })
 
@@ -369,6 +370,32 @@ def photo_blob_get(request):
     name = request.GET.get('n') or 'photo.jpg'
     response['Content-Disposition'] = f'inline; filename="{escape_uri_path(name)}"'
     return response
+
+
+def _subject_label(card):
+    """
+    Which car this gallery is about — "Audi A8 · KL 10 AA 1029".
+
+    Sent ONCE for the gallery rather than on every photo. Every photo in one
+    gallery belongs to the same car by construction (`_resolve_subject` resolves
+    a single card), so per-photo it would be the same string ten times over the
+    wire, and ten chances for them to disagree if one were ever built
+    differently.
+
+    It comes from the SERVER rather than from the page that opened the gallery
+    because the overlay is included on two screens — the job card form, where
+    the car is on screen anyway, and Purchase History, where a row's car is
+    whatever card that spare is attached to and the page is about a shop. One
+    answer, one place, either door.
+
+    Blank rather than a placeholder when there is no card: the lightbox prints
+    nothing at all in that case, the same rule the read-only card follows for
+    every missing value.
+    """
+    if card is None:
+        return ''
+    car = ' '.join(part for part in (card.brand_name, card.model_name) if part).strip()
+    return ' · '.join(part for part in (car, card.registration_number) if part)
 
 
 def _serialise(photo):

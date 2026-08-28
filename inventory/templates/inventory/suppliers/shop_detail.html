@@ -128,11 +128,34 @@
   }
 
   /* ── SECTION HEADER ── */
+  /* WHEN IT WRAPS, THE ACTION GOES ON TOP AND TO THE RIGHT.
+     `wrap-reverse` rather than a media query, and that is the point: the row
+     is unchanged while it fits, and the moment it does NOT fit the second item
+     lands on the line ABOVE the first instead of below it. No breakpoint to
+     pick, nothing to keep in step with the content's own width, and it stays
+     right whatever anybody types into the heading later.
+
+     Left as it wrapped, "New Stock Entry" sat UNDER the catalog heading and
+     hard against the left margin — the loudest control on the page, below the
+     thing it acts on and in the position the page uses for headings.
+
+     `margin-left: auto` is what right-aligns it. `justify-content:
+     space-between` does nothing for a line holding ONE item; the auto margin
+     eats the free space to its left on the wrapped line, and on the single-row
+     layout it changes nothing, because space-between has already pushed it
+     there.
+
+     ⚠ The `flex-wrap` UTILITY had to come off the element for this to work at
+     all. Bootstrap's utilities are `!important`, so `flex-wrap: wrap` there
+     beats any `wrap-reverse` declared here — the CLAUDE.md trap about an
+     important utility outranking a normal declaration, one property over. */
   .sect-hdr {
     display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap-reverse;
     border-bottom: 2px solid var(--color-border-light);
     padding-bottom: 8px; margin-bottom: 14px; margin-top: 28px;
   }
+  .sect-hdr-action { margin-left: auto; }
   .sect-hdr h5 { font-weight: 800; margin: 0; font-size: 1.05rem; }
 
   /* ── BILL CARDS ── */
@@ -427,7 +450,7 @@
 {% endif %}
 
 <!-- ── SHOP CATALOG & ACTIONS ── -->
-<div class="sect-hdr flex-wrap gap-3">
+<div class="sect-hdr gap-3">
   <div class="d-flex align-items-center gap-2">
     <h5><i class="bi bi-grid me-2 text-muted" style="font-size:0.95rem;"></i>Shop Catalog</h5>
     <a href="{% url 'add_shop_catalog_item' shop.id %}" class="btn btn-outline-primary fw-bold rounded-pill" style="padding: 2px 10px; font-size: 0.75rem; border-width: 1.5px; height: 24px; display: flex; align-items: center;">
@@ -435,7 +458,7 @@
     </a>
   </div>
   
-  <a href="{% url 'shop_restock_select' shop.id %}" class="btn btn-primary fw-bold rounded-pill px-4 shadow-sm">
+  <a href="{% url 'shop_restock_select' shop.id %}" class="sect-hdr-action btn btn-primary fw-bold rounded-pill px-4 shadow-sm">
     <i class="bi bi-box-seam me-2"></i>New Stock Entry
   </a>
 </div>
