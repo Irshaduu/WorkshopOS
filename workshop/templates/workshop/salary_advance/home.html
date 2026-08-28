@@ -591,6 +591,44 @@
   </div>
 </div>
 
+
+{% comment %}
+DELETING AN ADVANCE IS CONFIRMED IN THE SHAPE EVERY OTHER MONEY DELETE USES —
+3rem glyph, "Are you sure?", the detail in muted small type, an optional reason,
+then pill Cancel and Confirm. It was a bare window.confirm(), which is the one
+dialog in the app that cannot carry a field: `salary_advance_delete` has always
+read `reason` and DeletionLog has always stored it, so every advance removed
+here reached the Owner's Deletion History blank.
+
+It is a MODAL rather than this page's own markup because the trigger sits inside
+one: the ⋮ is on a row of the AJAX-loaded history fragment inside
+#staffHistoryModal, and a shown Bootstrap modal runs a focus trap that pulls
+focus out of anything outside itself. A plain div would have a reason box the
+caret could not stay in — the defect this same change fixed on the Fleet
+Account page. Hiding the parent first is the house pattern (`confirmSubmit` on
+both shop pages does the same), and it keeps one backdrop on screen.
+{% endcomment %}
+{# data-sound-prompt: this asks a question, so it keeps the prompt tone the #}
+{# window.confirm() it replaced used to get for free from sound.js. #}
+<div class="modal fade" id="advDeleteModal" tabindex="-1" aria-hidden="true" data-sound-prompt>
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 340px;">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+      <div class="modal-body text-center p-4">
+        <i class="bi bi-trash3-fill text-danger d-block mb-3" style="font-size: 3rem;"></i>
+        <h5 class="fw-bold mb-2">Are you sure?</h5>
+        <p class="text-muted small mb-4" id="advDeleteText"></p>
+        <input type="text" id="advDeleteReason" maxlength="255"
+               class="form-control form-control-sm mb-3"
+               placeholder="Reason (optional)" aria-label="Reason for deleting this advance">
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger fw-bold rounded-pill px-4" id="advDeleteBtn">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {{ settled_month_keys|json_script:"settledMonths" }}
 <script>
   // Tapping a staff row reveals its actions in place (Control Hub pattern).
@@ -660,6 +698,49 @@
         body.innerHTML = '<div class="text-center text-danger py-4">Couldn\'t load history. Try again.</div>';
       });
   }
+
+  // ── Deleting an advance ────────────────────────────────────────────────
+  //
+  // One shared dialog against one form per row, so the typed reason is copied
+  // into the posting form as a hidden `reason` input at the moment Confirm is
+  // pressed — the same shape `confirmSubmit` uses on both shop pages.
+  //
+  // The reason box is CLEARED on every open: one typed and then cancelled must
+  // never be filed against the next advance somebody removes.
+  let advFormToSubmit = null;
+  let advDeleteModalInstance = null;
+
+  function confirmAdvanceDelete(event, formElement, money, when) {
+    event.preventDefault();
+
+    // Close the history modal first — see the comment on #advDeleteModal.
+    const parent = formElement.closest('.modal');
+    if (parent) bootstrap.Modal.getInstance(parent)?.hide();
+
+    if (!advDeleteModalInstance) {
+      advDeleteModalInstance = new bootstrap.Modal(document.getElementById('advDeleteModal'));
+    }
+    document.getElementById('advDeleteText').innerHTML =
+      `Delete the <strong class="text-danger">₹${money}</strong> advance of ${when}?` +
+      `<br><small>Permanent, and logged to Deletion History.</small>`;
+    document.getElementById('advDeleteReason').value = '';
+    advFormToSubmit = formElement;
+    advDeleteModalInstance.show();
+  }
+
+  document.getElementById('advDeleteBtn')?.addEventListener('click', function () {
+    if (!advFormToSubmit) return;
+    const box = document.getElementById('advDeleteReason');
+    let carried = advFormToSubmit.querySelector('input[name="reason"]');
+    if (!carried) {
+      carried = document.createElement('input');
+      carried.type = 'hidden';
+      carried.name = 'reason';
+      advFormToSubmit.appendChild(carried);
+    }
+    carried.value = box.value.trim();
+    advFormToSubmit.submit();
+  });
 
   // ── The ⋮ on an advance row ────────────────────────────────────────────
   //

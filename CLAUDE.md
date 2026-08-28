@@ -3145,6 +3145,25 @@ writes a snapshot via `DeletionLog.record(...)` to the Owner-only, read-only
 **Deletion History** (`/deletion-history/`). There is deliberately **no restore** —
 reviving stale financial data corrupts running balances.
 
+**EVERY LOGGED DELETE POSTS A REASON, AND THE REASON IS OPTIONAL.** All 13
+`DeletionLog.record()` call sites read `request.POST.get('reason', '')` and the
+column has always stored it — but four dialogs never rendered the input, so a
+Fleet payment reversal, a spare-shop payment reversal, a Supplies Shop payment,
+a restock bill and a salary advance all reached the Owner's Deletion History
+blank on the one field that says *why the money moved back*. Closed 2026-08-28;
+no view changed and no migration was needed.
+
+⚠ **It is deliberately NOT mandatory, on any of them.** The compensating control
+is already stronger than a required box: `DeletionLog.record()` stores who, when,
+what, how much and a full `snapshot`, and raises **`RECORD_DELETED` (CRITICAL)**,
+which pushes to both owners' phones within seconds and links straight to the
+record. In a seven-person workshop with two owners who deal with customers
+personally, *ask them* beats a text box that a required field turns into "a" or
+"." — and a required field people defeat is worse than an optional one, because
+the log then contains noise that looks like signal. It is the settle dialog's own
+rule ("it never blocks", "confirming what cannot surprise anyone is how
+confirmations stop being read") applied one screen over.
+
 **Job-card delete guard:** a card carrying spares, labour, or a received payment
 **cannot** be deleted. A deletable card holds no spares, so no stock is affected.
 
@@ -4752,6 +4771,33 @@ with a long list the menu opens over the rows beneath and stays inside the box, 
 looks correct; with one row the box is barely taller than the row and both items are
 cut off with nothing on screen to say why. Round the corners on
 `.list > :first-child` / `:last-child` instead.
+
+**A SHOWN OFFCANVAS OR MODAL RUNS A FOCUS TRAP, so an input in a hand-rolled
+overlay outside it CANNOT BE TYPED INTO.** Bootstrap's `FocusTrap` is a
+document-wide `focusin` listener: anything focused outside the panel is pulled
+back to the panel's first focusable child, in the same tick. Clicking the box
+focuses it and the caret is gone before a keystroke lands — no error, nothing in
+the console, and the box looks perfectly normal. Caught on the Fleet Account
+page, where the reason box in `.bd-confirm-overlay` sat outside the Payment
+History offcanvas: every reversal reached the Owner's Deletion History with a
+blank reason. Measured `focusin` order: `INPUT(reason)`, then
+`BUTTON.btn-close`.
+
+Three things about it:
+- **A Bootstrap MODAL used as the confirmation is immune**, and that is why the
+  two shop pages never had this: their `#confirmActionModal` runs its own trap,
+  registered later, so it wins. The defect only bites a **plain div** overlay.
+- **Offcanvas has no `focus` option to turn the trap off** — only Modal does
+  (`data-bs-focus="false"`). So the fix is to **close the panel the confirmation
+  was opened from**, which `confirmSubmit` on both shop pages already did for a
+  parent *modal* and not for an offcanvas.
+- **A DROPDOWN is not a trap.** The same page's Rename overlay opens from the
+  header's `.dropdown` and has always been fine; only a shown offcanvas or modal
+  does this.
+
+⚠ **Verify with a REAL click, never `el.focus()`.** Programmatic focus can stick
+where a click does not, so the check that matters is: click the box, then read
+`document.activeElement`.
 
 **Check which clipping shape you actually have before designing around it.** A
 bespoke clip-proof menu was once built to avoid a problem that did not exist:
