@@ -48,8 +48,14 @@
           </li>
           {% else %}
           <li>
+            {% comment %}
+            A window.confirm() cannot carry a field, and this delete logs a reason
+            — so it hands off to #advDeleteModal on the page hosting this
+            fragment, which asks the same question in the shape every other
+            money delete in the app uses.
+            {% endcomment %}
             <form method="post" action="{% url 'salary_advance_delete' adv.pk %}" class="m-0"
-                  onsubmit="return confirm('Delete this ₹{{ adv.amount|floatformat:0 }} advance permanently?\n\nThis cannot be undone.');">
+                  onsubmit="confirmAdvanceDelete(event, this, '{{ adv.amount|floatformat:0 }}', '{{ adv.date|date:'d M Y' }}');">
               {% csrf_token %}
               <button type="submit" class="dropdown-item adv-menu-delete">
                 <i class="bi bi-trash3 me-2"></i>Delete advance

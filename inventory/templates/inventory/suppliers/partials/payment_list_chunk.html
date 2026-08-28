@@ -43,7 +43,7 @@ rows appended by "Load Older History" work with no JavaScript of our own.
     <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px; min-width: 150px;">
       <li>
         <form method="post" action="{% url 'delete_shop_payment' shop.id payment.id %}"
-              onsubmit="confirmSubmit(event, 'Delete this <strong class=\'text-danger\'>₹{{ payment.amount|floatformat:0 }}</strong> payment?<br><small>The shop balance will be recalculated.</small>', this, 'danger', 'bi-trash3-fill');">
+              onsubmit="confirmSubmit(event, 'Delete this <strong class=\'text-danger\'>₹{{ payment.amount|floatformat:0 }}</strong> payment?<br><small>The shop balance will be recalculated.</small>', this, 'danger', 'bi-trash3-fill', 'deleting this payment');">
           {% csrf_token %}
           <button type="submit" class="dropdown-item py-2 text-danger fw-bold small">
             <i class="bi bi-trash3-fill me-2"></i> Delete this Payment

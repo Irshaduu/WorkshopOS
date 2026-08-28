@@ -1359,12 +1359,37 @@ if (rno) rno.addEventListener('click', function(e) { if (e.target === this) hide
 function showHistoryDeleteConfirm(historyPk, amount) {
     var overlay = document.getElementById('historyDeleteOverlay');
     if (!overlay) return;
+
+    // THE PANEL THIS WAS OPENED FROM HAS TO CLOSE, AND THAT IS THE WHOLE
+    // REASON THE REASON BOX WORKS.
+    //
+    // The trigger lives in the Payment History offcanvas, and a shown Bootstrap
+    // offcanvas runs a FOCUS TRAP: a document-wide `focusin` listener that
+    // pulls focus back to the panel's first focusable child the moment
+    // anything outside it is focused. This overlay is a plain div outside the
+    // offcanvas, so clicking the reason box focused it and the trap moved
+    // focus to the offcanvas close button in the same tick — the caret left
+    // before a keystroke could land, and every reversal reached the Owner's
+    // Deletion History with a blank reason. Measured focusin order:
+    // INPUT(reason), then BUTTON.btn-close.
+    //
+    // Offcanvas has NO `focus` option to turn this off — only Modal does — so
+    // the panel is closed instead. It is also why the two shop pages need
+    // nothing here: their confirmation IS a Bootstrap modal, and a modal's own
+    // trap is registered later and therefore wins.
+    var oc = document.getElementById('historyOffcanvas');
+    if (oc) bootstrap.Offcanvas.getOrCreateInstance(oc).hide();
+
     // innerHTML, like the Supplies Shop's own confirmation — `amount` is a
     // number this page rendered from `floatformat:0`, never user text.
     document.getElementById('historyDeleteText').innerHTML =
         `Delete this <strong class="text-danger">₹${amount}</strong> payment?` +
         `<br><small>Balances are restored to the affected job cards, and it is logged to Deletion History.</small>`;
     document.getElementById('historyDeleteForm').action = '/pending-payments/bulk-payers/{{ bulk_payer.pk }}/history/' + historyPk + '/delete/';
+    // Cleared on every open. A reason typed and then cancelled must not be
+    // filed against the NEXT payment somebody reverses.
+    var reason = document.querySelector('#historyDeleteForm input[name="reason"]');
+    if (reason) reason.value = '';
     overlay.classList.add('active');
 }
 function hideHistoryDeleteConfirm() {

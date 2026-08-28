@@ -35,7 +35,7 @@
             </li>
             <li><hr class="dropdown-divider"></li>
             <li>
-              <form method="post" action="{% url 'delete_restock_bill' shop.id bill.id %}" onsubmit="confirmSubmit(event, 'Delete Bill <strong class=\'text-danger\'>#{{ bill.id }}</strong>?<br><small>This will reverse all stock changes!</small>', this, 'danger', 'bi-trash');">
+              <form method="post" action="{% url 'delete_restock_bill' shop.id bill.id %}" onsubmit="confirmSubmit(event, 'Delete Bill <strong class=\'text-danger\'>#{{ bill.id }}</strong>?<br><small>This will reverse all stock changes!</small>', this, 'danger', 'bi-trash', 'deleting this bill');">
                 {% csrf_token %}
                 <button class="dropdown-item text-danger py-2" type="submit">
                   <i class="bi bi-trash text-danger me-2"></i> Delete
