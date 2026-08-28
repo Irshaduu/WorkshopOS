@@ -12,6 +12,7 @@ from django.utils import timezone
 from ..decorators import office_required, owner_required
 from ..models import Mechanic, SalaryAdvance, SalaryPayment, SalaryPaymentLine, DeletionLog
 from ..money import parse_money, fit_text
+from .. import delete_window
 from ..notifications import notify
 
 # The running month becomes settleable from this day of the month onward.
@@ -454,6 +455,21 @@ def salary_advance_delete(request, pk):
                     f"{when} settlement first, so the month can be settled again "
                     f"without it."
                 )
+            return redirect('salary_advance_home')
+
+        # AFTER the settled-month branch, deliberately. That one refuses
+        # EVERYBODY including an owner, and names the settlement standing in the
+        # way — so it is both the stronger rule and the more useful message
+        # whenever the two overlap. This one only separates Office from an owner
+        # inside a month still open.
+        #
+        # `created_at`, never `advance.date`: the Give an Advance form has its
+        # own date box, so an advance handed over on Monday and keyed on
+        # Thursday must still be Office's to correct.
+        stop = delete_window.refusal(
+            request.user, advance.created_at, f"This ₹{advance.amount:,.0f} advance")
+        if stop:
+            messages.error(request, stop)
             return redirect('salary_advance_home')
 
         reason = request.POST.get('reason', '').strip()

@@ -21,6 +21,7 @@ from ..money import parse_money, fit_text
 # The day the money moved, parsed by the same rule the Cashbook uses — one
 # implementation, because two would disagree at a month boundary.
 from ..money_dates import posted_date, is_future
+from .. import delete_window
 # What a shop-bought line cost, in the one place it is defined. This page's
 # running balance, its grand total and `SpareShop.total_purchased_amount` are
 # three views of the same money, and they used to be three hand-written copies
@@ -364,6 +365,16 @@ def spare_shop_payment_reverse(request, shop_pk, payment_pk):
 
     shop = get_object_or_404(SpareShop, pk=shop_pk)
     payment = get_object_or_404(SpareShopPayment, pk=payment_pk, shop=shop)
+
+    # Office fixes a recent mistake; an owner takes anything older. Dated by
+    # `created_at`, never `payment.date` — this form back-dates deliberately,
+    # so the money date would refuse Office their own typo. See delete_window.
+    stop = delete_window.refusal(
+        request.user, payment.created_at, f"This ₹{payment.amount:,.0f} payment")
+    if stop:
+        messages.error(request, stop)
+        return redirect('spare_shop_detail', pk=shop_pk)
+
     reason = request.POST.get('reason', '').strip()
     amount = payment.amount
 

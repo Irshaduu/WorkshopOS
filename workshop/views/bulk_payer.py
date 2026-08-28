@@ -21,6 +21,7 @@ from ..decorators import office_required, owner_required
 from ..notifications import notify
 from ..money import parse_money, fit_text
 from ..money_dates import posted_date, is_future
+from .. import delete_window
 
 
 @office_required
@@ -608,6 +609,23 @@ def bulk_payment_history_delete(request, pk, history_pk):
     # longer opens, recreating exactly the stranding that guard prevents.
     bulk_payer = get_object_or_404(BulkPayer, pk=pk, is_trashed=False)
     history = get_object_or_404(BulkPaymentHistory, pk=history_pk, bulk_payer=bulk_payer)
+
+    # Office fixes a recent mistake; an owner takes anything older. These are
+    # the largest single receipts the workshop handles, and `created_at` is the
+    # right column — the date box on this form back-dates a receipt to the day
+    # the collector actually came.
+    #
+    # Consequence accepted knowingly: a reversal must go NEWEST FIRST (see the
+    # pre-flight below), so if any payment in that chain is past the window the
+    # owner does the whole chain rather than Office starting it. This escalates
+    # more often here than anywhere else the window applies, and that is the
+    # right way round for the biggest money on the page.
+    stop = delete_window.refusal(
+        request.user, history.created_at, f"This ₹{history.amount:,.0f} payment")
+    if stop:
+        messages.error(request, stop)
+        return redirect('bulk_payer_detail', pk=pk)
+
     reason = request.POST.get('reason', '').strip()
 
     with transaction.atomic():

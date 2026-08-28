@@ -12,6 +12,7 @@ from workshop.models import DeletionLog, JobCardSpareItem
 from workshop.notifications import notify
 from workshop.money import parse_money, fit_text
 from workshop.money_dates import posted_date, is_future
+from workshop import delete_window
 from django.urls import reverse
 from workshop.templatetags.custom_filters import clean_qty
 from django.db import transaction, IntegrityError
@@ -862,6 +863,19 @@ def edit_restock_bill(request, shop_id, bill_id):
 def delete_restock_bill(request, shop_id, bill_id):
     if request.method == 'POST':
         bill = get_object_or_404(SupplierRestockBill, pk=bill_id, supplier_id=shop_id)
+
+        # THE CLEAREST CASE FOR READING `created_at` RATHER THAN `bill_date`.
+        # A Supplies Shop delivers, keeps its own book, and the bill is keyed
+        # only when the collector comes at month end — so a bill entered today
+        # is routinely dated weeks back. On the money date Office would key a
+        # back-dated bill, mistype it, and be refused permission to delete their
+        # own typo thirty seconds later.
+        stop = delete_window.refusal(
+            request.user, bill.created_at, f"Bill #{bill.id}")
+        if stop:
+            messages.error(request, stop)
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
         reason = request.POST.get('reason', '').strip()
         DeletionLog.record(
             DeletionLog.ENTITY_RESTOCK_BILL, bill,
@@ -931,6 +945,16 @@ def add_shop_payment(request, shop_id):
 def delete_shop_payment(request, shop_id, payment_id):
     if request.method == 'POST':
         payment = get_object_or_404(SupplierPayment, pk=payment_id, supplier_id=shop_id)
+
+        # `created_at`, never `payment.date`: this shop's collector comes round
+        # weekly or monthly and the receipt is keyed when it gets keyed, so the
+        # money date would refuse Office a row they just entered.
+        stop = delete_window.refusal(
+            request.user, payment.created_at, f"This ₹{payment.amount:,.0f} payment")
+        if stop:
+            messages.error(request, stop)
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
         reason = request.POST.get('reason', '').strip()
         amount = payment.amount
         DeletionLog.record(

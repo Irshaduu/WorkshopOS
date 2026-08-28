@@ -3162,7 +3162,66 @@ personally, *ask them* beats a text box that a required field turns into "a" or
 "." — and a required field people defeat is worse than an optional one, because
 the log then contains noise that looks like signal. It is the settle dialog's own
 rule ("it never blocks", "confirming what cannot surprise anyone is how
-confirmations stop being read") applied one screen over.
+confirmations stop being read") applied one screen over. What was genuinely
+missing was PREVENTION rather than a better audit field, and that is the Office
+delete window below — a boundary nobody can type around.
+
+**OFFICE CORRECTS A RECENT MISTAKE; AN OWNER TAKES ANYTHING OLDER.**
+`workshop/delete_window.py`, `OFFICE_DELETE_WINDOW_DAYS = 7`. Six money
+deletes are `@office_required` — fleet payment, spare-shop payment, Supplies
+Shop payment, restock bill, cashbook entry, salary advance — so Office could
+remove a six-month-old fleet payment exactly as easily as one keyed this
+morning. Those are two different acts:
+
+  * recorded an hour ago → a **correction**: frequent, cheap, and the money is
+    still fresh in everybody's head;
+  * recorded six weeks ago → **anomalous**: that period has been reported on,
+    an owner has read the Profit page against it, and a shop's balance was
+    settled on it.
+
+An **escalation, never a wall** — no approval queue, no second sign-off, no new
+mechanism. The owners already exist, already hold the role, and are already the
+people `RECORD_DELETED` alerts within seconds.
+
+⚠ **MEASURED ON `created_at`, NEVER ON THE MONEY DATE — this is the half that
+would silently break the workflow it protects.** Every covered model carries
+both columns and they answer different questions. Back-dating is *normal* here:
+a Supplies Shop delivers, keeps its own book, and the bill is keyed only when
+the collector comes at month end, which is why the Cashbook, both shop payment
+forms and the fleet payment form each have a date box. On the money date,
+Office would key a bill back-dated six weeks, mistype it, and be refused
+permission to delete their own typo thirty seconds later. `created_at` asks the
+right question — how long has this been sitting in the books — and it is why
+those columns were kept when the money dates landed.
+
+⚠ **THE CONTROL IS STILL OFFERED, AND THE REFUSAL NAMES THE ROUTE.** Hiding the
+button would say "you cannot" without saying why — the rule the frozen-advance
+⋮ menu already follows — and would additionally say something false, that the
+record cannot be deleted at all, when an owner can. So the POST is refused and
+the message carries the row, its age, the rule and who to ask: *"This ₹100,000
+payment was recorded 40 days ago. Office can delete something recorded in the
+last 7 days — ask an owner to remove this one."* The window is read from the
+one constant, so the number on screen can never disagree with the number
+enforced.
+
+Three things deliberately **not** covered:
+- **`jobcard_delete`** — already refuses a card carrying spares, labour or a
+  received payment, so a deletable card holds no money. A window there is
+  friction buying nothing.
+- **`salary_payment_delete`** — `@owner_required` already.
+- **Housekeeping** (master data, unassigned spares) — no money moves, and
+  auto-learn restores a master-list name the next time somebody types it.
+
+Two consequences accepted knowingly. On the **salary advance** the window sits
+*after* the settled-month branch, because that one refuses everybody including
+an owner and names the settlement in the way — the stronger rule and the better
+message wherever they overlap. And a **fleet reversal must go newest-first**, so
+if any payment in that chain is past the window the owner does the whole chain
+rather than Office starting it; that escalates more often here than anywhere
+else, which is the right way round for the largest receipts the workshop takes.
+
+**7 is a dial, not a law** — one constant, and the messages follow it.
+→ `workshop/tests/test_delete_window.py`
 
 **Job-card delete guard:** a card carrying spares, labour, or a received payment
 **cannot** be deleted. A deletable card holds no spares, so no stock is affected.
@@ -5074,7 +5133,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 55 files, 1,794 tests. Always SQLite (see below).
+# Full test suite — 56 files, 1,816 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -5319,7 +5378,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Eight modules hold no views at all** — this is the codebase's main structural idea, and
+**Nine modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -5331,6 +5390,7 @@ each exists so that one rule has exactly one implementation:
 | `money.py` | is this typed rupee amount acceptable for its column? |
 | `money_dates.py` | what day did this money move? — the Cashbook and the spare-shop payment form |
 | `spare_dates.py` | is this ordered/received pair the right way round? |
+| `delete_window.py` | has this money row been in the books too long for Office to delete? |
 | `photos.py` | where do the bytes go, and how is the URL signed? |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
@@ -5413,8 +5473,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` (49 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **55 files, 1,794 tests**.
+Tests live in `workshop/tests/` (50 `test_*.py` plus `tests.py`) and `inventory/` (5
+files) — **56 files, 1,816 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 
