@@ -14,6 +14,7 @@ from .money import parse_money, fit_text
 # asks the same question, and two copies would drift apart at a month boundary,
 # which is exactly where an owner reads the difference.
 from .money_dates import posted_date, is_future
+from . import delete_window
 
 
 # One page of the ledger. 45 matches every other list view in the app.
@@ -319,6 +320,16 @@ def delete_cashbook_entry(request, pk):
     """Permanently delete a cashbook entry, logged to the Owner-only Deletion History."""
     if request.method == 'POST':
         entry = get_object_or_404(CashbookEntry, pk=pk)
+
+        # Dated by `created_at`, never `entry.date` — the date box exists so a
+        # month-end expense keyed the following week lands in the right month,
+        # and the money date would refuse Office a row they entered minutes ago.
+        stop = delete_window.refusal(
+            request.user, entry.created_at, f"This ₹{entry.amount:,.0f} entry")
+        if stop:
+            messages.error(request, stop)
+            return redirect('cashbook')
+
         reason = request.POST.get('reason', '').strip()
         # Log + delete in one transaction so the history can never record a
         # deletion that didn't happen (see DeletionLog.record).
