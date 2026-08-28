@@ -145,6 +145,52 @@
     .icon-btn.row-toggle { width: 40px; height: 40px; }
   }
 
+  /* ── Advance row menu (inside the history modal) ──────────────────────
+     One ⋮ on every row; the MENU carries whether the advance can go. The
+     trigger is 30px because it sits beside a two-line row and must not shout,
+     and 34px where there is no pointer, since that is what a thumb hits. */
+  .adv-menu-btn {
+    width: 30px; height: 30px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--color-border); background: #fff;
+    border-radius: 50%; color: var(--color-text-muted); line-height: 0;
+  }
+  .adv-menu-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+  @media (hover: hover) {
+    .adv-menu-btn:hover { background: var(--color-bg); color: var(--color-text); }
+  }
+  @media (hover: none) { .adv-menu-btn { width: 34px; height: 34px; } }
+
+  /* Capped as well as floored: the locked menu carries a sentence, and left to
+     grow it reached 352px inside a 370px modal and hung off the left edge. */
+  .adv-menu-list { min-width: 196px; max-width: 232px; border-radius: 12px; padding: 6px; }
+  .adv-menu-delete {
+    display: flex; align-items: center; width: 100%;
+    border: 0; background: none; text-align: left;
+    border-radius: 8px; font-size: 0.84rem; color: #dc2626;
+  }
+  .adv-menu-delete:hover, .adv-menu-delete:focus { background: #fee2e2; color: #b91c1c; }
+  .adv-menu-locked {
+    display: flex; align-items: center; font-size: 0.84rem;
+    opacity: 1; color: var(--color-text-muted);
+  }
+  /* The month that is in the way. A lock glyph on its own said "you cannot"
+     without saying why, and why is the only part anybody can act on. */
+  .adv-menu-why {
+    display: block; padding: 2px 12px 6px; font-size: 0.72rem; line-height: 1.35;
+    color: var(--color-text-muted); white-space: normal;
+  }
+
+  /* The refusal, said while the date is being picked. Amber rather than red:
+     nothing has gone wrong yet — this date simply cannot be used. */
+  .adv-warn {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 9px 11px; border-radius: 10px;
+    background: #fffbeb; border: 1px solid #fde68a;
+    color: #92400e; font-size: 0.76rem; line-height: 1.4;
+  }
+  .adv-warn i { flex-shrink: 0; margin-top: 1px; }
+
   /* ── Settled history, grouped by year ── */
   .year-block { margin-bottom: 10px; }
   .year-head {
@@ -444,7 +490,24 @@
           <div class="row g-2">
             <div class="col-5">
               <div class="form-label-sm">Date given</div>
-              <input type="date" name="date" class="form-control adv-compact" value="{% now 'Y-m-d' %}" required>
+              {% comment %}
+              Capped at today: cash cannot have been handed over on a day that has
+              not arrived, and a forward-dated advance lands in a month the
+              settlement screen will not reach for weeks.
+
+              A SETTLED month is refused too — `salary_advance_add` has always
+              refused one, but only after the form was filled in and submitted.
+              `data-settled` carries the months that are closed so the box can
+              say so as the date is picked. Both are presentation; the view is
+              the control.
+
+              Written as a block comment and never as a single-line one: a
+              Django single-line comment spread over several lines stops being a
+              comment and renders on the page — which is exactly what this one
+              did before it was rewritten. See CLAUDE.md, Traps.
+              {% endcomment %}
+              <input type="date" name="date" id="advDateInput" class="form-control adv-compact"
+                     value="{% now 'Y-m-d' %}" max="{% now 'Y-m-d' %}" required>
             </div>
             <div class="col-7">
               <div class="form-label-sm">Note <span class="fw-normal">(optional)</span></div>
@@ -452,9 +515,23 @@
             </div>
           </div>
 
-          <div class="adv-hint mt-3">
+          <div class="adv-hint mt-3" id="advDateOk">
             <i class="bi bi-info-circle"></i>
             <span>Subtracted automatically when that month's salary is settled.</span>
+          </div>
+          {% comment %}
+          Said BEFORE the button, not after. `salary_advance_add` has always
+          refused an advance dated into a settled month — but only once the whole
+          form had been filled in and submitted, which is the settle screen's own
+          "say it before the button" rule broken one screen over. The list is
+          handed over with json_script rather than |safe, and the refusal in the
+          view stays the control.
+          {% endcomment %}
+          <div class="adv-warn mt-3" id="advDateWarn" hidden>
+            <i class="bi bi-lock-fill"></i>
+            <span><strong id="advWarnMonth"></strong> is already settled, so an
+            advance can't be dated into it. Pick a day in an unsettled month, or
+            record it today with a note saying which month it was for.</span>
           </div>
         </div>
         <div class="modal-footer border-0 pt-0">
@@ -514,6 +591,7 @@
   </div>
 </div>
 
+{{ settled_month_keys|json_script:"settledMonths" }}
 <script>
   // Tapping a staff row reveals its actions in place (Control Hub pattern).
   function toggleStaffActions(event, row) {
@@ -576,12 +654,80 @@
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
       .then(r => r.text())
-      .then(html => { body.innerHTML = html; })
+      .then(html => { body.innerHTML = html; armAdvanceMenus(body); })
       .catch(err => {
         console.error('Error loading advance history:', err);
         body.innerHTML = '<div class="text-center text-danger py-4">Couldn\'t load history. Try again.</div>';
       });
   }
+
+  // ── The ⋮ on an advance row ────────────────────────────────────────────
+  //
+  // The modal body is `overflow-y: auto`, and an absolutely-positioned menu
+  // inside a scroller is CLIPPED — invisibly, and only on the rows near its
+  // edges, which is the failure this codebase has already been bitten by twice
+  // (see CLAUDE.md, Traps: "a rounded list container must NOT be overflow:
+  // hidden if it holds a dropdown"). Popper escapes it on `strategy: 'fixed'`,
+  // which can only be set through `popperConfig` in JS — so the rows are armed
+  // here rather than left to Bootstrap's delegated handler, which would create
+  // each instance with the default absolute strategy.
+  //
+  // Idempotent: getOrCreateInstance returns the existing one, and the body is
+  // replaced wholesale on every open anyway.
+  function armAdvanceMenus(root) {
+    root.querySelectorAll('[data-bs-toggle="dropdown"]').forEach(el => {
+      bootstrap.Dropdown.getOrCreateInstance(el, {
+        popperConfig: cfg => Object.assign({}, cfg, { strategy: 'fixed' }),
+      });
+    });
+  }
+
+  // ── An advance cannot be dated into a settled month ────────────────────
+  //
+  // Said while the date is being picked, not after the form has been filled in
+  // and submitted — the settle screen's own rule, one screen over.
+  // `salary_advance_add` refuses it regardless; this is presentation.
+  (function () {
+    const el = document.getElementById('settledMonths');
+    if (!el) return;
+    let settled = [];
+    try { settled = JSON.parse(el.textContent) || []; } catch (e) { return; }
+
+    const input = document.getElementById('advDateInput');
+    const warn = document.getElementById('advDateWarn');
+    const ok = document.getElementById('advDateOk');
+    const monthEl = document.getElementById('advWarnMonth');
+    const form = input && input.closest('form');
+    const submit = form && form.querySelector('button[type="submit"]');
+    if (!input || !warn || !submit) return;
+
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                    'August', 'September', 'October', 'November', 'December'];
+
+    function check() {
+      // Compared as the 'YYYY-MM' the value already starts with — no Date
+      // object, so no timezone can move it a day and therefore a month.
+      const key = (input.value || '').slice(0, 7);
+      const blocked = key.length === 7 && settled.indexOf(key) !== -1;
+
+      if (blocked) {
+        const [y, m] = key.split('-');
+        monthEl.textContent = `${MONTHS[parseInt(m, 10) - 1]} ${y}`;
+      }
+      warn.hidden = !blocked;
+      if (ok) ok.hidden = blocked;
+      submit.disabled = blocked;
+      input.classList.toggle('is-invalid', blocked);
+    }
+
+    input.addEventListener('input', check);
+    input.addEventListener('change', check);
+    // A re-opened modal keeps whatever was typed last, so the state is
+    // re-derived on open rather than assumed clean.
+    const modal = document.getElementById('giveAdvanceModal');
+    if (modal) modal.addEventListener('show.bs.modal', check);
+    check();
+  })();
 
   // ?staff=<pk> opens that person's advance history straight away.
   //

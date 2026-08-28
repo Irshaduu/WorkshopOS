@@ -14,6 +14,7 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User, Group
 from django.urls import reverse
 from django.utils import timezone
+from django.db.models import Sum
 
 from workshop.models import (
     JobCard, JobCardSpareItem, JobCardLabourItem, JobCardConcern, Mechanic,
@@ -1420,6 +1421,293 @@ class AnAdvanceCannotEnterASettledMonthTests(WorkshopTestCase):
         self.assertEqual(SalaryPaymentLine.objects.get().advance_used, Decimal('0'))
 
 
+class AnAdvanceCannotLEAVEASettledMonthEitherTests(WorkshopTestCase):
+    """
+    The other half of the frozen-month rule, and the half that was missing.
+
+    Recording an advance INTO a settled month was refused; deleting one OUT of
+    it was not — the bin in the history modal removed the row with no check at
+    all, on a month the settlement lock had otherwise closed.
+
+    It is the worse direction. The paid `SalaryPaymentLine.advance_used` keeps
+    claiming money nothing records, and on the most recent settlement it is a
+    real cash loss: re-saving the month sums the advances afresh, advance_used
+    drops to zero and the net jumps by exactly the amount already handed over,
+    so the workshop pays that cash a second time. Measured at ₹3,000 on a
+    ₹20,000 salary — the net went 17,000 → 20,000 with the advance gone.
+    """
+
+    def _last_month(self):
+        return (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    def _settle(self, month, staff, **extra):
+        data = {f'leave_days_{staff.pk}': '0'}
+        data.update(extra)
+        return self.client.post(
+            reverse('salary_payment_form', args=[month.year, month.month]), data)
+
+    def _setup(self):
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        advance = SalaryAdvance.objects.create(staff=anil, amount=Decimal('3000'), date=last)
+        self._settle(last, anil)
+        return last, anil, advance
+
+    def test_the_advance_survives_the_delete(self):
+        _last, _anil, advance = self._setup()
+        self.client.post(reverse('salary_advance_delete', args=[advance.pk]), {})
+        self.assertTrue(SalaryAdvance.objects.filter(pk=advance.pk).exists())
+
+    def test_the_paid_line_can_never_be_left_claiming_money_nothing_records(self):
+        """The property, not the message: line and advances must still agree."""
+        _last, anil, advance = self._setup()
+        self.client.post(reverse('salary_advance_delete', args=[advance.pk]), {})
+
+        line = SalaryPaymentLine.objects.get()
+        on_record = SalaryAdvance.objects.filter(staff=anil).aggregate(
+            t=Sum('amount'))['t'] or ZERO
+        self.assertEqual(line.advance_used, on_record)
+
+    def test_re_saving_the_month_cannot_pay_the_advance_twice(self):
+        """The cash consequence, end to end."""
+        last, anil, advance = self._setup()
+        self.client.post(reverse('salary_advance_delete', args=[advance.pk]), {})
+        self._settle(last, anil, settlement_unlock='true')
+
+        self.assertEqual(SalaryPaymentLine.objects.get().net_amount, Decimal('17000.00'),
+                         "net must stay salary minus the advance already handed over")
+
+    def test_office_is_told_to_ask_an_owner(self):
+        _last, _anil, advance = self._setup()
+        resp = self.client.post(reverse('salary_advance_delete', args=[advance.pk]),
+                                {}, follow=True)
+        self.assertContains(resp, 'Ask an owner')
+
+    def test_an_owner_is_told_to_delete_the_settlement_first(self):
+        _last, _anil, advance = self._setup()
+        resp = self.client_for('owner').post(
+            reverse('salary_advance_delete', args=[advance.pk]), {}, follow=True)
+        self.assertContains(resp, 'settlement first')
+
+    def test_a_closed_month_offers_no_route_at_all(self):
+        """
+        Owner-only advice would send them at a button that refuses them —
+        `salary_payment_delete` blocks a closed month on the GET. So the closed
+        case says what is actually true instead.
+        """
+        _last, anil, advance = self._setup()
+        this = timezone.localdate().replace(day=1)
+        self._settle(this, anil)          # closes `last` for good
+
+        resp = self.client_for('owner').post(
+            reverse('salary_advance_delete', args=[advance.pk]), {}, follow=True)
+        self.assertTrue(SalaryAdvance.objects.filter(pk=advance.pk).exists())
+        self.assertContains(resp, 'is closed')
+        self.assertNotContains(resp, 'settlement first')
+
+    def test_an_unsettled_months_advance_still_deletes(self):
+        """The rule is about settled months only — nothing else got harder."""
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        advance = SalaryAdvance.objects.create(
+            staff=anil, amount=Decimal('3000'), date=timezone.localdate())
+        self.client.post(reverse('salary_advance_delete', args=[advance.pk]), {})
+
+        self.assertFalse(SalaryAdvance.objects.filter(pk=advance.pk).exists())
+        self.assertTrue(DeletionLog.objects.filter(
+            entity_type=DeletionLog.ENTITY_SALARY_ADVANCE).exists())
+
+    def test_the_documented_route_works_end_to_end(self):
+        """Delete the settlement, remove the advance, settle again."""
+        last, anil, advance = self._setup()
+        payment = SalaryPayment.objects.get()
+        self.client_for('owner').post(reverse('salary_payment_delete', args=[payment.pk]),
+                                      {'reason': 'advance recorded in error'})
+        self.client.post(reverse('salary_advance_delete', args=[advance.pk]), {})
+        self._settle(last, anil)
+
+        line = SalaryPaymentLine.objects.get()
+        self.assertEqual(line.advance_used, ZERO)
+        self.assertEqual(line.net_amount, Decimal('20000.00'))
+
+    def test_the_history_modal_offers_no_bin_on_a_settled_advance(self):
+        """
+        The refusal is the control; this is why nobody meets it. A door
+        somebody can see but not open is worse than no door.
+        """
+        _last, anil, _advance = self._setup()
+        resp = self.client.get(reverse('salary_advance_staff_detail', args=[anil.pk]),
+                               HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertNotContains(resp, 'bi-trash3')
+        self.assertNotContains(resp, 'salary_advance_delete')
+        self.assertContains(resp, 'bi-lock-fill')
+
+    def test_the_locked_menu_names_the_month_that_is_in_the_way(self):
+        """
+        A lock glyph on its own says "you cannot" without saying why, and why is
+        the only part anybody can act on.
+        """
+        last, anil, _advance = self._setup()
+        resp = self.client.get(reverse('salary_advance_staff_detail', args=[anil.pk]),
+                               HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertContains(resp, f"{last:%B %Y} is settled")
+
+    def test_an_unsettled_advance_keeps_its_bin(self):
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        SalaryAdvance.objects.create(staff=anil, amount=Decimal('3000'),
+                                     date=timezone.localdate())
+        resp = self.client.get(reverse('salary_advance_staff_detail', args=[anil.pk]),
+                               HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertContains(resp, 'bi-trash3')
+
+    def test_every_row_carries_the_same_trigger_and_the_menu_holds_the_difference(self):
+        """
+        One ⋮ per row, settled or not — the rows read as one list rather than
+        two kinds of thing, and what differs is inside.
+        """
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        SalaryAdvance.objects.create(staff=anil, amount=Decimal('3000'), date=last)
+        self._settle(last, anil)
+        SalaryAdvance.objects.create(staff=anil, amount=Decimal('2000'),
+                                     date=timezone.localdate())
+
+        html = self.client.get(reverse('salary_advance_staff_detail', args=[anil.pk]),
+                               HTTP_X_REQUESTED_WITH='XMLHttpRequest').content.decode()
+
+        self.assertEqual(html.count('data-bs-toggle="dropdown"'), 2)
+        self.assertEqual(html.count('salary_advance_delete'.replace('_', '-')), 0)
+        self.assertEqual(html.count('/delete/'), 1, "only the unsettled row may act")
+        self.assertEqual(html.count('bi-lock-fill'), 1)
+
+
+class EveryAdvanceHolderIsOnTheFormThatSettlesThemTests(WorkshopTestCase):
+    """
+    `_unsettleable_staff` catches the two STANDING reasons somebody receives no
+    settlement line — no salary, retired. This is the SITUATIONAL one, and a
+    stale browser tab produces it on an ordinary working day.
+
+    The settle form is open while the office types leave days for seven people.
+    Somebody is hired and handed an advance in the meantime. The submitted
+    payload carries no `leave_days_<pk>` box for them, the loop skips anyone
+    whose key is absent, and they get no line — while their advance is now
+    inside a settled month, which `salary_expense` excludes from its
+    loose-advance pass. The cash is counted in NEITHER place.
+    """
+
+    def _month(self):
+        return timezone.localdate().replace(day=1)
+
+    def _month_end(self, m):
+        return (m.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+    def test_a_stale_form_cannot_settle_the_month(self):
+        m = self._month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        ravi = Mechanic.objects.create(name='Ravi', current_salary=Decimal('18000'))
+        SalaryAdvance.objects.create(staff=ravi, amount=Decimal('4000'), date=m)
+
+        # The payload the tab loaded before Ravi existed.
+        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+
+        self.assertFalse(SalaryPayment.objects.exists())
+
+    def test_the_cash_is_never_counted_nowhere(self):
+        """The property: settling a month must not shrink the wage bill."""
+        m = self._month()
+        end = self._month_end(m)
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        ravi = Mechanic.objects.create(name='Ravi', current_salary=Decimal('18000'))
+        SalaryAdvance.objects.create(staff=ravi, amount=Decimal('4000'), date=m)
+
+        before = ae.salary_expense(m, end)['total']
+        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+        after = ae.salary_expense(m, end)['total']
+
+        self.assertGreaterEqual(after, before, "settling dropped cash off the Profit page")
+
+    def test_it_names_who_is_missing(self):
+        m = self._month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        ravi = Mechanic.objects.create(name='Ravi', current_salary=Decimal('18000'))
+        SalaryAdvance.objects.create(staff=ravi, amount=Decimal('4000'), date=m)
+
+        resp = self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+                                {f'leave_days_{anil.pk}': '0'}, follow=True)
+        self.assertContains(resp, 'Ravi')
+
+    def test_a_complete_form_settles_normally(self):
+        m = self._month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        ravi = Mechanic.objects.create(name='Ravi', current_salary=Decimal('18000'))
+        SalaryAdvance.objects.create(staff=ravi, amount=Decimal('4000'), date=m)
+
+        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+                         {f'leave_days_{anil.pk}': '0', f'leave_days_{ravi.pk}': '0'})
+
+        self.assertEqual(SalaryPaymentLine.objects.count(), 2)
+        self.assertEqual(
+            SalaryPaymentLine.objects.get(staff=ravi).advance_used, Decimal('4000.00'))
+
+    def test_staff_with_no_advance_are_not_dragged_in(self):
+        """
+        Somebody hired mid-month with no advance is not this rule's business —
+        that is the closed-set-of-people rule, and blocking on them would refuse
+        an ordinary settlement.
+        """
+        m = self._month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        Mechanic.objects.create(name='Ravi', current_salary=Decimal('18000'))
+
+        self.client.post(reverse('salary_payment_form', args=[m.year, m.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+
+        self.assertTrue(SalaryPayment.objects.exists())
+
+
+class TheAdvanceDateBoxCannotOfferTomorrowTests(WorkshopTestCase):
+    """
+    The server has always refused a forward-dated advance; the picker offered
+    one anyway. Capped at today, the same rule the Cashbook's own date control
+    follows — the refusal stays the control, this only keeps the box honest.
+    """
+
+    def test_the_picker_is_capped_at_today(self):
+        resp = self.client.get(reverse('salary_advance_home'))
+        self.assertContains(resp, f'max="{timezone.localdate():%Y-%m-%d}"')
+
+    def test_a_crafted_future_advance_is_still_refused(self):
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_advance_add'), {
+            'staff_id': anil.pk, 'amount': '1000',
+            'date': str(timezone.localdate() + timedelta(days=5))})
+        self.assertEqual(SalaryAdvance.objects.count(), 0)
+
+    def test_the_page_hands_the_settled_months_to_the_date_box(self):
+        """
+        Said BEFORE the button. `salary_advance_add` has always refused a date
+        inside a settled month, but only once the whole form had been filled in
+        and submitted — the settle screen's own rule, broken one screen over.
+
+        Handed over as data (`json_script`), never interpolated into markup.
+        """
+        last = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1)
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0'})
+
+        resp = self.client.get(reverse('salary_advance_home'))
+        self.assertContains(resp, 'id="settledMonths"')
+        self.assertContains(resp, f'"{last:%Y-%m}"')
+
+    def test_an_unsettled_month_is_not_in_that_list(self):
+        """A list that named every month would disable the box permanently."""
+        this = timezone.localdate().replace(day=1)
+        resp = self.client.get(reverse('salary_advance_home'))
+        self.assertNotContains(resp, f'"{this:%Y-%m}"')
+
+
 class OvertimeIsAddedToThePayTests(WorkshopTestCase):
     """
     A few staff have overtime in a given month, entered as one amount at
@@ -1473,15 +1761,110 @@ class OvertimeIsAddedToThePayTests(WorkshopTestCase):
         self.assertEqual(line.overtime_amount, Decimal('0'))
         self.assertEqual(line.net_amount, Decimal('20000.00'))
 
-    def test_a_junk_overtime_value_is_treated_as_none(self):
+    def test_an_overtime_figure_that_cannot_be_used_is_REFUSED_not_zeroed(self):
+        """
+        REVERSED on the owner's decision, 2026-08-28. This asserted the opposite
+        — that junk overtime fell back to ₹0 — and the fallback was the defect.
+
+        `5,000` typed with a comma is the case that decided it: `Decimal` cannot
+        read it, so the settlement saved ₹0, underpaid by ₹5,000, and the screen
+        showed the right number the whole time because the running total is
+        computed in the browser with `parseFloat`. Silent, and in the direction
+        that shorts the staff member.
+
+        It is the leave-days rule applied to the other typed box on the same
+        form: refused outright rather than clamped, because a fallback saves a
+        number nobody typed. **Don't restore the old assertion.**
+        """
         last = self._last_month()
         anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
-        for bad in ('abc', '-500', 'Infinity', '999999999999'):
+        for bad in ('abc', '-500', 'Infinity', '999999999999', '5,000', '₹2500'):
             SalaryPayment.objects.all().delete()
-            self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
-                             {f'leave_days_{anil.pk}': '0', f'overtime_{anil.pk}': bad})
-            self.assertEqual(SalaryPaymentLine.objects.get().overtime_amount, Decimal('0'),
-                             f"overtime={bad!r}")
+            resp = self.client.post(
+                reverse('salary_payment_form', args=[last.year, last.month]),
+                {f'leave_days_{anil.pk}': '0', f'overtime_{anil.pk}': bad}, follow=True)
+            self.assertFalse(SalaryPaymentLine.objects.exists(), f"overtime={bad!r}")
+            self.assertContains(resp, 'Overtime must be', msg_prefix=f"overtime={bad!r}")
+
+    def test_the_refusal_names_who_it_is_about(self):
+        """A settlement is seven rows; "something is wrong" is not an answer."""
+        last = self._last_month()
+        Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        ravi = Mechanic.objects.create(name='Ravi', current_salary=Decimal('18000'))
+        anil = Mechanic.objects.get(name='Anil')
+
+        resp = self.client.post(
+            reverse('salary_payment_form', args=[last.year, last.month]),
+            {f'leave_days_{anil.pk}': '0', f'leave_days_{ravi.pk}': '0',
+             f'overtime_{ravi.pk}': '5,000'}, follow=True)
+        self.assertContains(resp, 'Ravi (5,000)')
+
+    def test_an_empty_overtime_box_is_still_zero(self):
+        """
+        Somebody clearing the box means no overtime, not a mistake — and it is
+        the commonest thing to do to it, so refusing an empty one would make an
+        untouched settlement refuse itself.
+        """
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0', f'overtime_{anil.pk}': '   '})
+
+        line = SalaryPaymentLine.objects.get()
+        self.assertEqual(line.overtime_amount, Decimal('0'))
+        self.assertEqual(line.net_amount, Decimal('20000.00'))
+
+    def test_a_bad_leave_day_and_a_bad_overtime_are_reported_together(self):
+        """One pass, not one round trip per mistake."""
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        resp = self.client.post(
+            reverse('salary_payment_form', args=[last.year, last.month]),
+            {f'leave_days_{anil.pk}': '-3', f'overtime_{anil.pk}': 'abc'}, follow=True)
+
+        self.assertFalse(SalaryPaymentLine.objects.exists())
+        self.assertContains(resp, 'Leave days must be between')
+        self.assertContains(resp, 'Overtime must be')
+
+    def test_the_bound_in_the_message_is_read_from_the_column(self):
+        """
+        Restating it would let the message drift from what is actually accepted
+        — the rule `parse_money` itself follows.
+        """
+        from decimal import Decimal as D
+        field = SalaryPaymentLine._meta.get_field('overtime_amount')
+        # Floored to whole rupees, never rounded: `:,.0f` on the true ceiling
+        # of 99,999,999.99 prints 100,000,000, which the guard rejects — so the
+        # message would name a bound that does not work.
+        limit = D(10) ** (field.max_digits - field.decimal_places) - 1
+
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        resp = self.client.post(
+            reverse('salary_payment_form', args=[last.year, last.month]),
+            {f'leave_days_{anil.pk}': '0', f'overtime_{anil.pk}': 'abc'}, follow=True)
+        self.assertContains(resp, f'{limit:,.0f}')
+
+    def test_a_real_overtime_figure_with_paise_still_goes_through(self):
+        """
+        The guard refuses what cannot be used and nothing else — a plain amount,
+        decimals included, is untouched.
+
+        Deliberately NOT asserted at the column's own ceiling: `net_amount` is
+        the same numeric(10,2), so an overtime near that ceiling overflows the
+        NET it is added to. That edge predates this guard (any overtime above
+        ~₹99,98,0000 did it before too) and needs an authenticated user typing a
+        figure no workshop has, so it is left alone rather than answered with
+        per-row conditional bounds.
+        """
+        last = self._last_month()
+        anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_payment_form', args=[last.year, last.month]),
+                         {f'leave_days_{anil.pk}': '0', f'overtime_{anil.pk}': '2450.75'})
+
+        line = SalaryPaymentLine.objects.get()
+        self.assertEqual(line.overtime_amount, Decimal('2450.75'))
+        self.assertEqual(line.net_amount, Decimal('22450.75'))
 
     def test_the_form_offers_an_overtime_box(self):
         last = self._last_month()
