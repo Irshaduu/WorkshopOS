@@ -252,6 +252,11 @@ urlpatterns = [
     path('analysis/insights/<str:section>/', analysis_views.analysis_insight_section, name='analysis_insight_section'),
 
     # ------------------
+    # ABOUT (Owner Only)
+    # ------------------
+    path('about/', views.about, name='about'),
+
+    # ------------------
     # DATA CLEANUP TOOL
     # ------------------
     path('manage/cleanup/', cleanup_views.data_cleanup_view, name='data_cleanup'),

@@ -1,0 +1,719 @@
+{% extends 'workshop/base.html' %}
+
+{% block title %}About{% endblock %}
+{% block body_class %}about-dark{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ===========================================================================
+   ABOUT — what is in the system, top to bottom.
+
+   FULLY DARK, on the owner's call. It was a dark map dropped on the app's
+   light surface, and the seam between them was the loudest edge on the page —
+   the eye landed on the join rather than on the drawing. The whole page now
+   sits on the map's own ground, so the schematic reads as part of the page
+   instead of pasted onto it.
+
+   The six flow colours are the DARK ones, straight off the map's palette, so
+   the legend in the header is a key to everything under it.
+
+   Only this page is dark. It carries no forms and no money, and it is the one
+   screen whose job is to be looked at rather than worked — nowhere else in
+   the app should follow it.
+   =========================================================================== */
+
+body.about-dark {
+    background: #0a111f;
+    color: #f2f6fb;
+}
+
+.about-wrap {
+    --ab-panel: #111a2b;   /* the map's own ground — the frame sits flush   */
+    --ab-card:  #18233c;
+    --ab-line:  #2c3d5e;
+    --ab-ink:   #f2f6fb;
+    --ab-mute:  #9fb0c8;
+
+    --ab-work:  #54cbff;   /* cars & job cards   */
+    --ab-in:    #4ce0a6;   /* money coming in    */
+    --ab-out:   #ff8f8f;   /* money going out    */
+    --ab-stock: #bda4ff;   /* parts & the shelf  */
+    --ab-data:  #adbdd2;   /* what you read      */
+    --ab-alert: #ffcb45;   /* rules & access     */
+}
+
+/* --- the map ------------------------------------------------------------ */
+/* Square, because the drawing inside it is: the whole schematic is built on
+   90-degree corners, and a 14px radius around it was the one curve on screen. */
+.ab-map {
+    background: var(--ab-panel);
+    border: 1px solid var(--ab-line);
+    border-radius: 0;
+    overflow: hidden;
+    line-height: 0;                 /* an inline SVG otherwise adds a strut  */
+}
+.ab-map svg { display: block; width: 100%; height: auto; }
+
+/* The map is ONE fixed drawing at every width — it never reflows, and on a
+   phone it is simply small. Saying so is the whole difference between "too
+   small" and "pinch it". Shown only where it is true. */
+.ab-zoom {
+    display: none;
+    align-items: center; gap: 7px;
+    font-size: 0.74rem; color: var(--ab-mute);
+    margin: 9px 2px 0;
+}
+@media (max-width: 900px) { .ab-zoom { display: flex; } }
+
+/* --- opening line ------------------------------------------------------- */
+.ab-intro {
+    margin: 34px 0 38px;
+    padding-left: 15px;
+    border-left: 3px solid var(--ab-work);
+}
+.ab-intro h1 {
+    font-size: 1.36rem; font-weight: 800;
+    color: var(--ab-ink); margin: 0 0 7px;
+    letter-spacing: -0.01em;
+}
+.ab-intro p {
+    margin: 0; font-size: 0.95rem; line-height: 1.65;
+    color: var(--ab-mute); max-width: 58ch;
+}
+
+/* --- a family of sections ----------------------------------------------- */
+.ab-fam { margin: 0 0 38px; }
+.ab-fam-head { display: flex; align-items: center; gap: 10px; margin: 0 0 15px; }
+.ab-fam-bar { flex: 0 0 4px; width: 4px; height: 20px; background: var(--fam); }
+.ab-fam-head h2 {
+    font-size: 0.77rem; font-weight: 800;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--fam); margin: 0;
+}
+.ab-fam-head span {
+    font-size: 0.75rem; color: #64748b;
+    margin-left: auto; text-align: right;
+}
+
+/* Two across from 640px — the app's own phone line, so "mobile" means the
+   same width here as it does for the nav bar. */
+.ab-grid { display: grid; grid-template-columns: 1fr; gap: 11px; }
+@media (min-width: 640px) { .ab-grid { grid-template-columns: 1fr 1fr; } }
+
+.ab-card {
+    background: var(--ab-card);
+    border: 1px solid var(--ab-line);
+    border-radius: 4px;
+    padding: 15px 16px 14px;
+}
+.ab-card h3 {
+    font-size: 0.95rem; font-weight: 800;
+    color: var(--ab-ink); margin: 0 0 5px;
+}
+.ab-card > p {
+    margin: 0 0 10px; font-size: 0.85rem; line-height: 1.55;
+    color: var(--ab-mute);
+}
+.ab-card ul { margin: 0; padding: 0; list-style: none; }
+.ab-card li {
+    position: relative; padding-left: 16px;
+    font-size: 0.83rem; line-height: 1.55;
+    color: #dce5f0; margin-bottom: 6px;
+}
+.ab-card li:last-child { margin-bottom: 0; }
+.ab-card li::before {
+    content: ''; position: absolute; left: 0; top: 0.55em;
+    width: 5px; height: 5px; background: var(--fam); opacity: 0.75;
+}
+.ab-card strong { color: var(--ab-ink); font-weight: 700; }
+
+/* A card carrying the family's own idea rather than one screen. */
+.ab-card--key {
+    background: color-mix(in srgb, var(--fam) 11%, #18233c);
+    border-color: color-mix(in srgb, var(--fam) 34%, #2c3d5e);
+}
+.ab-card--key h3 { color: var(--fam); }
+
+@media (min-width: 640px) { .ab-card--wide { grid-column: 1 / -1; } }
+
+/* --- closing note ------------------------------------------------------- */
+.ab-foot {
+    margin: 4px 0 0; padding: 15px 17px;
+    border: 1px dashed var(--ab-line);
+    font-size: 0.82rem; line-height: 1.65; color: var(--ab-mute);
+}
+.ab-foot b { color: var(--ab-ink); font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="about-wrap">
+
+{% comment %}
+The drawing is GENERATED — scratchpad/build_system_map.py writes this partial
+from the same coordinates as the printed A4 sheet, so the two can never
+disagree. Do not paste an <svg> here.
+{% endcomment %}
+<div class="ab-map">{% include 'workshop/includes/_system_map_svg.html' %}</div>
+<div class="ab-zoom">
+    <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+    <span>Pinch to zoom in on any part of the map.</span>
+</div>
+
+<div class="ab-intro">
+    <h1>What&rsquo;s in here</h1>
+    <p>
+        The system holds the whole workshop &mdash; the cars, the parts, the
+        money and the people. Everything below is what exists today, in plain
+        words. The map above is the same thing as a drawing.
+    </p>
+</div>
+
+
+<!-- ══════════════════ THE CAR'S DAY ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-work);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>The car&rsquo;s day</h2>
+        <span>Admitted &rarr; settled</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card ab-card--wide">
+            <h3>Job Card</h3>
+            <p>One car, one card. Everything about a visit lives on it.</p>
+            <ul>
+                <li>Only one open card per number plate at a time</li>
+                <li>Seven parts to it: the vehicle, the customer, what they complained about, what you did, shop parts, shelf parts, photos</li>
+                <li>Labour is one figure for the whole job, not a price per line</li>
+                <li>The floor fills it in and never sees a price &mdash; that is enforced on the server, not just hidden</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Estimate</h3>
+            <p>A quote you hand over before anything starts.</p>
+            <ul>
+                <li>Joined to nothing else &mdash; quoting a part moves no stock and no money</li>
+                <li>When the car really comes in, the job card is typed fresh</li>
+                <li>Clearing a line&rsquo;s name is how you delete it, so nothing is lost to a stray tap</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Completed &amp; Invoice</h3>
+            <p>Work finished, and the bill can be settled.</p>
+            <ul>
+                <li>The <strong>floor</strong> marks a car completed &mdash; only office can undo it</li>
+                <li>That is what moves it into Pending Bills, ready to settle</li>
+                <li>One A4 sheet, both kinds of part in a single list</li>
+                <li>Shelf parts print as what they are, never the brand you buy</li>
+                <li>A settled bill gets a small paid stamp; an unpaid one gets nothing</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>The settle check</h3>
+            <p>Before you take money, a quiet list of what&rsquo;s still blank.</p>
+            <ul>
+                <li>It never blocks you &mdash; it just says what&rsquo;s missing</li>
+                <li>Worth a look, because a settled bill locks itself</li>
+                <li>It only appears when there is actually something to say</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Where you watch it</h3>
+            <p>Screens for the day, not for the books.</p>
+            <ul>
+                <li><strong>Dashboard</strong> &mdash; what&rsquo;s on the floor now, and how far along</li>
+                <li><strong>Live Report</strong> &mdash; parts still waiting, who&rsquo;s holding what, and any bill that went out with gaps</li>
+                <li><strong>Car Profiles</strong> &mdash; everything a number plate has ever done here</li>
+            </ul>
+        </div>
+
+        <div class="ab-card ab-card--wide">
+            <h3>Looking something up</h3>
+            <p>Two searchable lists, for when you need an old one.</p>
+            <ul>
+                <li><strong>Job Cards</strong> &mdash; every card, searchable and filterable by date</li>
+                <li><strong>Estimates</strong> &mdash; every quote written, this year or all of them</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ PARTS & STOCK ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-stock);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>Parts &amp; stock</h2>
+        <span>Two routes</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card ab-card--key ab-card--wide">
+            <h3>A part reaches a car one of two ways</h3>
+            <p>This is the idea the whole parts side is built on.</p>
+            <ul>
+                <li>Bought from a <strong>spare shop</strong> for that car</li>
+                <li>Taken off your own <strong>shelf</strong></li>
+                <li>Either way it is charged <strong>once</strong> &mdash; the day it goes on the car, never the day it was delivered</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Spare Shops</h3>
+            <p>What you owe each shop, and what you&rsquo;ve paid.</p>
+            <ul>
+                <li>Every purchase sits on that shop&rsquo;s ledger until it&rsquo;s settled</li>
+                <li>A shop can&rsquo;t be put away while money is still owed</li>
+                <li>An old shop stays attached to what you already bought from it</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Unassigned parts</h3>
+            <p>Things that arrived but aren&rsquo;t on a car yet.</p>
+            <ul>
+                <li>The floor can record one the moment it&rsquo;s delivered</li>
+                <li>Office fills the price in later</li>
+                <li>Blank price means nobody has said yet &mdash; not that it was free</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Warehouse</h3>
+            <p>Your own shelf.</p>
+            <ul>
+                <li>Stock moves by itself &mdash; bills add, job cards take</li>
+                <li>Nobody types a stock number anywhere in the system</li>
+                <li>It can go below zero, and that means a bill is missing &mdash; not that you&rsquo;re running low</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Supplies Shops &amp; bills</h3>
+            <p>Where the shelf gets filled.</p>
+            <ul>
+                <li>A delivery raises the shelf and what you owe &mdash; it isn&rsquo;t a cost yet</li>
+                <li>The cost lands the day a mechanic takes the part</li>
+                <li>A discount spreads across the bill&rsquo;s lines, so shelf cost stays honest</li>
+                <li>A bill dated back before an old job card corrects that job&rsquo;s cost too</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>What a part is called</h3>
+            <p>Two lists that decide the names.</p>
+            <ul>
+                <li><strong>Categories</strong> &mdash; the plain name for a part, and what prints on the customer&rsquo;s bill</li>
+                <li><strong>Shop catalogue</strong> &mdash; which products each supplies shop actually sells</li>
+                <li>A product dropped from a catalogue stays on old bills, greyed out</li>
+            </ul>
+        </div>
+
+        <div class="ab-card ab-card--wide">
+            <h3>Keeping an eye on it</h3>
+            <p>Three small screens that answer themselves.</p>
+            <ul>
+                <li><strong>Low Stock</strong> &mdash; anything under a quarter of what you normally keep. A minus is shown separately, because that&rsquo;s a missing bill, not a shortage</li>
+                <li><strong>Stock History</strong> &mdash; who took what, and when</li>
+                <li><strong>Average cost</strong> &mdash; what the shelf actually paid, worked out again from scratch every time a bill changes</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ MONEY COMING IN ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-in);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>Money coming in</h2>
+        <span>Bills &amp; fleets</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card">
+            <h3>Pending Bills</h3>
+            <p>Cars handed over and not yet settled.</p>
+            <ul>
+                <li>Only cars that have actually gone out &mdash; nothing still on the floor</li>
+                <li>Fleet cars aren&rsquo;t here; they sit on their own account</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Paid Bills</h3>
+            <p>Settled, filed by the day the money came in.</p>
+            <ul>
+                <li>Editing an old bill never drags it back to today</li>
+                <li>A walk-in pays once, at pickup &mdash; anything short of the full bill is recorded as a discount</li>
+            </ul>
+        </div>
+
+        <div class="ab-card ab-card--wide">
+            <h3>Fleet Accounts</h3>
+            <p>Customers who pay later, across many cars at once.</p>
+            <ul>
+                <li>One payment spreads over the oldest bills first</li>
+                <li>Pay more than owed and the extra waits as credit for next time</li>
+                <li>Part paid only ever happens here &mdash; a walk-in is either settled or not</li>
+                <li>Undoing a payment goes newest first, so nothing gets tangled</li>
+                <li>An account holding unsettled cars can&rsquo;t be put away</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ MONEY GOING OUT ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-out);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>Money going out</h2>
+        <span>Shops, wages &amp; the day-to-day</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card">
+            <h3>Cashbook</h3>
+            <p>Rent, power, tea, scrap &mdash; the day-to-day.</p>
+            <ul>
+                <li>One list, money in and out together</li>
+                <li>Dated by the day the money moved, not the day you typed it</li>
+                <li>A new heading snaps to a spelling already in use, so one cost stays one line</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Salary &amp; Advance</h3>
+            <p>Wages, month by month.</p>
+            <ul>
+                <li>Advances already handed out come off the settlement</li>
+                <li>Settle the finished month first, then change anyone&rsquo;s pay</li>
+                <li>Once a newer month is settled, the older one closes for good</li>
+                <li>A settled month&rsquo;s advances are frozen &mdash; in and out</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Paying the shops</h3>
+            <p>Clearing what you owe, on their own rhythm.</p>
+            <ul>
+                <li>Oldest bills first, on both kinds of shop</li>
+                <li>It settles a debt &mdash; it never moves profit</li>
+                <li>The part was already counted the day it went on a car</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Discount Audit</h3>
+            <p>Every bill that went out light, in one list.</p>
+            <ul>
+                <li>Anything more than &#8377;3,500 off</li>
+                <li>You&rsquo;re asked to confirm at the counter before it happens</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ WHAT YOU READ ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-data);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>What you read</h2>
+        <span>Owner only</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card">
+            <h3>Profit</h3>
+            <p>Turnover, less what the work cost. The distribution number.</p>
+            <ul>
+                <li>The sum is printed on the screen, so you can follow it</li>
+                <li>It says out loud when something is missing &mdash; an unsettled wage month, a part with no cost yet</li>
+                <li>Then the same profit again, broken down by what earned it</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Cash Tracking</h3>
+            <p>What actually moved, by the day it moved.</p>
+            <ul>
+                <li>Sits apart from profit on purpose &mdash; they answer different questions</li>
+                <li>It&rsquo;s the change over a period, never a bank balance</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Deep Analysis</h3>
+            <p>Eight views, one at a time.</p>
+            <ul>
+                <li>Mechanics, spare parts, stock, vehicles, fleets, shops, cashbook, operations</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Deletion History</h3>
+            <p>Every permanent delete, with who did it and why.</p>
+            <ul>
+                <li>There is no restore &mdash; bringing old money back would break running balances</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ NAMES & TIDYING ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-data);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>Names &amp; tidying up</h2>
+        <span>So one thing stays one thing</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card">
+            <h3>Master lists</h3>
+            <p>Car brands, models, spare names and common complaints.</p>
+            <ul>
+                <li>The list decides the spelling &mdash; type it any way, it saves the tidy one</li>
+                <li>Deleting a name touches no old card; it comes back the next time somebody types it</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>It learns as you type</h3>
+            <p>Suggestions come from what the workshop has really used.</p>
+            <ul>
+                <li>A new name is picked up on its own, no setup</li>
+                <li>Job lines are suggested from the parts already on that card</li>
+            </ul>
+        </div>
+
+        <div class="ab-card ab-card--wide">
+            <h3>Data Cleanup</h3>
+            <p>The same names again, this time with a count beside each &mdash; so a
+               duplicate stands out.</p>
+            <ul>
+                <li>Every spare name and every common complaint, and how often each has really been used</li>
+                <li>A name used twice and a near-copy used once is usually one thing spelt two ways</li>
+                <li>Rename or merge from here, and old cards follow &mdash; correcting &ldquo;Toyta&rdquo; to &ldquo;Toyota&rdquo; reaches every card already recorded that way</li>
+                <li>Merging is confirmed first, and shows exactly what carries over and what is dropped</li>
+                <li>It moves no money and no stock &mdash; only names</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ GETTING IN ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-alert);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>Getting in</h2>
+        <span>Accounts &amp; who sees what</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card ab-card--key ab-card--wide">
+            <h3>Three levels</h3>
+            <p>And the rules are enforced on the server, not just hidden on screen.</p>
+            <ul>
+                <li><strong>Owner</strong> &mdash; everything</li>
+                <li><strong>Office</strong> &mdash; the day&rsquo;s work and the money, but not the owner&rsquo;s screens</li>
+                <li><strong>Floor</strong> &mdash; the work, and never a price</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Signing in</h3>
+            <p>One door, and it names no roles.</p>
+            <ul>
+                <li>Staff sign in with a username, an email or a mobile number</li>
+                <li><strong>An owner must use their email address</strong> &mdash; a username or the workshop&rsquo;s public phone number won&rsquo;t work, on purpose</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>If you&rsquo;re locked out</h3>
+            <p>Five wrong tries locks that account for fifteen minutes.</p>
+            <ul>
+                <li>An owner can lift a staff lock straight away from Control Hub</li>
+                <li>There&rsquo;s a second, looser limit for the whole connection, so one fumbled password on the tablet never locks everyone out</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Forgotten password</h3>
+            <p>A six-digit code by email, for owners.</p>
+            <ul>
+                <li>The code is in the subject line, so you can read it off the notification</li>
+                <li>It expires, works once, and clears your lockout when you use it</li>
+                <li>Owners cannot reset each other &mdash; this is the way back</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Devices</h3>
+            <p>Every signed-in device, and where from.</p>
+            <ul>
+                <li>You can sign one out remotely if a phone goes missing</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Control Hub</h3>
+            <p>Owner-only. Logins, staff and security in one place.</p>
+            <ul>
+                <li>Create or remove a login, reset a staff password, lift a lock</li>
+                <li>Owner accounts aren&rsquo;t managed here &mdash; that&rsquo;s the emailed code</li>
+            </ul>
+        </div>
+
+        <div class="ab-card ab-card--wide">
+            <h3>The staff roster</h3>
+            <p>Everyone on the payroll, not just mechanics.</p>
+            <ul>
+                <li>Mechanics, assistant mechanics, office staff and helpers</li>
+                <li>Only a mechanic or assistant can be put on a job card as the lead</li>
+                <li>People are retired, never deleted &mdash; their old job cards stay exactly as they were</li>
+                <li>Retiring someone still holding advances warns you at that moment, not days later</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ WHAT KEEPS IT HONEST ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-alert);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>What keeps it honest</h2>
+        <span>Quietly, in the background</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card">
+            <h3>The financial lock</h3>
+            <p>A settled bill stops moving.</p>
+            <ul>
+                <li>You can unlock one deliberately if you have to</li>
+                <li>The numbers behind it get put straight afterwards</li>
+                <li>A settled card&rsquo;s photos lock with it &mdash; still viewable, not changeable</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>The seven-day window</h3>
+            <p>Office can undo a recent mistake. Anything older is yours.</p>
+            <ul>
+                <li>Counted from when it was typed in, not the date on the money</li>
+                <li>Nobody is blocked &mdash; it just comes to you instead, and says so by name</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Amounts and dates</h3>
+            <p>Small checks that stop quiet damage.</p>
+            <ul>
+                <li>Every typed amount is checked before it is saved</li>
+                <li>A part can&rsquo;t arrive before it was ordered, and no date can be in the future</li>
+                <li>Money is filed by the day it moved, so a late entry lands in the right month</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Put away, don&rsquo;t delete</h3>
+            <p>Shops, fleet accounts and staff are archived, never removed.</p>
+            <ul>
+                <li>Their history stays exactly as it was</li>
+                <li>Putting one away is refused while money is still owed</li>
+                <li>Real deletes are permanent, and every one is written down</li>
+            </ul>
+        </div>
+
+        <div class="ab-card ab-card--wide">
+            <h3>Alerts</h3>
+            <p>The handful of things worth a buzz reach your phone.</p>
+            <ul>
+                <li>Deletes, big discounts, lockouts, staff signing in</li>
+                <li>Owners only &mdash; and never for something you did yourself</li>
+                <li>Kept short deliberately: a phone that buzzes for everything stops being read</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ THE APP ITSELF ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-work);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>The app itself</h2>
+        <span>Underneath</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card">
+            <h3>On your phone</h3>
+            <p>Add it to the home screen and it behaves like an app.</p>
+            <ul>
+                <li>No address bar, opens straight to the workshop</li>
+                <li>On an iPhone, alerts only work once it&rsquo;s installed that way</li>
+                <li>If the connection drops, it says so instead of looking broken</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Photos</h3>
+            <p>A car or a part, straight from the camera.</p>
+            <ul>
+                <li>One tap per shot &mdash; no reviewing, and it tells you if one fails</li>
+                <li>Kept off to one side, so a slow upload never holds up saving a card</li>
+                <li>Kept a year &mdash; except on a bill nobody has paid, where they stay</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Backups</h3>
+            <p>Taken automatically, the last fourteen kept.</p>
+            <ul>
+                <li>Everything lives in one database, photos aside</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Email</h3>
+            <p>Used for one thing only.</p>
+            <ul>
+                <li>Password reset codes &mdash; nothing else is ever sent</li>
+                <li>No messages go to customers from here</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+<p class="ab-foot">
+    The map at the top is the same drawing that prints on one A4 sheet &mdash;
+    every box in the system and the lines between them. The colours match the
+    sections above: <b>blue</b> is the car&rsquo;s day, <b>purple</b> is parts
+    and stock, <b>green</b> is money in, <b>red</b> is money out, <b>grey</b>
+    is what you read, <b>amber</b> is access and the rules.
+</p>
+
+</div>
+{% endblock %}

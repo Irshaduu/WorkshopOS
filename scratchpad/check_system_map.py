@@ -106,4 +106,32 @@ for i in range(len(runs)):
 fail += pairs
 print('5. confusable parallel runs:', pairs or 'none')
 
+# 6. Every TAP must actually land on the trunk it is feeding.
+#
+# This check exists because it was missed: the trunk was not in `links` at all,
+# so nothing looked at it, and a tap ending 31px short of the rail's start
+# shipped as a coral line with a terminal node floating in clear space under
+# CONTROL HUB. Caught by eye, on the rendered sheet, which is exactly the kind
+# of thing this file is supposed to make unnecessary.
+trunk_segs = []
+for a, b, pts in L:
+    if a == 'trunk':
+        trunk_segs += [(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
+
+
+def on_segment(pt, seg, tol=1.5):
+    (x0, y0), (x1, y1) = seg
+    if abs(x0 - x1) < tol:                       # vertical
+        return abs(pt[0] - x0) <= tol and min(y0, y1) - tol <= pt[1] <= max(y0, y1) + tol
+    if abs(y0 - y1) < tol:                       # horizontal
+        return abs(pt[1] - y0) <= tol and min(x0, x1) - tol <= pt[0] <= max(x0, x1) + tol
+    return False
+
+
+floating = [a for a, b, pts in L
+            if b is None and a != 'trunk'
+            and not any(on_segment(pts[-1], s) for s in trunk_segs)]
+fail += len(floating)
+print('6. taps not landing on the trunk:', floating or 'none')
+
 print('\nALL CLEAR' if not fail else '\n%d PROBLEM(S)' % fail)

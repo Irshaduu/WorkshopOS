@@ -3463,6 +3463,52 @@ invisible.
 → `test_every_drawer_destination_lights_the_manage_button` scrapes the drawer's own
 links and asserts every one is covered, so the next section added fails loudly.
 
+**ABOUT is the LAST drawer entry, Owner-only, and it CARRIES NO LINKS.**
+`/about/` — a static, query-free tour of what is in the system: the generated
+system map as its header, then every section in short plain English.
+
+Four things about it, each a decision rather than a default:
+
+- **Owner-only**, matching `@owner_required` on the view. It describes Profit,
+  Cash Tracking, Deletion History and both shop ledgers, and a tour of doors a
+  role cannot open is the same defect as rendering one — the rule the audit
+  menu and the frozen-advance ⋮ already follow.
+- **No links, no buttons, no forms anywhere in the body.** The brief was
+  "scroll and read all". A page of shortcuts into other sections is a second
+  menu, and the drawer it was opened from is the menu.
+  → `test_it_carries_no_links_at_all` scopes to the page's own `<section>`
+  blocks, so `base.html`'s nav and logout form are not counted.
+- **The map is an `{% include %}` of a GENERATED partial**, never a pasted
+  `<svg>` — see the SYSTEM_MAP entry in the doc ownership map for why.
+- **The map is ONE fixed drawing at every width.** It does not reflow, and on
+  a phone it is genuinely tiny — the owner's explicit call, with pinch-zoom as
+  the answer. That only works because `base.html`'s viewport meta sets no
+  `user-scalable=no` and no `maximum-scale`; **do not add either.** A "pinch to
+  zoom" hint renders under it below 900px and nowhere else.
+- **The page is FULLY DARK, and it is the only one.** It shipped as a dark map
+  on the app's light surface, and the seam was the loudest edge on screen —
+  the eye landed on the join rather than on the drawing. The whole page now
+  sits on the map's own ground (`body.about-dark`), and the six family rails
+  are the map's own DARK flow colours, so the header's legend is a key to
+  everything under it. **Nothing else in the app follows it**: this is the one
+  screen that carries no form and no money and exists to be looked at. The
+  map frame is **square** (`border-radius: 0`), because the schematic inside
+  it is built entirely on 90-degree corners.
+- **It says "the system", never the product name.** WorkshopOS and Titan are
+  the owner's own words for it and are kept out of the page's prose — and off
+  the map's title block, which reads SYSTEM MAP.
+  → `test_it_does_not_use_the_owner_s_own_names_for_the_system`
+- **Every card on the map is described somewhere on the page.** The map is the
+  page in a drawing, so a box on the sheet with nothing said about it is a
+  gap. Nine families, ~43 cards.
+  → `test_it_covers_every_area_the_map_draws`
+
+  ⚠ A reflowing HTML version was built first and rejected. Measured: the A4
+  sheet's 8.8px card titles render at **2.34px** on a 375px phone. That is the
+  known, accepted cost, not an oversight — do not "fix" it by making the map
+  responsive, which would un-make it as the printed sheet.
+→ `workshop/tests/test_about.py`
+
 **Logout is confirmed, and there is exactly one logout control in the whole app.**
 The drawer button is a `data-bs-toggle="modal"` trigger; the POST form lives in
 `#logoutConfirmModal`, which sits **outside** the off-canvas — a modal nested
@@ -5568,8 +5614,55 @@ Chrome with `--no-pdf-header-footer`, which never adds them, so
 `python scratchpad/build_system_map.py` writes all four files; the PDF step is
 skipped with a note if no Chrome or Edge is installed.
 
+⚠ **There is a FIFTH output, and it is a Django template.** The dark sheet is
+also written to `workshop/templates/workshop/includes/_system_map_svg.html`,
+which the **About page** includes as its header. It is the same geometry from
+the same run — a pasted `<svg>` would be a second set of coordinates free to
+drift from the printed sheet, and the drift would be invisible, because both
+would still look like a map. **Never hand-edit that partial**; it is
+overwritten on the next build. Only the font differs: the standalone files
+load Inter from a CDN, and the app is third-party-free, so the embed asks for
+the vendored Barlow instead.
+
+⚠ **Never write the card or connector counts down.** They were stamped along
+the bottom edge of the sheet ("REV 4.0 · A4-L · 66 MODULES · 39 SIGNALS") as a
+hard-coded literal, which was wrong the moment a card was added; deriving them
+fixed that, and then the **stamp itself was removed** on the owner's call —
+nobody reads a module count off a drawing, and at 5.5px it was a smudge rather
+than a fact. `build_system_map.py` **prints both counts on every run**, which
+is where they are actually useful. The module docstring carried the same stale
+pair once too.
+
+⚠ **ANYTHING DRAWN THAT READS AS A CONNECTION MUST GO INTO `links`.** The
+expense trunk did not, for months — `trunk()` drew a path and appended
+nothing — so the checker could not see it, and a tap ending **31px short of
+the rail's own start** shipped as a coral line with a terminal node floating
+in clear space under CONTROL HUB. Found by eye on the rendered sheet, which is
+exactly what this file exists to make unnecessary. `trunk()` now appends, and
+**check 6 asserts every tap actually lands on it** (verified by reintroducing
+the bug and watching it fail). The checker is only ever as good as what it is
+shown.
+
+⚠ **The drafting rulers and the zone numbers are GONE, deliberately.** A–I
+across the top, 1–6 down the side, and a numbered circle per zone: nothing on
+this map is ever referenced by grid square, and the zone circles printed a
+number with no legend anywhere saying what `04` meant. `zone()` is kept as a
+no-op call so the zone declarations still read as the layout's structure. The
+title block reads **SYSTEM MAP**, not the product name — the owner's own names
+for the system stay off the drawing.
+
+⚠ **AN ARROW IN A STATE STRIP IS A CLAIM, and two of them were false.**
+`states()` takes `breaks` — the gaps that get no arrow. **ON HOLD** is a side
+state a car drops into and comes back from, not a step between WORKING and
+COMPLETED; and **PART PAID only ever happens to a fleet card**, because a
+walk-in pays once at pickup and any shortfall becomes a discount. So the BILL
+row is `PENDING → PAID` and, separately, `PART PAID → FLEET PAID`. There is
+deliberately **no SETTLED on the CARD row**: settlement is the *bill's* state
+and is already there as PAID / FLEET PAID. The two rows are two things, which
+is why they are two rows.
+
 **Run `scratchpad/check_system_map.py` after any change.** It re-runs the
-generator and checks the five things that are invisible by eye at this density —
+generator and checks the six things that are invisible by eye at this density —
 connectors cutting through unrelated cards, connectors missing their target,
 anything off-canvas, overlaps, and **long same-colour lines running parallel and
 close**. Each of those has caught a real defect:

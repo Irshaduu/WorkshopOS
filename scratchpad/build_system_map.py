@@ -4,10 +4,16 @@ system blueprint of WorkshopOS, in light and dark themes from one set of coordin
 
 WHY THIS IS GENERATED RATHER THAN HAND-WRITTEN
 ----------------------------------------------
-The map is ~56 cards and ~31 connectors on a fixed A4-landscape canvas (1414 x 1000).
-A zone declares its grid and cards fall into it; connectors are drawn between
-named anchors rather than typed coordinates, so moving a card moves its lines with it.
+Cards and connectors sit on a fixed A4-landscape canvas (1414 x 1000). A zone
+declares its grid and cards fall into it; connectors are drawn between named
+anchors rather than typed coordinates, so moving a card moves its lines with it.
 The two themes are the same geometry with different palettes - they cannot drift apart.
+
+DO NOT WRITE THE COUNTS DOWN HERE. The build prints them on every run, which is
+where they are useful. Every hard-coded count in this project's docs has gone
+stale, and this docstring was no exception. (They were also stamped along the
+bottom edge of the sheet until 2026-08-29 - removed, because nobody reads a
+module count off a drawing.)
 
 PURE SQUARE ARCHITECTURAL SCHEMATIC
 -----------------------------------
@@ -62,39 +68,45 @@ THEMES = {
         },
         THEME_NAME='LIGHT BLUEPRINT'
     ),
+    # Brightened 2026-08-29 on the owner's instruction ("page so dim now").
+    # Four things were doing the dimming and all four were lifted together:
+    # the CARD fill sat only 10 steps off the GROUND, the borders were #334155
+    # against it, every card carried a 40%-opacity drop shadow, and a black
+    # radial vignette lay over the whole canvas at 25%. Lifting only the text
+    # would have left the cards themselves reading as holes.
     'dark': dict(
         out='SYSTEM_MAP_DARK.html',
-        INK='#f8fafc',
-        INK_SEC='#e2e8f0',
-        MUTED='#94a3b8',
-        FAINT='#64748b',
-        LINE='#334155',
-        LINE_ACCENT='#475569',
-        GROUND='#0b0f19',
-        GROUND_ALT='#080b12',
-        CARD='#151d30',
-        CARD_INNER='#0e1526',
-        CHROME='#030712',
-        GRID='#1e293b',
-        GRID_OPACITY='0.45',
-        SHADOW='rgba(0,0,0,.75)',
-        CARD_SHADOW='0 4px 12px rgba(0,0,0,0.4)',
-        BEVEL_TOP='rgba(255,255,255,0.07)',
+        INK='#ffffff',
+        INK_SEC='#eef3fa',
+        MUTED='#adbdd2',      # was #94a3b8 - sub-labels are the smallest type here
+        FAINT='#8496b0',      # was #64748b - grid refs and rulers
+        LINE='#4a5d7e',       # was #334155 - card borders now read against CARD
+        LINE_ACCENT='#65799b',
+        GROUND='#111a2b',     # was #0b0f19 - off pure black, so cards can sit above it
+        GROUND_ALT='#0c1322',
+        CARD='#1f2c47',       # was #151d30 - the single biggest lift
+        CARD_INNER='#18233c',
+        CHROME='#0a1120',
+        GRID='#2f4160',
+        GRID_OPACITY='0.55',
+        SHADOW='rgba(0,0,0,.55)',
+        CARD_SHADOW='0 3px 9px rgba(0,0,0,0.28)',
+        BEVEL_TOP='rgba(255,255,255,0.13)',
         FLOW={
-            'work':  '#38bdf8',   # Electric Cyan Flow
-            'in':    '#34d399',   # Neon Emerald Inflow
-            'out':   '#f87171',   # Coral Crimson Outflow
-            'stock': '#a78bfa',   # Radiant Purple Stock
-            'data':  '#94a3b8',   # Precision Silver Data
-            'alert': '#fbbf24',   # Solar Amber Audit
+            'work':  '#54cbff',   # Electric Cyan Flow
+            'in':    '#4ce0a6',   # Neon Emerald Inflow
+            'out':   '#ff8f8f',   # Coral Crimson Outflow
+            'stock': '#bda4ff',   # Radiant Purple Stock
+            'data':  '#adbdd2',   # Precision Silver Data
+            'alert': '#ffcb45',   # Solar Amber Audit
         },
         FLOW_GLOW={
-            'work':  'rgba(56,189,248,0.3)',
-            'in':    'rgba(52,211,153,0.3)',
-            'out':   'rgba(248,113,113,0.3)',
-            'stock': 'rgba(167,139,250,0.3)',
-            'data':  'rgba(148,163,184,0.2)',
-            'alert': 'rgba(251,191,36,0.3)',
+            'work':  'rgba(84,203,255,0.34)',
+            'in':    'rgba(76,224,166,0.34)',
+            'out':   'rgba(255,143,143,0.34)',
+            'stock': 'rgba(189,164,255,0.34)',
+            'data':  'rgba(173,189,210,0.24)',
+            'alert': 'rgba(255,203,69,0.34)',
         },
         THEME_NAME='DARK SCHEMATIC'
     ),
@@ -183,7 +195,15 @@ def build(theme):
         links.append((a, b, draw(pts, kind)))
 
     def trunk(pts, kind):
-        """A high-definition architectural bus power rail."""
+        """The expense bus rail.
+
+        Appended to `links` like any connector, which it was NOT until
+        2026-08-29 - so check_system_map.py could not see it, and a tap
+        landing 31px short of the rail's own start shipped as a line floating
+        in space under CONTROL HUB. The checker is only as good as what it is
+        shown; anything drawn that a reader will read as a connection belongs
+        in this list.
+        """
         out = [pts[0]]
         for q in pts[1:]:
             if q != out[-1]:
@@ -196,6 +216,7 @@ def build(theme):
         add('<path d="%s" fill="none" stroke="%s" stroke-width="2.6" '
             'stroke-linecap="square" stroke-linejoin="miter" opacity=".95"/>'
             % (path_str, FLOW[kind]))
+        links.append(('trunk', None, out))
         return out
 
     def tap(cid, where, t, point, kind):
@@ -210,14 +231,17 @@ def build(theme):
 
     # --- pure square architectural primitives --------------------------------
     def zone(x, y, w, h, code, label, accent):
-        # Small circled zone reference indicator
-        num = code.split('.')[1].split()[0] if '.' in code else ''
-        cx, cy = x + 10, y + 12
-        add('<circle cx="%.1f" cy="%.1f" r="7.5" fill="none" stroke="%s" '
-            'stroke-width="0.6" opacity=".35"/>' % (cx, cy, accent))
-        add('<text x="%.1f" y="%.1f" font-size="6.5" font-weight="700" '
-            'text-anchor="middle" fill="%s" opacity=".45">%s</text>'
-            % (cx, cy + 2.2, accent, esc(num)))
+        """A zone is POSITION and COLOUR, and draws nothing of its own.
+
+        It used to stamp a small numbered circle - 01 through 08 - with no
+        legend anywhere on the sheet saying what a number meant. The cards
+        group themselves by where they sit and what colour they carry; a
+        reference number nobody can look up is decoration.
+
+        Kept as a call so the zone declarations still read as the layout's
+        structure, and so re-introducing a heading later is one edit here.
+        """
+        return
 
     def card(cid, x, y, w, h, title, chips=(), accent=INK, mark=None):
         anchors[cid] = (x, y, w, h)
@@ -246,7 +270,7 @@ def build(theme):
             cy += 9.6
         add('</g>')
 
-    def states(x, y, w, label, items, kind):
+    def states(x, y, w, label, items, kind, breaks=()):
         colour = FLOW[kind]
         # Label square badge
         add('<rect x="%s" y="%s" width="42" height="18" fill="%s" stroke="%s" stroke-width="0.8"/>'
@@ -269,18 +293,58 @@ def build(theme):
                 'text-anchor="middle" fill="%s">%s</text>'
                 % (px + 8 + (pw - 8) / 2, y + 12.5, INK_SEC, esc(it)))
             add('</g>')
-            if i < len(items) - 1:
-                # Inter-state connector arrow
+            # An arrow is a CLAIM that one state follows the other, and two of
+            # these rows are not sequences all the way along. ON HOLD is a side
+            # state a car can drop into and come back from, not a step between
+            # WORKING and COMPLETED; and PART PAID only ever happens to a fleet
+            # card - a walk-in pays once at pickup and any shortfall becomes a
+            # discount, so PENDING goes straight to PAID. `breaks` names the
+            # gaps that get no arrow, and the row reads as states rather than
+            # as a journey nobody takes.
+            if i < len(items) - 1 and i not in breaks:
                 add('<path d="M %.1f %s L %.1f %s" stroke="%s" stroke-width="1.3" '
                     'marker-end="url(#ar-%s)" opacity=".9"/>'
                     % (px + pw + 2, y + 9, px + pw + 10, y + 9, colour, kind))
             px += pw + 14
 
-    def grid(zx, zy, zw, zh, cols, rows, pad=10, top=32, gx=8, gy=8):
+    def card_h(n_chips):
+        """The height a card actually needs for its own contents.
+
+        Read straight off what card() draws: the title sits on a baseline at
+        y+16, the chips start at y+28 and step by 9.6. So n chips end at
+        y + 28 + 9.6*(n-1), and 7px below that closes the box. Anything taller
+        is empty space inside a card - which, on a sheet whose connectors have
+        to find their way between 56 of them, is space taken from the routing.
+        """
+        return 35.0 + 9.6 * (max(1, n_chips) - 1)
+
+    # Gutters widened from 8 to 13/11 once cards became content-sized. The
+    # space reclaimed from inside the cards is spent here, as real routing
+    # lanes between them - a connector that has to thread an 8px channel is
+    # legal by the checker and unreadable on the sheet.
+    def grid(zx, zy, zw, zh, cols, rows, pad=10, top=32, gx=13, gy=11, chips=None):
+        """Positions for a zone's cards.
+
+        Default: divide the zone evenly (cards stretch to fill it).
+        With `chips` - a list of per-card chip counts in the same order - each
+        ROW is instead only as tall as its tallest card, and whatever is left
+        over at the foot of the zone becomes routing corridor. Rows rather than
+        individual cards, so a row still reads as a row.
+        """
         cw = (zw - pad * 2 - gx * (cols - 1)) / cols
-        ch = (zh - top - pad - gy * (rows - 1)) / rows
-        return [(zx + pad + c * (cw + gx), zy + top + r * (ch + gy), cw, ch)
-                for r in range(rows) for c in range(cols)]
+        if chips is None:
+            ch = (zh - top - pad - gy * (rows - 1)) / rows
+            return [(zx + pad + c * (cw + gx), zy + top + r * (ch + gy), cw, ch)
+                    for r in range(rows) for c in range(cols)]
+
+        row_h = [card_h(max(chips[r * cols:(r + 1) * cols] or [1]))
+                 for r in range(rows)]
+        out, y = [], zy + top
+        for r in range(rows):
+            for c in range(cols):
+                out.append((zx + pad + c * (cw + gx), y, cw, row_h[r]))
+            y += row_h[r] + gy
+        return out
 
     # --- canvas background & CAD drafting grid -------------------------------
     # Single clean square background
@@ -299,12 +363,16 @@ def build(theme):
             % (k, c))
     # Card shadow filter (dark theme only)
     if theme == 'dark':
+        # Both were lifted in the 2026-08-29 brightening. The shadow is now a
+        # seating cue rather than a wash, and the vignette is faint enough to
+        # round the sheet off without darkening the outer zones - which is
+        # where ACCESS, RULES and CLOUD live, so it was dimming real content.
         add('<filter id="card-shadow" x="-2%%" y="-2%%" width="104%%" height="108%%">'
-            '<feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-color="#000" '
-            'flood-opacity="0.4"/></filter>')
-        add('<radialGradient id="vignette" cx="50%%" cy="50%%" r="72%%" fx="50%%" fy="50%%">'
-            '<stop offset="55%%" stop-color="#000" stop-opacity="0"/>'
-            '<stop offset="100%%" stop-color="#000" stop-opacity="0.25"/>'
+            '<feDropShadow dx="0" dy="1.2" stdDeviation="1.8" flood-color="#000" '
+            'flood-opacity="0.22"/></filter>')
+        add('<radialGradient id="vignette" cx="50%%" cy="50%%" r="78%%" fx="50%%" fy="50%%">'
+            '<stop offset="70%%" stop-color="#000" stop-opacity="0"/>'
+            '<stop offset="100%%" stop-color="#000" stop-opacity="0.10"/>'
             '</radialGradient>')
     add('</defs>')
 
@@ -315,36 +383,21 @@ def build(theme):
     add('<rect x="8" y="8" width="%s" height="%s" fill="none" stroke="%s" '
         'stroke-width="0.5" opacity=".4"/>' % (W - 16, H - 16, LINE_ACCENT))
 
-    # --- Coordinate Tick Marks (#6) -------------------------------------------
-    tick_cols, tick_rows = 10, 7
-    for i in range(1, tick_cols):
-        tx = 8 + i * (W - 16) / tick_cols
-        add('<line x1="%.1f" y1="8" x2="%.1f" y2="14" stroke="%s" '
-            'stroke-width="0.4" opacity=".35"/>' % (tx, tx, LINE_ACCENT))
-        add('<line x1="%.1f" y1="%s" x2="%.1f" y2="%s" stroke="%s" '
-            'stroke-width="0.4" opacity=".35"/>' % (tx, H - 8, tx, H - 14, LINE_ACCENT))
-        add('<text x="%.1f" y="6" font-size="4.5" text-anchor="middle" fill="%s" opacity=".3" '
-            'font-family="\'JetBrains Mono\', monospace" font-weight="600">%s</text>'
-            % (tx, MUTED, chr(64 + i)))
-    for i in range(1, tick_rows):
-        ty = 8 + i * (H - 16) / tick_rows
-        add('<line x1="8" y1="%.1f" x2="14" y2="%.1f" stroke="%s" '
-            'stroke-width="0.4" opacity=".35"/>' % (ty, ty, LINE_ACCENT))
-        add('<line x1="%s" y1="%.1f" x2="%s" y2="%.1f" stroke="%s" '
-            'stroke-width="0.4" opacity=".35"/>' % (W - 8, ty, W - 14, ty, LINE_ACCENT))
-        add('<text x="5" y="%.1f" font-size="4.5" text-anchor="middle" fill="%s" opacity=".3" '
-            'font-family="\'JetBrains Mono\', monospace" font-weight="600">%s</text>'
-            % (ty + 1.5, MUTED, str(i)))
+    # --- Coordinate rulers: REMOVED 2026-08-29 -------------------------------
+    # A-I across the top and 1-6 down the side, plus a numbered circle per
+    # zone. They were drafting-sheet costume: nothing on this map is ever
+    # referenced by grid square, and the zone circles carried a number with no
+    # legend anywhere to say what 04 meant. Ink that answers no question, on a
+    # sheet whose whole problem is density.
 
     # --- Clean Pure Square Title Block ---------------------------------------
     add('<g id="title-block">')
-    add('<rect x="16" y="14" width="280" height="34" fill="%s" stroke="%s" stroke-width="1"/>'
+    add('<rect x="16" y="14" width="220" height="34" fill="%s" stroke="%s" stroke-width="1"/>'
         % (CARD, LINE))
     add('<rect x="16" y="14" width="4" height="34" fill="%s"/>' % FLOW['work'])
-    add('<text x="28" y="36" font-size="17" font-weight="900" fill="%s" letter-spacing="-.3">WORKSHOP<tspan fill="%s">OS</tspan></text>'
+    add('<text x="28" y="36" font-size="17" font-weight="900" fill="%s" '
+        'letter-spacing="-.3">SYSTEM <tspan fill="%s">MAP</tspan></text>'
         % (INK, FLOW['work']))
-    add('<text x="146" y="36" font-size="13" font-weight="700" font-family="\'JetBrains Mono\', monospace" fill="%s">// TITAN</text>'
-        % MUTED)
     add('</g>')
 
     # Legend Block with square swatches (No isolated text)
@@ -390,15 +443,19 @@ def build(theme):
     # ZONE 01: ACCESS & RBAC
     # =========================================================================
     zone(16, B1Y, 236, B1H, 'SEC.01 // ACCESS', 'Access & Security', FLOW['alert'])
-    for (cid, t, ch), cell in zip([
-            ('r_own',  'OWNER',          ['everything unrestricted']),
-            ('r_off',  'OFFICE',         ['no cost side access']),
-            ('r_flo',  'FLOOR',          ['no prices visible']),
-            ('signin', 'SIGN-IN',        ['user - email - mobile']),
-            ('lock',   'LOCKOUT',        ['5 account - 20 network']),
-            ('reset',  'PASSWORD RESET', ['6-digit code by email']),
-            ('hub',    'CONTROL HUB',    ['logins - staff - sessions'])],
-            grid(16, B1Y, 236, B1H, 1, 7, top=32)):
+    _access = [
+        ('r_own',  'OWNER',          ['everything unrestricted']),
+        ('r_off',  'OFFICE',         ['no cost side access']),
+        ('r_flo',  'FLOOR',          ['no prices visible']),
+        ('signin', 'SIGN-IN',        ['user - email - mobile']),
+        ('lock',   'LOCKOUT',        ['5 wrong tries - 15 mins']),
+        ('reset',  'PASSWORD RESET', ['6-digit code by email']),
+        ('sess',   'SESSIONS',       ['device - ip - terminate']),
+        ('hub',    'CONTROL HUB',    ['logins - staff - roster']),
+    ]
+    for (cid, t, ch), cell in zip(_access, grid(
+            16, B1Y, 236, B1H, 1, len(_access), top=32, gy=8,
+            chips=[len(i[2]) for i in _access])):
         card(cid, *cell, t, ch, accent=FLOW['alert'])
 
     # =========================================================================
@@ -407,10 +464,16 @@ def build(theme):
     zone(272, B1Y, 806, B1H, 'CORE.02 // OPERATIONS', 'Operations Engine', FLOW['work'])
     card('est', 282, B1Y + 32, 246, 54, 'ESTIMATE', ['quote - print - history'],
          accent=FLOW['work'], mark='⊘')
+    # ON HOLD moved to the END and lost its incoming arrow: a car drops into
+    # hold from anywhere and comes back out again, so sitting it between
+    # WORKING and COMPLETED drew a step that is not in the sequence.
     states(548, B1Y + 30, 520, 'CARD',
-           ['ADMITTED', 'WORKING', 'ON HOLD', 'COMPLETED'], 'work')
+           ['ADMITTED', 'WORKING', 'COMPLETED', 'ON HOLD'], 'work', breaks={2})
+    # PENDING -> PAID is the walk-in, who pays once at pickup and whose
+    # shortfall becomes a discount. PART PAID -> FLEET PAID is the fleet lane,
+    # and it is the ONLY lane PART PAID happens on - so no arrow joins them.
     states(548, B1Y + 60, 520, 'BILL',
-           ['PENDING', 'PART PAID', 'PAID', 'FLEET PAID'], 'in')
+           ['PENDING', 'PAID', 'PART PAID', 'FLEET PAID'], 'in', breaks={1})
 
     # Job Card Central Hub - anchor matches visible bay card bounds
     JX, JY, JW, JH = 282, B1Y + 96, 786, 152
@@ -461,7 +524,8 @@ def build(theme):
             % (tick_x, rail_y, tick_x, rail_y + 4, FLOW['work']))
 
     for i, (cid, t, ch, ac) in enumerate([
-            ('done',   'COMPLETED',        ['car handed over'],     FLOW['work']),
+            ('done',   'COMPLETED',        ['work done - ready to bill',
+                                'floor marks it'],       FLOW['work']),
             ('bill',   'INVOICE',          ['A4 - one parts list'], FLOW['work']),
             ('settle', 'SETTLEMENT CHECK', ['what is unfilled'],    FLOW['alert'])]):
         card(cid, 282 + i * 238, B1Y + 264, 230, 56, t, ch, accent=ac)
@@ -470,88 +534,145 @@ def build(theme):
     # ZONE 03: BOARDS & TELEMETRY HISTORY
     # =========================================================================
     zone(1098, B1Y, 300, B1H, 'TEL.03 // TELEMETRY', 'Boards & History', FLOW['data'])
-    for (cid, t, ch), cell in zip([
-            ('dash',  'DASHBOARD',        ['cars on the floor - progress']),
-            ('live',  'LIVE REPORT',      ['billed but unfilled - crews']),
-            ('cars',  'CAR PROFILES',     ['history by registration']),
-            ('jlist', 'JOB CARDS',        ['search - filter']),
-            ('ehist', 'ESTIMATE HISTORY', ['searchable'])],
-            grid(1098, B1Y, 300, B1H, 1, 5, top=32)):
+    _tel = [
+        ('dash',  'DASHBOARD',        ['cars on the floor - progress']),
+        ('live',  'LIVE REPORT',      ['billed but unfilled - crews']),
+        ('cars',  'CAR PROFILES',     ['history by registration']),
+        ('jlist', 'JOB CARDS',        ['every card - searchable']),
+        ('ehist', 'ESTIMATE HISTORY', ['searchable']),
+    ]
+    for (cid, t, ch), cell in zip(_tel, grid(
+            1098, B1Y, 300, B1H, 1, len(_tel), top=32,
+            chips=[len(i[2]) for i in _tel])):
         card(cid, *cell, t, ch, accent=FLOW['data'])
 
     # =========================================================================
     # ZONE 04: LOGISTICS & INVENTORY MANIFOLD
     # =========================================================================
+    # Ordered by what connects to what, not by category - a line between two
+    # cards with a third sitting between them has nowhere to go.
     zone(16, B2Y, 544, B2H, 'LOG.04 // LOGISTICS', 'Parts, Shops & Stock', FLOW['stock'])
-    for (cid, t, ch, ac), cell in zip([
-            ('sshop', 'SPARE SHOPS',    ['ledger - balance - pay'],     FLOW['out']),
-            ('supp',  'SUPPLIES SHOPS', ['suppliers - catalog'],        FLOW['out']),
-            ('ware',  'WAREHOUSE',      ['items - categories'],         FLOW['stock']),
-            ('unass', 'UNASSIGNED',     ['floor adds - office prices'], FLOW['out']),
-            ('rest',  'RESTOCK BILLS',  ['discount pro-rata'],          FLOW['out']),
-            ('low',   'LOW STOCK',      ['under 25% - negatives'],      FLOW['stock']),
-            ('shist', 'STOCK HISTORY',  ['who drew what'],              FLOW['stock']),
-            ('sig',   'STOCK SIGNALS',  ['10 handlers - automatic'],     FLOW['stock']),
-            ('cost',  'AVERAGE COST',   ['weighted - full replay'],     FLOW['stock'])],
-            grid(16, B2Y, 544, B2H, 3, 3, top=32)):
+    # WAREHOUSE sits top-right so the draw coming down from the job card's
+    # INVENTORY bay has a clear run into it; in the first pass it was boxed in
+    # on all four sides by its own neighbours and the connector had nowhere to
+    # land. LOW STOCK sits directly under it, which is the shelf's own reading.
+    _log = [
+        ('sshop', 'SPARE SHOPS',    ['ledger - balance - pay'],     FLOW['out']),
+        ('unass', 'UNASSIGNED',     ['floor adds - office prices'], FLOW['out']),
+        ('ware',  'WAREHOUSE',      ['the shelf - may go negative'], FLOW['stock']),
+
+        ('catal', 'SHOP CATALOG',   ['what each shop sells'],       FLOW['stock']),
+        ('rest',  'RESTOCK BILLS',  ['discount pro-rata'],          FLOW['out']),
+        ('low',   'LOW STOCK',      ['under 25% - negatives'],      FLOW['stock']),
+
+        ('supp',  'SUPPLIES SHOPS', ['ledger - instalments'],       FLOW['out']),
+        ('cats',  'CATEGORIES',     ['the generic part name'],      FLOW['stock']),
+        ('cost',  'AVERAGE COST',   ['weighted - full replay'],     FLOW['stock']),
+
+        ('shist', 'STOCK HISTORY',  ['who drew what'],              FLOW['stock']),
+        ('sig',   'STOCK SIGNALS',  ['10 handlers - automatic'],    FLOW['stock']),
+    ]
+    for (cid, t, ch, ac), cell in zip(_log, grid(
+            16, B2Y, 544, B2H, 3, 4, top=32, gy=20,
+            chips=[len(i[2]) for i in _log] + [1])):
         card(cid, *cell, t, ch, accent=ac)
 
     # =========================================================================
     # ZONE 05: FINANCIAL FLOW MANIFOLD
     # =========================================================================
     zone(580, B2Y, 420, B2H, 'FIN.05 // CASHLINK', 'Financial Flow Manifold', FLOW['in'])
-    for (cid, t, ch, ac), cell in zip([
-            ('pend',  'PENDING BILLS',    ['unpaid - part paid'],       FLOW['in']),
-            ('cash',  'CASHBOOK',         ['rent - power - scrap'],     FLOW['out']),
-            ('paid',  'PAID BILLS',       ['settled - by date'],        FLOW['in']),
-            ('sal',   'SALARY & ADVANCE', ['advances - settlement'],    FLOW['out']),
-            ('fleet', 'FLEET ACCOUNTS',   ['cascade - advance credit'], FLOW['in']),
-            ('disc',  'DISCOUNT AUDIT',   ['over ₹3,500'],              FLOW['alert'])],
-            grid(580, B2Y, 420, B2H, 2, 3, top=47)):
+    # Right-hand column is everything that has to reach OUT of this zone -
+    # PAID and FLEET east into PROFIT, CASHBOOK east onto the expense trunk.
+    # The empty slot at row 4 col 2 is deliberate: it is the lane SALARY uses
+    # to reach the trunk without crossing the card beside it.
+    _fin = [
+        ('pend',  'PENDING BILLS',    ['unpaid - part paid'],        FLOW['in']),
+        ('paid',  'PAID BILLS',       ['settled - by date'],         FLOW['in']),
+
+        ('spay',  'SHOP PAYMENTS',    ['clears oldest bills first',
+                               'settles debt - not a cost'], FLOW['out']),
+        ('fleet', 'FLEET ACCOUNTS',   ['cascade - advance credit'],  FLOW['in']),
+
+        ('disc',  'DISCOUNT AUDIT',   ['over ₹3,500'],               FLOW['alert']),
+        ('cash',  'CASHBOOK',         ['rent - power - scrap'],      FLOW['out']),
+
+        # The Mechanic model is the whole STAFF ROSTER, not just mechanics -
+        # a top-level model with its own screen, and until now it was only
+        # implied by a chip on CONTROL HUB. It sits beside the thing that pays
+        # it. SALARY keeps col 2 so it can still tap the trunk to its right.
+        ('staff', 'STAFF ROSTER',     ['mechanics - office - helpers'], FLOW['data']),
+        ('sal',   'SALARY & ADVANCE', ['advances - settlement'],     FLOW['out']),
+    ]
+    for (cid, t, ch, ac), cell in zip(_fin, grid(
+            580, B2Y, 420, B2H, 2, 4, top=47, gx=18, gy=14,
+            chips=[len(i[2]) for i in _fin] + [1])):
         card(cid, *cell, t, ch, accent=ac)
 
     # =========================================================================
     # ZONE 06: BUSINESS INTELLIGENCE & AUDIT
     # =========================================================================
     zone(1030, B2Y, 368, B2H, 'BI.06 // AUDIT', 'Analysis & Profit Engine', FLOW['data'])
-    for (cid, t, ch, ac), cell in zip([
-            ('profit', 'PROFIT', ['turnover − expenses',
-                                  'the distribution figure'],           FLOW['in']),
-            ('deep',   'DEEP ANALYSIS', ['mechanics - spares - vehicles',
-                                         'fleet - shops - operations'], FLOW['data']),
-            ('del',    'DELETION HISTORY', ['every permanent delete',
-                                            'owner only - no restore'], FLOW['alert'])],
-            grid(1030, B2Y, 368, B2H, 1, 3, top=32)):
+    _bi = [
+        ('profit', 'PROFIT', ['turnover − expenses',
+                              'the distribution figure'],           FLOW['in']),
+        ('cashpos', 'CASH TRACKING', ['by the day money moved',
+                                      'a change, never a balance'],  FLOW['in']),
+        ('deep',   'DEEP ANALYSIS', ['mechanics - spares - vehicles',
+                                     'fleet - shops - operations'], FLOW['data']),
+        ('del',    'DELETION HISTORY', ['every permanent delete',
+                                        'owner only - no restore'], FLOW['alert']),
+    ]
+    for (cid, t, ch, ac), cell in zip(_bi, grid(
+            1030, B2Y, 368, B2H, 1, len(_bi), top=32,
+            chips=[len(i[2]) for i in _bi])):
         card(cid, *cell, t, ch, accent=ac)
 
     # =========================================================================
     # ZONE 07: AUTOMATION & RULES
     # =========================================================================
     zone(16, B3Y, 674, B3H, 'SYS.07 // RULES', 'Rules & Automation', FLOW['data'])
-    for (cid, t, ch, ac), cell in zip([
-            ('mast',  'MASTER LISTS',   ['brands - models', 'spares - concerns'], FLOW['data']),
-            ('auto',  'AUTOCOMPLETE',   ['learns as you type'],                   FLOW['data']),
-            ('clean', 'DATA CLEANUP',   ['rename - merge', 'reaches old cards'],  FLOW['data']),
-            ('rbac',  'RBAC',           ['3 tiers - server side'],                FLOW['alert']),
-            ('lockf', 'FINANCIAL LOCK', ['settled = frozen'],                     FLOW['alert']),
-            ('money', 'MONEY BOUNDS',   ['read from the column'],                 FLOW['alert']),
-            ('dates', 'DATE RULES',     ['ordered before received'],              FLOW['alert']),
-            ('arch',  'ARCHIVE MODEL',  ['accounts archived', 'records logged'],  FLOW['alert'])],
-            grid(16, B3Y, 674, B3H, 4, 2, top=32)):
+    _rules = [
+        ('mast',  'MASTER LISTS',   ['brands - models - spares',
+                             'the list sets the spelling'], FLOW['data']),
+        ('auto',  'AUTOCOMPLETE',   ['learns as you type'],                   FLOW['data']),
+        ('clean', 'DATA CLEANUP',   ['spare & concern names',
+                             'how often each is used'],   FLOW['data']),
+        ('rbac',  'RBAC',           ['3 tiers - server side', 'no-store - noindex'], FLOW['alert']),
+        ('lockf', 'FINANCIAL LOCK', ['settled = frozen'],                     FLOW['alert']),
+
+        ('money', 'AMOUNT CHECKS',  ['every typed figure checked'],           FLOW['alert']),
+        ('dates', 'DATE CHECKS',    ['nothing dated in future',
+                             'arrival after the order'],              FLOW['alert']),
+        ('arch',  'ARCHIVE',        ['shops and staff put away',
+                             'deletes are written down'],             FLOW['alert']),
+        ('dwin',  'DELETE WINDOW',  ['office 7 days', 'older is an owner'],   FLOW['alert']),
+        # spare_dates.py is DATE RULES above; this one is money_dates.py -
+        # which day a rupee is filed under, not whether a pair is in order.
+        ('mdate', 'MONEY DATES',    ['filed by the day it moved'],            FLOW['alert']),
+    ]
+    for (cid, t, ch, ac), cell in zip(_rules, grid(
+            16, B3Y, 674, B3H, 5, 2, top=32,
+            chips=[len(i[2]) for i in _rules])):
         card(cid, *cell, t, ch, accent=ac)
 
     # =========================================================================
     # ZONE 08: INFRASTRUCTURE & DAEMONS
     # =========================================================================
     zone(710, B3Y, 688, B3H, 'INFRA.08 // CLOUD', 'Platform & Services', FLOW['work'])
-    for (cid, t, ch, ac), cell in zip([
-            ('notif', 'NOTIFICATIONS', ['14 events - 10 critical', 'owners only'],   FLOW['alert']),
-            ('push',  'WEB PUSH',      ['critical goes to a phone'],                 FLOW['alert']),
-            ('store', 'PHOTO STORAGE', ['S3 - presigned', 'browser uploads direct'], FLOW['work']),
-            ('mail',  'EMAIL',         ['reset codes only'],                         FLOW['alert']),
-            ('pwa',   'INSTALLABLE',   ['home screen - offline page'],               FLOW['work']),
-            ('back',  'BACKUPS',       ['pg_dump - keeps 14'],                       FLOW['work'])],
-            grid(710, B3Y, 688, B3H, 3, 2, top=32)):
+    _infra = [
+        ('notif', 'NOTIFICATIONS', ['14 events - 10 critical', 'owners only'],   FLOW['alert']),
+        ('push',  'WEB PUSH',      ['critical goes to a phone'],                 FLOW['alert']),
+        ('mail',  'EMAIL',         ['reset codes only'],                         FLOW['alert']),
+        ('store', 'PHOTO STORAGE', ['S3 - presigned', 'browser uploads direct'], FLOW['work']),
+
+        ('pwa',   'INSTALLABLE',   ['home screen - offline page'],               FLOW['work']),
+        ('back',  'BACKUPS',       ['pg_dump - keeps 14'],                       FLOW['work']),
+        ('db',    'POSTGRES',      ['one database - migrations'],                FLOW['work']),
+        ('retain', 'PHOTO PURGE',  ['one year - skips unpaid', 'orphan blob sweep'], FLOW['work']),
+    ]
+    for (cid, t, ch, ac), cell in zip(_infra, grid(
+            710, B3Y, 688, B3H, 4, 2, top=32,
+            chips=[len(i[2]) for i in _infra])):
         card(cid, *cell, t, ch, accent=ac)
 
     # --- connections & bus routing -------------------------------------------
@@ -564,36 +685,63 @@ def build(theme):
     link('done', 'bill', 'work', 'r', 'l')
     link('bill', 'settle', 'work', 'r', 'l')
 
-    # Parts leave the hub by one of exactly two routes
-    link('sec_spr', 'sshop', 'out', 'b', 'r',
-         via=[('y', 322), ('x', G1), ('y', 434), ('x', 199), ('y', 525)])
+    # Parts leave the hub by one of exactly two routes. Both drop into the
+    # 296-330 band above COMPLETED/INVOICE/SETTLE, then down a named lane:
+    # 512-520 (between DONE and INVOICE) and 750-758 (between INVOICE and
+    # SETTLE). Those two gaps are the only way through band 1.
+    link('sec_spr', 'sshop', 'out', 'b', 't',
+         via=[('y', 316), ('x', 258), ('y', 478), ('x', 60)])
     link('sec_inv', 'ware', 'stock', 'b', 't',
-         via=[('y', 326), ('x', G2), ('y', 458), ('x', 465)])
+         via=[('y', 308), ('x', 754), ('y', 478), ('x', 467)])
 
-    # On and off the shelf
-    link('supp', 'rest', 'out', 'b', 't')
-    link('rest', 'ware', 'stock', 'r', 'l', bend=376)
-    link('ware', 'low', 'stock', 'b', 't')
-    link('sig', 'cost', 'stock', 'r', 'l')
-    link('sig', 'shist', 'stock', 'l', 'r')
-    link('unass', 'sshop', 'out', 't', 'b')
+    # On and off the shelf. y=534 and y=580 are the clear lanes between the
+    # LOG rows, opened up by content-sized cards.
+    link('catal', 'rest', 'stock', 'r', 'l')
+    link('supp', 'rest', 'out', 't', 'b', bend=598)
+    link('rest', 'ware', 'stock', 't', 'b', bend=535, tb=0.7)
+    link('rest', 'cost', 'stock', 'b', 't', bend=590)
+    link('ware', 'low', 'stock', 'b', 't', ta=0.3, tb=0.3)
+    link('sig', 'cost', 'stock', 'r', 'b')
+    # Stock moves ONLY via signals - so the signal handlers, not the bill and
+    # not the job card, are what actually write Item.current_stock.
+    # (This replaced a sig -> shist line, which was simply untrue: Stock
+    # History is a live query over JobCardSpareItem and fires no signal at all.
+    # ConsumptionRecord is dormant - referenced by admin.py and models.py and
+    # nothing else. The real source of Stock History is job -> shist, below.)
+    link('sig', 'ware', 'stock', 'r', 'l', via=[('x', 377), ('y', 511)])
+    link('unass', 'sshop', 'out', 'l', 'r')
+
+    # Paying a shop settles that ledger and NOTHING else - it never reaches
+    # PROFIT. Drawn deliberately: these two lines stop at the shops.
+    link('staff', 'sal', 'data', 'r', 'l')
+    link('spay', 'sshop', 'out', 'l', 't', via=[('x', 566), ('y', 486), ('x', 150)])
+    link('spay', 'supp', 'out', 'l', 'b', via=[('x', 578), ('y', 649), ('x', 109)])
 
     # The bill reaches the money states
     link('bill', 'pend', 'in', 'b', 't', via=[('y', 443), ('x', 645)])
-    link('pend', 'paid', 'in', 'b', 't')
-    link('paid', 'fleet', 'in', 'b', 't')
+    link('pend', 'paid', 'in', 'r', 'l')
+    # fleet -> paid, not the reverse: bulk_payer_pay is what SETS BULK_PAID
+    # (views/bulk_payer.py:455), so the fleet account produces the settled
+    # bill. Drawn the other way round it said Paid Bills feed the account.
+    link('fleet', 'paid', 'in', 't', 'b', ta=0.3, tb=0.3)
 
-    # THE EXPENSE TRUNK
+    # THE EXPENSE TRUNK - the four streams the equation actually charges.
+    # It taps WAREHOUSE, not SUPPLIES SHOPS: a part is a cost on the day it is
+    # DRAWN off the shelf, never on the day the delivery was billed. Tapping
+    # the bill here would be the double-count rule broken in a drawing.
     TX, TY = 1006, H1
-    trunk([(140, TY), (TX, TY), (TX, 620)], 'out')
+    # Starts at 109, which is where SPARE SHOPS taps it - not 140, which left
+    # the tap ending 31px short of the rail with a terminal node floating in
+    # clear space. check_system_map.py now asserts every tap lands on it.
+    trunk([(109, TY), (TX, TY), (TX, 690)], 'out')
     # Junction dot at trunk corner (#9)
     add('<circle cx="%s" cy="%s" r="3.5" fill="%s" opacity=".3"/>' % (TX, TY, FLOW['out']))
     add('<circle cx="%s" cy="%s" r="2" fill="%s" opacity=".8"/>' % (TX, TY, FLOW['out']))
     add('<circle cx="%s" cy="%s" r="0.8" fill="%s"/>' % (TX, TY, INK))
-    tap('sshop', 't', 0.75, (153, TY), 'out')
-    tap('supp', 't', 0.25, (245.7, TY), 'out')
-    tap('cash', 'r', 0.5, (TX, 538.7), 'out')
-    tap('sal', 'r', 0.5, (TX, 616), 'out')
+    tap('sshop', 't', 0.5, (109, TY), 'out')
+    tap('ware', 't', 0.5, (467, TY), 'out')
+    tap('cash', 'r', 0.5, (TX, 624.5), 'out')
+    tap('sal', 'r', 0.5, (TX, 673.5), 'out')
     
     # Node into Profit
     add('<rect x="%.1f" y="517" width="6" height="6" fill="%s" opacity=".35"/>' % (TX - 3, FLOW['out']))
@@ -601,30 +749,53 @@ def build(theme):
     add('<rect x="%.1f" y="519.2" width="1.6" height="1.6" fill="%s"/>' % (TX - 0.8, INK))
     draw([(TX, 520), (1040, 520)], 'out')
 
-    # Revenue reaches it too
-    link('paid', 'profit', 'in', 'r', 'l', via=[('y', 577), ('x', 1014), ('y', 535)])
-    link('fleet', 'profit', 'in', 'r', 'l', via=[('y', 654), ('x', 1020), ('y', 550)])
+    # Revenue reaches it too, up the 990-1040 lane between CASHLINK and AUDIT
+    link('paid', 'profit', 'in', 'r', 'l', bend=1013)
+    link('fleet', 'profit', 'in', 'r', 'l', bend=1024, tb=0.75, ta=0.3)
+
+    # CASH TRACKING is NOT downstream of PROFIT. analysis_engine.py:1261 says
+    # it outright - "Nothing here appears in build_profit_report" - and the
+    # whole point of the card is that the two can never be added together.
+    # A profit -> cashpos arrow claimed exactly the thing that comment forbids,
+    # and cashpos -> deep claimed a derivation between two sibling views.
+    # What IS true is the input that only Cash Tracking reads: fleet money
+    # comes from BulkPaymentHistory, one row per payment.
+    link('fleet', 'cashpos', 'in', 'r', 'l', bend=1013, ta=0.7)
 
     # Reference data feeds the hub; the hub feeds the boards
     link('mast', 'auto', 'data', 'r', 'l')
     link('auto', 'job', 'data', 't', 'b',
-         via=[('y', H2 - 10), ('x', 570), ('y', 452), ('x', G1)])
-    link('job', 'dash', 'data', 'r', 'l', bend=VR, ta=0.25)
-    link('job', 'cars', 'data', 'r', 'l', bend=VR + 5, ta=0.75)
-    link('settle', 'live', 'alert', 'r', 'l')
+         via=[('y', H2 - 10), ('x', 562), ('y', 452), ('x', 516)])
+    # These two leave from the TOP of the hub, not its right edge. The hub's
+    # anchor is the bounding box of the seven bays, so its right edge IS the
+    # PHOTOS bay's right edge - and both lines appeared to come out of PHOTOS,
+    # reading as "photos feed the dashboard". Leaving from the top, in the
+    # GAPS between bays (INVENTORY|PHOTOS and SPARE PARTS|INVENTORY), they
+    # come off the bay rail instead, which is the whole card.
+    link('job', 'dash', 'data', 't', 'l', ta=0.859,     # x ~= 947, a bay gap
+         via=[('y', 160), ('x', 1088), ('y', 115.5)])
+    link('job', 'cars', 'data', 't', 'l', ta=0.7157,    # x ~= 838, a bay gap
+         via=[('y', 176), ('x', 1093), ('y', 201.5)])
+    link('job', 'shist', 'stock', 'b', 'b',
+         via=[('y', 304), ('x', 272), ('y', 470), ('x', 198), ('y', 730),
+              ('x', 109)], ta=0.02)
+    link('settle', 'live', 'alert', 'r', 'l', bend=1075)
 
-    # Audit, alerting and evidence
-    link('disc', 'notif', 'alert', 'b', 't', via=[('y', 745), ('x', 828)])
-    link('del', 'notif', 'alert', 'b', 't', via=[('y', 752), ('x', 890)])
+    # Audit, alerting and evidence. The 691-792 band is clear right across the
+    # sheet, so everything heading for NOTIFICATIONS travels along it.
+    link('disc', 'notif', 'alert', 'l', 't', via=[('x', 576), ('y', 740), ('x', 760)])
+    link('del', 'notif', 'alert', 'b', 't', via=[('y', 752), ('x', 830)], ta=0.2)
     link('notif', 'push', 'alert', 'r', 'l')
     link('sec_pho', 'store', 'work', 'b', 't',
-         via=[('y', 330), ('x', 1026), ('y', 766), ('x', 1279)])
+         via=[('y', 302), ('x', 1030), ('y', 766), ('x', 1305)])
 
-    # --- Revision Stamp (#1) --------------------------------------------------
-    add('<text x="%s" y="%s" font-size="5.5" font-weight="600" text-anchor="end" '
-        'font-family="\'JetBrains Mono\', monospace" fill="%s" opacity=".3">'
-        'REV 3.0 \u00b7 A4-L \u00b7 56 MODULES \u00b7 31 SIGNALS</text>'
-        % (W - 14, H - 12, MUTED))
+    # --- Revision stamp: REMOVED 2026-08-29 -----------------------------------
+    # "REV 4.0 - A4-L - 66 MODULES - 39 SIGNALS" in 5.5px along the bottom
+    # edge. It went the same way as the drafting rulers and the zone numbers,
+    # and for the same reason: nobody reads a module count off a drawing, and
+    # at that size it was a smudge rather than a fact. The build still PRINTS
+    # both counts to stdout on every run, which is where they are actually
+    # useful - so do not write them down here or anywhere else.
 
     # --- Vignette Overlay - dark theme only (#12) -----------------------------
     if theme == 'dark':
@@ -704,10 +875,36 @@ __SVG__
                  ('__INK__', INK), ('__SVG__', svg)):
         page = page.replace(k, v)
 
-    out = Path(__file__).resolve().parent.parent / T['out']
+    root = Path(__file__).resolve().parent.parent
+    out = root / T['out']
     out.write_text(page, encoding='utf-8')
     print('wrote %-22s (%.1f KB, %d cards, %d connectors)'
           % (T['out'], len(page) / 1024, len(anchors), len(links)))
+
+    # The dark sheet is ALSO emitted as a Django include, so the in-app About
+    # page draws THIS geometry rather than a copy of it. A pasted <svg> would
+    # be a second set of coordinates free to drift from the printed sheet, and
+    # the drift would be invisible - both would still look like a map.
+    #
+    # Only the font changes: the standalone file loads Inter from a CDN, and
+    # the app is deliberately third-party-free, so the embed asks for the
+    # vendored Barlow instead. Same glyphs' worth of space either way.
+    if theme == 'dark':
+        embed = svg.replace(
+            'font-family="Inter, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"',
+            'font-family="Barlow, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"')
+        part = root / 'workshop' / 'templates' / 'workshop' / 'includes' / '_system_map_svg.html'
+        part.parent.mkdir(parents=True, exist_ok=True)
+        part.write_text(
+            '{% comment %}\n'
+            'GENERATED FILE - DO NOT EDIT.\n'
+            'Written by scratchpad/build_system_map.py, from the same coordinates\n'
+            'as SYSTEM_MAP_DARK.html and its PDF. To change the map, edit that\n'
+            'script and re-run it; editing here is overwritten on the next build.\n'
+            '{% endcomment %}\n' + embed + '\n', encoding='utf-8')
+        print('wrote %-22s (%.1f KB)'
+              % ('_system_map_svg.html', len(embed) / 1024))
+
     return anchors, links
 
 

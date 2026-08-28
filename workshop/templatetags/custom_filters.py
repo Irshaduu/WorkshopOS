@@ -34,6 +34,7 @@ DRAWER_SECTION_PREFIXES = (
     '/master-lists/',
     '/deletion-history/',
     '/manage/',
+    '/about/',
 )
 
 
