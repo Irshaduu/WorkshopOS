@@ -1,62 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WorkshopOS - Master System Architecture Schematic</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{background:#111a2b;
-    font-family:'Inter',-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    color:#ffffff;-webkit-font-smoothing:antialiased;
-    min-height:100vh;margin:0;padding:0}
-  
-  .sheet-wrapper{
-    width:100%;
-    min-height:100vh;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:flex-start;
-    padding:0;
-    margin:0;
-  }
-  .sheet{
-    width:100%;
-    max-width:1720px;
-    background:transparent;
-    border:none;
-    box-shadow:none;
-    margin:0 auto;
-    position:relative;
-  }
-  svg{display:block;width:100%;height:auto}
-
-  /* Interactive CAD feel on web */
-  .map-card{cursor:default;transition:transform 0.15s ease}
-  .map-card:hover rect:first-child{stroke-width:1.6;filter:brightness(1.1)}
-  .state-pill:hover rect{stroke-width:1.5;filter:brightness(1.15)}
-  .hub-module:hover rect:first-child{stroke-width:1.5;filter:brightness(1.1)}
-
-  /* Exactly one page A4 landscape PDF export */
-  @page{size:A4 landscape;margin:0}
-  @media print{
-    html,body{background:#111a2b;width:297mm;height:210mm;overflow:hidden;margin:0;padding:0}
-    .sheet-wrapper{padding:0;margin:0;min-height:auto;width:297mm;height:210mm}
-    .sheet{width:297mm;height:210mm;margin:0;border:none;box-shadow:none;
-      overflow:hidden;break-inside:avoid;page-break-inside:avoid}
-    svg{width:100%;height:100%}
-    *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-  }
-</style>
-</head>
-<body>
-<div class="sheet-wrapper">
-<div class="sheet">
-<svg viewBox="0 0 1414 1000" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" font-family="Inter, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"><rect width="1414" height="1000" fill="#111a2b"/>
+{% comment %}
+GENERATED FILE - DO NOT EDIT.
+Written by scratchpad/build_system_map.py, from the same coordinates
+as SYSTEM_MAP_DARK.html and its PDF. To change the map, edit that
+script and re-run it; editing here is overwritten on the next build.
+{% endcomment %}
+<svg viewBox="0 0 1414 1000" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" font-family="Barlow, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"><rect width="1414" height="1000" fill="#111a2b"/>
 <defs>
 <pattern id="cad-grid" width="20" height="20" patternUnits="userSpaceOnUse">
 <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#2f4160" stroke-width="0.5" opacity="0.55"/>
@@ -726,7 +674,3 @@
 <path d="M 1002.0 296.0 L 1002.0 299.0 Q 1002.0 302.0 1008.0 302.0 L 1024.0 302.0 Q 1030.0 302.0 1030.0 308.0 L 1030.0 760.0 Q 1030.0 766.0 1036.0 766.0 L 1299.0 766.0 Q 1305.0 766.0 1305.0 772.0 L 1305.0 792.0" fill="none" stroke="#54cbff" stroke-width="4.5" stroke-linecap="square" opacity=".22"/>
 <path d="M 1002.0 296.0 L 1002.0 299.0 Q 1002.0 302.0 1008.0 302.0 L 1024.0 302.0 Q 1030.0 302.0 1030.0 308.0 L 1030.0 760.0 Q 1030.0 766.0 1036.0 766.0 L 1299.0 766.0 Q 1305.0 766.0 1305.0 772.0 L 1305.0 792.0" fill="none" stroke="#54cbff" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter" opacity=".95" marker-end="url(#ar-work)"/>
 <rect width="1414" height="1000" fill="url(#vignette)" pointer-events="none"/></svg>
-</div>
-</div>
-</body>
-</html>

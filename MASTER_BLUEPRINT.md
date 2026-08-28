@@ -343,6 +343,7 @@ media path, which is not served in production at all (§12, and `AUD-0088`).
 | **ANALYSIS** | `/analysis/` | `analysis_dashboard` (Profit) | Owner |
 | | `/analysis/insights/` | `analysis_insights` (Deep Analysis shell) | Owner |
 | | `/analysis/insights/<section>/` | `analysis_insight_section` (AJAX partial) | Owner |
+| **ABOUT** | `/about/` | `about` (static, read-only tour of the system) | Owner |
 | **SALARY & ADVANCE** | `/salary-advance/` | `salary_advance_home` | Office |
 | | `/salary-advance/add/` | `salary_advance_add` | Office |
 | | `/salary-advance/<id>/delete/` | `salary_advance_delete` | Office |
@@ -523,7 +524,7 @@ stateDiagram-v2
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
-| `/` | `base.html`, `home.html` | Base layout with nav + redirector |
+| `/` | `base.html`, `home.html`, `about.html` | Base layout with nav + redirector; `about.html` is the Owner-only tour — the generated system map as its header, then every section in plain words. Carries **no links at all**: it is read top to bottom, and the drawer it is opened from is already the menu |
 | `/salary_advance/` | 5 files: `home.html`, `staff_detail.html`, `payment_form.html`, `payment_confirm_delete.html`, `partials/staff_advances.html` | Salary & Advance: roster with advances, one person's page (the destination of a `SALARY_ADVANCE` alert — a **full page** on navigation, the bare partial only on `X-Requested-With`), month-end settlement form, Owner-only delete confirmation |
 | `/analysis/` | `profit.html` | The protected Profit page: Turnover − Expenses = Profit, the same profit decomposed by what earned it, monthly trend, position. *Changed 2026-08-25: the expense-split donut, the General Cashbook category list and the Salary & Advance card all left — the page carries no drill-downs.* |
 | `/analysis/` | `insights.html` | Deep Analysis shell — eight AJAX-loaded accordion sections. **10 files in this tree in total** (2 pages + 8 section partials) |
@@ -541,7 +542,7 @@ stateDiagram-v2
 | `/deletion_history/` | `deletion_history_list.html`, `deletion_history_detail.html` | 2 files — the Owner-only, read-only audit log of every permanent delete. No restore |
 | `/notifications/` | `notification_list.html`, `_panel_items.html`, `_row.html` | 3 files — the full feed, the lazily-fetched bell panel, and the ONE row partial both share, so "read" cannot come to look like two different things |
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
-| `/includes/` | 6 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html` | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by both printed documents; and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
+| `/includes/` | 7 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by both printed documents; and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
 
 ### Inventory Templates (`inventory/templates/inventory/`) — 20 files
 

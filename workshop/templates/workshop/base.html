@@ -1478,6 +1478,27 @@ widen this and the audience together.
 
             {% endif %}
 
+            {% comment %}
+            LAST entry in the drawer, for every section above it. Owner-only,
+            matching @owner_required on the view: the page describes Profit,
+            Cash Tracking, Deletion History and both shop ledgers, and offering
+            a tour of doors a role cannot open is the defect the audit menu and
+            the frozen-advance menu already avoid.
+
+            Sits AFTER the role branch above rather than inside it, so it is
+            one entry rather than a copy per role. Still inside the with-block
+            that defines is_owner (it closes below, under the drawer), which is
+            why the plain variable works here rather than has_group.
+            {% endcomment %}
+            {% if is_owner %}
+                <div class="drawer-label">Help</div>
+                <a class="drawer-link accent-slate{% if p|slice:':7' == '/about/' %} active{% endif %}" href="{% url 'about' %}">
+                    <span class="drawer-ico"><i class="bi bi-compass"></i></span>
+                    About
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+            {% endif %}
+
         </div>
 
     </div>

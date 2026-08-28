@@ -64,3 +64,4 @@ from .photos import (
     photo_sign, photo_commit, photo_list, photo_delete,
     photo_blob_put, photo_blob_get,
 )
+from .about import about
