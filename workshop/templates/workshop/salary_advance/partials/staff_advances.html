@@ -14,14 +14,51 @@
           {{ adv.date|date:"d M Y" }}{% if adv.note %} · {{ adv.note }}{% endif %}
         </div>
       </div>
-      <form method="post" action="{% url 'salary_advance_delete' adv.pk %}"
-            onsubmit="return confirm('Delete this ₹{{ adv.amount|floatformat:0 }} advance permanently?\n\nIf the month it belongs to is already settled, re-open that month and save it again so the figures stay correct.');">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-sm btn-outline-danger rounded-circle flex-shrink-0"
-                style="width:30px;height:30px;padding:0;" title="Delete advance" aria-label="Delete advance">
-          <i class="bi bi-trash3" style="font-size:0.78rem;"></i>
+
+      {% comment %}
+      One trigger on every row, settled or not, and the MENU carries the
+      difference. A lock glyph on its own said "you cannot" without saying why;
+      the disabled item names the month that is in the way, which is the fact
+      somebody needs in order to do anything about it.
+
+      A settled month's advances are FROZEN — this one is already inside a paid
+      settlement line, so removing the row underneath would leave that line
+      claiming money nothing records. salary_advance_delete refuses it whatever
+      is drawn here; this only stops the button being offered, on the rule a
+      door somebody can see but not open is worse than no door.
+      {% endcomment %}
+      <div class="dropdown flex-shrink-0 adv-menu">
+        <button type="button" class="btn btn-sm adv-menu-btn" data-bs-toggle="dropdown"
+                aria-expanded="false"
+                aria-label="Actions for the ₹{{ adv.amount|floatformat:0 }} advance of {{ adv.date|date:'d M Y' }}">
+          <i class="bi bi-three-dots-vertical"></i>
         </button>
-      </form>
+        <ul class="dropdown-menu dropdown-menu-end adv-menu-list">
+          {% if adv.locked %}
+          <li>
+            <span class="dropdown-item disabled adv-menu-locked" aria-disabled="true">
+              <i class="bi bi-lock-fill me-2"></i>Can't be deleted
+            </span>
+          </li>
+          <li>
+            <span class="adv-menu-why">
+              {{ adv.date|date:"F Y" }} is settled — this advance is part of that
+              month's pay.
+            </span>
+          </li>
+          {% else %}
+          <li>
+            <form method="post" action="{% url 'salary_advance_delete' adv.pk %}" class="m-0"
+                  onsubmit="return confirm('Delete this ₹{{ adv.amount|floatformat:0 }} advance permanently?\n\nThis cannot be undone.');">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item adv-menu-delete">
+                <i class="bi bi-trash3 me-2"></i>Delete advance
+              </button>
+            </form>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
     </div>
     {% endfor %}
   {% endfor %}

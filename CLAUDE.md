@@ -728,11 +728,143 @@ delete it themselves. Both are offered the second route — record it in the cur
 month with a note — which is the only route once the month is closed.
 → `AnAdvanceCannotEnterASettledMonthTests`
 
+**AND IT CANNOT LEAVE ONE EITHER — a settled month's advances are FROZEN in
+BOTH directions.** Only the entering half above was ever enforced. The bin in
+the staff history modal called `salary_advance_delete`, which had no check at
+all, so a settled — even a **closed** — month's advance could be removed with
+one tap on a screen the settlement lock had otherwise shut.
+
+It is the worse direction of the two. The paid `SalaryPaymentLine.advance_used`
+keeps claiming money nothing records, and what follows depends on the month:
+
+- **The most recent settlement is a real cash loss.** Re-saving it sums the
+  advances afresh, so `advance_used` drops to zero and the net jumps by exactly
+  the amount already handed over. Measured: a ₹3,000 advance deleted out of a
+  settled month took the net from ₹17,000 to ₹20,000 on a ₹20,000 salary — the
+  workshop paying cash it had already given.
+- **A closed month's mismatch is permanent**, because that settlement can never
+  be re-saved to notice it.
+
+Three things carry it: the refusal is in the **view**, since the bin is
+client-side; the message names a route the reader can actually take, which is
+**three** branches rather than the add path's two (an owner is told to delete
+the settlement, Office to ask one, and a **closed** month is told there is no
+route — sending an owner at `salary_payment_delete` there would land them on a
+button that refuses them on the GET); and `_mark_locked` flags the frozen rows
+in **one query** so the delete is not offered at all, on the rule the audit menu
+already follows — a door somebody can see but not open is worse than no door. An
+open month's advance still deletes exactly as before.
+
+**THE ROW'S ACTION IS A ⋮ MENU, AND EVERY ROW HAS THE SAME TRIGGER.** The delete
+was a red bin pinned to the row — the loudest object in a list whose whole job is
+to be read, on the one action that cannot be undone. A settled row first lost it
+for a bare lock glyph, and that was worse in a way worth recording: **a lock says
+"you cannot" without saying why**, and why is the only part anybody can act on.
+So both rows carry a ⋮ and the MENU carries the difference — "Delete advance" in
+red, or a disabled item plus the sentence naming the month that is in the way
+("July 2026 is settled — this advance is part of that month's pay"). The rows
+read as one list rather than two kinds of thing.
+
+⚠ **The menu is armed in JS with `strategy: 'fixed'`, and that is load-bearing.**
+The modal body is `overflow-y: auto`, and an absolutely-positioned menu inside a
+scroller is **clipped** — invisibly, and only on the rows near its edges, which
+is the trap CLAUDE.md already records twice. Popper escapes it on the fixed
+strategy, which can only be set through `popperConfig` **in JavaScript** — so
+`armAdvanceMenus()` runs after the fragment lands rather than leaving Bootstrap's
+delegated handler to create each instance with the default absolute strategy.
+`data-bs-display="static"` is **not** the fix; it drops Popper and is clipped
+just the same. Measured at 375px: menu [112, 344] against a button right edge of
+343, inside a modal spanning [8, 367].
+
+⚠ **The menu is `max-width`ed as well as `min-width`ed.** The locked branch
+carries a sentence, and left to grow it reached 352px inside a 370px modal and
+hung off the left edge.
+→ `AnAdvanceCannotLEAVEASettledMonthEitherTests`
+
+**EVERY ADVANCE HOLDER MUST BE ON THE FORM THAT SETTLES THEM.**
+`_unsettleable_staff` catches the two **standing** reasons somebody receives no
+settlement line — no salary, retired. The **situational** one was open, and a
+stale browser tab produces it on an ordinary working day: the settle form is up
+while the office types leave days for seven people, somebody is hired and handed
+an advance meanwhile, and the submitted payload carries no `leave_days_<pk>` box
+for them. The loop skips anyone whose key is absent, so they get no line — and
+their advance is now inside a settled month, which `salary_expense` excludes
+from its loose-advance pass. The cash lands in **neither** place and drops off
+the Profit page permanently.
+
+Refused rather than papered over: writing them a line would price it at
+**today's** salary with leave days nobody entered, which is the defect
+`ASettledMonthIsAClosedSetOfPeopleTests` pins down. Reloading the page is the
+whole remedy, and the message says so by name.
+
+⚠ **Scoped to the FIRST settlement, and that scope is the point.** The harm is
+the *transition* — settling is what moves the month out of the loose-advance
+pass. On a month already settled the cash is already counted or already lost and
+re-saving changes neither, so blocking there would refuse an ordinary correction
+over a state the re-save did not cause and cannot fix. Nothing new can be
+stranded either way, now that an advance can neither enter a settled month nor
+leave one.
+→ `EveryAdvanceHolderIsOnTheFormThatSettlesThemTests`
+
+**The advance date box refuses BOTH bad dates while they are being picked, not
+after the form is submitted.** `salary_advance_add` has always refused a
+forward-dated advance and one dated into a settled month — but only once the
+whole form had been filled in and sent, which is the settle screen's own "say it
+before the button" rule broken one screen over. Two marks, one box:
+
+- **Capped at today** with `max`, the same rule the Cashbook's own date control
+  follows. Cash cannot have been handed over on a day that has not arrived.
+- **A SETTLED month turns the box red and names it** — "July 2026 is already
+  settled, so an advance can't be dated into it" — and disables Save. The months
+  ride over as `json_script`, never interpolated into markup, and they are the
+  query the year list is already built from, so it costs nothing.
+
+Both are presentation; **the view stays the control**. The comparison is done on
+the `'YYYY-MM'` the input's value already starts with — no `Date` object, so no
+timezone can shift it a day and therefore a month.
+
+⚠ **That comment block cost a real defect on the way in.** It was written as a
+`{# … #}` spread over four lines, which stops being a comment — four lines of
+developer prose rendered inside the Give an Advance modal, over the date box.
+`test_template_comments.py` catches exactly this and was simply not run. **Run
+it after touching any template.**
+→ `TheAdvanceDateBoxCannotOfferTomorrowTests`
+
 **Overtime is one amount per person per month, added to the net.** Only a few
 staff have any, so it is a single figure entered at settlement rather than an
 hours-and-rate calculation. Stored on `SalaryPaymentLine.overtime_amount` and
 folded into `net_amount`, so the wage cost the Profit page reads (`net + advance`)
-includes it with no change to `salary_expense()`. Junk input falls back to zero.
+includes it with no change to `salary_expense()`.
+
+⚠ **AN OVERTIME FIGURE THAT CANNOT BE USED IS REFUSED, NOT ZEROED — this
+REVERSES what this file said until 2026-08-28**, on the owner's decision. It read
+"junk input falls back to zero", and the fallback was the defect. **`5,000` typed
+with a comma is the case that decided it**: `Decimal` cannot read it, so the
+settlement saved ₹0, underpaid by ₹5,000, and the screen showed the right number
+the whole time, because the running total is computed in the browser with
+`parseFloat`. Silent, and in the direction that shorts the staff member. It is
+now the leave-days rule applied to the other typed box on the same form — refused
+outright rather than clamped, because a fallback saves a number nobody typed.
+
+Four things carry it:
+- **The split is NOTHING TYPED versus SOMETHING UNUSABLE**, and both halves are
+  load-bearing. An absent key is the ordinary case (the box only exists on rows
+  the form drew) and an empty one is somebody clearing it; both mean no overtime
+  and must stay ₹0, or an untouched settlement would refuse itself.
+- **It is parsed in the guard, not at write time**, beside the leave-days check,
+  and the write loop reads the parsed value rather than the box a second time.
+- **Both guards report before returning**, so a form wrong in both places is
+  corrected in one pass rather than one round trip per mistake.
+- **The bound in the message is READ from the column and FLOORED to whole
+  rupees.** The true ceiling is 99,999,999.99, and `:,.0f` rounds that UP to
+  100,000,000 — a figure the guard itself rejects, so the message would have
+  named a bound that does not work. Caught by measuring the live refusal, not by
+  reading the code.
+
+*Not fixed, and knowingly:* an overtime near that ceiling overflows the
+`net_amount` it is added to (same `numeric(10,2)`). It predates this guard, needs
+an authenticated user typing a figure no workshop has, and answering it means
+per-row conditional bounds.
 → `OvertimeIsAddedToThePayTests`
 
 **Retiring a staff member warns about their unsettled advances, at the moment it
@@ -809,6 +941,44 @@ which payment to reverse first.
 **The invariant to assert in any new fleet test:**
 `Σ(card.received_amount) + advance_balance == Σ(history.amount)`.
 → `ReversingAFleetPaymentOutOfOrderIsRefusedTests`
+
+**THAT REVERSAL IS CONFIRMED IN THE SUPPLIES SHOP'S OWN DIALOG** — 3rem glyph,
+"Are you sure?", the amount in red inside a muted line, then pill Cancel and
+Confirm. An owner settles a spare shop, a Supplies Shop and a Fleet Account in
+one sitting, and a confirmation that changes shape between them reads as three
+different products. The **mechanism** stays this page's own
+`.bd-confirm-overlay` rather than becoming the inventory app's Bootstrap modal,
+so the existing show/hide and click-outside handlers are untouched; only the
+contents of the box changed.
+
+⚠ **THE ONE THING THAT DIFFERS IS THE REASON BOX, and it is kept on purpose.**
+The Supplies Shop's confirmation has none. A fleet reversal takes back the
+largest single receipt the workshop handles, `bulk_payment_history_delete` reads
+`reason`, and `DeletionLog` stores it — it is the only field that later says why
+the money moved back.
+
+⚠ **BECAUSE THE REASON BOX MUST SIT INSIDE THE FORM THAT POSTS IT, CANCEL SITS
+INSIDE THAT FORM TOO — AND A BARE `<button>` IN A FORM SUBMITS IT.** Left at the
+browser default, pressing **Cancel** on "Are you sure?" would reverse the
+payment: the loudest possible failure, on the one control whose whole job is to
+let somebody back out. `type="button"` is the entire defence, so it is asserted
+rather than trusted.
+
+It replaced a broken layout, and the cause is worth keeping. `.bd-confirm-box
+.btn-group` is `display: flex` with the default `align-items: stretch`, and the
+whole `<form>` was one of its two children — so the form grew to hold a stacked
+reason input plus a button, and Cancel, a single-line button, was **stretched to
+match it**, rendering as a tall empty box beside a reason field that had climbed
+above the red button it belongs under. `.btn-group` on this page is a
+two-BUTTON row; nothing taller than a button may be a child of it. The Rename
+overlay beside it had always had this right — the input outside the row, the
+form wrapping both.
+
+**The menu item reads "Delete this Payment", not "Delete & Reverse".** The old
+label named the mechanism rather than the thing, and *reverse* is already this
+section's word for undoing a payment out of order — so it read as a second,
+different action.
+→ `CancelOnTheReversalDialogCannotReverseAnythingTests`
 
 **A FLEET PAYMENT IS DATED BY THE DAY THE MONEY MOVED — the third and last
 ledger to get the column, and the one where it mattered most.**
@@ -4858,7 +5028,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 55 files, 1,764 tests. Always SQLite (see below).
+# Full test suite — 55 files, 1,794 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -4966,7 +5136,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,718-test run
+want. SQLite's test database is also in-memory, which is most of why a 1,794-test run
 is ~70 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
@@ -5198,7 +5368,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (49 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **55 files, 1,764 tests**.
+files) — **55 files, 1,794 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

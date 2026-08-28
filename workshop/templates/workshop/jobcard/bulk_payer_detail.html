@@ -1078,7 +1078,7 @@
                         <li>
                             <button type="button" class="dropdown-item text-danger"
                                 onclick="showHistoryDeleteConfirm({{ h.pk }}, '{{ h.amount|floatformat:0 }}')">
-                                <i class="bi bi-trash3 me-2"></i>Delete & Reverse
+                                <i class="bi bi-trash3 me-2"></i>Delete this Payment
                             </button>
                         </li>
                     </ul>
@@ -1184,26 +1184,49 @@
 </div>
 
 <!-- Delete Payment Confirmation Overlay (Owner + Office) -->
+{% comment %}
+DRAWN AS THE SUPPLIES SHOP'S OWN DELETE CONFIRMATION — 3rem glyph, "Are you
+sure?", the detail in muted small type, then two pill buttons. An owner settles
+a spare shop, a Supplies Shop and a Fleet Account in one sitting, and a
+confirmation that changes shape between them reads as three different products.
+The mechanism stays this page's `.bd-confirm-overlay` rather than becoming the
+inventory app's Bootstrap modal, so the existing show/hide and click-outside
+handlers are untouched; only what is inside the box changed.
+
+It also replaced a broken layout. `.bd-confirm-box .btn-group` is `display:
+flex` with the default `align-items: stretch`, and the whole `<form>` used to be
+one of its two children — so the form grew to hold a stacked reason input plus a
+button, and Cancel, a single-line button, was stretched to match it. It rendered
+as a tall empty box beside a reason field that had climbed above the red button
+it belongs under. `.btn-group` here is a two-BUTTON row; nothing taller than a
+button may be a child of it.
+{% endcomment %}
 <div class="bd-confirm-overlay" id="historyDeleteOverlay">
-    <div class="bd-confirm-box">
-        <h6><i class="bi bi-trash3 text-danger me-1"></i> Delete Payment?</h6>
-        <p id="historyDeleteText">This permanently deletes the payment (logged to Deletion History) and returns balances to the affected job cards.</p>
-        <div class="btn-group">
-            <button type="button" class="bd-confirm-cancel" onclick="hideHistoryDeleteConfirm()">Cancel</button>
-            <form method="POST" id="historyDeleteForm" action="">
-                {% csrf_token %}
-                {% comment %}
-                bulk_payment_history_delete reads `reason` and DeletionLog
-                stores it, but nothing ever posted one — so every reversed Fleet
-                payment reached the Owner's Deletion History with a blank
-                reason, which is the one field explaining why the money moved
-                back. Optional, matching the job-card delete form.
-                {% endcomment %}
-                <input type="text" name="reason" maxlength="255" class="form-control form-control-sm mb-2"
-                       placeholder="Reason (optional)" aria-label="Reason for reversing this payment">
-                <button type="submit" class="bd-confirm-remove">Delete Permanently</button>
-            </form>
-        </div>
+    <div class="bd-confirm-box" style="max-width: 340px; border-radius: 20px;">
+        <i class="bi bi-trash3-fill text-danger d-block mb-3" style="font-size: 3rem;"></i>
+        <h5 class="fw-bold mb-2">Are you sure?</h5>
+        <p class="text-muted small mb-4" id="historyDeleteText">This permanently deletes the payment (logged to Deletion History) and returns balances to the affected job cards.</p>
+        <form method="POST" id="historyDeleteForm" action="">
+            {% csrf_token %}
+            {% comment %}
+            bulk_payment_history_delete reads `reason` and DeletionLog stores
+            it, but nothing ever posted one — so every reversed Fleet payment
+            reached the Owner's Deletion History with a blank reason, which is
+            the one field explaining why the money moved back. Optional, and the
+            Supplies Shop's confirmation has none, so this is the ONE thing that
+            differs from it: a fleet reversal is the largest single receipt the
+            workshop takes back out, and it is the only field that later says
+            why.
+            {% endcomment %}
+            <input type="text" name="reason" maxlength="255" class="form-control form-control-sm mb-3"
+                   placeholder="Reason (optional)" aria-label="Reason for reversing this payment">
+            <div class="d-flex gap-2 justify-content-center">
+                {# type="button", so sitting inside the form cannot submit it. #}
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-4"
+                        onclick="hideHistoryDeleteConfirm()">Cancel</button>
+                <button type="submit" class="btn btn-danger fw-bold rounded-pill px-4">Confirm</button>
+            </div>
+        </form>
     </div>
 </div>
 {% endif %}
@@ -1336,7 +1359,11 @@ if (rno) rno.addEventListener('click', function(e) { if (e.target === this) hide
 function showHistoryDeleteConfirm(historyPk, amount) {
     var overlay = document.getElementById('historyDeleteOverlay');
     if (!overlay) return;
-    document.getElementById('historyDeleteText').textContent = `Delete ₹${amount} payment permanently? It is logged to Deletion History and balances are restored to affected job cards.`;
+    // innerHTML, like the Supplies Shop's own confirmation — `amount` is a
+    // number this page rendered from `floatformat:0`, never user text.
+    document.getElementById('historyDeleteText').innerHTML =
+        `Delete this <strong class="text-danger">₹${amount}</strong> payment?` +
+        `<br><small>Balances are restored to the affected job cards, and it is logged to Deletion History.</small>`;
     document.getElementById('historyDeleteForm').action = '/pending-payments/bulk-payers/{{ bulk_payer.pk }}/history/' + historyPk + '/delete/';
     overlay.classList.add('active');
 }

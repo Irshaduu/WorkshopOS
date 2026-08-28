@@ -132,10 +132,48 @@ def _settled_month_for(advance_date):
     reopening a closed month — which is exactly the habit worth discouraging.
     Refusing it here lets the message say what to do at the moment of the
     mistake.
+
+    READ BY BOTH DIRECTIONS. A settled month's advances are FROZEN: nothing
+    enters and nothing LEAVES. Only the first half used to be enforced, and the
+    second is the worse one, because the paid line keeps claiming an
+    `advance_used` there is no longer any record of. On a CLOSED month that
+    mismatch is permanent — the settlement can never be re-saved to notice it.
+    On the most recent one it is a real cash loss: re-saving the month sums the
+    advances afresh, `advance_used` drops to zero, and the net jumps by exactly
+    the amount already handed over, so the workshop pays it a second time.
     """
     if not advance_date:
         return None
     return SalaryPayment.objects.filter(month=advance_date.replace(day=1)).first()
+
+
+def _is_owner(user):
+    """
+    The same either-or `owner_required` and `has_group` use everywhere else.
+
+    Read wherever a refusal has to name a route the person can actually take:
+    deleting a settlement is Owner-only, so telling Office to "delete it first"
+    points them at a button they cannot see.
+    """
+    return user.is_superuser or user.groups.filter(name='Owner').exists()
+
+
+def _mark_locked(advances):
+    """
+    Flag each advance whose month has already been settled, in ONE query.
+
+    The delete is refused server-side whatever this says — that is the control.
+    This is what stops the button being offered at all, on the rule the audit
+    menu already follows: a door somebody can see but not open is worse than no
+    door.
+    """
+    months = {a.date.replace(day=1) for a in advances}
+    settled = set(
+        SalaryPayment.objects.filter(month__in=months).values_list('month', flat=True)
+    ) if months else set()
+    for advance in advances:
+        advance.locked = advance.date.replace(day=1) in settled
+    return advances
 
 
 @office_required
@@ -251,6 +289,13 @@ def salary_advance_home(request):
         'pending_extra': pending_extra,
         'year_blocks': year_blocks,
         'current_year': today.year,
+        # Handed to the Give-an-Advance date box so it can refuse a settled
+        # month while the date is being picked instead of after the whole form
+        # has been filled in and submitted. `salary_advance_add` stays the
+        # control; this is the settle screen's own "say it before the button"
+        # rule applied one screen over. Already loaded — `settled_map` is the
+        # query the year list is built from, so this costs nothing.
+        'settled_month_keys': sorted(f"{m:%Y-%m}" for m in settled_map),
     })
 
 
@@ -292,8 +337,7 @@ def salary_advance_add(request):
             # offer depends on who is asking: deleting a settlement is
             # Owner-only, so telling Office to "delete it first" would send them
             # at a button they cannot see.
-            is_owner = request.user.is_superuser or request.user.groups.filter(name='Owner').exists()
-            if is_owner:
+            if _is_owner(request.user):
                 messages.error(
                     request,
                     f"{settled.month:%B %Y} is already settled. Delete that settlement "
@@ -356,9 +400,62 @@ def salary_advance_add(request):
 @office_required
 @transaction.atomic
 def salary_advance_delete(request, pk):
-    """POST: permanently delete an advance entry (logged first)."""
+    """
+    POST: permanently delete an advance entry (logged first).
+
+    REFUSED once the month it belongs to has been settled — the other half of
+    the rule `_settled_month_for` states, and the half that was missing. An
+    advance can no more leave a settled month than enter one: its cash is
+    already inside a paid `SalaryPaymentLine.advance_used`, and removing the row
+    underneath leaves that figure claiming money nothing records.
+
+    Measured before this guard existed: a ₹3,000 advance deleted out of a
+    settled month left the line reading `advance_used = 3,000` with no advance
+    behind it, and re-saving that month recomputed the advance to ₹0 and the net
+    UP by ₹3,000 — the workshop paying cash it had already handed over. On a
+    closed month the mismatch simply stands for ever, because that settlement
+    can never be re-saved to notice it.
+
+    The refusal names a route the reader can take, which differs three ways: an
+    OPEN month has none of this (the delete just works), the most recent
+    settlement can be deleted and re-made (Owner-only, hence the role branch),
+    and a CLOSED month has no route at all and must say so rather than send
+    somebody at a button that will refuse them.
+    """
     if request.method == 'POST':
         advance = get_object_or_404(SalaryAdvance, pk=pk)
+
+        settled = _settled_month_for(advance.date)
+        if settled:
+            money = f"₹{advance.amount:,.0f}"
+            when = f"{settled.month:%B %Y}"
+            if _is_closed(settled):
+                messages.error(
+                    request,
+                    f"{when} is closed, so this {money} advance can't be deleted — "
+                    f"it is part of a settlement nobody can change any more. If it "
+                    f"was recorded in error, correct it in "
+                    f"{timezone.localdate():%B} with a note saying what it was for."
+                )
+            elif _is_owner(request.user):
+                messages.error(
+                    request,
+                    f"{when} is already settled, and this {money} advance was "
+                    f"subtracted from that month's pay. Delete the {when} "
+                    f"settlement first, then remove this advance and settle the "
+                    f"month again — otherwise the settlement keeps claiming "
+                    f"{money} that nothing records."
+                )
+            else:
+                messages.error(
+                    request,
+                    f"{when} is already settled, and this {money} advance was "
+                    f"subtracted from that month's pay. Ask an owner to delete the "
+                    f"{when} settlement first, so the month can be settled again "
+                    f"without it."
+                )
+            return redirect('salary_advance_home')
+
         reason = request.POST.get('reason', '').strip()
         DeletionLog.record(
             DeletionLog.ENTITY_SALARY_ADVANCE, advance,
@@ -401,7 +498,10 @@ def salary_advance_staff_detail(request, staff_id):
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         return render(request, 'workshop/salary_advance/partials/staff_advances.html', {
             'staff': staff,
-            'advances': list(staff.salary_advances.all()[:STAFF_ADVANCE_ROWS]),
+            # Marked so a settled month's advances show a lock where the bin
+            # would be. The refusal in `salary_advance_delete` is the control;
+            # this only stops the button being offered.
+            'advances': _mark_locked(list(staff.salary_advances.all()[:STAFF_ADVANCE_ROWS])),
         })
 
     # Which advance the alert was about. New notifications name it with
@@ -551,12 +651,37 @@ def salary_payment_form(request, year, month):
         # -₹246,666. Rejected outright rather than clamped: a clamp would save
         # a number nobody typed.
         max_days = _days_in_month(year, month)
-        bad_leave = []
-        parsed_leave = {}
+        bad_leave, bad_overtime = [], []
+        parsed_leave, parsed_overtime = {}, {}
         for staff in Mechanic.objects.filter(is_active=True):
             leave_key = f'leave_days_{staff.pk}'
             if leave_key not in request.POST:
                 continue
+
+            # OVERTIME. Parsed HERE rather than at write time, where an unusable
+            # figure used to fall back to zero without a word — so `5,000` typed
+            # with a comma (which `Decimal` cannot read) saved ₹0, underpaid by
+            # ₹5,000, and left the screen showing the right number the whole
+            # time. That is exactly what the leave-days rule below refuses to do:
+            # a fallback saves a number nobody typed.
+            #
+            # The split is between NOTHING TYPED and SOMETHING UNUSABLE, and both
+            # halves are load-bearing. An absent key is the ordinary case (the
+            # box only exists on rows the form drew) and an empty one is somebody
+            # clearing it; both mean no overtime and must stay ₹0, or an
+            # untouched settlement would refuse itself. Anything actually typed
+            # that `parse_money` cannot use is reported by name.
+            ot_raw = request.POST.get(f'overtime_{staff.pk}')
+            if ot_raw is None or not ot_raw.strip():
+                parsed_overtime[staff.pk] = Decimal('0')
+            else:
+                overtime = parse_money(ot_raw, SalaryPaymentLine,
+                                       'overtime_amount', allow_zero=True)
+                if overtime is None:
+                    bad_overtime.append(f"{staff.name} ({ot_raw.strip()})")
+                else:
+                    parsed_overtime[staff.pk] = overtime
+
             raw = (request.POST.get(leave_key, '0') or '0').strip()
             try:
                 value = Decimal(raw)
@@ -573,6 +698,69 @@ def salary_payment_form(request, year, month):
                 request,
                 f"Leave days must be between 0 and {max_days} for "
                 f"{target_month:%B %Y}. Check: {', '.join(bad_leave)}."
+            )
+        if bad_overtime:
+            # The bound is READ from the column, never restated — the same rule
+            # `parse_money` itself follows, so the message cannot drift from what
+            # is actually accepted.
+            # Whole rupees, and FLOORED rather than rounded. The true ceiling
+            # is 99,999,999.99, which `:,.0f` rounds UP to 100,000,000 — a
+            # figure the guard itself rejects, so the message would name a
+            # bound that does not work. Stating the integer below it can only
+            # ever understate what is accepted.
+            ot_field = SalaryPaymentLine._meta.get_field('overtime_amount')
+            ot_max = Decimal(10) ** (ot_field.max_digits - ot_field.decimal_places) - 1
+            messages.error(
+                request,
+                f"Overtime must be a plain number, 0 to {ot_max:,.0f} — no commas "
+                f"or symbols. Leave it empty if there is none. "
+                f"Check: {', '.join(bad_overtime)}."
+            )
+        # Both are reported before returning, so a form wrong in both places is
+        # corrected in one pass rather than one round trip per mistake.
+        if bad_leave or bad_overtime:
+            return redirect('salary_payment_form', year=year, month=month)
+
+        # GUARD: the second half of "every rupee handed out lands on a line".
+        #
+        # `_unsettleable_staff` catches the two STANDING reasons somebody gets
+        # no line — no salary, retired. This catches the SITUATIONAL one, which
+        # a stale browser tab produces on an ordinary working day: the form is
+        # open while the office types leave days for seven people, somebody is
+        # hired and handed an advance in the meantime, and the submitted payload
+        # carries no `leave_days_<pk>` box for them. The loop below skips
+        # anyone whose key is absent, so they get no line — and their advance is
+        # now inside a settled month, which `salary_expense` excludes from its
+        # loose-advance pass. The cash is then counted in NEITHER place and
+        # drops off the Profit page permanently, silently.
+        #
+        # Refused rather than papered over: writing them a line here would
+        # price it at today's salary with leave days nobody entered, which is
+        # the same defect `ASettledMonthIsAClosedSetOfPeopleTests` pins down.
+        # Reloading the page is the whole remedy.
+        #
+        # Scoped to the FIRST settlement, and that scope is the point. The harm
+        # is the TRANSITION — settling is what moves the month out of
+        # `salary_expense`'s loose-advance pass. On a month already settled the
+        # cash is already counted or already lost, and re-saving changes
+        # neither, so blocking there would refuse an ordinary correction (fixing
+        # somebody else's leave days) over a state the re-save did not cause and
+        # cannot fix. Nothing new can be stranded either way: an advance cannot
+        # be recorded into a settled month, nor deleted out of one.
+        stranded = [] if already_settled else [
+            staff for staff in Mechanic.objects.filter(
+                salary_advances__date__gte=month_start,
+                salary_advances__date__lt=month_end,
+            ).distinct().order_by('name')
+            if f'leave_days_{staff.pk}' not in request.POST
+        ]
+        if stranded:
+            messages.error(
+                request,
+                f"Can't settle {target_month:%B %Y} — "
+                f"{', '.join(s.name for s in stranded)} received an advance this "
+                f"month but this form has no line for them, so that cash would be "
+                f"counted nowhere. Reload this page and settle again."
             )
             return redirect('salary_payment_form', year=year, month=month)
 
@@ -617,10 +805,9 @@ def salary_payment_form(request, year, month):
 
                 salary_used = existing_line.salary_used if existing_line else staff.current_salary
 
-                overtime = parse_money(
-                    request.POST.get(f'overtime_{staff.pk}'), SalaryPaymentLine,
-                    'overtime_amount', allow_zero=True,
-                ) or Decimal('0')
+                # Already parsed and refused above, so this is a lookup rather
+                # than a second reading of the same box.
+                overtime = parsed_overtime.get(staff.pk, Decimal('0'))
 
                 advance_used = SalaryAdvance.objects.filter(
                     staff=staff, date__gte=month_start, date__lt=month_end

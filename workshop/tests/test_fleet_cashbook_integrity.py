@@ -926,6 +926,71 @@ class DeleteFormsPostTheReasonTheirViewsRecordTests(TestCase):
         self.assertIn('name="reason"', page)
 
 
+class CancelOnTheReversalDialogCannotReverseAnythingTests(FleetLedgerTestCase):
+    """
+    The reason box has to sit inside the `<form>` that posts it, so Cancel sits
+    inside that form too — and a bare `<button>` inside a form SUBMITS it. Left
+    at the browser default, pressing **Cancel** on "Are you sure?" would reverse
+    the payment: the loudest possible failure, on the one dialog whose whole job
+    is to let somebody back out.
+
+    `type="button"` is the entire defence, which is exactly why it is asserted
+    rather than trusted. This is the same rule CLAUDE.md records for the job
+    card's date panel — every non-submitting button needs `type="button"`.
+    """
+
+    def _owner_client(self):
+        """The ⋮ on a payment row is Owner-only, matching the view's own gate."""
+        owner = User.objects.create_user(username='owner', password='pass')
+        owner.groups.add(Group.objects.get(name='Owner'))
+        c = Client()
+        c.login(username='owner', password='pass')
+        return c
+
+    def _payer_page(self):
+        payer = BulkPayer.objects.create(customer_name='Fleet Co')
+        jc = JobCard.objects.create(
+            registration_number='KL01AA0009', brand_name='Toyota',
+            model_name='Corolla', admitted_date=date.today(),
+            lead_mechanic=self.mechanic, bulk_payer=payer)
+        JobCardLabourItem.objects.create(job_card=jc, job_description='Service')
+        jc.labour_amount = Decimal('1000')
+        jc.save()
+        jc.update_totals()
+        self.client.post(reverse('bulk_payer_pay', args=[payer.pk]),
+                         {'lump_sum': '1000', 'payment_method': 'CASH'})
+        return self._owner_client().get(
+            reverse('bulk_payer_detail', args=[payer.pk])).content.decode()
+
+    def _delete_form(self, page):
+        start = page.index('id="historyDeleteForm"')
+        return page[start:page.index('</form>', start)]
+
+    def test_every_button_in_the_reversal_form_is_typed(self):
+        form = self._delete_form(self._payer_page())
+        for button in form.split('<button')[1:]:
+            head = button[:button.index('>')]
+            self.assertIn('type=', head, f"untyped button in the reversal form: {head!r}")
+
+    def test_cancel_is_a_button_and_not_a_submit(self):
+        form = self._delete_form(self._payer_page())
+        cancel = [b for b in form.split('<button')[1:] if 'hideHistoryDeleteConfirm' in b]
+        self.assertEqual(len(cancel), 1, "Cancel is no longer in the reversal form")
+        self.assertIn('type="button"', cancel[0][:cancel[0].index('>')])
+
+    def test_the_reason_box_is_inside_the_form_that_posts_it(self):
+        """An input outside the form is a field the view never receives."""
+        self.assertIn('name="reason"', self._delete_form(self._payer_page()))
+
+    def test_the_menu_item_says_what_it_deletes(self):
+        """
+        It read "Delete & Reverse", which named the mechanism rather than the
+        thing — and "reverse" is the word this section already uses for undoing
+        a payment out of order, so it read as a second, different action.
+        """
+        self.assertIn('Delete this Payment', self._payer_page())
+
+
 class AFleetPaymentCanCarryANoteTests(FleetLedgerTestCase):
     """
     THE LAST OF THE THREE LEDGERS TO GET A NOTE, closed in `0073`.
