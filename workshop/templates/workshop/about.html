@@ -135,14 +135,6 @@ body.about-dark {
 .ab-card--key h3 { color: var(--fam); }
 
 @media (min-width: 640px) { .ab-card--wide { grid-column: 1 / -1; } }
-
-/* --- closing note ------------------------------------------------------- */
-.ab-foot {
-    margin: 4px 0 0; padding: 15px 17px;
-    border: 1px dashed var(--ab-line);
-    font-size: 0.82rem; line-height: 1.65; color: var(--ab-mute);
-}
-.ab-foot b { color: var(--ab-ink); font-weight: 700; }
 </style>
 {% endblock %}
 
@@ -184,7 +176,8 @@ disagree. Do not paste an <svg> here.
             <p>One car, one card. Everything about a visit lives on it.</p>
             <ul>
                 <li>Only one open card per number plate at a time</li>
-                <li>Seven parts to it: the vehicle, the customer, what they complained about, what you did, shop parts, shelf parts, photos</li>
+                <li>Six sections, in the order the work happens &mdash; <strong>Vehicle Details</strong>, <strong>Customer &amp; Notes</strong> (photos live in here), <strong>Customer Concerns</strong>, <strong>Job Performed</strong>, <strong>Inventory Items</strong>, <strong>Spare Parts</strong></li>
+                <li>Parts go into two of those, and choosing between them is the whole parts rule below: <strong>Spare Parts</strong> for anything bought in for that car, <strong>Inventory Items</strong> for anything taken off your own shelf</li>
                 <li>Labour is one figure for the whole job, not a price per line</li>
                 <li>The floor fills it in and never sees a price &mdash; that is enforced on the server, not just hidden</li>
             </ul>
@@ -204,7 +197,7 @@ disagree. Do not paste an <svg> here.
             <h3>Completed &amp; Invoice</h3>
             <p>Work finished, and the bill can be settled.</p>
             <ul>
-                <li>The <strong>floor</strong> marks a car completed &mdash; only office can undo it</li>
+                <li>The <strong>floor</strong> marks a car completed &mdash; undoing that takes office or an owner</li>
                 <li>That is what moves it into Pending Bills, ready to settle</li>
                 <li>One A4 sheet, both kinds of part in a single list</li>
                 <li>Shelf parts print as what they are, never the brand you buy</li>
@@ -234,9 +227,10 @@ disagree. Do not paste an <svg> here.
 
         <div class="ab-card ab-card--wide">
             <h3>Looking something up</h3>
-            <p>Two searchable lists, for when you need an old one.</p>
+            <p>Three ways in. Which is quickest depends on what you already know.</p>
             <ul>
-                <li><strong>Job Cards</strong> &mdash; every card, searchable and filterable by date</li>
+                <li><strong>Know the car &mdash; open Car Profiles.</strong> Find the number plate and every visit that car has ever made is listed under it, newest first, with what each one was billed. Usually the shortest way to an old card, and nothing to remember</li>
+                <li><strong>Job Cards</strong> &mdash; every card in the workshop, searchable and filterable by date, for when you know roughly when rather than which car</li>
                 <li><strong>Estimates</strong> &mdash; every quote written, this year or all of them</li>
             </ul>
         </div>
@@ -268,7 +262,9 @@ disagree. Do not paste an <svg> here.
             <h3>Spare Shops</h3>
             <p>What you owe each shop, and what you&rsquo;ve paid.</p>
             <ul>
-                <li>Every purchase sits on that shop&rsquo;s ledger until it&rsquo;s settled</li>
+                <li>Every purchase joins that shop&rsquo;s ledger the moment it is recorded, and stays there for good &mdash; paying does not take it off</li>
+                <li>What you owe is everything ever bought from them, less everything ever paid to them</li>
+                <li>A payment clears the oldest purchases first</li>
                 <li>A shop can&rsquo;t be put away while money is still owed</li>
                 <li>An old shop stays attached to what you already bought from it</li>
             </ul>
@@ -301,7 +297,7 @@ disagree. Do not paste an <svg> here.
                 <li>A delivery raises the shelf and what you owe &mdash; it isn&rsquo;t a cost yet</li>
                 <li>The cost lands the day a mechanic takes the part</li>
                 <li>A discount spreads across the bill&rsquo;s lines, so shelf cost stays honest</li>
-                <li>A bill dated back before an old job card corrects that job&rsquo;s cost too</li>
+                <li>Bills are usually keyed long after the goods arrive, and that is fine. Date the bill to the day it was <em>delivered</em>, and the parts already taken off the shelf since then pick up their true cost &mdash; so a bill entered late still lands the cost in the right month</li>
             </ul>
         </div>
 
@@ -310,8 +306,9 @@ disagree. Do not paste an <svg> here.
             <p>Two lists that decide the names.</p>
             <ul>
                 <li><strong>Categories</strong> &mdash; the plain name for a part, and what prints on the customer&rsquo;s bill</li>
+                <li><strong>Products</strong> &mdash; the branded thing you actually buy. That name is for you; the customer&rsquo;s bill shows the category instead</li>
                 <li><strong>Shop catalogue</strong> &mdash; which products each supplies shop actually sells</li>
-                <li>A product dropped from a catalogue stays on old bills, greyed out</li>
+                <li>Take a product off a shop&rsquo;s catalogue and, if that shop has ever billed you for it or any is still in stock, it is not removed &mdash; it stays in that shop&rsquo;s list marked <strong>Deactivated</strong> and simply stops appearing on new bills. Old bills are untouched, and you can put it back any time</li>
             </ul>
         </div>
 
@@ -319,7 +316,8 @@ disagree. Do not paste an <svg> here.
             <h3>Keeping an eye on it</h3>
             <p>Three small screens that answer themselves.</p>
             <ul>
-                <li><strong>Low Stock</strong> &mdash; anything under a quarter of what you normally keep. A minus is shown separately, because that&rsquo;s a missing bill, not a shortage</li>
+                <li><strong>Low Stock</strong> &mdash; anything under a quarter of what you normally keep. Order these</li>
+                <li>A <strong>minus</strong> is listed on its own, and it means the opposite: more was taken than the shelf was recorded as holding, so a supplies bill has not been entered yet. Enter it and the count corrects itself &mdash; don&rsquo;t reorder these</li>
                 <li><strong>Stock History</strong> &mdash; who took what, and when</li>
                 <li><strong>Average cost</strong> &mdash; what the shelf actually paid, worked out again from scratch every time a bill changes</li>
             </ul>
@@ -340,10 +338,11 @@ disagree. Do not paste an <svg> here.
 
         <div class="ab-card">
             <h3>Pending Bills</h3>
-            <p>Cars handed over and not yet settled.</p>
+            <p>Work finished, money not in yet.</p>
             <ul>
-                <li>Only cars that have actually gone out &mdash; nothing still on the floor</li>
-                <li>Fleet cars aren&rsquo;t here; they sit on their own account</li>
+                <li>A card arrives here the moment somebody marks it <strong>Completed</strong> &mdash; whether the car has already gone or is still standing in the yard waiting to be collected</li>
+                <li>Cards still being worked on are not here. Nothing on them is final yet, and they are on the dashboard the whole time they are with you</li>
+                <li>Fleet cars are not here either; they sit on their own account</li>
             </ul>
         </div>
 
@@ -351,8 +350,9 @@ disagree. Do not paste an <svg> here.
             <h3>Paid Bills</h3>
             <p>Settled, filed by the day the money came in.</p>
             <ul>
-                <li>Editing an old bill never drags it back to today</li>
                 <li>A walk-in pays once, at pickup &mdash; anything short of the full bill is recorded as a discount</li>
+                <li><strong>Changing the work on an old card does not move it in this list.</strong> The discount is simply worked out again so the figures still add up, and the bill stays filed under the day it was actually paid</li>
+                <li><strong>Entering a payment again is different</strong> &mdash; that is a fresh settlement, so it files the bill under today. Right when you have genuinely collected more money; wrong when you were only correcting the card</li>
             </ul>
         </div>
 
@@ -446,10 +446,10 @@ disagree. Do not paste an <svg> here.
 
         <div class="ab-card">
             <h3>Cash Tracking</h3>
-            <p>What actually moved, by the day it moved.</p>
+            <p>Money moved, not profit.</p>
             <ul>
-                <li>Sits apart from profit on purpose &mdash; they answer different questions</li>
-                <li>It&rsquo;s the change over a period, never a bank balance</li>
+                <li>What came in and what went out between the two dates you picked, each rupee counted on the day it really moved</li>
+                <li>Deliberately kept apart from profit, because the two rarely agree: a part becomes a cost the day it goes on a car, while the cash for it leaves whenever that shop is next settled</li>
             </ul>
         </div>
 
@@ -457,13 +457,13 @@ disagree. Do not paste an <svg> here.
             <h3>Deep Analysis</h3>
             <p>Eight views, one at a time.</p>
             <ul>
-                <li>Mechanics, spare parts, stock, vehicles, fleets, shops, cashbook, operations</li>
+                <li>Mechanics, spare parts, inventory, vehicles, fleet, shops, cashbook, operations</li>
             </ul>
         </div>
 
         <div class="ab-card">
             <h3>Deletion History</h3>
-            <p>Every permanent delete, with who did it and why.</p>
+            <p>Every permanent delete, with who did it and the reason they gave.</p>
             <ul>
                 <li>There is no restore &mdash; bringing old money back would break running balances</li>
             </ul>
@@ -486,7 +486,9 @@ disagree. Do not paste an <svg> here.
             <h3>Master lists</h3>
             <p>Car brands, models, spare names and common complaints.</p>
             <ul>
-                <li>The list decides the spelling &mdash; type it any way, it saves the tidy one</li>
+                <li><strong>For a brand and a model, the list decides the spelling.</strong> Type &ldquo;toyota&rdquo; or &ldquo;TOYOTA&rdquo; on a card and it is saved the way the list spells it, so one make can never turn into three in the reports</li>
+                <li>Spare names and complaints are saved exactly as typed &mdash; which is what Data Cleanup is for</li>
+                <li>Renaming a brand or model here reaches the cards already recorded</li>
                 <li>Deleting a name touches no old card; it comes back the next time somebody types it</li>
             </ul>
         </div>
@@ -502,12 +504,13 @@ disagree. Do not paste an <svg> here.
 
         <div class="ab-card ab-card--wide">
             <h3>Data Cleanup</h3>
-            <p>The same names again, this time with a count beside each &mdash; so a
+            <p>Spare names and complaints, with a count beside each &mdash; so a
                duplicate stands out.</p>
             <ul>
+                <li>These two lists and no others, because these are the names typed straight onto a card and kept exactly as typed. Brands and models tidy themselves, so they are not here</li>
                 <li>Every spare name and every common complaint, and how often each has really been used</li>
-                <li>A name used twice and a near-copy used once is usually one thing spelt two ways</li>
-                <li>Rename or merge from here, and old cards follow &mdash; correcting &ldquo;Toyta&rdquo; to &ldquo;Toyota&rdquo; reaches every card already recorded that way</li>
+                <li>A name used forty times beside a near-copy used once is usually one thing written two ways &mdash; <strong>&ldquo;AC Filter&rdquo;</strong> and <strong>&ldquo;Cabin Filter&rdquo;</strong> for the same part</li>
+                <li>Rename or merge from here and the old cards follow, so both spellings become one line everywhere they are counted</li>
                 <li>Merging is confirmed first, and shows exactly what carries over and what is dropped</li>
                 <li>It moves no money and no stock &mdash; only names</li>
             </ul>
@@ -540,8 +543,8 @@ disagree. Do not paste an <svg> here.
             <h3>Signing in</h3>
             <p>One door, and it names no roles.</p>
             <ul>
-                <li>Staff sign in with a username, an email or a mobile number</li>
-                <li><strong>An owner must use their email address</strong> &mdash; a username or the workshop&rsquo;s public phone number won&rsquo;t work, on purpose</li>
+                <li>Office and floor sign in with the username an owner gave them. That is all a staff login holds &mdash; no email, no number</li>
+                <li><strong>An owner signs in with their email address</strong> &mdash; a username will not work, and neither will the workshop&rsquo;s phone number. That is on purpose: the number is published on the website, and five wrong tries locks an account, so anyone who could name an owner could shut that owner out</li>
             </ul>
         </div>
 
@@ -568,7 +571,7 @@ disagree. Do not paste an <svg> here.
             <h3>Devices</h3>
             <p>Every signed-in device, and where from.</p>
             <ul>
-                <li>You can sign one out remotely if a phone goes missing</li>
+                <li>You can sign any device out remotely &mdash; if one goes missing, or if it leaves with somebody</li>
             </ul>
         </div>
 
@@ -629,7 +632,8 @@ disagree. Do not paste an <svg> here.
             <p>Small checks that stop quiet damage.</p>
             <ul>
                 <li>Every typed amount is checked before it is saved</li>
-                <li>A part can&rsquo;t arrive before it was ordered, and no date can be in the future</li>
+                <li>A part can&rsquo;t arrive before it was ordered</li>
+                <li>A payment, an advance or a cashbook entry can&rsquo;t be dated forward &mdash; money dated ahead is a mistyped year far more often than a plan</li>
                 <li>Money is filed by the day it moved, so a late entry lands in the right month</li>
             </ul>
         </div>
@@ -639,8 +643,9 @@ disagree. Do not paste an <svg> here.
             <p>Shops, fleet accounts and staff are archived, never removed.</p>
             <ul>
                 <li>Their history stays exactly as it was</li>
-                <li>Putting one away is refused while money is still owed</li>
-                <li>Real deletes are permanent, and every one is written down</li>
+                <li>A shop you still owe, or a fleet account that still owes you, is refused outright. Retiring a staff member who is holding advances is allowed, but warns you as you do it</li>
+                <li>A real delete is permanent &mdash; and every one that touches money or the workshop&rsquo;s records is written down, with who did it</li>
+                <li>Quotes and photos are the exception, and stay unlogged on purpose: they are drafts and housekeeping, and an alert that fires for those is one nobody reads</li>
             </ul>
         </div>
 
@@ -648,8 +653,10 @@ disagree. Do not paste an <svg> here.
             <h3>Alerts</h3>
             <p>The handful of things worth a buzz reach your phone.</p>
             <ul>
-                <li>Deletes, big discounts, lockouts, staff signing in</li>
-                <li>Owners only &mdash; and never for something you did yourself</li>
+                <li>Anything permanently deleted, any discount over &#8377;3,500, and every sign-in &mdash; an owner&rsquo;s as well as a staff member&rsquo;s</li>
+                <li>Anything that changes who can get in: a login created or removed, a staff password changed, an account locked, a password reset</li>
+                <li>Owners only, and never for something you did yourself &mdash; so what reaches you is always somebody else</li>
+                <li>A signed-in device stays signed in for weeks, so a sign-in alert means a genuinely new one, not somebody reopening the app</li>
                 <li>Kept short deliberately: a phone that buzzes for everything stops being read</li>
             </ul>
         </div>
@@ -683,15 +690,17 @@ disagree. Do not paste an <svg> here.
             <ul>
                 <li>One tap per shot &mdash; no reviewing, and it tells you if one fails</li>
                 <li>Kept off to one side, so a slow upload never holds up saving a card</li>
-                <li>Kept a year &mdash; except on a bill nobody has paid, where they stay</li>
+                <li>Kept at least a year. Clearing old ones out is a deliberate job, never something that happens behind your back &mdash; and photos on a bill nobody has paid are never cleared, because that is the argument they are evidence in</li>
             </ul>
         </div>
 
         <div class="ab-card">
             <h3>Backups</h3>
-            <p>Taken automatically, the last fourteen kept.</p>
+            <p>Everything but the photos is in one database.</p>
             <ul>
-                <li>Everything lives in one database, photos aside</li>
+                <li>That one thing is the whole workshop &mdash; every card, ledger, wage and record</li>
+                <li>A full copy can be taken whenever you want one, and the last fourteen are kept</li>
+                <li>Photos are held separately, so they are kept safe separately</li>
             </ul>
         </div>
 
@@ -699,21 +708,84 @@ disagree. Do not paste an <svg> here.
             <h3>Email</h3>
             <p>Used for one thing only.</p>
             <ul>
-                <li>Password reset codes &mdash; nothing else is ever sent</li>
-                <li>No messages go to customers from here</li>
+                <li>Password reset codes, and nothing else</li>
             </ul>
         </div>
 
     </div>
 </section>
 
-<p class="ab-foot">
-    The map at the top is the same drawing that prints on one A4 sheet &mdash;
-    every box in the system and the lines between them. The colours match the
-    sections above: <b>blue</b> is the car&rsquo;s day, <b>purple</b> is parts
-    and stock, <b>green</b> is money in, <b>red</b> is money out, <b>grey</b>
-    is what you read, <b>amber</b> is access and the rules.
-</p>
+<!-- ══════════════ WHY IT BEHAVES THIS WAY ══════════════ -->
+{% comment %}
+The closing section, and the only one that is not about a screen.
+
+It replaced a paragraph explaining the map's own colours - which the map's
+title block already carries, so it was a legend printed twice. What an owner
+cannot get anywhere else is WHY the system argues with them where it does,
+and each of these five is the reason behind several rules above it.
+
+Every claim here is one of the rules recorded in CLAUDE.md, put in the
+owner's words rather than the code's. Nothing new is asserted.
+{% endcomment %}
+<section class="ab-fam" style="--fam: var(--ab-alert);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>Why it behaves the way it does</h2>
+        <span>Five rules, everywhere</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card ab-card--key ab-card--wide">
+            <h3>Every rupee is counted once, and counted when it happened</h3>
+            <p>Most of the rules on this page come back to this one.</p>
+            <ul>
+                <li>A part is a cost exactly once: the day it goes on a car. Not the day it was delivered, not the day the shop was paid</li>
+                <li>So a delivery raises the shelf and raises what you owe, and changes profit by nothing at all</li>
+                <li>And a job&rsquo;s takings and that job&rsquo;s parts always land in the same month &mdash; whatever month the car was finished in, or paid for</li>
+                <li>Which is what keeps a good month a good month, instead of swinging on when a bill happened to be keyed</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Money owed is on exactly one screen</h3>
+            <p>Every debt has one home, and nothing can hide it.</p>
+            <ul>
+                <li>A shop or a fleet account still carrying a balance refuses to be put away, rather than disappearing with the money still on it</li>
+                <li>Whatever you archive, tidy or filter, what is owed stays where you can find it</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>It would rather say &ldquo;I don&rsquo;t know&rdquo; than guess</h3>
+            <p>A number you can&rsquo;t trust is worse than a gap you can see.</p>
+            <ul>
+                <li>A part with no cost recorded yet is reported as unknown &mdash; never quietly as free</li>
+                <li>A wage month not settled yet is named on the profit page rather than estimated into it</li>
+                <li>Where a figure is short, the screen says so, in words</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>The rules are enforced, not just hidden</h3>
+            <p>Anything the screen refuses, the system refuses underneath.</p>
+            <ul>
+                <li>The floor is not shown a price, and cannot send one either</li>
+                <li>A settled bill, a closed wage month, an archived shop &mdash; each holds where it cannot be worked around</li>
+                <li>Which is what makes the numbers worth reading in the first place</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>It speaks up before it matters, not after</h3>
+            <p>A warning that arrives late is just a complaint.</p>
+            <ul>
+                <li>What is still blank on a bill is shown at the counter, while it can still be fixed</li>
+                <li>And it never stands in your way &mdash; a question you are asked every single time is one nobody reads</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
 
 </div>
 {% endblock %}

@@ -3694,7 +3694,11 @@ invisible.
 → `test_every_drawer_destination_lights_the_manage_button` scrapes the drawer's own
 links and asserts every one is covered, so the next section added fails loudly.
 
-**ABOUT is the LAST drawer entry, Owner-only, and it CARRIES NO LINKS.**
+**ABOUT is the LAST drawer entry, Owner-only, and it CARRIES NO LINKS.** It sits
+under the drawer label **Guide** (not "Help" — the page is a tour of what exists,
+not a place to get unstuck) and wears **`bi-info-circle`**, the outline style the
+rest of the drawer uses. It was `bi-compass`, which promised navigation from the
+one page in the app that deliberately offers none.
 `/about/` — a static, query-free tour of what is in the system: the generated
 system map as its header, then every section in short plain English.
 
@@ -5427,7 +5431,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 56 files, 1,816 tests. Always SQLite (see below).
+# Full test suite — 56 files, 1,865 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -5535,7 +5539,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,794-test run
+want. SQLite's test database is also in-memory, which is most of why a 1,865-test run
 is ~70 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
@@ -5768,7 +5772,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (50 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **56 files, 1,816 tests**.
+files) — **56 files, 1,865 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 
@@ -5927,9 +5931,20 @@ close**. Each of those has caught a real defect:
   picture — they add up to one number. The remaining shared-corridor lines are
   spaced by hand, ~12px minimum.
 
-⚠ **It states counts** (14 events, 10 critical, 10 signal handlers, ₹3,500, 25%,
+⚠ **It states counts** (14 events, 11 critical, 10 signal handlers, ₹3,500, 25%,
 keeps 14). Those drift like every other count in these docs — check them when you
-touch it.
+touch it. It read "10 critical" for a day after `LOGIN` was raised to CRITICAL,
+and that is worse on the map than in prose: the **About page prints this drawing
+directly above its own explanation of the same thing**, so a stale label there
+contradicts the page it heads.
+
+⚠ **The SIGN-IN card said `user - email - mobile`, which was a capability rather
+than a fact.** `resolve_user_by_identifier` does try all three — but
+`manage_create_user` collects only a username, a password and a role, so **no
+staff login in this workshop carries an email or a number**, and an owner is
+narrowed to their email address by `resolve_login_identifier` anyway. The label
+is `username - owner email`. Read what the account-creation form actually
+stores before describing how somebody signs in.
 
 **Roadmap vs debt:** `TITAN_MASTER_HANDOVER.md` says what we plan to do;
 `TECH_DEBT.md` says what we know is wrong. Re-verify an item before acting on it — it

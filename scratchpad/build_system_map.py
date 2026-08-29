@@ -447,7 +447,7 @@ def build(theme):
         ('r_own',  'OWNER',          ['everything unrestricted']),
         ('r_off',  'OFFICE',         ['no cost side access']),
         ('r_flo',  'FLOOR',          ['no prices visible']),
-        ('signin', 'SIGN-IN',        ['user - email - mobile']),
+        ('signin', 'SIGN-IN',        ['username - owner email']),
         ('lock',   'LOCKOUT',        ['5 wrong tries - 15 mins']),
         ('reset',  'PASSWORD RESET', ['6-digit code by email']),
         ('sess',   'SESSIONS',       ['device - ip - terminate']),
@@ -660,7 +660,7 @@ def build(theme):
     # =========================================================================
     zone(710, B3Y, 688, B3H, 'INFRA.08 // CLOUD', 'Platform & Services', FLOW['work'])
     _infra = [
-        ('notif', 'NOTIFICATIONS', ['14 events - 10 critical', 'owners only'],   FLOW['alert']),
+        ('notif', 'NOTIFICATIONS', ['14 events - 11 critical', 'owners only'],   FLOW['alert']),
         ('push',  'WEB PUSH',      ['critical goes to a phone'],                 FLOW['alert']),
         ('mail',  'EMAIL',         ['reset codes only'],                         FLOW['alert']),
         ('store', 'PHOTO STORAGE', ['S3 - presigned', 'browser uploads direct'], FLOW['work']),
