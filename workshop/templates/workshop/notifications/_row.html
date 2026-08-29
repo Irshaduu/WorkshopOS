@@ -1,39 +1,66 @@
+{% load custom_filters %}
 {% comment %}
 One notification row, shared by the floating panel and the full feed so read and
 unread can never come to mean different things in the two places.
 
-Read state is carried by four signals, not a dot alone: the accent rail down the
-left edge, the background, the weight of the title, and the trailing icon. A dot
-is easy to miss at a glance on a phone, which is where these are read.
+THE LOUD LINE CARRIES WHAT DIFFERS BETWEEN ROWS. It used to carry the event's
+title — "Record permanently deleted", "Staff signed in" — which is a CATEGORY,
+identical on every row of its kind, while the fact an owner actually needs
+("₹1 → Calicut", "Floor, on a Windows PC") sat underneath it in the quieter,
+smaller, greyer line. The eye landed on the least useful thing on the row. The
+category is now the GLYPH, which says "deleted" in one object instead of three
+words, and the body has the loud line.
+
+That leaves TWO lines where there were three, and the third one — the timestamp
+— moves to the right of the first, where it costs no height at all.
+
+Read state is carried by four signals, not a dot alone: the glyph tile's fill,
+the row background, the weight of the headline, and the trailing tick. A dot is
+easy to miss at a glance on a phone, which is where these are read.
 {% endcomment %}
 <a class="nf-row{% if note.is_unread %} is-unread{% else %} is-read{% endif %}{% if note.severity == 'CRITICAL' %} is-critical{% endif %}"
    href="{% url 'notification_open' note.pk %}"
    data-note-id="{{ note.pk }}">
 
-    <span class="nf-rail" aria-hidden="true"></span>
+    {% comment %}
+    aria-hidden, and the title is restated for a screen reader in .nf-sr below:
+    the glyph IS the title visually, so a reader that cannot see it must still
+    be told which category this is.
+    {% endcomment %}
+    <span class="nf-icon" aria-hidden="true"><i class="bi {{ note.event|notification_glyph }}"></i></span>
 
     <span class="nf-main">
-        <span class="nf-title">
-            {{ note.title }}
-            {% if note.severity == 'CRITICAL' and note.is_unread %}
-            <span class="nf-tag">Important</span>
-            {% endif %}
+        <span class="nf-top">
+            <span class="nf-fact">{% if note.body %}{{ note.body }}{% else %}{{ note.title }}{% endif %}</span>
+            <time class="nf-age" datetime="{{ note.created_at|date:'c' }}"
+                  title="{{ note.created_at|date:'d M Y, g:i A' }}">{{ note.created_at|short_ago }}</time>
+            {% comment %}
+            The read/unread mark rides the headline's line rather than taking a
+            column of its own. As a column it cost 25px of a 341px row — 7% of
+            the width, permanently, off the one line anybody reads — to hold an
+            8px dot.
+            {% endcomment %}
+            <span class="nf-state" aria-hidden="true">
+                {% if note.is_unread %}<span class="nf-dot"></span>{% else %}<i class="bi bi-check2"></i>{% endif %}
+            </span>
         </span>
 
-        {% if note.body %}<span class="nf-text">{{ note.body }}</span>{% endif %}
+        {% comment %}
+        The second line is everything the loud line deliberately does not
+        carry: the category, the supporting context, and who caused it. The
+        headline above is a complete statement ending in what happened, so this
+        line is never needed to understand the row — it is what you read when
+        you have decided the row is worth more than a glance.
 
-        <span class="nf-meta">
-            {{ note.created_at|date:"d M, g:i a" }}{% if note.actor %} · {{ note.actor.username }}{% endif %}
-        </span>
-    </span>
-
-    <span class="nf-state" aria-hidden="true">
-        {% if note.is_unread %}
-        <span class="nf-dot"></span>
-        {% else %}
-        <i class="bi bi-check2"></i>
+        When the body is empty the title has already been promoted to the
+        headline, so it is not repeated here.
+        {% endcomment %}
+        {% if note.body %}
+        <span class="nf-sub">{{ note.title }}{% if note.detail %} · {{ note.detail }}{% endif %}{% if note.actor_label %} · {{ note.actor_label }}{% endif %}</span>
+        {% elif note.detail or note.actor_label %}
+        <span class="nf-sub">{{ note.detail }}{% if note.detail and note.actor_label %} · {% endif %}{{ note.actor_label }}</span>
         {% endif %}
     </span>
 
-    <span class="visually-hidden">{% if note.is_unread %}Unread{% else %}Read{% endif %}</span>
+    <span class="visually-hidden nf-sr">{{ note.title }}. {% if note.is_unread %}Unread{% else %}Read{% endif %}. {{ note.created_at|date:"d M Y, g:i A" }}</span>
 </a>

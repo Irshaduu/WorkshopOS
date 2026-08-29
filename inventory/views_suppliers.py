@@ -361,8 +361,8 @@ def deactivate_supplier_shop(request, shop_id):
         shop.save()
         notify(
             'ACCOUNT_ARCHIVED',
-            f"Supplies Shop '{shop.name}' was archived. Reactivate it from "
-            f"Supplies Shops → Deactivated.",
+            f"{shop.name} archived",
+            detail="Supplies Shop",
             actor=request.user,
             # The DEACTIVATED list, not `supplier_shop_list` — that one filters
             # `is_active=True`, so it is the one page guaranteed NOT to contain
@@ -960,7 +960,7 @@ def delete_shop_payment(request, shop_id, payment_id):
         DeletionLog.record(
             DeletionLog.ENTITY_SUPPLIER_PAYMENT, payment,
             user=request.user, reason=reason, amount=amount,
-            label=f"₹{amount:,.0f} → {payment.supplier.name}",
+            label=f"{payment.supplier.name} · ₹{amount:,.0f} payment",
         )
         payment.delete()  # SupplierPayment.delete() recomputes supplier.update_totals()
         messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Deletion History).")

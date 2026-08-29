@@ -240,3 +240,83 @@ def get_range(value):
         return range(int(value))
     except (ValueError, TypeError):
         return []
+
+
+# -----------------------------------------------------------------------------
+# NOTIFICATIONS
+# -----------------------------------------------------------------------------
+
+@register.filter
+def notification_glyph(event):
+    """
+    The Bootstrap Icons class a feed row draws for this event key.
+
+    Read from `workshop/notifications.py`, never restated here: `EVENTS` is the
+    one place that answers "what does this thing notify about", and a second
+    table of glyphs keyed on the same strings would be free to fall behind it
+    the first time an event is added. `glyph_for` already answers an unknown key
+    with a neutral default, which matters because a notification outlives the
+    catalogue — a row written a fortnight ago carries whatever `event` string
+    was current then, and the feed must draw it rather than 500.
+    """
+    from ..notifications import glyph_for
+    return glyph_for(event)
+
+
+@register.filter
+def short_ago(value):
+    """
+    "now" / "12m" / "5h" / "3d" / "17 Aug" / "17 Aug 25".
+
+    The feed's own age wording, deliberately not `naturaltime` ("2 hours, 14
+    minutes ago" is four words for a fact worth two characters) and deliberately
+    not the absolute stamp this replaced. `28 Aug, 11:59 p.m.` answered a
+    question nobody asks of a notification — what an owner wants to know is
+    whether this is from *this morning* or *last week*, and a relative figure
+    answers it without arithmetic.
+
+    Same shape as the Live Report's `_age_label()`: one wording for one fact, so
+    the two screens cannot disagree about how old something is.
+    """
+    if not value:
+        return ''
+    try:
+        delta = timezone.now() - value
+    except TypeError:
+        return ''
+
+    seconds = delta.total_seconds()
+    if seconds < 0:
+        return 'now'
+    if seconds < 60:
+        return 'now'
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)}h"
+
+    # Past 24 HOURS, count CALENDAR days rather than 24-hour blocks — so two
+    # nights ago reads "2d" and not "45h". Under 24 hours the hour figure is
+    # kept and is the better answer: 11pm last night, read at 8pm today, is
+    # "21h", which says more than "1d" would.
+    #
+    # "Yesterday" was tried and reverted. It sits in the same flex row as the
+    # headline, so those nine characters came straight off the line the reader
+    # is actually reading — enough to wrap a body that otherwise fitted. Two
+    # characters say it, in the vocabulary the Live Report already uses.
+    today = timezone.localdate()
+    then = timezone.localtime(value).date()
+    days = (today - then).days
+    if days <= 0:
+        return 'now'
+    if days < 7:
+        return f"{days}d"
+    # `.lstrip('0')` rather than `%-d`, which is glibc-only and raises on
+    # Windows — this project is developed on Windows and deployed on Linux.
+    if then.year == today.year:
+        return then.strftime('%d %b').lstrip('0')
+    # The one output past six characters ("25 Aug 25"), and the only one that
+    # can wrap a headline. Reachable solely by an UNREAD row over a year old —
+    # read ones are purged at 14 days — which is rare, sits at the bottom of
+    # the feed, and is the one case where the year is the point.
+    return then.strftime('%d %b %y').lstrip('0')

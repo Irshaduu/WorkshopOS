@@ -81,10 +81,24 @@ self.addEventListener('push', function (event) {
             body: payload.body,
             icon: '{{ icon_url }}',
             badge: '{{ badge_url }}',
-            data: { url: payload.url },
-            // Collapses repeats of the same event instead of stacking them.
-            tag: 'workshopos',
-            renotify: true
+            data: { url: payload.url }
+            // NO `tag`, deliberately — and it used to carry a constant one
+            // (`'workshopos'`) whose comment claimed it "collapses repeats of
+            // the same event". A tag does not work that way: it is a REPLACE
+            // key, and a single constant one meant every push replaced the
+            // one before it. Two deletions a minute apart showed as one; a
+            // staff sign-in landing after a ₹1,00,000 record deletion wiped
+            // the deletion off the lock screen before anybody read it.
+            //
+            // Only CRITICAL events reach here — money moved unexpectedly,
+            // something destroyed, someone got in — and none of them
+            // supersede any other, so there is nothing here that a later
+            // alert is entitled to replace. Untagged notifications stack,
+            // which at this workshop's volume (a handful a day) is the right
+            // trade: seeing two is recoverable, missing one is not.
+            //
+            // `renotify` went with it — it is only meaningful alongside a
+            // tag, and an untagged notification alerts anyway.
         })
     );
 });

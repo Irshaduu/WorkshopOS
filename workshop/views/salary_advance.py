@@ -374,7 +374,8 @@ def salary_advance_add(request):
             )
             notify(
                 'SALARY_ADVANCE',
-                f"₹{amount:,.0f} advance to {staff.name} on {advance_date:%d %b %Y}.",
+                f"{staff.name} given ₹{amount:,.0f} advance",
+                detail=f"{advance_date:%d %b %Y}",
                 actor=request.user,
                 # Straight to the one-glance answer page, naming THIS advance so
                 # it can be shown as the advance given rather than merely the
@@ -476,7 +477,10 @@ def salary_advance_delete(request, pk):
         DeletionLog.record(
             DeletionLog.ENTITY_SALARY_ADVANCE, advance,
             user=request.user, reason=reason, amount=advance.amount,
-            label=f"₹{advance.amount:,.0f} advance — {advance.staff.name} ({advance.date})",
+            # Subject first, and no raw ISO date — it was the only one in
+            # the feed. "advance" stays out: the entity type printed beside
+            # this label is already "Salary Advance".
+            label=f"{advance.staff.name} · ₹{advance.amount:,.0f}, {advance.date:%d %b %Y}",
         )
         advance.delete()
         messages.success(request, "Advance permanently deleted (logged to Deletion History).")
@@ -849,8 +853,9 @@ def salary_payment_form(request, year, month):
         # in the loop so the figure is whatever actually landed in the database.
         notify(
             'SALARY_SETTLED',
-            f"{target_month:%B %Y} settled — ₹{payment.total_amount:,.0f} across "
-            f"{payment.lines.count()} staff.",
+            f"{target_month:%B %Y} salary settled",
+            detail=f"₹{payment.total_amount:,.0f} across "
+                   f"{payment.lines.count()} staff",
             actor=request.user,
             url=reverse('salary_advance_home'),
             object_type='SALARY_PAYMENT', object_id=payment.pk,

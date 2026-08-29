@@ -17,10 +17,19 @@
     var markAll = document.getElementById('notifMarkAll');
     var pushBtn = document.getElementById('pushToggle');
     var pushIcon = document.getElementById('pushToggleIcon');
+    var pushCta = document.getElementById('notifPushCta');
+    var pushCtaText = document.getElementById('notifPushCtaText');
 
     var panelUrl = '/notifications/panel/';
     var markAllUrl = '/notifications/read-all/';
-    var loaded = false;
+
+    // What the panel currently holds, and how old it is. `loadedUnread` is what
+    // the badge said at the moment it was rendered — if the badge has moved
+    // since, the panel is definitely stale and there is no point trusting it.
+    var loadedAt = 0;
+    var loadedUnread = null;
+    var inFlight = false;
+    var STALE_MS = 45000;
 
     function csrf() {
         var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
@@ -51,20 +60,39 @@
     }
 
     // ---- panel -------------------------------------------------------
+    function currentUnread() {
+        if (!badge || badge.hidden) { return 0; }
+        return badge.textContent.trim();
+    }
+
+    function isFresh() {
+        return loadedAt > 0 &&
+            (Date.now() - loadedAt) < STALE_MS &&
+            String(loadedUnread) === String(currentUnread());
+    }
+
     function loadPanel(force) {
-        if (loaded && !force) { return; }
+        if (inFlight) { return; }
+        if (!force && isFresh()) { return; }
+        inFlight = true;
+
+        var unreadAtRequest = currentUnread();
         fetch(panelUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function (res) { return res.ok ? res.text() : Promise.reject(res.status); })
             .then(function (html) {
                 body.innerHTML = html;
-                loaded = true;
+                loadedAt = Date.now();
+                loadedUnread = unreadAtRequest;
                 bindRows();
             })
             .catch(function () {
                 // Never leave a spinner running — the full page always works.
+                // The clock is NOT stamped on failure, so the next open retries
+                // rather than caching the error for 45 seconds.
                 body.innerHTML = '<div class="notif-loading">Could not load. ' +
                     '<a href="/notifications/">Open the full list</a>.</div>';
-            });
+            })
+            .then(function () { inFlight = false; });
     }
 
     function bindRows() {
@@ -91,7 +119,14 @@
         panel.classList.add('is-open');
         if (backdrop) { backdrop.classList.add('is-open'); }
         bell.setAttribute('aria-expanded', 'true');
-        loadPanel(true);
+        // NOT `loadPanel(true)`. Forcing a refetch on every open meant the
+        // panel showed "Loading…" every single time it was opened, including
+        // the second time in ten seconds — on an owner's phone that is a real
+        // round trip, and it is the whole reason this control ever feels slow.
+        // What is already on screen is reused unless the badge has moved or it
+        // has gone stale, and the prefetch below usually means there IS
+        // something on screen the first time too.
+        loadPanel(false);
         refreshPushState();
     }
 
@@ -102,6 +137,19 @@
     }
 
     function isOpen() { return panel.classList.contains('is-open'); }
+
+    // Warm the panel the moment somebody REACHES for the bell, not when the
+    // page loads. Fetching on load would put an extra request and an extra
+    // query on every page an owner opens, which is exactly the cost this panel
+    // is lazy in order to avoid; fetching on approach costs nothing until the
+    // control is about to be used and buys the ~100-300ms between a pointer
+    // arriving (or a finger landing) and the click resolving. `once` is not
+    // used — a second approach after the content has gone stale should warm it
+    // again.
+    ['pointerenter', 'touchstart'].forEach(function (kind) {
+        bell.addEventListener(kind, function () { loadPanel(false); },
+            kind === 'touchstart' ? { passive: true } : undefined);
+    });
 
     bell.addEventListener('click', function (event) {
         // The bell stays a real link to /notifications/ so it degrades without
@@ -150,6 +198,18 @@
         pushBtn.classList.toggle('is-on', state === 'on');
         if (pushIcon) {
             pushIcon.className = state === 'on' ? 'bi bi-bell-fill' : 'bi bi-bell-slash';
+        }
+
+        // The one line in the panel that says this phone is not getting
+        // alerts. Hidden entirely once they are on, so it can never become
+        // furniture; when push is unavailable it states the reason and is not
+        // pressable, because there is nothing here to press.
+        if (pushCta && pushCtaText) {
+            pushCta.hidden = (state === 'on');
+            pushCta.disabled = (state === 'unavailable');
+            pushCtaText.textContent = state === 'unavailable'
+                ? title
+                : 'Alerts are silent on this phone — tap to turn them on';
         }
     }
 
@@ -259,6 +319,13 @@
         pushBtn.addEventListener('click', function () {
             if (pushBtn.dataset.state === 'on') { disablePush(); } else { enablePush(); }
         });
+        // The strip is the same action as the toggle, not a second one — it
+        // exists because a 34px unlabelled icon is not a control anybody finds.
+        if (pushCta) {
+            pushCta.addEventListener('click', function () {
+                if (pushBtn.dataset.state !== 'unavailable') { enablePush(); }
+            });
+        }
         refreshPushState();
     }
 })();

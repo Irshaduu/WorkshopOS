@@ -165,7 +165,8 @@ def manage_create_user(request):
             user.groups.add(group)
         notify(
             'USER_CREATED',
-            f"A new {role} login '{username}' was created.",
+            f"'{username}' login created",
+            detail=f"Can now sign in as {role}.",
             actor=request.user,
             url=reverse('manage_dashboard') + '?section=accounts',
             object_type='USER', object_id=user.pk,
@@ -201,7 +202,9 @@ def manage_reset_password(request, user_id):
         user.save()
         notify(
             'STAFF_PASSWORD_SET',
-            f"The password for {_role_of(user)} login '{user.username}' was changed from Control Hub.",
+            f"'{user.username}' password changed",
+            detail=f"{_role_of(user)} · set from Control Hub. "
+                   f"The old password no longer works.",
             actor=request.user,
             url=reverse('manage_dashboard') + '?section=accounts',
             object_type='USER', object_id=user.pk,
@@ -229,7 +232,8 @@ def manage_delete_user(request, user_id):
         user.delete()
         notify(
             'USER_DELETED',
-            f"The {role} login '{username}' was deleted. That person can no longer sign in.",
+            f"'{username}' login deleted",
+            detail=f"{role} — can no longer sign in.",
             actor=request.user,
             url=reverse('manage_dashboard') + '?section=accounts',
             object_type='USER',
@@ -327,7 +331,15 @@ def manage_toggle_mechanic(request, mechanic_id):
             # event worth knowing about; bringing them back is routine.
             notify(
                 'ACCOUNT_ARCHIVED',
-                f"Staff member '{mechanic.name}' was deactivated.",
+                # "Archived" is the app's word for this everywhere it is shown
+                # (see the naming table in CLAUDE.md); the title already uses
+                # it, and this body used to answer with "deactivated" — one act
+                # with two names, on two lines of the same alert. The body
+                # names WHAT was archived and stops there — where it comes back
+                # from is what the notification's own link already does, and
+                # every ACCOUNT_ARCHIVED url points at the archived list.
+                f"{mechanic.name} archived",
+                detail="Staff member",
                 actor=request.user,
                 url=reverse('manage_dashboard') + '?section=staff',
                 object_type='MECHANIC', object_id=mechanic.pk,

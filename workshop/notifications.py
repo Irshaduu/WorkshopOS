@@ -14,13 +14,28 @@ notification a mechanic cannot act on is noise that trains everyone to ignore
 the bell. The actor is excluded from their own events; nobody needs telling
 about what they just did, and with two owners that halves the volume.
 
-**Severity** is a tier, not decoration. CRITICAL is the shortlist that would
-justify a phone buzzing once push exists (roadmap §VI): money moved
-unexpectedly, something was destroyed, or someone got in. Everything else is
-INFO — worth finding in the feed, not worth interrupting for.
+**Severity** is a tier, not decoration, and it is now wired to something:
+CRITICAL sends a Web Push, INFO only lands in the feed. The shortlist is money
+moved unexpectedly, something destroyed, or someone getting in. Everything else
+is INFO — worth finding in the bell, not worth interrupting for.
+
+**A notification is THREE strings.** `title` is the CATEGORY and lives here.
+`body` is a COMPLETE STATEMENT ending in what happened — subject first, verb
+last, understandable with nothing under it read at all. `detail` is the
+supporting context, so that statement can stay one line: the device, the kind of
+record, the remedy, the percentage behind a figure.
+
+The feed row draws the glyph, then `body` loud, then `title · detail · actor`
+quiet. A push puts `body` in its bold line and `title · detail` under it. Same
+order on both, so the two cannot teach different habits.
+
+The test for a new `body`: *if the reader saw only this line, would they know
+what occurred?* And nothing that decides what the row MEANS may go in `detail`
+— it is read second, or not at all.
 """
 
 import logging
+from typing import NamedTuple
 
 from django.contrib.auth.models import User
 from django.db.models import Q
@@ -34,30 +49,70 @@ AUDIENCE_OWNERS = 'OWNERS'
 CRITICAL = Notification.SEVERITY_CRITICAL
 INFO = Notification.SEVERITY_INFO
 
-# event key -> (title, severity, audience)
+
+class Event(NamedTuple):
+    """
+    One row of the catalogue.
+
+    A NamedTuple rather than a bare tuple so a fourth column could be added
+    without every reader having to know its position — but still a tuple, so
+    `EVENTS['LOGIN'][1]` keeps meaning severity for the tests that pin the tier.
+
+    `title` is the CATEGORY, not the fact: two or three words naming what kind
+    of thing happened. The specific fact — who, how much, which car — is the
+    `body` passed at the call site. The two must never say the same word twice,
+    because they are read together on both surfaces:
+
+    * a **push** shows title as its bold line and body under it, which is
+      exactly the right shape for a lock screen;
+    * a **feed row** draws `glyph` in place of the title and gives the loud line
+      to the body, because an icon says "deleted" faster than the word does and
+      the loud line has to carry what DIFFERS between rows.
+
+    `glyph` is a Bootstrap Icons class. It lives here rather than in a second
+    dict in the templatetags so the catalogue stays the one place that answers
+    "what does this thing notify about, and how loudly".
+    """
+    title: str
+    severity: str
+    audience: str
+    glyph: str
+
+
+# event key -> Event(title, severity, audience, glyph)
 EVENTS = {
-    'LOGIN':            ("Someone signed in",        INFO,     AUDIENCE_OWNERS),
-    # A STAFF sign-in — Office or Floor — is the same fact as LOGIN above at a
-    # different tier, and the split exists so this file states the rule rather
-    # than hiding it in a severity argument at the call site: *an owner signing
-    # in is routine, somebody else signing in is not*. Owners already know when
-    # they sign in themselves and the other owner is excluded as the actor, so
-    # LOGIN buzzing a phone would only ever announce the co-owner's ordinary
-    # working day. A staff account is different — it is used on shared devices
-    # on the shop floor, and it is the one the owners cannot see being used.
+    # GETTING IN IS ALWAYS WORTH A PUSH — all three of these, on the owner's
+    # decision (2026-08-29). LOGIN was INFO until then, on the reasoning that an
+    # owner signing in is routine. What overruled it: an owner account is the
+    # highest-privilege thing in this system, and a sign-in on one with a stolen
+    # password raised NOTHING that reached a phone. PASSWORD_RESET pushes, but
+    # only if the intruder went through the reset flow.
     #
-    # Volume is why this is safe to make CRITICAL: SESSION_COOKIE_AGE is 40
-    # days, so a signed-in tablet stays signed in and this fires on a genuinely
-    # new session, not on every shift.
-    'STAFF_LOGIN':      ("Staff signed in",          CRITICAL, AUDIENCE_OWNERS),
-    'ACCOUNT_LOCKED':   ("Account locked",           CRITICAL, AUDIENCE_OWNERS),
+    # Volume is what makes it safe, and it is the same argument that already
+    # justified STAFF_LOGIN: SESSION_COOKIE_AGE is 40 days, so a signed-in phone
+    # STAYS signed in and this fires on a genuinely new session — a new device,
+    # a cleared cookie jar, 40 days elapsed — not on every shift. Roughly one or
+    # two a month across two owners. `notify()` also excludes the actor, so an
+    # owner never buzzes themselves; what arrives is always *somebody signed
+    # into the other account*, which is exactly the thing worth knowing.
+    #
+    # The split between the two events survives the tier change, because the
+    # tier was never the only thing it carried: the titles differ, and a staff
+    # alert leads its detail with the ROLE, which is what says whether that
+    # account can see money.
+    'LOGIN':            Event("Owner signed in",     CRITICAL, AUDIENCE_OWNERS, 'bi-box-arrow-in-right'),
+    # The two share a glyph on purpose. They are one act about two kinds of
+    # account, and a second visual difference would invite reading them as two
+    # unrelated events.
+    'STAFF_LOGIN':      Event("Staff signed in",     CRITICAL, AUDIENCE_OWNERS, 'bi-box-arrow-in-right'),
+    'ACCOUNT_LOCKED':   Event("Account locked",      CRITICAL, AUDIENCE_OWNERS, 'bi-person-fill-lock'),
     # The system announced every routine sign-in and stayed silent for the one
     # event that means an account changed hands. A reset also terminates every
     # session, so without this the real owner is signed out on all their devices
     # with no message and no reason — which reads as "the app logged me out
     # again", the easiest thing in the world to shrug off. CRITICAL so it
     # reaches the other owner's phone, not just the bell.
-    'PASSWORD_RESET':   ("Password was reset",       CRITICAL, AUDIENCE_OWNERS),
+    'PASSWORD_RESET':   Event("Password reset",      CRITICAL, AUDIENCE_OWNERS, 'bi-key-fill'),
     # The two ways a reset can be ATTEMPTED and fail. Both were silent, which
     # left the system announcing every routine sign-in while saying nothing at
     # all about somebody working through an owner's account — the only accounts
@@ -71,24 +126,37 @@ EVENTS = {
     # `_recently_raised`, because the form behind them needs no login and would
     # otherwise be a doorbell anyone could hold down.
     'RESET_CODE_LIMIT':
-        ("Too many reset codes requested", CRITICAL, AUDIENCE_OWNERS),
+        Event("Too many reset codes", CRITICAL, AUDIENCE_OWNERS, 'bi-shield-exclamation'),
     'RESET_CODE_ATTEMPTS_SPENT':
-        ("Wrong reset code entered repeatedly", CRITICAL, AUDIENCE_OWNERS),
-    'USER_CREATED':     ("New login created",        CRITICAL, AUDIENCE_OWNERS),
+        Event("Reset code guessed wrong", CRITICAL, AUDIENCE_OWNERS, 'bi-shield-exclamation'),
+    'USER_CREATED':     Event("Login created",       CRITICAL, AUDIENCE_OWNERS, 'bi-person-plus-fill'),
     # Creating a login was announced while deleting one and changing its
     # password were silent — the two actions in Control Hub that actually hand
     # over or revoke access. An owner could remove the Office account overnight
     # and the other owner's only clue would be the staff member failing to sign
     # in. CRITICAL for the same reason PASSWORD_RESET is: it means access
     # changed hands.
-    'USER_DELETED':     ("Login deleted",            CRITICAL, AUDIENCE_OWNERS),
-    'STAFF_PASSWORD_SET': ("Staff password changed", CRITICAL, AUDIENCE_OWNERS),
-    'HIGH_DISCOUNT':    ("Large discount given",     CRITICAL, AUDIENCE_OWNERS),
-    'RECORD_DELETED':   ("Record permanently deleted", CRITICAL, AUDIENCE_OWNERS),
-    'ACCOUNT_ARCHIVED': ("Account archived",         INFO,     AUDIENCE_OWNERS),
-    'SALARY_ADVANCE':   ("Salary advance given",     INFO,     AUDIENCE_OWNERS),
-    'SALARY_SETTLED':   ("Salary month settled",     INFO,     AUDIENCE_OWNERS),
+    'USER_DELETED':     Event("Login deleted",       CRITICAL, AUDIENCE_OWNERS, 'bi-person-dash-fill'),
+    'STAFF_PASSWORD_SET': Event("Staff password changed", CRITICAL, AUDIENCE_OWNERS, 'bi-key-fill'),
+    'HIGH_DISCOUNT':    Event("Large discount",      CRITICAL, AUDIENCE_OWNERS, 'bi-percent'),
+    'RECORD_DELETED':   Event("Record deleted",      CRITICAL, AUDIENCE_OWNERS, 'bi-trash3-fill'),
+    'ACCOUNT_ARCHIVED': Event("Account archived",    INFO,     AUDIENCE_OWNERS, 'bi-archive-fill'),
+    'SALARY_ADVANCE':   Event("Salary advance",      INFO,     AUDIENCE_OWNERS, 'bi-cash-coin'),
+    'SALARY_SETTLED':   Event("Salary settled",      INFO,     AUDIENCE_OWNERS, 'bi-cash-stack'),
 }
+
+# Fallback for a row written before its event was renamed, or by a key that has
+# since been removed from the catalogue. A notification is kept for a fortnight
+# and its `event` column is a plain CharField, so the feed must be able to draw
+# a row whose key this file no longer knows — silently, rather than 500ing the
+# one page an owner opens to find out what happened.
+DEFAULT_GLYPH = 'bi-info-circle-fill'
+
+
+def glyph_for(event):
+    """The icon a feed row draws for this event key. Never raises."""
+    spec = EVENTS.get(event)
+    return spec.glyph if spec else DEFAULT_GLYPH
 
 
 def _recipients(audience, exclude=None):
@@ -150,7 +218,8 @@ def recently_raised(event, object_id, within_minutes=60):
     ).exists()
 
 
-def notify(event, body='', *, actor=None, url='', object_type='', object_id=None):
+def notify(event, body='', *, detail='', actor=None, url='', object_type='',
+           object_id=None):
     """
     Raise one event to its audience. Returns how many rows were written.
 
@@ -170,7 +239,9 @@ def notify(event, body='', *, actor=None, url='', object_type='', object_id=None
         logger.error(f"notify() called with unknown event {event!r}")
         return 0
 
-    title, severity, audience = spec
+    # Attribute access, not tuple unpacking: `Event` gained a fourth column
+    # (the glyph) and a positional unpack here would have had to change with it.
+    title, severity, audience = spec.title, spec.severity, spec.audience
 
     try:
         people = list(_recipients(audience, exclude=actor))
@@ -183,7 +254,15 @@ def notify(event, body='', *, actor=None, url='', object_type='', object_id=None
                 event=event,
                 severity=severity,
                 title=title,
-                body=body[:255],
+                # Coerced rather than trusted. NO call site passes None
+                # today — this is one character of defence against a future one
+                # that builds a body from a nullable column (`note`, `reason`
+                # and `bill_number` are all blank-able), because the failure
+                # mode is silent: a None raises inside the `try` below, which
+                # logs and returns 0, so the business action succeeds and
+                # nobody is ever told about it.
+                body=(body or '')[:255],
+                detail=(detail or '')[:255],
                 url=url[:200],
                 actor=actor if (actor is not None and getattr(actor, 'pk', None)) else None,
                 object_type=object_type[:40],
@@ -202,7 +281,19 @@ def notify(event, body='', *, actor=None, url='', object_type='', object_id=None
         if severity == CRITICAL:
             try:
                 from .push import queue_push
-                queue_push(people, title=title, body=body, url=url)
+                # THE PUSH IS THE ROW, IN THE ROW'S OWN ORDER. A lock screen
+                # gives two lines and no glyph, so the bold one takes the same
+                # thing the feed's loud line takes — the complete statement —
+                # and the quiet one takes the category plus the context. It
+                # used to send the CATEGORY as its bold line, which put
+                # "Record deleted" in bold on nine consecutive alerts with the
+                # ₹1,00,000 in the small type underneath.
+                queue_push(
+                    people,
+                    title=body or title,
+                    body=' · '.join(part for part in (title, detail) if part),
+                    url=url,
+                )
             except Exception as exc:
                 logger.error(f"queue_push for {event!r} failed: {exc}")
 

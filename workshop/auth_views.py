@@ -21,21 +21,30 @@ logger = logging.getLogger(__name__)
 # "+91 95674 94933", "+919567494933" and "9567494933" all reduce to the same
 # 10 digits. Used by resolve_user_by_identifier.
 # ============================================================
-def _role_label(user):
+def _role_name(user):
     """
-    " (Office)" / " (Floor)" for a sign-in alert, or '' when there is nothing to
-    add.
+    "Owner" / "Office" / "Floor" for a sign-in alert, or '' for an account in no
+    group at all.
 
-    The alert lands on a phone as a one-line push, so the role has to travel
-    with the username: "amal signed in" tells an owner nothing about whether
-    that account can see money. Returns an empty string rather than "(Staff)"
-    for an account in no group — inventing a role would be worse than omitting
-    one, and such an account is itself the anomaly worth noticing.
+    The alert lands on a phone, and "amal signed in" says nothing about whether
+    that account can see money — so the role travels with it, leading the
+    detail line. An account in no group returns '' rather than "Staff":
+    inventing a role would be worse than omitting one, and an account with none
+    is itself the anomaly worth noticing.
+
+    ⚠ This USED to return " (Office)" and, when the username already equalled
+    the role, ''. That suppression existed for one reason and the reason is
+    gone: the body was a single string, `"{username}{role} signed in"`, which
+    rendered "Floor (Floor) signed in" for the accounts this workshop actually
+    has — both staff logins are named after their role. The role now sits in
+    its own field, printed nowhere near the username, so there is no
+    duplication to avoid and suppressing it reported the real Office and Floor
+    accounts as having no role at all.
     """
     names = set(user.groups.values_list('name', flat=True))
     for role in ('Owner', 'Office', 'Floor'):
         if role in names:
-            return f" ({role})"
+            return role
     return ""
 
 
@@ -400,10 +409,31 @@ def login_view(request):
             #
             # Read from `is_owner` rather than a fresh group query so this can
             # never disagree with what the RBAC decorators consider an owner.
-            role = _role_label(user)
+            role = _role_name(user)
+            owner_signing_in = is_owner(user)
+            # The title carries the category ("Owner signed in" / "Staff signed
+            # in"), so the body says only what DIFFERS: who, and on what. It
+            # used to repeat "signed in" from the title and then spend its last
+            # third on an IP address.
+            #
+            # The IP is deliberately gone from BOTH sign-in events, and it is
+            # not gone from the four security ones. Every device in this
+            # workshop leaves through one connection — the laptop, the tablet
+            # and both owners' phones — so on a routine sign-in the address is
+            # near-constant and carries almost no information, while the
+            # DEVICE is the thing that would look wrong. Control Hub →
+            # Security, which this links to, still lists both per session.
+            #
+            # The role rides along for staff, where it is what decides whether
+            # that account can see money; for an owner the title has said it.
             notify(
-                'LOGIN' if is_owner(user) else 'STAFF_LOGIN',
-                f"{user.username}{role} signed in — {device} · {get_client_ip(request)}",
+                'LOGIN' if owner_signing_in else 'STAFF_LOGIN',
+                f"{user.username} signed in",
+                # The role leads the detail for staff, because it is what
+                # decides whether that account can see money; for an owner the
+                # category beside it has already said so.
+                detail=(device if owner_signing_in
+                        else f"{role or 'No role'} · {device}"),
                 actor=user,
                 url=reverse('manage_dashboard') + '?section=security',
             )
@@ -447,15 +477,20 @@ def login_view(request):
                     # and reasonably concluded the alert was lying. The owner
                     # branch above already said the duration; this one did not.
                     remedy = (
-                        f"It clears itself in {AccountLockout.LOCKOUT_MINUTES} minutes. "
-                        f"Within that window you can unlock it now from Control Hub → "
-                        f"Accounts; after it, there is nothing to undo."
+                        f"It clears itself in {AccountLockout.LOCKOUT_MINUTES} minutes; "
+                        f"unlock it sooner from Control Hub → Accounts."
                     )
 
                 notify(
                     'ACCOUNT_LOCKED',
-                    f"{account.username} was locked after {failures} failed sign-in "
-                    f"attempts from {get_client_ip(request)}. {remedy}",
+                    f"{account.username}'s account locked",
+                    # The remedy stays in full, in the detail line: it EXPIRES,
+                    # and a permanent notification describing a temporary
+                    # button has to say so.
+                    detail=(
+                        f"{failures} wrong passwords from "
+                        f"{get_client_ip(request)}. {remedy}"
+                    ),
                     url=target,
                     object_type='USER',
                     object_id=account.pk,
@@ -673,9 +708,19 @@ def owner_forgot_password_view(request):
         ):
             notify(
                 'RESET_CODE_LIMIT',
-                f"{user.username} — {PasswordResetOTP.MAX_REQUESTS_PER_HOUR} password reset "
-                f"codes requested within an hour from {get_client_ip(request)}. No further "
-                f"codes will be sent for now. If this was not you, change the password.",
+                f"{user.username} — {PasswordResetOTP.MAX_REQUESTS_PER_HOUR} reset codes "
+                f"requested in an hour",
+                # "Change the password" was the wrong instruction as well as
+                # an alarming one. This attack goes through the RESET flow, so
+                # the password was never exposed and changing it stops nothing.
+                # What is true: the throttle held, and nothing on the account
+                # moved. The password advice that IS worth giving is about
+                # strength, not rotation.
+                detail=(
+                    f"From {get_client_ip(request)}. No more codes for an hour, and "
+                    f"nothing on the account changed. Worth making sure the password "
+                    f"is a strong one."
+                ),
                 url=reverse('manage_dashboard') + '?section=security',
                 object_type='USER',
                 object_id=user.pk,
@@ -798,9 +843,18 @@ def owner_reset_password_view(request):
                 if not recently_raised('RESET_CODE_ATTEMPTS_SPENT', user.pk):
                     notify(
                         'RESET_CODE_ATTEMPTS_SPENT',
-                        f"{user.username} — a password reset code was guessed wrong "
-                        f"{PasswordResetOTP.MAX_ATTEMPTS} times from {get_client_ip(request)}. "
-                        f"The code is now dead. If this was not you, change the password.",
+                        f"{user.username} — reset code guessed wrong "
+                        f"{PasswordResetOTP.MAX_ATTEMPTS} times",
+                        # Same rule as RESET_CODE_LIMIT above: the guesses
+                        # were against a one-time CODE, not the password, and
+                        # they all failed. Saying "change the password" reads
+                        # as "you have been broken into" for an event whose
+                        # whole content is that the defences worked.
+                        detail=(
+                            f"From {get_client_ip(request)}. The code is dead and "
+                            f"nothing on the account changed. Worth making sure the "
+                            f"password is a strong one."
+                        ),
                         url=reverse('manage_dashboard') + '?section=security',
                         object_type='USER',
                         object_id=user.pk,
@@ -859,9 +913,17 @@ def owner_reset_password_view(request):
         # signal is the reset email itself, which says to raise it here.
         notify(
             'PASSWORD_RESET',
-            f"{user.username}'s password was reset with an emailed code — "
-            f"{UserSession.get_device_name(request.META.get('HTTP_USER_AGENT', ''))} "
-            f"· {get_client_ip(request)}. Every device was signed out.",
+            f"{user.username}'s password was reset",
+            # The one event of the three where something actually changed, so
+            # it says so plainly and does not soften it. No instruction: this
+            # reaches the OTHER owner (the actor is excluded), whose useful next
+            # move is to look at the signed-in devices — which is where the link
+            # already goes.
+            detail=(
+                f"Emailed code · "
+                f"{UserSession.get_device_name(request.META.get('HTTP_USER_AGENT', ''))} "
+                f"({get_client_ip(request)}). Every device was signed out."
+            ),
             actor=user,
             url=reverse('manage_dashboard') + '?section=security',
             object_type='USER',

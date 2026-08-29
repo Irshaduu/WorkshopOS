@@ -558,7 +558,8 @@ def bulk_payer_delete(request, pk):
         bulk_payer.save(update_fields=['is_trashed'])
         notify(
             'ACCOUNT_ARCHIVED',
-            f"Fleet Account '{bulk_payer.customer_name}' was archived.",
+            f"{bulk_payer.customer_name} archived",
+            detail="Fleet Account",
             actor=request.user,
             url=reverse('bulk_payer_archived'),
             object_type='BULK_PAYER', object_id=bulk_payer.pk,
@@ -722,7 +723,7 @@ def bulk_payment_history_delete(request, pk, history_pk):
         DeletionLog.record(
             DeletionLog.ENTITY_BULK_PAYMENT, history,
             user=request.user, reason=reason, amount=history.amount,
-            label=f"₹{history.amount:,.0f} → {bulk_payer.customer_name}",
+            label=f"{bulk_payer.customer_name} · ₹{history.amount:,.0f} payment",
         )
         amount = history.amount
         history.delete()
