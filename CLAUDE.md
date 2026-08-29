@@ -1090,6 +1090,48 @@ is wrong, and only the caller knows what each should say.
 → `CashbookEntriesAreDatedByTheDayTheMoneyMovedTests`,
 `BothLedgersDateMoneyByOneRuleTests`
 
+**NOTHING THAT MOVES MONEY IS DATED FORWARD, AND THE LAST TWO HOLES WERE CLOSED
+2026-08-30.** `is_future()` guarded both Cashbook forms, all three payment
+screens and the salary advance; `spare_dates.pair_problem()` carried the same
+refusal for an ordered/received pair. Two typed dates had never been wired to
+it, and both were found by auditing the **About page's own claim** that "no
+date can be in the future" — which was false when it was written.
+
+- **`JobCard.admitted_date`** was the expensive one. `analysis_engine` dates a
+  card's WHOLE LIFE on it — revenue and BOTH parts costs — so a card typed 2027
+  for 2026 lifts one entire job out of the month that earned it and then
+  **hides** it, because This Month and This Year end on a calendar boundary the
+  card sits past. `clean_admitted_date` on `JobCardForm`.
+- **`SupplierRestockBill.bill_date`** was two defects in one line. The edit form
+  is the **only** door (the create path takes no date and falls to the column
+  default) and it assigned the raw POST string onto a `DateField`: garbage
+  reached Postgres as a `DataError` — a 500, and **not** caught by that view's
+  `except ValueError` — and a forward date was accepted. A forward date also
+  breaks `inventory/costing.py`, whose date-ordered replay would sort the bill
+  after every real draw and give a cost basis to none of them.
+
+⚠ **A FORWARD-DATED CARD WAS PUT TO THE OWNER FIRST, AND IT IS NOT WANTED
+(2026-08-30).** The workshop is appointment-driven, so a card opened for a car
+arriving next week was the one plausible reading — and `resolve_window`'s
+"never cut off a forward-dated record" comment reads like evidence they exist
+deliberately. **It is not**: that line makes All Time honest *if* a mistyped
+card exists, and it only half-works, since a 2027 card still falls outside This
+Year. A card is opened when the car is admitted.
+
+Both **refuse rather than clamp**, the rule everywhere a value is typed here —
+a fallback saves a value nobody typed, and filing a 2027 card under today is
+the same defect one month closer. The widget `max` on each is **presentation
+only**; it is set in `JobCardForm.__init__` rather than `Meta.widgets`, because
+an attribute declared there is evaluated once at import and a long-running
+server would cap the box at the day it booted.
+
+⚠ **`Estimate.date` is deliberately still open.** An estimate is connected to
+nothing — no ledger, no stock, no line in `analysis_engine` — so it is the one
+typed date that moves no money, which is why the About page now says
+**"nothing that moves money can be dated ahead of today"** rather than
+restating a blanket claim that would go false again.
+→ `workshop/tests/test_future_dates.py`
+
 **The date box is small, first, and silent only while it is right.** Almost every
 entry is dated today, so the field that is nearly always correct is a 46px
 calendar glyph with the real `<input type="date">` invisible on top of it — one
@@ -5686,7 +5728,7 @@ each exists so that one rule has exactly one implementation:
 | `settlement.py` | what is still unfilled before this bill should be settled? |
 | `master_data.py` | the rename/merge rule, shared by Master Lists and Data Cleanup |
 | `money.py` | is this typed rupee amount acceptable for its column? |
-| `money_dates.py` | what day did this money move? — the Cashbook and the spare-shop payment form |
+| `money_dates.py` | what day did this money move? — both Cashbook forms, all three payment screens, the Supplies Shop bill and the job card's admitted date |
 | `spare_dates.py` | is this ordered/received pair the right way round? |
 | `delete_window.py` | has this money row been in the books too long for Office to delete? |
 | `photos.py` | where do the bytes go, and how is the URL signed? |

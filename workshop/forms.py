@@ -2,6 +2,7 @@ from decimal import Decimal, InvalidOperation
 
 from django import forms
 from django.db.models import Count
+from django.utils import timezone
 from django.forms import inlineformset_factory, BaseInlineFormSet
 from django.forms.formsets import DELETION_FIELD_NAME
 
@@ -20,6 +21,7 @@ from .models import (
     JobCardLabourItem,
     Mechanic,
 )
+from .money_dates import is_future
 from .spare_dates import pair_problem
 
 # =============================================================================
@@ -363,6 +365,43 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
         if current_id and current_id not in eligible_ids:
             eligible_ids.append(current_id)
         self.fields['lead_mechanic'].queryset = Mechanic.objects.filter(pk__in=eligible_ids)
+        # PRESENTATION ONLY — `clean_admitted_date` is the control. The picker
+        # simply stops offering a day that has not come, so the ordinary
+        # mistake is caught before the round trip.
+        #
+        # Set HERE and not in `Meta.widgets`: an attribute declared there is
+        # evaluated once when the module is imported, so a server left running
+        # for a week would cap the box at the day it booted. The same reason
+        # the views reach for `timezone.localdate()` rather than a constant.
+        self.fields['admitted_date'].widget.attrs['max'] = timezone.localdate().isoformat()
+
+    def clean_admitted_date(self):
+        """
+        A car cannot have been admitted on a day that has not come.
+
+        This was the one date on a *money* screen with no such check, and it is
+        the most expensive one to get wrong: `analysis_engine` dates a job
+        card's whole life on `admitted_date` — revenue and BOTH parts costs —
+        so a card typed 2027 for 2026 lifts one whole job out of the month it
+        belongs to. It is then invisible, because This Month and This Year both
+        end on a real calendar boundary the card sits past.
+
+        REFUSED, never clamped to today, which is the rule everywhere a figure
+        or a date is typed here: a fallback saves a value nobody typed, and
+        silently filing the job under today would be the same defect one month
+        closer. `is_future` is imported rather than restated — it is
+        `timezone.localdate()` (never `date.today()`), so the small hours of an
+        IST morning are not called tomorrow by a server running in UTC.
+
+        Checked and ruled out with the owner (2026-08-30): the workshop is
+        appointment-driven, so a card opened for a car arriving next week was
+        the one plausible reading. It is not one they want — a card is opened
+        when the car is admitted.
+        """
+        value = self.cleaned_data.get('admitted_date')
+        if value and is_future(value):
+            raise forms.ValidationError("A car can't be admitted on a date in the future.")
+        return value
 
     def clean_labour_amount(self):
         """
