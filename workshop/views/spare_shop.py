@@ -381,7 +381,7 @@ def spare_shop_payment_reverse(request, shop_pk, payment_pk):
     DeletionLog.record(
         DeletionLog.ENTITY_SHOP_PAYMENT, payment,
         user=request.user, reason=reason, amount=amount,
-        label=f"₹{amount:,.0f} → {shop.name}",
+        label=f"{shop.name} · ₹{amount:,.0f} payment",
     )
     payment.delete()  # SpareShopPayment.delete() recomputes shop.update_totals()
 
@@ -415,7 +415,8 @@ def spare_shop_delete(request, pk):
         shop.save(update_fields=['is_trashed'])
         notify(
             'ACCOUNT_ARCHIVED',
-            f"Spare Shop '{shop.name}' was archived.",
+            f"{shop.name} archived",
+            detail="Spare Shop",
             actor=request.user,
             url=reverse('spare_shop_archived'),
             object_type='SPARE_SHOP', object_id=shop.pk,

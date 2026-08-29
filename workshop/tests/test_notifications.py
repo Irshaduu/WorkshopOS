@@ -14,6 +14,7 @@ and in that window the old query returned nobody, so every notification
 silently reached no one while appearing to work.
 """
 
+import re
 from decimal import Decimal
 from datetime import date, timedelta
 
@@ -89,7 +90,11 @@ class NotifyTests(TestCase):
         notify('HIGH_DISCOUNT', 'big one')
 
         note = Notification.objects.first()
-        title, severity, _ = EVENTS['HIGH_DISCOUNT']
+        # Attribute access, not `title, severity, _ = ...`: `Event` gained a
+        # fourth column (the glyph the feed row draws) and the point of the
+        # test is that the registry is the source, not where a field sits.
+        spec = EVENTS['HIGH_DISCOUNT']
+        title, severity = spec.title, spec.severity
         self.assertEqual(note.title, title)
         self.assertEqual(note.severity, severity)
         self.assertEqual(note.severity, Notification.SEVERITY_CRITICAL)
@@ -409,7 +414,12 @@ class EventHookTests(TestCase):
         self.assertEqual(note.event, 'RECORD_DELETED')
         self.assertEqual(note.severity, Notification.SEVERITY_CRITICAL)
         self.assertIn('Gone Motors', note.body)
-        self.assertIn('1500.00', note.body)
+        # `₹1,500`, not `1500.00`. The body used to append the raw Decimal in
+        # brackets after a label that, at seven of the eighteen call sites,
+        # already carried the same figure formatted the app's way — so one
+        # amount was printed twice in two spellings. See
+        # `TheDeletedRecordBodySaysEachFactOnceTests`.
+        self.assertIn('₹1,500', note.body)
 
     def test_high_discount_notifies_but_a_normal_one_does_not(self):
         """
@@ -442,9 +452,11 @@ class EventHookTests(TestCase):
         notes = Notification.objects.filter(event='HIGH_DISCOUNT')
         self.assertEqual(notes.count(), 2)
         self.assertIn('KL01A0002', notes.first().body)
-        # The percentage is still in the body — no longer the threshold, but
-        # still the context an owner reads ₹7,000 against.
-        self.assertIn('12%', notes.first().body)
+        # The percentage is still on the row — no longer the threshold, but
+        # still the context an owner reads ₹7,000 against. It sits in `detail`
+        # now, under the statement, because the loud line is for the car and
+        # the amount.
+        self.assertIn('12%', notes.first().detail)
 
     def test_the_discount_threshold_is_a_boundary_not_a_range(self):
         """
@@ -510,7 +522,7 @@ class EventHookTests(TestCase):
         note = Notification.objects.filter(event='ACCOUNT_LOCKED').first()
         self.assertNotIn('section=accounts', note.url)
         self.assertIn('section=security', note.url)
-        self.assertIn('cannot be unlocked', note.body)
+        self.assertIn('cannot be unlocked', note.detail)
 
     def test_successful_login_notifies_the_other_owner(self):
         self.client.post(reverse('login'), {'username': 'Sahad', 'password': PASSWORD})
@@ -604,3 +616,429 @@ class EventHookTests(TestCase):
         self.assertIn('Advance given', page)
         self.assertIn('2,500', page)
         self.assertIn('Ravi', page)
+
+
+# =============================================================================
+# The 2026-08-29 rewrite
+# =============================================================================
+
+class EveryEventCarriesAGlyphTests(TestCase):
+    """
+    The feed row draws the glyph where the title used to be, so an event without
+    one arrives as a blank square on an owner's phone.
+
+    The glyph lives in `EVENTS` rather than in a second table in the
+    templatetags, so this only has to check one place — which is the point.
+    """
+
+    def test_every_event_has_a_bootstrap_icon_class(self):
+        from workshop.notifications import EVENTS
+
+        for key, spec in EVENTS.items():
+            with self.subTest(event=key):
+                self.assertTrue(spec.glyph.startswith('bi-'), f"{key}: {spec.glyph!r}")
+
+    def test_every_glyph_is_a_class_the_vendored_icon_font_actually_declares(self):
+        """
+        A typo'd `bi-` class renders as nothing at all — no error, no console
+        warning, just a hole where the row's whole identity should be. The font
+        is vendored, so the answer is on disk and there is no excuse for
+        guessing.
+        """
+        import io
+        import os
+
+        from django.conf import settings
+        from workshop.notifications import DEFAULT_GLYPH, EVENTS
+
+        css_path = os.path.join(
+            settings.BASE_DIR, 'static', 'vendor', 'bootstrap-icons', 'bootstrap-icons.css'
+        )
+        css = io.open(css_path, encoding='utf-8').read()
+
+        for glyph in {spec.glyph for spec in EVENTS.values()} | {DEFAULT_GLYPH}:
+            with self.subTest(glyph=glyph):
+                self.assertIn(".%s::before" % glyph, css)
+
+    def test_an_unknown_event_key_still_draws_a_row(self):
+        """
+        A notification is kept for a fortnight and stores `event` as plain text,
+        so a row written before an event was renamed — or by a key since
+        removed — must still render. The feed is the one page an owner opens to
+        find out what happened; 500ing it over a stale string is the worst
+        failure mode available.
+        """
+        from workshop.notifications import DEFAULT_GLYPH, glyph_for
+
+        self.assertEqual(glyph_for('NO_SUCH_EVENT_EVER'), DEFAULT_GLYPH)
+        self.assertEqual(glyph_for(''), DEFAULT_GLYPH)
+        self.assertEqual(glyph_for(None), DEFAULT_GLYPH)
+
+
+class TheLoudLineCarriesTheFactTests(TestCase):
+    """
+    The row's headline used to be the event TITLE — a category, identical on
+    every row of its kind ("Record permanently deleted" nine times running) —
+    while the fact an owner actually needs sat under it in smaller, greyer type.
+    The eye landed on the least useful line on the row.
+
+    The glyph carries the category now and the body has the headline. Both
+    strings are still on the row, so a swap would look almost right; these pin
+    which is which.
+    """
+
+    def setUp(self):
+        Group.objects.get_or_create(name='Owner')
+        self.owner = User.objects.create_user(username='Sahad', password=PASSWORD)
+        self.owner.groups.add(Group.objects.get(name='Owner'))
+        self.client.login(username='Sahad', password=PASSWORD)
+
+    def _feed(self):
+        return self.client.get(reverse('notification_list')).content.decode()
+
+    def test_the_body_is_in_the_headline_and_the_title_is_not(self):
+        notify('HIGH_DISCOUNT', 'KL 10 AA 1038 discount given',
+               detail='27% of the 20,500 bill')
+
+        page = self._feed()
+        self.assertIn('class="nf-fact">KL 10 AA 1038 discount given<', page)
+        # The category and the context share the quiet second line, in that
+        # order — category first, because it is what the glyph above it means.
+        self.assertIn(
+            'class="nf-sub">Large discount · 27% of the 20,500 bill', page)
+
+    def test_the_detail_never_takes_the_loud_line(self):
+        """
+        The whole point of the column: context that used to be crammed into the
+        statement now sits under it, so the statement stays one readable line.
+        """
+        notify('ACCOUNT_LOCKED', "amal's account locked",
+               detail='5 wrong passwords from 1.2.3.4')
+
+        page = self._feed()
+        self.assertIn('class="nf-fact">amal&#x27;s account locked<', page)
+        self.assertNotIn('1.2.3.4</span>\n            <time', page)
+
+    def test_a_bodyless_notification_promotes_its_title_rather_than_printing_nothing(self):
+        """
+        Every call site passes a body today, but `notify()` does not require
+        one — and a row whose loud line was empty would read as a broken feed.
+        The title moves up, and the second line is then omitted rather than
+        saying the same words twice.
+        """
+        notify('SALARY_SETTLED', '')
+
+        page = self._feed()
+        self.assertIn('class="nf-fact">Salary settled<', page)
+        self.assertNotIn('class="nf-sub">Salary settled', page)
+
+    def test_the_headline_class_does_not_collide_with_the_pages_own_header(self):
+        """
+        It did. `.nf-head` is the feed page's header block, declared in
+        notification_list.html with `margin-bottom: 18px` — so while the row's
+        headline shared that name, every row on the feed silently inherited
+        18px of margin nothing intended, and none of the panel's rows did.
+        Measured as a 40.3px headline sitting inside a 58.3px line.
+
+        Nothing in this suite executes CSS, so the only available defence is
+        that the name is not reused. Checked in both directions.
+        """
+        import io
+        import os
+
+        from django.conf import settings
+
+        base = os.path.join(settings.BASE_DIR, 'workshop', 'templates', 'workshop')
+        for name in (os.path.join(base, 'notifications', '_row.html'),
+                     os.path.join(base, 'notifications', 'notification_list.html'),
+                     os.path.join(base, 'base.html')):
+            with self.subTest(template=os.path.basename(name)):
+                # CSS comments are stripped first. The retired name is NAMED in
+                # one, on purpose — it is the note explaining the trap, and a
+                # test that forbids describing a bug forbids recording it.
+                markup = re.sub(
+                    r'/\*.*?\*/', '', io.open(name, encoding='utf-8').read(), flags=re.S)
+                self.assertNotIn('nf-head', markup)
+
+
+class TheDeletedRecordBodySaysEachFactOnceTests(TestCase):
+    """
+    `DeletionLog.record` builds the one notification body that is assembled from
+    parts rather than written at a call site, and it printed two of them twice:
+
+        "Restock Bill deleted: Restock Bill #669 - Fluid manjeri -
+         31,500 (31500.00)"
+
+    — the record type twice (the label opens with it) and the amount twice, in
+    two different spellings of one number. Seven of the eighteen `record()`
+    call sites put the amount in their own label, so that is the common case
+    rather than an edge one.
+
+    Both guards read what the LABEL already carries rather than a list of which
+    call sites do what, so a nineteenth cannot reintroduce either.
+    """
+
+    def setUp(self):
+        Group.objects.get_or_create(name='Owner')
+        self.owner = User.objects.create_user(username='Sahad', password=PASSWORD)
+        self.owner.groups.add(Group.objects.get(name='Owner'))
+
+    def _note(self, **kwargs):
+        Notification.objects.all().delete()
+        DeletionLog.record(instance=SpareShop.objects.create(name='X Motors'), **kwargs)
+        return Notification.objects.get(recipient=self.owner)
+
+    def _body(self, **kwargs):
+        return self._note(**kwargs).body
+
+    def test_an_amount_already_in_the_label_is_not_repeated(self):
+        body = self._body(
+            entity_type=DeletionLog.ENTITY_SHOP_PAYMENT,
+            amount=Decimal('31500.00'),
+            label='₹31,500 → Fluid manjeri',
+        )
+        self.assertEqual(body.count('31,500'), 1)
+        self.assertNotIn('31500.00', body)
+
+    def test_an_amount_missing_from_the_label_is_added_in_the_apps_own_format(self):
+        body = self._body(
+            entity_type=DeletionLog.ENTITY_SHOP_PAYMENT,
+            amount=Decimal('31500.00'), label='Payment to Fluid manjeri',
+        )
+        self.assertIn('₹31,500', body)
+        self.assertNotIn('31500.00', body)
+
+    def test_a_record_type_the_label_already_opens_with_is_not_repeated(self):
+        note = self._note(
+            entity_type=DeletionLog.ENTITY_RESTOCK_BILL,
+            amount=Decimal('15000.00'),
+            label='Restock Bill #669 · Fluid manjeri · ₹15,000',
+        )
+        self.assertEqual(note.body.lower().count('restock bill'), 1)
+        # And the detail is dropped rather than repeating it a line below.
+        self.assertEqual(note.detail, '')
+
+    def test_a_record_type_the_label_omits_is_supplied(self):
+        note = self._note(
+            entity_type=DeletionLog.ENTITY_CASHBOOK,
+            label='Money Out · Electricity · ₹4,200',
+        )
+        # In `detail`, under the statement — the loud line is what was deleted,
+        # not what kind of thing it was.
+        self.assertEqual(note.detail, 'Cashbook Entry')
+
+    def test_the_headline_is_a_complete_statement_ending_in_the_action(self):
+        """
+        The loud line has to be understandable with nothing read under it. It
+        used to open with the category ("Spare-Shop Payment deleted: ₹1 → …"),
+        which put the identical word at the start of nine consecutive rows.
+        """
+        note = self._note(
+            entity_type=DeletionLog.ENTITY_SHOP_PAYMENT, label='Calicut · ₹1 payment',
+        )
+        self.assertEqual(note.body, 'Calicut · ₹1 payment deleted')
+        self.assertTrue(note.body.endswith('deleted'))
+        self.assertEqual(note.title, 'Record deleted')
+        self.assertEqual(note.detail, 'Spare-Shop Payment')
+
+    def test_a_delete_with_no_amount_appends_nothing(self):
+        note = self._note(
+            entity_type=DeletionLog.ENTITY_MASTER_DATA, label="Spare part 'Oil filter'",
+        )
+        self.assertNotIn('₹', note.body)
+        self.assertNotIn('₹', note.detail)
+
+
+class TheAgeIsSaidInTheFeedsOwnWordsTests(TestCase):
+    """
+    `28 Aug, 11:59 p.m.` answered a question nobody asks of a notification.
+    What an owner wants to know is whether this is from this morning or last
+    week, and the absolute stamp made them work it out.
+
+    It also has to be SHORT: it shares a flex line with the headline, so every
+    character it spends comes off the line being read. That is why "Yesterday"
+    was tried and reverted.
+    """
+
+    def _ago(self, **kwargs):
+        from workshop.templatetags.custom_filters import short_ago
+        return short_ago(timezone.now() - timedelta(**kwargs))
+
+    def test_the_whole_scale(self):
+        self.assertEqual(self._ago(seconds=5), 'now')
+        self.assertEqual(self._ago(minutes=12), '12m')
+        self.assertEqual(self._ago(hours=5), '5h')
+
+    def test_hours_run_all_the_way_to_a_day(self):
+        """
+        Under 24 hours the hour figure is kept, because it says more: something
+        21 hours old is "21h", not "1d".
+        """
+        self.assertEqual(self._ago(hours=21), '21h')
+        self.assertEqual(self._ago(hours=23, minutes=50), '23h')
+
+    def test_past_a_day_it_counts_CALENDAR_days_not_24_hour_blocks(self):
+        """Two nights ago is "2d", never "45h"."""
+        from workshop.templatetags.custom_filters import short_ago
+
+        two_nights_ago = timezone.localtime(timezone.now()).replace(
+            hour=23, minute=0, second=0, microsecond=0
+        ) - timedelta(days=2)
+        self.assertEqual(short_ago(two_nights_ago), '2d')
+
+    def test_nothing_within_the_year_is_longer_than_six_characters(self):
+        """
+        Six is the budget, because this shares a flex line with the headline.
+        The single exception is a row over a year old ("25 Aug 25"), which only
+        an UNREAD notification can ever be — read ones are purged at 14 days.
+        """
+        from workshop.templatetags.custom_filters import short_ago
+
+        for kwargs in ({'seconds': 5}, {'minutes': 12}, {'hours': 5}, {'hours': 21},
+                       {'days': 1}, {'days': 3}, {'days': 20}, {'days': 200}):
+            with self.subTest(**kwargs):
+                self.assertLessEqual(
+                    len(short_ago(timezone.now() - timedelta(**kwargs))), 6)
+
+        self.assertLessEqual(len(short_ago(timezone.now() - timedelta(days=400))), 9)
+
+    def test_a_missing_or_unusable_date_prints_nothing_rather_than_raising(self):
+        from workshop.templatetags.custom_filters import short_ago
+
+        self.assertEqual(short_ago(None), '')
+        self.assertEqual(short_ago(''), '')
+        self.assertEqual(short_ago('not a date'), '')
+
+    def test_a_clock_skewed_future_row_reads_as_now_not_as_a_negative(self):
+        from workshop.templatetags.custom_filters import short_ago
+
+        self.assertEqual(short_ago(timezone.now() + timedelta(minutes=5)), 'now')
+
+
+class EveryNotificationLandsOnItsSubjectTests(TestCase):
+    """
+    Tapping an alert has to reach the thing it is about.
+
+    CLAUDE.md has stated this rule for a long time and nothing enforced it, which
+    is how it was broken twice: `ACCOUNT_LOCKED` pointed every lockout at Control
+    Hub → Accounts, a page that lists Office and Floor only, so a locked OWNER
+    opened a page without the account on it and nothing to press; and a Supplies
+    Shop `ACCOUNT_ARCHIVED` pointed at `supplier_shop_list`, which filters
+    `is_active=True` — the one page guaranteed NOT to contain the shop the
+    notification was about.
+
+    Both were found by reading. `reverse()` was right in both cases, which is
+    the trap: comparing a stored url against a `reverse()` proves the route
+    exists and says nothing about whether the page SHOWS the subject. So these
+    follow the link and look at the rendered page.
+
+    Matching is case-INSENSITIVE: the Security section renders an owner as
+    `{{ s.user.username|upper }}`, and a case-sensitive check reports a false
+    miss on exactly the events this exists to protect.
+    """
+
+    def setUp(self):
+        for name in ('Owner', 'Office', 'Floor'):
+            Group.objects.get_or_create(name=name)
+
+        self.owner = User.objects.create_user(username='Sahad', password=PASSWORD)
+        self.owner.groups.add(Group.objects.get(name='Owner'))
+        self.office = User.objects.create_user(username='officestaff', password=PASSWORD)
+        self.office.groups.add(Group.objects.get(name='Office'))
+
+        self.client.login(username='Sahad', password=PASSWORD)
+
+    def _holds(self, url, needle):
+        """GET the destination as an owner and say whether it names `needle`."""
+        response = self.client.get(url, follow=True)
+        self.assertEqual(response.status_code, 200, f"{url} did not render")
+        return str(needle).lower() in response.content.decode().lower()
+
+    # ---- the two that have already gone wrong ------------------------------
+
+    def test_a_locked_OWNER_lands_where_owner_devices_are_listed(self):
+        """
+        Not Control Hub → Accounts: that section lists Office and Floor only,
+        and `manage_unlock_account` refuses owners by design, so it is a page
+        with neither the account nor anything to press.
+        """
+        url = reverse('manage_dashboard') + '?section=security'
+        self.assertTrue(self._holds(url, self.owner.username))
+
+    def test_a_locked_STAFF_account_lands_where_it_can_be_unlocked(self):
+        url = reverse('manage_dashboard') + '?section=accounts'
+        self.assertTrue(self._holds(url, self.office.username))
+
+    def test_an_archived_supplies_shop_lands_on_the_list_that_still_shows_it(self):
+        """
+        `supplier_shop_list` filters `is_active=True`. Archiving is the only way
+        this event fires, so that page is the one place the shop is guaranteed
+        NOT to be.
+        """
+        from inventory.models import SupplierShop
+
+        shop = SupplierShop.objects.create(name='Gone Fluids', is_active=False)
+        self.assertTrue(self._holds(reverse('deactivated_supplier_shop_list'), shop.name))
+        self.assertFalse(self._holds(reverse('supplier_shop_list'), shop.name))
+
+    def test_an_archived_spare_shop_lands_on_the_list_that_still_shows_it(self):
+        shop = SpareShop.objects.create(name='Gone Motors', is_trashed=True)
+        self.assertTrue(self._holds(reverse('spare_shop_archived'), shop.name))
+
+    # ---- an archived STAFF member is the one that is NOT on an archive list --
+
+    def test_an_archived_staff_member_is_still_on_the_staff_roster(self):
+        """
+        There is no "archived staff" page, and there does not need to be:
+        `manage_dashboard`'s staff section reads `Mechanic.objects.all()` and
+        orders `-is_active`, so a retired person sits at the foot of their role
+        rather than vanishing. That is what makes `?section=staff` a legitimate
+        destination for this event where `supplier_shop_list` was not for its
+        sibling.
+        """
+        retired = Mechanic.objects.create(name='Retired Ravi', is_active=False)
+        url = reverse('manage_dashboard') + '?section=staff'
+        self.assertTrue(self._holds(url, retired.name))
+
+    # ---- the money ones ----------------------------------------------------
+
+    def test_a_large_discount_lands_on_the_bill_it_was_given_on(self):
+        card = JobCard.objects.create(
+            admitted_date=date.today(), brand_name='Audi', model_name='A4',
+            registration_number='KL10AA1038', total_bill_amount=Decimal('20500.00'),
+        )
+        self.assertTrue(self._holds(
+            reverse('invoice_view', args=[card.pk]), card.registration_number))
+
+    def test_a_deleted_record_lands_on_its_own_deletion_history_entry(self):
+        shop = SpareShop.objects.create(name='Calicut Spares')
+        entry = DeletionLog.record(
+            DeletionLog.ENTITY_SHOP_PAYMENT, shop, user=self.owner,
+            amount=Decimal('1000.00'), label='Calicut Spares · ₹1,000 payment',
+        )
+        self.assertTrue(self._holds(
+            reverse('deletion_history_detail', args=[entry.pk]), 'Calicut Spares'))
+
+    def test_a_salary_advance_lands_on_the_person_who_got_it(self):
+        staff = Mechanic.objects.create(name='Amlah', current_salary=Decimal('20000'))
+        SalaryAdvance.objects.create(
+            staff=staff, amount=Decimal('3000'), date=date.today(),
+            created_by=self.owner,
+        )
+        self.assertTrue(self._holds(
+            reverse('salary_advance_staff_detail', args=[staff.pk]), staff.name))
+
+    # ---- and the one that deliberately cannot hold its subject --------------
+
+    def test_a_deleted_login_lands_on_the_accounts_page_even_though_it_is_gone(self):
+        """
+        The exception, stated so nobody "fixes" it: the subject of USER_DELETED
+        no longer exists by the time anyone taps. There is no DeletionLog row
+        for a login either, so the accounts list — which shows who CAN still
+        sign in — is the most useful page there is. The name is carried in the
+        notification's own headline instead.
+        """
+        url = reverse('manage_dashboard') + '?section=accounts'
+        response = self.client.get(url, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self.office.username, response.content.decode())

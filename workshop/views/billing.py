@@ -185,8 +185,18 @@ def update_bill_status(request, pk):
                     # The percentage stays in the body — it is not the threshold
                     # any more, but it is still the context an owner reads the
                     # figure against.
-                    f"{jobcard.registration_number} — ₹{jobcard.discount_amount} off "
-                    f"₹{total_bill} ({ratio:.0%}) on bill {jobcard.bill_number}.",
+                    # `:,.0f`, not the bare Decimal — that rendered
+                    # "₹5500.00 off ₹20500.00", the only two figures in the
+                    # whole feed printed without separators and with paise
+                    # nobody asked for.
+                    f"{jobcard.registration_number} — "
+                    f"₹{jobcard.discount_amount:,.0f} discount given",
+                    # The percentage is no longer the threshold, but it is
+                    # still the context the figure is read against.
+                    detail=(
+                        f"{ratio:.0%} of the ₹{total_bill:,.0f} bill · "
+                        f"{jobcard.bill_number}"
+                    ),
                     actor=request.user,
                     url=reverse('invoice_view', args=[jobcard.pk]),
                     object_type='JOBCARD',

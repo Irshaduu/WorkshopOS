@@ -69,9 +69,12 @@ def notification_panel(request):
         .select_related('actor')[:PANEL_SIZE]
     )
 
+    # No `unread_total`. `_panel_items.html` never referenced it and neither
+    # does notifications.js, which reads the badge it already has — so it was a
+    # COUNT query paid on every open of the one control that is meant to feel
+    # instant, for a number nothing rendered.
     return render(request, 'workshop/notifications/_panel_items.html', {
         'notes': notes,
-        'unread_total': Notification.unread_count(request.user),
     })
 
 

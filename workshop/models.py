@@ -97,7 +97,23 @@ class Notification(models.Model):
     event = models.CharField(max_length=32, db_index=True)
     severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES, default=SEVERITY_INFO)
     title = models.CharField(max_length=120)
+    # THE ROW IS THREE STRINGS, AND EACH ANSWERS A DIFFERENT QUESTION.
+    #
+    #   body    "Biljo · ₹1,00,000 payment deleted"   <- the loud line
+    #   title   "Record deleted"                       <- the category
+    #   detail  "Spare-Shop Payment"                   <- the context
+    #
+    # `body` is a COMPLETE STATEMENT ending in what happened, so the loud line
+    # can be understood on its own without reading anything under it. `detail`
+    # exists because that statement has to stay short: the device a sign-in came
+    # from, the kind of record deleted, the remedy for a lockout — all real, none
+    # of it worth the loud line. Before this column those facts were crammed into
+    # `body`, which is what made the headline wrap to three lines on a phone.
     body = models.CharField(max_length=255, blank=True)
+    detail = models.CharField(
+        max_length=255, blank=True,
+        help_text="Supporting context, printed under the headline beside the category",
+    )
     url = models.CharField(max_length=200, blank=True, help_text="Deep link to the thing this is about")
     actor = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
@@ -121,6 +137,31 @@ class Notification(models.Model):
     @property
     def is_unread(self):
         return self.read_at is None
+
+    @property
+    def actor_label(self):
+        """
+        Who caused this — unless the body has already said so.
+
+        The feed row prints the actor at the end of its quiet second line, and
+        on the two sign-in events the actor IS the subject — so without this the
+        row reads "Floor signed in" over "Staff signed in · Floor · Chrome on
+        Windows PC". The same name twice, on the events that fire most often.
+
+        A general rule rather than a per-event exception in the template: if the
+        body opens with the actor's name, the second line has nothing left to
+        add. Everywhere else the actor is the fact the body does NOT carry —
+        which of the two owners deleted the payment, who created the login.
+
+        Costs no query: both views that render a row already `select_related`
+        the actor.
+        """
+        if not self.actor_id:
+            return ''
+        name = self.actor.username
+        if self.body and self.body.lower().startswith(name.lower()):
+            return ''
+        return name
 
     @classmethod
     def unread_count(cls, user):
@@ -2142,10 +2183,31 @@ class DeletionLog(models.Model):
         from django.urls import reverse
         from .notifications import notify
 
-        amount_text = f" (₹{amount})" if amount is not None else ""
+        # THE HEADLINE IS THE LABEL PLUS THE VERB; THE KIND DROPS BELOW IT.
+        #
+        # It used to be `"{kind} deleted: {label} (₹{amount})"` — one string,
+        # printing two facts twice each. The kind opens most labels already
+        # ("Restock Bill #669 · …"), and SEVEN of the eighteen `record()` call
+        # sites put the amount inside their own label, formatted the app's way,
+        # so a restock bill arrived as
+        #     "Restock Bill deleted: Restock Bill #669 · Fluid manjeri ·
+        #      ₹31,500 (₹31500.00)"
+        # — the type twice, the amount twice, in two spellings of one number.
+        #
+        # Both guards read what the LABEL already carries rather than a list of
+        # which call sites do what, so a nineteenth cannot reintroduce either.
+        kind = entry.get_entity_type_display()
+        headline = entry.entity_label
+        if amount is not None and '₹' not in headline:
+            headline = f"{headline} · ₹{amount:,.0f}"
+
         notify(
             'RECORD_DELETED',
-            f"{entry.get_entity_type_display()} deleted: {entry.entity_label}{amount_text}",
+            f"{headline} deleted",
+            # Omitted when the label already opens with it, or the row would
+            # read "Restock Bill #669 … deleted" over "Record deleted ·
+            # Restock Bill".
+            detail=('' if headline.lower().startswith(kind.lower()) else kind),
             actor=entry.deleted_by,
             # reverse(), not an f-string path. A notification's whole value is
             # that tapping it lands on the record; a hardcoded URL survives a

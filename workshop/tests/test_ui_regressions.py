@@ -418,8 +418,12 @@ class ANotificationLandsWhereItsSubjectActuallyIsTests(TestCase):
 
         note = Notification.objects.filter(event='ACCOUNT_LOCKED').first()
         self.assertIsNotNone(note, "five failures should lock the account and say so")
-        self.assertIn(str(AccountLockout.LOCKOUT_MINUTES), note.body)
-        self.assertIn('clears itself', note.body)
+        # The remedy sits in `detail` now — the loud line is the statement
+        # ("amal's account locked") and this is what you read under it. The
+        # rule is unchanged: a permanent notification describing a temporary
+        # button has to say the button expires.
+        self.assertIn(str(AccountLockout.LOCKOUT_MINUTES), note.detail)
+        self.assertIn('clears itself', note.detail)
 
 
 class TheSilentActionsNowReportThemselvesTests(TestCase):

@@ -241,11 +241,48 @@ class PushDispatchTests(TestCase):
     def test_critical_event_queues_a_push(self):
         with patch('workshop.push.transaction.on_commit', lambda fn: fn()), \
              patch('workshop.push._deliver') as deliver:
-            notify('HIGH_DISCOUNT', 'big discount', actor=self.owner)
+            notify('HIGH_DISCOUNT', 'KL 10 AA 1038 - 5,500 discount given',
+                   detail='27% of the 20,500 bill', actor=self.owner)
 
         self.assertTrue(deliver.called)
         _, payload = deliver.call_args[0]
-        self.assertEqual(payload['body'], 'big discount')
+
+        # THE PUSH IS THE FEED ROW, IN THE FEED ROW'S OWN ORDER — changed
+        # 2026-08-29, and this test asserted the reverse until then.
+        #
+        # A lock screen gives two lines and no glyph, so the bold one takes what
+        # the feed's loud line takes: the complete statement. It used to send
+        # the CATEGORY there, so nine deletions in a row all opened with "Record
+        # deleted" in bold while the amount sat in the small type underneath.
+        # The category and the context share the second line, in that order.
+        self.assertEqual(payload['title'], 'KL 10 AA 1038 - 5,500 discount given')
+        self.assertEqual(payload['body'], 'Large discount · 27% of the 20,500 bill')
+
+    @CONFIGURED
+    def test_a_push_with_no_detail_still_names_its_category(self):
+        """`detail` is optional, and the second line must not come out empty."""
+        with patch('workshop.push.transaction.on_commit', lambda fn: fn()), \
+             patch('workshop.push._deliver') as deliver:
+            notify('HIGH_DISCOUNT', 'KL 10 AA 1038 discount', actor=self.owner)
+
+        _, payload = deliver.call_args[0]
+        self.assertEqual(payload['title'], 'KL 10 AA 1038 discount')
+        self.assertEqual(payload['body'], 'Large discount')
+
+    @CONFIGURED
+    def test_getting_in_reaches_a_phone(self):
+        """
+        All three ways a session or an account changes hands push, `LOGIN`
+        included — changed 2026-08-29 on the owner's decision. An owner account
+        is the highest-privilege thing in this system, and a sign-in on one with
+        a stolen password used to reach no phone at all.
+        """
+        for event in ('LOGIN', 'STAFF_LOGIN', 'ACCOUNT_LOCKED'):
+            with self.subTest(event=event):
+                with patch('workshop.push.transaction.on_commit', lambda fn: fn()), \
+                     patch('workshop.push._deliver') as deliver:
+                    notify(event, 'somebody signed in', actor=self.owner)
+                self.assertTrue(deliver.called, event + ' did not reach a phone')
 
     @CONFIGURED
     def test_info_event_does_not_push(self):

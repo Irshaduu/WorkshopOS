@@ -2868,24 +2868,99 @@ then call `notify()` from the single place it happens — **never**
 modules**; that file is the only way to answer "what does this thing notify
 about?" without grepping.
 
-`EVENTS` holds **14 events — 10 CRITICAL, 4 INFO**, all Owner-audience.
+`EVENTS` holds **14 events — 11 CRITICAL, 3 INFO**, all Owner-audience.
 
 **Severity is a tier, not decoration: CRITICAL sends a Web Push, INFO only lands
 in the feed.** Keep the critical list short — a phone that buzzes for routine
 activity stops being read for the things that matter.
 
-**An OFFICE or FLOOR sign-in pushes; an OWNER sign-in does not.** `LOGIN` (INFO)
-and `STAFF_LOGIN` (CRITICAL) are the same fact at two tiers, and the split lives in
-`EVENTS` rather than a severity argument at the call site so that one file states
-the rule. `notify()` already excludes the actor, so making `LOGIN` critical would
-only ever buzz one owner about the other owner's ordinary working day. A staff
-account is different: it is used on shared shop-floor devices and is the one the
-owners cannot see being used. Volume is what makes it safe —
-`SESSION_COOKIE_AGE` is 40 days, so this fires on a genuinely new session, not
-every shift. The body carries the role (`amal (Office)`), because the alert
-arrives as one line on a lock screen and a bare username does not say whether that
-account can see money.
+⚠ **GETTING IN ALWAYS PUSHES — ALL THREE. This REVERSES what this file said
+until 2026-08-29**, on the owner's decision. It read *"an OFFICE or FLOOR
+sign-in pushes; an OWNER sign-in does not"*, with `LOGIN` at INFO on the
+reasoning that an owner signing in is routine and `notify()` excludes the actor
+anyway, so it would only announce the co-owner's ordinary working day.
+
+What overruled it: **an owner account is the highest-privilege thing in this
+system, and a sign-in on one with a stolen password reached no phone at all.**
+`PASSWORD_RESET` pushes, but only if the intruder went through the reset flow —
+somebody who simply has the password raised nothing. `LOGIN`, `STAFF_LOGIN` and
+`ACCOUNT_LOCKED` are now all CRITICAL.
+
+**Volume is what makes it safe, and it is the same argument that already
+justified `STAFF_LOGIN`:** `SESSION_COOKIE_AGE` is 40 days, so a signed-in phone
+STAYS signed in and this fires on a genuinely new session — a new device, a
+cleared cookie jar, 40 days elapsed. Roughly one or two a month across two
+owners. The actor is still excluded, so what arrives is always *somebody signed
+into the other account*, which is the thing worth knowing.
+
+**The two events stay split**, because the tier was never all the split carried:
+the titles differ (`Owner signed in` / `Staff signed in`) and a staff alert
+leads its **detail** with the ROLE, which is what says whether that account can
+see money. They share a glyph on purpose — one act about two kinds of account,
+and a second visual difference would read as two unrelated events.
+
+⚠ **THE IP IS DELIBERATELY OFF BOTH SIGN-IN EVENTS AND ON ALL FOUR SECURITY
+ONES.** Every device in this workshop leaves through **one** connection — the
+laptop, the tablet and both owners' phones, which is the same fact
+`IP_FAILURE_LIMIT` was raised for — so on a routine sign-in the address is
+near-constant and carries almost no information, while the DEVICE is the thing
+that would look wrong. It was also a third of the body's length on the two
+events that fire most often. Control Hub → Security, which the alert links to,
+still lists both per session. A lockout or a reset attack is the opposite case:
+there the address is the evidence, so it stays.
+
+⚠ **`_role_name` returns the BARE role, always — and the suppression it used to
+carry was a live defect the moment `detail` landed.** It was `_role_label`,
+returning `" (Office)"` and, when the username already equalled the role, `''`.
+That existed because the body was one string (`"{username}{role} signed in"`)
+which rendered **"Floor (Floor) signed in"** — and both staff logins in this
+workshop are named after their role. With the role moved into its own field it
+is printed nowhere near the username, so there is no duplication left to avoid,
+and the suppression started reporting the only two staff accounts that exist as
+**"No role"**. Caught in review before it shipped.
+→ `test_an_account_named_after_its_role_still_reports_that_role`
+
+**`Notification.actor_label` suppresses the actor when the body already opens
+with their name.** The row prints the actor on its quiet second line, and on the
+two sign-in events the actor IS the subject, so the row said "Floor (Floor) ·
+Chrome on Windows PC" over "Staff signed in · Floor" — the same name twice, on
+the events that fire most often. A general rule on the model rather than a
+per-event exception in the template. Everywhere else the actor is precisely the
+fact the body does *not* carry: which owner deleted the payment, who created the
+login.
 → `workshop/tests/test_staff_login_alert.py`
+
+⚠ **A SECURITY ALERT SAYS WHAT DID *NOT* HAPPEN, AND "CHANGE THE PASSWORD" WAS
+THE WRONG INSTRUCTION.** Both reset-code alerts ended *"if this was not you,
+change the password."* Two things wrong with it, and the second is worse than
+the first.
+
+It **alarms**: the whole content of those two events is that the defences
+worked — the throttle held, or the code died unused — and the copy read like a
+break-in. And it is **not the remedy**: that attack goes through the RESET flow,
+so the password was never exposed and rotating it stops nothing. An owner who
+followed the instruction would have spent their evening on a change that
+addressed no part of what happened.
+
+The shape now is **what happened → what it did NOT do → the mild advice**:
+
+> `Sahad — reset code guessed wrong 5 times`
+> From 103.21.44.9. The code is dead and nothing on the account changed. Worth
+> making sure the password is a strong one.
+
+"Nothing on the account changed" is the sentence that does the work. The
+password advice that IS worth giving is about **strength, not rotation**, and it
+is phrased as a statement rather than an instruction, so it cannot be mistaken
+for something that must be done tonight.
+
+⚠ **`PASSWORD_RESET` is deliberately NOT softened** — it is the one of the three
+where something actually changed, and it says so plainly. It carries no
+instruction either, for a different reason: it reaches the *other* owner (the
+actor is excluded), whose useful next move is to look at the signed-in devices,
+which is where the link already goes.
+
+**`ACCOUNT_LOCKED` was already right** and only got shorter (135 → 77
+characters). It still states that the remedy expires, which is the rule.
 
 **`DeletionLog.record()` is the deletion hook.** Every permanent delete funnels
 through it, so one call covers all eleven entity types and any added later. Don't
@@ -2942,16 +3017,124 @@ frozen label in `body` is the same discipline as `DeletionLog.snapshot`.
 That promise stops at database errors inside an atomic block: the surrounding
 transaction is already doomed and shouldn't be rescued.
 
+**A NOTIFICATION IS THREE STRINGS, AND EACH ANSWERS A DIFFERENT QUESTION.**
+
+| | example | where it lives |
+|---|---|---|
+| **`body`** | `Biljo · ₹1,00,000 payment deleted` | the loud line |
+| **`title`** | `Record deleted` | the category, from `EVENTS` |
+| **`detail`** | `Spare-Shop Payment` | the context, beside the category |
+
+⚠ **`body` IS A COMPLETE STATEMENT ENDING IN WHAT HAPPENED.** Subject first,
+verb last, understandable with nothing under it read at all. That is the test
+to apply to a new one: *if the reader saw only this line, would they know what
+occurred?* `Biljo · ₹1,00,000 payment deleted` passes; `Spare-Shop Payment ·
+₹1,00,000 → Biljo` does not — it names a thing and leaves the reader to infer
+the event from a glyph.
+
+⚠ **`detail` EXISTS SO THE STATEMENT CAN STAY SHORT.** The device a sign-in
+came from, the kind of record deleted, the remedy for a lockout, the percentage
+behind a discount — all real, none of it worth the loud line. Before the column
+(`0074`) every one of those was crammed into `body`, which is what made
+headlines wrap to three lines on a phone. **Nothing that decides what the row
+MEANS may live here** — it is read second, or not at all.
+
+**The loud line carries what DIFFERS between rows.** It used to carry the
+`title`, which is identical on every row of its kind — nine consecutive "Record
+permanently deleted" headlines with the actual fact underneath in smaller,
+greyer type. The eye landed on the least useful line on the row.
+
+Both surfaces use the same order, so the two cannot teach different habits:
+
+* a **feed row** draws the **glyph** where the title would go, `body` loud,
+  then `title · detail · actor` quiet underneath;
+* a **push** puts `body` in its bold line and `title · detail` under it. It
+  used to send the CATEGORY as the bold line, which is what a lock screen shows
+  first — so nine alerts in a row opened with "Record deleted" in bold and the
+  ₹1,00,000 in the small type below.
+
+⚠ **`RECORD_DELETED`'s statement is built from `entity_label`, which is why
+FOUR labels lead with the subject** (`{name} · ₹{amount} payment`, not
+`₹{amount} → {name}`). The arrow form produced "₹1,00,000 → Biljo deleted",
+an arrow pointing at a verb. Deletion History prints the same string and reads
+better for it — that page is scanned by *who the money went to*, and every one
+of those rows used to open with a rupee sign.
+
+**A glyph per event, declared in `EVENTS` beside its severity.** Shape is
+IDENTITY, colour is SEVERITY — one colour system, so red can only ever mean
+"this one matters", and which *kind* of thing happened is carried entirely by a
+glyph that needs no colour to be told apart. A read row drains its colour and
+keeps its shape. `glyph_for()` answers an unknown key with a neutral default,
+which is load-bearing: a row is kept for a fortnight and `event` is plain text,
+so the feed must draw a key this file no longer knows rather than 500.
+
+**Money anywhere on the row goes through `:,.0f`, like everywhere else in the
+app.**
+`HIGH_DISCOUNT` printed the bare Decimal — "₹5500.00 off ₹20500.00", the only
+two figures in the whole feed without separators and with paise nobody asked
+for.
+
+**`DeletionLog.record` builds the one body assembled from parts, and it must
+say each fact ONCE.** It printed the record type twice (the label usually opens
+with it) and the amount twice in two spellings, because **7 of the 18
+`record()` call sites already put the amount in their own label**. Both guards
+read what the LABEL carries rather than a list of which call sites do what, so
+a nineteenth cannot reintroduce either.
+→ `TheDeletedRecordBodySaysEachFactOnceTests`
+
 **The bell opens a floating panel, fetched lazily** from `/notifications/panel/`.
 The bell is on every owner page, so baking ten rows plus their actors into every
 response would cost a join on pages that have nothing to do with notifications;
 only the unread *count* rides in the context processor. The panel caps at
 `PANEL_SIZE`; the badge caps at `99+`.
 
+⚠ **IT IS WARMED ON APPROACH, NOT ON LOAD, AND REOPENING FETCHES NOTHING.**
+`openPanel()` used to call `loadPanel(true)` — a forced refetch on **every**
+open, so the panel showed "Loading…" every single time including the second
+time in ten seconds. Two changes, and the split between them is the point:
+prefetching on page load would put a request and a query on every page an owner
+opens, which is the exact cost this panel is lazy in order to avoid, so the
+warm-up hangs off `pointerenter`/`touchstart` on the bell — free until the
+control is about to be used, and worth the ~100–300ms between a hand arriving
+and a click resolving. What is already rendered is then reused unless the badge
+has moved or it has gone stale (`STALE_MS`). Measured: **0 requests on load, 1
+on approach, rows already in the DOM at the instant of the click, 0 on
+reopen.** The clock is deliberately **not** stamped on a failed fetch, or an
+error would be cached for 45 seconds.
+
 **Row markup lives in one partial** (`notifications/_row.html`), shared by the
 panel and the full feed, so "read" cannot come to look like two different things.
-Read state is carried by four signals — accent rail, background, title weight,
-trailing icon — not a dot alone, which is easy to miss on a phone.
+Read state is carried by four signals — the glyph tile's fill, the row
+background, the headline's weight, and the trailing tick — not a dot alone,
+which is easy to miss on a phone.
+
+⚠ **The left accent rail and the "IMPORTANT" pill are GONE, and that is the
+same rule the settle dialog follows.** With a coloured tile 10px away, the rail
+was a fifth telling of one bit and the pill a sixth; confirming what cannot
+surprise anyone is how a signal stops being read. **A read row's headline stops
+at `#475569`, not `--color-text-muted`** — the muted tone was fine while that
+line held a category nobody re-reads, and it now holds the fact itself.
+
+**The state marker rides the headline's own line, and the age sits beside it.**
+As its own column the marker cost 25px of a 341px row — 7% of the width,
+permanently, off the one line anybody reads — to hold an 8px dot. The age moved
+onto that line for the same reason it replaced the absolute stamp: it is one or
+two characters and there is always room.
+
+**The age is `short_ago`, the feed's own wording** — `now` / `12m` / `5h` /
+`3d` / `17 Aug`. `28 Aug, 11:59 p.m.` answered a question nobody asks of a
+notification; what an owner wants is *this morning or last week*. ⚠ **Nothing
+on the scale exceeds six characters, and "Yesterday" was tried and reverted** —
+it shares a flex line with the headline, so those nine characters came straight
+off the line being read, enough to wrap a body that otherwise fitted. Same
+compact vocabulary as the Live Report's `_age_label()`.
+
+**Measured across the whole catalogue, one row per event: 107px per row →
+81px average on a 375px phone and 64px on a laptop**, three cramped lines
+becoming two comfortable ones (headline 0.9rem where title/body/meta had been
+0.85/0.8/0.71rem — three sizes within 2px of each other, which is no hierarchy
+at all). The rows that still run long are the two that should: a lockout and a
+spent reset code, both of which carry a remedy.
 
 ### A notification's URL is permanent
 
@@ -2981,7 +3164,20 @@ press. It is now routed by role. `ACCOUNT_ARCHIVED` for a Supplies Shop pointed 
 already pointed at their archived lists.
 → Follow the URL and assert the subject's name is on the page it reaches;
 comparing against a `reverse()` proves nothing about whether the destination shows
-the thing.
+the thing. **Both of those bugs were found by reading, and nothing enforced the
+rule** — `EveryNotificationLandsOnItsSubjectTests` now does, by fetching each
+destination as an owner and looking at the rendered page.
+
+⚠ **Match CASE-INSENSITIVELY.** The Security section renders an owner row as
+`{{ s.user.username|upper }}`, so a case-sensitive check reports a false miss on
+`LOGIN`, `PASSWORD_RESET` and both reset-code events — the four this exists to
+protect. Cost twenty minutes chasing four phantom failures.
+
+⚠ **`USER_DELETED` is the one destination that CANNOT hold its subject**, and
+that is not a defect to fix: the login is gone by the time anyone taps, and a
+deleted login writes no `DeletionLog` row to point at. Control Hub → Accounts,
+which shows who can still sign in, is the most useful page available; the name
+rides in the notification's own headline instead.
 
 **If the remedy an event describes EXPIRES, the body has to say so.** A lockout
 lasts 15 minutes and a notification is permanent, so an owner reading "Unlock it
@@ -3024,6 +3220,41 @@ from the row write so a push problem can't even change its *return value*.
 **404/410 from the push service means that endpoint is permanently gone** — the
 row is deleted, not retried. Other errors are counted and dropped after
 `MAX_FAILURES`.
+
+⚠ **THE PANEL SAYS SO WHEN THIS DEVICE IS NOT SUBSCRIBED.** Turning push on
+was reachable only through the 34px struck-through bell in the panel header —
+an unlabelled icon inside a panel, which is not a control anybody finds by
+accident. Measured in the development database: **one owner has two subscribed
+devices and the other has none**, so half the owners had never received a
+single CRITICAL alert and no screen said so.
+
+`#notifPushCta` is one line, amber, and rendered **only in the state that needs
+acting on** — it disappears the moment alerts are on, the sticky save button's
+own rule, so it can never become furniture. It is not the "Alerts on this
+device" card that was removed for spending three lines of prose on a binary,
+and it is the same action as the toggle rather than a second one.
+
+It also carries the **reason** when push is unavailable, which previously had
+nowhere to be shown at all: on iOS, Push exists only for an installed app, so
+an owner in plain Safari met a dead struck-through bell whose explanation lived
+in a `title` attribute that a phone cannot display. In that state the strip is
+`disabled` — a statement, not an offer.
+
+⚠ **A PUSH CARRIES NO `tag`, AND THE CONSTANT ONE IT USED TO CARRY WAS
+DELETING ALERTS OFF THE LOCK SCREEN.** `sw.js` passed `tag: 'workshopos'` with
+a comment claiming it "collapses repeats of the same event". A tag does not
+work that way — it is a **replace key**, and one constant value meant **every
+push replaced the one before it**. Two deletions a minute apart showed as one;
+a staff sign-in landing after a ₹1,00,000 record deletion wiped that deletion
+off the lock screen before anybody read it. The feed row survived either way,
+which is exactly why it could go unnoticed.
+
+Only CRITICAL events reach the push path — money moved unexpectedly, something
+destroyed, someone got in — and **none of them supersedes any other**, so there
+is nothing here a later alert is entitled to replace. Untagged notifications
+stack, which at a handful a day is the right trade: seeing two is recoverable,
+missing one is not. `renotify` went with it; it is only meaningful alongside a
+tag.
 
 **iOS only delivers push to an app added to the Home Screen.** In a plain Safari
 tab `PushManager` is simply absent. `static/js/notifications.js` detects this and
@@ -4847,6 +5078,23 @@ the transition first** (`.form-control` transitions both of these). The fix is a
 real scoped class carrying `!important`, which is what the spare shop's
 `.ssp-datebox.is-custom` was already doing.
 → `test_the_amber_state_can_actually_beat_bootstrap`
+
+**TWO TEMPLATES CAN CLAIM THE SAME CLASS NAME, AND THE SECOND ONE INHERITS
+WHATEVER THE FIRST DECLARED.** Page-scoped CSS in this codebase is only scoped
+by *convention* — a `<style>` block in a child template is served on that page
+and applies to every element on it, `base.html`'s included. The notification
+row's headline was `.nf-head`; so was the notification **page's** header block,
+declared in `notification_list.html` with `margin-bottom: 18px`. Every row on
+the feed therefore carried 18px of margin nothing intended, and no row in the
+panel did — measured as a 40.3px headline sitting inside a 58.3px line, on one
+of the two surfaces only.
+
+It fails in exactly the way that costs hours: no error, no console warning, the
+page looks *nearly* right, and **nothing in the Django suite executes CSS**, so
+every test stays green. The tell is a wrapper measuring taller than its tallest
+child. The defence is that a shared partial's class names must be unique across
+the whole page, checked by a test that greps for the retired name in both
+directions (`test_the_headline_class_does_not_collide_with_the_pages_own_header`).
 
 **A `<tr>` background is INVISIBLE on a Bootstrap table.** Bootstrap 5.3 gives every
 cell `background-color: var(--bs-table-bg)` — an opaque cell sitting on top of its

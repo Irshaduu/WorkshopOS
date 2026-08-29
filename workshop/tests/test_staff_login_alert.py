@@ -59,8 +59,23 @@ class StaffSignInReachesThePhoneTests(TestCase):
         """
         self.assertEqual(EVENTS['STAFF_LOGIN'][1], Notification.SEVERITY_CRITICAL)
 
-    def test_an_owner_sign_in_stays_INFO(self):
-        self.assertEqual(EVENTS['LOGIN'][1], Notification.SEVERITY_INFO)
+    def test_an_owner_sign_in_pushes_too(self):
+        """
+        Changed 2026-08-29 on the owner's decision: it was INFO, on the
+        reasoning that an owner signing in is routine. An owner account is the
+        highest-privilege thing in the system and a sign-in on one with a stolen
+        password reached no phone at all.
+
+        Safe because of the volume, not despite it: `SESSION_COOKIE_AGE` is 40
+        days, so this fires on a genuinely new session rather than every shift.
+        """
+        self.assertEqual(EVENTS['LOGIN'][1], Notification.SEVERITY_CRITICAL)
+
+    def test_getting_in_always_pushes(self):
+        """All three ways a session or an account changes hands reach a phone."""
+        for key in ('LOGIN', 'STAFF_LOGIN', 'ACCOUNT_LOCKED'):
+            with self.subTest(event=key):
+                self.assertEqual(EVENTS[key].severity, Notification.SEVERITY_CRITICAL)
 
     # ---- routing -----------------------------------------------------
 
@@ -105,14 +120,39 @@ class StaffSignInReachesThePhoneTests(TestCase):
 
     # ---- what it says ------------------------------------------------
 
-    def test_the_body_names_the_role(self):
+    def test_the_alert_names_the_role(self):
         """
-        It arrives as one line on a lock screen. "amal signed in" does not say
-        whether that account can see money; "amal (Office)" does.
+        It arrives on a lock screen as a statement plus a line of context.
+        "amal signed in" does not say whether that account can see money, so the
+        role LEADS the context line — it is the fact that decides that.
+
+        Asserted across both strings rather than on `body` alone: which of the
+        two carries the role is a presentation choice, that it is on the alert
+        at all is the rule.
         """
         self.sign_in('officestaff')
-        body = Notification.objects.filter(event='STAFF_LOGIN').first().body
-        self.assertIn('officestaff (Office)', body)
+        note = Notification.objects.filter(event='STAFF_LOGIN').first()
+        self.assertEqual(note.body, 'officestaff signed in')
+        self.assertTrue(note.detail.startswith('Office · '), note.detail)
+
+    def test_an_account_named_after_its_role_still_reports_that_role(self):
+        """
+        Both staff logins in this workshop are literally named after their role
+        — "Office" and "Floor". The role used to be suppressed for exactly those
+        accounts, because the body was one string and "Floor (Floor) signed in"
+        read as a bug. The role now sits in its own field, so the suppression
+        stopped preventing a duplication and started reporting the only two
+        staff accounts that exist as having no role at all.
+        """
+        floor = User.objects.create_user(username='Floor', password=PASSWORD)
+        floor.groups.add(Group.objects.get(name='Floor'))
+
+        self.sign_in('Floor')
+
+        note = Notification.objects.filter(event='STAFF_LOGIN').first()
+        self.assertEqual(note.body, 'Floor signed in')
+        self.assertTrue(note.detail.startswith('Floor · '), note.detail)
+        self.assertNotIn('No role', note.detail)
 
     def test_a_failed_sign_in_announces_nothing(self):
         self.client.post(reverse('login'),
