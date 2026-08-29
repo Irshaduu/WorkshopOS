@@ -789,9 +789,37 @@ def edit_restock_bill(request, shop_id, bill_id):
     if request.method == 'POST':
         try:
             # 1. Update bill-level info
+            #
+            # THE DATE IS PARSED, AND A FORWARD-DATED BILL IS REFUSED. This is
+            # the ONLY door into `bill_date` — `shop_restock_bill` takes no date
+            # at all and falls to the column default — and it used to assign the
+            # raw POST string straight onto the field. Two defects in one line:
+            # anything unparseable reached Postgres as a `DataError`, which is a
+            # 500 and is NOT caught by the `except ValueError` below; and a date
+            # ahead of today was accepted, unlike every other typed date in the
+            # app (`workshop/money_dates.py`, the same helpers as the Cashbook
+            # and all three payment forms).
+            #
+            # A forward date does more than mislabel the bill. `inventory/costing.py`
+            # replays receipts in DATE ORDER to price every warehouse draw, so a
+            # bill dated ahead of today sorts after every real draw and gives a
+            # cost basis to none of them — the goods are on the shelf and the
+            # Profit page charges those draws nothing.
+            #
+            # ⚠ The `if` is deliberately kept rather than folded into
+            # `posted_date`. That helper answers unreadable input with TODAY,
+            # which is right for a box that was rendered and filled in — but an
+            # ABSENT box must leave the stored date alone, or a bill correctly
+            # back-dated to last month would be dragged onto the keystroke day
+            # by an edit that never touched it. The ModelForm asymmetry, one
+            # layer down.
             bill_date_str = request.POST.get('bill_date')
             if bill_date_str:
-                bill.bill_date = bill_date_str
+                billed_on = posted_date(bill_date_str)
+                if is_future(billed_on):
+                    messages.error(request, "A bill can't be dated in the future.")
+                    return redirect('edit_restock_bill', shop_id=shop.id, bill_id=bill.id)
+                bill.bill_date = billed_on
                 
             discount = _dec(request.POST.get('discount_amount'))
             bill.discount_amount = discount
@@ -855,7 +883,10 @@ def edit_restock_bill(request, shop_id, bill_id):
         'shop': shop,
         'bill': bill,
         'existing_items': existing_items,
-        'available_catalog_items': available_catalog_items
+        'available_catalog_items': available_catalog_items,
+        # Presentation only — the view above is the control. Same name and same
+        # shape as every other date box in this module.
+        'today_iso': timezone.localdate().isoformat(),
     })
 
 @office_required
