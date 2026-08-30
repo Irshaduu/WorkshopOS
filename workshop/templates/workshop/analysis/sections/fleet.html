@@ -20,7 +20,7 @@
 {% endcomment %}
 <div class="ia-stats">
   <div class="ia-stat"><div class="k">Fleet jobs</div><div class="v">{{ fleet_jobs }}</div>
-    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">{{ fleet_job_pct|floatformat:1 }}% of {{ total_jobs }} job{{ total_jobs|pluralize }}</div></div>
+    <div class="b">{{ fleet_job_pct|floatformat:1 }}% of {{ total_jobs }} job{{ total_jobs|pluralize }}</div></div>
   <div class="ia-stat"><div class="k">Fleet revenue</div>
     <div class="v" style="color:var(--color-success);">₹{{ fleet_revenue|inr_compact }}</div>
     {% comment %}
@@ -30,9 +30,9 @@
       figure it was not divided by. The arithmetic was right and the word was
       wrong, which is the harder kind to catch.
     {% endcomment %}
-    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">{{ fleet_revenue_pct|floatformat:1 }}% of ₹{{ all_revenue|inr_compact }} car bills</div></div>
+    <div class="b">{{ fleet_revenue_pct|floatformat:1 }}% of ₹{{ all_revenue|inr_compact }} car bills</div></div>
   <div class="ia-stat"><div class="k">Fleet accounts</div><div class="v">{{ accounts }}</div>
-    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">active now, not filtered</div></div>
+    <div class="b">active now, not filtered</div></div>
 </div>
 
 {% if rows %}

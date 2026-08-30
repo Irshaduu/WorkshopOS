@@ -18,11 +18,16 @@
 {% endcomment %}
 
 <div class="ia-stats">
-  <div class="ia-stat"><div class="k">Charged</div><div class="v">₹{{ totals.revenue|inr_compact }}</div></div>
-  <div class="ia-stat"><div class="k">Stock used</div><div class="v">₹{{ totals.cost|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Charged</div>
+    <div class="v">₹{{ totals.revenue|inr_compact }}</div>
+    <div class="b">billed to customers, by job date</div></div>
+  <div class="ia-stat"><div class="k">Stock used</div>
+    <div class="v">₹{{ totals.cost|inr_compact }}</div>
+    <div class="b">what the shelf paid, by job date</div></div>
   <div class="ia-stat"><div class="k">Margin</div>
     <div class="v" style="color:var(--color-success);">₹{{ totals.profit|inr_compact }}</div></div>
-  <div class="ia-stat"><div class="k">Margin %</div><div class="v">{{ totals.margin|floatformat:1 }}%</div></div>
+  <div class="ia-stat"><div class="k">Margin %</div>
+    <div class="v">{{ totals.margin|floatformat:1 }}%</div></div>
   {% comment %}
     A POSITION, not a flow — the only figure in this section the date filter
     does not touch, so the tile says so out loud rather than being quietly
@@ -33,7 +38,7 @@
   {% endcomment %}
   <div class="ia-stat"><div class="k">On the shelf now</div>
     <div class="v">₹{{ stock_value.value|inr_compact }}</div>
-    <div class="k" style="font-weight:500; text-transform:none; letter-spacing:0;">as of today, not filtered</div></div>
+    <div class="b">as of today, not filtered</div></div>
 </div>
 
 {% if rows %}

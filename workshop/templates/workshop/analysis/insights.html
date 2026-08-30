@@ -56,6 +56,12 @@
   .ia-stat .k { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em;
                 color: var(--color-text-muted); font-weight: 700; }
   .ia-stat .v { font-size: 1.1rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  /* The basis line: what this figure IS, for the tiles that have to be
+     reconciled against another screen. A footnote to the value, never a
+     second label competing with it - smaller and lighter than .k, and
+     declared once here rather than as an inline style per tile. */
+  .ia-stat .b { font-size: 0.6rem; font-weight: 500; color: #94a3b8;
+                line-height: 1.35; margin-top: 3px; }
 
   .ia-tbl { width: 100%; font-size: 0.83rem; border-collapse: collapse; }
   .ia-tbl th {

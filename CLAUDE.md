@@ -1890,6 +1890,51 @@ Four things carry it, and the variable name is one of them:
 bill raised in the window with nothing drawn against it is reported in full and
 charged ₹0 — then the label, so the word cannot drift back.
 
+**EVERY MONEY TILE NAMES ITS OWN BASIS, IN ALL THREE SECTIONS — the Shops
+section got this and the other two did not.** The rule was written for Shops
+when "Supplies spend" turned out to be claiming a basis it did not have, and
+it is stated there as *a tile that has to be reconciled against another screen
+must say what it is*. Inventory and Spare Parts were never given it, and the
+confusion it exists to stop turned up exactly as predicted: **"Stock used" was
+read as the supplies BILL for those parts.** It is not — it is `SPARE_COST`
+over warehouse draws, a weighted average of what the shelf paid, dated by
+`job_card__admitted_date`. The bill is a different figure on a different basis
+and sits one section over as "Supplies billed".
+
+Markup and the inline style are copied from `shops.html` character for
+character, so three sections cannot drift into three shapes.
+
+⚠ **"BILLED to customers", never "PAID by customers."** `revenue` is
+`Sum(total_price)` — what was charged, settled or not. It also keeps these
+tiles clear of `test_PAID_means_cash_and_SPEND_means_cost_in_every_section`,
+which reserves "Paid" for the Shops section. (That scanner matches a bare
+`<div class="k">`, so a basis line carrying a `style` attribute is invisible
+to it — the word is right on its own merits, not because the test forced it.)
+
+⚠ **ONLY A TILE THAT RECONCILES AGAINST ANOTHER SCREEN GETS ONE — Margin and
+Margin % do NOT.** They are derived on the spot from the two tiles beside them,
+both on screen and both now carrying their own basis, so explaining them was
+the rule applied past its own edge and cost two of every four lines added. They
+were given one for a revision and it came back out on the owner's call.
+
+⚠ **If one is ever restored there, make it a PHRASE, never notation.** The
+Margin % line shipped briefly as `margin ÷ charged` — the only sublabel on the
+page written as a symbol, beside a tile reading "charged **less** stock used".
+The figure is `profit / revenue`, which on the demo data is **40.6% where the
+markup (`profit / cost`) is 68.8%**, so if it is ever spelled out it has to
+name the denominator in words.
+
+**A BASIS IS ONE CLASS, `.ia-stat .b` in `insights.html`** — 0.6rem/#94a3b8
+against the label's 0.66rem/#64748b, so it reads as a footnote to the figure
+rather than a second label competing with it. It replaced nine copies of the
+same inline style across four section templates, on the `.rpay-*` precedent.
+
+**Count tiles get nothing** — "Parts fitted", "Shops used", and the Mechanics,
+Vehicles and Operations sections. They reconcile against no other screen.
+
+⚠ `totals.lines` is `Count('id')`, so **"Parts fitted" counts ROWS, not
+units**: a row of 4 litres is 1. Loose rather than wrong, and left alone.
+
 **BOTH PART ROUTES DISCLOSE AN UNCOSTED PART, and only one used to.**
 `SPARE_COST` costs a NULL `unit_price` at ₹0 on either route, so on either one a
 part with no price reads as **free** and pushes profit UP by exactly that much —
@@ -3771,6 +3816,29 @@ Four things about it, each a decision rather than a default:
   screen that carries no form and no money and exists to be looked at. The
   map frame is **square** (`border-radius: 0`), because the schematic inside
   it is built entirely on 90-degree corners.
+- **A LATE SUPPLIES BILL IS TOLD AS TWO HALVES, AND SHIPPING ONE WITHOUT THE
+  OTHER IS THE DEFECT.** The card read *"Bills are usually keyed long after
+  the goods arrive, and that is fine"*, which reads as advice to leave the
+  paperwork. The first half is genuinely a feature and worth saying warmly:
+  the shelf may go negative, the mechanic still takes the part and writes it
+  on the card, and a bill dated to the delivery day fills the count back up
+  **and** back-costs every draw since.
+
+  ⚠ **The second half is the price of waiting, and it is SMALLER than it
+  looks — getting that wrong argues for changing a routine the figures do
+  not need changed.** `JobCardSpareItem.save()` snapshots `Item.avg_cost`
+  onto the draw and only leaves `unit_price` NULL when that average is **0**.
+  So on a product bought regularly a late bill does **not** make the parts
+  free: they are costed at what the shelf last paid, and the replay corrects
+  them when the bill lands. The ₹0 case is a product **no bill has ever
+  costed** — opening stock, a first purchase, or one whose only bill was
+  deleted — and there `uncosted_draw_count` puts a banner on the Profit page
+  saying it "makes this profit look higher than it is". The card names both
+  cases separately; a first draft claimed the ₹0 one for everything.
+- **The prose is written for two owners on a phone, not for this file.**
+  "Keyed", "enforced on the server", "refused outright", "deliberately" are
+  right here and wrong there. Contractions are fine; a word the reader has to
+  translate is not.
 - **It says "the system", never the product name.** WorkshopOS and Titan are
   the owner's own words for it and are kept out of the page's prose — and off
   the map's title block, which reads SYSTEM MAP.
