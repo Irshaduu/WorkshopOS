@@ -24,7 +24,9 @@
 {% endcomment %}
 
 <div class="ia-stats">
-  <div class="ia-stat"><div class="k">Charged</div><div class="v">₹{{ totals.revenue|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Charged</div>
+    <div class="v">₹{{ totals.revenue|inr_compact }}</div>
+    <div class="b">billed to customers, by job date</div></div>
   {% comment %}
   ⚠ "SHOP SPEND", NOT "PAID TO SHOPS". This is what the parts COST — the figure
   the Profit page charges — and it is the identical number the Shops section
@@ -38,10 +40,13 @@
   Spend and Paid are deliberately different numbers (shops are settled in
   instalments), so they can only be told apart by their words.
   {% endcomment %}
-  <div class="ia-stat"><div class="k">Shop spend</div><div class="v">₹{{ totals.cost|inr_compact }}</div></div>
+  <div class="ia-stat"><div class="k">Shop spend</div>
+    <div class="v">₹{{ totals.cost|inr_compact }}</div>
+    <div class="b">what the shops charged us, by job date</div></div>
   <div class="ia-stat"><div class="k">Margin</div>
     <div class="v" style="color:var(--color-success);">₹{{ totals.profit|inr_compact }}</div></div>
-  <div class="ia-stat"><div class="k">Margin %</div><div class="v">{{ totals.margin|floatformat:1 }}%</div></div>
+  <div class="ia-stat"><div class="k">Margin %</div>
+    <div class="v">{{ totals.margin|floatformat:1 }}%</div></div>
   <div class="ia-stat"><div class="k">Parts fitted</div><div class="v">{{ totals.lines }}</div></div>
   {% if shops_used %}
   <div class="ia-stat"><div class="k">Shops used</div><div class="v">{{ shops_used }}</div></div>
