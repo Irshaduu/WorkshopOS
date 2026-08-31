@@ -153,7 +153,22 @@
     border: 2px dashed #cbd5e1;
     /* SQUARE, while every card below it is 16px-rounded. One more thing
        saying this is not one of them. */
-    border-radius: 0; padding: 16px 18px 14px; margin-bottom: 18px;
+    /* THE SIDE PADDING IS 10px, NOT THE 18px EVERY SOLID CARD USES, AND THAT
+       IS BECAUSE THIS CARD HAS TWO LEFT EDGES. `.pf-cash-col` carries a
+       coloured rail, which is itself an edge marker — so at 18px the dashed
+       border and the rail ran parallel down the whole card with a strip of
+       dead ground between them, and on a phone that strip is 5% of the width
+       for its entire height. Measured at 375px: the card starts at x=16 and
+       the rail at x=36.
+
+       10px is chosen against the col's own 14px rather than picked by eye:
+       the rail must sit CLOSER to the block it introduces than to the border
+       it is not part of, or it reads as floating between the two. 12px was
+       tried and is the ambiguous case (12 outside against 14 inside). It is
+       symmetric because the title rule and the money-moved rule span the
+       full content box, so an asymmetric card would sit visibly off-centre
+       inside its own border. */
+    border-radius: 0; padding: 16px 10px 14px; margin-bottom: 18px;
     background: transparent;
   }
   /* A RULE UNDER THE HEADING, not a gap. The card carries two independent
