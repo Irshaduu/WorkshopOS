@@ -56,7 +56,8 @@ graph TD
    Can do EVERYTHING below + these exclusive actions:
    - Access Owner Analysis & Reports: the **Profit** page (Turnover − Expenses = Profit, filtered by month/year/custom — what profit distribution is decided from) and, from it, the **Deep Analysis** page (mechanics, spare parts, inventory, vehicles, fleet, shops, cashbook, operations).
    - Delete a whole month's salary settlement (Office can create and correct one, only an Owner can un-record it)
-   - View the Paid Bills Dashboard over ANY period, with the grand Total Collected (Office sees the last 7 days and no grand total)
+   - View the Paid Bills Dashboard over ANY period (Office sees the last 7 days). Neither role sees a money total on it any more — the grand Total Collected was removed because it summed a fleet card's whole cumulative receipt on the day it happened to close; what replaced it is Cash Tracking on the Profit page. The row COUNT stays, since how many bills are in the list is a fact about the list
+   - Record **Owner Withdrawals** — cash taken out of the business for the owners. Owner-only end to end: Office and Floor cannot open the page or reach any of its three addresses. Not a business expense, so the profit figure never moves because of it
    - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
    - Monitor all active login sessions, and remotely revoke any staff access
@@ -898,10 +899,46 @@ SALARY & ADVANCE (Office and Owner)
     from here, never from the Cashbook.
 
 CASHBOOK
-  Shows: Daily income & expense ledger (rent, electricity, scrap sales, etc.)
+  Shows: One chronological ledger of money out and money in — rent, electricity,
+    food, bus fares, courier charges on one side; scrap and black oil on the
+    other. Roughly 98% of it is expenses, and the page is weighted for that.
   Filters: Today / This Week / This Month / This Year / Last Week / Last Month / Last Year / Custom
-  Displays: Net balance for the filtered period
+  Displays: TWO figures — Money Out and Money In for the period. There is no Net
+    card: the workshop does not work out a cashbook net, and a figure labelled
+    "Net" beside an expense total invites being read as profit, which is the
+    Profit page's job and a different calculation.
+  Reading it: All / Out / In chips narrow the stream, one search box covers the
+    name, the note, the method and an exact amount. The two totals follow the
+    date window and the search but NOT the chip — a chip is a way of reading the
+    period, not a different period.
+  Dating: every entry carries the day the money moved, typed and editable, so a
+    month-end expense keyed the following week still lands in the right month on
+    the Profit page.
   Access: Office and Owner only
+
+OWNER WITHDRAWALS (Owner only)
+  Shows: cash the owners take out of the business for themselves — one card per
+    owner for the chosen window, the form to record another, then every one of
+    them in a list.
+  THE ONE RULE: this is NOT a business expense, and the profit figure does not
+    move because of it. Profit is what is available to take; taking it cannot
+    make it smaller. It appears in exactly one figure in the whole system —
+    money OUT on Cash Tracking, dated by the day the cash was taken.
+  Why the section exists at all: the Cashbook is an expense ledger and its total
+    feeds the profit equation, so an owner recording "50,000 — Owner" there
+    quietly cut reported profit by 50,000. The likeliest place for that money to
+    land was the one place that breaks the figure.
+  The two totals are printed and never netted. What a gap between two owners
+    means depends on the partnership split, and the system does not hold one.
+  Filters: This Month / Last Month / This Year / Last Year / All Time / Custom —
+    the Profit page's vocabulary, not the day-to-day lists'. Owner money is taken
+    a handful of times a month, so Today and This Week would be empty nearly
+    every time.
+  No edit, deliberately: the section is Owner-only end to end, so delete is
+    always available and re-adding is one line of the form. Every correction
+    lands in Deletion History instead of silently overwriting what was there.
+  Access: Owner only — Office and Floor cannot open the page or reach any of its
+    three addresses.
 
 OWNER ANALYSIS — PROFIT (Owner only)
   Shows: Total Turnover − Total Expenses = Profit for one date window, stated as an equation
@@ -912,6 +949,11 @@ OWNER ANALYSIS — PROFIT (Owner only)
   Then the SAME profit a second way — "What Earned The Profit": Labour + Spare Parts
     margin + Inventory margin + Cashbook Income = Gross Earnings, less salary and
     general cashbook = the same Profit, with no reconciling line in between
+  Also: CASH TRACKING — money in and money out for the window, by the day each rupee
+    actually moved, sitting ABOVE the equation and drawn as a different kind of object
+    so the two can never be added together. It is never called a balance: there is no
+    opening cash figure anywhere in the system, so what can honestly be reported is the
+    CHANGE over the window. Owner withdrawals appear here and nowhere else.
   Also: month-by-month trend, and Position Right Now — what is owed to/by the workshop,
     plus what the warehouse shelf holds at cost, so the supplies-shop debt can be read
     against the stock it bought (stated side by side, never netted)

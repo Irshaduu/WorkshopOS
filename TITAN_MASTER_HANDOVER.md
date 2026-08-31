@@ -29,7 +29,7 @@ leave days are typed once a month instead of tracked daily, and why performance 
 judged against real volume rather than generic "web scale".
 
 **The standard:** functional integrity across every operation that touches money or
-access. Backed by **54 test files / 1,685 tests** covering security, views, signals,
+access. Backed by **59 test files / 1,921 tests** covering security, views, signals,
 financial logic, cashbook, spare shops, salary settlement, the profit engine, the
 printed documents, photos and the email transport behind password reset.
 
@@ -315,15 +315,17 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
 | 8 | **Photos** | Car photos on a saved job card, a box per Spare Parts row, and a read-only box on Purchase History. Storage is S3-compatible (Cloudflare R2, or Supabase as the no-card fallback), reached by the browser directly on presigned URLs — the app has no upload path and no media backend. Optional: with no credentials the section is simply absent. |
 | 9 | **One origin, and a page that says it is loading** | Delivered 2026-08-21 as two commits. Every typed rupee amount now goes through `workshop/money.py` — the four payment screens had kept hand-rolled parsing, so `Infinity` settled a bill at an infinite receipt and 11 digits 500'd on Postgres. `GZipMiddleware` is on (211 KB → 55 KB on the job card form), which matters because `no-store` makes every page uncacheable. Every third-party asset is self-hosted from `static/vendor/`. And a 3px progress bar reports navigations, plus in-page updates that outlast 250 ms — the installed PWA is `display: standalone`, so it has no address bar or tab spinner of its own. Along the way: two JS tests that could never have passed now do, and a 300 ms debounce was removed from filter and pager taps. |
 
+| 10 | **Owner Withdrawals** | Delivered 2026-08-31. Cash the owners take out for themselves had nowhere correct to go, and the likeliest place for it to land — the Cashbook — is the one place that breaks the profit figure, because `cashbook_expense()` feeds the equation. `OwnerWithdrawal` reaches exactly one figure in the whole engine, `cash_position()`'s money-out list, and nothing in `build_profit_report`. Owner-only end to end; both owners' totals printed and never netted; no edit, because delete is always available and every correction then lands in Deletion History. The same pass closed a defect in six screens: `parse_money` refuses a zero *before* it quantises, so `0.004` came back as `0.00` — a 500 on the three columns carrying a positive-amount constraint, and a zero-rupee row written on the one that does not. |
+
 ### Open
 
 | # | Item | State |
 |---|---|---|
-| 10 | **Hosting & go-live** | *In progress.* The system runs on Railway at a temporary URL; static serving, build commands and the email transport are done. **Remaining:** the production project on the Hobby plan under the workshop's own account, DNS for `app.formuladservice.in`, Resend domain verification, Cloudflare, and the go-live steps. Procedure: `GO_LIVE_RUNBOOK.md`. |
-| 11 | **Deep debug pass** | The serious pre-handover sweep, to run once everything is wired on the real infrastructure. |
-| 12 | **Frontend polish** | Ongoing. Raise the visual/UX bar to match the backend's rigor. |
-| 13 | **Stability / security / performance / code-quality hardening** | Ongoing across both apps. |
-| 14 | **Keep every financial and security rule under test** | Not a coverage percentage. The existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. **Add a test when a rule is added or a bug is fixed, not to move a metric.** |
+| 11 | **Hosting & go-live** | *In progress.* The system runs on Railway at a temporary URL; static serving, build commands and the email transport are done. **Remaining:** the production project on the Hobby plan under the workshop's own account, DNS for `app.formuladservice.in`, Resend domain verification, Cloudflare, and the go-live steps. Procedure: `GO_LIVE_RUNBOOK.md`. |
+| 12 | **Deep debug pass** | The serious pre-handover sweep, to run once everything is wired on the real infrastructure. |
+| 13 | **Frontend polish** | Ongoing. Raise the visual/UX bar to match the backend's rigor. |
+| 14 | **Stability / security / performance / code-quality hardening** | Ongoing across both apps. |
+| 15 | **Keep every financial and security rule under test** | Not a coverage percentage. The existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. **Add a test when a rule is added or a bug is fixed, not to move a metric.** |
 
 ### Carried into go-live
 

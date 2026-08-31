@@ -5941,7 +5941,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 59 files, 1,916 tests. Always SQLite (see below).
+# Full test suite — 59 files, 1,921 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -6049,7 +6049,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,916-test run
+want. SQLite's test database is also in-memory, which is most of why a 1,921-test run
 is ~70 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
@@ -6175,10 +6175,10 @@ unless `EMAIL_REAL=true`; `manage.py test` uses locmem regardless.
 **`workshop/`** — job cards, billing, fleet accounts, spare shops, cashbook, estimates,
 photos, auth, owner analytics, deletion history, master data.
 
-`views/` is a package of **19 modules**: `audits`, `autocomplete`, `billing`,
-`bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`, `estimate`,
-`jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `photos`, `push`,
-`salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
+`views/` is a package of **20 modules**: `about`, `audits`, `autocomplete`,
+`billing`, `bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`,
+`estimate`, `jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `photos`,
+`push`, `salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
 `from . import views; views.some_function` and existing URL wiring keep working — when
 adding a view, add it to both its module and the re-export list.
 
@@ -6286,7 +6286,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` (53 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **59 files, 1,916 tests**.
+files) — **59 files, 1,921 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

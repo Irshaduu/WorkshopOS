@@ -1,11 +1,12 @@
 # WorkshopOS
 
 A workshop management system for a single premium automotive workshop. Job cards,
-inventory, spare and supplier shops, fleet billing, estimates, invoicing, a cashbook
-and owner analytics, in one Django application.
+inventory, spare and supplier shops, fleet billing, estimates, invoicing, a cashbook,
+payroll, evidence photos and owner analytics, in one Django application.
 
-> **[SYSTEM_MAP.pdf](SYSTEM_MAP.pdf)** — the whole system on one page: every section
-> as a card, every flow as a line.
+> **[SYSTEM_MAP_DARK.pdf](SYSTEM_MAP_DARK.pdf)** — the whole system on one page: every
+> section as a card, every flow as a line. Also in a light theme,
+> [SYSTEM_MAP.pdf](SYSTEM_MAP.pdf).
 >
 > **[TITAN_SPEC_SHEET.md](TITAN_SPEC_SHEET.md)** — every file, model, route and rule,
 > counted from the repository rather than estimated.
@@ -36,10 +37,22 @@ and owner analytics, in one Django application.
   surplus carried forward as advance credit and reversals guarded to newest-first.
 - **Unassigned spares** — record a purchase before there is a job card to attach it
   to. Mechanics can log the part; the office prices it when the shop's bill arrives.
-- **Cashbook** — one searchable chronological ledger of money out and in.
+- **Cashbook** — one searchable chronological ledger of money out and in, each entry
+  dated by the day the money moved rather than the day it was typed.
+- **Salary and advances** — advances recorded the day the cash is handed over, and a
+  month-end settlement that freezes each person's salary, leave, advance and net pay.
+  A settled month never re-prices itself, and only the most recent one can be
+  corrected.
+- **Owner withdrawals** — cash the owners take out for themselves, recorded where it
+  belongs. It is not a business expense and the profit figure never moves because of
+  it: profit is what is available to take. It shows as cash out, and nowhere else.
 - **Owner analytics** — a profit page reading `turnover − expenses` over any date
-  range, plus a deeper breakdown by mechanic, spare, vehicle, fleet account and shop.
-- Audit views for large discounts and for every permanent deletion.
+  range, the same profit again broken down by what earned it, cash movement kept
+  visibly separate from profit, plus a deeper breakdown by mechanic, spare, vehicle,
+  fleet account and shop.
+- Audit views for large discounts and for every permanent deletion, and a seven-day
+  window on money deletes — a recent mistake is the office's to correct, anything
+  older is an owner's to remove.
 
 ### Inventory
 
@@ -63,14 +76,17 @@ and owner analytics, in one Django application.
 ### Photos
 
 - Car photos on a saved job card, and a set per spare part.
-- Uploaded from the browser straight to S3-compatible storage.
-- Entirely optional — with no storage configured, the feature is absent and nothing
-  else changes.
+- Uploaded from the browser straight to S3-compatible storage on a presigned URL;
+  the bytes never pass through the application.
+- Entirely optional. With no storage configured the section is absent in production
+  and nothing else changes; a development server falls back to local disk so the
+  feature can still be worked on.
 
 ### Access and history
 
 - Three roles — **Owner**, **Office**, **Floor** — enforced on every view, with the
-  navigation and per-page controls filtered to match. Floor is shown no prices.
+  navigation and per-page controls filtered to match. Floor is shown no prices, and
+  who the customer is stays with Office and the owners.
 - Per-account and per-network sign-in lockout, live session monitoring with remote
   revoke, and an owner alert feed that can also push to a phone.
 - Accounts other records depend on are archived rather than destroyed. Transactions
@@ -153,13 +169,15 @@ WorkshopOS/
 ├── formulad_workshop/    # project config; settings split by environment
 ├── workshop/             # job cards, billing, estimates, cashbook, analytics, auth
 │   ├── views/            # views package, one module per area
-│   ├── analysis_engine.py
-│   ├── invoice.py        # both customer documents
-│   ├── settlement.py
-│   ├── master_data.py
-│   ├── money.py
-│   ├── spare_dates.py
-│   └── photos.py
+│   ├── analysis_engine.py   # the profit and cash figures
+│   ├── invoice.py           # both customer documents
+│   ├── settlement.py        # what is unfilled before a bill is settled
+│   ├── master_data.py       # renaming and merging a name
+│   ├── delete_window.py     # how old a record may be for Office to delete it
+│   ├── money.py             # is this typed amount usable
+│   ├── money_dates.py       # which day did this money move
+│   ├── spare_dates.py       # ordered before received
+│   └── photos.py            # object keys and URL signing
 ├── inventory/            # warehouse stock, categories and supplier shops
 ├── templates/            # error pages
 ├── static/
@@ -174,9 +192,9 @@ WorkshopOS/
 python manage.py test workshop inventory
 ```
 
-Over 1,500 tests covering the financial rules, access control, stock signals, the
-printed documents, and the supplier, fleet and salary flows. The suite runs on SQLite,
-so it never touches a live database.
+1,921 tests covering the financial rules, access control, stock signals, the printed
+documents, and the supplier, fleet and salary flows. The suite runs on SQLite, so it
+never touches a live database. A full run takes 20 to 80 minutes.
 
 JavaScript tests run separately, on Node's built-in runner:
 
