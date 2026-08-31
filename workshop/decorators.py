@@ -27,6 +27,30 @@ def is_owner(user):
     return user.groups.filter(name='Owner').exists() or user.is_superuser
 
 
+def owner_accounts():
+    """
+    Every live owner account — `is_owner` asked of the whole table at once.
+
+    ⚠ THE EITHER-OR IS LOAD-BEARING, and it is the same one `is_owner` uses
+    one line above. Group membership ALONE is the narrower test and it has
+    broken twice in practice: a reseeded or copied database routinely leaves
+    both owner accounts `is_superuser=True` with an **empty** Owner group until
+    somebody remembers `sync_owner_identity --yes`, and for that whole window a
+    group-only query returns nobody. `notifications._recipients` went silently
+    dark that way on two demo deployments; here it would draw a withdrawals
+    page with no owners on it.
+
+    Ordered by the name actually shown, so the cards and the picker cannot
+    disagree about which owner comes first.
+    """
+    from django.contrib.auth.models import User
+    from django.db.models import Q
+    return (User.objects
+            .filter(Q(is_superuser=True) | Q(groups__name='Owner'), is_active=True)
+            .distinct()
+            .order_by('first_name', 'username'))
+
+
 def is_office_or_owner(user):
     return user.groups.filter(name__in=['Office', 'Owner']).exists() or user.is_superuser
 

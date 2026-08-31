@@ -1837,6 +1837,82 @@ class CashbookEntry(models.Model):
 
 
 # -----------------------------------------------------------------------------
+# OWNER WITHDRAWALS — profit taken out, which is NOT a cost
+# -----------------------------------------------------------------------------
+class OwnerWithdrawal(models.Model):
+    """
+    Cash an owner has taken out of the business for themselves.
+
+    ⚠ THIS IS NOT AN EXPENSE AND IT MUST NEVER REACH THE PROFIT EQUATION.
+    Profit is what is *available* to take; taking it cannot reduce it. Put this
+    anywhere inside `build_profit_report` and the error compounds in the worst
+    direction there is — profit falls, so the page reports less left to
+    distribute, over money that has already been distributed, and the next
+    distribution is decided from the smaller figure.
+
+    It IS real cash leaving the drawer, so it belongs in exactly one place:
+    `cash_position()`'s money-out list, dated by `date`, the day it was taken.
+    That is the same basis every other line on that card already uses.
+
+    WHY THE TABLE EXISTS AT ALL, rather than "just use the Cashbook": the
+    Cashbook is an expense ledger, and `cashbook_expense()` feeds the profit
+    equation as General Cashbook. An owner recording "₹50,000 — Owner" there
+    quietly cuts reported profit by ₹50,000. Before this table there was
+    nowhere correct for that money to go, which made the one place that breaks
+    the figure also the likeliest place for it to land.
+
+    `owner` is PROTECT — only the second in the codebase, after
+    `Category → Item`. This row exists to say WHICH owner took the money, so
+    one whose owner had been cascaded away would be a rupee figure attributed
+    to nobody, and unrecoverable. It cannot fire in practice: Control Hub's
+    delete refuses owner accounts by design, so it is a backstop, not a
+    workflow.
+    """
+    PAYMENT_METHODS = [
+        ('CASH', 'Cash'),
+        ('UPI', 'UPI'),
+        ('CARD', 'Card'),
+        ('TRANSFER', 'Bank Transfer'),
+    ]
+
+    owner = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='withdrawals',
+        help_text="Which owner took the money")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(
+        max_length=20, choices=PAYMENT_METHODS, default='CASH')
+    # Blank stores NULL: nobody wrote a note is a different fact from somebody
+    # writing nothing — the rule `BulkPaymentHistory.note` already follows.
+    note = models.CharField(max_length=255, blank=True, null=True)
+    # THE DAY THE MONEY MOVED, typed — never `created_at`. An owner takes cash
+    # on the 30th and it is recorded whenever somebody next sits at the laptop,
+    # so the keystroke date would file it in the wrong month on Cash Tracking.
+    # Same column and same reason as `CashbookEntry.date`.
+    date = models.DateField(default=timezone.now, db_index=True)
+    # The audit trail, and the tiebreaker inside a day: two withdrawals
+    # back-dated to one date still read in the order they were entered.
+    created_at = models.DateTimeField(auto_now_add=True)
+    recorded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='withdrawals_recorded')
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['-date', '-created_at']),
+            models.Index(fields=['owner', '-date']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(amount__gt=0),
+                name='workshop_ownerwithdrawal_amount_positive'),
+        ]
+
+    def __str__(self):
+        return f"{self.owner.username} · ₹{self.amount} ({self.date:%d %b %Y})"
+
+
+# -----------------------------------------------------------------------------
 # ESTIMATES — a quote, and nothing more
 # -----------------------------------------------------------------------------
 # An estimate is a piece of paper handed to a customer BEFORE any work is agreed.
@@ -2093,6 +2169,7 @@ class DeletionLog(models.Model):
     ENTITY_SALARY_ADVANCE = 'SALARY_ADVANCE'
     ENTITY_SALARY_PAYMENT = 'SALARY_PAYMENT'
     ENTITY_UNASSIGNED_SPARE = 'UNASSIGNED_SPARE'
+    ENTITY_OWNER_WITHDRAWAL = 'OWNER_WITHDRAWAL'
     # Master-list rows (spare-part names, concerns). Not financial — job cards
     # store these as free text, so removing one cannot alter a bill, a ledger or
     # a report (proven; see MasterDataDeleteTouchesNoHistoryTests). Logged
@@ -2112,6 +2189,7 @@ class DeletionLog(models.Model):
         (ENTITY_SALARY_ADVANCE, 'Salary Advance'),
         (ENTITY_SALARY_PAYMENT, 'Salary Payment'),
         (ENTITY_UNASSIGNED_SPARE, 'Unassigned Spare'),
+        (ENTITY_OWNER_WITHDRAWAL, 'Owner Withdrawal'),
         (ENTITY_MASTER_DATA, 'Master List Entry'),
     ]
 

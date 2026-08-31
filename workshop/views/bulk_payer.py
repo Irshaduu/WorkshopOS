@@ -405,8 +405,12 @@ def bulk_payer_pay(request, pk):
     # decimal.InvalidOperation outside the try/except above, 500ing the page;
     # and 11 digits overflow numeric(12,2) on Postgres. parse_money refuses zero
     # by default, which is the rule this view already wanted.
+    # `<= 0` as well as None: parse_money refuses a zero BEFORE quantising, so
+    # `0.004` comes back as `0.00`. This column carries no CheckConstraint, so
+    # it is the one of the four that would have written the row — a ₹0 payment
+    # in the ledger, cascading nothing, with a history entry to reverse.
     lump_sum = parse_money(lump_sum_raw, BulkPaymentHistory, 'amount')
-    if lump_sum is None:
+    if lump_sum is None or lump_sum <= 0:
         messages.error(request, "Invalid payment amount.")
         return redirect('bulk_payer_detail', pk=pk)
 

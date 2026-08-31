@@ -54,16 +54,28 @@ body.about-dark {
 }
 .ab-map svg { display: block; width: 100%; height: auto; }
 
-/* The map is ONE fixed drawing at every width — it never reflows, and on a
-   phone it is simply small. Saying so is the whole difference between "too
-   small" and "pinch it". Shown only where it is true. */
+/* The map is ONE fixed drawing at every width — it never reflows, and it is
+   always smaller than it was drawn. Saying so is the whole difference between
+   "too small" and "zoom in".
+
+   ⚠ IT USED TO BE HIDDEN ABOVE 900px, AND THAT GATE WAS WRONG FROM THE START.
+   It was written as "shown only where it is true", on the assumption that the
+   map is only small on a phone. It is not: this page sits inside
+   `.main-content`, which is capped at **800px app-wide**, so the 1414px
+   drawing renders at **768px — 54% — on a 1280px laptop and on every screen
+   wider than that**. An 8.8px card title prints at 4.77px there. The hint was
+   hidden on exactly the widths where somebody is most likely to be reading it
+   and least likely to think of pinching a page.
+
+   So it shows everywhere, and the wording names the gesture only where there
+   is a gesture to name — one string rather than a phone copy and a laptop copy
+   to keep in step. */
 .ab-zoom {
-    display: none;
+    display: flex;
     align-items: center; gap: 7px;
     font-size: 0.74rem; color: var(--ab-mute);
     margin: 9px 2px 0;
 }
-@media (max-width: 900px) { .ab-zoom { display: flex; } }
 
 /* --- opening line ------------------------------------------------------- */
 .ab-intro {
@@ -149,7 +161,7 @@ disagree. Do not paste an <svg> here.
 <div class="ab-map">{% include 'workshop/includes/_system_map_svg.html' %}</div>
 <div class="ab-zoom">
     <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
-    <span>Pinch to zoom in on any part of the map.</span>
+    <span>Zoom in on any part of the map &mdash; pinch on a phone.</span>
 </div>
 
 <div class="ab-intro">
@@ -420,6 +432,24 @@ disagree. Do not paste an <svg> here.
             <ul>
                 <li>Anything more than &#8377;3,500 off</li>
                 <li>You&rsquo;re asked to confirm at the counter before it happens</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Owner Withdrawals</h3>
+            <p>Money the two of you take out for yourselves.</p>
+            <ul>
+                <li>A card each, so you can see at a glance what you&rsquo;ve both
+                    taken over any stretch of time</li>
+                <li><strong>This is not a business cost, and the profit figure
+                    never moves because of it.</strong> Profit is what there is
+                    to take &mdash; taking it can&rsquo;t make it smaller. It
+                    turns up as cash out, which is exactly what it is</li>
+                <li>The one place to put this money. Written in the Cashbook
+                    instead, it would quietly eat into the profit you&rsquo;re
+                    deciding from</li>
+                <li>Yours alone &mdash; nobody else in the workshop can open the
+                    page or see the figures</li>
             </ul>
         </div>
 

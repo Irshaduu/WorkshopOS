@@ -65,3 +65,6 @@ from .photos import (
     photo_blob_put, photo_blob_get,
 )
 from .about import about
+from .withdrawal import (
+    withdrawal_home, withdrawal_add, withdrawal_delete,
+)

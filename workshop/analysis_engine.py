@@ -135,6 +135,7 @@ from .models import (
     JobCard, JobCardSpareItem, CashbookEntry,
     SalaryPayment, SalaryPaymentLine, SalaryAdvance,
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
+    OwnerWithdrawal,
 )
 
 # Wide enough that a multi-year Sum of 10-digit money columns cannot overflow.
@@ -261,6 +262,11 @@ _DATE_STREAMS = (
     (lambda: _restock_manager(), 'bill_date'),
     (lambda: SalaryPayment.objects, 'month'),
     (lambda: SalaryAdvance.objects, 'date'),
+    # An owner withdrawal touches no PROFIT figure, but it is real cash out
+    # on the same card, so All Time has to reach it or the widest filter
+    # under-reports what left the drawer. Leaving salary out of this list is
+    # what made All Time report the wage bill ₹1,22,167 short.
+    (lambda: OwnerWithdrawal.objects, 'date'),
 )
 
 
@@ -1319,6 +1325,8 @@ def cash_position(start, end):
     salary = salary_expense(start, end)
     wages = salary['total']
     running = cashbook_expense(start, end)   # a dict: the card wants its total
+    owner_taken = _sum(
+        OwnerWithdrawal.objects.filter(date__range=(start, end)), F('amount'))
 
     money_in = [
         {'label': 'Customer bills settled', 'hint': 'walk-in, by the day it was settled',
@@ -1335,6 +1343,14 @@ def cash_position(start, end):
          'amount': wages},
         {'label': 'Rent, power, consumables', 'hint': 'from the cashbook',
          'amount': running['total']},
+        # ⚠ CASH ONLY. An owner withdrawal is profit being TAKEN, not a cost of
+        # earning it, so this is the only figure in the whole engine that reads
+        # `OwnerWithdrawal` — it appears nowhere in `build_profit_report`, in no
+        # expense line and in no margin. Adding it to profit would shrink the
+        # figure the next distribution is decided from, by exactly the amount
+        # already distributed.
+        {'label': 'Owner withdrawals', 'hint': 'profit taken out, not a cost',
+         'amount': owner_taken},
     ]
 
     total_in = sum((r['amount'] for r in money_in), ZERO)

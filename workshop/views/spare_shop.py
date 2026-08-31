@@ -324,8 +324,11 @@ def spare_shop_pay(request, pk):
     # shop's ledger, making the balance meaningless; 'NaN' makes that same
     # comparison raise, which is a 500 rather than a message. Zero is refused,
     # as before.
+    # `<= 0` as well as None: parse_money refuses a zero BEFORE quantising, so
+    # `0.004` comes back as `0.00`, and this column's CheckConstraint turns
+    # that into an IntegrityError rather than a message.
     lump_sum = parse_money(request.POST.get('lump_sum', '0'), SpareShopPayment, 'amount')
-    if lump_sum is None:
+    if lump_sum is None or lump_sum <= 0:
         messages.error(request, "Invalid payment amount.")
         return redirect('spare_shop_detail', pk=pk)
 
