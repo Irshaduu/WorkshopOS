@@ -4055,6 +4055,31 @@ Every screen is used on **three** form factors, one per role:
 Design responsively — a desktop-only table, or a layout that overflows
 horizontally on a phone, is a defect, not a cosmetic issue.
 
+**A PAGE TITLE NAMES THE PAGE AND NEVER THE PRODUCT.** In the installed app
+the window title is `manifest.name` + `" - "` + the document `<title>`, so a
+page that appends the brand itself gets it twice — the Profit page read
+**"Formula D — Diagnose & Service - Profit — August 2026 — WorkshopOS"**, with
+the internal codename in the loudest chrome the owners ever see, on the page
+they read most. Six pages did it (both Analysis pages, Spare Shops, three
+Salary ones) and the other ~60 did not.
+
+Two halves, and each is the other's reason:
+- **`manifest.json`'s `name` is `Formula D`**, not the tagline. It is the
+  prefix on *every* page, so a descriptor there is paid for once per screen
+  forever. The tagline still lives in the manifest's `description`, and
+  `short_name` was already `Formula D`.
+  ⚠ **An installed app CACHES its manifest** — the launcher and window keep
+  the old name until it is removed and re-added. A name change looking like
+  it did not apply is the cache, not the edit.
+- **No `{% block title %}` appends the brand.** `test_password_reset` already
+  asserted that a reset email must not say "WorkshopOS", with a docstring
+  claiming the word "appears nowhere in the UI" — which those six titles had
+  quietly made false. It is true now.
+
+One dead template still carries it: `inventory/home.html` (`Inventory |
+WorkshopOS`), reachable from no view. Left alone rather than swept, so that
+deleting it stays a separate decision.
+
 **`base.html` defines the light-mode CSS variables (`--color-*`) and renders
 Django messages ONCE for all pages.** Never re-render `{% if messages %}` in a
 child template — it double-prints and loses the error/success styling. (The
