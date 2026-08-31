@@ -1376,33 +1376,53 @@ year-to-date figure is short for year one — the same shape as opening stock. I
 self-corrects after one full year, and an opening figure is one more number
 nobody can check.
 
-**THE THEME IS THE GROUND, AND NOTHING ELSE.** This section is about the
-OWNERS rather than about the workshop — the only one that is — so it gets a
-room of its own, and a room is the colour of its WALLS: `body.wd-page` is
-**`#e7eeea`**, an off-green, and the furniture is untouched. Cards stay white,
-type stays the app's, the date pills stay the app's blue, money out stays red.
+**THERE IS NO SECTION THEME — THIS PAGE SITS ON THE APP'S OWN GROUND, AND
+THAT REVERSES WHAT THIS FILE SAID UNTIL 2026-08-31, on the owner's
+instruction.** It read **THE THEME IS THE GROUND, AND NOTHING ELSE**: this
+section is about the OWNERS rather than about the workshop — the only one that
+is — so it got a room of its own, and a room is the colour of its WALLS, which
+was `body.wd-page` at **`#e7eeea`**, an off-green, with the furniture
+untouched.
 
-⚠ **A DARK GREEN GROUND WAS ASKED FOR (2026-08-31) AND THE ANSWER IS THE
-CONTRAST, not taste.** Every card in this app is white with a hairline border
-and every secondary label is grey, so a dark ground leaves the borders
-invisible and the labels unreadable — and each of them then needs a colour of
-its own, which is the repaint recorded below arriving by a different door. What
-the green did get is **one step deeper**, the same hue at a lightness white
-cards can still sit on. That step is bounded and measurable: the muted subtitle
-(`#64748b`) reads **4.1:1** on `#e7eeea` and drops to **3.7:1** by `#dde7e0`,
-so this is about as far as the ground can go before the type on it starts
-failing. The contrast the request was reaching for went into the **headline**
-instead, which is now black.
+The owner's call is that it does not get a room. An owner opens this page in
+the same sitting as the Cashbook and the Profit page, and a ground that
+changes between them reads as a different **product** rather than as a
+different room — which is precisely the failure the violet repaint was
+reverted for the day before, arriving by a quieter door. `body_class` and the
+ground declaration are both gone; the page inherits `--color-bg` like every
+other screen.
 
-⚠ **IT SHIPPED FOR AN HOUR AS A REPAINT AND THAT WAS THE MISTAKE.** Violet was
-pushed onto the pills, the headings, every owner name, every border, the kebab
-hover and the shared payment card's own rail. The section stopped looking like
-a different room and started looking like a different product — the owner's
-verdict was immediate. **A section theme in this app is one background
-declaration.** If a future one needs more than that, it is not a theme.
+**What tells this section apart was never the wall colour.** It is the two
+OWNER TINTS — navy and violet, the only place in the app where two people are
+the subject — and they are untouched.
 
-Light, deliberately: the About page is the one dark screen here and it earns
-that by carrying no form and no money, where this carries both.
+⚠ **The green survived TWO earlier challenges, which is why it needs saying
+that neither of them was this one.** A **dark** green ground was asked for
+(2026-08-31) and refused on the CONTRAST: every card here is white with a
+hairline border and every secondary label is grey, so a dark ground leaves the
+borders invisible and the labels unreadable, and each then needs a colour of
+its own — which is the repaint below arriving by a different door. What the
+green got instead was one step deeper, bounded and measured: the muted
+subtitle (`#64748b`) reads **4.1:1** on `#e7eeea` and drops to **3.7:1** by
+`#dde7e0`. That reasoning is still correct and is why no *darker* ground may
+be reintroduced either. The contrast the request was reaching for went into
+the **headline**, which is black, and stays.
+
+⚠ **IT SHIPPED FOR AN HOUR AS A REPAINT AND THAT WAS THE FIRST MISTAKE.**
+Violet was pushed onto the pills, the headings, every owner name, every
+border, the kebab hover and the shared payment card's own rail. The section
+stopped looking like a different room and started looking like a different
+product — the owner's verdict was immediate. The rule written then was **a
+section theme in this app is one background declaration**; the rule now is
+that **a section theme in this app is NOTHING**. The green was the last
+surviving piece of that repaint, and it failed for the same reason on a longer
+timescale.
+
+⚠ **So the ONE olive value left is `.wd-title i` (`#4d7c0f`), the page-title
+glyph.** It is a leftover of the removed theme rather than a decision, and it
+was left alone rather than swept up with the ground, because nothing on this
+page depends on it and the app has no single convention for a title glyph's
+colour. Recolour it only if asked.
 
 ⚠ **THE HERO IS THE DARK SLAB, AND THAT REVERSES WHAT THIS FILE SAID UNTIL
 2026-08-31, on the owner's decision.** It read that the weight had to come from
@@ -1928,6 +1948,22 @@ it is 16px-rounded, and both values matter.**
 the card meant to read as a DIFFERENT KIND OF OBJECT from the solid profit
 cards below read as no object at all, which is the whole safety of putting cash
 on this page.
+
+**ITS SIDE PADDING IS 10px, NOT THE 18px EVERY SOLID CARD ON THE PAGE USES,
+BECAUSE THIS CARD HAS TWO LEFT EDGES.** `.pf-cash-col` carries a coloured
+rail, and a rail is itself an edge marker — so at 18px the dashed border and
+the green rail ran parallel down the whole card with a strip of dead ground
+between them, which on a phone is 5% of the width for the card's entire
+height. Measured at 375px before the fix: card at x=16, rail at x=36.
+
+**10px is chosen against the column's own 14px rather than picked by eye**:
+the rail must sit CLOSER to the block it introduces than to the border it is
+not part of, or it reads as floating between the two. 12px was tried and is
+the ambiguous case — 12 outside against 14 inside. It is **symmetric**,
+because the title rule and the money-moved rule span the full content box, so
+an asymmetric card would sit visibly off-centre inside its own border. The
+outer edge is untouched, so the card still lines up with every card below it;
+only the inside got tighter.
 
 **The period is said ONCE, in the card title.** Both column headings carried
 "AUGUST 2026" while the page header and the active filter pill already state

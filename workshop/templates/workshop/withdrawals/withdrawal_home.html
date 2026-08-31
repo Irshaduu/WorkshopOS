@@ -18,36 +18,26 @@
 {% endcomment %}
 
 {% block title %}Owner Withdrawals{% endblock %}
-{% block body_class %}wd-page{% endblock %}
 
 {% block content %}
 <style>
-  /* ══ THE THEME IS THE GROUND, AND NOTHING ELSE ═════════════════════════
-     This section is about the OWNERS rather than about the workshop — the
-     only one in the system that is — so it gets a room of its own. A room is
-     the colour of its WALLS: the ground changes and the furniture does not.
-     Cards stay white, type stays the app's, the pills stay the app's blue.
+  /* ══ NO SECTION THEME — THIS PAGE SITS ON THE APP'S OWN GROUND ═════════
+     The section carried an off-green body background (`body.wd-page`) on the
+     reasoning that it is about the OWNERS rather than about the workshop, so
+     it had earned a room of its own. The owner's call (2026-08-31) is that it
+     has not: an owner opens this page in the same sitting as the Cashbook and
+     the Profit page, and a ground that changes between them reads as a
+     different PRODUCT rather than as a different room — which is the failure
+     the violet repaint was reverted for the day before, arriving by a quieter
+     door. The green was the last surviving piece of that repaint.
 
-     It shipped for an hour with violet pushed onto the pills, the headings,
-     every name, every border and the shared payment card's own rail. That is
-     not a theme, it is a repaint — the section stopped looking like a
-     different room and started looking like a different product. **A section
-     theme here is one background declaration.**
+     What tells this section apart was never the wall colour. It is the two
+     OWNER TINTS — navy and violet, the only place in the app where two people
+     are the subject — and they are untouched.
 
-     LIGHT, and that survived being asked about. A dark green ground was put
-     up (2026-08-31) and the answer is that the ground is not what a theme can
-     afford to darken here: every card in this app is white with a hairline
-     border, every muted label is grey, and the top bar is white — so a dark
-     ground leaves the borders invisible, the labels unreadable and the page
-     needing a colour for each of those, which is the repaint the paragraph
-     above records failing. The About page is the one dark screen and it earns
-     it by carrying no form and no money; this carries both.
-
-     What the green DID get is one step deeper — #edf1ec to #e7eeea, the same
-     hue as the swatch at a lightness white cards can sit on — plus a black
-     headline over it, which is where the contrast the request was reaching
-     for actually belongs. */
-  body.wd-page { background: #e7eeea; }
+     So there is no `body_class` override here and no ground declaration at
+     all. A section theme in this app is now NOTHING; if a future one is
+     proposed, this is the precedent to read first. */
 
   /* ── Header ───────────────────────────────────────────────────────────── */
   .wd-head { margin-bottom: 14px; }
