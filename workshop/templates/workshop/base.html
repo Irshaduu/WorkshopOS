@@ -1495,6 +1495,19 @@ widen this and the audience together.
                     Salary &amp; Advance
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
+                {% comment %}
+                  OWNER-ONLY inside a group Office can see, matching
+                  `@owner_required` on every view under /withdrawals/. A
+                  template gate must mirror its view's decorator, and a door
+                  Office can see but not open is worse than no door.
+                {% endcomment %}
+                {% if is_owner %}
+                <a class="drawer-link accent-violet{% if p|slice:':13' == '/withdrawals/' %} active{% endif %}" href="{% url 'withdrawal_home' %}">
+                    <span class="drawer-ico"><i class="bi bi-person-badge"></i></span>
+                    Owner Withdrawals
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% endif %}
 
                 <div class="drawer-label">Stock &amp; Suppliers</div>
                 <a class="drawer-link accent-blue{% if p == '/inventory/list/' %} active{% endif %}" href="{% url 'inventory_list' %}">

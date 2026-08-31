@@ -1,0 +1,863 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% comment %}
+  OWNER WITHDRAWALS — cash the owners take out of the business for themselves.
+
+  Read top to bottom: what was taken in this period, who took it, how to record
+  another, then every one of them. The single most important sentence on the
+  page is the footnote under the form — this is NOT a business expense and the
+  profit figure does not move because of it. It is stated where somebody is
+  about to type an amount, rather than in a heading they have already scrolled
+  past.
+
+  The two owner figures are printed side by side and NEVER netted. What a gap
+  between them means depends on the partnership split, and this system does
+  not hold one — so the page prints both honestly and the owners do the
+  reading. Same rule as "what we owe and what we hold" on the Profit page.
+{% endcomment %}
+
+{% block title %}Owner Withdrawals{% endblock %}
+{% block body_class %}wd-page{% endblock %}
+
+{% block content %}
+<style>
+  /* ══ THE THEME IS THE GROUND, AND NOTHING ELSE ═════════════════════════
+     This section is about the OWNERS rather than about the workshop — the
+     only one in the system that is — so it gets a room of its own. A room is
+     the colour of its WALLS: the ground changes and the furniture does not.
+     Cards stay white, type stays the app's, the pills stay the app's blue.
+
+     It shipped for an hour with violet pushed onto the pills, the headings,
+     every name, every border and the shared payment card's own rail. That is
+     not a theme, it is a repaint — the section stopped looking like a
+     different room and started looking like a different product. **A section
+     theme here is one background declaration.**
+
+     LIGHT, and that survived being asked about. A dark green ground was put
+     up (2026-08-31) and the answer is that the ground is not what a theme can
+     afford to darken here: every card in this app is white with a hairline
+     border, every muted label is grey, and the top bar is white — so a dark
+     ground leaves the borders invisible, the labels unreadable and the page
+     needing a colour for each of those, which is the repaint the paragraph
+     above records failing. The About page is the one dark screen and it earns
+     it by carrying no form and no money; this carries both.
+
+     What the green DID get is one step deeper — #edf1ec to #e7eeea, the same
+     hue as the swatch at a lightness white cards can sit on — plus a black
+     headline over it, which is where the contrast the request was reaching
+     for actually belongs. */
+  body.wd-page { background: #e7eeea; }
+
+  /* ── Header ───────────────────────────────────────────────────────────── */
+  .wd-head { margin-bottom: 14px; }
+  .wd-title {
+    font-size: 1.35rem; font-weight: 800; color: var(--color-text);
+    margin: 0 0 4px; display: flex; align-items: center; gap: 9px; min-width: 0;
+  }
+  .wd-title i { color: #4d7c0f; font-size: 1.1rem; flex-shrink: 0; }
+  .wd-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wd-sub { font-size: 0.83rem; color: var(--color-text-muted); margin: 0; }
+
+  /* The Profit page's own pill, values copied rather than approximated: this
+     page borrows that section's date vocabulary, so it borrows the control
+     that offers it — including its colour. */
+  .wd-pills {
+    display: flex; gap: 7px; overflow-x: auto; padding: 12px 0 4px;
+    -ms-overflow-style: none; scrollbar-width: none;
+  }
+  .wd-pills::-webkit-scrollbar { display: none; }
+  .wd-pill {
+    border: 1px solid var(--color-border); background: var(--color-card);
+    color: var(--color-text-muted); border-radius: 999px;
+    padding: 7px 15px; font-size: 0.8rem; font-weight: 700;
+    text-decoration: none; white-space: nowrap; flex-shrink: 0;
+  }
+  .wd-pill:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .wd-pill.active {
+    background: var(--color-primary); border-color: var(--color-primary); color: #fff;
+  }
+
+  /* ── The headline ─────────────────────────────────────────────────────────
+     ⚠ A DARK SLAB, AND THAT REVERSES WHAT THIS BLOCK SAID UNTIL 2026-08-31, on
+     the owner's instruction. It read that the weight had to come from a rail
+     and a shadow "never from a dark fill", having gone dark slab → white box →
+     rail; the owner's call is that it goes back, and the reason is one this
+     page could not see from inside itself: EVERY OTHER SECTION HEADER IN THE
+     SYSTEM IS THIS EXACT SLAB — the spare shop's, the Supplies Shop's, both
+     shop details. An owner reads them in one sitting, so a section whose
+     headline is the only white one reads as a different product, which is the
+     failure this page's own theme note is about.
+
+     The values are COPIED from `.detail-header` on those pages rather than
+     approximated, gradient and radius and all, for the same reason the date
+     glyph is copied rather than redrawn. */
+  .wd-hero {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-radius: 16px; padding: 18px 20px; margin-bottom: 13px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap; color: #fff;
+  }
+  .wd-hero-k {
+    font-size: 0.68rem; font-weight: 800; letter-spacing: 0.09em;
+    text-transform: uppercase; color: rgba(255, 255, 255, 0.55); margin-bottom: 5px;
+  }
+  .wd-hero-v {
+    font-size: 2.1rem; font-weight: 800; color: #fff; line-height: 1;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .wd-hero-n {
+    font-size: 0.75rem; color: rgba(255, 255, 255, 0.55); font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  /* ── One card per owner ───────────────────────────────────────────────────
+     DISPLAY ONLY. Filtering moved onto the chip row below, because a card
+     that both reports a figure and sets a filter is doing two jobs and needs
+     two active states to say so. Each owner's colour comes from the view, so
+     the card, the chip and every row of theirs in the list agree without the
+     template deciding anything. */
+  .wd-owners {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px; margin-bottom: 15px;
+  }
+  /* FILLED WITH THE OWNER'S OWN COLOUR — dark blue and dark violet, on the
+     owner's instruction. The colour was a 3px rail on a white card, which is
+     enough to TELL two rows apart and not enough to make two people the
+     subject of the page; under a black headline these read as the two halves
+     of one answer.
+
+     ⚠ THE DEPTH COMES FROM ONE VALUE, never a second hex. The overlay is a
+     white-to-black gradient laid OVER `--tint`, so a third owner needs one
+     colour rather than a matched pair somebody has to keep in step — the trap
+     every "light and dark shade" palette in this codebase would have been.
+     12% is the ceiling: at the lightest corner #5b21b6 still measures 6.8:1
+     against the white figure sitting on it. */
+  .wd-owner {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%,
+                                rgba(0, 0, 0, 0.14) 100%), var(--tint);
+    border: 0; border-radius: 14px; padding: 12px 14px; color: #fff;
+  }
+  .wd-owner-name {
+    font-size: 0.82rem; font-weight: 700; color: rgba(255, 255, 255, 0.82);
+    display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .wd-owner-name i { color: rgba(255, 255, 255, 0.6); font-size: 0.8rem; flex-shrink: 0; }
+  .wd-owner-v {
+    font-size: 1.15rem; font-weight: 800; color: #fff;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .wd-owner-n { font-size: 0.7rem; color: rgba(255, 255, 255, 0.6); margin-top: 2px; }
+
+  /* ── Who the list is showing ──────────────────────────────────────────────
+     The Cashbook's own chip row — same shape, same count badge, same "the
+     active one takes its own colour" rule. It replaced a link that appeared
+     only WHILE a filter was on, so the way back was visible and the way in
+     was not. A chip row states every option at all times. */
+  /* ONE ROW: the section's name on the left, who it is showing on the right.
+     They were stacked, which spent a whole line on three small controls and
+     put the filter a scroll away from the heading it modifies.
+
+     ⚠ IT TAKES TWO LINES ON A PHONE, and the first reason is measured rather
+     than conceded. At 375px the row has 343px: the heading measures 157px and
+     the three chips 289px, so 103px short — and nothing but dropping the
+     counts closes a gap that size. The break is declared at the app's own
+     576px rather than at the ~460px where they would genuinely stop fitting,
+     because below it the chips also stretch to the full width and take a 42px
+     touch height instead of 34px; a thumb is the reason, and 42px beats
+     sharing a line by a few pixels. Measured at 1280: heading 129px at x=249,
+     chips 289px ending at 1016, one line, nothing hidden. */
+  .wd-hist {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px 12px; margin: 18px 0 9px;
+    /* A chip is a LINK, so tapping one is a navigation and the browser lands
+       at the top of a page whose history starts 536px down on a phone — the jump
+       the brief asked about. Every chip and every pager link carries
+       `#wdHistory`, so the reader comes back to the row they tapped rather
+       than to the hero — which nothing about a chip changes anyway.
+       No script, no fetch, no scroll restoration to get wrong.
+
+       `--sticky-top` is the fixed bar's height on a laptop and 0px on a phone,
+       where the bar is at the bottom — so one declaration clears the chrome on
+       both without a media query. */
+    scroll-margin-top: calc(var(--sticky-top, 0px) + 12px);
+  }
+  .wd-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .wd-chip {
+    border: 1px solid var(--color-border); background: var(--color-card);
+    color: var(--color-text-muted); border-radius: 999px;
+    padding: 6px 12px; min-height: 34px; font-size: 0.76rem; font-weight: 700;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+    /* NEVER `transition: all` on a chip — the mobile rule below gives these
+       `flex: 1`, and `all` transitions flex-grow itself, pinning them at
+       content width with the correct rule matching and its value never
+       arriving. Transition the paint, never the layout. */
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .wd-chip:hover { border-color: #94a3b8; color: var(--color-text); }
+  .wd-chip-n {
+    font-size: 0.68rem; font-weight: 800; background: var(--color-border-light);
+    color: var(--color-text-muted); border-radius: 999px; padding: 1px 7px;
+    font-variant-numeric: tabular-nums;
+  }
+  .wd-chip.is-active {
+    background: var(--tint, #0f172a); border-color: var(--tint, #0f172a); color: #fff;
+  }
+  .wd-chip.is-active .wd-chip-n { background: rgba(255,255,255,0.22); color: #fff; }
+
+  /* ── History ──────────────────────────────────────────────────────────── */
+  .wd-sec-head {
+    font-size: 0.72rem; font-weight: 800; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--color-text-muted); margin: 0;
+  }
+  /* ⚠ NO `overflow: hidden` HERE, and that is load-bearing rather than
+     tidiness. Every row holds a ⋮ dropdown, and Popper cannot escape a
+     clipping ancestor — it fails invisibly AND only sometimes: with several
+     rows the menu flips upward and stays inside the box, so it looks
+     perfectly correct. Measured with ONE row, 33px of a 44px menu was cut
+     off, putting the only delete there is out of reach on exactly the list
+     that has one thing to delete. So the corners are rounded on the ROWS. */
+  .wd-list {
+    background: var(--color-card); border: 1px solid var(--color-border);
+    border-radius: 16px;
+  }
+  .wd-row {
+    display: flex; align-items: flex-start; gap: 11px;
+    padding: 12px 14px; border-bottom: 1px solid var(--color-border-light);
+    /* The owner's colour, so a list of two people reads as two people
+       without anybody reading a name. An inset shadow rather than a
+       border-left: a border changes the box's geometry and would shift every
+       row's contents by 3px. */
+    box-shadow: inset 4px 0 0 var(--tint);
+  }
+  .wd-list > *:first-child { border-radius: 16px 16px 0 0; }
+  .wd-list > *:last-child { border-radius: 0 0 16px 16px; border-bottom: 0; }
+  .wd-list > *:only-child { border-radius: 16px; }
+  .wd-row-main { flex: 1 1 auto; min-width: 0; }
+  .wd-row-who {
+    font-size: 0.88rem; font-weight: 700; color: var(--color-text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .wd-row-meta {
+    font-size: 0.74rem; color: var(--color-text-muted); margin-top: 2px;
+    overflow-wrap: anywhere;
+  }
+  .wd-row-amt {
+    font-size: 0.95rem; font-weight: 800; color: var(--color-danger);
+    font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0;
+    padding-top: 1px;
+  }
+  .wd-kebab {
+    background: none; border: 0; color: var(--color-text-muted);
+    width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+    margin: -3px -5px 0 0;
+  }
+  @media (hover: hover) { .wd-kebab:hover { background: var(--color-hover); } }
+  /* A target is only as big as its smaller side, and the finger decides —
+     the input method, never a width breakpoint. */
+  @media (hover: none) { .wd-kebab { width: 44px; height: 44px; } }
+
+  .wd-empty { padding: 34px 18px; text-align: center; color: var(--color-text-muted); }
+  .wd-empty i { font-size: 1.7rem; opacity: 0.35; display: block; margin-bottom: 8px; }
+  .wd-empty p { margin: 0; font-size: 0.85rem; }
+
+  /* ── The form's own two widths ────────────────────────────────────────────
+     WHICH OWNER SITS IN THE ROW, between the date and the amount, wearing the
+     same `.rpay-select` as Method so it reads as a field rather than a label.
+     It costs width the row does not have: measured at 1280, the six controls
+     at their shared sizes need 834px against 734px of laptop.
+
+     ⚠ THE WIDTH IS PAID FOR OUT OF THE NOTE, never out of the Record button.
+     The rule for this control is that the row scrolls sideways rather than
+     wrapping — but the button is the LAST thing in that scroller, so any
+     overflow lands on the one control that must never be hard to reach. The
+     Note is optional and is the only field that grows, so its basis is the
+     cheapest thing to shrink. Both overrides are page-scoped; the three
+     payment templates are untouched. */
+  .rpay-f-owner { width: 124px; }
+  .rpay-f-note  { flex: 1 0 92px; min-width: 92px; }
+
+  /* THE PICKER READS AS A QUESTION UNTIL IT IS ANSWERED. "Who?" rendered in
+     the same weight and colour as a chosen name, so the one field the figures
+     can never catch afterwards looked filled in. `:invalid` is the state
+     itself — the select is `required` and empty — so nothing has to be kept in
+     step in script. The options are given the normal colour back explicitly,
+     or the muted grey is inherited into the open list on some browsers.
+
+     Its caption is TAKEN BY rather than OWNER: over a page called Owner
+     Withdrawals, inside a card that says Record a Withdrawal, "Owner" was the
+     third telling of the section's own name, and it is not what the field
+     asks. */
+  #wdOwner:invalid { color: #94a3b8; font-weight: 600; }
+  #wdOwner option { color: var(--color-text); }
+
+  /* THE HEADING CHIP SAYS NOTHING UNTIL THERE IS SOMETHING TO SAY. It is a
+     mirror of the picker, put where the other three cards name the account
+     about to be paid — over the button, where the eye is at the moment of
+     pressing. Empty, it is simply absent: a placeholder announcing that
+     nothing has been chosen is a second telling of what the picker beside it
+     already says, on the one row that is already scrolling for width. */
+  .wd-echo[hidden] { display: none; }
+  /* It wears the chosen owner's own colour, set inline from the option's
+     `data-tint` — the same value the card, the filter chip and every row of
+     theirs already carry, so the name over the Record button is recognisably
+     that person before it is read. White on it, because these are the same
+     colours the filled cards clear 5:1 on. */
+  .wd-echo { color: #fff; font-weight: 700; }
+
+  /* ── Confirmation dialogs ─────────────────────────────────────────────── */
+  .wd-recap { margin: 4px 0 0; font-size: 0.85rem; }
+  .wd-recap div {
+    display: flex; justify-content: space-between; gap: 14px;
+    padding: 7px 0; border-bottom: 1px dashed var(--color-border-light);
+  }
+  .wd-recap div:last-child { border-bottom: 0; }
+  .wd-recap dt { color: var(--color-text-muted); font-weight: 600; margin: 0; }
+  .wd-recap dd { margin: 0; font-weight: 700; color: var(--color-text); text-align: right; }
+  /* Written as `dd.wd-dated`, never a bare `.wd-dated`: the rule above is
+     `.wd-recap dd` (0,1,1) and a lone class is (0,1,0), so the amber lost and
+     a back-dated withdrawal confirmed in plain slate. Caught by reading
+     `getComputedStyle` — the class was on the element and the rule was in the
+     sheet the whole time. */
+  .wd-recap dd.wd-dated { color: #b45309; }
+
+  @media (max-width: 575.98px) {
+    .wd-title { font-size: 1.15rem; }
+    .wd-hero-v { font-size: 1.75rem; }
+    .wd-owners { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
+    /* The full-width break described on `.wd-hist`: a 100% basis is what
+       FORCES it, or the three chips share the heading's line again the moment
+       they happen to fit. Same device as the shop header's `.shop-titleblock`. */
+    .wd-chips { flex: 1 1 100%; }
+    .wd-chip { flex: 1; justify-content: center; min-height: 42px; }
+    /* THE FOOTNOTE IS SMALLER ON A PHONE. It is two sentences of standing
+       explanation under a form that is filled in a few times a month, and at
+       the shared 0.74rem it took three lines of a 375px screen directly above
+       the history — louder than the sentence needs to be once it has been read
+       once. Page-scoped: the three payment cards keep the shared size, because
+       their footnote is one short line. */
+    .rpay-card .rpay-foot { font-size: 0.68rem; line-height: 1.4; }
+  }
+</style>
+
+<div class="wd-head">
+  <div class="wd-head-top">
+    <h1 class="wd-title"><i class="bi bi-person-badge"></i><span>Owner Withdrawals</span></h1>
+  </div>
+  <p class="wd-sub">Cash taken out of the business for the owners. Not a business expense.</p>
+
+  <div class="wd-pills">
+    {% for key, label in period_choices %}
+      {% if key != 'custom' %}
+        <a href="?range={{ key }}" class="wd-pill {% if range_key == key %}active{% endif %}">{{ label }}</a>
+      {% endif %}
+    {% endfor %}
+    <a href="#" class="wd-pill {% if range_key == 'custom' %}active{% endif %}" id="wdCustomToggle">Custom</a>
+  </div>
+
+  <form method="get" id="wdCustom" class="{% if range_key != 'custom' %}d-none{% endif %}"
+        style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:10px;">
+    <input type="hidden" name="range" value="custom">
+    <div>
+      <label for="wdStart" class="d-block" style="font-size:0.68rem; font-weight:700; color:var(--color-text-muted);">From</label>
+      <input type="date" name="start" id="wdStart" value="{{ custom_start }}" max="{{ today_iso }}"
+             class="form-control form-control-sm" style="border-radius:9px;" required>
+    </div>
+    <div>
+      <label for="wdEnd" class="d-block" style="font-size:0.68rem; font-weight:700; color:var(--color-text-muted);">To</label>
+      <input type="date" name="end" id="wdEnd" value="{{ custom_end }}" max="{{ today_iso }}"
+             class="form-control form-control-sm" style="border-radius:9px;" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm rounded-pill fw-bold px-3">Apply</button>
+  </form>
+</div>
+
+<div class="wd-hero">
+  <div>
+    <div class="wd-hero-k">Taken &middot; {{ range_label }}</div>
+    <div class="wd-hero-v">&#8377;{{ period_total|inr }}</div>
+  </div>
+  <div class="wd-hero-n">
+    {{ period_count }} withdrawal{{ period_count|pluralize }}
+  </div>
+</div>
+
+{% if cards %}
+<div class="wd-owners">
+  {% comment %}
+    DISPLAY ONLY. These used to be links that also set the owner filter, which
+    made one object report a figure AND hold a filter state — two jobs, and
+    two active states to keep in step. The chip row under the form does the
+    filtering now, so a card says one thing: what this owner took.
+  {% endcomment %}
+  {% for c in cards %}
+    <div class="wd-owner" style="--tint: {{ c.tint }};">
+      <div class="wd-owner-name"><i class="bi bi-person-fill"></i>{{ c.name }}</div>
+      <div class="wd-owner-v">&#8377;{{ c.total|inr }}</div>
+      <div class="wd-owner-n">{{ c.count }} withdrawal{{ c.count|pluralize }}</div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% comment %}
+  The shared "Record a Payment" control from static/css/style.css, so this form
+  and the three that pay a shop or take a fleet's money are literally one
+  component rather than four copies kept in step. RED, because the money is
+  going OUT — the Profit page's own colour rule applied to the button moving it.
+
+  ⚠ IT CARRIES THE TRAVELLING LIGHT, LIKE THE OTHER THREE, and that reverses
+  the `.rpay-card-still` decision of the day before (2026-08-31, the owner's
+  call — the brief was that this border did not move the way the spare shop's
+  and the Supplies Shop's do). The argument for stopping it was that those
+  three render only when money is owed while this one is always on screen, so
+  the animation would be permanent furniture. The owner's answer is that the
+  four cards being the same control matters more than the exemption: this page
+  is opened a handful of times a month, not worked in all day, which is the
+  case the "only looping animation" rule was written against.
+
+  `.rpay-card-still` is left in style.css — it is the honest way to stop the
+  light if that judgement ever flips back, and it is one class on this line.
+{% endcomment %}
+<div class="rpay-card">
+  <div class="rpay-head">
+    <h6 class="rpay-title"><i class="bi bi-cash-stack"></i>Record a Withdrawal</h6>
+    {% comment %}
+      A MIRROR OF THE PICKER, never a second control. `.rpay-owed` is where the
+      other three cards name the account about to be paid — directly over the
+      button that pays it, so the name is under the eye at the moment of
+      pressing. The picker itself is 108px at the far left of a scrolling row,
+      which is exactly where the eye is not.
+
+      It is simply ABSENT until somebody chooses. A placeholder saying that
+      nothing has been picked is a second telling of what the picker two
+      inches away already says with the word "Who?".
+    {% endcomment %}
+    <span class="rpay-owed wd-echo" id="wdOwnerEcho" aria-live="polite" hidden></span>
+  </div>
+  <div class="rpay-body">
+    <div class="rpay-scrollwrap">
+      <div class="rpay-scroll">
+        <div class="rpay-row">
+          <span class="rpay-date" id="wdDateBox" title="The day the money was taken — defaults to today">
+            <i class="bi bi-calendar-event"></i>
+            <span class="rpay-date-txt" id="wdDateTxt"></span>
+            <input type="date" id="wdDate" value="{{ today_iso }}" max="{{ today_iso }}"
+                   aria-label="The day the money was taken">
+          </span>
+          <div class="rpay-field rpay-f-owner">
+            <label for="wdOwner">Taken by</label>
+            {% comment %}
+              NOTHING IS PRESELECTED. Whoever opens this page is not
+              necessarily whoever took the money, and a picker that opens on a
+              name files it against that name for anybody who does not look —
+              the one field on the row that the figures themselves can never
+              catch afterwards. The browser refuses to go on without it, and
+              the view refuses again.
+            {% endcomment %}
+            <select id="wdOwner" class="rpay-select" required>
+              <option value="" disabled selected>Who?</option>
+              {% comment %}
+                `owner_choices`, never `cards`. A card is drawn for anybody who
+                took money in the window, including an account that has since
+                left `owner_accounts()` — and `withdrawal_add` validates
+                against that same query, so offering one here would be an
+                option that can only ever be refused.
+
+                `data-tint` is how the heading chip gets its colour without a
+                second copy of the palette in script.
+              {% endcomment %}
+              {% for c in owner_choices %}<option value="{{ c.pk }}" data-tint="{{ c.tint }}">{{ c.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="rpay-field rpay-f-amount">
+            <label for="wdAmount">Amount</label>
+            {% comment %}
+              The rupee sign is decoration and the currency rides in the input's
+              own accessible name — printing it in the caption AND in the box is
+              one fact twice on a row already scrolling for width.
+            {% endcomment %}
+            <span class="rpay-cur" aria-hidden="true">&#8377;</span>
+            <input type="number" id="wdAmount" class="rpay-input rpay-amount"
+                   placeholder="Enter amount" aria-label="Amount in rupees"
+                   min="1" step="0.01" inputmode="decimal">
+          </div>
+          <div class="rpay-field rpay-f-method">
+            <label for="wdMethod">Method</label>
+            {% comment %}
+              One payment-method list for the whole app, glyph for glyph. The
+              ORDER is identical everywhere; only the DEFAULT follows the
+              screen, and an owner takes cash.
+            {% endcomment %}
+            <select id="wdMethod" class="rpay-select">
+              <option value="CASH">&#128181; Cash</option>
+              <option value="UPI">&#128241; UPI</option>
+              <option value="CARD">&#128179; Card</option>
+              <option value="TRANSFER">&#127974; Bank Transfer</option>
+            </select>
+          </div>
+          <div class="rpay-field rpay-f-note">
+            <label for="wdNote">Note (Optional)</label>
+            {% comment %}
+              NO PLACEHOLDER. "What it was for" under a caption reading
+              NOTE (OPTIONAL) is the label restated in quieter type, which is
+              the rule the job card's vehicle and customer boxes already
+              follow. A placeholder has to say something the label cannot.
+            {% endcomment %}
+            <input type="text" id="wdNote" class="rpay-input" maxlength="255">
+          </div>
+          <button type="button" class="rpay-btn rpay-btn-out" id="wdRecordBtn">
+            <i class="bi bi-send-fill"></i> Record
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% comment %}
+    THE MOST IMPORTANT SENTENCE ON THE PAGE, and it sits under the box somebody
+    is about to type into rather than in a heading already scrolled past.
+  {% endcomment %}
+  <p class="rpay-foot">
+    <i class="bi bi-info-circle"></i>
+    <span>Not a business expense &mdash; profit does not change. It shows as cash
+          out on the Profit page.</span>
+  </p>
+</div>
+
+<form id="wdAddForm" method="post" action="{% url 'withdrawal_add' %}" class="d-none">
+  {% csrf_token %}
+  <input type="hidden" name="back" value="{{ back_qs }}">
+  <input type="hidden" name="owner" id="hfOwner">
+  <input type="hidden" name="amount" id="hfAmount">
+  <input type="hidden" name="payment_method" id="hfMethod">
+  <input type="hidden" name="note" id="hfNote">
+  <input type="hidden" name="date" id="hfDate">
+</form>
+
+{% comment %}
+  THE CASHBOOK'S OWN CHIP ROW. It replaced a "Show everyone" link that
+  rendered only WHILE a filter was on — so the way back was visible and the
+  way in was not, and neither said who else there was. A chip row states every
+  option at all times and carries the counts, which is the shape that page
+  already settled on for exactly this job.
+{% endcomment %}
+<div class="wd-hist" id="wdHistory">
+  {% comment %}
+    THE HEADING NO LONGER NAMES THE OWNER. It read "{name} · {period}" while a
+    filter was on, with the active chip saying the same name six pixels to the
+    right — and the shorter heading is what lets the two share a line at all.
+  {% endcomment %}
+  <h2 class="wd-sec-head">History &middot; {{ range_label }}</h2>
+
+  <div class="wd-chips">
+    <a class="wd-chip {% if not who %}is-active{% endif %}" href="?{{ base_qs }}#wdHistory">
+      Everyone <span class="wd-chip-n">{{ period_count }}</span>
+    </a>
+    {% for c in cards %}
+      <a class="wd-chip {% if c.active %}is-active{% endif %}" style="--tint: {{ c.tint }};"
+         href="?{{ base_qs }}&who={{ c.pk }}#wdHistory">
+        {{ c.name }} <span class="wd-chip-n">{{ c.count }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="wd-list">
+  {% for w in withdrawals %}
+    <div class="wd-row" style="--tint: {{ w.tint }};">
+      <div class="wd-row-main">
+        <div class="wd-row-who">{{ w.display }}</div>
+        <div class="wd-row-meta">
+          {{ w.date|date:"j M Y" }} &middot; {{ w.get_payment_method_display }}{% if w.note %} &middot; {{ w.note }}{% endif %}
+        </div>
+      </div>
+      <div class="wd-row-amt">&#8377;{{ w.amount|inr_amount }}</div>
+      <div class="dropdown" style="line-height:0;">
+        <button class="wd-kebab" type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                aria-label="Actions for this withdrawal">
+          <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius:12px; min-width:172px;">
+          <li>
+            <button class="dropdown-item text-danger fw-semibold" type="button"
+                    data-wd-del="{% url 'withdrawal_delete' w.pk %}"
+                    data-wd-who="{{ w.display }}"
+                    data-wd-amt="&#8377;{{ w.amount|inr_amount }}"
+                    data-wd-on="{{ w.date|date:'j M Y' }}">
+              <i class="bi bi-trash3 me-2"></i>Delete withdrawal
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+  {% empty %}
+    <div class="wd-empty">
+      <i class="bi bi-inbox"></i>
+      <p>Nothing taken{% if who %} by {{ who_name }}{% endif %} in {{ range_label|lower }}.</p>
+    </div>
+  {% endfor %}
+</div>
+
+{% if page_obj.has_other_pages %}
+<nav class="mt-3">
+  <ul class="pagination pagination-sm justify-content-center mb-0">
+    {% if page_obj.has_previous %}
+      <li class="page-item"><a class="page-link" href="?{{ who_qs }}&page={{ page_obj.previous_page_number }}#wdHistory">&lsaquo;</a></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+    {% if page_obj.has_next %}
+      <li class="page-item"><a class="page-link" href="?{{ who_qs }}&page={{ page_obj.next_page_number }}#wdHistory">&rsaquo;</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
+{% comment %}
+  BOOTSTRAP MODALS, not a hand-rolled overlay. `sound.js` hooks
+  `show.bs.modal`, which bubbles, so both of these get the app's `prompt` tone
+  for free; a bespoke div would be silent on the two screens where money moves.
+{% endcomment %}
+<div class="modal fade" id="wdConfirmAdd" tabindex="-1" aria-labelledby="wdConfirmAddTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border:0; border-radius:18px;">
+      <div class="modal-body p-4">
+        <div class="text-center mb-3">
+          <i class="bi bi-cash-stack" style="font-size:2.4rem; color:#7c3aed;"></i>
+          <h5 class="fw-bold mt-2 mb-1" id="wdConfirmAddTitle">Record this withdrawal?</h5>
+          <p class="text-muted mb-0" style="font-size:0.8rem;">It goes straight into the owners' record.</p>
+        </div>
+        <dl class="wd-recap">
+          <div><dt>Taken by</dt><dd id="rcOwner">&mdash;</dd></div>
+          <div><dt>Amount</dt><dd id="rcAmount">&mdash;</dd></div>
+          <div><dt>Date</dt><dd id="rcDate">&mdash;</dd></div>
+          <div><dt>Method</dt><dd id="rcMethod">&mdash;</dd></div>
+          <div id="rcNoteRow" hidden><dt>Note</dt><dd id="rcNote">&mdash;</dd></div>
+        </dl>
+        <div class="d-flex gap-2 mt-4">
+          <button type="button" class="btn btn-light flex-fill fw-bold rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger flex-fill fw-bold rounded-pill" id="wdConfirmAddBtn">Yes, record it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="wdConfirmDel" tabindex="-1" aria-labelledby="wdConfirmDelTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border:0; border-radius:18px;">
+      <div class="modal-body p-4">
+        <div class="text-center mb-3">
+          <i class="bi bi-trash3" style="font-size:2.4rem; color:var(--color-danger);"></i>
+          <h5 class="fw-bold mt-2 mb-1" id="wdConfirmDelTitle">Delete this withdrawal?</h5>
+          <p class="text-muted mb-0" style="font-size:0.8rem;" id="wdDelMsg"></p>
+        </div>
+        {% comment %}
+          Every logged delete posts a reason and every one of them is OPTIONAL.
+          `DeletionLog` already stores who, when, what, how much and a full
+          snapshot, and raises RECORD_DELETED to the other owner's phone — a
+          required box people defeat with "a" puts noise in the log that looks
+          like signal.
+        {% endcomment %}
+        <form id="wdDelForm" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="back" value="{{ back_qs }}">
+          <label for="wdDelReason" class="form-label fw-bold"
+                 style="font-size:0.72rem; color:var(--color-text-muted);">Reason (optional)</label>
+          <input type="text" name="reason" id="wdDelReason" class="form-control"
+                 maxlength="255" placeholder="Why is it going?" style="border-radius:10px;">
+          <p class="text-muted mt-3 mb-0" style="font-size:0.76rem;">
+            Permanent &mdash; there is no undo. It is written to the Deletion History
+            and the other owner is told.
+          </p>
+          <div class="d-flex gap-2 mt-4">
+            <button type="button" class="btn btn-light flex-fill fw-bold rounded-pill" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-danger flex-fill fw-bold rounded-pill">Yes, delete</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // THE DATE CONTROL — the spare shop's own, values copied rather than
+  // approximated, because these are the same control asking the same question
+  // on screens an owner opens in one sitting. Built from LOCAL parts, never
+  // toISOString(), which converts to UTC and reports yesterday for the whole
+  // of an IST morning.
+  function todayISO() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+           '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function prettyDate(iso) {
+    var p = (iso || '').split('-');
+    if (p.length !== 3) { return iso || ''; }
+    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
+      .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  var box = document.getElementById('wdDateBox');
+  var dateInput = document.getElementById('wdDate');
+  var dateTxt = document.getElementById('wdDateTxt');
+  if (box && dateInput) {
+    var syncDate = function () {
+      var custom = dateInput.value && dateInput.value !== todayISO();
+      box.classList.toggle('is-custom', !!custom);
+      if (dateTxt) { dateTxt.textContent = custom ? prettyDate(dateInput.value) : ''; }
+    };
+    dateInput.addEventListener('change', syncDate);
+    // Desktop Chrome opens a picker only from the calendar glyph, which the
+    // invisible input covers. On mobile the tap has already opened it and the
+    // second call throws, which is caught.
+    box.addEventListener('click', function () {
+      if (typeof dateInput.showPicker === 'function') {
+        try { dateInput.showPicker(); } catch (err) { /* already open */ }
+      }
+    });
+    syncDate();
+  }
+
+  // ⚠ A MODAL IS BUILT ON FIRST USE, NEVER AT PARSE TIME. This script lives in
+  // the content block, which base.html renders ABOVE its own script tags — so
+  // `bootstrap` is undefined while these lines run, and a `new bootstrap.Modal()`
+  // here threw a ReferenceError that aborted the whole IIFE and took every
+  // listener below it with it. It fails in the worst way: Bootstrap registers
+  // its OWN delegated handlers when it finally loads, so the ⋮ menus still
+  // opened and the page looked completely normal while Delete did nothing at
+  // all. By the time anybody can click, the bundle is there.
+  var _modals = {};
+  function modalFor(id) {
+    if (!_modals[id]) {
+      var el = document.getElementById(id);
+      if (!el || typeof bootstrap === 'undefined') { return null; }
+      _modals[id] = new bootstrap.Modal(el);
+    }
+    return _modals[id];
+  }
+
+  // ── The heading echo ─────────────────────────────────────────────────────
+  // One direction only: the select is the value, the chip reports it. The
+  // chip ships EMPTY and hidden, so a page whose script never arrived shows
+  // nothing rather than a stale name.
+  var ownerSel = document.getElementById('wdOwner');
+  var ownerEcho = document.getElementById('wdOwnerEcho');
+  if (ownerSel && ownerEcho) {
+    var syncOwner = function () {
+      var opt = ownerSel.value ? ownerSel.options[ownerSel.selectedIndex] : null;
+      ownerEcho.textContent = opt ? opt.text : '';
+      ownerEcho.hidden = !opt;
+      // The owner's own colour, read off the option rather than from a second
+      // copy of the palette in script. `.rpay-owed` carries no Bootstrap
+      // utility, so a plain inline style wins here — the trap that an
+      // `!important` utility beats one does not apply.
+      var tint = opt ? (opt.dataset.tint || '') : '';
+      ownerEcho.style.background = tint;
+      ownerEcho.style.borderColor = tint;
+    };
+    ownerSel.addEventListener('change', syncOwner);
+    syncOwner();
+  }
+
+  // ── Recording ────────────────────────────────────────────────────────────
+  var addForm = document.getElementById('wdAddForm');
+  var recordBtn = document.getElementById('wdRecordBtn');
+
+  if (recordBtn) {
+    recordBtn.addEventListener('click', function () {
+      var amountEl = document.getElementById('wdAmount');
+      var methodSel = document.getElementById('wdMethod');
+      var noteEl = document.getElementById('wdNote');
+      var amount = amountEl.value;
+
+      if (!ownerSel || !ownerSel.value) { alert('Choose which owner took the money.'); return; }
+      if (!amount || parseFloat(amount) <= 0) { amountEl.focus(); alert('Enter a valid amount.'); return; }
+
+      var iso = dateInput ? dateInput.value : '';
+      document.getElementById('hfOwner').value = ownerSel.value;
+      document.getElementById('hfAmount').value = amount;
+      document.getElementById('hfMethod').value = methodSel.value;
+      document.getElementById('hfNote').value = noteEl.value;
+      document.getElementById('hfDate').value = iso;
+
+      document.getElementById('rcOwner').textContent =
+        ownerSel.options[ownerSel.selectedIndex].text;
+      document.getElementById('rcAmount').textContent =
+        '₹' + Number(amount).toLocaleString('en-IN');
+      // The date is spelled out ALWAYS in this recap because it is a labelled
+      // row in a list of four, but it turns amber only when it is not today —
+      // the settle dialog's rule, one screen over: confirming what cannot
+      // surprise anyone is how a confirmation stops being read.
+      var dateCell = document.getElementById('rcDate');
+      var isBackdated = iso && iso !== todayISO();
+      dateCell.textContent = isBackdated ? prettyDate(iso) : 'Today';
+      dateCell.classList.toggle('wd-dated', !!isBackdated);
+      document.getElementById('rcMethod').textContent =
+        methodSel.options[methodSel.selectedIndex].text;
+      var noteRow = document.getElementById('rcNoteRow');
+      if (noteEl.value.trim()) {
+        document.getElementById('rcNote').textContent = noteEl.value.trim();
+        noteRow.hidden = false;
+      } else {
+        noteRow.hidden = true;
+      }
+      var dlg = modalFor('wdConfirmAdd');
+      if (dlg) { dlg.show(); } else { addForm.submit(); }
+    });
+  }
+
+  var confirmAddBtn = document.getElementById('wdConfirmAddBtn');
+  if (confirmAddBtn && addForm) {
+    confirmAddBtn.addEventListener('click', function () {
+      // Disabled in a timeout, never inline: a button disabled inside its own
+      // handler cancels the submission in some browsers.
+      var self = this;
+      addForm.submit();
+      setTimeout(function () { self.disabled = true; }, 0);
+    });
+  }
+
+  // ── Deleting ─────────────────────────────────────────────────────────────
+  var delForm = document.getElementById('wdDelForm');
+
+  // Delegated on `document`: one handler for every row, and a row that arrives
+  // later needs nothing re-initialised.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-wd-del]');
+    if (!btn || !delForm) { return; }
+    var dlg = modalFor('wdConfirmDel');
+    if (!dlg) { return; }
+    // The ROUTE is reversed on the button by the url tag, never stitched
+    // together here: a path built in script goes on 404ing silently the day
+    // the URL changes, where a reverse fails loudly at render. (And a tag
+    // QUOTED in a comment like this one is still a live tag — the trap that
+    // put a second content block on this page yesterday — so it is described
+    // in words.)
+    delForm.action = btn.dataset.wdDel;
+    document.getElementById('wdDelReason').value = '';
+    document.getElementById('wdDelMsg').textContent =
+      btn.dataset.wdAmt + ' taken by ' + btn.dataset.wdWho + ' on ' + btn.dataset.wdOn + '.';
+    dlg.show();
+  });
+
+  // ── Custom range ─────────────────────────────────────────────────────────
+  var customToggle = document.getElementById('wdCustomToggle');
+  var customForm = document.getElementById('wdCustom');
+  if (customToggle && customForm) {
+    customToggle.addEventListener('click', function (e) {
+      e.preventDefault();
+      customForm.classList.toggle('d-none');
+      if (!customForm.classList.contains('d-none')) {
+        var start = document.getElementById('wdStart');
+        if (start) { start.focus(); }
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

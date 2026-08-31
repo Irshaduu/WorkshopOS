@@ -534,17 +534,28 @@ def build(theme):
     # ZONE 03: BOARDS & TELEMETRY HISTORY
     # =========================================================================
     zone(1098, B1Y, 300, B1H, 'TEL.03 // TELEMETRY', 'Boards & History', FLOW['data'])
+    # Four-tuples, like every other zone, because the last card is NOT data -
+    # see OWNER WITHDRAWALS below.
     _tel = [
-        ('dash',  'DASHBOARD',        ['cars on the floor - progress']),
-        ('live',  'LIVE REPORT',      ['billed but unfilled - crews']),
-        ('cars',  'CAR PROFILES',     ['history by registration']),
-        ('jlist', 'JOB CARDS',        ['every card - searchable']),
-        ('ehist', 'ESTIMATE HISTORY', ['searchable']),
+        ('dash',  'DASHBOARD',        ['cars on the floor - progress'], FLOW['data']),
+        ('live',  'LIVE REPORT',      ['billed but unfilled - crews'],  FLOW['data']),
+        ('cars',  'CAR PROFILES',     ['history by registration'],      FLOW['data']),
+        ('jlist', 'JOB CARDS',        ['every card - searchable'],      FLOW['data']),
+        ('ehist', 'ESTIMATE HISTORY', ['searchable'],                   FLOW['data']),
+        # The only section that was on no part of the sheet. It is a HISTORY -
+        # a list of what each owner took, which is what this zone holds - but
+        # it is the one card here that moves money, so it wears the OUT accent
+        # rather than the zone's data blue, and the line under it says where
+        # that money is read. The zone had 123px of corridor at its foot and
+        # this takes 56 of it, which also puts the card directly above CASH
+        # TRACKING in the row below.
+        ('wdraw', 'OWNER WITHDRAWALS', ['what each owner took',
+                                        'not a cost - cash out only'], FLOW['out']),
     ]
-    for (cid, t, ch), cell in zip(_tel, grid(
+    for (cid, t, ch, ac), cell in zip(_tel, grid(
             1098, B1Y, 300, B1H, 1, len(_tel), top=32,
             chips=[len(i[2]) for i in _tel])):
-        card(cid, *cell, t, ch, accent=FLOW['data'])
+        card(cid, *cell, t, ch, accent=ac)
 
     # =========================================================================
     # ZONE 04: LOGISTICS & INVENTORY MANIFOLD
@@ -761,6 +772,22 @@ def build(theme):
     # What IS true is the input that only Cash Tracking reads: fleet money
     # comes from BulkPaymentHistory, one row per payment.
     link('fleet', 'cashpos', 'in', 'r', 'l', bend=1013, ta=0.7)
+
+    # An owner withdrawal reaches exactly ONE figure in the whole engine, and
+    # this is it - `cash_position()`'s money-out list, dated by the day the
+    # cash was taken. It is in no expense line, no margin and nowhere inside
+    # build_profit_report, which is why the arrow points here and at nothing
+    # else on the sheet.
+    #
+    # DOWN THE OUTER MARGIN, not the 1000-1030 lane between CASHLINK and
+    # AUDIT. A straight drop from the card is impossible - PROFIT sits
+    # directly above the target - and that inner lane already carries the
+    # EXPENSE TRUNK, which is the same coral: check 5 measured the two running
+    # 7px apart for 122px, which is exactly the "three red lines side by side"
+    # this drawing was rebuilt once to get rid of. x=1404 is outside both zone
+    # boxes and carries nothing else, so the line reads as its own run and
+    # arrives at CASH TRACKING's right edge.
+    link('wdraw', 'cashpos', 'out', 'r', 'r', via=[('x', 1404), ('y', 571.9)])
 
     # Reference data feeds the hub; the hub feeds the boards
     link('mast', 'auto', 'data', 'r', 'l')

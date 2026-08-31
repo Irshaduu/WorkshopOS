@@ -505,6 +505,21 @@ select.status-fixed {
     .rpay-card::before { animation: none !important; }
 }
 
+/* ── A card that is always there ───────────────────────────────────────
+   The travelling light above earns its place on ONE condition, stated in its
+   own comment: the three payment cards RENDER ONLY WHEN MONEY IS OWED, so the
+   animation is never permanent furniture. Owner Withdrawals breaks that
+   condition — there is no debt to gate on, so its form is on screen every
+   time the page opens — and an idle shimmer on a page somebody is reading is
+   exactly the noise the Job Card's "this is the ONLY looping animation" rule
+   exists to keep out.
+
+   So the modifier stops the LIGHT and keeps everything the light was drawn on
+   top of: the accent rail, the static ring, the focus lift. The control still
+   looks like the other three, because it is the other three. */
+.rpay-card-still::before { animation: none !important; }
+.rpay-card-still:focus-within::before { animation: none !important; }
+
 /* ── Heading ─────────────────────────────────────────────────────────────
    The figure that governs what may be typed sits ON the title line, not in a
    footnote under the fields — it is read before the box is filled, so it is

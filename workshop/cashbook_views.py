@@ -292,10 +292,22 @@ def add_cashbook_entry(request):
         # let 'Infinity' straight through (it is a valid Decimal, and it IS
         # greater than zero) and stored a 12-digit figure in a numeric(10,2)
         # column, which SQLite accepts and Postgres rejects with a 500.
+        # ⚠ `<= 0` AS WELL AS None. `parse_money` refuses a zero or a negative
+        # BEFORE quantising, so `0.004` passes everything it checks and comes
+        # back as `0.00` — and this column carries a CheckConstraint that
+        # `amount > 0`, so writing it is an IntegrityError and a 500 rather
+        # than a message.
         decimal_amount = parse_money(amount, CashbookEntry, 'amount')
-        if decimal_amount is None:
+        if decimal_amount is None or decimal_amount <= 0:
             messages.error(request, "Enter a valid amount.")
             return redirect('cashbook')
+
+        # Validated against the list, not merely read: the column is 20
+        # characters of free text as far as the database is concerned, and a
+        # code that is not in PAYMENT_METHODS prints as itself on the row and
+        # matches nothing the search offers.
+        if payment_method not in dict(CashbookEntry.PAYMENT_METHODS):
+            payment_method = 'CASH'
 
         entry_date = posted_date(request.POST.get('date'))
         if is_future(entry_date):
@@ -357,10 +369,15 @@ def edit_cashbook_entry(request, pk):
             messages.error(request, "Name and Amount are required.")
             return redirect('cashbook')
 
+        # See the add view: a sub-paisa figure quantises to 0.00 and the
+        # column's CheckConstraint turns that into a 500.
         decimal_amount = parse_money(amount, CashbookEntry, 'amount')
-        if decimal_amount is None:
+        if decimal_amount is None or decimal_amount <= 0:
             messages.error(request, "Enter a valid amount.")
             return redirect('cashbook')
+
+        if payment_method not in dict(CashbookEntry.PAYMENT_METHODS):
+            payment_method = 'CASH'
 
         entry_date = posted_date(request.POST.get('date'))
         if is_future(entry_date):

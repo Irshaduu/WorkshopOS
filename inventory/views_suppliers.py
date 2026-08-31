@@ -933,6 +933,10 @@ def add_shop_payment(request, shop_id):
         # against NaN raises, and InvalidOperation is not in the except clause),
         # and passed an 11-digit fat finger to a numeric(12,2) column, which
         # Postgres refuses with an overflow — a 500 instead of a message.
+        # `<= 0` as well as None below: parse_money refuses a zero BEFORE
+        # quantising, so `0.004` comes back as `0.00`, and this column's
+        # CheckConstraint turns that into an IntegrityError rather than a
+        # message.
         amount = parse_money(request.POST.get('amount') or '0', SupplierPayment, 'amount')
 
         # THE DAY THE MONEY MOVED, through the one implementation of that rule
@@ -951,7 +955,7 @@ def add_shop_payment(request, shop_id):
         # answer for is a date that reads fine and is wrong.
         moved_on = posted_date(request.POST.get('date'))
 
-        if amount is None:
+        if amount is None or amount <= 0:
             messages.error(request, "Invalid payment amount.")
         elif is_future(moved_on):
             messages.error(request, "A payment cannot be dated in the future.")

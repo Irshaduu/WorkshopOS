@@ -239,6 +239,13 @@ urlpatterns = [
     # ------------------
     # CASHBOOK (Office/Owner) — Standalone ledger, NOT part of Manage Accounts
     # ------------------
+    # OWNER WITHDRAWALS - profit taken out. Owner-only, and NOT an expense:
+    # nothing under this prefix reaches `build_profit_report`.
+    path('withdrawals/', views.withdrawal_home, name='withdrawal_home'),
+    path('withdrawals/add/', views.withdrawal_add, name='withdrawal_add'),
+    path('withdrawals/<int:pk>/delete/', views.withdrawal_delete,
+         name='withdrawal_delete'),
+
     path('cashbook/', cashbook_views.cashbook_view, name='cashbook'),
     path('cashbook/add/', cashbook_views.add_cashbook_entry, name='manage_add_cashbook_entry'),
     path('cashbook/<int:pk>/delete/', cashbook_views.delete_cashbook_entry, name='manage_delete_cashbook_entry'),

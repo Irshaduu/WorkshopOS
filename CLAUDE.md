@@ -147,6 +147,31 @@ carried a hand-rolled `try: Decimal(...)` plus a sign check, so the rule above
 held everywhere except where money actually moves.
 → `workshop/tests/test_money_guards.py`
 
+⚠ **AND EVERY CALLER MUST CHECK `<= 0` ITSELF — `parse_money` REFUSES A ZERO
+BEFORE IT QUANTISES, WHICH IS NOT THE SAME THING** (found 2026-08-31, six call
+sites, all of them wrong). The order inside the function is: reject NaN and
+Infinity, reject out of range, reject `value < 0 or value == 0`, **then**
+quantise to the column's two decimals. So `0.004` is genuinely greater than
+zero, passes everything, and comes back as **`0.00`**.
+
+What that does depends on the column, and both outcomes are bad:
+
+- **A `CheckConstraint amount > 0` turns it into a 500.** Three models carry
+  one — `CashbookEntry`, `SpareShopPayment`, `SupplierPayment` — plus
+  `OwnerWithdrawal`, so writing `0.00` is an `IntegrityError` and the person
+  gets an error page instead of "Enter a valid amount".
+- **`BulkPaymentHistory` has NO such constraint**, so the fleet screen simply
+  **wrote the row**: a ₹0 payment in the ledger, cascading nothing, with a
+  history entry somebody then has to reverse.
+
+The browser cannot catch it either — every one of those screens guards with
+`parseFloat(amount) <= 0`, which `0.004` also passes.
+
+`parse_money` is deliberately **not** changed to quantise first: rounding a
+figure UP into validity would be the function saving a number nobody typed,
+which is the rule the whole module exists for. The caller decides, in one line:
+`if amount is None or amount <= 0:`. **All six now do.**
+
 **`JobCard.paid_date` is when a bill was actually settled.** Set only when
 `payment_status` becomes `PAID`/`BULK_PAID`, cleared when a payment is undone.
 Paid Bills filters and sorts on it, never `updated_at` — that is `auto_now=True`
@@ -1147,6 +1172,344 @@ the second call throws, which is caught.
 honoured on edit **only when a valid one is posted**, so a payload without it
 keeps what the entry already has rather than silently flipping it.
 
+**`payment_method` is validated against the list, on both the add and the edit**
+(2026-08-31). `entry_type` was checked and this was not, so a crafted POST wrote
+whatever it liked into a 20-character column: the row then prints the raw code
+where the label should be, and the search's method matching — which maps a typed
+word onto the CODES it knows — can never find it again. Anything unrecognised
+falls back to `CASH`, the rule the fleet and withdrawal pickers already follow.
+
+**Both money guards are `<= 0`, not just `is None`.** See the `parse_money` rule
+under "Money & billing": `CashbookEntry` carries a `CheckConstraint amount > 0`,
+so `0.004` quantising to `0.00` was a 500 on the two commonest write paths in
+the ledger.
+
+## Owner withdrawals
+
+**TAKING PROFIT OUT IS NOT AN EXPENSE, AND `OwnerWithdrawal` APPEARS IN EXACTLY
+ONE FIGURE IN THE WHOLE ENGINE.** Profit is what is *available* to take; taking
+it cannot reduce it. Put it anywhere inside `build_profit_report` and the error
+**compounds**, which is what makes this the one rule in the section worth
+shouting: profit falls, so the page reports less left to distribute, over money
+that has already been distributed, and the next distribution is decided from
+the smaller figure.
+
+It IS real cash out of the drawer, so it belongs in `cash_position()`'s
+money-out list, dated by `date`. That is the whole footprint on the money math
+— **two lines in `analysis_engine.py`**, the other being `_DATE_STREAMS`, so
+All Time can reach a withdrawal older than every other stream.
+→ `AWithdrawalIsNotAnExpenseTests`, `ItIsCashOutAndSaysSoOnceTests`
+
+**THE TABLE EXISTS BECAUSE THERE WAS NOWHERE CORRECT FOR THE MONEY TO GO.** The
+Cashbook is an expense ledger and `cashbook_expense()` feeds the profit equation
+as General Cashbook, so an owner recording "₹50,000 — Owner" there quietly cut
+reported profit by ₹50,000. The likeliest place for that money to land was the
+one place that breaks the figure. **This is a correctness fix wearing a
+feature's clothes**, which is why the sentence *"Not a business expense — profit
+does not change"* is printed under the box the amount is typed into rather than
+in a heading somebody has already scrolled past.
+
+⚠ *Considered and NOT done:* a Cashbook flag for owner-looking categories, the
+way `_shoplike_cashbook_count` flags shop-looking ones. A third warning on the
+Profit page is real noise, the Cashbook is Office-visible and Office does not
+record owner draws, and the section's existence is the fix. Revisit only if one
+actually turns up.
+
+**ONE PAGE, NO PER-OWNER DRILL-DOWN.** With two owners the comparison *is* the
+question — what have we each taken — and a page per owner answers half of it at
+a time. The history below narrows instead, with both cards still on screen.
+
+**THE FILTER IS A CHIP ROW, AND THE OWNER CARDS ARE DISPLAY ONLY.** The cards
+were links that also held the filter state, so one object reported a figure AND
+carried a filter — two jobs needing two active states to say so. It is now the
+**Cashbook's own chip row**, character for character: one chip per option, each
+with its count, the active one taking its own colour. That replaced a "show
+everyone" link which rendered *only while a filter was on*, so the way back was
+visible, the way in was not, and neither said who else there was.
+
+**IT SITS ON THE HISTORY HEADING'S OWN LINE, at its right-hand end** — the
+section's name on the left, who it is showing on the right. Stacked, it spent a
+whole line on three small controls and put the filter a scroll away from the
+heading it modifies. Two things came with the move: the heading dropped the
+owner's name (it read "{name} · {period}" while a filter was on, with the
+active chip saying the same name six pixels to the right), and that is also
+what makes the two fit — measured at 1280, heading 129px and chips 289px on one
+768px row.
+
+⚠ **BELOW 576px IT TAKES A SECOND LINE, and the first reason is arithmetic.**
+At 375px the row has 343px against a 157px heading and 289px of chips — 103px
+short, and nothing but dropping the counts closes a gap that size. The break is
+declared at the app's own 576px rather than at the ~460px where they genuinely
+stop fitting, because below it the chips also stretch full width and take a
+42px touch height instead of 34px. **A thumb is the reason**, and 42px beats
+sharing a line by a few pixels.
+
+⚠ **EVERY CHIP AND EVERY PAGER LINK ENDS IN `#wdHistory`.** A chip is a LINK,
+so tapping one is a full navigation and the browser lands at the TOP of a page
+whose history is ~536px down — the reader is thrown back to the hero every time
+they change who they are looking at. The fragment lands them on the row they
+tapped instead. **No script, no fetch, and no scroll position to restore**,
+which is the whole reason it is a fragment rather than the AJAX the list pages
+use: there is nothing here that can get out of step. `scroll-margin-top` is
+`calc(var(--sticky-top) + 12px)`, and that one declaration covers both layouts
+— `--sticky-top` is the fixed bar's height on a laptop and 0px on a phone,
+where the bar is at the bottom. Measured: the anchor lands `.wd-hist` 12px
+below the chrome.
+
+Nothing about the cards or the hero changes when a chip is tapped — they always
+report the whole window — so landing past them loses the reader nothing.
+
+**ONE COLOUR PER OWNER, decided in the view and used in three places** — the
+card, the chip and every row of theirs in the list, so a list of two people
+reads as two people without anybody reading a name. `OWNER_TINTS` is assigned
+by POSITION in `owner_accounts()` (ordered by displayed name), so it is stable
+between renders and a third owner gets a colour for free.
+
+**THE OWNER CARD IS FILLED WITH IT — DARK BLUE AND DARK VIOLET** (`#1e3a8a`,
+`#5b21b6`), on the owner's instruction (2026-08-31). It was a 3px rail on a
+white card, which is enough to tell two ROWS apart and not enough to make two
+people the subject of the page; under the black headline these read as the two
+halves of one answer. Three things travel with it:
+
+- ⚠ **THE DEPTH COMES FROM ONE VALUE, never a second hex.** The card lays a
+  `rgba(255,255,255,.12) → rgba(0,0,0,.14)` gradient OVER `var(--tint)`, so a
+  third owner needs one colour rather than a matched light/dark pair somebody
+  has to keep in step. 12% is the ceiling: at the lightest corner `#1e3a8a`
+  measures 7.4:1 against the white figure on it and `#5b21b6` 6.8:1.
+- ⚠ **THE BLUE IS NAVY, NOT THE APP'S OWN `#2563eb`.** Every button and active
+  pill in the system is that blue, so a card filled with it read as the one
+  thing on the page to press — when it is purely a figure.
+- The row rail went 3px → **4px** in the same edit: two dark colours need a
+  little more of themselves to be told apart at a glance than a violet and a
+  cyan did.
+
+⚠ **NO OWNER COLOUR MAY BE RED OR GREEN.** Both are spoken for app-wide as the
+DIRECTION of money and this page prints a red amount on every row, so an owner
+who happened to be red would read as the urgent one. It shipped for a minute
+with `#c2410c` in the palette — **caught by the test, not by eye**, which is
+the point of having it.
+→ `test_no_owner_colour_is_red_or_green`,
+`test_each_owner_keeps_one_colour_across_the_card_the_chip_and_the_rows`
+
+⚠ **THE TWO TOTALS ARE PRINTED AND NEVER NETTED.** What a gap between two
+owners *means* depends on the partnership split, and this system does not hold
+one — so the page prints both honestly and the owners do the reading. Exactly
+the rule "what we owe and what we hold sit together and are never netted"
+follows one page over. A test asserts the difference appears nowhere.
+
+**An owner with nothing in the window still gets a card, at ₹0.** Honest here in
+a way it is not on the fleet table: an owner exists for the whole period, so
+"took nothing" is a fact about them, where a fleet account's ₹0 would be a claim
+about a period it was not in. A missing card reads as a missing owner.
+
+⚠ **AND SO DOES SOMEBODY WHO HAS SINCE LEFT `owner_accounts()` — the headline
+is the SUM OF THE CARDS.** The cards were built from that query alone while the
+list below prints every row in the window, so an owner the query stops
+returning is money the list shows and the total does not count: **the hero
+disagreeing with the rows underneath it, silently**, which is the one thing a
+money page may never do. `owner_accounts()` filters `is_active`, so deactivating
+an account is the whole of what it takes. Measured before the fix, with one of
+two owners deactivated: hero ₹6,07,500 over a list of sixteen rows totalling
+₹11,50,000.
+
+Any owner id present in the window's own aggregate is appended to the card list,
+so the hero, both chip counts and the rows are one aggregate by construction —
+the Cashbook's rule. Three details: the extra query fires **only when there is a
+stray**, they are **appended** so a real owner's position and therefore colour
+cannot move, and a stray is **listed but not offered in the picker**
+(`owner_choices`, not `cards`), because `withdrawal_add` validates against
+`owner_accounts()` and would refuse it — an option that can only ever be
+refused is a door somebody can see and cannot open.
+
+**THE PROFIT PAGE'S DATE VOCABULARY, NOT THE DAY-TO-DAY LISTS'.** Owner money is
+taken a handful of times a month, so Today and This Week would return an empty
+page nearly every time — which reads as a broken screen rather than a quiet
+period. `engine.resolve_period` is called directly, so there is one
+implementation of the window and **All Time comes free**.
+
+**WHICH OWNER IS VALIDATED AGAINST THE OWNER LIST, never merely read.** Hiding a
+name from a `<select>` is presentation; `owner_accounts().filter(pk=…)` is the
+control. Without it a crafted POST could file a withdrawal against the Floor
+account, where it would sit on a page that role cannot open, attributed to
+somebody who never took the money.
+
+⚠ **THE AMOUNT IS CHECKED `<= 0` AFTER `parse_money`** — the app-wide rule
+recorded under "Money & billing", found here first. `OwnerWithdrawal` carries a
+`CheckConstraint amount > 0`, so a sub-paisa figure quantising to `0.00` was a
+500; the visible amount box is not inside a form either, so its `min="1"` never
+runs and only the view can refuse it.
+
+**`decorators.owner_accounts()` is the ONE answer to "who are the owners?"**,
+read by this page and by `notifications._recipients`. ⚠ The either-or
+(`is_superuser` **or** the Owner group) is load-bearing and is the same one
+`is_owner` uses: a reseeded database routinely leaves both owners superuser with
+an **empty** Owner group until somebody runs `sync_owner_identity --yes`, and
+group membership alone went dark that way on two demo deployments.
+
+**DELIBERATELY NO EDIT.** Every other ledger has one because a row keyed on the
+wrong day would otherwise be stuck in the wrong month for good — but that
+argument assumes a role that *cannot* delete it. This section is Owner-only end
+to end, delete is always available, and re-adding takes one line of the form.
+One fewer surface, and every correction lands in Deletion History rather than
+silently overwriting what was there. For the same reason there is **no
+`delete_window` guard**: that rule escalates an *Office* delete to an owner, so
+here it could never refuse anybody, and calling it would be a check that reads
+like a control.
+
+**IT IS ON THE SYSTEM MAP, IN TEL.03, WITH EXACTLY ONE ARROW.** It was the
+only section drawn nowhere on the sheet. The card sits at the foot of the
+telemetry zone under ESTIMATE HISTORY — that zone is "Boards & History" and this
+page is largely a history list, but it is the one card there that moves money,
+so it wears the OUT accent rather than the zone's data blue.
+
+The single arrow to **CASH TRACKING** is the "appears in exactly one figure"
+rule drawn: no line to Profit, to any expense, or to the trunk, because there
+is nothing there to draw. ⚠ It runs down the OUTER margin at x=1404, not the
+1000–1030 lane between CASHLINK and AUDIT: a straight drop is impossible
+(PROFIT sits directly above the target) and that inner lane already carries the
+expense trunk in the same coral — `check_system_map.py` measured the two 7px
+apart for 122px and refused it, which is exactly what check 5 is for.
+
+**No go-live opening balance, and the page says so rather than guessing.**
+Whatever the owners took before the system existed is not in it, so a
+year-to-date figure is short for year one — the same shape as opening stock. It
+self-corrects after one full year, and an opening figure is one more number
+nobody can check.
+
+**THE THEME IS THE GROUND, AND NOTHING ELSE.** This section is about the
+OWNERS rather than about the workshop — the only one that is — so it gets a
+room of its own, and a room is the colour of its WALLS: `body.wd-page` is
+**`#e7eeea`**, an off-green, and the furniture is untouched. Cards stay white,
+type stays the app's, the date pills stay the app's blue, money out stays red.
+
+⚠ **A DARK GREEN GROUND WAS ASKED FOR (2026-08-31) AND THE ANSWER IS THE
+CONTRAST, not taste.** Every card in this app is white with a hairline border
+and every secondary label is grey, so a dark ground leaves the borders
+invisible and the labels unreadable — and each of them then needs a colour of
+its own, which is the repaint recorded below arriving by a different door. What
+the green did get is **one step deeper**, the same hue at a lightness white
+cards can still sit on. That step is bounded and measurable: the muted subtitle
+(`#64748b`) reads **4.1:1** on `#e7eeea` and drops to **3.7:1** by `#dde7e0`,
+so this is about as far as the ground can go before the type on it starts
+failing. The contrast the request was reaching for went into the **headline**
+instead, which is now black.
+
+⚠ **IT SHIPPED FOR AN HOUR AS A REPAINT AND THAT WAS THE MISTAKE.** Violet was
+pushed onto the pills, the headings, every owner name, every border, the kebab
+hover and the shared payment card's own rail. The section stopped looking like
+a different room and started looking like a different product — the owner's
+verdict was immediate. **A section theme in this app is one background
+declaration.** If a future one needs more than that, it is not a theme.
+
+Light, deliberately: the About page is the one dark screen here and it earns
+that by carrying no form and no money, where this carries both.
+
+⚠ **THE HERO IS THE DARK SLAB, AND THAT REVERSES WHAT THIS FILE SAID UNTIL
+2026-08-31, on the owner's decision.** It read that the weight had to come from
+a rail and a lifted shadow, "never from a dark fill", having gone dark slab →
+plain white box → rail. The owner's call is that it goes back, and the reason
+is one this page could not see from inside itself: **every other section header
+in the system is this exact slab** — the spare shop's, the Supplies Shop's,
+both shop details, all of them `linear-gradient(135deg, #1e293b, #0f172a)` at a
+16px radius. An owner reads those in one sitting, so a section whose headline
+is the only white one reads as a different product, which is the failure the
+theme note above is about.
+
+The values are **copied from `.detail-header`** rather than approximated, the
+same rule the date glyph follows, and the label and count take that header's
+own `rgba(255,255,255,.55)`. The olive rail went with the white fill: a slab
+needs no rail to be found.
+
+**The form is the shared `.rpay-*` control, RED because the money is going
+OUT** — the Profit page's own colour rule applied to the button that moves it.
+Four things are specific to it:
+
+- ⚠ **IT CARRIES THE TRAVELLING LIGHT, LIKE THE OTHER THREE — reversing
+  `.rpay-card-still` the day after it was written** (2026-08-31, the owner's
+  call; the brief was that this border did not move the way the spare shop's
+  and the Supplies Shop's do). The argument for stopping it was real and is
+  worth keeping in view: the light earns its place on those three on one stated
+  condition, that they *render only when money is owed*, and this card is on
+  screen every time the page opens. The owner's answer is that **the four cards
+  being one control outranks the exemption**, and that this page is opened a
+  handful of times a month rather than worked in all day — which is the case
+  the Job Card's "only looping animation" rule was written against.
+
+  `.rpay-card-still` stays in `style.css`. It is the honest way to stop the
+  light if that judgement flips back, and it is one class on one line.
+- **WHICH OWNER IS A FIELD IN THE ROW, between the date and the amount.** It
+  spent a revision as a select styled into the heading chip, where it read as a
+  LABEL — nothing said it could be changed. In the row it wears the same
+  `.rpay-select` as Method, under its own caption.
+
+  ⚠ **THE WIDTH IT COSTS IS PAID OUT OF THE NOTE, never out of the button.**
+  Measured at 1280, six controls at their shared sizes need **834px against
+  734px of laptop**. The row scrolls sideways rather than wrapping — but the
+  Record button is the LAST thing in that scroller, so any overflow lands on
+  the one control that must never be hard to reach. The Note is optional and is
+  the only field that grows, so its basis is the cheapest thing to shrink:
+  `.rpay-f-owner` **124px** and `.rpay-f-note` **92px** bring the row to exactly
+  734, **nothing hidden** — measured again after the widening: row 734px,
+  scroller 734px, hidden 0. **Both overrides are page-scoped; the three payment
+  templates are untouched.**
+
+  Its caption is **TAKEN BY, not OWNER**. Over a page called Owner Withdrawals,
+  inside a card that says Record a Withdrawal, "Owner" was the section's own
+  name for the third time, and it is not what the field asks.
+
+  ⚠ **AND IT READS AS A QUESTION UNTIL IT IS ANSWERED.** "Who?" rendered in the
+  same weight and colour as a chosen name, so the one field the figures can
+  never catch afterwards looked filled in. `#wdOwner:invalid` — the select is
+  `required` and empty, so the STATE is the selector and nothing has to be kept
+  in step in script — turns it grey; `#wdOwner option` puts the normal colour
+  back, or that grey is inherited into the open list on some browsers.
+- **NOTHING IS PRESELECTED, and the heading chip ECHOES what is.** Whoever
+  opens the page is not necessarily whoever took the money, and a picker that
+  opens on a name files it against that name for anybody who does not look —
+  the one field on the row the figures themselves can never catch afterwards.
+  So the select opens on `Who?` and both the browser and the view refuse
+  without it.
+
+  The chip is then a **mirror, never a second control**: `.rpay-owed` is where
+  the other three cards name the account about to be paid, directly over the
+  button that pays it, so the name is under the eye at the moment of pressing —
+  which a 108px select at the far left of a scrolling row is not. It is a
+  `<span>` driven one-way from the select, because two controls setting one
+  value is how they start disagreeing.
+
+  ⚠ **It is ABSENT until there is something to say**, not a placeholder
+  announcing that nothing has been chosen — that is a second telling of what
+  the picker two inches away already says with the word "Who?". It ships
+  `hidden` and empty, so a page whose script never arrived shows nothing rather
+  than a stale name.
+
+  **It wears that owner's own colour**, read off the chosen `<option>`'s
+  `data-tint` — the same value their card, their chip and every row of theirs
+  carry, so the name over the Record button is recognisably that person before
+  it is read. The attribute is how the script gets the colour without a second
+  copy of the palette; `.rpay-owed` carries no Bootstrap utility, so a plain
+  inline style wins on it and the "an `!important` utility beats an inline
+  style" trap does not apply here.
+- **The Note carries NO placeholder here.** "What it was for" under a caption
+  reading NOTE (OPTIONAL) is the label restated in quieter type, which is the
+  rule the job card's vehicle and customer boxes already follow.
+- **THE FOOTNOTE IS SMALLER ON A PHONE** — 0.68rem below 576px against the
+  shared 0.74rem, which takes it from three lines to two on a 375px screen. It
+  is the only one of the four cards whose footnote is two sentences of standing
+  explanation rather than one short line, and it sits directly above the
+  history. **Page-scoped**: the three payment cards keep the shared size. The
+  sentence itself is untouched — it is the most important one on the page, and
+  making it quieter after the first reading is not the same as shortening it.
+
+⚠ **`.wd-list` MUST NOT BE `overflow: hidden`.** Every row holds a ⋮ dropdown,
+and this is the clipping trap the traps section records — invisible, and only
+*sometimes*: with several rows the menu flips upward and stays inside the box,
+so it looks perfectly correct. Measured with ONE row, **33px of a 44px menu was
+cut off**, putting the only delete there is out of reach on exactly the list
+that has one thing to delete. The corners are rounded on the rows.
+→ `TheHistoryListCanAlwaysBeActedOnTests` asserts the declaration, because
+nothing in the Django suite executes CSS.
+
 ## Master data
 
 **Master data dedupes on `__iexact`, and there is exactly ONE rename
@@ -1680,6 +2043,11 @@ Profit) give the block its shape.
 ⚠ **Never park retired copy in a CSS comment here.** `<style>` is served to the
 browser, so a phrase quoted in one is still on the page — which is how a test
 asserting the old subtitle was gone kept failing after it had been changed.
+**The same is true of a `//` comment in an inline `<script>`**, and it bit
+again on Owner Withdrawals: comments explaining that "Show everyone" and "No
+owner chosen" had been removed put both phrases straight back into the
+response. `{% comment %}` is the safe place for that note — Django strips it
+before anything is sent.
 
 **Wages come from Salary & Advance, never the Cashbook.** Wage cost for a settled
 month is `net_amount + advance_used` (an advance is cash already out; the
@@ -3050,7 +3418,7 @@ which is where the link already goes.
 characters). It still states that the remedy expires, which is the rule.
 
 **`DeletionLog.record()` is the deletion hook.** Every permanent delete funnels
-through it, so one call covers all eleven entity types and any added later. Don't
+through it, so one call covers all twelve entity types and any added later. Don't
 scatter equivalent `notify()` calls into individual delete views.
 
 **Owners only, and the actor never hears about their own action.** Floor gets
@@ -3805,8 +4173,22 @@ Four things about it, each a decision rather than a default:
 - **The map is ONE fixed drawing at every width.** It does not reflow, and on
   a phone it is genuinely tiny — the owner's explicit call, with pinch-zoom as
   the answer. That only works because `base.html`'s viewport meta sets no
-  `user-scalable=no` and no `maximum-scale`; **do not add either.** A "pinch to
-  zoom" hint renders under it below 900px and nowhere else.
+  `user-scalable=no` and no `maximum-scale`; **do not add either.**
+
+  ⚠ **THE ZOOM HINT SHOWS AT EVERY WIDTH, and the 900px gate it used to carry
+  was wrong from the day it was written** (corrected 2026-08-31, after the
+  owner asked where the hint had gone — it had never been lost, it was simply
+  hidden on the screen they were reading). It was written as "shown only where
+  it is true", on the assumption that the map is only small on a phone. **It is
+  never full size anywhere**: this page sits inside `.main-content`, capped at
+  800px app-wide, so the 1414px drawing renders at **768px — 54% — on a 1280px
+  laptop and on every screen wider than that**, which puts an 8.8px card title
+  at 4.77px. The hint was hidden on exactly the widths where somebody is most
+  likely to be reading it and least likely to think of zooming a page.
+
+  It is ONE string at all widths rather than a phone copy and a laptop copy to
+  keep in step, and it names the gesture only where there is one: *"Zoom in on
+  any part of the map — pinch on a phone."* One line at 375px, measured.
 - **The page is FULLY DARK, and it is the only one.** It shipped as a dark map
   on the app's light surface, and the seam was the loudest edge on screen —
   the eye landed on the join rather than on the drawing. The whole page now
@@ -5155,6 +5537,13 @@ lands on the correct IST calendar day.
 
 **Django's `{# … #}` comment is single-line only.** See UI conventions.
 
+**A TEMPLATE TAG TYPED INSIDE A `<script>` IS STILL A TEMPLATE TAG.** Django's
+parser knows nothing about script elements, so `{% block content %}` written
+into a JavaScript comment *to explain a bug* produced a second block of that
+name and a `TemplateSyntaxError` on the whole page. Same family as the `{# … #}`
+trap: a comment that stops being a comment. Describe a tag in prose ("the
+content block"), never by quoting it.
+
 ## CSS & Bootstrap
 
 **A running CSS TRANSITION outranks `!important` — it is the highest origin in the
@@ -5320,6 +5709,17 @@ symptom in every case was a control that simply did nothing, with a clean consol
 **Prefer delegation on `document` over per-element wiring.** All three traps above
 live in per-element wiring, and a delegated handler works on a row added after page
 load with nothing re-initialised.
+
+**`bootstrap` IS NOT DEFINED WHILE A PAGE'S OWN `<script>` IS PARSED.**
+`base.html` renders the content block ABOVE its own script tags, so a
+`new bootstrap.Modal(el)` at the top level of page JS throws a `ReferenceError`
+— and, being inside the page's IIFE, **aborts every listener registered below
+it**. It fails in the worst possible way: Bootstrap registers its OWN delegated
+handlers when it finally loads, so the ⋮ menus still open and the page looks
+completely normal while the control those listeners drove silently does nothing.
+Build a modal **on first use**, inside the handler, by which time the bundle has
+arrived. (Anything else reading `bootstrap`, `Chart` or another vendored global
+at parse time has the same problem.)
 
 **`new Event('change')` DOES NOT BUBBLE**, so a delegated listener never sees it. Pass
 `bubbles: true`. A status changed through a confirmation dialog once fired nothing at
@@ -5541,7 +5941,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 56 files, 1,865 tests. Always SQLite (see below).
+# Full test suite — 59 files, 1,916 tests. Always SQLite (see below).
 python manage.py test workshop inventory
 ```
 
@@ -5649,7 +6049,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,865-test run
+want. SQLite's test database is also in-memory, which is most of why a 1,916-test run
 is ~70 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
@@ -5775,10 +6175,10 @@ unless `EMAIL_REAL=true`; `manage.py test` uses locmem regardless.
 **`workshop/`** — job cards, billing, fleet accounts, spare shops, cashbook, estimates,
 photos, auth, owner analytics, deletion history, master data.
 
-`views/` is a package of **18 modules**: `audits`, `autocomplete`, `billing`,
+`views/` is a package of **19 modules**: `audits`, `autocomplete`, `billing`,
 `bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`, `estimate`,
 `jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `photos`, `push`,
-`salary_advance`, `spare_shop`. **`views/__init__.py` re-exports everything**, so
+`salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
 `from . import views; views.some_function` and existing URL wiring keep working — when
 adding a view, add it to both its module and the re-export list.
 
@@ -5859,8 +6259,12 @@ gets fixed in one and left broken in the other.
 - **The completion field is `JobCard.completed`** (boolean) with `completed_date`, served
   at `/completed/`. Renamed from `delivered`/`discharged_date` — the whole stack uses
   `completed` now; don't reintroduce "delivered" naming.
-- **Most FKs use `CASCADE`/`SET_NULL`.** The **only** `on_delete=PROTECT` in the codebase
-  is inventory `Category → Item`.
+- **Most FKs use `CASCADE`/`SET_NULL`.** There are exactly **two**
+  `on_delete=PROTECT` in the codebase: inventory `Category → Item`, and
+  `OwnerWithdrawal.owner`. The second exists because that row's whole job is to
+  say WHICH owner took the money, so one cascaded free would be a rupee figure
+  attributed to nobody. It can never fire — Control Hub refuses to delete an
+  owner account — so it is a backstop, not a workflow.
 
 ## Naming that must not be "tidied"
 
@@ -5881,8 +6285,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` (50 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **56 files, 1,865 tests**.
+Tests live in `workshop/tests/` (53 `test_*.py` plus `tests.py`) and `inventory/` (5
+files) — **59 files, 1,916 tests**.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 

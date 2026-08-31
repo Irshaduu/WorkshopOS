@@ -181,10 +181,12 @@ def _recipients(audience, exclude=None):
     if audience != AUDIENCE_OWNERS:
         return User.objects.none()
 
-    people = User.objects.filter(
-        Q(is_superuser=True) | Q(groups__name='Owner'),
-        is_active=True,
-    ).distinct()
+    # One implementation, in `decorators.owner_accounts` — the Owner
+    # Withdrawals page draws a card per owner off the same list, and two copies
+    # of a rule that has already gone dark twice would be two chances to fix
+    # one and leave the other.
+    from .decorators import owner_accounts
+    people = owner_accounts()
     if exclude is not None and getattr(exclude, 'pk', None):
         people = people.exclude(pk=exclude.pk)
     return people

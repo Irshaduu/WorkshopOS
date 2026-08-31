@@ -108,6 +108,7 @@ class AboutPageTests(TestCase):
         for topic in (
             'Estimates',            # the estimate list
             'Job Cards',            # the job card list
+            'Owner Withdrawals',    # the newest card on the sheet
             'Categories',           # the generic part name
             'Shop catalogue',       # what each shop sells
             'staff roster',         # the Mechanic model
