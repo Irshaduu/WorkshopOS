@@ -9,7 +9,8 @@ neither other seeder leaves behind: admitted, filled in, NOT completed and NOT
 billed - so the demo can press Completed and settle from the Invoice.
 
 Same uniform card as seed_meeting_data (5 shop spares x 1,500 + 4 draws 6,500 +
-labour 8,000 = 22,000), same plates, so the dataset stays checkable.
+labour 8,000 = 22,000), same plates, so the dataset stays checkable. The MONEY
+is uniform; the concerns are not -- see `concern_states`.
 
 Additive and re-runnable: it purges nothing. --replace drops the active cards on
 its own plates first; without it a clash stops the run rather than breaking the
@@ -57,6 +58,42 @@ CONCERNS = [
     'Vibration at high speed',
     'Wheel alignment and balancing required',
 ]
+# The oldest cars are finished: every concern FIXED, so settlement.unfilled()
+# comes back empty and the settle dialog opens AMBER. That is the flow the demo
+# presses "Complete & settle" on, and an unfixed concern would turn it red.
+#
+# The rest are still being worked on, because the Live Report's floor board
+# lists the concerns still OPEN on each car -- ten finished cars left it saying
+# "All concerns fixed" ten times over, which reads as a broken feature rather
+# than a quiet workshop. One WORKING per unfinished car: a mechanic is on one
+# thing at a time.
+READY_CARDS = 4
+
+
+def concern_states(n):
+    """(text, status) for card `n`'s concerns, oldest card first.
+
+    The longer a car has been in, the more of it is done, so the gradient runs
+    with `admitted_date` and the cars ready to hand over are the oldest ones.
+    Card 4 keeps 3 of 5 fixed; card 9 was admitted today and has none.
+    """
+    if n < READY_CARDS:
+        fixed = len(CONCERNS)
+    else:
+        fixed = max(0, 3 - (n - READY_CARDS + 1) // 2)
+
+    out = []
+    for i, text in enumerate(CONCERNS):
+        if i < fixed:
+            status = 'FIXED'
+        elif i == fixed:
+            status = 'WORKING'
+        else:
+            status = 'PENDING'
+        out.append((text, status))
+    return out
+
+
 JOBS = [
     'Engine Oil replaced',
     'Brake Pads - Front replaced',
@@ -262,11 +299,12 @@ class Command(BaseCommand):
                     labour_amount=LABOUR,
                 )
 
-                # FIXED, not PENDING: the work is done, and an unfixed concern
-                # is what turns the settle dialog red.
+                # See `concern_states`: the oldest cards are finished and
+                # settle cleanly, the newer ones still carry open work for the
+                # Live Report's floor board to list.
                 JobCardConcern.objects.bulk_create([
-                    JobCardConcern(job_card=card, concern_text=c, status='FIXED')
-                    for c in CONCERNS
+                    JobCardConcern(job_card=card, concern_text=text, status=status)
+                    for text, status in concern_states(n)
                 ])
                 JobCardLabourItem.objects.bulk_create([
                     JobCardLabourItem(job_card=card, job_description=j, amount=D('0'))
@@ -323,23 +361,45 @@ class Command(BaseCommand):
     def _verify(self, cards):
         """Ask `settlement.unfilled()` what the settle dialog asks.
 
-        A card is ready exactly when this comes back empty.
+        TWO expectations since the cards stopped being uniform. The first
+        `READY_CARDS` must come back completely empty -- those are the ones the
+        demo settles, and the dialog has to open amber. The rest are allowed
+        exactly ONE kind of gap, an unfixed concern, because that is the work
+        the floor board exists to list; anything else unfilled on them (a
+        missing price, no mechanic) is still a fault.
         """
         self.stdout.write("\n[3] Ready to complete and invoice?")
 
         ok = True
-        for card in cards:
+        ready = 0
+        for n, card in enumerate(cards):
             card = (JobCard.objects
                     .prefetch_related('concerns', 'labours', 'spares')
                     .get(pk=card.pk))
             holes = settlement.unfilled(card)
-            if holes:
+            expected_open = n >= READY_CARDS
+
+            # Everything except the concerns, on every card either way.
+            other = holes.card + holes.spares + holes.inventory
+            if other:
                 ok = False
                 rows = '; '.join(f"{p.name} — {p.missing}"
                                  for p in holes.spares + holes.inventory)
                 self.stdout.write(self.style.ERROR(
                     f"      {card.bill_number}: {holes.count} gap(s) "
                     f"{holes.card_missing} {rows}".rstrip()))
+            if holes.concerns and not expected_open:
+                ok = False
+                self.stdout.write(self.style.ERROR(
+                    f"      {card.bill_number}: should be ready to settle, but "
+                    f"{len(holes.concerns)} concern(s) are still open"))
+            if not holes.concerns and expected_open:
+                ok = False
+                self.stdout.write(self.style.ERROR(
+                    f"      {card.bill_number}: should still carry open work "
+                    f"for the floor board, but every concern is fixed"))
+            if not holes:
+                ready += 1
             if card.total_bill_amount != CARD_TOTAL:
                 ok = False
                 self.stdout.write(self.style.ERROR(
@@ -349,13 +409,16 @@ class Command(BaseCommand):
 
         if ok:
             self.stdout.write(self.style.SUCCESS(
-                f"      All {len(cards)} cards: nothing unfilled, "
+                f"      {ready} of {len(cards)} cards settle clean, "
+                f"{len(cards) - ready} still being worked. "
                 f"Rs.{CARD_TOTAL:,.0f} each, "
                 f"Rs.{CARD_TOTAL * len(cards):,.0f} total."))
             self.stdout.write(
-                "      The settle dialog opens AMBER on each one, saying only that "
-                "the car is\n      not marked Completed — which is true, and is what "
-                "'Complete & settle' is for.")
+                "      On the clean ones the settle dialog opens AMBER, saying only "
+                "that the car\n      is not marked Completed — which is true, and is "
+                "what 'Complete & settle' is for.\n"
+                "      The rest carry open concerns, which is what the Live Report's "
+                "floor board\n      lists and what the settle dialog turns RED for.")
 
         # Reported either way: a negative reading means a Supplies Shop bill is
         # missing, and should not be left for Low Stock to surface later.
