@@ -5054,6 +5054,59 @@ fitted, so its `status` column means nothing; listing one as waiting would send
 somebody after a part that is already on the car. Rows on a completed or deleted card
 are out too, as are spares with no job card — every row here opens a job card.
 
+**"RECEIVED IN THE LAST 5 DAYS" IS THE ONE BOX ON THE PAGE THAT IS NOT A LIST
+OF WORK.** Shop parts received in the last `RECEIVED_WINDOW_DAYS`, green,
+sitting above "On the way" — so the three parts boxes run green, amber, red
+down the page: the lifecycle backwards, most-finished first, which is the order
+the two that were there already established.
+
+Everything else on this page is something to act on — fill this in, give this
+instruction, chase this, order this. **A part that has arrived needs nothing
+done to it**, and most of what this box shows is already on the car.
+
+⚠ **IT IS BUILT EXACTLY LIKE THE TWO BOXES BELOW IT — same head, same row, NO
+SUBTITLE — and that is the owner's instruction rather than a default.** It
+shipped for one revision with a note under the heading (*"Nothing to chase here
+— most of these are already on the car"*) and a per-row arrival age, on the
+reasoning that a reference list drawn like four action lists reads as a fifth
+thing to worry about. The owner's call is that **the headline carries it**: the
+window is said once, in the heading, and one shape across the three parts boxes
+beats three shapes explaining themselves. The heading interpolates
+`RECEIVED_WINDOW_DAYS`, so the number on screen cannot drift from the number
+enforced.
+→ `test_its_rows_are_built_exactly_like_the_two_boxes_below_it` asserts the row
+shape against "On the way" rather than against a list of class names, so the
+age chip cannot come back by accident.
+
+⚠ **THE WINDOW IS LOAD-BEARING, NOT A TIDY-UP.** Nearly every shop spare on a
+live card is already RECEIVED — **43 of 45** on the development data — so
+unwindowed this box would be longer than the rest of the page put together.
+**5 days is the owner's own number** and the reasoning is theirs: arrivals are
+tracked physically or the mechanic says so, and this exists only for looking
+one up again afterwards. Long enough to be useful, short enough to still be
+news.
+
+Two details. It is the only parts box ordered **newest first**, because it is
+not a queue to work down. And a RECEIVED row with **no `received_date` simply
+falls outside the window** rather than being special-cased: nothing can say when
+it arrived, so nothing here can honestly report it.
+
+⚠ A missing shop is **not** called out here the way the amber box calls it out.
+There it means the ledger has nowhere to land on a part still outstanding; here
+the part has arrived and the box asks for nothing.
+
+⚠ **A PARTS-BOX VARIANT IS FIVE RULES, NOT ONE.** Square corners
+(`border-radius: 0`, one shared rule naming every variant), the title colour,
+the count pill, the row hairline and the row hover. The green box shipped for a
+revision carrying only the background and border — so it was **rounded where
+its neighbours are square**, its rows had no separators, and its heading and
+count rendered in the default slate while amber's and red's are coloured. It
+read as a different KIND of object on a page whose whole point is that the
+colour is the first thing the eye lands on. Nothing in the Django suite
+executes CSS, so the declarations are asserted directly.
+→ `WhatLandedRecentlyIsListedApartTests`,
+`test_it_is_drawn_as_the_same_kind_of_box_as_its_neighbours`
+
 **The live-details card is FOUR sections** — Customer Concerns, Job Performed,
 Inventory Items, Spare Parts — in the order the work happens. The last two used to be
 one "Parts" list, and splitting them is what makes the badges mean something: only a

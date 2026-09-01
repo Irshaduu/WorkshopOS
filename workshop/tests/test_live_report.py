@@ -558,3 +558,219 @@ class TheBoardSaysWhatIsLeftToBeCommandedTests(LiveReportTestCase):
         with CaptureQueriesContext(connection) as ctx:
             self.assertEqual(self.client.get(self.url).status_code, 200)
         return len(ctx.captured_queries)
+class WhatLandedRecentlyIsListedApartTests(LiveReportTestCase):
+    """
+    "Just arrived" — shop parts received in the last `RECEIVED_WINDOW_DAYS`.
+
+    The only box on this page that is not a list of work. Arrivals are tracked
+    physically or the mechanic says so; this is for looking one up again
+    afterwards, which is also why it is windowed. Nearly every shop spare on a
+    live card is already RECEIVED — 43 of 45 on the development data — so with
+    no window it would be longer than the rest of the page put together, and
+    most of those parts are already on the car.
+
+    It is built EXACTLY like the two parts boxes below it — same head, same
+    row, no subtitle — on the owner's instruction. The window is said once, in
+    the heading.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.shop = SpareShop.objects.create(name='Spare club')
+        self.today = date.today()
+
+    def _arrival(self, days_ago, name='Brake Pads', reg='KL07AA1111', **kw):
+        card = kw.pop('card', None) or self._car(reg)
+        return JobCardSpareItem.objects.create(
+            job_card=card,
+            spare_part_name=name,
+            source=JobCardSpareItem.SOURCE_SHOP,
+            shop=self.shop,
+            status='RECEIVED',
+            ordered_date=self.today - timedelta(days=days_ago + 2),
+            received_date=self.today - timedelta(days=days_ago),
+            **kw,
+        )
+
+    def _box(self, user=None):
+        """The green section alone. `lr-box--green` is also a stylesheet rule,
+        so a whole-page search finds it on every render and proves nothing."""
+        page = self._page(user or self.owner)
+        return (page.split('<section class="lr-box lr-box--green">', 1)[1]
+                    .split('</section>', 1)[0])
+
+    def test_a_part_that_landed_today_is_listed(self):
+        self._arrival(0, name='Brake Pads')
+
+        self.assertIn('Brake Pads', self._box())
+
+    def test_a_part_that_landed_inside_the_window_is_listed(self):
+        from workshop.views.dashboard import RECEIVED_WINDOW_DAYS
+
+        self._arrival(RECEIVED_WINDOW_DAYS - 1, name='Wiper Blades')
+
+        self.assertIn('Wiper Blades', self._box())
+
+    def test_a_part_that_landed_before_the_window_is_not(self):
+        from workshop.views.dashboard import RECEIVED_WINDOW_DAYS
+
+        self._arrival(RECEIVED_WINDOW_DAYS, name='Drive Belt')
+
+        self.assertNotIn('Drive Belt', self._box())
+
+    def test_a_part_still_travelling_is_not_in_it(self):
+        """ORDERED belongs to the amber box. The three parts boxes partition
+        the rows by status and must never show one twice."""
+        card = self._car('KL07AA2222')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Fuel Filter',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            status='ORDERED', ordered_date=self.today,
+        )
+
+        self.assertNotIn('Fuel Filter', self._box())
+
+    def test_a_warehouse_draw_is_never_listed(self):
+        """Same rule the other two boxes follow: a draw came off the shelf
+        already fitted, so it never travelled and never arrived."""
+        card = self._car('KL07AA3333')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Engine Oil',
+            source=JobCardSpareItem.SOURCE_INVENTORY,
+            status='RECEIVED', received_date=self.today,
+        )
+
+        self.assertNotIn('Engine Oil', self._box())
+
+    def test_a_part_on_a_car_that_has_left_is_not_listed(self):
+        card = self._car('KL07AA4444', completed=True,
+                         completed_date=self.today)
+        self._arrival(0, name='Cabin Filter', card=card)
+
+        self.assertNotIn('Cabin Filter', self._box())
+
+    def test_a_received_row_with_no_date_cannot_be_listed(self):
+        """Nothing can say when it arrived, so nothing here can honestly
+        report it — it falls outside the window rather than being guessed at."""
+        card = self._car('KL07AA5555')
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Air Filter',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            status='RECEIVED', received_date=None,
+        )
+
+        self.assertNotIn('Air Filter', self._box())
+
+    def test_the_newest_arrival_is_first(self):
+        card = self._car('KL07AA6666')
+        self._arrival(3, name='Older Part', card=card)
+        self._arrival(0, name='Newer Part', card=card)
+
+        box = self._box()
+
+        self.assertLess(box.index('Newer Part'), box.index('Older Part'))
+
+    def test_its_rows_are_built_exactly_like_the_two_boxes_below_it(self):
+        """The owner's instruction, asserted as the invariant rather than as a
+        list of classes: whatever a row in "On the way" is made of, a row here
+        is made of the same things. It carried an arrival-age chip for one
+        revision and that is what this stops coming back."""
+        card = self._car('KL07AA8888')
+        self._arrival(0, name='Landed Part', card=card)
+        JobCardSpareItem.objects.create(
+            job_card=card, spare_part_name='Travelling Part',
+            source=JobCardSpareItem.SOURCE_SHOP, shop=self.shop,
+            status='ORDERED', ordered_date=self.today,
+        )
+        page = self._page(self.owner)
+
+        def row_classes(section_class):
+            block = (page.split('<section class="lr-box %s">' % section_class, 1)[1]
+                         .split('</section>', 1)[0])
+            return set(re.findall(r'class="(lr-spare[a-z-]*)"', block))
+
+        self.assertEqual(row_classes('lr-box--green'),
+                         row_classes('lr-box--amber'))
+
+    def test_it_is_drawn_as_the_same_kind_of_box_as_its_neighbours(self):
+        """Every rule that makes a parts box a parts box names all three.
+
+        Nothing in the Django suite executes CSS, so this reads the
+        declarations — the same way `TheHistoryListCanAlwaysBeActedOnTests`
+        does on Owner Withdrawals. It shipped for a revision carrying only the
+        background and border, which left it ROUNDED where its neighbours are
+        square, its rows unruled, and its heading and count in the default
+        slate while theirs were coloured: a different kind of object on a page
+        whose whole point is that the colour is read first.
+        """
+        # The whole response, not the first <style> block — base.html renders
+        # its own stylesheet first, so splitting on `</style>` reads THAT one
+        # and finds none of this page's rules.
+        #
+        # Runs of spaces are collapsed because these selectors are COLUMN
+        # ALIGNED in the stylesheet (`.lr-box--red   .lr-box-title`), so an
+        # exact-string match reports a false miss on whichever variant happens
+        # to have the shorter name.
+        sheet = re.sub(r'[ 	]+', ' ', self._page(self.owner))
+
+        # Square corners: one rule, and green has to be named in it.
+        square = [ln for ln in sheet.splitlines() if 'border-radius: 0;' in ln
+                  and 'lr-box--' in ln]
+        self.assertEqual(len(square), 1, 'expected one square-corners rule')
+        for variant in ('amber', 'red', 'green'):
+            self.assertIn('lr-box--%s' % variant, square[0])
+
+        # The four rules that exist once per variant.
+        for rule in ('.lr-box--%s .lr-box-title',
+                     '.lr-box--%s .lr-box-count',
+                     '.lr-box--%s .lr-spare + .lr-spare',
+                     '.lr-box--%s .lr-spare:hover'):
+            for variant in ('amber', 'red', 'green'):
+                self.assertIn(rule % variant, sheet,
+                              'missing %s' % (rule % variant))
+
+    def test_the_three_parts_boxes_sit_under_one_Spares_heading(self):
+        """It groups the three and nothing else: what landed, what is coming,
+        what nobody has ordered. Outside the boxes, between the floor board and
+        the first of them."""
+        page = self._page(self.owner)
+        heading = '<h6 class="lr-group">Spares</h6>'
+
+        # The rendered tag, never the bare class name -- `.lr-group` is also a
+        # rule in this page's own stylesheet, which comes FIRST in the response
+        # and makes every position comparison meaningless.
+        self.assertIn(heading, page)
+        self.assertLess(page.index('On the floor'), page.index(heading))
+        self.assertLess(page.index(heading), page.index('Received in the last'))
+
+    def test_it_carries_no_subtitle(self):
+        """Removed on the owner's instruction — the headline says the window,
+        and the box is the same shape as its neighbours."""
+        self._arrival(0)
+
+        self.assertNotIn('lr-box-note', self._page(self.owner))
+
+    def test_it_sits_above_the_parts_still_coming(self):
+        """Green, amber, red down the page — most finished first, which is the
+        order the two boxes that were here already established."""
+        page = self._page(self.owner)
+
+        self.assertLess(page.index('Received in the last'), page.index('On the way'))
+        self.assertLess(page.index('On the way'), page.index('Not ordered yet'))
+
+    def test_the_heading_names_the_window_so_nothing_else_has_to(self):
+        from workshop.views.dashboard import RECEIVED_WINDOW_DAYS
+
+        self.assertIn('Received in the last %d days' % RECEIVED_WINDOW_DAYS,
+                      self._page(self.owner))
+
+    def test_an_empty_window_says_so_rather_than_nothing(self):
+        page = self._page(self.owner)
+
+        self.assertIn('Nothing received.', page)
+
+    def test_floor_is_still_refused_the_whole_page(self):
+        """It carries supplier names and which car got what, like the rest."""
+        self.client.force_login(self.floor)
+
+        self.assertEqual(self.client.get(self.url).status_code, 403)

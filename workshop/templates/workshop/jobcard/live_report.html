@@ -18,12 +18,25 @@
     ordering state and money-side gaps, none of which Floor is shown anywhere
     else in the app.
 
-    Four tinted boxes carry the meaning, so the colour is the first thing the
+    Five tinted boxes carry the meaning, so the colour is the first thing the
     eye lands on and the words only confirm it:
       red      bills already settled with boxes nobody filled in
       neutral  who is holding which car, and what is still to be done on it
+      green    parts that landed in the last few days
       amber    parts ordered and on their way
       red      parts nobody has ordered yet
+
+    The three parts boxes run green, amber, red down the page -- the lifecycle
+    backwards, most-finished first, which is the order the two that were here
+    already established.
+
+    ⚠ THE GREEN ONE IS THE ONLY BOX ON THIS PAGE THAT IS NOT A LIST OF WORK.
+    The other four are things to act on: fill this in, give this instruction,
+    chase this, order this. That one is a REFERENCE list -- a part that has
+    arrived needs nothing done to it, and most of what it shows is already on
+    the car. It carries a note saying so for one revision and the owner took it
+    out: the HEADLINE says the window, and the box is built exactly like the two
+    below it so there is one shape to learn rather than three.
     {% endcomment %}
 
     :root {
@@ -33,6 +46,9 @@
         --lr-red: #b91c1c;
         --lr-red-bg: rgba(239, 68, 68, 0.08);
         --lr-red-line: rgba(220, 38, 38, 0.26);
+        --lr-green: #15803d;
+        --lr-green-bg: rgba(34, 197, 94, 0.08);
+        --lr-green-line: rgba(22, 163, 74, 0.26);
     }
 
     /* ── Page heading ─────────────────────────────────────────── */
@@ -61,6 +77,28 @@
         white-space: nowrap;
     }
 
+    {% comment %}
+    ── The group heading over the three parts boxes ──────────────
+
+    "Spares" sits OUTSIDE the boxes, naming the family underneath it: what has
+    landed, what is coming, what nobody has ordered. It reads one level above a
+    box title and one below the page title, and the way it does that is CASE
+    rather than size -- every box title on this page is uppercase and muted, so
+    a sentence-case dark heading is unmistakably not one of them, and no extra
+    type size has to be introduced to say so.
+
+    There is no matching heading over "Billed but not filled" or "On the
+    floor": those are one box each and a heading over a single box is the box's
+    own title said twice. This one earns it by covering three.
+    {% endcomment %}
+    .lr-group {
+        margin: 0.35rem 0 0.6rem;
+        font-size: 0.92rem;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        color: var(--color-text);
+    }
+
     /* ── The boxes ────────────────────────────────────────────── */
     .lr-box {
         border-radius: 14px;
@@ -71,6 +109,8 @@
     }
     .lr-box--amber { background: var(--lr-amber-bg); border-color: var(--lr-amber-line); }
     .lr-box--red   { background: var(--lr-red-bg);   border-color: var(--lr-red-line); }
+    .lr-box--green { background: var(--lr-green-bg); border-color: var(--lr-green-line); }
+
 
     .lr-box-head {
         display: flex;
@@ -91,6 +131,7 @@
     }
     .lr-box--amber .lr-box-title { color: var(--lr-amber); }
     .lr-box--red   .lr-box-title { color: var(--lr-red); }
+    .lr-box--green .lr-box-title { color: var(--lr-green); }
     .lr-box-title .bi { font-size: 0.95rem; }
 
     .lr-box-count {
@@ -107,6 +148,7 @@
     }
     .lr-box--amber .lr-box-count { background: rgba(217, 119, 6, 0.16); color: var(--lr-amber); }
     .lr-box--red   .lr-box-count { background: rgba(220, 38, 38, 0.14); color: var(--lr-red); }
+    .lr-box--green .lr-box-count { background: rgba(22, 163, 74, 0.16); color: var(--lr-green); }
 
     .lr-empty {
         font-size: 0.82rem;
@@ -636,8 +678,17 @@
     a separate object to look at; the meaning is "these all belong to the same
     problem", and one unbroken colour says that. The billed box above follows
     the same rule for the same reason.
+
+    ⚠ ALL THREE PARTS BOXES TAKE ALL FIVE OF THESE RULES — square corners, the
+    title colour and the count pill above, and the row hairline and hover
+    below. The green one shipped for a revision carrying only the background
+    and border, which left it rounded where its neighbours are square, its rows
+    unruled, and its heading and count in the default slate while theirs are
+    coloured. It read as a different KIND of box on a page whose whole point is
+    that colour is the first thing the eye lands on. A new box variant here
+    means five rules, not one.
     {% endcomment %}
-    .lr-box--amber, .lr-box--red { border-radius: 0; }
+    .lr-box--amber, .lr-box--red, .lr-box--green { border-radius: 0; }
     .lr-spare {
         display: block;
         text-decoration: none;
@@ -650,9 +701,11 @@
     }
     .lr-box--amber .lr-spare + .lr-spare { border-top: 1px solid rgba(217, 119, 6, 0.22); }
     .lr-box--red   .lr-spare + .lr-spare { border-top: 1px solid rgba(220, 38, 38, 0.18); }
+    .lr-box--green .lr-spare + .lr-spare { border-top: 1px solid rgba(22, 163, 74, 0.22); }
     /* A row with no card of its own still has to answer a tap. */
     .lr-box--amber .lr-spare:hover { background: rgba(217, 119, 6, 0.10); }
     .lr-box--red   .lr-spare:hover { background: rgba(220, 38, 38, 0.08); }
+    .lr-box--green .lr-spare:hover { background: rgba(22, 163, 74, 0.10); }
 
     .lr-spare-name {
         display: block;
@@ -915,6 +968,57 @@ task; here it is a hole in the books.
     {% else %}
     <div class="lr-empty">No cars on the floor right now.</div>
     {% endif %}
+</section>
+
+<h6 class="lr-group">Spares</h6>
+
+{# ── Parts that have landed recently ────────────────────── #}
+<section class="lr-box lr-box--green">
+    <div class="lr-box-head">
+        <span class="lr-box-title"><i class="bi bi-box-seam"></i> Received in the last {{ received_window_days }} days</span>
+        <span class="lr-box-count">{{ received_spares|length }}</span>
+    </div>
+
+    {% for spare in received_spares %}
+    {% with color=spare.job_card.get_car_color_hex|default:'#94a3b8' %}
+    <a href="{% url 'jobcard_edit' spare.job_card_id %}?next=mini" class="lr-spare">
+        <span class="lr-spare-name">
+            {{ spare.spare_part_name|default:"Unnamed part" }}{% comment %}
+            A quantity of one is not printed, the same rule the two boxes below
+            follow and the same one the printed bill follows.
+            {% endcomment %}{% if spare.quantity|gt:1 %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
+        </span>
+        <span class="lr-spare-meta">
+            <span class="lr-spare-car">
+                <span class="lr-spare-dot" style="--stripe: {{ color }};"></span>
+                {% if spare.job_card.brand_name or spare.job_card.model_name %}
+                {{ spare.job_card.brand_name }} {{ spare.job_card.model_name }}
+                {% else %}{{ spare.job_card.registration_number }}{% endif %}
+            </span>
+            {% if spare.job_card.brand_name or spare.job_card.model_name %}
+            <span class="lr-spare-sep">&middot;</span>
+            <span class="lr-spare-reg">{{ spare.job_card.registration_number }}</span>
+            {% endif %}
+            {% comment %}
+            The shop is printed when there is one, but a missing one is NOT
+            called out the way the amber box calls it out: there a shop with
+            nothing recorded means the ledger has nowhere to land, and the part
+            is still outstanding. Here the part has already arrived, and this
+            box asks for nothing.
+            {% endcomment %}
+            {% if spare.shop or spare.shop_name %}
+            <span class="lr-spare-sep">&middot;</span>
+            <span class="lr-spare-shop">
+                <i class="bi bi-shop"></i>
+                {% if spare.shop %}{{ spare.shop.name }}{% else %}{{ spare.shop_name }}{% endif %}
+            </span>
+            {% endif %}
+        </span>
+    </a>
+    {% endwith %}
+    {% empty %}
+    <div class="lr-empty">Nothing received.</div>
+    {% endfor %}
 </section>
 
 {# ── Parts ordered, still travelling ────────────────────── #}

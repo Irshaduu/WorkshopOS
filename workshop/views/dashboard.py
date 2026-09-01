@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.utils import timezone
 
 from django.shortcuts import render
@@ -254,6 +256,18 @@ BILLED_STATUSES = ('PAID', 'BULK_PAID', 'PARTIAL')
 UNFILLED_ROW_CAP = 8
 
 
+#: How far back "Just arrived" looks, in calendar days INCLUDING today.
+#:
+#: Nearly every shop spare on a live card is already RECEIVED -- 43 of 45 on the
+#: development data -- so with no window this box would be longer than the rest
+#: of the page put together, and most of those parts are already on the car.
+#: Five days is the owner's own number, and the reasoning is theirs: arrivals
+#: are tracked physically or the mechanic says so, and this box is only for
+#: looking one up again afterwards. Long enough to be useful, short enough that
+#: what is in it is still news.
+RECEIVED_WINDOW_DAYS = 5
+
+
 def _billed_but_unfilled():
     """Billed job cards that still have an empty box somewhere, newest first.
 
@@ -358,7 +372,8 @@ def live_report(request):
          because settling is what closed the door on correcting it;
       2. who is holding which car, and what is still open on each of them —
          the board the next instruction is given from;
-      3. which parts are travelling, and which nobody has ordered.
+      3. what has just landed, which parts are travelling, and which nobody
+         has ordered.
 
     None of this is narrowed by a search box, deliberately. The page answers
     "what is the state of the workshop right now", and a half-filtered answer
@@ -403,6 +418,20 @@ def live_report(request):
         )
         .select_related('job_card', 'shop')
     )
+    # What landed recently. Newest first, because the whole question this box
+    # answers is "what has come in lately" -- and it is the ONE box on the page
+    # that is not a queue to work down. The row itself is built exactly like the
+    # two boxes below, so the window is said once, in the heading. `received_date` is indexed, and a
+    # RECEIVED row with no date simply falls outside the window rather than
+    # being special-cased: nothing can say when it arrived, so nothing here can
+    # honestly report it.
+    received_spares = list(
+        awaited.filter(
+            status='RECEIVED',
+            received_date__gte=today - timedelta(days=RECEIVED_WINDOW_DAYS - 1),
+        )
+        .order_by('-received_date', '-pk')
+    )
     ordered_spares = list(
         awaited.filter(status='ORDERED')
         .order_by(F('ordered_date').asc(nulls_last=True), 'pk')
@@ -425,6 +454,8 @@ def live_report(request):
         'unfilled_count': page_obj.paginator.count,
         'mechanic_groups': mechanic_groups,
         'floor_count': floor_count,
+        'received_spares': received_spares,
+        'received_window_days': RECEIVED_WINDOW_DAYS,
         'ordered_spares': ordered_spares,
         'pending_spares': pending_spares,
     })
