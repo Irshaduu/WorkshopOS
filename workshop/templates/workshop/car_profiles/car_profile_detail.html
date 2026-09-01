@@ -171,17 +171,58 @@
             <div class="cd-visit-no">#{{ bill.visit_number }}</div>
 
             <div class="cd-visit-body">
+                {% comment %}
+                THE ANCHOR LINE: WHEN · HOW LONG · WHAT STATE · HOW MUCH.
+
+                The four things a history is actually scanned for, on one line,
+                in that order, with the money right-aligned at the end of it.
+                They used to be spread over both lines with a REFERENCE NUMBER
+                leading in the largest type on the row — "JB-26-130" is what the
+                workshop reads out on the phone, not what anybody scans a list
+                by, and it was drawn as the headline while the DATE sat in the
+                quietest type on the row. Reading a car's history meant landing
+                on the one string you were not looking for, four rows running.
+
+                So the date leads and carries the link. The bill number is not
+                lost, it is demoted to the detail line below with the mechanic
+                and the mileage — the things you read once you have found the
+                row you want. The link keeps an `aria-label` naming the card,
+                because "12 Aug 2026" alone is thin link text out of context.
+                {% endcomment %}
                 <div class="cd-visit-top">
-                    <a class="cd-visit-link stretched-link" href="{% url 'jobcard_detail' bill.pk %}">
-                        {{ bill.bill_number|default:"Not billed yet" }}
+                    <a class="cd-visit-link stretched-link"
+                       href="{% url 'jobcard_detail' bill.pk %}"
+                       aria-label="Visit {{ bill.visit_number }}, {{ bill.admitted_date|date:"d M Y" }}{% if bill.bill_number %}, {{ bill.bill_number }}{% endif %}">
+                        {{ bill.admitted_date|date:"d M Y" }}
                     </a>
 
                     {% comment %}
-                    Two facts, two badges, never merged. "Completed" is about the
-                    car (has it left?), the payment status is about the money —
-                    a completed car can be unpaid and a paid car can still be on
-                    the ramp, and one combined label would have to lie about one
-                    of them.
+                    HOW LONG THE CAR WAS HERE, beside the day it arrived.
+
+                    Those two are one statement about time and they belong
+                    together — admitted, and then for how long. It carries a
+                    clock rather than a middot because "2 days" dropped into a
+                    run of facts reads as "2 days ago", which on an old visit is
+                    a wildly different number. The glyph is the whole
+                    disambiguation, so it is a real element and never an
+                    icon-font codepoint: a stylesheet that failed to arrive
+                    would otherwise take the meaning with it.
+
+                    The words come from `_time_in_workshop()`, the same function
+                    the read-only job card prints, so the two screens can never
+                    state one car's stay differently. An OPEN card reads
+                    "12 days in" and turns amber — the one row where the number
+                    is still moving, and the amber the "On the floor" badge
+                    beside it already wears.
+                    {% endcomment %}
+                    {% if bill.span %}<span class="cd-span{% if bill.span.open %} cd-span-live{% endif %}"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zm.75 4a.75.75 0 0 0-1.5 0v4.2c0 .25.13.49.34.63l2.6 1.73a.75.75 0 1 0 .83-1.25L8.75 7.85V4z"/></svg>{{ bill.span.text }}</span>{% endif %}
+
+                    {% comment %}
+                    Two facts, two badges, never merged. "On the floor" is about
+                    the car (has it left?), the payment status is about the
+                    money — a completed car can be unpaid and a paid car can
+                    still be on the ramp, and one combined label would have to
+                    lie about one of them.
                     {% endcomment %}
                     {% if not bill.completed %}
                     <span class="cd-badge cd-badge-open">On the floor</span>
@@ -197,10 +238,16 @@
                     {% endif %}
                 </div>
 
+                {% comment %}
+                THE DETAIL LINE: which card, who had it, how far it had run.
+                Read after you have found the row, never to find it — so it is
+                one quiet size, one colour, and nothing in it competes with the
+                line above.
+                {% endcomment %}
                 <div class="cd-visit-meta">
-                    <span>{{ bill.admitted_date|date:"d M Y" }}</span>
-                    {% if bill.lead_mechanic %}<span>· {{ bill.lead_mechanic.name }}</span>{% endif %}
-                    {% if bill.mileage %}<span>· {{ bill.mileage }} km</span>{% endif %}
+                    <span>{{ bill.bill_number|default:"Not billed yet" }}</span>
+                    {% if bill.lead_mechanic %}<span>{{ bill.lead_mechanic.name }}</span>{% endif %}
+                    {% if bill.mileage %}<span>{{ bill.mileage }} km</span>{% endif %}
                 </div>
 
                 {% comment %}
@@ -561,7 +608,7 @@
         width: 30px;
         height: 30px;
         border-radius: 9px;
-        font-size: 0.7rem;
+        font-size: 0.66rem;
         font-weight: 700;
         color: var(--color-text-muted);
         background: var(--color-border-light);
@@ -574,6 +621,30 @@
         background: var(--color-primary);
     }
 
+    /* ==============================================================
+       THREE TIERS, AND ONLY THREE.
+
+       The row carried SIX font sizes inside a 4.3px range — 10.08, 10.88,
+       11.2, 11.84, 13.76 and 14.4px — across four weights, with ten separate
+       numbers in it. Six sizes that close together is not a hierarchy; it is
+       six things asking for the same amount of attention, and the eye has
+       nothing to climb. It is the same failure the notification feed was
+       rebuilt to fix, where "three sizes within 2px of each other" is recorded
+       as no hierarchy at all — this row had twice as many in twice the range.
+
+         ANCHOR  0.92rem / 700 / dark   the date, and the amount
+         FACT    0.76rem / 500 / muted  the detail line, and the stay
+         QUIET   0.66rem / 700 or 500   the badge, the #N tile, the margin
+
+       The two ANCHORS are deliberately IDENTICAL rather than nearly identical
+       — they were 14.4/700 against 13.76/800, a two-thirds of a pixel and one
+       weight step apart, which is the worst kind of difference: visibly not
+       the same, with nothing said by the difference. Matched, they read as one
+       pair spanning the row, so the eye crosses left-to-right in one move
+       instead of stopping in the middle.
+
+       ⚠ ADDING A FOURTH SIZE HERE IS HOW THE SIX CAME BACK LAST TIME. If
+       something new needs to be on the row, it joins a tier. */
     .cd-visit-body { flex: 1 1 auto; min-width: 0; }
 
     .cd-visit-top {
@@ -584,11 +655,16 @@
         margin-bottom: 0.15rem;
     }
 
+    /* ANCHOR — the date. `tabular-nums` so a column of them lines up digit
+       under digit and can be run down with one eye movement, which is the
+       whole reason it was promoted out of the detail line. */
     .cd-visit-link {
-        font-size: 0.9rem;
+        font-size: 0.92rem;
         font-weight: 700;
         color: var(--color-text);
         text-decoration: none;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
     }
 
     /* The row-wide hit area. `::after` covers the whole row at z-index 1; the
@@ -601,7 +677,7 @@
     }
 
     .cd-badge {
-        font-size: 0.63rem;
+        font-size: 0.66rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: .04em;
@@ -619,10 +695,89 @@
     .cd-visit-meta {
         display: flex;
         flex-wrap: wrap;
+        align-items: center;
         gap: 0.25rem;
-        font-size: 0.74rem;
+        font-size: 0.76rem;
+        font-weight: 500;
         color: var(--color-text-muted);
     }
+
+    /* THE SEPARATOR IS DRAWN AFTER THE FACT IT FOLLOWS, NEVER BEFORE THE NEXT
+       ONE — and that is a wrap fix, not a style choice.
+
+       Written into the markup as a "· " PREFIX, the middot travels with the
+       item after it: the moment the line wraps, the new line OPENS with a
+       separator and the fact reads as a fragment that fell off the line above.
+       Seen at 320px, and at 375–412px before this row was restructured. As a
+       trailing `::after` the middot stays at the END of the line it belongs
+       to, where it reads as "continues below" instead.
+
+       `:not(:last-child)` and not `+ span::before`, for the reason the
+       read-only card's identity line already records: the template renders no
+       span for a value it does not have, so a stray separator is not
+       expressible either way — but only the trailing form also survives a
+       wrap. `margin-left` rather than a space inside `content`, because
+       leading whitespace in a generated string collapses. */
+    .cd-visit-meta > span:not(:last-child)::after {
+        content: '·';
+        margin-left: 0.28rem;
+        opacity: 0.75;
+    }
+
+    /* HOW LONG THE STAY WAS — FACT tier, sitting on the ANCHOR line beside
+       the date it is measured from.
+
+       It declares its own size rather than inheriting one: it is the only
+       thing on this row that is a supporting fact standing next to an anchor,
+       and at the anchor's own 0.92rem it competed with the date for the same
+       glance.
+
+       `inline-flex` with `line-height: 0` on the glyph, so the mark costs the
+       line no height at all — an inline-flex child adds its line box's strut
+       underneath otherwise, and this line is shared with the date and up to
+       two badges.
+
+       `white-space: nowrap` keeps the clock with its number: the line wraps at
+       narrow widths, and a glyph left alone at the end of a line is the one
+       thing worse than no glyph.
+
+       ⚠ IT COSTS NO SECOND LINE ANY MORE, AND THAT IS WHY THE ROW WAS
+       RESTRUCTURED. It first shipped on the DETAIL line, where it needed 20px
+       the line did not have on a 375–412px phone, so the mileage was pushed
+       onto a line of its own — starting with a middot, which reads as a
+       fragment that fell off. Moving the bill number down and the date up did
+       not merely make room; it put the four things the list is scanned for on
+       one line and left the reference details on the other. */
+    .cd-span {
+        font-size: 0.76rem;
+        font-weight: 500;
+        color: var(--color-text-muted);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .cd-span svg {
+        width: 11px;
+        height: 11px;
+        line-height: 0;
+        opacity: 0.8;
+        flex: none;
+    }
+
+    /* A car still on the floor. The number is the only one on the row that is
+       still changing, and this is the amber the "On the floor" badge directly
+       above it already wears — one state, one colour. NO transition: the
+       colour IS the state, and a running transition outranks everything in the
+       cascade, so mid-flight the computed colour is still the old one. */
+    .cd-span-live {
+        color: #b45309;
+        font-weight: 600;
+        transition: none;
+    }
+    .cd-span-live svg { opacity: 1; }
 
     /* The bill, and under it the owner's gross-profit line. Neither carries a
        link of its own, so this needs no z-index — the row-wide stretched link
@@ -636,9 +791,12 @@
         text-align: right;
     }
 
+    /* ANCHOR — the amount. Same size and same weight as the date opposite
+       it; see the tier note above for why "nearly the same" was worse than
+       either matching or differing outright. */
     .cd-amount {
         font-size: 0.92rem;
-        font-weight: 800;
+        font-weight: 700;
         color: var(--color-text);
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
@@ -647,8 +805,8 @@
     /* "Not priced", never ₹0 — the same distinction the printed sheet makes
        between a part with no price and one given away. */
     .cd-amount-none {
-        font-size: 0.72rem;
-        font-weight: 600;
+        font-size: 0.76rem;
+        font-weight: 500;
         color: var(--color-text-muted);
     }
 
@@ -656,7 +814,7 @@
        "secondary". The bill above stays the number the row is about. */
     .cd-gp {
         margin-top: 0.1rem;
-        font-size: 0.68rem;
+        font-size: 0.66rem;
         font-weight: 500;
         color: var(--color-text-muted);
         white-space: nowrap;
@@ -716,8 +874,13 @@
            was taking a third of a 360px screen from the one string that
            identifies the visit. With the button gone the amount is short enough
            to stay on the line, and the row keeps its two-line shape at every
-           width — which is what makes a list scannable down. */
-        .cd-amount { font-size: 0.86rem; }
+           width — which is what makes a list scannable down.
+
+           ⚠ THE AMOUNT IS NO LONGER SHRUNK HERE. It was 0.86rem on a phone
+           against the date's 0.92rem, which broke the matched pair on exactly
+           the screen the pair does the most work — see the tier note above.
+           The width that bought is paid for instead by the bill number having
+           moved off this line. */
 
         /* A thumb, not a mouse — this is rung from a phone. */
         .cd-owner-tel { min-height: 40px; }

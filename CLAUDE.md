@@ -5171,6 +5171,68 @@ Completed is restyled, restyle this with it.
   it was a second door to the same place, costing a column of width on a phone and
   needing its own z-index to stay clickable above the row-wide link.
 
+**A VISIT ROW IS TWO LINES AND THREE TYPE TIERS — anchor, fact, quiet.** It had
+**six font sizes inside a 4.3px range** (10.08 / 10.88 / 11.2 / 11.84 / 13.76 /
+14.4px) across four weights, with ten separate numbers in it. Six sizes that
+close is not a hierarchy; it is six things asking for the same glance. Same
+failure the notification feed records fixing — "three sizes within 2px of each
+other, which is no hierarchy at all" — at twice the count and twice the range.
+
+| tier | | carries |
+|---|---|---|
+| **anchor** | 0.92rem / 700 / dark | the DATE, and the AMOUNT |
+| **fact** | 0.76rem / 500 / muted | the detail line, and the stay |
+| **quiet** | 0.66rem | the badge, the #N tile, the margin |
+
+⚠ **THE TWO ANCHORS ARE IDENTICAL, NOT NEARLY IDENTICAL.** They were 14.4/700
+against 13.76/800 — two-thirds of a pixel and one weight step apart, which is the
+worst kind of difference: visibly not the same, with nothing said by the
+difference. Matched, they read as one pair spanning the row, so the eye crosses
+left-to-right in one move. The phone override that shrank only the amount to
+0.86rem is gone for the same reason. **Adding a fourth size is how the six came
+back last time.**
+
+**THE DATE LEADS THE ROW AND THE BILL NUMBER DOES NOT.** `bill_number` is what
+the workshop reads out on the phone — a lookup key, not a scan key — and it was
+drawn as the headline in the largest type while the DATE sat in the *quietest*,
+so reading a car's history meant landing on the one string you were not looking
+for, four rows running. The anchor line is now **when · how long · what state ·
+how much**, the four things this list is actually scanned for; the bill number,
+mechanic and mileage drop to the detail line, read once you have found the row.
+The link moved onto the date and carries an `aria-label` naming the card, since
+"12 Aug 2026" alone is thin link text.
+
+**HOW LONG THE CAR WAS HERE sits beside the day it arrived, and the words come
+from `_time_in_workshop()`** — imported from `views/jobcard.py`, never restated.
+The read-only card prints the same figure and the two screens are opened seconds
+apart on one card, so a second copy of that subtraction would be free to
+disagree exactly there. It brings four edge cases with it: no admitted date, a
+completion dated *before* the admission (prints nothing, never "−3 days"), the
+singular, and an OPEN card counting to `localdate()` rather than a UTC today.
+
+It carries a **clock glyph, not a middot**: "2 days" dropped into a run of facts
+reads as "2 days ago", which on an old visit is a wildly different number. A real
+element, never an icon-font codepoint — a stylesheet that failed to arrive would
+otherwise take the meaning with it. An open card reads "12 days in" in the amber
+the "On the floor" badge beside it already wears, with **no transition**, the
+status-colour rule.
+
+⚠ **THE DETAIL LINE'S SEPARATORS ARE DRAWN AS TRAILING `::after` MARKS, and that
+is a wrap fix rather than a style choice.** Written into the markup as a "· "
+PREFIX the middot travels with the item after it, so the moment the line wraps
+the new line OPENS with a separator and the fact reads as a fragment that fell
+off. Measured at 320px, and at 375–412px while the stay was still on that line.
+Trailing, the middot stays at the end of the line it belongs to, where it reads
+as "continues below". `:not(:last-child)`, not `+ span::before`: the template
+renders no span for a value it does not have, so a stray separator is not
+expressible either way — but only the trailing form also survives a wrap.
+
+Measured at 390px after the pass: **3 sizes, 2 weights, rows 88px → 68px**, no
+wrap at 375 or above, nothing hidden and nothing removed. A car on the floor is
+the one row that still takes a third line, for its two badges — the exception
+that deserves the space.
+→ `EveryVisitSaysHowLongTheCarWasHereTests`
+
 **The car wears its own colour — the SAME wash `.lr-car` uses, at the identical
 alpha.** Copying the alpha rather than picking a new one is the point: a car you can
 see has to look the same on every screen that shows it. One extra rule the Live Report

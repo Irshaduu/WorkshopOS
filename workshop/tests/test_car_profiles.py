@@ -12,6 +12,7 @@ than the styling that revealed them:
     while being labelled as the whole car.
 """
 
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal as D
 
@@ -611,3 +612,157 @@ class CarProfilesLeadWithTheMostRecentActivityTests(TestCase):
         rows = self.client.get(reverse('car_profile_list')).context['car_profiles']
         row = next(r for r in rows if r['registration'] == 'KL01TZ00001')
         self.assertEqual(row['last_activity'], date(2026, 8, 26))
+
+
+class EveryVisitSaysHowLongTheCarWasHereTests(CarProfileBase):
+    """
+    The gap between admitted and completed, on every row of the history.
+
+    It is the one fact on the row that is a SUBTRACTION rather than a stored
+    value, and only one of its two dates was ever printed — so "how long was
+    this car with us in June" meant opening the card. Now the list answers it.
+
+    The rule under test is not the arithmetic, which `_time_in_workshop` owns
+    and `test_jobcard_detail_view` already pins down. It is that this page
+    READS that function rather than restating it: the row and the card it opens
+    are looked at seconds apart, and two implementations of one subtraction
+    would be free to disagree exactly there.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.reg = 'KL11AJ2266'
+        self.closed = self.visit(
+            self.reg, date(2026, 1, 5),
+            completed=True, completed_date=date(2026, 1, 8),
+            total_bill_amount=D('10000'), received_amount=D('10000'),
+            payment_status='PAID')
+        self.open = self.visit(self.reg, date(2026, 2, 1),
+                               total_bill_amount=D('5000'))
+
+    def page(self):
+        return self.client.get(reverse('car_profile_detail', args=[self.reg]))
+
+    def test_every_row_carries_the_stay_the_job_card_would_print(self):
+        from workshop.views.jobcard import _time_in_workshop
+
+        bills = list(self.page().context['bills'])
+        self.assertEqual(len(bills), 2)
+        for bill in bills:
+            self.assertEqual(bill.span, _time_in_workshop(bill))
+            self.assertIsNotNone(bill.span)
+
+    def test_a_finished_visit_reads_as_a_closed_span(self):
+        """5 Jan in, 8 Jan out — three days, said the way the card says it."""
+        bills = {b.pk: b for b in self.page().context['bills']}
+        self.assertEqual(bills[self.closed.pk].span['text'], '3 days')
+        self.assertFalse(bills[self.closed.pk].span['open'])
+
+    def test_a_car_still_here_counts_to_today_and_says_so(self):
+        """
+        An open card is the one row where the number is still moving, so it
+        reads "N days in" and the template tints it — the same amber the "On
+        the floor" badge directly above it already wears. Asserted on the
+        SUFFIX rather than a figure, because the count grows every day this
+        suite is run.
+        """
+        bills = {b.pk: b for b in self.page().context['bills']}
+        span = bills[self.open.pk].span
+        self.assertTrue(span['open'])
+        self.assertTrue(span['text'].endswith(' in'), span['text'])
+
+    def test_the_stay_is_actually_rendered_next_to_the_admitted_date(self):
+        """
+        A figure computed and never drawn is worse than no figure, because it
+        looks done. The clock is asserted with it: it is the whole reason
+        "3 days" in a run of facts is not read as "3 days ago", and it is a
+        real element rather than an icon-font codepoint precisely so that a
+        stylesheet failing to arrive cannot take the meaning with it.
+        """
+        html = self.page().content.decode()
+        self.assertIn('cd-span', html)
+        self.assertIn('3 days</span>', html)
+        self.assertIn('cd-span-live', html)
+        self.assertIn('<svg', html.split('class="cd-span')[1][:200])
+
+    def test_a_visit_with_nothing_honest_to_say_prints_no_stay(self):
+        """
+        A completion dated before the admission is a typo upstream, and "-3
+        days" would make this page look like the broken thing rather than the
+        data. `_time_in_workshop` returns None; the row then draws nothing.
+        """
+        JobCard.objects.filter(pk=self.closed.pk).update(
+            completed_date=date(2026, 1, 1))
+        bills = {b.pk: b for b in self.page().context['bills']}
+        self.assertIsNone(bills[self.closed.pk].span)
+
+
+class TheRowIsScannedByDateNotByBillNumberTests(CarProfileBase):
+    """
+    What leads a visit row, and what does not.
+
+    `bill_number` is a LOOKUP key — the string the workshop reads out on the
+    phone — and it was drawn as the row's headline in the largest type on it,
+    while the DATE, which is what anybody actually scans a history by, sat in
+    the quietest. Reading a car's history meant landing on the one string you
+    were not looking for, four rows running.
+
+    The anchor line is now WHEN · HOW LONG · WHAT STATE · HOW MUCH, and the
+    bill number drops to the detail line with the mechanic and the mileage —
+    read once you have found the row, never to find it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.reg = 'KL11AJ2266'
+        self.card = self.visit(
+            self.reg, date(2026, 1, 5),
+            completed=True, completed_date=date(2026, 1, 8),
+            total_bill_amount=D('10000'), received_amount=D('10000'),
+            payment_status='PAID')
+
+    def page(self):
+        return self.client.get(reverse('car_profile_detail', args=[self.reg]))
+
+    def _link_text(self, html):
+        return re.search(r'<a class="cd-visit-link[^>]*>(.*?)</a>',
+                         html, re.S).group(1).strip()
+
+    def _detail_lines(self, html):
+        return re.findall(r'<div class="cd-visit-meta">(.*?)</div>', html, re.S)
+
+    def test_the_date_is_what_the_row_leads_with(self):
+        html = self.page().content.decode()
+        self.assertEqual(self._link_text(html), '05 Jan 2026')
+
+    def test_the_bill_number_is_on_the_detail_line_not_the_anchor(self):
+        html = self.page().content.decode()
+        card = JobCard.objects.get(pk=self.card.pk)
+        self.assertTrue(card.bill_number, 'fixture needs a bill number')
+        self.assertIn(card.bill_number, self._detail_lines(html)[0])
+        self.assertNotIn(card.bill_number, self._link_text(html))
+
+    def test_the_link_still_names_the_card_for_a_screen_reader(self):
+        """
+        "05 Jan 2026" is thin link text out of context, so the anchor carries an
+        `aria-label` naming the visit and the card behind it.
+        """
+        html = self.page().content.decode()
+        label = re.search(r'<a class="cd-visit-link[^>]*aria-label="([^"]*)"',
+                          html).group(1)
+        self.assertIn('05 Jan 2026', label)
+        self.assertIn(JobCard.objects.get(pk=self.card.pk).bill_number, label)
+
+    def test_the_detail_line_carries_no_separator_of_its_own(self):
+        """
+        The middots are drawn in CSS as TRAILING marks, never written into the
+        markup as a "· " prefix — a prefix travels with the item after it, so
+        the moment the line wraps the new line OPENS with a separator and the
+        fact reads as a fragment that fell off the line above. Measured at
+        320px, and at 375–412px while the stay still sat on this line.
+
+        Asserted on the markup because nothing in this suite executes CSS: if a
+        middot comes back into the template, the wrap defect comes back with it.
+        """
+        for line in self._detail_lines(self.page().content.decode()):
+            self.assertNotIn('·', line)
