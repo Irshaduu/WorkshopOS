@@ -21,7 +21,7 @@
     Four tinted boxes carry the meaning, so the colour is the first thing the
     eye lands on and the words only confirm it:
       red      bills already settled with boxes nobody filled in
-      neutral  what is on the floor and who is holding it
+      neutral  who is holding which car, and what is still to be done on it
       amber    parts ordered and on their way
       red      parts nobody has ordered yet
     {% endcomment %}
@@ -341,23 +341,62 @@
     vertical lines of three different lengths, and nothing lined up with
     anything. A filled panel has no length to disagree about.
 
-    `align-items: stretch` finishes the job — panels on the same row end level
-    with each other, so the board reads as a tidy grid of equal blocks rather
-    than a ragged skyline. The empty space under a short column is the point,
-    not waste: it says that mechanic has room.
+    ⚠ ONE COLUMN AT EVERY WIDTH, AND THAT REVERSES THE "FOUR NAMES TO A ROW"
+    RHYTHM THIS BLOCK USED TO DESCRIBE. The board stopped being a list of who
+    holds which car and became the board an owner COMMANDS from: every car now
+    carries its own still-open concerns underneath it, because only Office and
+    the owners know which job can be started next, and they were holding the
+    whole floor's work list in their heads to decide it.
 
-    The column count is fixed per breakpoint rather than `auto-fill`, because
-    the owner asked for a specific rhythm — four names to a row on a laptop,
-    the fifth wrapping underneath.
+    Concern text is a free-text sentence, and the old grid had nowhere to put
+    one. Measured off this page's own box model: `.main-content` caps at 800px
+    → 768px of content → `.lr-box` inner 739px → four columns at 177px →
+    `.lr-crew` 161px → inside `.lr-car`, past its border, its 6px rail and 9px
+    of body padding, **135px of text width**. "Wheel alignment and balancing
+    required" wraps to two lines there and three concerns make a wall of narrow
+    text — and every panel would be a different height again, which is the
+    exact thing the paragraph above records having already fixed once.
+
+    TWO from 800px up, ONE below it — and two is as far as it goes. Measured
+    with every car on the demo floor filled from the workshop's own concern
+    list, 25 rows:
+
+      | columns | panel | the box  | rows that wrap |
+      |---------|-------|----------|----------------|
+      | 1       | 739px | 1747px   |  0 of 25       |
+      | 2       | 364px | 1048px   |  0 of 25       |
+      | 3       | 240px |  865px   | 13 of 25       |
+
+    So two costs NOTHING — not one concern wraps — and takes 700px of
+    scrolling off a board somebody reads standing up. Three is where it falls
+    over, which is the same wall the old four-across hit. The longest concern
+    the master list holds is "Wheel alignment and balancing required" at 252px
+    rendered, against 301px of text width in a two-column panel: 49px spare.
+
+    ⚠ THE BREAKPOINT IS THE APP'S OWN 800, NOT THE WIDTH WHERE IT ACTUALLY
+    BREAKS. Measured going down at two columns: 768px is still clean, 700px
+    wraps one row, 640px wraps four — so anything in 768–800 is safe, and 800
+    is the number already in the system (`.main-content`'s max-width, and the
+    card-list grid's own top breakpoint). Note what that means: at 1280, 1024
+    and 820 the panel is the IDENTICAL 364px, because the container stopped
+    growing. There is no separate laptop and tablet answer to give here.
+
+    `align-items: stretch` is kept from the original grid, and the empty space
+    under a mechanic holding one car is still the point rather than waste — it
+    says that mechanic has room.
     {% endcomment %}
     .lr-crews {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        display: flex;
+        flex-direction: column;
         gap: 10px;
-        align-items: stretch;
     }
-    @media (min-width: 620px) { .lr-crews { grid-template-columns: repeat(3, 1fr); } }
-    @media (min-width: 820px) { .lr-crews { grid-template-columns: repeat(4, 1fr); } }
+    @media (min-width: 800px) {
+        .lr-crews {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            align-items: stretch;
+        }
+    }
 
     .lr-crew {
         background: var(--color-border-light);
@@ -428,6 +467,13 @@
        grey car, which is a different fact from "nobody wrote it down". */
     .lr-car--unset { background-image: none; }
     .lr-car-body {
+        /* `flex: 1` is load-bearing now that concerns hang under the car. A
+           flex item with no grow sizes to max-content, so the body used to be
+           only as wide as its longest line — which was fine while that was the
+           car's name, and became a ragged edge the moment the concern block's
+           dashed rule started stopping wherever the longest sentence happened
+           to end. One rule per car, all the same length, spanning the card. */
+        flex: 1 1 auto;
         min-width: 0;
         padding: 8px 9px;
         display: flex;
@@ -472,6 +518,113 @@
         color: var(--lr-amber);
         text-transform: uppercase;
         letter-spacing: 0.03em;
+    }
+
+    {% comment %}
+    ── The work still to be commanded ────────────────────────────
+
+    One row per UNFIXED concern, under the car it belongs to. This is the
+    reason the board exists, so the rows are the plainest thing in it: a dot,
+    then the sentence the customer said, wrapping rather than truncating —
+    truncating the concern would be the row failing at its only job.
+
+    The mark is the app's own traffic light with its third lamp removed. Red is
+    not started, amber is being worked on; green never appears, because a fixed
+    concern is not a decision anybody has left to make and is counted instead.
+
+    ⚠ EVERY ROW IS THE SAME WEIGHT, AND THE UNDER-WAY ONE WAS BOLD FOR A
+    REVISION. The clock already differs from the disc in SHAPE and in COLOUR,
+    so a third telling was the loudest treatment on the block spent on
+    something two marks 6px away had said — the rule the settle dialog and the
+    notification row both follow. `.lr-concern--working` therefore carries no
+    declaration at all; it stays on the element as the state's NAME in the
+    DOM, which is what the test reads. Do not delete it as dead CSS — there is
+    no CSS to delete.
+
+    ⚠ THE TWO MARKS ARE DIFFERENT SHAPES, AND THE PAIR IS COPIED FROM
+    `jobcard_detail.html` RATHER THAN INVENTED HERE — `bi-clock-history` at
+    #d97706 for under way, a 9px #dc2626 disc for not started, the same values
+    that page uses. That is the screen every row on this board opens, so a
+    concern that looked one way here and another way one tap later would read
+    as two different states. It is also what stops the state being carried by
+    COLOUR alone: a clock is a clock in greyscale.
+
+    `role="img"` + `aria-label` on the pending disc, which has no glyph to name
+    it — the same pairing the dashboard car card's own state dot uses. The
+    clock is `aria-hidden` and its row carries the label instead, or a screen
+    reader announces the word twice.
+
+    Both marks are boxed to ONE width so every concern's text starts on the
+    same x whichever state it is in — a ragged left edge is exactly what a list
+    read at a glance cannot afford.
+
+    A dashed rule separates the work from the car's identity line. Dashed
+    rather than solid because it divides one block, where every solid hairline
+    on this page divides two.
+    {% endcomment %}
+    .lr-concerns {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 7px;
+        padding-top: 6px;
+        border-top: 1px dashed rgba(15, 23, 42, 0.14);
+    }
+    .lr-concern {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        min-width: 0;
+        font-size: 0.82rem;
+        line-height: 1.35;
+        color: var(--color-text);
+    }
+    /* The shared box. A 9px disc and a ~13px glyph are different widths, so
+       without this the two kinds of row would start their text 4px apart. */
+    .lr-concern-mark {
+        flex: 0 0 15px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        align-self: center;
+        line-height: 1;
+    }
+    .lr-concern-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #dc2626;
+    }
+    .lr-concern-clock {
+        font-size: 0.86rem;
+        color: #d97706;
+    }
+    .lr-concern-text { min-width: 0; overflow-wrap: anywhere; }
+    .lr-concern-more {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--color-text-muted);
+        padding-left: 21px;
+    }
+    /* Said once, quietly, and only when there is a number to say — a "0 done"
+       on a car nobody has started is the same fact as the red dots above it. */
+    .lr-concern-done {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--color-text-muted);
+        opacity: 0.85;
+        padding-left: 21px;
+    }
+    /* A car whose every concern is fixed is itself an action — nobody has
+       closed it — so it says so rather than showing an empty block, which
+       reads as something that failed to load. */
+    .lr-concern-clear {
+        margin-top: 7px;
+        padding-top: 6px;
+        border-top: 1px dashed rgba(15, 23, 42, 0.14);
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--color-success);
     }
 
     {% comment %}
@@ -538,13 +691,6 @@
     .lr-spare-shop .bi { font-size: 0.76rem; opacity: 0.75; }
     .lr-spare-noshop { font-style: italic; opacity: 0.8; }
     .lr-spare-sep { opacity: 0.4; }
-
-    /* Below 360px two mechanic columns leave ~140px each, which starts
-       breaking model names across three lines — one column reads better than
-       a narrow pair. */
-    @media (max-width: 359px) {
-        .lr-crews { grid-template-columns: 1fr; }
-    }
 </style>
 {% endblock %}
 
@@ -668,7 +814,7 @@ task; here it is a hole in the books.
 
 {% include 'workshop/includes/pagination.html' %}
 
-{# ── Who is holding which car ───────────────────────────── #}
+{# ── Who is holding which car, and what is left on it ───── #}
 <section class="lr-box">
     <div class="lr-box-head">
         <span class="lr-box-title"><i class="bi bi-people-fill"></i> On the floor</span>
@@ -712,6 +858,52 @@ task; here it is a hole in the books.
                             <span class="lr-car-age">{{ job.age_label }}</span>
                             {% endif %}
                         </span>
+                        {% comment %}
+                        What is still to be commanded on this car. Only Office
+                        and the owners decide what a mechanic does next — they
+                        are the ones tracking which parts have arrived — so
+                        until this was here they were holding the whole floor's
+                        work list in their heads to make that call, one job
+                        card at a time.
+
+                        Amber first, then red: what the mechanic is on right
+                        now, then what is queued behind it. Fixed concerns are
+                        counted rather than listed — a finished job is not a
+                        decision anybody has left to make.
+
+                        Everything stays inside the anchor, so a tap anywhere
+                        on the car opens the job card, which is where a
+                        concern's status is actually changed.
+                        {% endcomment %}
+                        {% if job.open_concerns %}
+                        <span class="lr-concerns">
+                            {% for concern in job.open_concerns %}
+                            {% if concern.status == 'WORKING' %}
+                            <span class="lr-concern lr-concern--working"
+                                  aria-label="Working: {{ concern.concern_text }}">
+                                <span class="lr-concern-mark"><i
+                                    class="bi bi-clock-history lr-concern-clock"
+                                    aria-hidden="true"></i></span>
+                                <span class="lr-concern-text" aria-hidden="true">{{ concern.concern_text }}</span>
+                            </span>
+                            {% else %}
+                            <span class="lr-concern">
+                                <span class="lr-concern-mark"><span class="lr-concern-dot"
+                                      role="img" aria-label="Not started"></span></span>
+                                <span class="lr-concern-text">{{ concern.concern_text }}</span>
+                            </span>
+                            {% endif %}
+                            {% endfor %}
+                            {% if job.open_concerns_more %}
+                            <span class="lr-concern-more">+{{ job.open_concerns_more }} more</span>
+                            {% endif %}
+                            {% if job.fixed_count %}
+                            <span class="lr-concern-done">{{ job.fixed_count }} done</span>
+                            {% endif %}
+                        </span>
+                        {% elif job.concern_total %}
+                        <span class="lr-concern-clear">All concerns fixed</span>
+                        {% endif %}
                     </span>
                 </a>
                 {% endwith %}
