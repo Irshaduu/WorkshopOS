@@ -4942,12 +4942,112 @@ different end of the page in the tests than in production.
 **A mechanic holding no car is not listed** — every name on the board has work under
 it, which is what keeps it short.
 
-**Mechanics are PANELS in a grid**, four across on a laptop, three on a tablet, two
-on a phone, with `align-items: stretch` so panels on one row end level. A bare column
-with a rule beside it read as clutter: a rule is only as tall as its column, so three
-mechanics holding three, two and one car drew three vertical lines of three different
-lengths. **A filled panel has no length to disagree about.** The column count is
-fixed per breakpoint rather than `auto-fill`.
+**Mechanics are PANELS — two to a row from 800px up, one below it.** A bare
+column with a rule beside it read as clutter: a rule is only as tall as its column, so three mechanics
+holding three, two and one car drew three vertical lines of three different
+lengths. **A filled panel has no length to disagree about.**
+
+⚠ **THEY USED TO READ FOUR ACROSS ON A LAPTOP, AND THAT WENT WHEN THE BOARD
+STARTED CARRYING THE WORK ITSELF (2026-09-02).** The rhythm — four names to a
+row, three on a tablet, two on a phone — was an explicit owner instruction, so
+it is recorded here as reversed rather than quietly dropped. What overruled it
+is that concern text is a customer's own SENTENCE and the grid had nowhere to
+put one: measured off this page's box model, `.main-content` caps at 800px →
+768px of content → `.lr-box` inner 739px → four columns at 177px → `.lr-crew`
+161px → inside `.lr-car`, past its border, its 6px rail and 9px of body
+padding, **135px of text width**. "Wheel alignment and balancing required"
+wraps to two lines there, three concerns make a wall of narrow text, and every
+panel is a different height again — the thing the paragraph above records
+having already fixed once.
+
+**TWO is where it settled, and two is as far as it goes.** Measured with every
+car on the demo floor filled from the workshop's own concern list, 25 rows:
+
+| columns | panel | the box | rows that wrap |
+|---|---|---|---|
+| 1 | 739px | 1747px | 0 of 25 |
+| **2** | **364px** | **1048px** | **0 of 25** |
+| 3 | 240px | 865px | 13 of 25 |
+
+Two costs **nothing** — not one concern wraps — and takes 700px of scrolling
+off a board somebody reads standing up. The longest concern the master list
+holds is "Wheel alignment and balancing required", 252px rendered against
+301px of text width in a two-column panel: 49px spare.
+
+⚠ **The breakpoint is the app's own 800, not the width where it actually
+breaks.** Going down at two columns: 768px still clean, 700px wraps one row,
+640px wraps four — so anything in 768–800 is safe, and 800 is already in the
+system (`.main-content`'s max-width, and the card-list grid's top
+breakpoint). **There is no separate laptop and tablet answer here**: the
+container stops growing at 800, so at 1280, 1024 and 820 the panel is the
+identical 364px.
+
+**EVERY CAR CARRIES THE CONCERNS STILL OPEN ON IT — this box is where the next
+instruction is given, not just a list of who is holding what.** The owner's
+workflow in their own words: *finish this car's vibration, then tell him the
+periodic service because those parts are here, then move him to his second
+car.* Only Office and the owners command that work — they are the ones
+tracking which parts have arrived — so until the board carried the work list
+they were holding the whole floor's in their heads, opening one job card at a
+time. **The CONCERN is the row and the car is only its heading.**
+
+Six rules:
+- **UNFIXED only, and the fixed ones are COUNTED** ("3 done"). A finished job
+  is not a decision anybody has left to make, and the count is what says how
+  close the car is to being closed.
+- **WORKING sorts above PENDING inside a car** — what the mechanic is on right
+  now, then what is queued behind it. That is the order the sentence is spoken
+  in. Amber; PENDING is red.
+
+  ⚠ **EVERY ROW IS THE SAME WEIGHT, and the under-way one was BOLD for a
+  revision** (removed 2026-09-02, the owner's call). The clock already differs
+  from the disc in shape *and* in colour, so bold was a third telling of one
+  bit — in the loudest treatment on the block, spent on something two marks
+  6px away had already said. `.lr-concern--working` now carries **no
+  declaration at all**; it stays in the markup as the state's name in the DOM
+  and is what the test reads. Do not sweep it as dead CSS — there is no CSS to
+  sweep.
+- **The traffic light loses its third lamp.** Green never appears on a concern
+  row, because a fixed concern is not listed.
+
+  ⚠ **THE TWO MARKS ARE DIFFERENT SHAPES, AND THE PAIR IS COPIED FROM
+  `jobcard_detail.html` RATHER THAN INVENTED** — `bi-clock-history` at
+  `#d97706` for under way, a 9px `#dc2626` disc for not started, character for
+  character the values `.dv-ico-going` and `.dv-ico-pending` already carry.
+  That page is what every row on this board OPENS, so a concern that looked
+  one way here and another way one tap later would read as two different
+  states. Shape rather than colour alone is also what makes the state survive
+  greyscale. Both marks sit in one 15px box (`.lr-concern-mark`), or a 9px
+  disc and a 13px glyph start their text 4px apart and the list has a ragged
+  left edge.
+- **A car whose every concern is fixed says "All concerns fixed"** — that is
+  itself an action, since nobody has closed the card — while a car with **no
+  concerns at all says nothing**. Nobody wrote one down is a different fact
+  from every one being fixed.
+- **`FLOOR_CONCERN_ROW_CAP` is 8 and names its remainder.** It happens to equal
+  `UNFILLED_ROW_CAP`; they are two rules, not one. Every row here is a decision
+  an owner is about to make, so the cap is a guard against one card flooding
+  the board, never a window.
+- **It costs no query per car** — `prefetch_related('concerns')` on the floor
+  queryset, split in Python by `_attach_floor_concerns`. Asserted as the
+  invariant (one car and five cars cost the same), never as a magic number.
+
+⚠ **`.lr-car-body` needs `flex: 1`, and that is load-bearing rather than
+tidying.** A flex item with no grow sizes to max-content, so the body used to
+be exactly as wide as its longest line — fine while that was the car's name,
+and a ragged edge the moment the concern block's dashed rule started stopping
+wherever the longest sentence happened to end. Measured: nine cars, nine rules,
+all 697px.
+
+⚠ **NO PARTS-READINESS CHIP ON THE CAR, on the owner's decision (2026-09-02).**
+It was offered and declined: a per-car chip reading *Ready / N on the way / N
+not ordered*, cut from the same rows the two containers below already list, so
+the owner would not have to join the parts state to the car in their head. The
+owner's call is concerns only. **If it is revisited, note the limit that made
+it car-level in the first place**: `JobCardConcern` carries no link to a
+`JobCardSpareItem`, so nothing in the schema can say which part belongs to
+which concern, and adding one means a field Floor has to fill on every spare
+row.
 
 **Only a SHOP part is ever chased.** A warehouse draw came off the shelf already
 fitted, so its `status` column means nothing; listing one as waiting would send

@@ -63,7 +63,7 @@ def home(request):
 #: Rows shown per section inside one card's drawer before the rest are summed
 #: into a "+N more" line. Chosen at 25 on the owner's instruction — this page is
 #: for taking in the whole floor at a glance, so it is deliberately generous
-#: where the Live Report's own `SECTION_ROW_CAP` is 10.
+#: where the Live Report's own `UNFILLED_ROW_CAP` is 8.
 #:
 #: A cap is needed at all because a rebuild in the live data carries 91 spares,
 #: and 45 cards on a page multiply whatever one card costs. It is safe HERE and
@@ -153,6 +153,54 @@ def _stamp_age(jobs, today):
     for job in jobs:
         days = (today - job.admitted_date).days if job.admitted_date else None
         job.age_label = _age_label(days)
+
+
+#: Unfixed concerns listed under one car on the Live Report's floor board
+#: before the rest are counted into a "+N more" line.
+#:
+#: Generous on purpose, and a guard rather than a window: every row on that
+#: board is a decision an owner is about to make, so a hidden concern is a
+#: hidden decision. It exists only so that one card carrying a long list cannot
+#: flood the board.
+#:
+#: It happens to equal `UNFILLED_ROW_CAP`, and they are two rules rather than
+#: one — this one is about how much of a car's remaining work is worth printing
+#: on a decision board, that one about how many money-side gaps fit on a chase
+#: card. Do not collapse them into a single constant.
+FLOOR_CONCERN_ROW_CAP = 8
+
+#: WORKING sorts above PENDING inside one car: what the mechanic is on right
+#: now, then what is queued behind it. That is the order the owner's own
+#: sentence is spoken in — "finish this, then do that". FIXED never reaches
+#: here, so its position in the map is only a fallback for an unknown status.
+_CONCERN_ORDER = {'WORKING': 0, 'PENDING': 1}
+
+
+def _attach_floor_concerns(jobs):
+    """Attach each car's still-open concerns, for the Live Report floor board.
+
+    That board exists so an owner can decide what to tell each mechanic to do
+    next, and the decision is made per person, per car, per concern — so the
+    CONCERN is the row and the car is only its heading. Nobody but Office and
+    the owners commands this work, which is why it lives on their page and not
+    on the floor's own board.
+
+    Only UNFIXED concerns are listed: a fixed one is not a decision left to
+    make. The fixed ones are counted instead, because that count is what says
+    how close the car is to being finished — and a car whose every concern is
+    fixed is itself an action, since nobody has closed it yet.
+
+    Read off the prefetched relation, so this costs no query per card.
+    """
+    for job in jobs:
+        concerns = list(job.concerns.all())
+        job.concern_total = len(concerns)
+        open_concerns = [c for c in concerns if c.status != 'FIXED']
+        open_concerns.sort(key=lambda c: (_CONCERN_ORDER.get(c.status, 2), c.pk))
+        job.fixed_count = len(concerns) - len(open_concerns)
+        job.open_concerns, job.open_concerns_more = _capped(
+            open_concerns, FLOOR_CONCERN_ROW_CAP
+        )
 
 
 def _floor_by_mechanic(jobs):
@@ -308,7 +356,8 @@ def live_report(request):
 
       1. what has already been BILLED with holes in it — the critical one,
          because settling is what closed the door on correcting it;
-      2. who is holding which car;
+      2. who is holding which car, and what is still open on each of them —
+         the board the next instruction is given from;
       3. which parts are travelling, and which nobody has ordered.
 
     None of this is narrowed by a search box, deliberately. The page answers
@@ -327,11 +376,17 @@ def live_report(request):
     floor_jobs = list(
         on_the_floor
         .select_related('lead_mechanic')
+        # The board lists each car's still-open concerns underneath it, so the
+        # concerns come with the cards — one extra query for the whole page
+        # rather than one per card.
+        .prefetch_related('concerns')
         # Longest-standing car first: on a live board the car that has been
-        # here the longest is the one worth looking at.
+        # here the longest is the one worth looking at. It is also the order
+        # the owner reasons in — "his first car, then his second".
         .order_by('admitted_date', 'pk')
     )
     _stamp_age(floor_jobs, today)
+    _attach_floor_concerns(floor_jobs)
     mechanic_groups = _floor_by_mechanic(floor_jobs)
 
     # Only SHOP parts carry an ordering workflow. A warehouse draw

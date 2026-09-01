@@ -3,9 +3,10 @@ The Live Report — the screen an owner opens on a phone to see the workshop.
 
 Office and Owner only, whole page. It answers three questions in the order they
 get asked: what has already been billed with boxes nobody filled in, who is
-holding which car, and which parts are travelling or unordered. The tests here
-pin the role gate, the rule that decides which parts get chased, the rule that
-decides which bills get chased, and the counts that sit above each box.
+holding which car and what is still open on it, and which parts are travelling
+or unordered. The tests here pin the role gate, the rule that decides which
+parts get chased, the rule that decides which bills get chased, the work list
+an owner gives the next instruction from, and the counts above each box.
 """
 
 import re
@@ -16,7 +17,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from inventory.models import Category, Item
-from workshop.models import JobCard, JobCardSpareItem, Mechanic, SpareShop
+from workshop.models import (JobCard, JobCardConcern, JobCardSpareItem,
+                             Mechanic, SpareShop)
 
 
 def _text(html):
@@ -405,12 +407,17 @@ class ACarOnTheBoardLeadsWithItsNameTests(LiveReportTestCase):
         self.assertIn('<span class="lr-car-hold">', page)
         self.assertNotIn('<span class="lr-car-age">', page)
 
-    def test_every_mechanic_is_a_column_of_one_grid(self):
+    def test_every_mechanic_is_a_panel_of_one_container(self):
         """
-        Mechanics read across, their cars down — four names to a row on a
-        laptop, wrapping to a second row for the fifth. One grid holds them,
-        so the wrap is the browser's job and not a count baked into the
-        template.
+        One panel per mechanic, their cars inside it — two panels to a row
+        from 800px up, one below. ONE container holds them all, so the layout
+        is the stylesheet's job and not a count baked into the template.
+
+        They used to read four across on a laptop. That went when each car
+        grew its own work list underneath it: four columns left 135px of text
+        width per car, which is not a column anybody can print a customer's
+        own sentence in. Two leaves 301px against a 252px worst case, and
+        three wraps 13 rows in 25. See the CSS comment on `.lr-crews`.
         """
         names = ('Amlah', 'Shafee', 'Sabith', 'Rafeeq', 'Zubair')
         for n, name in enumerate(names):
@@ -422,3 +429,132 @@ class ACarOnTheBoardLeadsWithItsNameTests(LiveReportTestCase):
         self.assertEqual(crews.count('class="lr-crew '), 5)
         for name in names:
             self.assertIn(f'>{name}</span>', crews)
+class TheBoardSaysWhatIsLeftToBeCommandedTests(LiveReportTestCase):
+    """
+    Each car on the floor carries the concerns that are still open on it.
+
+    The owner's own workflow, in their words: finish this car's vibration, then
+    tell him to do the periodic service because those parts are here, then move
+    him on to his second car. Only Office and the owners decide what a mechanic
+    does next — they are the ones tracking which parts have arrived — and until
+    this box carried the work list they were holding the whole floor's in their
+    heads, one job card at a time.
+
+    So the CONCERN is the row and the car is only its heading. What is listed
+    is exactly what is still to be decided; a fixed concern is counted instead,
+    because a finished job is not a decision anybody has left to make.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.mech = Mechanic.objects.create(name='Amlah')
+
+    def _floor(self, user=None):
+        """The floor box alone. A concern's text can also appear in the
+        billed-but-not-filled box above it, which proves nothing here."""
+        page = self._page(user or self.owner)
+        return page.split('<div class="lr-crews">', 1)[1].split('</section>', 1)[0]
+
+    def _concerned(self, reg='KL07AA1111', **statuses):
+        car = self._car(reg, mechanic=self.mech)
+        for text, status in sorted(statuses.items()):
+            JobCardConcern.objects.create(
+                job_card=car, concern_text=text.replace('_', ' '), status=status)
+        return car
+
+    def test_a_still_open_concern_is_listed_under_its_car(self):
+        self._concerned(Vibration_at_high_speed='PENDING')
+
+        self.assertIn('Vibration at high speed', self._floor())
+
+    def test_a_fixed_concern_is_not_listed(self):
+        self._concerned(Wheel_alignment_done='FIXED')
+
+        self.assertNotIn('Wheel alignment done', self._floor())
+
+    def test_the_fixed_ones_are_counted_rather_than_dropped(self):
+        """How close the car is to finished is a fact the owner acts on: it is
+        the difference between commanding the next job and closing the card."""
+        self._concerned(A_first='FIXED', B_second='FIXED', C_still_open='PENDING')
+
+        self.assertIn('2 done', self._floor())
+
+    def test_what_he_is_on_now_sorts_above_what_is_queued(self):
+        """WORKING then PENDING, the order the instruction is spoken in."""
+        car = self._car('KL07AA1111', mechanic=self.mech)
+        JobCardConcern.objects.create(job_card=car, concern_text='Queued job',
+                                      status='PENDING')
+        JobCardConcern.objects.create(job_card=car, concern_text='Running job',
+                                      status='WORKING')
+
+        floor = self._floor()
+
+        self.assertLess(floor.index('Running job'), floor.index('Queued job'))
+
+    def test_the_running_job_is_marked_apart_from_the_queued_one(self):
+        self._concerned(Running_job='WORKING')
+
+        self.assertIn('lr-concern--working', self._floor())
+
+    def test_a_car_with_every_concern_fixed_says_so(self):
+        """It is itself an action — nobody has closed the card. An empty block
+        under the car would read as something that failed to load."""
+        self._concerned(All_done='FIXED')
+
+        self.assertIn('All concerns fixed', self._floor())
+
+    def test_a_car_with_no_concerns_at_all_says_nothing(self):
+        """Nobody wrote one down is a different fact from every one being
+        fixed, so the line claiming the second is not printed for the first."""
+        self._car('KL07AA1111', mechanic=self.mech)
+
+        floor = self._floor()
+
+        self.assertNotIn('All concerns fixed', floor)
+        self.assertNotIn('lr-concerns', floor)
+
+    def test_a_long_list_stops_and_names_how_many_are_left(self):
+        from workshop.views.dashboard import FLOOR_CONCERN_ROW_CAP
+
+        car = self._car('KL07AA1111', mechanic=self.mech)
+        for n in range(FLOOR_CONCERN_ROW_CAP + 3):
+            JobCardConcern.objects.create(job_card=car, status='PENDING',
+                                          concern_text='Concern %02d' % n)
+
+        floor = self._floor()
+
+        self.assertIn('Concern %02d' % (FLOOR_CONCERN_ROW_CAP - 1), floor)
+        self.assertNotIn('Concern %02d' % FLOOR_CONCERN_ROW_CAP, floor)
+        self.assertIn('+3 more', floor)
+
+    def test_the_concerns_cost_no_query_per_car(self):
+        """They ride the floor queryset's own prefetch.
+
+        Asserted as the INVARIANT — the page costs the same whether one car is
+        on the floor or five — rather than as a magic number, which would have
+        to be re-tuned every time an unrelated query on this page moved.
+
+        The first request is thrown away deliberately: signing in writes the
+        session row, so measuring it would compare a cold request against a
+        warm one and report a DROP in queries as five cars were added, which is
+        exactly what happened when this was written the obvious way round.
+        """
+        self._concerned('KL07AA0001', First_job='PENDING')
+        self.client.force_login(self.owner)
+        self._query_count()
+        one_car = self._query_count()
+
+        for n in range(2, 6):
+            self._concerned('KL07AA000%d' % n, Some_job='PENDING',
+                            Another_job='WORKING')
+
+        self.assertEqual(self._query_count(), one_car)
+
+    def _query_count(self):
+        """Queries for one already-signed-in GET of the page."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as ctx:
+            self.assertEqual(self.client.get(self.url).status_code, 200)
+        return len(ctx.captured_queries)
