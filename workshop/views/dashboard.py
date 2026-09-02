@@ -497,10 +497,15 @@ def live_report(request):
 
       1. what has already been BILLED with holes in it — the critical one,
          because settling is what closed the door on correcting it;
-      2. who is holding which car, and what is still open on each of them —
-         the board the next instruction is given from;
-      3. what has just landed, which parts are travelling, and which nobody
-         has ordered.
+      2. what has just landed, which parts are travelling, and which nobody
+         has ordered;
+      3. who is holding which car, and what is still open on each of them —
+         the board the next instruction is given from.
+
+    The floor board sits LAST, on the owner's instruction. It is the longest
+    block on the page by far — one panel per mechanic, every open concern under
+    every car — so above the parts boxes it pushed all three of them off the
+    first screen. The two chase lists are scanned; this one is read.
 
     None of this is narrowed by a search box, deliberately. The page answers
     "what is the state of the workshop right now", and a half-filtered answer

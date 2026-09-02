@@ -731,17 +731,26 @@ class WhatLandedRecentlyIsListedApartTests(LiveReportTestCase):
 
     def test_the_three_parts_boxes_sit_under_one_Spares_heading(self):
         """It groups the three and nothing else: what landed, what is coming,
-        what nobody has ordered. Outside the boxes, between the floor board and
-        the first of them."""
+        what nobody has ordered.
+
+        The heading is unchanged; what moved underneath it is. This used to
+        assert the floor board sat ABOVE the heading, because it did — the
+        board went last on 2026-09-02 on the owner's instruction. So the thing
+        that now ends this group is the Floor heading rather than the end of
+        the page, and that is asserted here: an `<h6>` opens a group nothing
+        else closes, so without one the board would read as a fourth spare.
+        """
         page = self._page(self.owner)
         heading = '<h6 class="lr-group">Spares</h6>'
+        closes = '<h6 class="lr-group">Still to do</h6>'
 
         # The rendered tag, never the bare class name -- `.lr-group` is also a
         # rule in this page's own stylesheet, which comes FIRST in the response
         # and makes every position comparison meaningless.
         self.assertIn(heading, page)
-        self.assertLess(page.index('On the floor'), page.index(heading))
-        self.assertLess(page.index(heading), page.index('Received in the last'))
+        self.assertLess(page.index('Billed but not filled'), page.index(heading))
+        self.assertLess(page.index(heading), page.index('Received (last'))
+        self.assertLess(page.index('Not ordered yet'), page.index(closes))
 
     def test_it_carries_no_subtitle(self):
         """Removed on the owner's instruction — the headline says the window,
@@ -755,13 +764,13 @@ class WhatLandedRecentlyIsListedApartTests(LiveReportTestCase):
         order the two boxes that were here already established."""
         page = self._page(self.owner)
 
-        self.assertLess(page.index('Received in the last'), page.index('On the way'))
+        self.assertLess(page.index('Received (last'), page.index('On the way'))
         self.assertLess(page.index('On the way'), page.index('Not ordered yet'))
 
     def test_the_heading_names_the_window_so_nothing_else_has_to(self):
         from workshop.views.dashboard import RECEIVED_WINDOW_DAYS
 
-        self.assertIn('Received in the last %d days' % RECEIVED_WINDOW_DAYS,
+        self.assertIn('Received (last %d days)' % RECEIVED_WINDOW_DAYS,
                       self._page(self.owner))
 
     def test_an_empty_window_says_so_rather_than_nothing(self):
@@ -774,3 +783,59 @@ class WhatLandedRecentlyIsListedApartTests(LiveReportTestCase):
         self.client.force_login(self.floor)
 
         self.assertEqual(self.client.get(self.url).status_code, 403)
+
+
+class TheFloorBoardSitsLastTests(LiveReportTestCase):
+    """Moved from second to last on the owner's instruction (2026-09-02).
+
+    It is by far the longest block on the page — one panel per mechanic, with
+    every open concern under every car; measured at 814px against 214px for the
+    next biggest box. Sitting second it pushed all three parts boxes off the
+    first screen, so the two lists that are SCANNED sat below the one that is
+    READ. Nothing about the board itself changed.
+    """
+
+    FLOOR = '</i> On the floor</span>'
+    SPARES_HEAD = '<h6 class="lr-group">Spares</h6>'
+    FLOOR_HEAD = '<h6 class="lr-group">Still to do</h6>'
+
+    def test_the_board_comes_after_every_parts_box(self):
+        page = self._page(self.owner)
+        floor = page.index(self.FLOOR)
+
+        for box in ('Received (last', 'On the way', 'Not ordered yet'):
+            with self.subTest(box=box):
+                self.assertLess(page.index(box), floor)
+
+    def test_billed_but_not_filled_still_leads(self):
+        """The move did not disturb the one box that must come first.
+
+        It is the only container here describing money that has already moved;
+        everything below it is work in progress.
+        """
+        page = self._page(self.owner)
+
+        self.assertLess(page.index('Billed but not filled'),
+                        page.index('Received (last'))
+        self.assertLess(page.index('Billed but not filled'), page.index(self.FLOOR))
+
+    def test_the_board_carries_its_own_group_heading(self):
+        """It needed a HEADING, not just a move.
+
+        `<h6 class="lr-group">Spares</h6>` opens a group that nothing closes —
+        no wrapper, no second heading — so a box dropped after the three parts
+        boxes with no heading of its own reads as a fourth kind of spare, to the
+        eye and to a screen reader alike. The heading is what ends that group.
+        """
+        page = self._page(self.owner)
+
+        self.assertIn(self.FLOOR_HEAD, page)
+        self.assertLess(page.index(self.SPARES_HEAD), page.index(self.FLOOR_HEAD))
+        self.assertLess(page.index(self.FLOOR_HEAD), page.index(self.FLOOR))
+
+    def test_the_three_parts_boxes_keep_their_own_order(self):
+        """Green, amber, red — the lifecycle backwards, most finished first."""
+        page = self._page(self.owner)
+
+        self.assertLess(page.index('Received (last'), page.index('On the way'))
+        self.assertLess(page.index('On the way'), page.index('Not ordered yet'))

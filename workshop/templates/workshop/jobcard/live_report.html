@@ -867,115 +867,12 @@ task; here it is a hole in the books.
 
 {% include 'workshop/includes/pagination.html' %}
 
-{# ── Who is holding which car, and what is left on it ───── #}
-<section class="lr-box">
-    <div class="lr-box-head">
-        <span class="lr-box-title"><i class="bi bi-people-fill"></i> On the floor</span>
-        <span class="lr-box-count">{{ floor_count }}</span>
-    </div>
-
-    {% if mechanic_groups %}
-    <div class="lr-crews">
-        {% for crew in mechanic_groups %}
-        <div class="lr-crew {% if crew.unassigned %}lr-crew--none{% endif %}">
-            <div class="lr-crew-name">
-                <i class="bi {% if crew.unassigned %}bi-person-dash{% else %}bi-person-fill{% endif %}"></i>
-                <span class="lr-crew-who">{{ crew.name }}</span>
-                <span class="lr-crew-count">{{ crew.jobs|length }}</span>
-            </div>
-            <div class="lr-cars">
-                {% for job in crew.jobs %}
-                {% with color=job.get_car_color_hex|default:'#94a3b8' %}
-                <a href="{% url 'jobcard_edit' job.pk %}?next=mini"
-                   class="lr-car
-                          {% if not job.car_color %}lr-car--unset
-                          {% elif job.car_color == 'White' %}lr-car--white{% endif %}"
-                   style="--stripe: {{ color }}; --shade: {{ color }}14;"
-                   title="{{ job.brand_name }} {{ job.model_name }} — {{ job.get_car_color_display }}">
-                    <span class="lr-car-rail"></span>
-                    <span class="lr-car-body">
-                        {% comment %}
-                        The registration is what identifies the car; the make
-                        is how it is recognised. A card carrying neither make
-                        nor model prints no line at all rather than an empty
-                        one — a blank row reads as something failing to load.
-                        {% endcomment %}
-                        {% if job.brand_name or job.model_name %}
-                        <span class="lr-car-name">{{ job.brand_name }} {{ job.model_name }}</span>
-                        {% endif %}
-                        <span class="lr-car-sub">
-                            <span class="lr-car-reg">{{ job.registration_number }}</span>
-                            {% if job.on_hold %}
-                            <span class="lr-car-hold">On hold</span>
-                            {% else %}
-                            <span class="lr-car-age">{{ job.age_label }}</span>
-                            {% endif %}
-                        </span>
-                        {% comment %}
-                        What is still to be commanded on this car. Only Office
-                        and the owners decide what a mechanic does next — they
-                        are the ones tracking which parts have arrived — so
-                        until this was here they were holding the whole floor's
-                        work list in their heads to make that call, one job
-                        card at a time.
-
-                        Amber first, then red: what the mechanic is on right
-                        now, then what is queued behind it. Fixed concerns are
-                        counted rather than listed — a finished job is not a
-                        decision anybody has left to make.
-
-                        Everything stays inside the anchor, so a tap anywhere
-                        on the car opens the job card, which is where a
-                        concern's status is actually changed.
-                        {% endcomment %}
-                        {% if job.open_concerns %}
-                        <span class="lr-concerns">
-                            {% for concern in job.open_concerns %}
-                            {% if concern.status == 'WORKING' %}
-                            <span class="lr-concern lr-concern--working"
-                                  aria-label="Working: {{ concern.concern_text }}">
-                                <span class="lr-concern-mark"><i
-                                    class="bi bi-clock-history lr-concern-clock"
-                                    aria-hidden="true"></i></span>
-                                <span class="lr-concern-text" aria-hidden="true">{{ concern.concern_text }}</span>
-                            </span>
-                            {% else %}
-                            <span class="lr-concern">
-                                <span class="lr-concern-mark"><span class="lr-concern-dot"
-                                      role="img" aria-label="Not started"></span></span>
-                                <span class="lr-concern-text">{{ concern.concern_text }}</span>
-                            </span>
-                            {% endif %}
-                            {% endfor %}
-                            {% if job.open_concerns_more %}
-                            <span class="lr-concern-more">+{{ job.open_concerns_more }} more</span>
-                            {% endif %}
-                            {% if job.fixed_count %}
-                            <span class="lr-concern-done">{{ job.fixed_count }} done</span>
-                            {% endif %}
-                        </span>
-                        {% elif job.concern_total %}
-                        <span class="lr-concern-clear">All concerns fixed</span>
-                        {% endif %}
-                    </span>
-                </a>
-                {% endwith %}
-                {% endfor %}
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="lr-empty">No cars on the floor right now.</div>
-    {% endif %}
-</section>
-
 <h6 class="lr-group">Spares</h6>
 
 {# ── Parts that have landed recently ────────────────────── #}
 <section class="lr-box lr-box--green">
     <div class="lr-box-head">
-        <span class="lr-box-title"><i class="bi bi-box-seam"></i> Received in the last {{ received_window_days }} days</span>
+        <span class="lr-box-title"><i class="bi bi-box-seam"></i> Received (last {{ received_window_days }} days)</span>
         <span class="lr-box-count">{{ received_spares|length }}</span>
     </div>
 
@@ -1123,4 +1020,117 @@ task; here it is a hole in the books.
     <div class="lr-empty">Every part is ordered.</div>
     {% endfor %}
 </section>
+
+{% comment %}
+── Who is holding which car, and what is left on it ─────
+
+Last on the page, on the owner's instruction. It carries its OWN group
+heading rather than simply moving down: `<h6 class="lr-group">Spares</h6>`
+opens a group that nothing closes, so a box dropped after the three parts
+boxes with no heading of its own reads — to the eye and to a screen reader
+alike — as a fourth kind of spare.
+{% endcomment %}
+<h6 class="lr-group">Still to do</h6>
+<section class="lr-box">
+    <div class="lr-box-head">
+        <span class="lr-box-title"><i class="bi bi-people-fill"></i> On the floor</span>
+        <span class="lr-box-count">{{ floor_count }}</span>
+    </div>
+
+    {% if mechanic_groups %}
+    <div class="lr-crews">
+        {% for crew in mechanic_groups %}
+        <div class="lr-crew {% if crew.unassigned %}lr-crew--none{% endif %}">
+            <div class="lr-crew-name">
+                <i class="bi {% if crew.unassigned %}bi-person-dash{% else %}bi-person-fill{% endif %}"></i>
+                <span class="lr-crew-who">{{ crew.name }}</span>
+                <span class="lr-crew-count">{{ crew.jobs|length }}</span>
+            </div>
+            <div class="lr-cars">
+                {% for job in crew.jobs %}
+                {% with color=job.get_car_color_hex|default:'#94a3b8' %}
+                <a href="{% url 'jobcard_edit' job.pk %}?next=mini"
+                   class="lr-car
+                          {% if not job.car_color %}lr-car--unset
+                          {% elif job.car_color == 'White' %}lr-car--white{% endif %}"
+                   style="--stripe: {{ color }}; --shade: {{ color }}14;"
+                   title="{{ job.brand_name }} {{ job.model_name }} — {{ job.get_car_color_display }}">
+                    <span class="lr-car-rail"></span>
+                    <span class="lr-car-body">
+                        {% comment %}
+                        The registration is what identifies the car; the make
+                        is how it is recognised. A card carrying neither make
+                        nor model prints no line at all rather than an empty
+                        one — a blank row reads as something failing to load.
+                        {% endcomment %}
+                        {% if job.brand_name or job.model_name %}
+                        <span class="lr-car-name">{{ job.brand_name }} {{ job.model_name }}</span>
+                        {% endif %}
+                        <span class="lr-car-sub">
+                            <span class="lr-car-reg">{{ job.registration_number }}</span>
+                            {% if job.on_hold %}
+                            <span class="lr-car-hold">On hold</span>
+                            {% else %}
+                            <span class="lr-car-age">{{ job.age_label }}</span>
+                            {% endif %}
+                        </span>
+                        {% comment %}
+                        What is still to be commanded on this car. Only Office
+                        and the owners decide what a mechanic does next — they
+                        are the ones tracking which parts have arrived — so
+                        until this was here they were holding the whole floor's
+                        work list in their heads to make that call, one job
+                        card at a time.
+
+                        Amber first, then red: what the mechanic is on right
+                        now, then what is queued behind it. Fixed concerns are
+                        counted rather than listed — a finished job is not a
+                        decision anybody has left to make.
+
+                        Everything stays inside the anchor, so a tap anywhere
+                        on the car opens the job card, which is where a
+                        concern's status is actually changed.
+                        {% endcomment %}
+                        {% if job.open_concerns %}
+                        <span class="lr-concerns">
+                            {% for concern in job.open_concerns %}
+                            {% if concern.status == 'WORKING' %}
+                            <span class="lr-concern lr-concern--working"
+                                  aria-label="Working: {{ concern.concern_text }}">
+                                <span class="lr-concern-mark"><i
+                                    class="bi bi-clock-history lr-concern-clock"
+                                    aria-hidden="true"></i></span>
+                                <span class="lr-concern-text" aria-hidden="true">{{ concern.concern_text }}</span>
+                            </span>
+                            {% else %}
+                            <span class="lr-concern">
+                                <span class="lr-concern-mark"><span class="lr-concern-dot"
+                                      role="img" aria-label="Not started"></span></span>
+                                <span class="lr-concern-text">{{ concern.concern_text }}</span>
+                            </span>
+                            {% endif %}
+                            {% endfor %}
+                            {% if job.open_concerns_more %}
+                            <span class="lr-concern-more">+{{ job.open_concerns_more }} more</span>
+                            {% endif %}
+                            {% if job.fixed_count %}
+                            <span class="lr-concern-done">{{ job.fixed_count }} done</span>
+                            {% endif %}
+                        </span>
+                        {% elif job.concern_total %}
+                        <span class="lr-concern-clear">All concerns fixed</span>
+                        {% endif %}
+                    </span>
+                </a>
+                {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="lr-empty">No cars on the floor right now.</div>
+    {% endif %}
+</section>
+
 {% endblock %}

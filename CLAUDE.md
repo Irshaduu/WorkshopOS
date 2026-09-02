@@ -5125,6 +5125,40 @@ different end of the page in the tests than in production.
 **A mechanic holding no car is not listed** — every name on the board has work under
 it, which is what keeps it short.
 
+**THE FLOOR BOARD IS LAST ON THE PAGE, UNDER ITS OWN "FLOOR" HEADING — moved
+2026-09-02 on the owner's instruction, from second.** It is by far the longest
+block here: one panel per mechanic, every open concern under every car. Sitting
+above the parts boxes it pushed all three of them off the first screen, so the
+two lists that are *scanned* were below the one that is *read*. "Billed but not
+filled" still leads, for its own reason, and the parts boxes keep their green →
+amber → red order.
+
+⚠ **It needed a HEADING, not just a move.** `<h6 class="lr-group">Spares</h6>`
+opens a group that nothing closes — there is no wrapper and no second heading —
+so a box dropped after the three parts boxes with no heading of its own reads as
+a fourth kind of spare, to the eye and to a screen reader alike. The heading is
+the thing that ends the Spares group. Adding a fourth `lr-group` would be the
+same trap one box further on.
+
+⚠ **THAT HEADING READS "STILL TO DO" AND THE BOX UNDER IT STILL READS "ON THE
+FLOOR" — TWO LEVELS SAYING TWO THINGS, WHICH IS THE WHOLE POINT.** It shipped
+for an hour as "Floor" over "On the floor", one fact twice. The heading names
+the WORK, because since the concerns landed that is what the box is for; the
+box title names its ROWS.
+
+⚠ **THE ROWS ARE CARS, AND THAT IS WHY THE BOX TITLE CANNOT BE ABOUT CONCERNS.**
+The count badge is `floor_count` — the rule every box here follows is that the
+count is the rows beneath it. "Pending Concerns · 10" was proposed and would
+read as ten concerns when it is ten CARS, on a board carrying many more
+concerns than that.
+
+⚠ **AND "PENDING" IS SPOKEN FOR.** `JobCardConcern.status` is
+PENDING / WORKING / FIXED, and this box deliberately lists **both** unfixed
+states — the red disc and the amber clock. Naming the section for one of the
+two statuses it contains is the "ONE WORD, ONE MEANING" rule broken on the
+page that draws the distinction. "Still to do" covers both, and covers the
+"All concerns fixed" car too, which is itself an action: nobody has closed it.
+
 **Mechanics are PANELS — two to a row from 800px up, one below it.** A bare
 column with a rule beside it read as clutter: a rule is only as tall as its column, so three mechanics
 holding three, two and one car drew three vertical lines of three different
@@ -5237,7 +5271,7 @@ fitted, so its `status` column means nothing; listing one as waiting would send
 somebody after a part that is already on the car. Rows on a completed or deleted card
 are out too, as are spares with no job card — every row here opens a job card.
 
-**"RECEIVED IN THE LAST 5 DAYS" IS THE ONE BOX ON THE PAGE THAT IS NOT A LIST
+**"RECEIVED (LAST 5 DAYS)" IS THE ONE BOX ON THE PAGE THAT IS NOT A LIST
 OF WORK.** Shop parts received in the last `RECEIVED_WINDOW_DAYS`, green,
 sitting above "On the way" — so the three parts boxes run green, amber, red
 down the page: the lifecycle backwards, most-finished first, which is the order
