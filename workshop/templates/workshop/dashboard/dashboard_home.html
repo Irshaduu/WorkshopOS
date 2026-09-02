@@ -116,6 +116,217 @@
         text-decoration: none;
     }
 
+    {% comment %}
+    ── THE CREW FILTER ───────────────────────────────────────────────
+    "All 10 · Amlah 3 · Hijaz 3 · Sabith 3 · Unassigned 1" over the board.
+
+    It is the Profit page's filter row in BEHAVIOUR — one scrolling line of
+    links, the active one filled — and deliberately NOT in its clothes. That
+    row is a 999px Inter pill; this page is the only one in the app wearing the
+    pit-board look, where every control is Barlow Condensed, uppercase and cut
+    to a 6px corner (`.btn-report`), and every small figure sits in a 4px block
+    (`.age-pill`, `.reg-badge`). A rounded Inter pill dropped in here would be
+    the one object on the screen that came from somewhere else.
+
+    THE ROW SCROLLS SIDEWAYS AND NEVER WRAPS, at every width — the owner asked
+    for the Profit page's slide, and it is the right call for the same reason
+    the payment row settled on it: one shape beats a control that rearranges
+    itself between the tablet it is tapped on and the laptop it is read on.
+    Five chips are ~430px, so it takes one line from about 480px up and slides
+    below that.
+
+    THE ACTIVE FILL IS ONE CUSTOM PROPERTY, not a rule per chip. `--tint`
+    defaults to the page's own darkest tone, and Unassigned overrides that one
+    value with red — so a chip variant is a colour rather than a second copy of
+    the whole declaration. Same mechanism as the Owner Withdrawals chip.
+
+    NEVER `transition: all` here. These are flex items; `all` transitions
+    flex-grow itself and pins a chip at its content width with the correct rule
+    matching and its value never arriving. Transition the paint, never the
+    layout.
+    {% endcomment %}
+    .pit-crew {
+        display: flex;
+        gap: 5px;
+        overflow-x: auto;
+        /* The scrollbar is suppressed, so the only cue that there is more to
+           the right is a chip cut off by the edge — which is why nothing here
+           is ever centred or shrunk to fit. */
+        scrollbar-width: none;
+        padding-bottom: 2px;
+        margin-bottom: 1.1rem;
+    }
+    .pit-crew::-webkit-scrollbar { display: none; }
+
+    .pit-crew-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+        white-space: nowrap;
+        font-family: var(--font-display);
+        {% comment %}
+        0.78rem, which is `.mechanic-tag` — the same person's name at the same
+        size whether it is in the filter or on the card underneath it.
+
+        It shipped at 0.85rem, which measured 13.6px and made this the LARGEST
+        secondary element on the page: bigger than the plate (12.2), bigger than
+        the name on the card (12.5), and 1.6px bigger than the `+ NEW` button
+        (12.0) — the primary action. A filter is chrome and must not out-size
+        what it filters. Condensed is narrower than the card's Barlow at the
+        same px, so it also reads a shade lighter than that name, which is the
+        right way round.
+        {% endcomment %}
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        padding: 0.38rem 0.66rem;
+        border-radius: 6px;
+        border: 1.5px solid var(--pit-border);
+        background: transparent;
+        color: #64748b;
+        text-decoration: none;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Behind `hover: hover` like everything else on this board: on the Floor
+       tablet hover never fires, and where it does it sticks to the last chip
+       tapped — which on a filter row reads as a second thing being selected. */
+    @media (hover: hover) {
+        .pit-crew-chip:hover {
+            border-color: #cbd5e1;
+            color: var(--pit-track);
+            text-decoration: none;
+        }
+    }
+
+    /* What a finger gets. Paint plus a small settle — the card below uses the
+       same idea at .995 because it is a whole row; a 90px chip needs more of it
+       to register at arm's length. */
+    .pit-crew-chip:active { transform: scale(0.96); }
+
+    .pit-crew-chip.is-active {
+        background: var(--tint, var(--pit-track));
+        border-color: var(--tint, var(--pit-track));
+        color: #fff;
+    }
+
+    {% comment %}
+    The count. Smaller and quieter than the name on purpose: the NAME is what
+    you read and the number is what you glance at. It resets `letter-spacing`,
+    which is not tidying — the chip tracks its uppercase at 0.5px and digits
+    inherit it, so "10" rendered with a gap down the middle. `tabular-nums`
+    keeps the block from changing width as a car moves between two people.
+    {% endcomment %}
+    .pit-crew-chip .n {
+        font-family: var(--font-body);
+        font-size: 0.64rem;
+        font-weight: 800;
+        letter-spacing: 0;
+        font-variant-numeric: tabular-nums;
+        background: #f1f5f9;
+        color: #64748b;
+        border-radius: 4px;
+        padding: 1px 4px;
+    }
+    .pit-crew-chip.is-active .n {
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+    }
+
+    {% comment %}
+    Cars nobody is holding. The only chip here carrying a colour, because it is
+    the only one asking for a decision rather than reporting a fact — the same
+    red, for the same reason, that the Live Report gives its "Not assigned"
+    group. Marked rather than shouted while it is inactive: red type on a red
+    hairline, not a filled red block sitting in a row of quiet ones.
+
+    ⚠ EVERY RED RULE HERE IS SCOPED `:not(.is-active)`, AND THAT IS THE WHOLE
+    FIX RATHER THAN A TIDY-UP. `.pit-crew-chip.is-unassigned` and
+    `.pit-crew-chip.is-active` are both two classes — equal specificity, so the
+    winner is DOCUMENT ORDER, and this block sits after that one. Selected, the
+    chip therefore took `color: #dc2626` over the white it had just been given
+    and rendered dark red on the red fill: measured at **1.28:1**, which is the
+    word disappearing. The badge went the same way (`.is-unassigned .n` and
+    `.is-active .n` are both three), and so did the hover, which at three
+    outranks `.is-active` outright.
+
+    Scoping to `:not(.is-active)` says what is actually meant — the red type is
+    the UNSELECTED marking — so it no longer depends on where in the file the
+    block happens to sit.
+
+    ⚠ THE ACTIVE FILL IS `#dc2626`, NOT THE PAGE'S OWN `--pit-red` (#ef4444),
+    and it is chosen by measurement. `--pit-red` is decoration elsewhere on this
+    page (the header's hairline) and never carries text; this fill does, at
+    13.6px bold, where white measures only **3.77:1** on it — under the 4.5:1 an
+    uppercase 13.6px needs. `#dc2626` measures **4.83:1**. Read the ratio before
+    changing this value.
+    {% endcomment %}
+    .pit-crew-chip.is-unassigned { --tint: #dc2626; }
+
+    .pit-crew-chip.is-unassigned:not(.is-active) {
+        color: #dc2626;
+        border-color: #fecaca;
+    }
+    .pit-crew-chip.is-unassigned:not(.is-active) .n {
+        background: #fef2f2;
+        color: #dc2626;
+    }
+    {% comment %}
+    ⚠ The badge DARKENS on the selected red chip where it lightens on the dark
+    ones, and that is arithmetic rather than an inconsistency. `.is-active .n`
+    lays white at 20% over the fill, which on navy gives a visibly lighter block
+    carrying white text at 9.6:1 — but on red it composites to rgb(227,81,81),
+    moving the block TOWARDS the white digit on it and leaving 3.77:1. Darkening
+    instead gives 6.65:1. The same overlay cannot serve both: on navy a black
+    overlay would leave the block indistinguishable from the fill and the badge
+    would stop reading as a block at all.
+    {% endcomment %}
+    .pit-crew-chip.is-unassigned.is-active .n { background: rgba(0, 0, 0, 0.22); }
+    @media (hover: hover) {
+        .pit-crew-chip.is-unassigned:not(.is-active):hover {
+            border-color: #f87171;
+            color: #b91c1c;
+        }
+    }
+
+    {% comment %}
+    Sized by the INPUT METHOD, not by a width breakpoint — it is the finger that
+    decides how big a target must be, and the Floor tablet is wider than plenty
+    of laptops.
+
+    The side padding came down first. Taking the chip apart at 375px: an 82.6px
+    "AMLAH 3" was 32.9px of label and 5.5px of digit — 46% content — against
+    25.6px of its own padding (31% of the chip) wrapping it, and another 10px
+    wrapped around the digit alone. Chip 82.6 → 72.6px, row 453 → 399px, and 4
+    of the 5 chips now sit fully on screen where 3 did. The fifth peeking past
+    the edge is the scroll cue — and with the red one last, it is also what says
+    Unassigned is there at all.
+
+    ⚠ THEN THE HEIGHT, AND 38px HERE IS NOT A RELAXATION OF THE 44px RULE — IT
+    IS THAT RULE READ PROPERLY. 44px is for a control where a MISS COSTS YOU
+    SOMETHING. The card's ⋮ keeps it, and the reason is on the record: a near
+    miss there opens the job card. Mis-tapping a filter chip costs one more tap,
+    with the result instantly visible in the lit chip and the board under it —
+    nothing is destroyed and nothing navigates.
+
+    The measurement is what settled it. This chip's natural content height is
+    **37.4px** (16px padding + 2.7px border + 18.7px line-height), so
+    `min-height: 44px` was adding **6.6px of pure forced air** — and it made the
+    filter the joint-tallest control on the phone, level with that ⋮ and taller
+    than the `+ NEW` button (33.5px), which is the primary action. A filter
+    outsizing the thing it filters, again, one dimension over.
+
+    At 38×63px it still clears WCAG 2.5.8 Target Size (Minimum, AA) — 24×24 —
+    by a wide margin on both axes, and it now sits between the `+ NEW` button
+    and the "View" bar (38.7px) rather than above both.
+    {% endcomment %}
+    @media (hover: none) {
+        .pit-crew-chip { min-height: 38px; padding: 0.5rem 0.58rem; }
+    }
+
     /* ── Card List ──────────────────────────────── */
     .pit-board {
         display: flex;
@@ -889,6 +1100,9 @@
         }
         .job-card:hover,
         .job-card:active { transform: none; }
+        /* The chip keeps its colour change — that is the feedback; only the
+           settle goes. */
+        .pit-crew-chip:active { transform: none; }
     }
 </style>
 {% endblock %}
@@ -898,8 +1112,18 @@
 <!-- ── Header ── -->
 <div class="pit-header">
     <div class="pit-stats">
+        {% comment %}
+        `floor_count`, NOT `page_obj.paginator.count`. The two were the same
+        number for as long as nothing could narrow this board; with the crew
+        filter below they are not. Read off the pager, this prints "3 IN
+        WORKSHOP" while ten cars are in the workshop — the one figure on the
+        page that would then be flatly untrue, and the thing that makes the
+        filter safe to leave switched on, since the heading is what contradicts
+        a stale one. The Live Report keeps its own `floor_count` apart for
+        exactly this reason.
+        {% endcomment %}
         <div class="stat-item">
-            <span class="stat-value">{{ page_obj.paginator.count }}</span>
+            <span class="stat-value">{{ floor_count }}</span>
             <span class="stat-label">In Workshop</span>
         </div>
         <div class="stat-divider"></div>
@@ -912,6 +1136,31 @@
         <i class="bi bi-plus-lg"></i> New
     </a>
 </div>
+
+{% comment %}
+── Crew filter ──────────────────────────────────────────────────────
+Who is holding what, and a way to look at one person's cars.
+
+Every chip and every number comes from ONE aggregate over the floor, so the
+row cannot disagree with itself: the counts sum to All, a mechanic holding no
+car has no chip, and Unassigned appears only when a car is in it. Nothing here
+is a staff list — it is a picture of the floor at this moment.
+
+The whole row is hidden on an empty workshop rather than printing "ALL 0" over
+the empty state, which would be a control with nothing to control.
+{% endcomment %}
+{% if floor_count %}
+<nav class="pit-crew" aria-label="Filter the board by mechanic">
+    {% for chip in mechanic_chips %}
+    {# A bare `?` on All, so choosing it leaves a clean URL — and so that #}
+    {# every chip drops `page`, which is right: a different filter is a #}
+    {# different list, and it starts at its own first page. #}
+    <a class="pit-crew-chip{% if chip.active %} is-active{% endif %}{% if chip.is_unassigned %} is-unassigned{% endif %}"
+       href="{% if chip.key %}?mechanic={{ chip.key }}{% else %}?{% endif %}"
+       {% if chip.active %}aria-current="true"{% endif %}>{{ chip.name }} <span class="n">{{ chip.count }}</span></a>
+    {% endfor %}
+</nav>
+{% endif %}
 
 <!-- ── Vehicle Cards ── -->
 {% if active_jobcards %}
@@ -1231,6 +1480,27 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    /* ── Crew filter: bring the lit chip into view ──
+       Every chip is a LINK, so choosing one is a full navigation and the
+       scroller comes back reset to the left. On a phone the row is wider than
+       the screen (131px over at 375px), so selecting one of the chips at the
+       far end — Unassigned, the one that most wants looking at — left the page
+       with nothing on screen saying what it was showing.
+
+       It nudges the ROW, never the page: `scrollLeft` on the scroller itself,
+       rather than `scrollIntoView`, which walks up and scrolls every scrollable
+       ancestor including the document. Measured from bounding rects rather than
+       `offsetLeft`, which is relative to whatever the offsetParent happens to
+       be. It does nothing at all when the chip already fits, which is every
+       laptop and tablet. */
+    (function () {
+        const crew = document.querySelector('.pit-crew');
+        const lit = crew && crew.querySelector('.pit-crew-chip.is-active');
+        if (!lit) return;
+        const over = lit.getBoundingClientRect().right - crew.getBoundingClientRect().right;
+        if (over > 0) crew.scrollLeft += over + 12;   /* 12px, so it is not flush to the edge */
+    })();
+
     /* ── Quick-Fire Dropdown (Stop Propagation) ─ */
     document.querySelectorAll('.dot-menu-btn').forEach(function (btn) {
         btn.addEventListener('click', function (e) {

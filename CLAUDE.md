@@ -4816,6 +4816,189 @@ point.
 
 ## Dashboard & board screens
 
+**THE BOARD NARROWS TO ONE MECHANIC, AND THE HEADING MUST NOT FOLLOW IT.** A
+scrolling chip row over the cards — `All 10 · Amlah 3 · Hijaz 3 · Sabith 3 ·
+Unassigned 1` — filtering the board to one person's cars.
+
+It exists because `_floor_by_mechanic` has grouped the floor by mechanic on the
+Live Report for months and that page is **`@office_required`**, so the people
+actually holding the cars had no way to see which ones were theirs. Not a
+duplicate of it either: that board is a read-only list of concerns for deciding
+what to say next, these are the working cards with the ⋮ menu on them.
+
+⚠ **"IN WORKSHOP" READS `floor_count`, NEVER `page_obj.paginator.count`.** Those
+were the same number only for as long as nothing could narrow this board. Read
+off the pager it prints **"3 IN WORKSHOP" while ten cars are in the workshop** —
+the one figure on the page that would then be flatly untrue. The Live Report
+keeps its own `floor_count` apart for exactly this reason.
+
+**It is also what makes the filter safe to LEAVE ON, which is the question that
+decided the persistence rule.** The filter rides in the URL (`?mechanic=`) like
+every other filter in this app, so it survives a refresh, Back and the pager —
+and the argument against that is real: this is the home page and the Floor
+tablet is shared, so somebody filters to Amlah, walks off, and the next person
+sees three cars of ten. The answer is that the page contradicts a stale filter
+out loud — the heading still says ten, over three cards, with a lit chip between
+them saying whose three they are. A filter that silently reset would be the
+confusing one: you tap a name, the tablet sleeps, you wake it and you are
+looking at everyone again with nothing saying why.
+
+**Four rules about what is on the row, all falling out of ONE aggregate** in
+`_floor_chips()` — which is also the only list of valid `?mechanic=` values, so
+a chip and the filter it applies cannot disagree:
+
+- **A mechanic holding no car gets no chip** — `_floor_by_mechanic`'s own rule,
+  and a `Shafeeq 0` chip is a door onto an empty board.
+- **The counts sum to All**, the unassigned group included, so the row can never
+  quietly lose a car. Asserted, because the failure is invisible: the row still
+  looks right, it just stops accounting for one.
+- **Unassigned is last, is the only chip carrying a colour, and appears only
+  when a car is in it** — it is the one entry asking for a decision rather than
+  reporting a fact, so it takes the red the Live Report already gives its "Not
+  assigned" group.
+- **Ordered by NAME, never by count.** By count a chip moves out from under the
+  thumb reaching for it every time a car changes hands.
+
+⚠ **A key that names no chip falls back to All, and validating against the CHIPS
+rather than the staff roster is what makes the stale case and the crafted case
+one rule.** Filter to Amlah, let somebody complete his last car, come back to
+the same URL — there is no Amlah chip any more, so the board falls back instead
+of rendering empty under a filter that no longer exists. Same fallback the
+Estimates list gives an unrecognised `?filter=`.
+
+⚠ **`.order_by()` on that aggregate is load-bearing, not tidying.** The board is
+ordered `-updated_at`, and an ordering field on a `values().annotate()` joins the
+GROUP BY — which returns one row per (mechanic, timestamp) and counts every car
+as **1**. Cleared explicitly so a later edit to the board's ordering cannot
+silently break the counts.
+
+⚠ **THE CHIP IS THE PROFIT PAGE'S ROW IN BEHAVIOUR AND DELIBERATELY NOT IN ITS
+CLOTHES.** That row is a 999px Inter pill; this is the only page in the app
+wearing the pit-board look, where every control is Barlow Condensed, uppercase
+and cut to a **6px** corner (`.btn-report`) and every small figure sits in a
+**4px** block (`.age-pill`, `.reg-badge`). A rounded Inter pill here would be the
+one object on the screen that came from somewhere else. What IS copied is the
+behaviour: one line, scrolls sideways at every width, never wraps. Measured —
+450px of chips, so nothing is hidden from 768px up and 131px slides at 375px,
+with the page body itself not scrolling.
+
+The active fill is **one custom property** (`--tint`, defaulting to the page's
+own `--pit-track`), so Unassigned overrides one value rather than restating the
+declaration — the Owner Withdrawals chip's own mechanism. The count resets
+`letter-spacing`, which is not tidying: the chip tracks its uppercase at 0.5px
+and digits inherit it, so "10" rendered with a gap down the middle.
+
+⚠ **THE LABEL IS `0.78rem` BECAUSE THAT IS `.mechanic-tag` — the same person's
+name at the same size whether it is in the filter or on the card under it.** It
+shipped at 0.85rem, and measuring the page's own scale is what settled it: at
+375px that was **13.6px, the largest secondary element on the screen** — over the
+plate (12.2), over the name on the card (12.5), and 1.6px over the `+ NEW`
+button (12.0), which is the primary action. **A filter is chrome and must not
+out-size what it filters.** At 0.78rem the chip is 33.5px against that button's
+36.8px on a pointer, so the loudest control on the header row is the one that
+should be. Condensed is narrower than the card's Barlow at equal px, so the chip
+also reads a shade lighter than the name it matches — the right way round.
+
+⚠ **THE TOUCH HEIGHT IS 38px, AND THAT IS THE 44px RULE READ PROPERLY RATHER
+THAN RELAXED — this reverses what this file said for a day.** It stood at 44px
+on the argument that a thumb needs 44px whatever the type is doing. The right
+rule is narrower: **44px is for a control where a MISS COSTS YOU SOMETHING.**
+The card's ⋮ keeps it, and the reason is already on the record here — a near
+miss there opens the job card. Mis-tapping a filter chip costs one more tap,
+with the result instantly visible in the lit chip and the board under it;
+nothing is destroyed and nothing navigates.
+
+The measurement is what settled it. The chip's natural content height is
+**37.4px** (16px padding + 2.7px border + 18.7px line-height), so `min-height:
+44px` was adding **6.6px of pure forced air** — and it left the filter the
+joint-tallest control on the phone, level with that ⋮ and **taller than the
+`+ NEW` button (33.5px)**, which is the primary action. Same failure as the type
+size, one dimension over: the filter outsizing what it filters. At 38px it sits
+with the "View" bar (38.7px), under the ⋮, and still clears **WCAG 2.5.8 Target
+Size (Minimum, AA) — 24×24 — on both axes at 38×63**. The pointer case never had
+a `min-height` and is untouched at 33.5px.
+
+⚠ **Measuring one chip's natural height by zeroing its own `min-height` reads
+the WRONG NUMBER.** These are flex items in a `align-items: stretch` row, so a
+single chip just stretches back to the tallest sibling and reports no change at
+all — it looked like `min-height` was doing nothing. Zero it on **every** chip
+to see the real content height.
+
+⚠ **THE SECOND PASS WAS PADDING, NOT TYPE, AND TAKING THE CHIP APART IS WHAT
+SAID SO.** At 375px an 82.6px "AMLAH 3" was **32.9px of label and 5.5px of
+digit — 46% content** — against 25.6px of its own side padding (31% of the
+chip), plus another 10px wrapped around the digit alone. So the row read airy
+while the type was already right. Trimming horizontal air is free here because
+**the smaller side is the one that binds**: the chip is ~73px wide against a
+44px minimum, so only `min-height` is load-bearing and it is untouched.
+
+Measured at 375px across both passes: chip **82.6 → 72.6px**, row **474 → 399px**,
+overflow **135 → 56px**, and **4 of the 5 chips now sit fully on screen where 3
+did**. The fifth peeking past the edge is the scroll cue — and with the red one
+last, it is also what says Unassigned is there at all. 1280 and 820 are
+unchanged at 33.5px with nothing hidden.
+
+⚠ **Do not chase all five onto a 375px screen.** It needs ~11px more off each
+chip, which puts the text against the border — and the row scrolls by design
+anyway: this workshop has five job-card-eligible staff, so a busy day is seven
+chips and no tightening fits those. Scrolling keeps the row **one line at 46px
+whatever the roster does**, which is why it is not the Owner Withdrawals chip
+row's wrap: that one has three chips and a fixed ceiling, this one grows with
+the staff list and would be three stacked rows above the cars.
+
+⚠ **EVERY RED RULE ON THE UNASSIGNED CHIP IS SCOPED `:not(.is-active)`, AND
+THAT IS THE DOCUMENT-ORDER TRAP, CAUGHT IN PRODUCTION USE RATHER THAN IN
+REVIEW.** `.pit-crew-chip.is-unassigned` and `.pit-crew-chip.is-active` are both
+**two classes** — equal specificity, so the winner is document order, and the
+unassigned block sits after the active one. Selected, the chip therefore took
+`color: #dc2626` back over the white it had just been given and rendered dark
+red on the red fill: **1.28:1**, which is the word disappearing. The badge went
+the same way (both selectors are three), and the hover was worse — at three it
+outranks `.is-active` outright. Scoping to `:not(.is-active)` states what is
+actually meant, that the red type is the UNSELECTED marking, so it no longer
+depends on where in the file the block sits.
+
+⚠ **THE SELECTED FILL IS `#dc2626`, NOT THE PAGE'S OWN `--pit-red` (#ef4444),
+AND THE BADGE DARKENS THERE WHERE IT LIGHTENS EVERYWHERE ELSE.** Both are
+arithmetic, not taste. `--pit-red` is decoration elsewhere on this page (the
+header hairline) and carries no text; this fill carries white at 13.6px bold,
+where it measures only **3.77:1** against the 4.5:1 that size needs — `#dc2626`
+measures **4.83:1**. And `.is-active .n` lays white at 20% over the fill, which
+on navy gives a lighter block at **9.6:1** but on red composites to
+rgb(227,81,81) — moving the block *towards* the white digit on it, leaving
+**3.78:1**. Darkening gives **7.1:1**. One overlay cannot serve both: a black
+overlay on navy leaves the badge indistinguishable from the fill.
+→ `test_the_selected_unassigned_chip_keeps_its_white_type`,
+`test_the_selected_red_fill_is_the_measured_one`
+
+⚠ **VERIFYING A COLOUR RULE MEANS MEASURING THE STATE THAT CHANGED, NOT THE
+ONE THAT DID NOT.** The 1.28:1 shipped past a browser check that measured the
+chip's computed colours *while it was idle* and only eyeballed the selected one
+in a screenshot. Two further traps sit behind it: this page declares its CSS
+**inline**, so fetching fresh markup and injecting it into an already-loaded
+page styles it with the STALE stylesheet — the page has to be reloaded before
+the new rule exists at all; and `.form-control`-style transitions mean a
+computed colour read mid-flight is the OLD one, so set `transition: none`
+before reading. Both cost a measurement that read as correct.
+
+**The lit chip is scrolled into view on load**, because every chip is a link and
+a full navigation resets the scroller to the left — so on a phone, where 131px
+of the row is off-screen, selecting Unassigned left nothing on screen saying
+what the board was showing. It nudges `scrollLeft` on the row itself, never
+`scrollIntoView`, which walks up and scrolls every scrollable ancestor including
+the document. Measured: 375px scrolls 134px with the page's own `scrollX` still
+0; 820 and 1280 do nothing at all.
+
+**Two things deliberately do NOT follow the chip.** "Completed today" counts a
+different population (cars that left today) — a mechanic filter is a way of
+reading the floor, not another workshop. And the row is **not drawn at all on an
+empty workshop**, since "ALL 0" over the empty state is a control with nothing to
+control.
+
+**Cost: +2 queries, flat** — one COUNT for the unfiltered floor, one aggregate
+for the chips, both on the existing `(is_deleted, completed, -updated_at)` index.
+→ `workshop/tests/test_dashboard_crew_filter.py`
+
 **The dashboard car card is worked with a THUMB.**
 - **The car's colour is stated twice, not three times.** The 10px stripe and the 8%
   wash; the 20% coloured halo was the weakest of the three and the only one that

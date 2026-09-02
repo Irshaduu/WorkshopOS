@@ -90,6 +90,7 @@ graph TD
 
  FLOOR (Mechanics / Floor Manager)
    - View Dashboard (active cars on floor), including each car's live details — the same four lists (Customer Concerns, Job Performed, Inventory Items, Spare Parts) the read-only job card shows. **This is where Floor reads a card**: the Live Report and the read-only card view at `/jobcards/<pk>/` are both Office/Owner
+   - Narrow that board to one mechanic from the chip row above the cards (`All 10 · Amlah 3 · Hijaz 3 · Unassigned 1`). Only names actually holding a car are listed, the counts always add up to All, and the choice rides in the URL so it survives a refresh. The "IN WORKSHOP" figure above it keeps counting the whole floor whatever is selected. **This is the only place Floor can see who is holding what** — the Live Report's own mechanic board is Office/Owner
    - Create new Job Cards
    - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Total Labour included, is Office/Owner only and is enforced on the server)
    - Use Autocomplete (search brands, models, spares, concerns)

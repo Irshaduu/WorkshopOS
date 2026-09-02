@@ -6,14 +6,14 @@
         {% if page_obj.has_previous %}
             <li class="page-item">
                 <a class="page-link shadow-sm border-0 rounded-pill px-3 py-2 bg-dark text-light" 
-                   href="?page=1{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" 
+                   href="?page=1{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if mechanic_key %}&mechanic={{ mechanic_key }}{% endif %}" 
                    aria-label="First">
                     <i class="bi bi-chevron-double-left small"></i>
                 </a>
             </li>
             <li class="page-item">
                 <a class="page-link shadow-sm border-0 rounded-pill px-3 py-2 bg-dark text-light" 
-                   href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" 
+                   href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if mechanic_key %}&mechanic={{ mechanic_key }}{% endif %}" 
                    aria-label="Previous">
                     <i class="bi bi-chevron-left small"></i>
                 </a>
@@ -25,7 +25,7 @@
             {% if num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
                 <li class="page-item {% if page_obj.number == num %}active{% endif %}">
                     <a class="page-link shadow-sm border-0 rounded-pill px-3 py-2 {% if page_obj.number == num %}bg-danger text-white fw-bold{% else %}bg-dark text-light{% endif %}" 
-                       href="?page={{ num }}{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}">
+                       href="?page={{ num }}{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if mechanic_key %}&mechanic={{ mechanic_key }}{% endif %}">
                         {{ num }}
                     </a>
                 </li>
@@ -36,14 +36,14 @@
         {% if page_obj.has_next %}
             <li class="page-item">
                 <a class="page-link shadow-sm border-0 rounded-pill px-3 py-2 bg-dark text-light" 
-                   href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" 
+                   href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if mechanic_key %}&mechanic={{ mechanic_key }}{% endif %}" 
                    aria-label="Next">
                     <i class="bi bi-chevron-right small"></i>
                 </a>
             </li>
             <li class="page-item">
                 <a class="page-link shadow-sm border-0 rounded-pill px-3 py-2 bg-dark text-light" 
-                   href="?page={{ page_obj.paginator.num_pages }}{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}" 
+                   href="?page={{ page_obj.paginator.num_pages }}{% if q %}&q={{ q }}{% endif %}{% if filter_type %}&filter={{ filter_type }}{% endif %}{% if start_date %}&start_date={{ start_date }}{% endif %}{% if end_date %}&end_date={{ end_date }}{% endif %}{% if mechanic_key %}&mechanic={{ mechanic_key }}{% endif %}" 
                    aria-label="Last">
                     <i class="bi bi-chevron-double-right small"></i>
                 </a>
