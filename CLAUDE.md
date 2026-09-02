@@ -6434,7 +6434,8 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 59 files, 1,921 tests. Always SQLite (see below).
+# Full test suite — 61 files, 1,978 tests. Always SQLite (see below).
+# Measured 2026-09-03: 3,849s (64 min), all green.
 python manage.py test workshop inventory
 ```
 
@@ -6542,8 +6543,8 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,921-test run
-is ~70 minutes rather than considerably worse. There is deliberately no flag to
+want. SQLite's test database is also in-memory, which is most of why a 1,978-test run
+is ~64 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
 
@@ -6778,8 +6779,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` (53 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **59 files, 1,921 tests**.
+Tests live in `workshop/tests/` (54 `test_*.py` plus `tests.py`) and `inventory/` (6
+files) — **61 files, 1,978 tests**, last measured 2026-09-03.
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 
