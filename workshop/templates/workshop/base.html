@@ -815,6 +815,72 @@
             text-decoration: none;
         }
 
+        {% comment %}
+        A very light HAIRLINE marks a break INSIDE a drawer section, where the
+        rows under one label fall into smaller groups. Three sections carry one:
+
+        — MONEY, the longest group in the drawer at six rows, breaks into three
+          pairs: the two ledgers keyed most days (Cashbook, Deposit & Rent), the
+          two customer-bill lists, then the two people-money pages.
+        — STOCK & SUPPLIERS separates OUR OWN shelf from the two outside shops we
+          buy from — Inventory is stock we hold, Supplies Shops and Spare Shops
+          are accounts we owe.
+        — RECORDS separates the car histories from the paperwork about them
+          (quotes, the reference lists, the audit log).
+
+        ⚠ The mark is only worth having where the groups are real. Do not add one
+        to a section just to keep a rhythm going: a rule that separates nothing
+        teaches the reader that the rule separates nothing.
+
+        ⚠ It shipped for one revision as EXTRA SPACE ALONE, and that is reversed
+        here on the owner's instruction. The argument for the gap was that the
+        drawer groups with exactly one device (`.drawer-label`), so a rule inside
+        a section is a second one and makes Money the only group in the drawer
+        with internal architecture. What overruled it is that a reader does not
+        know the intent: "space looks like a design arrangement issue as an
+        outsider user eyes". A gap is ambiguous — it reads as a layout accident
+        as easily as a grouping — and a line cannot be misread that way. Saying
+        the grouping OUT LOUD beats keeping the vocabulary pure.
+
+        Three things about the rule itself:
+
+        — It is INSET to the row's own 9px padding, never full width. The rows are
+          floating 12px pills, so a rule running edge to edge would cut across a
+          shape it is not part of; at 9px it starts under the icon tile's left
+          edge and stops at the chevron's right, so it reads as belonging to the
+          list rather than to the drawer.
+        — The colour is `--color-border-light` (#f1f5f9), NOT the `--color-border`
+          (#e2e8f0) hairline used everywhere else in the app, because the brief
+          was a VERY light grey. Both were rendered side by side before choosing:
+          #e2e8f0 measures 1.22:1 on white and #f1f5f9 measures 1.09:1, and at
+          1px on a 375px phone both read clearly — the lighter one simply sits
+          quieter, which is right for a separator on a list somebody opens twenty
+          times a day. It also fails gracefully: if it washes out on a
+          low-contrast laptop panel the 10px gap is still there, so the grouping
+          degrades to the spacing rather than to nothing. Swap the token to
+          `--color-border` if it ever reads too faint on the shop laptop.
+        — The 10px gap STAYS and the rule is centred in it (bottom: -5px), so the
+          line has air on both sides. Dropping the gap and drawing the rule flush
+          against the next row is what makes a list look like a table.
+
+        Measured on a 375px phone: in Money, breaks of 0 / 10 / 0 / 10 / 0 down
+        the group, the rule 1px, the section 20px taller than ungrouped.
+        {% endcomment %}
+        .drawer-group-end {
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .drawer-group-end::after {
+            content: '';
+            position: absolute;
+            left: 9px;
+            right: 9px;
+            bottom: -5px;
+            height: 1px;
+            background: var(--color-border-light);
+        }
+
         .drawer-ico {
             flex: 0 0 38px;
             width: 38px;
@@ -1480,12 +1546,28 @@ widen this and the audience together.
                     General Cashbook
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
+                {% comment %}
+                  Second, directly under the Cashbook, because the two are one
+                  pair: the ledgers keyed most days. It sat fifth of six, which
+                  buried the most frequent money action in the app under three
+                  lists nobody opens daily.
+
+                  Office-visible, matching `@office_required` on rent_home — the
+                  office is who hands the collector the cash and keys it. Only
+                  setting the rent itself is Owner-only, and that card is gated
+                  inside the page.
+                {% endcomment %}
+                <a class="drawer-link accent-teal drawer-group-end{% if p|slice:':6' == '/rent/' %} active{% endif %}" href="{% url 'rent_home' %}">
+                    <span class="drawer-ico"><i class="bi bi-building"></i></span>
+                    Deposit &amp; Rent
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
                 <a class="drawer-link accent-red{% if p|slice:':18' == '/pending-payments/' %} active{% endif %}" href="{% url 'pending_payments_list' %}">
                     <span class="drawer-ico"><i class="bi bi-exclamation-octagon"></i></span>
                     Pending Bills
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
-                <a class="drawer-link accent-green{% if p|slice:':12' == '/paid-bills/' %} active{% endif %}" href="{% url 'paid_bills_list' %}">
+                <a class="drawer-link accent-green drawer-group-end{% if p|slice:':12' == '/paid-bills/' %} active{% endif %}" href="{% url 'paid_bills_list' %}">
                     <span class="drawer-ico"><i class="bi bi-check-circle-fill"></i></span>
                     Paid Bills
                     <i class="bi bi-chevron-right drawer-chevron"></i>
@@ -1493,17 +1575,6 @@ widen this and the audience together.
                 <a class="drawer-link accent-amber{% if p|slice:':15' == '/salary-advance' %} active{% endif %}" href="{% url 'salary_advance_home' %}">
                     <span class="drawer-ico"><i class="bi bi-cash-coin"></i></span>
                     Salary &amp; Advance
-                    <i class="bi bi-chevron-right drawer-chevron"></i>
-                </a>
-                {% comment %}
-                  Office-visible, matching `@office_required` on rent_home — the
-                  office is who hands the collector the cash and keys it. Only
-                  setting the rent itself is Owner-only, and that card is gated
-                  inside the page.
-                {% endcomment %}
-                <a class="drawer-link accent-teal{% if p|slice:':6' == '/rent/' %} active{% endif %}" href="{% url 'rent_home' %}">
-                    <span class="drawer-ico"><i class="bi bi-building"></i></span>
-                    Deposit &amp; Rent
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 {% comment %}
@@ -1521,7 +1592,7 @@ widen this and the audience together.
                 {% endif %}
 
                 <div class="drawer-label">Stock &amp; Suppliers</div>
-                <a class="drawer-link accent-blue{% if p == '/inventory/list/' %} active{% endif %}" href="{% url 'inventory_list' %}">
+                <a class="drawer-link accent-blue drawer-group-end{% if p == '/inventory/list/' %} active{% endif %}" href="{% url 'inventory_list' %}">
                     <span class="drawer-ico"><i class="bi bi-box-seam"></i></span>
                     Inventory
                     <i class="bi bi-chevron-right drawer-chevron"></i>
@@ -1538,7 +1609,7 @@ widen this and the audience together.
                 </a>
 
                 <div class="drawer-label">Records</div>
-                <a class="drawer-link accent-sky{% if p|slice:':14' == '/car-profiles/' %} active{% endif %}" href="{% url 'car_profile_list' %}">
+                <a class="drawer-link accent-sky drawer-group-end{% if p|slice:':14' == '/car-profiles/' %} active{% endif %}" href="{% url 'car_profile_list' %}">
                     <span class="drawer-ico"><i class="bi bi-car-front"></i></span>
                     Car Profiles
                     <i class="bi bi-chevron-right drawer-chevron"></i>
