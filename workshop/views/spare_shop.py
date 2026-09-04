@@ -14,6 +14,7 @@ from django.urls import reverse
 
 from .. import photos as photo_storage
 from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
+from ..return_to import safe_return
 from ..decorators import office_required, owner_required, staff_required, is_office_or_owner, is_owner
 from ..notifications import notify
 from ..spare_dates import pair_problem
@@ -592,6 +593,11 @@ def spare_shop_print(request, pk):
 
     return render(request, 'workshop/spare_shops/shop_print.html', {
         'shop': shop,
+        # This template extends no base, so it carries no nav and no drawer —
+        # and in the installed app there is no browser chrome either. The
+        # `?back=` brings the FILTER back with the reader; the template falls
+        # back to this shop's own page when there is none.
+        'back_url': safe_return(request),
         'items': items_qs,
         'payments': payment_qs.order_by('-date', '-created_at'),
         'filter_type': filter_type,

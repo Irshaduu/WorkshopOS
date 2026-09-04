@@ -4,9 +4,12 @@
 
 {% block content %}
 <div class="container py-4">
+    <a href="{% url 'pending_payments_list' %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>Pending Bills</span>
+    </a>
+
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4 class="mb-0"><i class="bi bi-archive"></i> Archived Fleet Accounts</h4>
-        <a href="{% url 'pending_payments_list' %}" class="btn btn-sm btn-outline-secondary">Back to Pending Bills</a>
     </div>
 
     <div class="alert alert-secondary small">

@@ -7,13 +7,6 @@
 
     .sh-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
     .sh-head h1 { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
-    .btn-round {
-        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 50%; border: 1px solid var(--color-border);
-        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
-    }
-    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
 
     /* ---- Week switch ---- */
     .sh-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
@@ -93,10 +86,10 @@
 </style>
 
 <div class="sh-wrapper">
+    <a href="{% url 'inventory_list' %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>Inventory</span>
+    </a>
     <div class="sh-head">
-        <a href="{% url 'inventory_list' %}" class="btn-round" aria-label="Back to inventory">
-            <i class="bi bi-arrow-left"></i>
-        </a>
         <h1>Stock History</h1>
     </div>
 

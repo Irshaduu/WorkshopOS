@@ -84,15 +84,13 @@ labelled "Latest advance" when the id is missing — see the view.
 
   .sa-none { font-size: 1.05rem; font-weight: 700; opacity: 0.75; margin-top: 18px; }
 
-  .sa-back {
-    display: inline-flex; align-items: center; gap: 7px; margin-top: 16px;
-    color: var(--color-text-muted); text-decoration: none;
-    font-size: 0.82rem; font-weight: 700;
-  }
-  .sa-back:hover { color: var(--color-text); }
 </style>
 
 <div class="container-fluid py-3 sa-wrap">
+
+  <a class="pg-back" href="{% url 'salary_advance_home' %}?staff={{ staff.pk }}">
+    <i class="bi bi-arrow-left"></i><span>Salary &amp; Advance</span>
+  </a>
 
   <div class="sa-card">
     <div class="sa-name">
@@ -126,9 +124,6 @@ labelled "Latest advance" when the id is missing — see the view.
     {% endif %}
   </div>
 
-  <a class="sa-back" href="{% url 'salary_advance_home' %}?staff={{ staff.pk }}">
-    <i class="bi bi-arrow-left"></i> Salary &amp; Advance
-  </a>
 
 </div>
 {% endblock %}

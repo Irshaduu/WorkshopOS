@@ -30,21 +30,74 @@
       margin: 0;
       color: #666;
     }
-    .print-actions {
-      text-align: right;
+    /* ── Screen-only toolbar ──────────────────────────────────────────────
+       Copied from the invoice's own `.bar`, values and all, rather than
+       approximated. This sheet, the printed invoice and the printed estimate
+       are the three standalone templates in the app — they extend no base, so
+       they carry no nav bar and no drawer, and the installed app has no browser
+       chrome to fall back on either. They are also opened by the same person in
+       the same sitting, so a toolbar that changed shape between them would read
+       as three different products.
+
+       The exit leads, on the left, because it is the one control on this page
+       that must never be hunted for. */
+    .bar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: -20px -20px 20px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, .92);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid #e2e8f0;
     }
-    .btn-print {
-      background-color: #0d6efd;
-      color: #fff;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
+    .bar-spacer { flex: 1; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      /* 44px — these are tapped on a tablet and a phone, not only clicked. */
+      min-height: 44px;
+      padding: 0 16px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      font: 600 14px/1 inherit;
+      font-family: inherit;
+      text-decoration: none;
       cursor: pointer;
-      font-weight: bold;
-      font-size: 14px;
+      white-space: nowrap;
     }
-    .btn-print:hover {
-      background-color: #0b5ed7;
+    .btn svg { width: 17px; height: 17px; flex: none; }
+    .btn-ghost { background: #fff; border-color: #cbd5e1; color: #334155; }
+    .btn-ghost:hover { background: #f8fafc; }
+    .btn-primary { background: #1f4e79; color: #fff; }
+    .btn-primary:hover { background: #17395a; }
+
+    /* ⚠ ONE ROW ON A PHONE — the one place this toolbar deliberately does NOT
+       follow the invoice's.
+
+       That one breaks into two rows below 640px, and it has to: it carries five
+       things (a back button, a payment-state chip and three actions), so the
+       row genuinely runs out. This carries TWO buttons whose content measures
+       ~87px and ~104px, which fits one row down to a ~217px viewport — far
+       below anything this app supports. Copying the break spent a whole row on
+       a gap, and pushed the report's own heading further down the one screen
+       where vertical space is scarcest.
+
+       So the spacer stops being a line break and the two buttons share the row
+       instead, each taking half of it — bigger targets than their natural
+       widths, and the same equal-columns treatment the invoice's own second row
+       uses for its three actions. `min-width: max-content` keeps either from
+       being squeezed below its label if a translation ever lengthens one. */
+    @media (max-width: 640px) {
+      .bar { gap: 8px 6px; padding: 8px 10px; }
+      .bar-spacer { display: none; }
+      .bar .btn { flex: 1 1 0; min-width: max-content; }
     }
     .filter-badge {
       display: inline-block;
@@ -135,6 +188,42 @@
 </head>
 <body>
 
+  {% comment %}
+  THERE IS ALWAYS A WAY OFF THIS PAGE. Until now there was none at all: this
+  template rendered zero anchors, so once the installed app opened it — no
+  address bar, no Back button, no nav — the only exits left were the browser
+  gestures a standalone window does not show anybody.
+
+  Two destinations, and the FALLBACK is the interesting one. The invoice falls
+  back to Home because a bill has no single natural parent; this report does —
+  it is a report ABOUT one shop, and that shop's own page is always the right
+  answer. So `?back=` is not carrying the destination, it is carrying the
+  FILTER: `shop_detail` links here with its sort, its window and its custom
+  dates attached, and returning to a bare unfiltered ledger after reading a
+  filtered report is its own small defeat. Without one, the shop's page.
+
+  The arrow is an inline SVG, not an icon-font glyph: this template loads
+  nothing from anywhere, Bootstrap Icons included, so a `<i class="bi ...">`
+  here renders an empty box.
+  {% endcomment %}
+  <div class="bar no-print">
+    {% if back_url %}
+    <a href="{{ back_url }}" class="btn btn-ghost">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+      Back
+    </a>
+    {% else %}
+    <a href="{% url 'spare_shop_detail' shop.pk %}" class="btn btn-ghost">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+      {{ shop.name }}
+    </a>
+    {% endif %}
+
+    <span class="bar-spacer"></span>
+
+    <button type="button" class="btn btn-primary" onclick="window.print()">Print to PDF</button>
+  </div>
+
   <div class="print-header">
     <div class="shop-details">
       <h2 style="margin: 0; font-size: 26px;">
@@ -163,9 +252,6 @@
         {% endif %}
       </div>
       <div class="filter-badge">{{ item_count }} Spare{{ item_count|pluralize }}</div>
-    </div>
-    <div class="print-actions no-print">
-      <button class="btn-print" onclick="window.print()">Print to PDF</button>
     </div>
   </div>
   <div style="margin-top: 30px; margin-bottom: 20px;">

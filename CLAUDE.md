@@ -4871,7 +4871,10 @@ There is exactly **one** nav: a fixed bar in `base.html` plus a Bootstrap
 off-canvas drawer (`#appDrawer`) behind the Manage/Menu button. There used to be a
 second, divergent mobile bottom nav; it was deleted because the two menus listed
 different things. **Don't add a second nav** — a new destination goes in the
-drawer, in the section it belongs to.
+drawer, in the section it belongs to. ⚠ That rule was tested in 2026-09 by a
+request for a global back button in the bar and it held: see "Going back — one
+control, one shape, one place" for the measurements that refused it, and for
+why every page carries its own `.pg-back` instead.
 
 **The top bar carries a different set per role:**
 - **Owner / Office** — Admin · Completed · **Live** · Alerts · Manage. The bell is
@@ -5042,6 +5045,184 @@ padding / icon tile / gaps / chevron — so **246px is the width at which the la
 label stops fitting on one line**. 70vw clears it from 360px up; the 240px floor
 stops a 320px screen wrapping. Grow the type or shrink the width past that and rows
 start wrapping.
+
+## Going back — one control, one shape, one place
+
+**Every page carries its own way out, because in the installed app there is
+nothing else.** `manifest.json` declares `"display": "standalone"`, so there is
+no address bar and no browser Back button. A phone still has a system back
+gesture; **a laptop has nothing at all**, and Office reads this app on a laptop.
+
+**It is `.pg-back`, declared ONCE in `static/css/style.css`** — the file
+`base.html` links on every page, which is what lets one declaration reach 23
+templates. It sits in its own row **above the page header**, left-aligned, and
+it **names its destination** ("Spare Shops", "Control Hub", or the shop's own
+name).
+
+⚠ **A BACK CONTROL HERE IS A NAMED DESTINATION, NEVER `history.back()`.** Three
+reasons, and the first is fatal on its own: `start_url` is `"/"`, so on the
+first tap of a session `history.length` is 1 and a history button does
+**nothing** — and a control that sometimes does nothing is worse than no
+control. `history.length` also cannot say whether the previous entry is
+same-origin. And these pages are routinely opened from a notification or a
+bookmark, where there is no "back" to go to but there is always a right answer.
+
+**What it replaced, and why the fix was consolidation rather than a new global
+button.** Seventeen controls, two placements, seven treatments:
+
+| | n | what it was |
+|---|---|---|
+| 40px round icon button | 9 | six **byte-identical** `.btn-round` blocks, plus three rebuilding the same 40×40 geometry out of `btn-outline-secondary rounded-circle` + inline styles |
+| text link + arrow | 8 | five Bootstrap `text-muted small`, plus `.ua-back` / `.si-back` / `.sa-back` — which agreed on the idea and disagreed on every value: 0.82 vs 0.85rem, weight 600 vs 700, gap 5.6 vs 6 vs 7px, and two different hover colours |
+| bare glyph | 1 | `inventory/manage.html`, inline-styled, on a `--text-secondary` token this app does not define |
+| form Cancel | 4 | `javascript:history.back()` |
+
+That is the `.rpay-*` story exactly — a control drawn by more than one template,
+kept in step by hand, drifting three ways — so it got the same answer.
+
+⚠ **WHY THE BREADCRUMB PLACEMENT WON, and not the round button that had the
+larger share.** It is the only position that works on **every** page shape here.
+Nine of the round buttons sat *inside* a header flex row as a sibling of the
+`<h1>` — a good-looking header, and impossible on the three pages built around
+the dark `.detail-header` slab, where a bordered light button is a redesign of
+the slab rather than a back button. A row **above** the header needs nothing of
+the header at all, so it fits the plain `<h1>` pages, the slab pages and the
+pages that open on a filter row alike. **One placement beats a rule with three
+exceptions in it.** Since the destination is fixed at render time, printing it
+costs one short label and saves the reader a guess — so this is `.btn-round`'s
+own fill, border, colour and hover with its `aria-label` made visible, not a new
+design.
+
+**The label is the destination's NAME, never "Back to X"** — the arrow already
+says back, and the app's own rule is that a glyph does not need a caption
+repeating it. Three pages under one Supplies Shop all read that shop's name.
+
+**38px, and 44px under `@media (hover: none)`** — keyed on input method rather
+than a width breakpoint, the same pair as the job card's Add buttons and its
+date chip, because the Floor tablet is wider than plenty of laptops.
+
+⚠ **`display: flex` + `width: max-content`, never `inline-flex`.** An
+inline-flex element sits on a line box and drags its parent's line-height strut
+underneath it — the trap this file records twice. This is block-level, shrinks
+to its contents and carries its own 16px bottom margin, so a page needs one
+element and no wrapper. In the two cases where it joins an existing filter row
+(`spare_shops/shop_detail`, `suppliers/shop_detail`) it takes Bootstrap's
+`mb-0` and the row carries the margin for both.
+
+### There is NO global back button, and that was a decision
+
+⚠ **This was asked for and is deliberately NOT built** (2026-09-05). The brief
+was a back control in the nav bar for the installed desktop app. Three
+measurements against it, and the first is the one that decides:
+
+- **THE BAR'S FAR LEFT IS NOT EMPTY.** At every width the first item is
+  Home/Admin/Floor. There is no free slot. Measured at 1280: an 800px container
+  centred at x=232, five pills with 78px between them; at 768: 753px with 65px
+  gaps; at **375: five equal columns of 71px with 4px gaps**.
+- **A sixth phone tab costs every existing tab 17%** — probed live, 71px →
+  **59px** — on the one device that already has a system back gesture and needs
+  this least.
+- **It would make the owner's actual complaint worse.** The complaint was that
+  the back controls were "all different look, different place, different design"
+  — about the controls that exist, not a missing one. Add a global button on top
+  and ~20 pages carry **two** back affordances in different places.
+
+Once every page carries `.pg-back`, the standalone gap is closed by
+construction, so the global button would buy only "return to where I actually
+came from" rather than "escape" — a convenience, over a control that does
+nothing on the first page of a session.
+
+⚠ **If it is ever revisited: top-LEFT, and desktop-standalone only.** The right
+end is the crowded end (the 44px bell sits next to the 110px Manage pill) and a
+mis-tap there opens the drawer. `@media (display-mode: standalone) and (pointer:
+fine)` is supported and gates it with no script — but note it renders the control
+**invisible in a dev browser tab**, so it has to be tested by flipping the gate.
+Never a sixth phone tab.
+
+⚠ **`"display": "minimal-ui"` is not the shortcut it looks like.** It is
+per-manifest, not per-platform, so phones lose full-screen too; `display_override`
+has no desktop-only selector; and an installed app **caches its manifest**, so
+every device needs a remove-and-re-add. Checked again 2026-09-05, unchanged.
+
+### The three standalone sheets
+
+The printed invoice, the printed estimate and a spare shop's printed purchase
+report extend no base, so they carry no nav bar and no drawer — and in the
+installed app, no browser chrome either. All three answer the same way: an
+optional **`?back=`** for the screen you came from, and a **named fallback** when
+there is none. The invoice's own comment states the rule: *"Home is the fallback,
+never a second button beside Back — one exit, in one place, whichever it is."*
+
+⚠ **`spare_shop_print` rendered ZERO anchors until 2026-09-05** — measured, not
+inferred. It was the only true dead end in the app: in a browser tab the address
+bar rescued it, and in the installed app there was nothing at all.
+
+Its fallback is **not** Home, and the difference is worth keeping: a bill has no
+single natural parent, but this report is *about one shop*, and that shop's page
+is always right. So `?back=` here is not carrying the destination — it is
+carrying the **FILTER**. `shop_detail` links across with its sort, its window and
+its custom dates, and returning to a bare unfiltered ledger after reading a
+filtered report is its own small defeat.
+
+⚠ **The arrow is an inline SVG, never `<i class="bi ...">`.** These sheets load
+nothing from anywhere, Bootstrap Icons included, so an icon-font glyph renders an
+empty box.
+
+⚠ **Its toolbar is COPIED from the invoice's `.bar`, values and all.** The three
+are opened by the same person in one sitting; a toolbar that changed shape
+between them reads as three different products. `.pg-back` cannot be used here —
+these templates link no stylesheet at all.
+
+⚠ **ONE EXCEPTION: it stays ONE ROW on a phone, where the invoice's breaks into
+two.** That break was copied over with everything else and was wrong here, on
+the owner's report (2026-09-05). The invoice needs it because it carries **five**
+things — a back button, a payment-state chip and three actions — so the row
+genuinely runs out. This carries **two** buttons measuring ~84px and ~104px,
+which fit one row down to a ~217px viewport, far below anything this app
+supports. So the break spent a whole row on a gap, on the screen where vertical
+space is scarcest: measured, the phone bar was **117px and is now 63px**, which
+lifts the report's own heading 54px up the page.
+
+Below 640px the spacer stops being a line break (`display: none`) and the two
+buttons take half the row each — bigger targets than their natural widths, and
+the same equal-columns treatment the invoice's own second row gives its three
+actions. **The 640px transition is now width-only and never a row change**:
+84/104px at 641px, 307/307px at 639px, 175px each at 375px, 147px each at 320px,
+with neither label clipped at any of them.
+
+⚠ *Known and NOT fixed:* `shop_print`'s purchase table overflows a 375px phone by
+14px (measured; the offenders are `TABLE`/`TR`/`TD`, nothing in the toolbar). It
+predates this work and prints correctly on A4 — a table-layout question, not a
+navigation one.
+
+### `workshop/return_to.py`
+
+`safe_return(request, param='back')` — the one implementation of "honour `?back=`
+only when it points back into this site". It was two byte-identical copies
+(`views/billing.py`, `views/estimate.py`) before a third was needed.
+
+⚠ **`auth_views._safe_next` is a fourth spelling of the same host check and is
+deliberately NOT folded in.** It answers a different question — where to send
+somebody *after* they sign in, not where they came from — it reads POST as well
+as GET, and it is the more security-sensitive of the two with its own tests.
+Fold it in only as its own change, with those tests in front of you.
+
+### Cancel is not Back
+
+The four master-list forms cancelled with `javascript:history.back()`. Each has
+exactly one caller, so a named URL was always available and is strictly better:
+it survives an empty history, and it is the one thing on those pages a CSP would
+break.
+
+⚠ **They keep the word "Cancel" and do NOT take `.pg-back`.** Cancel-beside-Save
+in a form footer is a different control from a page's back affordance;
+collapsing the two would put a "back" pill inside a button group. `model_create`
+and `model_edit` pass a `cancel_url` because a model list is scoped to its brand
+— Toyota's models and another make's are different lists.
+
+→ `workshop/tests/test_back_navigation.py`. The scan for retired treatments is
+the load-bearing one: nothing in the Django suite executes CSS, and a new page
+pasting a bespoke back link is invisible to every other kind of test.
 
 ## Card list grids — six lists, two breakpoints
 
@@ -7157,7 +7338,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 62 files, 2,134 tests. Always SQLite (see below).
+# Full test suite — 63 files, 2,145 tests. Always SQLite (see below).
 # Last full run 2026-09-04: 2,134 tests, ALL GREEN.
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
@@ -7421,7 +7602,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Ten modules hold no views at all** — this is the codebase's main structural idea, and
+**Eleven modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -7433,6 +7614,7 @@ each exists so that one rule has exactly one implementation:
 | `money.py` | is this typed rupee amount acceptable for its column? |
 | `money_dates.py` | what day did this money move? — both Cashbook forms, all three payment screens, the Supplies Shop bill and the job card's admitted date |
 | `spare_dates.py` | is this ordered/received pair the right way round? |
+| `return_to.py` | where does this page send you when you leave it? |
 | `delete_window.py` | has this money row been in the books too long for Office to delete? |
 | `rent.py` | how much should we hand the rent collector today? |
 | `photos.py` | where do the bytes go, and how is the URL signed? |
@@ -7521,8 +7703,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **62 files, 2,134 tests**,
-counted 2026-09-04. (`workshop/tests/` is 56 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **63 files, 2,145 tests**,
+counted 2026-09-05. (`workshop/tests/` is 57 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

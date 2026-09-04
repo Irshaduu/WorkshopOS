@@ -845,3 +845,124 @@ select.status-fixed {
 @media (max-width: 640px) {
     .rpay-card { padding: 0.85rem 0.85rem 0.75rem; }
 }
+
+/* ==========================================================================
+   PAGE BACK — one control, one shape, one place
+   ==========================================================================
+
+   The installed app declares `"display": "standalone"`, so it carries no
+   address bar and no browser Back button. A phone still has a system back
+   gesture; a laptop has nothing at all. So every page has to carry its own way
+   out — and the way out has to look the same on all of them, or the app reads
+   as several products stitched together.
+
+   It did. Seventeen back controls had drifted into two placements and seven
+   treatments: a 40px round icon button beside the page title (nine of them —
+   six byte-identical `.btn-round` copies plus three more rebuilding the same
+   40x40 geometry out of `btn-outline-secondary rounded-circle` and inline
+   styles), and a text link above the content (eight — five Bootstrap
+   `text-muted small`, plus `.ua-back`, `.si-back` and `.sa-back`, which agreed
+   on the idea and disagreed on every value: 0.82 vs 0.85rem, weight 600 vs
+   700, gap 5.6 vs 6 vs 7px, and two different hover colours). This is the
+   `.rpay-*` story exactly — a control drawn by more than one template, kept in
+   step by hand, drifting three ways — so it gets the same answer: one
+   declaration in the file `base.html` links on every page.
+
+   WHY THE BREADCRUMB PLACEMENT WON, and not the round button that had the
+   larger share. It is the only position that works on every page shape in this
+   app. Nine of the round buttons sit INSIDE a header flex row as a sibling of
+   the `<h1>`, which is a good-looking header and is impossible on the three
+   pages built around the dark `.detail-header` slab — a bordered light button
+   dropped into that gradient is a redesign of the slab, not a back button. A
+   row above the header needs nothing of the header at all, so it fits the
+   plain `<h1>` pages, the slab pages and the pages that open on a filter row
+   alike. One placement beats a rule with three exceptions in it.
+
+   WHY IT NAMES ITS DESTINATION. A back control here is a NAMED DESTINATION,
+   never `history.back()`: it has to work when the page was opened from a
+   notification, a bookmark, or the first tap of a session — and `start_url` is
+   "/", so `history.length` is 1 on that first page and a history button would
+   do nothing at all. Since the destination is fixed, printing it costs one
+   short label and saves the reader a guess. This is `.btn-round`'s own fill,
+   border, colour and hover — its `aria-label` made visible, not a new design.
+
+   `display: flex` + `width: max-content` rather than `inline-flex`: an
+   inline-flex element sits on a line box and drags its parent's line-height
+   strut underneath it, which is the trap recorded twice in CLAUDE.md. This is
+   block-level, shrinks to its contents, and carries its own bottom margin, so
+   a page needs one element and no wrapper.
+   ========================================================================== */
+.pg-back {
+    display: flex;
+    width: max-content;
+    max-width: 100%;
+    align-items: center;
+    gap: 8px;
+    /* 12px on the arrow side, 14px on the label side — the arrow glyph carries
+       its own optical left-bearing, so equal padding reads as a control that
+       has slipped right inside its own pill. */
+    padding: 0 14px 0 12px;
+    /* 38px on a pointer and 44px on a finger, keyed on INPUT METHOD rather
+       than a width breakpoint — the Floor tablet is wider than plenty of
+       laptops, and it is the finger that decides how big a target must be.
+       Same pair as the job card's Add buttons and its date chip. */
+    min-height: 38px;
+    margin: 0 0 16px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 999px;
+    background: var(--color-card, #ffffff);
+    color: var(--color-text-muted, #64748b);
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* The label is what can run long; the arrow never is. Every fixed label in the
+   app is short — the longest is a settlement month ("September 2026
+   Settlement") — but four of these print a SHOP'S NAME, which is user data and
+   has no ceiling. Measured with a 52-character name in a 300px column: the
+   pill clamps to 284px and the label ellipsises rather than pushing the page
+   sideways. `max-width: 100%` on the pill is the other half of that. */
+.pg-back span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pg-back i {
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+/* Hover only where there is a pointer: on a touch screen it never fires, and
+   where it does fire it sticks. */
+@media (hover: hover) {
+    .pg-back:hover {
+        background: var(--color-hover, #f8fafc);
+        border-color: var(--color-text-muted, #64748b);
+        color: var(--color-text, #0f172a);
+    }
+}
+
+.pg-back:focus-visible {
+    outline: 2px solid var(--color-primary, #2563eb);
+    outline-offset: 2px;
+    color: var(--color-text, #0f172a);
+}
+
+/* A finger gets a real squash instead, and a bigger target. */
+@media (hover: none) {
+    .pg-back { min-height: 44px; }
+    .pg-back:active {
+        background: var(--color-hover, #f8fafc);
+        transform: scale(0.97);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pg-back { transition: none; }
+    .pg-back:active { transform: none; }
+}

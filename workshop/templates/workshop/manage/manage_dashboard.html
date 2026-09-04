@@ -11,13 +11,6 @@
     }
     .hub-head-text h1 { font-size: 1.3rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; color: var(--color-text); }
     .hub-head-text p { font-size: 0.82rem; color: var(--color-text-muted); margin: 4px 0 0; }
-    .btn-round {
-        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 50%; border: 1px solid var(--color-border);
-        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
-    }
-    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
 
     /* ---- Level 0: menu tiles ---- */
     .hub-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -119,6 +112,12 @@
     .modal-content { border-radius: 16px; border: 0; }
 </style>
 
+{% if section %}
+<a href="{% url 'manage_dashboard' %}" class="pg-back">
+    <i class="bi bi-arrow-left"></i><span>Control Hub</span>
+</a>
+{% endif %}
+
 <div class="hub-head">
     <div class="hub-head-text">
         {% if not section %}
@@ -135,11 +134,6 @@
             <p>Live login sessions across every device, with the ability to revoke access.</p>
         {% endif %}
     </div>
-    {% if section %}
-    <a href="{% url 'manage_dashboard' %}" class="btn-round" aria-label="Back to Control Hub">
-        <i class="bi bi-arrow-left"></i>
-    </a>
-    {% endif %}
 </div>
 
 {# Messages handled by base.html — no duplicate block needed here #}

@@ -7,14 +7,7 @@
 
     .cat-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
     .cat-head h1 { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-    .btn-round {
-        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 50%; border: 1px solid var(--color-border);
-        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
-    }
-    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
-    .cat-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 18px 52px; }
+    .cat-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 18px; }
 
     .prod-list {
         background: var(--color-card); border: 1px solid var(--color-border);
@@ -59,16 +52,15 @@
     .empty p { font-size: 0.82rem; color: var(--color-text-muted); margin: 0; }
 
     @media (max-width: 420px) {
-        .cat-sub { margin-left: 0; }
         .prod-item { padding: 14px 14px; }
     }
 </style>
 
 <div class="cat-wrapper">
+    <a href="{% url 'inventory_manage' %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>Categories</span>
+    </a>
     <div class="cat-head">
-        <a href="{% url 'inventory_manage' %}" class="btn-round" aria-label="Back to categories">
-            <i class="bi bi-arrow-left"></i>
-        </a>
         <h1>{{ category.name }}</h1>
     </div>
     <p class="cat-sub">{{ page_obj.paginator.count }} product{{ page_obj.paginator.count|pluralize }} in this category</p>

@@ -21,10 +21,10 @@ taken mid-transition reports the old colour whatever the rule says.
   }
 </style>
 <div class="container mt-5" style="max-width: 600px;">
+    <a href="{% url 'supplier_shop_detail' shop.id %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>{{ shop.name }}</span>
+    </a>
     <div class="d-flex align-items-center mb-4">
-        <a href="{% url 'supplier_shop_detail' shop.id %}" class="btn btn-outline-secondary rounded-circle me-3" style="width:40px; height:40px; padding:0; display:flex; align-items:center; justify-content:center;">
-            <i class="bi bi-arrow-left"></i>
-        </a>
         <h2 class="fw-bold m-0">Record Payment</h2>
     </div>
 

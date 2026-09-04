@@ -5,7 +5,6 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.http import url_has_allowed_host_and_scheme
 
 from ..models import JobCard, JobCardLabourItem, JobCardSpareItem
 from ..decorators import office_required
@@ -13,26 +12,8 @@ from ..invoice import build_invoice
 from ..notifications import notify
 from ..settlement import settlement_readiness
 from ..money import parse_money
+from ..return_to import safe_return
 
-
-def _safe_back(request):
-    """
-    Honour ?back= only when it points back into this site.
-
-    Every screen that links here appends its own path so the invoice can offer a
-    way home, but the value arrives from the URL and was previously written
-    straight into an href — so a crafted link could put `javascript:` or another
-    origin behind a button styled as this app's own. Same check the login form's
-    `?next=` goes through.
-    """
-    target = request.GET.get('back') or ''
-    if target and url_has_allowed_host_and_scheme(
-        url=target,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        return target
-    return None
 
 
 @office_required
@@ -70,7 +51,7 @@ def invoice_view(request, pk):
     context = build_invoice(jobcard)
     context.update({
         'jobcard': jobcard,
-        'back_url': _safe_back(request),
+        'back_url': safe_return(request),
         # What is still unfilled, for the confirmation in front of Settle Bill.
         # Screen only, like `high_discount_threshold` below — none of it reaches
         # paper, and `build_invoice` deliberately knows nothing about it.

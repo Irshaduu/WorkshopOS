@@ -18,12 +18,12 @@ from django.db import transaction
 from django.db.models import Q, Prefetch
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
-from django.utils.http import url_has_allowed_host_and_scheme
 
 from ..decorators import office_required
 from ..forms import EstimateForm, EstimateJobFormSet, EstimatePartFormSet
 from ..invoice import build_estimate
 from ..models import Estimate, EstimateJobLine, EstimatePartLine, SparePart
+from ..return_to import safe_return
 
 # Same page size as every other list view in the app.
 PAGE_SIZE = 45
@@ -55,18 +55,6 @@ def _ordered_lines():
         Prefetch('parts', queryset=EstimatePartLine.objects.order_by('pk')),
     ]
 
-
-def _safe_back(request):
-    """Honour ?back= only when it points back into this site — same check the
-    invoice's back button goes through."""
-    target = request.GET.get('back') or ''
-    if target and url_has_allowed_host_and_scheme(
-        url=target,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        return target
-    return None
 
 
 # -----------------------------------------------------------------------------
@@ -219,7 +207,7 @@ def estimate_print(request, pk):
     context = build_estimate(estimate)
     context.update({
         'estimate': estimate,
-        'back_url': _safe_back(request),
+        'back_url': safe_return(request),
     })
     return render(request, 'workshop/estimate/estimate_print.html', context)
 

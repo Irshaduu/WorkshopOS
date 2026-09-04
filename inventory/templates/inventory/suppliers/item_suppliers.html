@@ -39,17 +39,6 @@
     /* Was a bordered `rounded-pill` button the same visual weight as the
        page's real actions — this is a way back, not one. Lightweight text
        link, matching the back-link on Spare Shop / Supplies Shop detail. */
-    .si-back {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        color: var(--color-text-muted);
-        text-decoration: none;
-        font-size: 0.85rem;
-        font-weight: 600;
-        margin-bottom: 1rem;
-    }
-    .si-back:hover { color: var(--color-primary); }
 
     .supplier-card {
         background: var(--color-card);
@@ -115,8 +104,12 @@
         <div class="si-subtitle">{{ item.name }}</div>
     </div>
 
-    <a href="{% url 'inventory_home' %}" class="si-back">
-        <i class="bi bi-arrow-left"></i> Back to Inventory
+    {% comment %}
+    `inventory_home` only redirects here, so this points straight at the
+    destination rather than paying for a hop.
+    {% endcomment %}
+    <a href="{% url 'inventory_list' %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>Inventory</span>
     </a>
 
     {% if catalogs %}

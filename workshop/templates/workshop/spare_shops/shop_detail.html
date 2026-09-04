@@ -205,8 +205,9 @@
 
 <!-- ── Back breadcrumb & Filters ── -->
 <div class="mb-3 d-flex justify-content-between align-items-center">
-  <a href="{% url 'spare_shop_list' %}" class="text-muted text-decoration-none small">
-    <i class="bi bi-arrow-left me-1"></i><i class="bi bi-gear-wide-connected me-1"></i> All Spare Shops
+  {# Sits in the filter row, which carries the bottom margin for both. #}
+  <a href="{% url 'spare_shop_list' %}" class="pg-back mb-0">
+    <i class="bi bi-arrow-left"></i><span>Spare Shops</span>
   </a>
 
   <div class="d-flex align-items-center gap-2">
@@ -478,7 +479,11 @@
     
     <div class="d-flex align-items-center gap-2">
       <!-- Print Button -->
-      <a href="{% url 'spare_shop_print' shop.pk %}?sort_by={{ sort_by }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}" 
+      {% comment %}
+      `back` carries this page's own filter state, so the report's exit
+      returns to the ledger as it was being read, not to a bare one.
+      {% endcomment %}
+      <a href="{% url 'spare_shop_print' shop.pk %}?sort_by={{ sort_by }}&filter={{ filter_type|default:'all' }}&start_date={{ start_date|default:'' }}&end_date={{ end_date|default:'' }}&back={{ request.get_full_path|urlencode }}"
          class="btn btn-sm btn-outline-secondary rounded-pill fw-bold border" 
          style="font-size: 0.75rem; padding: 0.25rem 0.8rem;">
          <i class="bi bi-printer-fill me-1"></i> Print
