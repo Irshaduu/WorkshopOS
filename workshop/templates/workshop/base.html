@@ -1496,6 +1496,17 @@ widen this and the audience together.
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 {% comment %}
+                  Office-visible, matching `@office_required` on rent_home — the
+                  office is who hands the collector the cash and keys it. Only
+                  setting the rent itself is Owner-only, and that card is gated
+                  inside the page.
+                {% endcomment %}
+                <a class="drawer-link accent-teal{% if p|slice:':6' == '/rent/' %} active{% endif %}" href="{% url 'rent_home' %}">
+                    <span class="drawer-ico"><i class="bi bi-building"></i></span>
+                    Deposit &amp; Rent
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% comment %}
                   OWNER-ONLY inside a group Office can see, matching
                   `@owner_required` on every view under /withdrawals/. A
                   template gate must mirror its view's decorator, and a door

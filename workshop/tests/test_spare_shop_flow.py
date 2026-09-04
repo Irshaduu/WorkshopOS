@@ -577,8 +577,20 @@ class APaymentIsDatedByTheDayTheMoneyMovedTests(SpareFlowBase):
         self.assertIn('name="date"', page)
 
     def test_a_payment_is_stored_on_the_posted_date(self):
+        """
+        ⚠ THE DATE IS THE 2nd OF LAST MONTH, NOT `today - 40 days`, and the
+        change is two fixes rather than one.
+
+        It is inside the Office back-date floor, which is the 1st of last
+        month — a payment older than that is an owner's call now, and this test
+        signs in as Office. And the old form was FLAKY on its own terms: 40
+        days back lands in last month for most of a month and in the month
+        BEFORE it near the start, so the test's meaning depended on the day it
+        ran. Anchoring to a month boundary makes it deterministic, and the
+        point it proves — the POSTED date is stored, not today — is untouched.
+        """
         self._owing_spare()
-        backdated = timezone.localdate() - timedelta(days=40)
+        backdated = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=2)
         self._pay(date=str(backdated))
         self.assertEqual(SpareShopPayment.objects.get().date, backdated)
 
@@ -620,9 +632,23 @@ class APaymentIsDatedByTheDayTheMoneyMovedTests(SpareFlowBase):
 
     def test_the_balance_ignores_the_window_entirely(self):
         """A debt is not a period. Whichever filter is on, what the shop is
-        owed is every purchase against every payment."""
+        owed is every purchase against every payment.
+
+        ⚠ THE OLD ROW IS BUILT ON THE MODEL, NOT POSTED THROUGH THE FORM. This
+        test is about what the PAGE reads, and it wants a payment far outside
+        every window — 400 days — to prove the balance ignores all of them.
+        Office may no longer FILE one that old (`money_dates.too_far_back`),
+        but one can certainly exist: an owner may file it, and the demo and
+        go-live data carry older rows still. Posting it through the form would
+        make this a test of the form's policy, which is pinned separately in
+        `test_backdate_floor.py`, and would quietly stop proving the thing it
+        is named for the moment the floor changed.
+        """
         self._owing_spare()
-        self._pay(date=str(timezone.localdate() - timedelta(days=400)))
+        SpareShopPayment.objects.create(
+            shop=self.shop, amount=D('4000'), payment_method='CASH',
+            date=timezone.localdate() - timedelta(days=400))
+        self.shop.update_totals()
         for window in ('today', 'this_month', 'last_year', 'all'):
             with self.subTest(filter=window):
                 page = self.client.get(reverse('spare_shop_detail', args=[self.shop.pk]),

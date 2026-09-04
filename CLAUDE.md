@@ -1530,6 +1530,399 @@ that has one thing to delete. The corners are rounded on the rows.
 → `TheHistoryListCanAlwaysBeActedOnTests` asserts the declaration, because
 nothing in the Django suite executes CSS.
 
+## Deposit & Rent
+
+The workshop rents its premises for a fixed amount a month and pays for it in
+**daily cash instalments**. A collector comes round every day, the office gives
+him whatever it can spare — commonly ₹1,500 to ₹3,000, sometimes nothing — and
+he writes it in his own book. The landlord draws the accumulated pot every few
+months. The office worked out what to hand over by doing
+`(target − paid so far) ÷ days left` on paper every morning. `/rent/` is that
+calculation, and the owners asked for nothing else.
+
+⚠ **THE RENT AND THE DEPOSITS ARE TWO DIFFERENT NUMBERS AND MUST NEVER BECOME
+ONE.** The rent is what a month COST — a fixed ₹35,000, whatever cash happened
+to move. The deposits are how it gets PAID. Collapse them and a month where the
+office had a good week reports a higher rent than a month where it did not, so
+monthly profit swings on a cash-flow decision rather than on what the month
+cost — and the owners read monthly profit to decide distribution. This is the
+rule the app already follows three times: wages are dated by the salary MONTH
+and not the day the cash left; a `SupplierPayment` never touches profit while
+the stock DRAW does; a spare-shop payment never touches profit while the part
+fitted does. Rent is the fourth instance, not a new idea.
+
+**The owner's first design collapsed them, and it is worth recording why it was
+refused rather than just replaced.** The proposal was one editable ₹35,000 that
+was both the monthly target and the automated expense, with an over-deposit
+lowering next month's target to ₹30,000. Both halves are individually right;
+together they make September's *rent expense* ₹30,000 because August had a good
+week. And when the field reads 40,000 nothing can say whether that is a rent
+hike or a carry adjustment.
+
+**NOTHING IS STORED BUT THE RATE AND THE DEPOSITS.** No "this month's target"
+column, no carry-forward column, no per-month charge row. Everything else is
+derived on read in `workshop/rent.py`. That is what keeps the section two
+tables instead of a ledger somebody has to keep in step, and a stored carry
+would be a second copy of a figure already implied — free to drift, and it
+would drift at a month boundary, the only place anybody would notice.
+
+**THE PACE, in full** — one expression, no branches:
+
+```
+carry_in  = deposits BEFORE this month − rent charged for months BEFORE this
+due       = max(0, this month's rent − carry_in)
+remaining = max(0, due − deposits so far this month)
+pay today = remaining ÷ days left in the month, INCLUDING today
+```
+
+Every case the owner asked about falls out of it: an over-deposit turns
+`carry_in` positive so next month asks for less; a skipped day leaves
+`remaining` alone while `days_left` shrinks, so tomorrow asks for more; being a
+long way ahead floors at zero rather than printing a negative to pay. Including
+today in `days_left` is what makes the last day of the month ask for the whole
+shortfall instead of dividing by zero. **Rounded UP to the rupee** — down would
+leave a few rupees uncovered on the last day of every month, and the figure
+self-corrects tomorrow whatever is actually paid.
+
+⚠ **THE PACE AND THE POSITION CHARGE DIFFERENT MONTHS, AND THAT ASYMMETRY IS
+THE DESIGN.** `pay_today` charges the CURRENT month in full, because finishing
+it is what is being paced. `carry_in` stops at the END OF LAST MONTH, because
+it answers a different question — are the months that are *done* square? Charge
+the current month there too and the page reads **"behind ₹35,000" every month
+from the 1st to the 5th**: alarming, meaningless, and precisely how a real
+₹4,500 shortfall stops being noticed. Both sides cut deposits at the same
+boundary, so a catch-up paid in September clears August's shortfall the moment
+September ends.
+→ `ThePositionStopsAtTheEndOfLastMonthTests`
+
+**A RENT RATE IS ABSOLUTE AND EFFECTIVE-DATED, NEVER AN INCREMENT.** `RentRate`
+is `(effective_from, amount)`, one row per month, `unique`, pinned to the 1st in
+`save()`. An adjustment form (`+5,000` / `−3,000`) was proposed as the *safer*
+option and is the opposite: a delta on a number the person has to already know,
+so a mis-keyed `+5000` where `5000` was meant is silently ₹40,000, and after a
+few nobody can say what the rent IS without adding them up. The landlord says
+"forty thousand from January" — that is what gets stored, and what the history
+list prints back.
+
+**A RATE MAY BE BACKDATED, AND THAT IS DELIBERATE.** Hikes are routinely agreed
+late and applied from an earlier month; refusing one leaves the books
+permanently wrong. It *does* reprice those months, which is why it is
+Owner-only and confirmed by name — the danger was never backdating, it was
+history moving **silently**. The owner's own worked example, which is a test
+verbatim: rent raised to ₹40,000 from January, keyed in March, takes today's
+figure from ₹1,000 to ₹4,000 because three months reprice at once.
+**A rate may also be dated AHEAD** — a hike announced now, effective in
+January. That is the one forward date in the section, and it is safe because a
+rate is not money: `rate_for()` applies it only once its month arrives.
+→ `ARentChangeRepricesTheMonthsItCoversTests`, `ARateDatedAheadChangesNothingYetTests`
+
+**THERE IS NO OPENING-BALANCE FIELD, and none is needed.** The ledger begins at
+the first rate's month, so a workshop switching this on mid-September sets the
+rate from September and keys that month's deposits off the collector's book —
+a handful of rows, and the position is then exact. Whatever was settled before
+that month is history between the workshop and the landlord, the same answer
+opening stock gets. A signed opening figure was designed and dropped once this
+turned out to cover it.
+
+⚠ **THE HERO IS DARK GREEN, AND IT IS THE ONLY SECTION HEADER IN THE APP THAT
+IS NOT THE SHARED SLATE SLAB** (`#14532d` → `#052e16`, the owner's
+instruction). Same gradient geometry, same 16px radius, same type — only the
+two stops differ, so it still reads as this app's section header rather than as
+a different product, which is the failure the Owner Withdrawals green ground
+was reverted for.
+
+**Green is the app's MONEY-IN colour and rent is money OUT, so this is a stated
+exception rather than an oversight.** It survives because that rule governs
+AMOUNTS — a green figure means money coming in — and no amount on this card is
+green: the ground is, and a ground is an identity, not a direction. **Do not
+extend it to the figures.**
+
+⚠ **The label alpha is `.72`, NOT the slate slab's `.55`, and the difference is
+measured rather than eyeballed.** Green is a far lighter ground than `#1e293b`,
+so the same alpha composites to much less contrast: `.55` and even `.66` land
+at **4.15:1** against the gradient's lightest stop, and the label is 10.9px
+**bold** — under WCAG's large-text threshold, so it needs 4.5:1, not 3:1.
+Measured after the change: label **5.59:1**, the figure and the working line
+**9.11:1**.
+
+⚠ **UPDATE RENT LIVES IN A ⋮ IN THE HERO, NOT IN A CARD.** Setting the rent is
+a once-a-YEAR act; recording a deposit happens most days. It shipped as a card
+at the foot of the page and that was a permanent block of furniture for
+something almost nobody would ever press — the owner's call moved it. Behind
+the menu it costs one line of markup and nothing on screen, and everything it
+needs is in one modal: the form, the note about backdating, and the history of
+what the rent has been. Owner-only, ⋮ and modal alike, matching
+`@owner_required` on `rent_rate_set`.
+
+⚠ `.rt-hero-menu` needs `display: flex` AND `line-height: 0`. Bootstrap's
+`.dropdown` is a plain inline box, so it inherits the surrounding line-height
+and the button sits on THAT line box's baseline — dropped several pixels, and
+then setting the row's height. Same cause and same fix as the table cell
+holding an inline-flex child, and as the read-only job card's own ⋮.
+
+**BUILT FOR TWENTY YEARS, WITH NO CAP AND NO PAGER ANYWHERE.** Two rules do it:
+
+- **The deposit log shows ONE MONTH** (`?month=YYYY-MM`), which is naturally
+  bounded at about sixty rows however long the business runs. An unreadable or
+  future month falls back to the current one — the Estimates list's own rule —
+  because an empty list under a heading naming a month reads as "nothing was
+  deposited then", and that would be a lie.
+- **The history is COLLAPSED YEAR BLOCKS** — Salary & Advance's own pattern,
+  where the running year opens and older ones sit behind a one-line total. Two
+  decades is twenty closed lines and one open year of twelve. Each month row
+  **links to its own deposits**, which is the only navigation the log needs and
+  is why the log can show one month and carry no pager.
+
+A row cap was the first answer and it was wrong the way caps usually are:
+everything past it becomes unreachable, and a money list that quietly stops is
+worse than a long one.
+
+⚠ **`month_rows()` walks EVERY month, not just the ones drawn.** The running
+figure is the point of the table and it is only right if it carries the whole
+history, so a year opened halfway down twenty years still agrees with the hero.
+Twenty years is 240 iterations over one grouped query.
+→ `TwentyYearsStaysReadableTests`, `WhichMonthTheLogIsShowingTests`. The cost
+is asserted as an **invariant** — the same page over twenty years and over one
+month must issue the same query count — never against a magic number, which
+would go stale on the next query added.
+
+⚠ **A YEAR'S LINE COUNTS ONLY MONTHS THAT HAVE FINISHED — the hero's "before
+this month" rule, one level up.** Taken from its latest month, the CURRENT year
+carries an unfinished month's whole rent against a few days of deposits, so the
+running year read a five-figure **"behind" from the 1st of every month** — on
+the one line whose entire job is to say whether that year needs opening.
+`year_blocks()` backs the month in progress out of the current block only, by
+subtracting that row's own movement rather than by a second query. The month
+still shows its in-progress figure in the row inside.
+
+⚠ **AND THAT LINE CARRIES ONE FIGURE, NOT THREE.** It shipped as
+`₹2,58,300 of ₹2,80,000  −₹3,700` and the owner's verdict was that the section
+had too many numbers to read. The answer to "do I need to open this year?" is
+the position and nothing else, so it now reads **"All square"** or "Behind
+₹4,500" — a column of *All square* down twenty years is scannable in one pass
+and the year that is not jumps out. The two totals it carried are inside, as
+twelve rows, where they can be read against each other.
+
+⚠ **THE MONTH IN PROGRESS IS GREY IN THE TABLE, NOT RED.** Its position carries
+the whole month's rent against however many days have been paid, so on the 2nd
+it reads −₹33,000 — arithmetic, not a problem, and red is this app's colour for
+something being wrong. A figure that is alarming on the 2nd of every month is
+how the colour stops meaning anything by the 10th. The figure is unchanged and
+still signed; the hero already says what is actually owed today.
+
+**TWO WAYS THE TABLE AND THE HERO COULD DISAGREE, BOTH CLOSED.** They are two
+walks over the same two tables — `position()` sums, `month_rows()` accumulates
+— so they are two answers free to drift, and the drift is invisible:
+
+- **A deposit dated BEFORE the first rate's month** is how an opening position
+  is entered, and `position()` counts it (`paid_before` has no floor) while the
+  table started its walk at zero. The money was in the hero and in none of the
+  rows. `month_rows()` now seeds `running` with it.
+- **A row dated into a FUTURE month** was counted by `paid_this_month` and by
+  neither `deposits_in()` nor `month_rows()`. `rent_deposit_add` refuses a
+  future date so it cannot arise through the UI, but three surfaces reading one
+  figure have to cut it identically or one of them is wrong. All three are now
+  bounded at both ends.
+
+→ `TheTableAndTheHeroCanNeverDisagreeTests` asserts this as a **property** over
+several shapes of history — plain, with a rate change, with empty months, with
+no deposits at all — so a scenario nobody thought of still has to satisfy it.
+`EveryShapeOfMonthTests` covers the calendar: leap-year February, a 28-day
+February, 31-day months, a deposit on the 1st and on the last day, a carry
+crossing a year boundary, paise, three rate changes with every month square,
+and a removed rate falling back to the one before it.
+
+### How far back money may be filed — `money_dates.too_far_back()`
+
+**`is_future()` closed one end; this closes the other, and it is the end where
+the damage is quiet.** A figure dated forward is caught the moment somebody
+reads the period it lands in. One dated three years back rewrites the running
+position of every month since, on rows nobody scrolls to, and reports nothing.
+
+⚠ **IT IS A CALENDAR MONTH, NEVER A DAY COUNT** (`BACKDATE_MONTHS = 1`, so the
+floor is the 1st of last month). A fixed "14 days" was the obvious alternative
+and it breaks at exactly the moment the rule exists for: the office reconciles
+LAST month against the collector's book in the first days of this one, so a gap
+found on 3 September may belong to 5 August. A day count refuses that
+correction. It is the same lesson `delete_window` records for measuring on
+`created_at` — **a rule that cuts across the month end fights the workflow it
+is meant to protect.**
+
+⚠ **IT BINDS OFFICE, NOT OWNERS** — `delete_window`'s escalation, not a wall.
+Owners need the exception for real reasons: a go-live opening position is a
+deposit dated *before the ledger starts*, and an audit finding can be older.
+The refusal names the rule **and** the route, because "you cannot" without
+"here is who can" is the half nobody can act on.
+
+**IT IS NOW ON EVERY SCREEN THAT TAKES A TYPED MONEY DATE — six call sites**,
+which is why the rule lives in `money_dates.py` rather than in `views/rent.py`:
+
+| screen | what a back-dated row moves |
+|---|---|
+| rent deposit | the running position of every month since |
+| **cashbook add** | a closed Profit period — `cashbook_expense()` feeds the equation |
+| **cashbook edit** | the same, on the screen that exists to change a date |
+| **spare-shop payment** | that shop's own windows, and `cash_position()` |
+| **Supplies Shop payment** | `cash_position()`; the side whose collector comes weekly |
+| **fleet payment** | Cash Tracking, on the largest receipts the workshop takes |
+
+⚠ **TWO CALLERS ARE DELIBERATELY NOT GUARDED, and both would be a check that
+reads like a control:**
+
+- **`withdrawal_add`** — the whole section is `@owner_required`, so a rule that
+  refuses Office could never fire. Exactly why `delete_window` is not called
+  there either, recorded one section up.
+- **`SupplierRestockBill.bill_date`** — CLAUDE.md documents back-dating there
+  as the workshop's *intended rhythm* ("a Supplies Shop delivers, keeps its own
+  book, and the bill is only keyed when the collector comes at month end"), and
+  a back-dated bill is one of only two things allowed to re-cost a past draw.
+  The floor probably would not refuse the ordinary case — month end is inside
+  it — but changing it is a decision about the costing replay, not a hole to
+  plug. **Put it to the owner before adding it.**
+
+⚠ **THE CASHBOOK'S DATE-RANGE FILTER MUST NEVER BE FLOORED.** Reading last year
+is not filing money into it. The custom `start_date`/`end_date` pickers sit on
+the same page as the entry form and were briefly given `min` by a blanket edit,
+which would have made the ledger's own history unreachable from its own filter.
+→ `test_the_cashbook_DATE_FILTER_is_never_floored`
+
+**The `min` attribute on each box is presentation** — every guard is in the
+view and refuses a crafted POST that never rendered a box. `floor_iso` is `''`
+for an owner, so the browser stops nobody it should not.
+→ `workshop/tests/test_backdate_floor.py` — deliberately ONE list of screens
+rather than a class per section, because the point of the rule living in
+`money_dates` is that every screen answers it identically.
+
+### An owner cannot do it silently — where prevention stops, detection starts
+
+⚠ **THE ESCALATION STOPS AT THE OWNER, SO THE OWNER IS WHERE THE MODEL HAS TO
+CHANGE.** Every guard in this section refuses Office and points at an owner.
+Nothing can refuse an owner, and an approval queue in a two-owner workshop is
+machinery nobody would use. What is left is the control this codebase already
+relies on for every permanent delete: **the act reaches the OTHER owner's phone
+within seconds.** `notify()` excludes the actor, so an owner never buzzes
+themselves and what arrives is always *somebody else did this*, which with two
+owners is corroboration rather than a receipt.
+
+Two events, both CRITICAL, both Owner-audience:
+
+| | fires on | carries |
+|---|---|---|
+| **`RENT_RATE_SET`** | **every** rate change | `detail` says *backdated, N months re-priced* when it reached back |
+| **`RENT_BACKDATED`** | a deposit filed past the Office floor | the month it landed in |
+
+**One constant decides both halves.** `is_too_far_back()` is what refuses
+Office *and* what triggers the alert on an owner, so the rule enforced and the
+rule announced can never drift apart.
+
+⚠ **AND AN ALERT IS NOT ENOUGH ON ITS OWN, WHICH THE OWNER CAUGHT BY USING
+IT.** They back-dated a deposit, then asked why they still felt insecure — and
+they were right: a `Notification` is a **feed**, read rows are swept after
+`RETENTION_DAYS` (14), and `notify()` excludes the actor, so the one person who
+most needs to see what they did is the one it never reaches.
+
+The fix needed no new column. **Every deposit already stores two dates** —
+`date` (when the money moved) and `created_at` (when somebody keyed it) — and
+nothing showed them. A row whose two dates fall in **different months** is
+money filed into a month that had already closed, and it now says so on the row
+itself, permanently, visible to whoever opens that month:
+
+    ₹5,000   ⏱ added 4 Sep 2026   second handover
+
+Three things travel with it. The threshold is the **month**, not the day —
+keying yesterday's handover this morning is the ordinary case and marking it
+would make the mark meaningless by the second row. It is **amber**, the colour
+the date box already wears while a back-dated entry is being typed: one fact,
+one colour, before and after. And the **success message names the month**
+("filed under May 2024 — the position of every month since has moved"), because
+the actor is excluded from the alert and would otherwise be told only
+"Recorded ₹5,000 deposited".
+
+**The add form also asks first, but only past the floor.** Recording a deposit
+is the most frequent money action in the app and carries no dialog on purpose;
+a date past the floor is not most days, and for an owner it is the only guard
+there is. This is the settle dialog's rule applied exactly: confirm where it
+can still surprise somebody, nowhere else.
+→ `test_the_row_ITSELF_says_it_was_keyed_late_and_that_is_permanent`
+
+⚠ **THE ROW MARKER IS NOT YET ON THE OTHER FIVE SCREENS.** They have the floor;
+they do not have the permanent visible trace. Every model involved already
+carries both dates, so it is the same four lines each — do it as its own pass.
+
+**Volume is what keeps them safe at CRITICAL** — the argument `LOGIN` already
+rests on. A rent changes about once a **year**; a deposit past the floor is a
+go-live opening entry or a rare correction. Two pushes a year between them.
+
+**`RENT_RATE_SET` fires on every change, not only a backdated one**, because
+what the premises cost is the figure every number in the section is measured
+against and the other owner wants to know it moved either way. The backdating
+rides in `detail` — the context, read second — so the body stays a complete
+statement on its own.
+
+⚠ **They stay SPLIT rather than becoming one "rent history changed".** The
+bodies are different facts with different remedies — one says what the premises
+now cost, the other says money was filed into a closed month — and a title
+covering both would have to be vague enough to say nothing. Same reasoning that
+keeps `LOGIN` and `STAFF_LOGIN` apart.
+
+⚠ **DELETING A RENT RATE WROTE NOTHING AT ALL for one revision** — the one act
+in the section that could rewrite what every past month cost and leave no
+trace, which is worse than deleting a deposit, logged from the start. It goes
+through `DeletionLog.record()` under **`ENTITY_RENT_RATE`**, which is the choke
+point: one call gives the audit row, the reason, the snapshot *and*
+`RECORD_DELETED` at CRITICAL. **No separate `notify()` belongs there** — that
+would be the same act announced twice.
+→ `HowFarBackMoneyMayBeFiledTests`, `AnOwnerCannotDoItSILENTLYTests`
+
+**A DAY HEADER APPEARS ONLY WHEN A DAY HAS MORE THAN ONE DEPOSIT.** The header
+exists to carry a day TOTAL, and on a day with one handover — most days — that
+total is the row's own amount printed twice, one line apart, for double the
+height. The invoice's own rule about a single part: with one unit there is
+nothing to break down. On a day with two or more the total is the whole point,
+because **the collector's book is the truth and this is a copy of it**, so the
+realistic failure is the same handover keyed twice — which quietly lowers
+today's figure and is invisible until month end. Never blocked; two genuine
+handovers in a day are ordinary. Measured: the list went 340px → 262px.
+→ `TheDayTotalMakesADoubleEntryVisibleTests`
+
+**NO CONFIRMATION DIALOG ON RECORDING A DEPOSIT — the only payment form in the
+app without one.** The other three settle a shop, a fleet account or an owner
+draw: large, occasional, worth a pause. This is the most frequent money action
+in the system, keyed most days, and a modal on every one is exactly how a
+confirmation stops being read. What can actually surprise anybody is a
+back-dated entry, and the shared date glyph already turns amber and spells the
+day out when it is not today.
+
+**No payment method**, deliberately — it is always cash handed to a man with a
+book, and a select that can only ever say one thing is a field to leave out.
+The form is otherwise the shared `.rpay-*` control, **red** because the money is
+going out; it is the fourth screen to use it and adds no copy of it.
+
+**Recording is `@office_required`; setting the rent is `@owner_required`.** The
+office hands over the cash and keys it; what the premises cost is a business
+term. The rent card is gated in the template to match the view — a door Office
+can see and cannot open is worse than no door. Floor sees none of it.
+
+⚠ **NOTHING IN THIS SECTION REACHES `analysis_engine.py`, AND THAT IS A
+BOUNDARY RATHER THAN AN OVERSIGHT.** Rent still becomes an expense the way it
+always has — as a **Cashbook category** (`cashbook_expense()` feeds the profit
+equation as General Cashbook, and the engine's own hints read "Rent, power,
+consumables" in three places). So switching this section on moves **no reported
+figure by a rupee**. Moving rent onto an expense line of its own is a separate
+change with real reach — the equation, `earnings_breakdown`'s `spend` list (or
+the two statements of profit stop reconciling), `_DATE_STREAMS`,
+`monthly_series`, a `financial_position()` tile, and the historical cashbook
+rent rows, which would otherwise be counted **twice**.
+→ `TheSectionStandsOnItsOwnTests` fails on the day somebody starts that, which
+is the point: it should be a decision, not a side effect.
+
+**When that second step happens**, the shape is already settled: the expense is
+whole months **capped at the current one** (rent is derived rather than
+row-based, so unlike every other stream it has no protection against a "This
+Year" window charging twelve months in September), and the balance becomes a
+`financial_position()` tile — "Rent still to deposit" / "Rent paid ahead",
+positive magnitude and a direction, never netted against anything.
+
 ## Master data
 
 **Master data dedupes on `__iexact`, and there is exactly ONE rename
@@ -3355,11 +3748,11 @@ browsers.
 
 The whole event list is **`workshop/notifications.py`**. Add an event to `EVENTS`,
 then call `notify()` from the single place it happens — **never**
-`Notification.objects.create()` in a view. There are **16 call sites across 8
+`Notification.objects.create()` in a view. There are **17 call sites across 8
 modules**; that file is the only way to answer "what does this thing notify
 about?" without grepping.
 
-`EVENTS` holds **14 events — 11 CRITICAL, 3 INFO**, all Owner-audience.
+`EVENTS` holds **16 events — 13 CRITICAL, 3 INFO**, all Owner-audience.
 
 **Severity is a tier, not decoration: CRITICAL sends a Web Push, INFO only lands
 in the feed.** Keep the critical list short — a phone that buzzes for routine
@@ -6434,8 +6827,13 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 61 files, 1,978 tests. Always SQLite (see below).
-# Measured 2026-09-03: 3,849s (64 min), all green.
+# Full test suite — 62 files, 2,081 tests. Always SQLite (see below).
+# Last full run 2026-09-04: 2,081 tests, ALL GREEN.
+# ⚠ RUN IT ALONE, and expect a wide spread. Three runs the same day measured
+# 4,236s / 2,521s / 4,546s — the slowest was contended with five other test
+# files running beside it. Concurrent runs are SAFE (in-memory SQLite, no
+# collision) but they are not FREE: they compete for the same cores. The
+# spread between the two solo runs is ordinary machine load, not a signal.
 python manage.py test workshop inventory
 ```
 
@@ -6543,7 +6941,7 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,978-test run
+want. SQLite's test database is also in-memory, which is most of why a 2,000-test run
 is ~64 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
@@ -6669,10 +7067,10 @@ unless `EMAIL_REAL=true`; `manage.py test` uses locmem regardless.
 **`workshop/`** — job cards, billing, fleet accounts, spare shops, cashbook, estimates,
 photos, auth, owner analytics, deletion history, master data.
 
-`views/` is a package of **20 modules**: `about`, `audits`, `autocomplete`,
+`views/` is a package of **21 modules**: `about`, `audits`, `autocomplete`,
 `billing`, `bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`,
 `estimate`, `jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `photos`,
-`push`, `salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
+`push`, `rent`, `salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
 `from . import views; views.some_function` and existing URL wiring keep working — when
 adding a view, add it to both its module and the re-export list.
 
@@ -6680,7 +7078,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Nine modules hold no views at all** — this is the codebase's main structural idea, and
+**Ten modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -6693,6 +7091,7 @@ each exists so that one rule has exactly one implementation:
 | `money_dates.py` | what day did this money move? — both Cashbook forms, all three payment screens, the Supplies Shop bill and the job card's admitted date |
 | `spare_dates.py` | is this ordered/received pair the right way round? |
 | `delete_window.py` | has this money row been in the books too long for Office to delete? |
+| `rent.py` | how much should we hand the rent collector today? |
 | `photos.py` | where do the bytes go, and how is the URL signed? |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
@@ -6779,8 +7178,10 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` (54 `test_*.py` plus `tests.py`) and `inventory/` (6
-files) — **61 files, 1,978 tests**, last measured 2026-09-03.
+Tests live in `workshop/tests/` and `inventory/` — **62 files, 2,081 tests**,
+counted 2026-09-04. (`workshop/tests/` is 56 `test_*.py` plus `tests.py`;
+`inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
+`test_*.py` glob — which is why the two halves used to be written down wrong.)
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 
@@ -6939,7 +7340,7 @@ close**. Each of those has caught a real defect:
   picture — they add up to one number. The remaining shared-corridor lines are
   spaced by hand, ~12px minimum.
 
-⚠ **It states counts** (14 events, 11 critical, 10 signal handlers, ₹3,500, 25%,
+⚠ **It states counts** (16 events, 13 critical, 10 signal handlers, ₹3,500, 25%,
 keeps 14). Those drift like every other count in these docs — check them when you
 touch it. It read "10 critical" for a day after `LOGIN` was raised to CRITICAL,
 and that is worse on the map than in prose: the **About page prints this drawing

@@ -11,7 +11,8 @@ from workshop.decorators import office_required
 from workshop.models import DeletionLog, JobCardSpareItem
 from workshop.notifications import notify
 from workshop.money import parse_money, fit_text
-from workshop.money_dates import posted_date, is_future
+from workshop.money_dates import posted_date, is_future, too_far_back, backdate_floor
+from workshop.decorators import is_owner
 from workshop import delete_window
 from django.urls import reverse
 from workshop.templatetags.custom_filters import clean_qty
@@ -277,6 +278,8 @@ def supplier_shop_detail(request, shop_id):
         # back to today anyway — but silently, which is how this form went so
         # long writing the keystroke date.
         'today_iso': timezone.localdate().isoformat(),
+        # PRESENTATION ONLY — `too_far_back()` in the view is the control.
+        'floor_iso': '' if is_owner(request.user) else backdate_floor().isoformat(),
         'catalog': catalog,
         'bills': bills_list,
         'bills_count': bills_count,
@@ -887,6 +890,8 @@ def edit_restock_bill(request, shop_id, bill_id):
         # Presentation only — the view above is the control. Same name and same
         # shape as every other date box in this module.
         'today_iso': timezone.localdate().isoformat(),
+        # PRESENTATION ONLY — `too_far_back()` in the view is the control.
+        'floor_iso': '' if is_owner(request.user) else backdate_floor().isoformat(),
     })
 
 @office_required
@@ -955,10 +960,20 @@ def add_shop_payment(request, shop_id):
         # answer for is a date that reads fine and is wrong.
         moved_on = posted_date(request.POST.get('date'))
 
+        # ⚠ AND HOW FAR BACK. `cash_position()` cuts money-out by this date, so
+        # a payment filed into a closed month moves a cash figure an owner has
+        # already read. This is the side whose collector comes round weekly or
+        # monthly, so the floor — the 1st of last month — is the whole window a
+        # month is reconciled in and refuses nothing ordinary. An owner is not
+        # bound, and the refusal names them.
+        blocked = too_far_back(moved_on, request.user, "A payment")
+
         if amount is None or amount <= 0:
             messages.error(request, "Invalid payment amount.")
         elif is_future(moved_on):
             messages.error(request, "A payment cannot be dated in the future.")
+        elif blocked:
+            messages.error(request, blocked)
         else:
             SupplierPayment.objects.create(
                 supplier=shop,
@@ -973,6 +988,8 @@ def add_shop_payment(request, shop_id):
     return render(request, 'inventory/suppliers/add_payment.html', {
         'shop': shop,
         'today_iso': timezone.localdate().isoformat(),
+        # PRESENTATION ONLY — `too_far_back()` in the view is the control.
+        'floor_iso': '' if is_owner(request.user) else backdate_floor().isoformat(),
     })
 
 @office_required

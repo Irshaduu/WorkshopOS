@@ -7,13 +7,13 @@ from django.db import models, transaction
 from django.db.models import Q, Sum, Count, Case, When, Value, DecimalField
 from django.db.models.functions import Coalesce
 from decimal import Decimal, InvalidOperation
-from .decorators import office_required
+from .decorators import office_required, is_owner
 from .models import CashbookEntry, DeletionLog
 from .money import parse_money, fit_text
 # The day the money moved, parsed in ONE place — the spare-shop payment form
 # asks the same question, and two copies would drift apart at a month boundary,
 # which is exactly where an owner reads the difference.
-from .money_dates import posted_date, is_future
+from .money_dates import posted_date, is_future, too_far_back, backdate_floor
 from . import delete_window
 
 
@@ -225,6 +225,8 @@ def cashbook_view(request):
         # Pre-fills the add form's date input. localdate(), never date.today():
         # the server may run in UTC while the workshop runs on IST.
         'today_iso': today.isoformat(),
+        # PRESENTATION ONLY — `too_far_back()` in the view is the control.
+        'floor_iso': '' if is_owner(request.user) else backdate_floor().isoformat(),
         # Date objects, so the list can head a group with "Today"/"Yesterday"
         # instead of making someone read a date to work out it is this morning.
         'today': today,
@@ -313,6 +315,16 @@ def add_cashbook_entry(request):
         if is_future(entry_date):
             messages.error(request, "A cashbook entry can't be dated in the future.")
             return redirect('cashbook')
+        # ⚠ AND HOW FAR BACK. `cashbook_expense()` feeds the profit equation as
+        # General Cashbook, so an entry back-dated a year lands inside a period
+        # an owner has already read and distributed against — silently, because
+        # nothing re-reads a closed month. Office is floored at the 1st of last
+        # month, which is the whole of the window a month is reconciled in; an
+        # owner is not, and the refusal names them.
+        blocked = too_far_back(entry_date, request.user, "A cashbook entry")
+        if blocked:
+            messages.error(request, blocked)
+            return redirect('cashbook')
 
         CashbookEntry.objects.create(
             entry_type=entry_type,
@@ -382,6 +394,13 @@ def edit_cashbook_entry(request, pk):
         entry_date = posted_date(request.POST.get('date'))
         if is_future(entry_date):
             messages.error(request, "A cashbook entry can't be dated in the future.")
+            return redirect('cashbook')
+        # The EDIT path needs it as badly as the add path: moving an entry back
+        # into a closed month is the same act as filing one there, and this is
+        # the screen that exists precisely so a date can be corrected.
+        blocked = too_far_back(entry_date, request.user, "A cashbook entry")
+        if blocked:
+            messages.error(request, blocked)
             return redirect('cashbook')
 
         entry.category       = fit_text(

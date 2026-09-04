@@ -140,6 +140,27 @@ EVENTS = {
     'STAFF_PASSWORD_SET': Event("Staff password changed", CRITICAL, AUDIENCE_OWNERS, 'bi-key-fill'),
     'HIGH_DISCOUNT':    Event("Large discount",      CRITICAL, AUDIENCE_OWNERS, 'bi-percent'),
     'RECORD_DELETED':   Event("Record deleted",      CRITICAL, AUDIENCE_OWNERS, 'bi-trash3-fill'),
+    # ⚠ THE TWO ACTS IN DEPOSIT & RENT THAT REWRITE HISTORY, AND BOTH ARE
+    # OWNER-ONLY — which is precisely why they need announcing rather than
+    # refusing. Every other guard in that section escalates to an owner, so an
+    # owner is where the escalation STOPS: nothing above them can refuse a
+    # mistake, and the only remaining control is that the act cannot happen
+    # SILENTLY. `notify()` excludes the actor, so what arrives is always the
+    # OTHER owner learning what was done — which with two owners is real
+    # corroboration rather than somebody being told about themselves.
+    #
+    # Volume is what keeps them safe at CRITICAL, the same argument LOGIN
+    # already rests on: a rent changes about once a YEAR, and a deposit filed
+    # past the Office floor is a go-live opening entry or a rare correction.
+    # Two pushes a year between them.
+    #
+    # They stay SPLIT rather than becoming one "rent history changed", because
+    # the bodies are different facts with different remedies — one says what
+    # the premises now cost, the other says money was filed into a closed
+    # month — and a title covering both would have to be vague enough to say
+    # nothing. Same reasoning that keeps LOGIN and STAFF_LOGIN apart.
+    'RENT_RATE_SET':    Event("Rent changed",        CRITICAL, AUDIENCE_OWNERS, 'bi-building-gear'),
+    'RENT_BACKDATED':   Event("Deposit back-dated",  CRITICAL, AUDIENCE_OWNERS, 'bi-calendar-x'),
     'ACCOUNT_ARCHIVED': Event("Account archived",    INFO,     AUDIENCE_OWNERS, 'bi-archive-fill'),
     'SALARY_ADVANCE':   Event("Salary advance",      INFO,     AUDIENCE_OWNERS, 'bi-cash-coin'),
     'SALARY_SETTLED':   Event("Salary settled",      INFO,     AUDIENCE_OWNERS, 'bi-cash-stack'),

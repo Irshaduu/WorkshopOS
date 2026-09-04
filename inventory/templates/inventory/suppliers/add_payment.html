@@ -55,7 +55,7 @@ taken mid-transition reports the old colour whatever the rule says.
                     <label for="id_payment_date" class="form-label fw-bold">Payment Date *</label>
                     <input type="date" name="date" id="id_payment_date"
                            class="form-control form-control-lg bg-light border-0"
-                           value="{{ today_iso }}" max="{{ today_iso }}" required>
+                           value="{{ today_iso }}" max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}"{% endif %} required>
                     <div class="form-text d-none fw-bold" id="paymentDateNote"
                          style="color:#b45309;"></div>
                 </div>

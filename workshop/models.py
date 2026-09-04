@@ -1913,6 +1913,126 @@ class OwnerWithdrawal(models.Model):
 
 
 # -----------------------------------------------------------------------------
+# DEPOSIT & RENT — what the premises cost, and the daily cash that pays for it
+# -----------------------------------------------------------------------------
+# Two tables and nothing else. Every other figure in the section — today's
+# suggested deposit, the carry from last month, the running position — is
+# derived on read in `workshop/rent.py`, which is where the reasoning lives.
+#
+# ⚠ THE RENT AND THE DEPOSITS ARE TWO DIFFERENT NUMBERS. The rent is what is
+# OWED for a month; the deposits are how it gets PAID, in daily cash to a
+# collector who keeps his own book. They agree only by accident, in any given
+# month, and the whole section exists to show the gap between them.
+
+
+class RentRate(models.Model):
+    """
+    What the premises cost per month, from a stated month onward.
+
+    EFFECTIVE-DATED, NEVER EDITED IN PLACE. A rent change is a new row carrying
+    the month it starts, so a hike never rewrites what an earlier month cost
+    and the history reads as a list of what the rent has been:
+
+        Jan 2026    ₹40,000
+        Apr 2025    ₹35,000
+
+    ⚠ THE FIGURE IS ABSOLUTE, NOT AN INCREMENT, and that was a real decision.
+    A "+₹5,000" adjustment is a delta on a number the person has to already
+    know, so a mis-keyed `+5000` where `5000` was meant is silently ₹40,000 —
+    and after a few of them nobody can say what the rent IS without adding them
+    up. The landlord says "forty thousand from January". Store that.
+    ⚠ A RATE MAY BE BACKDATED, and that is legitimate rather than a hole. Rent
+    hikes are routinely agreed late and applied from an earlier month, and
+    refusing one would leave the books permanently wrong. It reprices those
+    months, which is correct — but it is Owner-only and logged precisely
+    because past months move, which is the one thing that must never happen
+    SILENTLY.
+    ⚠ IT MAY ALSO BE DATED AHEAD — a hike announced now, effective next month.
+    That is the one forward date in this section, and it is safe because
+    `rate_for()` only applies a rate once its month has arrived. Nothing that
+    MOVES money may be dated forward; a rate moves none by itself.
+    `effective_from` is pinned to the 1st in `save()`, so a rate and a month
+    are always directly comparable, and it is unique — one rent per month, and
+    re-stating a month replaces it rather than adding a second answer.
+    """
+    effective_from = models.DateField(
+        unique=True, help_text="The first month this rent applies to")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    note = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    set_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rent_rates_set')
+
+    class Meta:
+        ordering = ['-effective_from']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(amount__gt=0),
+                name='workshop_rentrate_amount_positive'),
+        ]
+
+    def save(self, *args, **kwargs):
+        # Pinned to the 1st here rather than trusted from the form: every
+        # comparison in `rent.py` is a month against a month, and a rate stored
+        # on the 15th would sort correctly and then be missed by an equality
+        # test against the month it belongs to.
+        if self.effective_from:
+            self.effective_from = self.effective_from.replace(day=1)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"₹{self.amount} from {self.effective_from:%b %Y}"
+
+
+class RentDeposit(models.Model):
+    """
+    One handover of cash to the rent collector.
+
+    ⚠ NOT AN EXPENSE. What the month COST is the rent; this is how it was paid,
+    and the two land in different places for the same reason a supplier payment
+    and a stock draw do. See `workshop/rent.py` for the rule in full.
+
+    NO PAYMENT METHOD, deliberately — every other money form in the app carries
+    one and this does not, because it is always cash handed to a man with a
+    book. A select that can only ever say one thing is a field to leave out.
+
+    `date` is the day the money moved, typed, and back-dateable: the office
+    keys from the collector's book and a forgotten day is caught later in the
+    week. `created_at` stays as the audit trail, breaks ties inside a day, and
+    is what `delete_window` measures — the same split every other ledger here
+    carries.
+    """
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(default=timezone.now, db_index=True)
+    # Blank stores NULL: nobody wrote a note is a different fact from somebody
+    # writing nothing.
+    note = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    recorded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rent_deposits_recorded')
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['-date', '-created_at']),
+        ]
+        constraints = [
+            # `parse_money` refuses a zero BEFORE it quantises, so `0.004`
+            # passes every check and comes back as `0.00`. Without this the row
+            # would simply be written — a ₹0 deposit in the ledger, which is
+            # what happened to `BulkPaymentHistory` for having no constraint.
+            models.CheckConstraint(
+                check=models.Q(amount__gt=0),
+                name='workshop_rentdeposit_amount_positive'),
+        ]
+
+    def __str__(self):
+        return f"₹{self.amount} ({self.date:%d %b %Y})"
+
+
+# -----------------------------------------------------------------------------
 # ESTIMATES — a quote, and nothing more
 # -----------------------------------------------------------------------------
 # An estimate is a piece of paper handed to a customer BEFORE any work is agreed.
@@ -2170,6 +2290,8 @@ class DeletionLog(models.Model):
     ENTITY_SALARY_PAYMENT = 'SALARY_PAYMENT'
     ENTITY_UNASSIGNED_SPARE = 'UNASSIGNED_SPARE'
     ENTITY_OWNER_WITHDRAWAL = 'OWNER_WITHDRAWAL'
+    ENTITY_RENT_DEPOSIT = 'RENT_DEPOSIT'
+    ENTITY_RENT_RATE = 'RENT_RATE'
     # Master-list rows (spare-part names, concerns). Not financial — job cards
     # store these as free text, so removing one cannot alter a bill, a ledger or
     # a report (proven; see MasterDataDeleteTouchesNoHistoryTests). Logged
@@ -2190,6 +2312,8 @@ class DeletionLog(models.Model):
         (ENTITY_SALARY_PAYMENT, 'Salary Payment'),
         (ENTITY_UNASSIGNED_SPARE, 'Unassigned Spare'),
         (ENTITY_OWNER_WITHDRAWAL, 'Owner Withdrawal'),
+        (ENTITY_RENT_DEPOSIT, 'Rent Deposit'),
+        (ENTITY_RENT_RATE, 'Rent Rate'),
         (ENTITY_MASTER_DATA, 'Master List Entry'),
     ]
 

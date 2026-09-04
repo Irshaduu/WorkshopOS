@@ -671,7 +671,7 @@ def build(theme):
     # =========================================================================
     zone(710, B3Y, 688, B3H, 'INFRA.08 // CLOUD', 'Platform & Services', FLOW['work'])
     _infra = [
-        ('notif', 'NOTIFICATIONS', ['14 events - 11 critical', 'owners only'],   FLOW['alert']),
+        ('notif', 'NOTIFICATIONS', ['16 events - 13 critical', 'owners only'],   FLOW['alert']),
         ('push',  'WEB PUSH',      ['critical goes to a phone'],                 FLOW['alert']),
         ('mail',  'EMAIL',         ['reset codes only'],                         FLOW['alert']),
         ('store', 'PHOTO STORAGE', ['S3 - presigned', 'browser uploads direct'], FLOW['work']),

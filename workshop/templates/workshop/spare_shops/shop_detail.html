@@ -404,7 +404,7 @@
               <i class="bi bi-calendar-event"></i>
               <span class="rpay-date-txt" id="sspDateTxt"></span>
               <input type="date" name="date" id="id_pay_date" value="{{ today_iso }}"
-                     max="{{ today_iso }}" required aria-label="Date the money moved">
+                     max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}"{% endif %} required aria-label="Date the money moved">
             </span>
             <div class="rpay-field rpay-f-amount">
               <label for="id_pay_lump_sum">Amount</label>

@@ -482,7 +482,18 @@ class AFleetPaymentIsDatedByTheDayTheMoneyMovedTests(FleetLedgerTestCase):
         payer = BulkPayer.objects.create(customer_name='Acme Fleet')
         self.assign(payer, self.make_card('KL01AAA', 5000))
 
+        # ⚠ FILED AS AN OWNER, not as Office. This test wants a payment far
+        # outside every window — 400 days — to prove the BALANCE ignores all of
+        # them, and Office may no longer file one that old
+        # (`money_dates.too_far_back`). An owner may, which is the escalation
+        # the rule is built on, so signing in as one keeps the test posting
+        # through the real form instead of around it. The form's own policy is
+        # pinned separately in `test_backdate_floor.py`.
+        owner = User.objects.create_user(username='fleet_owner', password='pass')
+        owner.groups.add(Group.objects.get(name='Owner'))
+        self.client.force_login(owner)
         self.pay_on(payer, 2000, timezone.localdate() - timedelta(days=400))
+        self.client.force_login(self.office)
 
         payer.refresh_from_db()
         self.assertEqual(payer.total_billed_amount - payer.total_paid_amount,
@@ -610,7 +621,14 @@ class CashbookEntriesAreDatedByTheDayTheMoneyMovedTests(TestCase):
         self.assertIn('name="date"', page)
 
     def test_an_entry_is_stored_on_the_posted_date(self):
-        backdated = timezone.localdate() - timedelta(days=40)
+        # ⚠ THE 2nd OF LAST MONTH, NOT `today - 40 days`. It is inside the
+        # Office back-date floor (the 1st of last month), and this test signs
+        # in as Office. `today - 40` was also flaky on its own terms: it lands
+        # in last month for most of a month and in the month BEFORE it near the
+        # start, so what the test meant depended on the day it ran. The point —
+        # the POSTED date is stored, and the Profit page files it under the
+        # month it belongs to — is untouched.
+        backdated = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=2)
         self.client.post(reverse('manage_add_cashbook_entry'), {
             'entry_type': 'EXPENSE', 'category': 'Electricity',
             'amount': '5000', 'payment_method': 'CASH', 'date': str(backdated),

@@ -14,13 +14,13 @@ from django.urls import reverse
 
 from .. import photos as photo_storage
 from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
-from ..decorators import office_required, owner_required, staff_required, is_office_or_owner
+from ..decorators import office_required, owner_required, staff_required, is_office_or_owner, is_owner
 from ..notifications import notify
 from ..spare_dates import pair_problem
 from ..money import parse_money, fit_text
 # The day the money moved, parsed by the same rule the Cashbook uses — one
 # implementation, because two would disagree at a month boundary.
-from ..money_dates import posted_date, is_future
+from ..money_dates import posted_date, is_future, too_far_back, backdate_floor
 from .. import delete_window
 # What a shop-bought line cost, in the one place it is defined. This page's
 # running balance, its grand total and `SpareShop.total_purchased_amount` are
@@ -292,6 +292,8 @@ def spare_shop_detail(request, pk):
         # Backs the payment form's date box: its value, its `max`, and what the
         # script compares against to decide whether the entry is back-dated.
         'today_iso': today.isoformat(),
+        # PRESENTATION ONLY — `too_far_back()` in the view is the control.
+        'floor_iso': '' if is_owner(request.user) else backdate_floor().isoformat(),
         # Photos here are VIEW ONLY — no camera, no delete, whatever state the
         # card behind the row is in. Recording a part is the floor's job and it
         # happens on the job card; this page is a ledger, and giving it a second
@@ -340,6 +342,14 @@ def spare_shop_pay(request, pk):
     pay_date = posted_date(request.POST.get('date'))
     if is_future(pay_date):
         messages.error(request, "A payment can't be dated in the future.")
+        return redirect('spare_shop_detail', pk=pk)
+    # ⚠ AND HOW FAR BACK. Every window on this shop's own page and its printed
+    # history is cut by this date, as is `cash_position()`'s money-out — so a
+    # payment filed into a closed month rewrites a period already reported on.
+    # The balance is untouched either way: a debt is not a period.
+    blocked = too_far_back(pay_date, request.user, "A payment")
+    if blocked:
+        messages.error(request, blocked)
         return redirect('spare_shop_detail', pk=pk)
 
     SpareShopPayment.objects.create(

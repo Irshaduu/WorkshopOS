@@ -24,6 +24,7 @@ register = template.Library()
 DRAWER_SECTION_PREFIXES = (
     '/analysis/',
     '/cashbook/',
+    '/rent/',
     '/withdrawals/',
     '/pending-payments/',
     '/paid-bills/',

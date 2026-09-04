@@ -890,7 +890,7 @@
                         <i class="bi bi-calendar-event"></i>
                         <span class="cb-date-txt" id="cbDateTxt"></span>
                         <input type="date" name="date" id="cbDate" value="{{ today_iso }}"
-                               max="{{ today_iso }}" required aria-label="Date the money moved">
+                               max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}"{% endif %} required aria-label="Date the money moved">
                     </span>
                 </div>
 
@@ -1012,7 +1012,7 @@
                     <div class="cb-field">
                         <label for="cbEditDate">Date money moved</label>
                         <input type="date" name="date" id="cbEditDate" class="cb-input"
-                               max="{{ today_iso }}" required>
+                               max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}"{% endif %} required>
                     </div>
                 </div>
                 <div class="cb-field-row">

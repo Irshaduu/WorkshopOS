@@ -17,10 +17,10 @@ from ..models import (
     JobCard, JobCardSpareItem,
     BulkPayer, BulkPaymentHistory, DeletionLog,
 )
-from ..decorators import office_required, owner_required
+from ..decorators import office_required, owner_required, is_owner
 from ..notifications import notify
 from ..money import parse_money, fit_text
-from ..money_dates import posted_date, is_future
+from ..money_dates import posted_date, is_future, too_far_back, backdate_floor
 from .. import delete_window
 
 
@@ -275,6 +275,9 @@ def bulk_payer_detail(request, pk):
         'advance_balance': bulk_payer.advance_balance,
         'card_count': card_count,
         'today_iso': today_iso,
+        # PRESENTATION ONLY — `too_far_back()` in the view is the control.
+        # Empty for an owner, who has no floor.
+        'floor_iso': '' if is_owner(request.user) else backdate_floor().isoformat(),
         # ORDERED BY THE DAY THE MONEY MOVED. This explicit `order_by` overrode
         # `Meta.ordering`, so adding the column without changing it here would
         # have left a field nothing reads — which is worse than no field,
@@ -423,6 +426,15 @@ def bulk_payer_pay(request, pk):
     pay_date = posted_date(request.POST.get('date'))
     if is_future(pay_date):
         messages.error(request, "A payment cannot be dated in the future.")
+        return redirect('bulk_payer_detail', pk=pk)
+    # ⚠ AND HOW FAR BACK. These are the LARGEST single receipts the workshop
+    # takes, and `cash_position()` cuts money-in by this date — so one filed
+    # into a closed month moves a cash figure an owner has already read, with
+    # nothing on the page that re-reads it. Office is floored at the 1st of
+    # last month, the window a month is actually reconciled in.
+    blocked = too_far_back(pay_date, request.user, "A payment")
+    if blocked:
+        messages.error(request, blocked)
         return redirect('bulk_payer_detail', pk=pk)
     
 

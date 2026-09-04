@@ -68,3 +68,7 @@ from .about import about
 from .withdrawal import (
     withdrawal_home, withdrawal_add, withdrawal_delete,
 )
+from .rent import (
+    rent_home, rent_deposit_add, rent_deposit_delete,
+    rent_rate_set, rent_rate_delete,
+)

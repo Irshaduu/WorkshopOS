@@ -394,7 +394,7 @@
             <i class="bi bi-calendar-event"></i>
             <span class="rpay-date-txt" id="supDateTxt"></span>
             <input type="date" id="quickPayDate" value="{{ today_iso }}"
-                   max="{{ today_iso }}" aria-label="Date the money moved">
+                   max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}"{% endif %} aria-label="Date the money moved">
           </span>
           <div class="rpay-field rpay-f-amount">
             <label for="quickPayAmount">Amount</label>
