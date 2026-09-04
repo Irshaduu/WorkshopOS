@@ -152,8 +152,12 @@ LABOUR_POOL = [
 # (see _seed_salary), which is where the Profit page reads them from. A cashbook
 # entry named like wages is exactly what that page warns about as a possible
 # double count, so seeding one would leave the demo permanently flagged.
+#
+# NO RENT LINE EITHER, for the same reason and since the same date rent got its
+# own expense line: it is read from `RentRate`, so a "Workshop Rent" row here is
+# the same money twice and the Profit page flags it. Rent is seeded by
+# `seed_rent_data`.
 CASHBOOK_MONTHLY = [
-    ("EXPENSE", "Workshop Rent", 45000, 45000),
     ("EXPENSE", "Electricity Bill", 8000, 16000),
     ("EXPENSE", "Water & Utilities", 1500, 3500),
     ("EXPENSE", "Workshop Consumables", 4000, 12000),

@@ -315,8 +315,16 @@ python manage.py purge_business_data
 python manage.py purge_business_data --yes
 ```
 
-This clears every business table. It does not touch logins, groups or the
-master lists.
+This clears every business table — job cards, both kinds of shop, the fleet
+accounts, inventory, the cashbook, the staff roster, **the owner withdrawals
+and the rent ledger**, and Deletion History. It does not touch logins, groups
+or the master lists.
+
+⚠ **Those last two were missing from the command until 2026-09-04**, and both
+are real money: `OwnerWithdrawal` feeds Cash Tracking, and the rent rate feeds
+the PROFIT equation. If this database was seeded with a version older than
+that, check by hand that Deposit & Rent and Owner Withdrawals are empty before
+carrying on — the purge reported success either way.
 
 If photos were configured and any test photograph was taken against this
 database, the purge deletes the rows and queues the stored objects; sweep them
@@ -330,7 +338,7 @@ python manage.py sweep_photo_blobs --yes
 ### 3.2b Read the Cashbook's keyword list once, after the real shops exist ☐
 
 Nothing to run. The Cashbook asks before it takes an entry that looks like a
-wage, an owner's draw, a rent deposit or a shop payment — and **the shop names
+wage, an owner's draw, anything to do with rent, or a shop payment — and **the shop names
 and the owner names in that list are read from the database on every page
 load**, never written into the code. So the demo names disappear with the purge
 above and the real ones protect themselves the moment they are created. There
@@ -415,6 +423,22 @@ can do for you and it is worth doing unhurried.
 - ☐ Opening warehouse stock
 - ☐ Outstanding spare-shop / supplier balances
 - ☐ Any unpaid customer or fleet balances
+- ☐ **The monthly rent, dated to the go-live month** (Deposit & Rent → ⋮ →
+  Update Rent)
+
+⚠ **The rent one is not optional and it is easy to skip**, because unlike the
+others nothing on any screen looks broken without it. Rent is a real expense
+line on the Profit page, read from that rate — so with no rate recorded the
+page charges **₹0 of rent** and every month's profit reads ₹35,000 too high,
+silently, from day one. Set it before the first month closes.
+
+There is deliberately **no opening balance for the deposits**: the rent ledger
+begins at the first rate's month, so set the rate from the go-live month and key
+that month's handovers off the collector's book — a handful of rows, and the
+position is then exact. Whatever was settled with the landlord before that month
+is history between the workshop and the landlord, the same answer opening stock
+gets. A window reaching back further says so on the Rent line rather than
+pretending the premises were free.
 
 ### 3.6 Owner devices ☐
 

@@ -8,12 +8,26 @@ examples in, verbatim, and check the page agrees — including the awkward one
 the owner asked about, where the rent is raised in March with effect from
 January and today's figure has to absorb three months of repricing at once.
 
-The second group guards the boundary this section was deliberately built
-inside: NOTHING here reaches `analysis_engine`. Rent still becomes an expense
-the way it always has, through the Cashbook, so switching this on moves no
-reported figure by a rupee. Moving rent onto its own expense line is a separate
-change with real reach, and `test_nothing_here_touches_the_profit_report` is
-what will fail loudly on the day somebody starts it — which is the point.
+The second group guards how the section reaches the money math, which changed
+on 2026-09-04. It used to reach it NOWHERE — rent arrived at the Profit page as
+a Cashbook category, and this file's own test asserted that boundary, saying it
+should fail loudly on the day somebody moved rent onto its own expense line
+because that should be a decision and not a side effect.
+
+That day came, and the workflow forced it rather than anybody choosing it: once
+the office started recording rent HERE instead of in the Cashbook, the boundary
+quietly stopped meaning "no figure moves" and started meaning "rent is in the
+books nowhere". September 2026 carried Rs 35,000 of real rent and the Profit
+page charged Rs 900 of it.
+
+So the rule under test is now the SPLIT rather than the silence:
+
+    the RATE, in whole months, capped at the month in progress -> the expense
+    the DEPOSITS, by the day the cash moved                    -> Cash Tracking
+    the GAP between them                                       -> a position
+
+and the invariant that matters most is the one that used to be the whole
+boundary: **a deposit still moves no profit figure by a rupee.**
 """
 from datetime import date, timedelta
 from decimal import Decimal as D
@@ -24,11 +38,13 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from workshop import analysis_engine as engine
 from workshop import rent as rent_calc
 from workshop.delete_window import OFFICE_DELETE_WINDOW_DAYS
 from workshop.money_dates import backdate_floor, is_too_far_back
-from workshop.models import (DeletionLog, FailedAttempt, Notification,
-                             RentDeposit, RentRate)
+from workshop.models import (CashbookEntry, DeletionLog, FailedAttempt,
+                             Notification, OwnerWithdrawal, RentDeposit,
+                             RentRate)
 from workshop.notifications import CRITICAL, EVENTS
 
 
@@ -904,31 +920,425 @@ class DeletingADepositTests(_Signed):
         self.assertFalse(RentDeposit.objects.filter(pk=old.pk).exists())
 
 
-class TheSectionStandsOnItsOwnTests(_Signed):
+def _month_start(day, back=0):
+    """The 1st of `day`'s month, `back` months earlier (negative goes forward)."""
+    total = day.year * 12 + (day.month - 1) - back
+    return date(total // 12, total % 12 + 1, 1)
+
+
+def _month_end(day):
+    return _month_start(day, back=-1) - timedelta(days=1)
+
+
+class TheRentIsAnExpenseAndTheDepositIsCashTests(TestCase):
     """
-    ⚠ THE BOUNDARY THIS WAS BUILT INSIDE. Rent still reaches the Profit page as
-    a Cashbook category, exactly as it always has, so switching this section on
-    changes no reported figure by a rupee. Moving rent onto an expense line of
-    its own is a separate change touching the equation, the earnings card, All
-    Time and the trend chart — and this test is what fails on the day it
-    starts, which is deliberate: it should be a decision, not a side effect.
+    ⚠ THE ONE RULE THIS SECTION EXISTS TO PROTECT, now that it reaches the
+    money math. The rent is what a month COST — a fixed figure, whatever cash
+    happened to move. The deposits are how it gets PAID.
+
+    Collapse them and monthly profit swings on a cash-flow decision: a month
+    where the office had a good week would report a higher rent than a lean
+    one, on the page the owners read to decide distribution. It is the app's
+    fourth instance of a rule it already follows three times — wages dated by
+    the salary month, a supplier payment that never touches profit while the
+    stock draw does, a spare-shop payment that never touches profit while the
+    fitted part does.
+
+    Everything here is built relative to the REAL today, because the cap is:
+    the assertions then hold whatever day the suite runs on.
     """
 
-    def test_nothing_here_touches_the_profit_report(self):
-        from workshop import analysis_engine as engine
-        _rate(2026, 9, '35000')
-        before = engine.build_profit_report(date(2026, 9, 1), date(2026, 9, 30))
-        _deposit(date(2026, 9, 10), '20000')
-        after = engine.build_profit_report(date(2026, 9, 1), date(2026, 9, 30))
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.month = _month_start(self.today)
+
+    # -- the expense side ---------------------------------------------------
+    def test_the_rent_reaches_the_profit_page_as_its_own_line(self):
+        _rate(self.month.year, self.month.month, '35000')
+        rep = engine.build_profit_report(self.month, _month_end(self.today))
+        line = next(l for l in rep['expense_lines'] if l['key'] == 'rent')
+        self.assertEqual(line['amount'], D('35000'))
+        self.assertEqual(rep['rent']['total'], D('35000'))
+        self.assertEqual(rep['expense_total'], D('35000'))
+
+    def test_A_DEPOSIT_STILL_MOVES_NO_PROFIT_FIGURE(self):
+        """
+        ⚠ THE INVARIANT THAT USED TO BE THE WHOLE BOUNDARY, and the single most
+        important assertion in this file. Handing over cash is not a cost; the
+        cost was the rent, and it was charged when the month began.
+        """
+        _rate(self.month.year, self.month.month, '35000')
+        before = engine.build_profit_report(self.month, _month_end(self.today))
+        _deposit(self.today, '20000')
+        after = engine.build_profit_report(self.month, _month_end(self.today))
         self.assertEqual(before['expense_total'], after['expense_total'])
         self.assertEqual(before['profit'], after['profit'])
+        self.assertEqual(before['rent']['total'], after['rent']['total'])
 
-    def test_the_engine_does_not_import_the_rent_models(self):
-        import inspect
-        from workshop import analysis_engine as engine
-        source = inspect.getsource(engine)
-        self.assertNotIn('RentDeposit', source)
-        self.assertNotIn('RentRate', source)
+    def test_the_expense_lines_still_sum_to_the_expense_total(self):
+        _rate(self.month.year, self.month.month, '35000')
+        rep = engine.build_profit_report(self.month, _month_end(self.today))
+        self.assertEqual(sum(l['amount'] for l in rep['expense_lines']),
+                         rep['expense_total'])
+
+    def test_the_owners_own_breakdown_still_lands_on_the_same_profit(self):
+        """The card states the profit a second way, so it has to be handed the
+        rent like every other shared figure — left out it would land Rs 35,000
+        a month above the equation printed directly over it."""
+        _rate(self.month.year, self.month.month, '35000')
+        rep = engine.build_profit_report(self.month, _month_end(self.today))
+        self.assertEqual(rep['earnings']['profit'], rep['profit'])
+        self.assertIn('rent', [r['key'] for r in rep['earnings']['spend']])
+
+    def test_the_trend_chart_still_totals_to_the_headline(self):
+        """The chart is built from per-month figures and the headline from one
+        sum, so rent has to be capped and dated identically in both. It is the
+        same function called twice, which is why."""
+        start = _month_start(self.today, 2)
+        _rate(start.year, start.month, '35000')
+        end = _month_end(self.today)
+        rep = engine.build_profit_report(start, end)
+        series = engine.monthly_series(start, end)
+        self.assertEqual(sum(m['expenses'] for m in series), rep['expense_total'])
+        self.assertEqual(sum(m['profit'] for m in series), rep['profit'])
+
+    # -- the cap ------------------------------------------------------------
+    def test_A_MONTH_THAT_HAS_NOT_HAPPENED_IS_NEVER_CHARGED(self):
+        """
+        ⚠ RENT IS THE ONLY STREAM THAT NEEDS THIS, because it is the only one
+        not summed from rows: no row exists in the future, so every other
+        stream is self-limiting. "This Year" resolves to 1 Jan - 31 Dec on
+        purpose, so an uncapped walk would charge twelve months in September -
+        Rs 1,05,000 of expense that has not happened, on the page profit
+        distribution is decided from.
+        """
+        _rate(self.month.year, self.month.month, '35000')
+        whole_year = engine.build_profit_report(
+            date(self.today.year, 1, 1), date(self.today.year, 12, 31))
+        # The rate starts THIS month, so exactly one month has happened under
+        # it however far the window runs past today.
+        self.assertEqual(whole_year['rent']['total'], D('35000'))
+        self.assertEqual(whole_year['rent']['months'], 1)
+
+    def test_a_window_entirely_in_the_future_charges_nothing(self):
+        _rate(self.month.year, self.month.month, '35000')
+        nxt = _month_start(self.today, back=-1)
+        self.assertEqual(
+            rent_calc.charged_between(nxt, nxt + timedelta(days=400)), D('0'))
+
+    def test_a_month_is_charged_when_its_FIRST_falls_inside_the_window(self):
+        """Salary's own rule (`SalaryPayment.month__range`), so the two monthly
+        costs in this app are dated by one rule. Consequence, shared with
+        wages: a window that does not begin on a 1st charges neither."""
+        _rate(self.month.year, self.month.month, '35000')
+        self.assertEqual(
+            rent_calc.charged_between(self.month, _month_end(self.today)),
+            D('35000'))
+        self.assertEqual(
+            rent_calc.charged_between(self.month + timedelta(days=1),
+                                      _month_end(self.today)),
+            D('0'))
+
+    # -- repricing ----------------------------------------------------------
+    def test_a_BACKDATED_rate_reprices_the_profit_of_the_months_it_covers(self):
+        """The owner's own case: a hike agreed late and applied from an earlier
+        month. It reprices those months, and now that rent is an expense it
+        reprices their PROFIT — which is why the act is Owner-only, confirmed
+        by name, and alerted to the other owner."""
+        start = _month_start(self.today, 2)
+        _rate(start.year, start.month, '35000')
+        end = _month_end(self.today)
+        before = engine.build_profit_report(start, end)
+        self.assertEqual(before['rent']['total'], D('105000'))      # 3 x 35,000
+
+        mid = _month_start(self.today, 1)
+        _rate(mid.year, mid.month, '40000')                          # backdated
+        after = engine.build_profit_report(start, end)
+        self.assertEqual(after['rent']['total'], D('115000'))        # 35+40+40
+        self.assertEqual(after['profit'], before['profit'] - D('10000'))
+
+    # -- the cash side ------------------------------------------------------
+    def test_A_DEPOSIT_IS_CASH_OUT_AND_ONLY_THAT(self):
+        _rate(self.month.year, self.month.month, '35000')
+        start, end = self.month, _month_end(self.today)
+        before = engine.cash_position(start, end)
+        _deposit(self.today, '2500')
+        after = engine.cash_position(start, end)
+        self.assertEqual(after['total_out'], before['total_out'] + D('2500'))
+        row = next(r for r in after['money_out'] if r['label'] == 'Rent deposits')
+        self.assertEqual(row['amount'], D('2500'))
+
+    def test_the_cash_card_no_longer_calls_the_cashbook_line_rent(self):
+        """Rent is its own line on that card now, on its own basis. One card
+        naming the same cost twice is how an owner comes to read one of the two
+        figures as the other."""
+        labels = [r['label'] for r in engine.cash_position(
+            self.month, _month_end(self.today))['money_out']]
+        self.assertIn('Rent deposits', labels)
+        self.assertNotIn('Rent, power, consumables', labels)
+
+    def test_a_deposit_outside_the_window_is_not_counted_as_cash_in_it(self):
+        _rate(self.month.year, self.month.month, '35000')
+        _deposit(_month_start(self.today, 3), '9999')
+        cash = engine.cash_position(self.month, _month_end(self.today))
+        row = next(r for r in cash['money_out'] if r['label'] == 'Rent deposits')
+        self.assertEqual(row['amount'], D('0'))
+
+    # -- the position -------------------------------------------------------
+    def test_the_tile_says_PAID_AHEAD_rather_than_printing_a_minus(self):
+        """Every balance on that card can go the other way, and the sign is
+        turned into words in the engine — the rule `financial_position` already
+        follows for a shop in credit."""
+        _rate(self.month.year, self.month.month, '35000')
+        _deposit(self.today, '40000')
+        rent = next(t for t in engine.financial_position()['tiles']
+                    if 'Rent' in t['label'])
+        self.assertEqual(rent['label'], 'Rent paid ahead')
+        self.assertEqual(rent['amount'], D('5000'))
+        self.assertEqual(rent['direction'], 'credit')
+
+    def test_the_tile_says_STILL_TO_DEPOSIT_when_the_rent_is_short(self):
+        _rate(self.month.year, self.month.month, '35000')
+        _deposit(self.today, '7500')
+        rent = next(t for t in engine.financial_position()['tiles']
+                    if 'Rent' in t['label'])
+        self.assertEqual(rent['label'], 'Rent still to deposit')
+        self.assertEqual(rent['amount'], D('27500'))
+        self.assertEqual(rent['direction'], 'out')
+
+    def test_the_rent_tile_is_the_same_shape_as_every_other(self):
+        """
+        It shipped FULL WIDTH for a day, with the stock tile, because a
+        row-by-row grid of five half-width tiles always orphans one. The
+        owner's call was that the two read as odd slabs under four normal
+        boxes — so the card splits by DIRECTION instead and every tile is one
+        shape. Nothing in the Django suite executes CSS, so the absence of the
+        flag is what is asserted.
+        """
+        _rate(self.month.year, self.month.month, '35000')
+        tiles = engine.financial_position()['tiles']
+        for t in tiles:
+            with self.subTest(label=t['label']):
+                self.assertNotIn('wide', t)
+        rent = next(t for t in tiles if 'Rent' in t['label'])
+        self.assertTrue(rent['note'])
+
+    def test_WHAT_WE_OWE_IS_ONE_COLUMN_AND_EVERYTHING_ELSE_THE_OTHER(self):
+        """
+        The owner's instruction: green and blue on the left, red on the right.
+        It also makes this card speak the same spatial language as CASH
+        TRACKING directly above it, where money in is the left column and
+        money out is the right.
+        """
+        _rate(self.month.year, self.month.month, '35000')
+        held, owed = engine.financial_position()['tile_columns']
+        self.assertEqual([t['direction'] for t in owed], ['out', 'out', 'out'])
+        self.assertNotIn('out', [t['direction'] for t in held])
+        self.assertIn('Rent still to deposit', [t['label'] for t in owed])
+        self.assertIn('Stock on the shelf', [t['label'] for t in held])
+
+    def test_the_held_column_comes_FIRST_which_is_the_phone_order(self):
+        """On a phone the grid collapses to one column and the two wrappers
+        stack in DOM order, so this is the only thing deciding that the owner
+        reads what is theirs before what they owe."""
+        _rate(self.month.year, self.month.month, '35000')
+        held, _owed = engine.financial_position()['tile_columns']
+        self.assertEqual(held[0]['label'], 'Customers owe us')
+
+    def test_THE_COLUMNS_ARE_EXACTLY_THE_TILES_no_more_and_no_fewer(self):
+        """
+        ⚠ THE INVARIANT, because the failure is invisible: a tile dropped from
+        both columns still leaves a card that looks perfectly correct, and a
+        tile in both is a figure printed twice. `tile_columns` is derived from
+        `tiles` in one expression precisely so this cannot drift.
+        """
+        _rate(self.month.year, self.month.month, '35000')
+        pos = engine.financial_position()
+        held, owed = pos['tile_columns']
+        self.assertEqual(len(held) + len(owed), len(pos['tiles']))
+        for t in pos['tiles']:
+            with self.subTest(label=t['label']):
+                self.assertEqual((t in held) + (t in owed), 1)
+
+    def test_A_CREDIT_SITS_WITH_WHAT_IS_HELD_NOT_WITH_WHAT_IS_OWED(self):
+        """
+        A shop paid ahead is money in the workshop's FAVOUR and is not a debt,
+        so listing it in a column of debts would be the sign already turned
+        into words and then contradicted by where it sits. The rule is simply
+        `out` is owed, everything else is not.
+        """
+        _rate(self.month.year, self.month.month, '35000')
+        _deposit(self.today, '40000')             # paid ahead -> 'credit'
+        held, owed = engine.financial_position()['tile_columns']
+        self.assertIn('Rent paid ahead', [t['label'] for t in held])
+        self.assertNotIn('Rent paid ahead', [t['label'] for t in owed])
+
+    def test_the_payable_total_is_deliberately_left_alone(self):
+        """That figure is computed and never rendered, because spare + supplies
+        is not the whole debt — an unsettled month's wages are a payable
+        nowhere. Adding rent would make it less incomplete without making it
+        true, so the rent balance is its own key."""
+        _rate(self.month.year, self.month.month, '35000')
+        pos = engine.financial_position()
+        self.assertEqual(pos['payable_total'],
+                         pos['payable_spare'] + pos['payable_supplier'])
+        self.assertEqual(pos['rent_due'], D('35000'))
+
+    # -- All Time -----------------------------------------------------------
+    def test_ALL_TIME_REACHES_THE_FIRST_RENT_MONTH(self):
+        """
+        ⚠ THE SALARY BUG, ONE STREAM OVER. A stream missing from
+        `_DATE_STREAMS` is money the widest filter in the section cannot see.
+        Measured before the rent streams were added: All Time opened on
+        2026-02-07 against a ledger reaching back to October 2023, hiding
+        Rs 10,15,000 of rent while claiming to cover everything.
+
+        The RATE has to be in that list as well as the deposit: a rate's month
+        is a 1st, and a month is charged only when its 1st is inside the
+        window, so anchoring on a deposit dated the 5th would silently drop the
+        first month's rent.
+        """
+        old = _month_start(self.today, 24)
+        _rate(old.year, old.month, '35000')
+        _deposit(old + timedelta(days=4), '1000')
+        start, end, _key, _label = engine.resolve_period('all_time')
+        self.assertEqual(start, old)
+        rep = engine.build_profit_report(start, end)
+        self.assertEqual(rep['rent']['months'], 25)      # 24 back, plus this one
+        self.assertEqual(rep['rent']['total'], D('875000'))
+
+    def test_a_window_reaching_back_before_the_ledger_SAYS_SO(self):
+        """The opening-balance answer this app gives everywhere: the figure is
+        short for the period before the section existed, and the page says so
+        rather than reading as though the premises had been free."""
+        _rate(self.month.year, self.month.month, '35000')
+        rent = engine.rent_expense(_month_start(self.today, 6),
+                                   _month_end(self.today))
+        self.assertTrue(rent['reaches_before'])
+        self.assertIn('only recorded from', rent['hint'])
+        self.assertIn(self.month.strftime('%B %Y'), rent['hint'])
+
+    def test_no_rate_at_all_charges_nothing_and_says_that_instead(self):
+        rent = engine.rent_expense(self.month, _month_end(self.today))
+        self.assertEqual(rent['total'], D('0'))
+        self.assertFalse(rent['reaches_before'])
+        self.assertEqual(rent['hint'], 'No rent recorded for this period')
+
+    def test_a_rate_dated_AHEAD_changes_no_profit_figure_yet(self):
+        """The one forward date the section allows, and it is safe because a
+        rate moves no money by itself until its month arrives."""
+        nxt = _month_start(self.today, back=-1)
+        _rate(nxt.year, nxt.month, '40000')
+        rep = engine.build_profit_report(self.month, _month_end(self.today))
+        self.assertEqual(rep['rent']['total'], D('0'))
+
+
+class ACashbookRowNamedLikeRentIsFlaggedNotFilteredTests(TestCase):
+    """
+    Rent used to arrive at the Profit page AS a Cashbook category. Now that it
+    has its own line, a row still filed there under a rent-shaped name is the
+    same money twice — exactly as a row called "Staff Salaries" is.
+
+    ⚠ FLAGGED, NEVER FILTERED. The category is free text: "Rent agreement stamp
+    paper" is a real running cost, and a view that silently dropped rows
+    matching a word list would hide real money. The owner is told and moves it.
+    """
+
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.month = _month_start(self.today)
+        _rate(self.month.year, self.month.month, '35000')
+
+    def _report(self):
+        return engine.build_profit_report(self.month, _month_end(self.today))
+
+    def test_the_row_is_named_and_the_money_is_still_counted(self):
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Rent',
+                                     amount=D('45000'), date=self.today)
+        rep = self._report()
+        self.assertEqual(rep['cashbook']['rent_suspect_total'], D('45000'))
+        self.assertEqual([r['category'] for r in rep['cashbook']['rent_suspects']],
+                         ['Rent'])
+        # nothing removed: the cashbook total still carries it
+        self.assertEqual(rep['cashbook']['total'], D('45000'))
+
+    def test_THE_ELECTRICITY_BILL_IS_NOT_ACCUSED(self):
+        """
+        ⚠ WORD BOUNDARIES, NEVER A SUBSTRING. A contains-check for "rent" also
+        matches "cur" + "rent", and this workshop calls its electricity bill
+        "Current bill" — so a substring match would flag the single most common
+        row in the ledger and be ignored inside a week.
+        """
+        for benign in ('Current bill', 'current', 'Electricity',
+                       'Rental car hire', 'Parent company fee', 'Torrent'):
+            with self.subTest(category=benign):
+                self.assertFalse(engine.looks_like_rent(benign))
+        for named in ('Rent', 'rent', 'RENT', 'Rents', 'Workshop Rent',
+                      'Rent deposit', 'Building rent'):
+            with self.subTest(category=named):
+                self.assertTrue(engine.looks_like_rent(named))
+
+    def test_the_flag_reaches_deep_analysis_on_the_same_rule(self):
+        """The two screens must never disagree about which row is the suspect
+        one, so neither computes its own answer."""
+        CashbookEntry.objects.create(entry_type='EXPENSE', category='Rent',
+                                     amount=D('45000'), date=self.today)
+        rows = engine.cashbook_expense(self.month,
+                                       _month_end(self.today))['by_category']
+        flagged = [r['category'] for r in rows if r['looks_like_rent']]
+        self.assertEqual(flagged, ['Rent'])
+
+    def test_the_steer_and_the_flag_read_ONE_word_list(self):
+        """The entry-time question and the after-the-fact warning must never
+        come to mean different things — the rule the shop words already follow.
+        The steer is deliberately broader by one pair of words, because it only
+        ASKS and never blocks."""
+        from workshop.cashbook_views import _steers
+        row = next(r for r in _steers() if 'rent' in r['words'])
+        self.assertTrue(set(engine.RENT_WORDS) <= set(row['words']))
+        self.assertEqual(sorted(set(row['words']) - set(engine.RENT_WORDS)),
+                         ['deposit', 'deposits'])
+
+
+class ThePreGoLivePurgeClearsTheRentLedgerTests(TestCase):
+    """
+    ⚠ THE COMMAND THE GO-LIVE RUNBOOK SAYS TO RUN AGAINST PRODUCTION, and it
+    missed three money tables until 2026-09-04 — all three added to the app
+    after it was written. Anything it forgets is DEMO MONEY surviving into the
+    real books, and it reports success either way.
+
+    `OwnerWithdrawal` feeds `cash_position()`; `RentRate` and `RentDeposit` now
+    feed the PROFIT EQUATION. On the development data that was Rs 12,60,000 of
+    fabricated rent and Rs 12,32,500 of fabricated cash out.
+    """
+
+    def test_it_clears_rent_rates_deposits_and_owner_withdrawals(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        owner = User.objects.create_user('purge_owner', password='pw')
+        _rate(2026, 1, '35000')
+        _deposit(date(2026, 1, 5), '2500')
+        OwnerWithdrawal.objects.create(owner=owner, amount=D('5000'),
+                                       date=date(2026, 1, 6))
+        # The command reports what it deleted through `self.stdout` regardless
+        # of verbosity, which is right for an operator and noise in a suite.
+        call_command('purge_business_data', yes=True, stdout=StringIO())
+        self.assertEqual(RentRate.objects.count(), 0)
+        self.assertEqual(RentDeposit.objects.count(), 0)
+        self.assertEqual(OwnerWithdrawal.objects.count(), 0)
+        # ...and the login it was attributed to is NOT touched.
+        self.assertTrue(User.objects.filter(pk=owner.pk).exists())
+
+    def test_a_dry_run_still_deletes_nothing(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        _rate(2026, 1, '35000')
+        _deposit(date(2026, 1, 5), '2500')
+        call_command('purge_business_data', stdout=StringIO())
+        self.assertEqual(RentRate.objects.count(), 1)
+        self.assertEqual(RentDeposit.objects.count(), 1)
 
 
 class TheDayTotalMakesADoubleEntryVisibleTests(_Signed):

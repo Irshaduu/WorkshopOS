@@ -775,11 +775,16 @@ class ThreeDatesThreeJobsTests(AnalysisBase):
         self.assertEqual(line(r2), D('14000'))      # 28 units x ₹500
 
         # And BOTH months close with no reconciling line, because both halves
-        # of the page now charge stock at the same moment.
+        # of the page charge stock at the same moment. Every row in `spend` is
+        # a running cost the equation also charges — `rent` is the fifth
+        # expense stream, not a bridge between two bases.
         for r in (r1, r2):
             self.assertEqual(r['earnings']['profit'], r['profit'])
             self.assertEqual([x['key'] for x in r['earnings']['spend']],
-                             ['salary', 'cashbook'])
+                             ['salary', 'rent', 'cashbook'])
+            self.assertEqual(
+                r['earnings']['gross'] - sum(x['amount'] for x in r['earnings']['spend']),
+                r['profit'])
 
     def test_the_remaining_stock_is_still_on_the_shelf_and_still_valued(self):
         """The 30% nobody has used yet is an asset, not a loss."""
@@ -1609,9 +1614,20 @@ class TheProfitIsAlsoSaidTheOwnersWayTests(AnalysisBase):
         owner's verdict was "I am more confused now" — a page that has to
         explain itself to itself is a page nobody trusts.
 
-        Both halves now charge stock at the same moment, so `gross − salary −
-        cashbook` IS the profit. If a third row ever reappears here, the two
-        bases have drifted apart and that is the bug.
+        Both halves charge stock at the same moment, so `gross` less the
+        running costs IS the profit, with nothing in between.
+
+        ⚠ EVERY ROW IN `spend` IS A RUNNING COST THE EQUATION ALSO CHARGES.
+        That is the rule; the list below is how it is checked. A row that is
+        NOT one of those — a conversion between two bases, a "stock movement",
+        anything that exists only to make the two halves agree — is the bug
+        this test is here to catch.
+
+        RENT JOINED THE LIST ON 2026-09-04 and is not that: it is the fifth
+        expense stream, read from `RentRate`, and it appears in the equation
+        directly above this card as its own line. The identity is asserted by
+        SUMMING the rows rather than by naming them, so a genuine cost stream
+        cannot make this go stale while a bridging row still breaks it.
         """
         supplier = SupplierShop.objects.create(name='Bulk Oils')
         bill = SupplierRestockBill.objects.create(supplier=supplier, bill_date=self.today)
@@ -1620,10 +1636,16 @@ class TheProfitIsAlsoSaidTheOwnersWayTests(AnalysisBase):
         SupplierRestockItem.objects.create(bill=bill, item=self.item,
                                            quantity=D('40'), total_price=D('20000'))
         rep = self._report()
-        self.assertEqual([r['key'] for r in rep['earnings']['spend']],
-                         ['salary', 'cashbook'])
+        spend = rep['earnings']['spend']
+        self.assertEqual([r['key'] for r in spend], ['salary', 'rent', 'cashbook'])
+        # Each one is the SAME figure the equation charges, not a restatement.
+        by_key = {r['key']: r['amount'] for r in spend}
+        self.assertEqual(by_key['salary'], rep['salary']['total'])
+        self.assertEqual(by_key['rent'], rep['rent']['total'])
+        self.assertEqual(by_key['cashbook'], rep['cashbook']['total'])
+        # ...and the two halves land on one profit with nothing left over.
         self.assertEqual(
-            rep['earnings']['gross'] - rep['salary']['total'] - rep['cashbook']['total'],
+            rep['earnings']['gross'] - sum(r['amount'] for r in spend),
             rep['profit'])
 
     def test_a_big_delivery_does_not_move_the_profit_at_all(self):

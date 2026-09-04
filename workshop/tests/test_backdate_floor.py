@@ -317,9 +317,10 @@ class TheCashbookSteersAnEntryToTheSectionThatOwnsItTests(TestCase):
                 self.assertLess(len(row['ask']), 42,
                                 "the heading is scanned, not read")
                 # ...and the reason says what breaks, in the reader's terms.
-                self.assertRegex(
-                    row['why'],
-                    r'counted|profit look smaller|on top of the rent')
+                # "on top of the rent" was a third alternative here until the
+                # rent steer stopped needing it — see
+                # test_RENT_AND_THE_DEPOSIT_NOW_GO_THE_SAME_WAY.
+                self.assertRegex(row['why'], r'counted|profit look smaller')
 
     def test_the_owner_names_come_from_the_database_not_from_code(self):
         """
@@ -351,23 +352,35 @@ class TheCashbookSteersAnEntryToTheSectionThatOwnsItTests(TestCase):
             with self.subTest(category=benign):
                 self.assertIsNone(self.matched(benign))
 
-    def test_RENT_ASKS_WITHOUT_SENDING_THE_MONTHLY_CHARGE_AWAY(self):
+    def test_RENT_AND_THE_DEPOSIT_NOW_GO_THE_SAME_WAY(self):
         """
-        ⚠ THE ONE MESSAGE THAT CANNOT BE SHORTENED YET, and the reason is
-        arithmetic. "Rent" is on the list because the owner asked for it — a
-        ₹2,000 daily handover typed here IS charged on top of the monthly rent.
-        But the plain wording ("rent has its own section") would be FALSE
-        today and would cost ₹35,000 a month: the monthly charge still reaches
-        the Profit page AS a Cashbook category, because Deposit & Rent touches
+        ⚠ THE MESSAGE THAT COULD FINALLY BE SHORTENED, and the old comment
+        predicted exactly this. It used to ask "Is this a rent DEPOSIT?" and
+        had to: the plain wording would have been FALSE and would have cost
+        ₹35,000 a month, because the monthly charge still reached the Profit
+        page AS a Cashbook category while Deposit & Rent touched
         `analysis_engine` nowhere.
 
-        So it steers the DEPOSIT and explicitly keeps the CHARGE. On the day
-        rent gets an expense line of its own, the second sentence goes.
+        Rent has its own expense line since 2026-09-04, read from the rate. So
+        there is no exception left to explain and no distinction the reader has
+        to hold: BOTH halves belong in Deposit & Rent, and either one typed
+        here is counted twice.
+
+        (The header comment above `CASHBOOK_STEERS` used to say the opposite of
+        its own code — '"RENT" IS DELIBERATELY NOT IN THIS LIST' sitting
+        directly above `(['rent', 'deposit'], …)`, both written in the same
+        commit. The reasoning was sound and the code never matched it.)
         """
         said = self.matched('Rent')
         self.assertIsNotNone(said)
         self.assertIn('Deposit', said['why'])
+        # ONE question for both halves, so a person keying either is asked the
+        # same thing.
         self.assertEqual(said, self.matched('Deposit'))
+        self.assertEqual(said['ask'], 'Is this rent?')
+        self.assertIn('twice', said['why'])
+        # ...and it no longer says the charge is welcome here.
+        self.assertNotIn('on top of the rent', said['why'])
 
     def test_NO_STEER_EXPLAINS_WHEN_THE_CASHBOOK_IS_STILL_RIGHT(self):
         """

@@ -194,8 +194,11 @@
      640px is the app's own phone line — the nav bar moves to the bottom at the
      same width — so "mobile" means one thing across the whole app. It is also
      comfortably past where the columns stop fitting: the longest line here
-     ("Rent, power, consumables" plus its figure) needs ~250px, and 640px
-     leaves each column ~275px. */
+     ("Power, water, consumables" plus its figure) needs ~250px, and 640px
+     leaves each column ~275px. Re-measure if a label or hint grows — the
+     rent-deposit line arrived with a 43-character hint and was cut back to 32
+     to keep it inside that, since every other hint on the card is 33 or
+     under. */
   .pf-cash-grid { display: grid; grid-template-columns: 1fr; gap: 18px 30px; }
   /* EACH RAIL LABELS ITS OWN BLOCK, on that block's left, at every width.
      The red used to sit on the card's right edge, a column's width from the
@@ -299,7 +302,17 @@
   .pf-chart-wrap { position: relative; height: 260px; }
 
   /* Position (as-of-now) grid */
-  .pf-pos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  /* WHAT WE HOLD ON THE LEFT, WHAT WE OWE ON THE RIGHT — two independent
+     stacks rather than a grid filled row by row, which is what CASH TRACKING
+     directly above already does with money in and money out. Two columns of
+     boxes, so no tile has to be full width to avoid orphaning a row, and a
+     tile that carries a note line can simply be taller than the one beside it.
+
+     `align-items: start` keeps each column only as tall as its own contents:
+     the two are unrelated lists of unrelated length, so stretching the shorter
+     one would put dead space inside a box-less wrapper for no reason. */
+  .pf-pos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-items: start; }
+  .pf-pos-col { display: flex; flex-direction: column; gap: 10px; }
   .pf-pos-item {
     border: 1px solid var(--color-border); border-radius: 12px; padding: 11px 13px;
   }
@@ -315,11 +328,16 @@
      read as a debt in whichever direction the tile normally points. */
   .pf-pos-item.credit { border-left: 3px solid var(--color-text-muted); }
   /* WHAT THE WORKSHOP HOLDS — neither owed nor owing, so neither green nor
-     red. Full width on its own row, directly under the supplies-shops payable
-     it is read against: five tiles in a two-column grid would otherwise leave
-     it orphaned in a half-width box, looking like a fifth debt. */
+     red, and it is what makes the left-hand column read as "ours" rather than
+     only "owed to us".
+
+     It was FULL WIDTH on its own row until 2026-09-04, directly under the
+     supplies-shops payable it is read against, because five tiles in a grid
+     filled row by row leave one orphaned in a half-width box. The card splits
+     by direction now, so nothing orphans and the tile is the same shape as
+     every other. The cost is that the shelf-against-supplies comparison is
+     made across the card rather than down it. */
   .pf-pos-item.hold { border-left: 3px solid var(--color-primary); }
-  .pf-pos-item.wide { grid-column: 1 / -1; }
   .pf-pos-item .n {
     font-size: 0.68rem; color: var(--color-text-muted); margin-top: 2px;
   }
@@ -930,6 +948,40 @@
 </div>
 {% endif %}
 
+{% comment %}
+  ⚠ THE SAME WARNING, ONE COST OVER, AND IT ARRIVED WITH THE RENT LINE.
+
+  Rent used to reach this page as a Cashbook category and now has its own
+  expense line, read from the rate in Deposit & Rent — so a Cashbook row still
+  filed under a rent-shaped name is the same money charged twice, exactly as a
+  row called "Staff Salaries" is. Measured on the dev data the day the line
+  landed: ₹1,80,900.
+
+  It lives beside the headline for the recorded reason the wage one does — a
+  warning that changes what the figure above it MEANS cannot sit a page away —
+  and it is gated on `report.rent.total` for the same reason the wage one is
+  gated on the salary total: with no rate recorded, a Cashbook rent row is the
+  only rent there is and nothing is being double counted.
+
+  Matched on WORD BOUNDARIES in the engine (`RENT_WORDS`), never as a
+  substring: this workshop calls its electricity bill "Current bill", and a
+  contains-check would accuse the most common row in the ledger.
+{% endcomment %}
+{% if report.cashbook.rent_suspects and report.rent.total %}
+<div class="pf-card">
+  <div class="pf-note" style="background: #fffbeb; color: #92400e;">
+    <i class="bi bi-exclamation-triangle-fill mt-1" style="color: #d97706;"></i>
+    <span>
+      <strong>Rent may be counted twice.</strong>
+      ₹{{ report.cashbook.rent_suspect_total|inr }} of Cashbook expense is filed under
+      {% for c in report.cashbook.rent_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %},
+      and rent is already counted from Deposit &amp; Rent. Nothing was removed — move those
+      entries if they are the same money.
+    </span>
+  </div>
+</div>
+{% endif %}
+
 <!-- ── Position right now ───────────────────────────────────── -->
 <div class="pf-card">
   <div class="pf-card-title">
@@ -944,10 +996,28 @@
     over the label and a positive magnitude with the sign already interpreted:
     deciding what a minus means is arithmetic, and arithmetic lives in the
     engine. The template prints what it is given.
+
+    TWO COLUMNS, AND THE ENGINE DECIDES WHICH TILE IS IN WHICH — `tile_columns`,
+    derived from `tiles` in one expression so the two can never disagree. What
+    the workshop holds or is owed goes left (green and blue), what it owes goes
+    right (red).
+
+    ⚠ THE COLUMNS ARE LOOPED, so the tile markup below exists ONCE. Two
+    hand-written columns would be two copies of the note logic free to drift,
+    and the drift would show on exactly one of them.
+
+    ⚠ `forloop.first` IS NOW PER COLUMN, and that is what the green figure
+    wants: the first tile of the held column is "Customers owe us", and the
+    owed column's first tile is `out`, so the condition cannot fire there.
+
+    On a phone the grid collapses to one column and the wrappers stack in DOM
+    order — held first, which is the owner's instruction.
   {% endcomment %}
   <div class="pf-pos">
-    {% for t in position.tiles %}
-    <div class="pf-pos-item {{ t.direction }}{% if t.wide %} wide{% endif %}">
+    {% for col in position.tile_columns %}
+    <div class="pf-pos-col">
+    {% for t in col %}
+    <div class="pf-pos-item {{ t.direction }}">
       <div class="k">{{ t.label }}</div>
       <div class="v"{% if t.direction == 'out' %} style="color: #dc2626;"{% elif t.direction == 'in' and forloop.first %} style="color: var(--color-success);"{% endif %}>₹{{ t.amount|inr }}</div>
       {% comment %}
@@ -965,6 +1035,8 @@
       {% if t.note %}
       <div class="n">{{ t.note }}{% if t.uncosted_products %} · {{ t.uncosted_products }} product{{ t.uncosted_products|pluralize }} not yet costed, left out{% endif %}</div>
       {% endif %}
+    </div>
+    {% endfor %}
     </div>
     {% endfor %}
   </div>

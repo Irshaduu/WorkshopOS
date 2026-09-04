@@ -19,7 +19,19 @@ REMOVED:
   - Mechanic (staff roster)
   - SalaryAdvance, SalaryPayment (+ SalaryPaymentLine via CASCADE)
   - CashbookEntry
+  - OwnerWithdrawal
+  - RentRate, RentDeposit
   - DeletionLog
+
+⚠ THREE TABLES WERE MISSING FROM THIS LIST UNTIL 2026-09-04, all three added
+to the app after this command was written, and all three real money. This is
+the command the go-live runbook says to run against production before the
+workshop starts using the system — so anything it forgets is DEMO MONEY that
+survives into the real books. `OwnerWithdrawal` feeds `cash_position()`, and
+since rent moved onto its own expense line `RentRate` + `RentDeposit` feed the
+PROFIT EQUATION: on the development data that was ₹12,60,000 of fabricated rent
+and ₹12,32,500 of fabricated cash out, left behind by a purge that reported
+success.
   - inventory: SupplierShop, SupplierRestockBill/Item, SupplierPayment,
                ShopCatalogItem, Item, Category
 
@@ -37,6 +49,7 @@ from workshop.models import (
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
     Mechanic, CashbookEntry, DeletionLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
+    OwnerWithdrawal, RentRate, RentDeposit,
 )
 from inventory.models import (
     Category, Item, ShopCatalogItem, SupplierShop,
@@ -77,6 +90,12 @@ class Command(BaseCommand):
             ("Salary payments (monthly settlements)", SalaryPayment),
             ("Salary advances", SalaryAdvance),
             ("Staff roster (Mechanic)", Mechanic),
+            ("Owner withdrawals", OwnerWithdrawal),
+            # Deposits before the rate: `RentRate.effective_from` is unique and
+            # nothing points at it, so the order is only for the report reading
+            # in the same shape as every other pair here.
+            ("Rent deposits", RentDeposit),
+            ("Rent rates", RentRate),
             ("Deletion history", DeletionLog),
         ]
 

@@ -1096,16 +1096,20 @@ counted twice" warning and lets the owner move the entry.
 page's warning is the same fact said a month later, on a screen the person who
 typed it may never open. Three kinds of money have a dedicated section AND land
 wrong here: **wages** are counted twice, an **owner draw** quietly cuts reported
-profit (that is the whole reason `OwnerWithdrawal` exists), and a **rent
-deposit** is charged on top of the monthly rent.
+profit (that is the whole reason `OwnerWithdrawal` exists), and **rent** —
+either the monthly charge or a daily handover — is counted twice, since rent
+became its own expense line read from the rate.
 
-**SEVEN GROUPS, 27 KEYWORDS.** Four are word lists in the file; **three are
-read from the database**, so a rename or a new row is protected with no code
-change:
+**FOUR WORD LISTS IN THE FILE, PLUS EVERY SHOP AND OWNER NAME FROM THE
+DATABASE**, so a rename or a new row is protected with no code change. ⚠ The
+totals are deliberately not written down here any more: they were "SEVEN
+GROUPS, 27 KEYWORDS", which counted six seeded shops and two owners and so was
+a fact about the development data rather than about the code. `_steers()`
+prints the truth on any run.
 
 | group | goes to | why it lands wrong here |
 |---|---|---|
-| rent · deposit | Deposit & Rent | counted on top of the rent |
+| rent · rents · deposit · deposits | Deposit & Rent | counted **twice** |
 | salary · salaries · wage(s) · advance · bonus | Salary & Advance | counted **twice** |
 | withdrawal · withdraw · drawing(s) · take out · takeout | Owner Withdrawals | makes profit look **smaller** |
 | shop · spare · parts · supplier · supplies | that shop's page | counted **twice** |
@@ -1155,16 +1159,21 @@ belongs.**
 
 ⚠ **A STEER EXPLAINS NOTHING ELSE — the rent one carried a third line and it
 was removed.** It read *"The one monthly rent bill is still fine here"*, which
-is **true** (the monthly bill still reaches Profit as a Cashbook category) and
-which the owner read as *"workshop rent is fine to add here"* — the opposite of
-the point. It was answering a question nobody had asked yet. The heading
-already disambiguates: somebody keying the monthly bill reads "Is this a rent
-**deposit**?", answers no, and carries on.
+was **true at the time** (the monthly bill then reached Profit as a Cashbook
+category) and which the owner read as *"workshop rent is fine to add here"* —
+the opposite of the point. It was answering a question nobody had asked yet.
 → `test_NO_STEER_EXPLAINS_WHEN_THE_CASHBOOK_IS_STILL_RIGHT` asserts every row
 carries exactly `words`, `ask` and `why`, so a fourth field cannot come back.
 
-⚠ **That muddle existed only because rent is half-way out of the Cashbook.**
-When it gets its own expense line the wording gets *simpler*, not more careful.
+⚠ **THAT MUDDLE IS GONE, AND THE PREDICTION HELD.** This entry used to close
+*"That muddle existed only because rent is half-way out of the Cashbook. When
+it gets its own expense line the wording gets simpler, not more careful."* Rent
+went all the way out on 2026-09-04, so there is no exception left to explain
+and no distinction the reader has to hold: the heading is now **"Is this
+rent?"** — one question for the monthly charge and the daily handover alike,
+and the consequence is the same plain "counted **twice**" the other three
+groups carry. It is the shortest `ask` in the list, on the group that used to
+need the longest.
 
 **THE DIALOG IS THIS PAGE'S OWN MODAL, FULLY RED, WITH A GREEN CANCEL.** It
 started as `window.confirm()`, which cannot be designed at all — it opened with
@@ -2070,25 +2079,127 @@ office hands over the cash and keys it; what the premises cost is a business
 term. The rent card is gated in the template to match the view — a door Office
 can see and cannot open is worse than no door. Floor sees none of it.
 
-⚠ **NOTHING IN THIS SECTION REACHES `analysis_engine.py`, AND THAT IS A
-BOUNDARY RATHER THAN AN OVERSIGHT.** Rent still becomes an expense the way it
-always has — as a **Cashbook category** (`cashbook_expense()` feeds the profit
-equation as General Cashbook, and the engine's own hints read "Rent, power,
-consumables" in three places). So switching this section on moves **no reported
-figure by a rupee**. Moving rent onto an expense line of its own is a separate
-change with real reach — the equation, `earnings_breakdown`'s `spend` list (or
-the two statements of profit stop reconciling), `_DATE_STREAMS`,
-`monthly_series`, a `financial_position()` tile, and the historical cashbook
-rent rows, which would otherwise be counted **twice**.
-→ `TheSectionStandsOnItsOwnTests` fails on the day somebody starts that, which
-is the point: it should be a decision, not a side effect.
+### Rent is the fifth expense stream — 2026-09-04
 
-**When that second step happens**, the shape is already settled: the expense is
-whole months **capped at the current one** (rent is derived rather than
-row-based, so unlike every other stream it has no protection against a "This
-Year" window charging twelve months in September), and the balance becomes a
-`financial_position()` tile — "Rent still to deposit" / "Rent paid ahead",
-positive magnitude and a direction, never netted against anything.
+⚠ **THIS REVERSES WHAT THIS FILE SAID UNTIL 2026-09-04, AND THE WORKFLOW
+FORCED IT RATHER THAN ANYBODY CHOOSING IT.** The entry read **NOTHING IN THIS
+SECTION REACHES `analysis_engine.py`, AND THAT IS A BOUNDARY RATHER THAN AN
+OVERSIGHT**, on the reasoning that rent still became an expense the way it
+always had — as a Cashbook category — so switching the section on moved no
+reported figure by a rupee. `TheSectionStandsOnItsOwnTests` asserted it and
+said it should fail on the day somebody moved rent onto its own line, "which
+is the point: it should be a decision, not a side effect."
+
+That boundary held on ONE assumption, and the assumption was about people
+rather than code: **that the office would keep keying the monthly rent bill
+into the Cashbook.** Once they started recording rent in its own section
+instead, "no figure moves" quietly became "rent is in the books nowhere".
+Measured on the development data when it was found:
+
+| | Profit charged | the rent ledger said | |
+|---|---|---|---|
+| **September 2026** | ₹900 | ₹35,000 | profit **₹34,100 too high** |
+| **August 2026** | ₹45,000 | ₹35,000 | two different rents |
+| **This Year** | ₹1,80,900 | ₹3,15,000 | profit **₹1,34,100 too high** |
+| **2025** | ₹0 | ₹4,20,000 | the page read "nothing recorded" |
+
+**THE RULE NOW — three questions, three surfaces, and no figure on two of
+them:**
+
+| | | |
+|---|---|---|
+| what the month **COST** | the RATE, whole months | the **expense**, stream 5 |
+| what was **HANDED OVER** | the DEPOSITS, by the day the cash moved | **Cash Tracking** |
+| the **GAP** | charged less deposited | a `financial_position()` tile, in the owed column |
+
+That is the app's **fourth instance** of a rule it already followed three
+times, not a new idea: wages are dated by the salary MONTH and not the day the
+cash left; a `SupplierPayment` never touches profit while the stock DRAW does;
+a spare-shop payment never touches profit while the part fitted does. This
+module's own header said so before any of it was wired.
+
+⚠ **THE ARITHMETIC LIVES IN `rent.py`, AND `analysis_engine` CALLS IT.**
+`charged_by_month` / `charged_between` / `deposited_between` / `outstanding` /
+`ledger_starts`. A second walk over the rate table in the engine would be a
+second answer free to drift from the one the Deposit & Rent page prints — the
+`SPARE_COST` rule ("nothing may re-derive it") applied again. `charged_between`
+is deliberately the **sum of `charged_by_month`**, because the trend chart is
+built from the per-month figures and the headline from the single figure, and
+two walks would be two chances to cap differently.
+
+⚠ **RENT IS THE ONLY STREAM THAT NEEDS A CAP, AND THAT IS THE ONE GENUINELY
+NEW HAZARD.** Every other figure in the engine is a SUM OVER ROWS and no row
+exists in the future, so a window running past today is self-limiting. Rent is
+DERIVED from a rate, so nothing stops it being charged for months that have
+not happened: `this_year` resolves to 1 Jan – 31 Dec deliberately, so an
+uncapped walk charges **twelve months on 4 September — ₹4,20,000 against a true
+₹3,15,000**, which is ₹1,05,000 of invented expense on the page distribution is
+decided from.
+
+**The current month IS charged, in full, from the 1st**, and the difference
+from an unsettled wage bill is the whole reason: rent is **stored**, so it is
+known on day one, where a month's wages are not known until leave days are
+entered. `unsettled_months` names that gap instead precisely because the figure
+would have to be guessed. Nothing here is ever guessed.
+
+**A month is charged when its 1st falls inside the window** — `salary_expense`'s
+own rule (`SalaryPayment.month__range`), so the two monthly costs in this app
+are dated by one rule. Shared consequence: a mid-month custom range charges
+neither a wage bill nor a rent.
+
+⚠ **`_DATE_STREAMS` GAINED TWO ENTRIES, AND THE RATE IS THE ONE THAT MATTERS.**
+Before them All Time opened on 2026-02-07 against a ledger reaching back to
+October 2023 — **₹10,15,000 of rent outside the widest filter in the section
+while it claimed to cover everything**, the identical shape to the ₹1,22,167
+salary bug that list's own comment records. `RentDeposit.date` alone is not
+enough: a rate's month is a 1st and a month is charged only when its 1st is in
+the window, so a ledger opened in October whose first deposit fell on the 5th
+would drop October's rent.
+
+⚠ **A CASHBOOK CATEGORY NAMED LIKE RENT IS NOW A DOUBLE COUNT, AND IS FLAGGED
+RATHER THAN FILTERED** — `analysis_engine.RENT_WORDS`, the same treatment a
+wage-looking category gets, with the warning beside the headline because it
+changes what the figure above it means. "Rent agreement stamp paper" is a real
+running cost, so nothing is ever removed.
+
+**MATCHED ON WORD BOUNDARIES, NEVER AS A SUBSTRING**, and this is the one place
+in the engine where that distinction is load-bearing: a contains-check for
+"rent" also matches "cur·rent", and this workshop calls its electricity bill
+**"Current bill"** — so it would accuse the single most common row in the
+ledger and be ignored inside a week. Done in **Python** over the rows already
+grouped, never as a database regex: `\b` is a word boundary in Python and a
+**BACKSPACE** in PostgreSQL's POSIX regex, so a DB-side pattern would behave
+one way under test (SQLite) and another in production.
+
+**The Cashbook steer reads that same list and adds one pair of words**
+(`deposit`, `deposits`). Deliberately broader: a steer only ASKS and never
+blocks, so a false positive costs a second, while the flag ASSERTS the profit
+figure is wrong and a false warning on that page is worse than none.
+
+⚠ **THE STEER'S HEADER COMMENT HAD SAID THE OPPOSITE OF ITS OWN CODE SINCE
+`c594ee8`.** It read '"RENT" IS DELIBERATELY NOT IN THIS LIST, and adding it
+would cost the workshop ₹35,000 a month' — directly above
+`(['rent', 'deposit'], …)`. The reasoning was sound and the code never matched
+it, so the app was already nudging the office out of the one place rent was
+counted. The wording is simple now, exactly as that comment predicted: **"Is
+this rent?"**, one question for both halves.
+
+**On the map**: the card had NO connector, and the absence was the statement —
+its second chip read "not in profit yet". It now drops straight into **PROFIT**,
+and the chip says the thing the line cannot: **"the deposit is not the cost"**.
+⚠ **ONE line, not two, and the second is refused by the drawing rather than
+forgotten**: reaching CASH TRACKING means routing outside x=1040–1388 and both
+margins are full (x=1006 is the expense trunk, 1013/1024/1030 carry the fleet
+and photos runs, x=1404 is the owner withdrawal's own rail — a second coral run
+there sits 0px from it for 166px, which is what check 5 exists to refuse). It
+is also consistent: **no expense card on that sheet gets a cash line.** Rent
+does not tap the expense trunk either, for geometry rather than meaning — the
+rail's horizontal leg ends at x=1006 and this card sits at x≥1108, so every tap
+would be a diagonal on a sheet built entirely on right angles.
+→ `TheRentIsAnExpenseAndTheDepositIsCashTests`,
+`ACashbookRowNamedLikeRentIsFlaggedNotFilteredTests`. The invariant that used
+to BE the boundary is still asserted and is the most important test in the
+file: **a deposit moves no profit figure by a rupee.**
 
 ## Master data
 
@@ -2315,8 +2426,15 @@ actually cost, and is the workshop's real rhythm.
 owner's question, in their words: *"we have to pay Supplies Shops ₹1,00,000,
 but we have ₹1,20,000 worth of stock in the workshop."* Both figures existed
 and lived on two different pages, so the comparison could not be made. "Stock
-on the shelf" is now the fifth tile in Position Right Now — full width, its own
-rail colour, directly under the supplies-shops payable.
+on the shelf" is a tile in Position Right Now, with its own rail colour.
+
+⚠ **IT WAS FULL WIDTH AND DIRECTLY UNDER THE SUPPLIES PAYABLE UNTIL
+2026-09-04, and the adjacency was the recorded reason for both.** The card
+splits by DIRECTION now (see below), so the shelf sits in the held column and
+the supplies payable in the owed one — **the comparison is made ACROSS the card
+rather than down it.** Both are still on one screen without scrolling, which is
+what the original change was for; the lever, if the owner wants them level
+again, is the order of the owed column in `financial_position()`.
 
 ⚠ **There is no accounting identity between them, so no net is computed.** The
 payable covers every unpaid bill whether or not those goods are still on the
@@ -2325,6 +2443,44 @@ they answer the real question — is the debt backed by goods we still hold — 
 the owner does that reading, not the page. The tile says **"at what it cost"**,
 because valuing the shelf at retail would put an unearned margin into a balance
 figure.
+
+⚠ **POSITION RIGHT NOW IS TWO COLUMNS BY DIRECTION — WHAT WE HOLD LEFT, WHAT
+WE OWE RIGHT** (the owner's instruction, 2026-09-04). Green and blue on the
+left, red on the right, and it makes this card speak the same spatial language
+as **Cash Tracking directly above it**, where money in is the left column and
+money out is the right.
+
+**Every tile is one shape.** Two of them were full width for a day — the shelf
+and the rent — because a two-column grid filled row by row always orphans the
+fifth of five, and a tile carrying a `note` line is taller than its neighbours.
+The owner's call was that the two read as odd slabs under four normal boxes.
+Two independent stacks solve both problems at once: nothing orphans, and an
+uneven tile is simply taller than the one beside it. `.pf-pos-item.wide` and
+the `wide` flag are both gone.
+
+⚠ **`tile_columns` IS DERIVED FROM `tiles` IN ONE EXPRESSION**, never built
+alongside it — two hand-maintained lists would be two orders free to drift, and
+they would drift the day a tile is added, which is exactly how the card ended
+up with a five-tile grid that orphaned one. The template loops columns and then
+tiles, so **the tile markup exists once**; `forloop.first` becomes per column,
+which is what the green figure wants (the held column opens on "Customers owe
+us", and the owed column's first tile is `out`, so it cannot fire there).
+
+⚠ **A `credit` TILE GOES LEFT, WITH WHAT IS HELD.** A shop paid ahead is money
+in the workshop's favour and is *not* a debt, so listing it in a column of
+debts would be the sign already turned into words and then contradicted by
+where it sits. The rule is simply: **`out` is owed, everything else is not.**
+
+**THE HELD COLUMN IS FIRST, and that is the phone layout.** Below 576px the
+grid collapses to one column and the two wrappers stack in DOM order, so the
+owner reads what is theirs before what they owe. Measured: at 1280 two 360px
+columns with rows level at 68/68/86 either side; at 600 — the narrowest
+two-column case — two 260px columns with both note lines still on one line; at
+375 a single 305px column reading green, green, blue, red, red, red.
+→ `test_WHAT_WE_OWE_IS_ONE_COLUMN_AND_EVERYTHING_ELSE_THE_OTHER`,
+`test_THE_COLUMNS_ARE_EXACTLY_THE_TILES_no_more_and_no_fewer` — that second one
+is the invariant, because the failure is invisible: a tile dropped from both
+columns still leaves a card that looks perfectly correct.
 
 **Unknown cost on an `Item` is `avg_cost == 0`, NOT NULL** (`default=0,
 null=False`), so an `isnull` filter matches nothing and would value opening
@@ -2366,8 +2522,8 @@ income**, less the running costs:
 
 ```
 LABOUR + SPARE PARTS MARGIN + INVENTORY MARGIN + CASHBOOK INCOME
-    (less discounts given)            = GROSS EARNINGS
-less SALARY and GENERAL CASHBOOK      = THE SAME PROFIT
+    (less discounts given)                 = GROSS EARNINGS
+less SALARY, RENT and CASHBOOK EXPENSE     = THE SAME PROFIT
 ```
 
 ⚠ **THERE IS NO RECONCILING LINE, AND ITS ABSENCE IS THE POINT.** This card
@@ -2378,9 +2534,14 @@ has to explain itself to itself is a page nobody trusts. The fix was to pick one
 basis, not to word the bridge better. **If a third row ever reappears in
 `spend`, the two bases have drifted apart and that is the bug.**
 
-Three things that make the identity close, each of which was an easy miss:
+Four things that make the identity close, each of which was an easy miss:
 - **The discount is its own line.** It is given on the whole bill, so it belongs
   to neither the labour line nor either margin. Shown only when there is some.
+- **Rent is handed in like every other shared figure.** It joined the equation
+  on 2026-09-04 and leaving it out of `spend` would land this card ₹35,000 a
+  month above the equation printed directly over it — and the whole safety of
+  stating the profit twice is that the second statement lands on the first with
+  nothing in between.
 - **`unattributed_spare_expense` is NOT deducted again.** `parts_trading` costs
   every `SOURCE_SHOP` row whether or not a shop was named, so it is already
   inside the shop margin. The equation splits it out; this absorbs it.
@@ -2448,7 +2609,7 @@ that ran out.
 
 **The breakpoint is 640px, the app's own phone line** — the nav bar moves to
 the bottom at the same width, so "mobile" means one thing across the whole app.
-It also clears the content: the longest line ("Rent, power, consumables" plus
+It also clears the content: the longest line ("Power, water, consumables" plus
 its figure) needs ~250px, and 640px leaves each column ~275px. Measured at
 1024 / 768 / 375: two 352px columns, two 329px columns, then stacked with the
 red starting 240px down.
@@ -2485,12 +2646,14 @@ names have to say so. Renamed in **both** places the engine prints it — the
 equation's expense line and the earnings card — since it is one figure.
 
 ⚠ **"MONEY SPENT" ON THE EXPENSES CARD WAS FALSE, and it is the spend/paid
-collision again.** Only **one** of its four lines is cash: General Cashbook.
+collision again.** Only **one** of its five lines is cash: Cashbook Expense.
 Spare Shops is the cost of parts fitted, dated by the job card, while the shops
 are settled in instalments months later; Inventory Used is stock drawn at
 weighted-average cost, bought and paid for on an earlier bill; Salary & Advance
 is the wage bill for the salary MONTH, whose settlement cash leaves in the
-first days of the next one. It became untenable the moment Cash Tracking landed
+first days of the next one; and **Rent** is what the premises cost for the
+month, where the cash went out in daily handovers that Cash Tracking reports
+separately. It became untenable the moment Cash Tracking landed
 directly above it — two adjacent cards, one saying "Money moved" and one "Money
 spent", over figures on entirely different bases and differing by lakhs. It now
 reads **"What the work cost, not cash out"**.
@@ -6994,8 +7157,8 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 62 files, 2,106 tests. Always SQLite (see below).
-# Last full run 2026-09-04: 2,106 tests, ALL GREEN (4,138s / 69 min, idle).
+# Full test suite — 62 files, 2,134 tests. Always SQLite (see below).
+# Last full run 2026-09-04: 2,134 tests, ALL GREEN.
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
 # test files running beside it, but the two IDLE runs still differed by 27
@@ -7061,10 +7224,21 @@ once the folder filled, evict a good backup to keep itself. Requires the Postgre
 client tools on PATH.
 
 **`purge_business_data` clears ALL business tables** — job cards, shops, fleet accounts,
-inventory, cashbook, staff roster, deletion history. It deliberately does *not* try to
-distinguish "dummy" rows from real ones, because nothing in the schema marks them and a
-command claiming otherwise would be lying. It never touches login accounts, groups, or
-the master lists. **It is the thing to run against Postgres before go-live.**
+inventory, cashbook, staff roster, owner withdrawals, the rent ledger, deletion history.
+It deliberately does *not* try to distinguish "dummy" rows from real ones, because
+nothing in the schema marks them and a command claiming otherwise would be lying. It
+never touches login accounts, groups, or the master lists. **It is the thing to run
+against Postgres before go-live.**
+
+⚠ **IT MISSED THREE MONEY TABLES UNTIL 2026-09-04** — `OwnerWithdrawal`,
+`RentRate` and `RentDeposit`, all three added to the app after the command was
+written. This is the command the go-live runbook says to run against production,
+so anything it forgets is **demo money surviving into the real books**, and it
+reported success either way: ₹12,60,000 of fabricated rent and ₹12,32,500 of
+fabricated cash out on the development data. **A new money model is not finished
+until it is in that list** — and `seed_meeting_data._purge` carries the same
+list for the same reason.
+→ `ThePreGoLivePurgeClearsTheRentLedgerTests`
 
 **`seed_meeting_data` is the opposite of `seed_dummy_data`, on purpose.** That one
 randomises to look like a real workshop; this one makes **every card identical** —
@@ -7347,7 +7521,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **62 files, 2,106 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **62 files, 2,134 tests**,
 counted 2026-09-04. (`workshop/tests/` is 56 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
@@ -7504,9 +7678,12 @@ close**. Each of those has caught a real defect:
   go, which is why the parts-and-stock zone is ordered by what connects to what
   rather than by category.
 - **Parallel runs.** Not crossing a card is not enough. Three long red lines side
-  by side are individually correct and collectively unreadable. The four expense
-  streams are drawn as **one trunk with short taps**, which is also the truer
-  picture — they add up to one number. The remaining shared-corridor lines are
+  by side are individually correct and collectively unreadable. Four of the five
+  expense streams are drawn as **one trunk with short taps**, which is also the
+  truer picture — they add up to one number. ⚠ **Rent is the fifth and drops
+  straight into PROFIT instead**, for geometry rather than meaning: the rail's
+  horizontal leg ends at x=1006 and DEPOSIT & RENT sits at x≥1108, so every tap
+  from it would be a diagonal on a sheet built entirely on right angles. The remaining shared-corridor lines are
   spaced by hand, ~12px minimum.
 
 ⚠ **It states counts** (16 events, 13 critical, 10 signal handlers, ₹3,500, 25%,

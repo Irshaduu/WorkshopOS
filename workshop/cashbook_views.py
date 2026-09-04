@@ -82,16 +82,26 @@ MAX_SEARCH_LEN = 100
 #     5,000 — and the next distribution is decided from the smaller figure.
 #     That is the exact defect `OwnerWithdrawal` was built to remove, and in a
 #     rush an owner's own NAME is what gets typed.
-#   * A RENT DEPOSIT belongs in Deposit & Rent. The monthly rent charge does
-#     still belong here (see below), but a 2,000 daily handover typed here is
-#     charged on top of it.
+#   * RENT belongs in Deposit & Rent — all of it. The monthly charge is read
+#     from the rate there and the daily handovers are recorded there, so
+#     either one typed here is counted twice.
 #
-# ⚠ "RENT" IS DELIBERATELY NOT IN THIS LIST, and adding it would cost the
-# workshop ₹35,000 a month of expense. Rent still reaches the Profit page as a
-# Cashbook category — that is the whole reason Deposit & Rent was built to
-# touch `analysis_engine` nowhere. Steering rent away from here before it has
-# an expense line of its own would simply delete it from the books. The word
-# joins this list on the day that line lands, and not before.
+# ⚠ THE COMMENT HERE USED TO SAY THE OPPOSITE OF THE CODE BELOW IT, and both
+# were written in the same commit (`c594ee8`). It read: '"RENT" IS DELIBERATELY
+# NOT IN THIS LIST, and adding it would cost the workshop ₹35,000 a month of
+# expense … The word joins this list on the day that line lands, and not
+# before' — while the very next declaration was `(['rent', 'deposit'], …)`.
+#
+# The reasoning was sound and the code never matched it. It also stopped being
+# the right reasoning on 2026-09-04: rent now HAS an expense line of its own,
+# read from `RentRate`, so the word belongs here and the wording gets SIMPLER
+# rather than more careful — exactly as that comment predicted it would.
+#
+# ⚠ THE WORDS COME FROM `analysis_engine.RENT_WORDS`, imported rather than
+# restated, for the reason the shop words are: the entry-time steer and the
+# Profit page's own "rent may be counted twice" warning must never come to
+# mean different things. `_steers()` adds ONE pair of words the flag does not
+# carry — see the note there.
 #
 # ⚠ IT ASKS, IT NEVER BLOCKS. "Rent agreement stamp paper", "Advance to a
 # supplier" and a staff member who shares an owner's first name are all real,
@@ -114,26 +124,34 @@ MAX_SEARCH_LEN = 100
 #
 # `ask` is the heading, `why` the line under it. Both are short on purpose;
 # anything longer is read as prose and skipped.
+
+#: A row whose words are resolved at CALL time from `analysis_engine`, so the
+#: steer and that page's own warning read one list. `_steers()` fills them in.
+#: Sentinel objects rather than `None`, which said "shops" by convention and
+#: could not name a second such row.
+_FROM_SHOP_WORDS = object()
+_FROM_RENT_WORDS = object()
+
 CASHBOOK_STEERS = [
-    # ⚠ THE EXCEPTION LINE WAS REMOVED, AND THE QUESTION DOES ITS WORK.
-    # This carried "The one monthly rent bill is still fine here", which is
-    # TRUE today — the monthly bill still reaches the Profit page as a Cashbook
-    # category — and which the owner read as "workshop rent is fine to add
+    # ⚠ THE WORDING GOT SIMPLER, EXACTLY AS THE OLD COMMENT PREDICTED.
+    #
+    # It used to ask "Is this a rent DEPOSIT?" and had to, because the monthly
+    # charge still belonged here: the plain wording would have been false and
+    # would have cost ₹35,000 a month. An earlier revision spelled the
+    # exception out — "The one monthly rent bill is still fine here" — which
+    # was true and which the owner read as "workshop rent is fine to add
     # here", the opposite of the point. It was an answer to a question nobody
     # had asked yet.
     #
-    # The heading already disambiguates: somebody keying the monthly bill reads
-    # "Is this a rent DEPOSIT?", answers no, and carries on. Nothing needed
-    # spelling out, and spelling it out is what caused the confusion.
-    #
-    # ⚠ The muddle exists at all only because rent is half-way out of the
-    # Cashbook. When it gets its own expense line the wording gets simpler
-    # again, not more careful.
-    (['rent', 'deposit'], {
-        'ask': 'Is this a rent deposit?',
-        'why': 'The daily cash you hand the collector goes in '
-               '<strong>Deposit&nbsp;&amp; Rent</strong>. Put here it gets '
-               'counted on top of the rent.',
+    # That muddle existed only because rent was half-way out of the Cashbook.
+    # It is all the way out now, so there is no exception left to explain and
+    # no distinction the reader has to hold: rent goes in Deposit & Rent,
+    # monthly charge and daily handover alike.
+    (_FROM_RENT_WORDS, {
+        'ask': 'Is this rent?',
+        'why': 'Rent lives in <strong>Deposit&nbsp;&amp; Rent</strong> now '
+               '&mdash; the monthly charge and the daily cash you hand the '
+               'collector. Put here it is counted <strong>twice</strong>.',
     }),
     (['salary', 'salaries', 'wage', 'wages', 'advance', 'bonus'], {
         'ask': 'Is this staff pay?',
@@ -153,7 +171,7 @@ CASHBOOK_STEERS = [
     # ledger. CLAUDE.md's own example is "Paid Ninoos 20,000". The words are
     # `analysis_engine.SHOP_WORDS`, imported rather than restated, so the
     # warning and the steer can never come to mean different things.
-    (None, {          # words filled in from SHOP_WORDS by `_steers()`
+    (_FROM_SHOP_WORDS, {   # words filled in from SHOP_WORDS by `_steers()`
         'ask': 'Is this a payment to a shop?',
         'why': 'Shop payments go on that shop&rsquo;s own page. Put here they '
                'are counted <strong>twice</strong> &mdash; once here and once '
@@ -176,10 +194,23 @@ def _steers():
     """
     from .decorators import owner_accounts
 
-    from .analysis_engine import SHOP_WORDS
+    from .analysis_engine import RENT_WORDS, SHOP_WORDS
 
-    rows = [dict(say, words=list(words) if words else list(SHOP_WORDS))
-            for words, say in CASHBOOK_STEERS]
+    rows = []
+    for words, say in CASHBOOK_STEERS:
+        if words is _FROM_SHOP_WORDS:
+            words = SHOP_WORDS
+        elif words is _FROM_RENT_WORDS:
+            # ⚠ BROADER THAN THE PROFIT PAGE'S FLAG BY ONE PAIR OF WORDS, and
+            # the difference is deliberate rather than drift. `RENT_WORDS` has
+            # to be narrow because it ASSERTS that the profit figure above it
+            # is wrong, and a false warning on that page is worse than no
+            # warning — a "Security deposit" row is a real running cost. A
+            # steer only ASKS and never blocks, so a false positive costs a
+            # second; and in this workshop a row reading "Deposit 2,000" is
+            # very much more likely to be a rent handover than anything else.
+            words = tuple(RENT_WORDS) + ('deposit', 'deposits')
+        rows.append(dict(say, words=list(words)))
 
     # ⚠ THE SHOPS ARE NAMED FROM THE DATABASE, like the owners and for the same
     # reason: "Paid Ninoos 20,000" is CLAUDE.md's own example of the

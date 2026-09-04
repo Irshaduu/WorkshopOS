@@ -201,6 +201,147 @@ def _deposited(**filters):
 
 
 # =============================================================================
+# WHAT THE PROFIT PAGE CHARGES  —  the section's only reach into the money math
+# =============================================================================
+# ⚠ THIS IS THE ONE PLACE THE RENT EXPENSE IS COMPUTED, and `analysis_engine`
+# CALLS it rather than restating it. Rent arithmetic lives here — the rate in
+# force for a month, the spans, the month boundaries — so a second walk over
+# the rate table in the engine would be a second answer, free to drift from
+# the one the Deposit & Rent page prints. That is the `SPARE_COST` rule
+# ("nothing may re-derive it") and the `money_dates` rule applied again.
+#
+# Until 2026-09-04 the section reached the engine NOWHERE, and that boundary
+# was correct while rent still arrived as a Cashbook category. It stopped
+# being correct the moment the office started recording rent here instead:
+# September 2026 carried ₹35,000 of real rent and the Profit page charged
+# ₹900 of it. The rule that replaced it:
+#
+#     WHAT THE MONTH COST is the RATE, charged in whole months  → the expense
+#     WHAT WAS HANDED OVER is the DEPOSITS, by the day they moved → the cash
+#     THE GAP between them                                       → a position
+#
+# Three questions, three surfaces, and no figure appears on two of them. That
+# is the same split a supplier bill / stock draw / supplier payment already
+# gets, and the same split wages already get — the fourth instance of a rule
+# this app follows three times, exactly as this module's own header says.
+
+
+def charged_by_month(start, end, today=None, all_rates=None):
+    """
+    `{'YYYY-MM': Decimal}` — the rent charged to each month inside a window.
+
+    ⚠ A MONTH IS CHARGED WHEN ITS 1st FALLS INSIDE THE WINDOW. That is not a
+    choice made here; it is `salary_expense`'s own rule (`SalaryPayment.month`
+    is the 1st and it filters `month__range`), and the two monthly costs in
+    this app have to be dated by one rule or a period mixes bases. The visible
+    consequence is the same for both: a mid-month custom range charges neither
+    a wage bill nor a rent, because neither month's 1st is in it.
+
+    ⚠ AND IT IS CAPPED AT THE MONTH IN PROGRESS, which is the one hazard rent
+    has and no other stream does. Every other figure in the engine is a SUM
+    OVER ROWS, and no row exists in the future, so a window running past today
+    is self-limiting. Rent is DERIVED from a rate, so nothing stops it being
+    charged for months that have not happened: `this_year` resolves to
+    1 Jan – 31 Dec deliberately, so on 4 September an uncapped walk charges
+    twelve months — ₹4,20,000 against a true ₹3,15,000, and ₹1,05,000 of
+    invented expense on the one page profit distribution is decided from.
+
+    The CURRENT month IS charged, in full, from the 1st. It is a fact about
+    the month and it is already known — the rent is stored, not estimated —
+    which is exactly what separates it from an unsettled wage bill, where
+    `unsettled_months` names the gap instead precisely because the figure is
+    NOT known. Nothing here is ever guessed.
+    """
+    today = today or timezone.localdate()
+    # `all_rates` is injectable like `rate_for`'s and `charged_through`'s, so a
+    # caller reading several things at once pays for ONE lookup rather than one
+    # per call. `rent_expense` needs the months, the total and the ledger's
+    # start, which was three walks over the same handful of rows.
+    all_rates = rates() if all_rates is None else all_rates
+    if not all_rates:
+        return {}
+
+    # Never a month that has not begun, and never past the window's own end.
+    ceiling = month_of(min(end, today))
+    month = max(month_of(start), all_rates[0].effective_from)
+
+    out = {}
+    while month <= ceiling:
+        # `month_of(start)` can land BEFORE `start` on a window that does not
+        # begin on a 1st, which is the mid-month case above.
+        if month >= start:
+            amount = rate_for(month, all_rates)
+            if amount:
+                out[month.strftime('%Y-%m')] = amount
+        month = shift_month(month, 1)
+    return out
+
+
+def charged_between(start, end, today=None, all_rates=None):
+    """The rent expense for a window.
+
+    Deliberately the SUM of `charged_by_month`, never its own walk: the trend
+    chart is built from the per-month figures and the headline from this one,
+    and `ConsistencyTests` asserts the chart totals to the headline. Two walks
+    would be two chances to cap differently.
+    """
+    return sum(charged_by_month(start, end, today=today,
+                                all_rates=all_rates).values(), ZERO)
+
+
+def deposited_between(start, end):
+    """Cash handed to the collector inside a window, by the day it moved.
+
+    ⚠ THIS IS CASH, NEVER AN EXPENSE, and the two must never be added. It is
+    read by `cash_position()` alone. A supplier payment gets exactly this
+    treatment for exactly this reason: paying for something changes what you
+    owe, not what the work cost.
+    """
+    return _deposited(date__range=(start, end))
+
+
+def outstanding(today=None):
+    """
+    Rent charged through the month in progress, less every deposit — SIGNED.
+
+    Positive is still to hand over, negative is paid ahead. A POSITION, so it
+    ignores the page's date filter like every other tile in
+    `financial_position()`: what is owed is not a period.
+
+    ⚠ IT CHARGES THE CURRENT MONTH IN FULL, to agree with the expense line —
+    if the equation charges September and the payable does not, the two halves
+    of one page disagree about the same month. That is a different question
+    from the hero's `carry`, which stops at the end of LAST month on purpose
+    because it asks whether the FINISHED months are square.
+
+    ⚠ DEPOSITS ARE BOUNDED AT THE END OF THE CURRENT MONTH, the same both-ends
+    cut `position()` and `month_rows()` make. A row dated into a month the
+    rent has not been charged for yet would otherwise pay down a debt that
+    does not exist. `rent_deposit_add` refuses a future date, so this cannot
+    arise through the UI — but every surface reading one figure has to cut it
+    identically or one of them is wrong.
+    """
+    today = today or timezone.localdate()
+    this_month = month_of(today)
+    charged = charged_through(this_month)
+    paid = _deposited(date__lt=shift_month(this_month, 1))
+    return charged - paid
+
+
+def ledger_starts(all_rates=None):
+    """The first month rent is charged for, or None if no rate exists yet.
+
+    Read by the engine so a window reaching back FURTHER than the rent ledger
+    can say so rather than quietly charging no rent for those months. That is
+    the answer opening stock and the owner-withdrawal history already get: the
+    figure is short for the period before the section existed, and the page
+    says so instead of inventing one.
+    """
+    all_rates = rates() if all_rates is None else all_rates
+    return all_rates[0].effective_from if all_rates else None
+
+
+# =============================================================================
 # WHERE WE STAND
 # =============================================================================
 

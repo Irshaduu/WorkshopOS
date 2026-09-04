@@ -559,13 +559,17 @@ def build(theme):
         # AUDIT and DELETION HISTORY use to reach NOTIFICATIONS below. That is
         # exactly what check 1 is for.
         #
-        # ⚠ IT IS DRAWN WITH NO CONNECTOR, and the absence is the statement
-        # rather than an omission: the section touches `analysis_engine`
-        # nowhere, which is the whole reason switching it on moved no reported
-        # figure by a rupee. The second chip says so out loud, so a card with
-        # no line leaving it cannot be read as a line somebody forgot.
+        # ⚠ IT HAD NO CONNECTOR UNTIL 2026-09-04, and the absence WAS the
+        # statement: the section touched `analysis_engine` nowhere, so the
+        # second chip read "not in profit yet" to stop a card with no line
+        # being read as a line somebody forgot.
+        #
+        # Rent is an expense line now, read from the rate, so the line exists
+        # and the chip says the thing the line cannot: the DEPOSIT is not the
+        # cost. That is the section's whole rule, and it is what stops the
+        # arrow being read as "the daily cash is what gets charged".
         ('rent',  'DEPOSIT & RENT',    ['daily deposits - monthly rent',
-                                        'not in profit yet'],         FLOW['out']),
+                                        'the deposit is not the cost'], FLOW['out']),
     ]
     for (cid, t, ch, ac), cell in zip(_tel, grid(
             1098, B1Y, 300, B1H, 1, len(_tel), top=32,
@@ -751,10 +755,16 @@ def build(theme):
     # bill. Drawn the other way round it said Paid Bills feed the account.
     link('fleet', 'paid', 'in', 't', 'b', ta=0.3, tb=0.3)
 
-    # THE EXPENSE TRUNK - the four streams the equation actually charges.
+    # THE EXPENSE TRUNK - four of the five streams the equation charges.
     # It taps WAREHOUSE, not SUPPLIES SHOPS: a part is a cost on the day it is
     # DRAWN off the shelf, never on the day the delivery was billed. Tapping
     # the bill here would be the double-count rule broken in a drawing.
+    #
+    # ⚠ RENT IS THE FIFTH AND IT DOES NOT TAP THIS RAIL, for geometry rather
+    # than for meaning. The rail's horizontal leg ends at x=1006 where it turns
+    # down, and DEPOSIT & RENT sits in TEL.03 at x>=1108 - so every tap from it
+    # would be a diagonal, on a sheet built entirely on 90-degree corners.
+    # It drops straight into PROFIT instead; see the link below.
     TX, TY = 1006, H1
     # Starts at 109, which is where SPARE SHOPS taps it - not 140, which left
     # the tap ending 31px short of the rail with a terminal node floating in
@@ -803,6 +813,27 @@ def build(theme):
     # boxes and carries nothing else, so the line reads as its own run and
     # arrives at CASH TRACKING's right edge.
     link('wdraw', 'cashpos', 'out', 'r', 'r', via=[('x', 1404), ('y', 571.9)])
+
+    # RENT IS AN EXPENSE, and this is the line that says so. What the premises
+    # COST is the rate, charged in whole months and capped at the month in
+    # progress; the daily handovers are cash and are read by CASH TRACKING.
+    #
+    # ⚠ ONE LINE, NOT TWO, and the second one is refused by the drawing rather
+    # than forgotten. Reaching CASH TRACKING from here means routing outside
+    # x=1040..1388, and both margins are full: x=1006 is the expense trunk,
+    # 1013/1024/1030 carry the fleet and photos runs, and x=1404 is the owner
+    # withdrawal's own rail - a second coral run there would sit 0px from it
+    # for 166px, which is exactly the "three red lines side by side" check 5
+    # exists to refuse.
+    #
+    # It is also the consistent answer. No expense card on this sheet gets a
+    # cash line: SPARE SHOPS, WAREHOUSE, CASHBOOK and SALARY all move real
+    # cash and all get exactly one line, to the expense trunk. OWNER
+    # WITHDRAWALS is the exception because cash is the ONLY figure it reaches.
+    # Rent's only-reach is the equation, so that is what is drawn, and the
+    # card's second chip carries the cash half in words.
+    link('rent', 'profit', 'out', 'b', 't', ta=0.5, tb=0.5977,
+         via=[('y', 461.1)])
 
     # Reference data feeds the hub; the hub feeds the boards
     link('mast', 'auto', 'data', 'r', 'l')
