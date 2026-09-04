@@ -130,6 +130,8 @@ erDiagram
 | 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed, **date**, created_at | Ledger payment record. `date` is the day the money MOVED — typed on the payment form, defaulting to today — and is what every date window on the shop page and its print sheet filters and orders by; `created_at` (`auto_now_add`) stays as the audit trail. Added by migration `0071`, which backfills existing rows from `created_at`. Ordering `['-date', '-created_at']`. |
 | 21 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
 | 21a | **OwnerWithdrawal** | owner (FK→User, **PROTECT**), amount, payment_method, note, **date**, created_at, recorded_by (FK→User) | Cash an owner takes out for themselves. Migration `0075`. ⚠ **Not an expense** — it appears in exactly one figure in `analysis_engine.py`, `cash_position()`'s money-out list, and nowhere in `build_profit_report`; profit is what is available to take, so taking it cannot reduce it. Exists because the Cashbook was the likeliest place for this money to land and `cashbook_expense()` feeds the profit equation. `owner` is PROTECT — one of only two in the codebase — because the row's whole job is to say *which* owner took it. `date` is the day the cash moved, typed; `created_at` is the audit trail. CheckConstraint `amount > 0`. |
+| 21b | **RentRate** | effective_from (**unique**, always the 1st), amount, note, created_at, set_by (FK→User) | What the premises cost per month, from a stated month onward. Migration `0076`. **Effective-dated, never edited in place** — a rent change is a new row, so a hike cannot rewrite what an earlier month cost. The figure is **absolute, not an increment**: a delta is a number the person must already know, so a mis-keyed `+5000` is silently ₹40,000 and a run of them makes the current rent unreadable. May be **backdated** (a hike agreed late and applied from an earlier month is ordinary, and refusing it would leave the books wrong for good) and may be **dated ahead** (a rate is not money; `rate_for()` applies it only once its month arrives). Owner-only, and every change raises `RENT_RATE_SET` at CRITICAL. `effective_from` is pinned to the 1st in `save()`. CheckConstraint `amount > 0`. |
+| 21c | **RentDeposit** | amount, **date**, note, created_at, recorded_by (FK→User) | One handover of cash to the rent collector, who comes daily and keeps his own book. Migration `0076`. ⚠ **Not an expense** — what a month COST is the rent; this is how it gets PAID, the same split a supplier payment and a stock draw already have. **No payment method**, deliberately: it is always cash handed to a man with a book, and a select that can only say one thing is a field to leave out. `date` is the day the money moved, typed and back-dateable; `created_at` is the audit trail, is what `delete_window` measures, and is what marks a row **keyed in a later month than it is filed under** on the page. CheckConstraint `amount > 0`. |
 | 22 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers Job Card, Fleet/Spare-Shop/Supplier payments, Restock Bill, Cashbook Entry and **Inventory Product**. No restore. |
 | 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
 | 24 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
@@ -337,6 +339,11 @@ media path, which is not served in production at all (§12, and `AUD-0088`).
 | | `/manage/mechanics/<id>/toggle/` | `manage_toggle_mechanic` | Owner |
 | | `/manage/mechanics/<id>/edit/` | `manage_edit_mechanic` | Owner |
 | | `/manage/sessions/<id>/terminate/` | `manage_terminate_session` | Owner |
+| **DEPOSIT & RENT** | `/rent/` | `rent_home` | Office |
+| | `/rent/deposit/add/` | `rent_deposit_add` | Office |
+| | `/rent/deposit/<id>/delete/` | `rent_deposit_delete` | Office (7-day window) |
+| | `/rent/rate/set/` | `rent_rate_set` | **Owner** |
+| | `/rent/rate/<id>/delete/` | `rent_rate_delete` | **Owner** |
 | **OWNER WITHDRAWALS** | `/withdrawals/` | `withdrawal_home` | **Owner** |
 | | `/withdrawals/add/` | `withdrawal_add` | **Owner** |
 | | `/withdrawals/<id>/delete/` | `withdrawal_delete` | **Owner** |
@@ -545,6 +552,7 @@ stateDiagram-v2
 | `/manage/` | 4 files: `manage_dashboard.html` (Owner-only Control Hub), `data_cleanup.html`, `master_confirm_delete.html`, `master_confirm_merge.html` | Control Hub + Data Cleanup, plus the two confirmations shared with Master Lists so a rename that *collides* is gated identically from both screens |
 | `/deletion_history/` | `deletion_history_list.html`, `deletion_history_detail.html` | 2 files — the Owner-only, read-only audit log of every permanent delete. No restore |
 | `/notifications/` | `notification_list.html`, `_panel_items.html`, `_row.html` | 3 files — the full feed, the lazily-fetched bell panel, and the ONE row partial both share, so "read" cannot come to look like two different things |
+| `/rent/` | `rent/rent_home.html` | 1 file — Deposit & Rent, the whole section on one page: today's figure with its working printed beside it, this month against the months already finished, the shared `.rpay-*` record card, **one month's** deposit log, and the history as **collapsed year blocks** so twenty years is twenty lines. No cap and no pager anywhere. Setting the rent is behind a ⋮ in the hero, Owner-only, because it changes about once a year. |
 | `/withdrawals/` | `withdrawal_home.html` | 1 file — Owner Withdrawals, the whole section on one page: what each owner took in the window, the shared `.rpay-*` record card, and the history narrowed by a chip row. No per-owner drill-down (with two owners the comparison *is* the question) and no edit (Owner-only end to end, so delete and re-add is one line and lands in Deletion History rather than overwriting silently). |
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
 | `/includes/` | 7 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by both printed documents; and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
@@ -900,6 +908,7 @@ WorkshopOS (Titan)/
 │   │   ├── push.py             ← Web Push subscribe / unsubscribe (one row per device)
 │   │   ├── photos.py           ← sign, commit, list, delete + the DEBUG-only blob endpoints
 │   │   ├── salary_advance.py   ← Salary & Advance: advances, month-end settlement
+│   │   ├── rent.py             ← Deposit & Rent: the daily cash that pays the premises
 │   │   ├── withdrawal.py       ← Owner Withdrawals: profit taken out, never an expense
 │   │   └── about.py            ← The static tour of what exists (Owner-only)
 │   ├── analysis_views.py       ← Owner Profit + Insights views
@@ -907,9 +916,10 @@ WorkshopOS (Titan)/
 │   ├── invoice.py              ← What BOTH customer documents show — build_invoice + build_estimate (pure functions, no views)
 │   ├── settlement.py           ← What is still UNFILLED on a job card — read by the settle dialog and the Live Report's chase list (pure, no views)
 │   ├── spare_dates.py          ← The ordered/received pair rule, shared by the job card and the Unassigned Spares hub (pure, no views)
+│   ├── rent.py                 ← How much should we hand the rent collector today? Everything derived, nothing stored (pure, no views)
 │   ├── master_data.py          ← The ONE rename/merge rule, shared by Master Lists and Data Cleanup (pure, no views)
 │   ├── money.py                ← Is this typed rupee amount acceptable for its column? Bounds READ from the column (pure, no views)
-│   ├── money_dates.py          ← What day did this money move? Shared by the Cashbook and the spare-shop payment form (pure, no views)
+│   ├── money_dates.py          ← What day did this money move, and how far back may it be filed? Shared by all six money-date forms (pure, no views)
 │   ├── photos.py               ← Where the bytes go and how the URL is signed — SigV4 on stdlib hmac/hashlib (pure, no views)
 │   ├── notifications.py        ← The EVENTS catalogue + the single notify() entry point
 │   ├── push.py                 ← Web Push sending, handed off on transaction.on_commit

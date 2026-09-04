@@ -409,6 +409,91 @@ def year_blocks(today=None):
     return blocks
 
 
+#: How many rows "Recently added" draws. It answers "what did I just do?", so
+#: it is a short list by construction — anything older is found by opening the
+#: month, which the row's own mark makes obvious once you are there.
+RECENT_ROWS = 40
+
+
+def backdating(deposit, today=None):
+    """
+    How far back a row was filed WHEN IT WAS KEYED — `''`, `'late'` or `'closed'`.
+
+    ⚠ THE ONE RULE BOTH VIEWS READ, so the month log and the Recently-added
+    list can never disagree about the same row. Every deposit stores two dates
+    and nothing used to show them: `date` is when the money moved, `created_at`
+    is when somebody typed it.
+
+    The two tiers are not decoration — they are different amounts of harm:
+
+      * `late`   — dated back inside its OWN month. The month's total is
+                   unchanged and no closed period moved; only the day is off.
+      * `closed` — filed into an EARLIER month. That month's position, and
+                   every month since, has moved on a page nobody re-reads.
+
+    A row keyed on the day it is dated, or keyed the next morning for
+    yesterday's handover, is the ordinary case and gets nothing at all —
+    marking that would make the mark meaningless by the second row.
+    """
+    if deposit.created_at is None:
+        return ''
+    keyed = timezone.localtime(deposit.created_at).date()
+    if month_of(keyed) > month_of(deposit.date):
+        return 'closed'
+    if keyed > deposit.date:
+        return 'late'
+    return ''
+
+
+def recently_added(limit=RECENT_ROWS):
+    """
+    Deposits by the day they were KEYED, newest first, across every month.
+
+    ⚠ THE ANSWER TO "I KNOW I DID IT, BUT I CANNOT FIND WHERE." The row mark
+    is only visible once the right month is open, so a mis-dated entry stayed
+    findable only by hunting month by month — the owner found one by eye and
+    only because the demo data was uniform enough for it to stand out. Ordered
+    by `created_at`, this puts whatever was just done at the top whatever month
+    it was filed under.
+
+    Ordered by `-created_at` explicitly: the model's own ordering is
+    `-date, -created_at`, which is the money order and the exact opposite of
+    what this list is for.
+    """
+    return list(RentDeposit.objects.select_related('recorded_by')
+                .order_by('-created_at', '-id')[:limit])
+
+
+def deposit_days(start, end):
+    """
+    `{'YYYY-MM-DD': n}` over a date range — how many deposits each day has.
+
+    ⚠ THE COLLECTOR COMES ONCE A DAY, so a second entry on one date is the
+    shape a double-key takes here. There is no name to key on the way the
+    Cashbook has, and the amount is the wrong key: the same handover keyed
+    twice by two people is often typed slightly differently.
+
+    A second deposit in a day is not WRONG — a morning and an evening handover
+    happen — which is why the page asks rather than refuses, and why the day
+    total in the log exists to catch what slips through either way.
+
+    ⚠ IT TAKES A RANGE, NOT THE MONTH BEING VIEWED, and that was a real bug:
+    the log can be showing May while the form's date box still defaults to
+    TODAY, so counts for the viewed month would find nothing for the date
+    actually about to be submitted — the check silently doing nothing on
+    exactly the page state where somebody is least sure what they are looking
+    at. The range is the whole window Office can pick, floor to today. An owner
+    reaching further back gets no count and the back-date question instead,
+    which fires first and is the bigger fact anyway.
+    """
+    counts = {}
+    for row in RentDeposit.objects.filter(
+            date__gte=start, date__lte=end).values_list('date', flat=True):
+        key = row.isoformat()
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def deposits_in(month):
     """Every deposit filed under one month, newest first.
 

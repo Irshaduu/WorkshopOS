@@ -661,6 +661,74 @@
     .cb-recap-row dd.amt-in  { color: var(--cb-in); }
     .cb-recap-row dd.dated   { color: #b45309; }
     .cb-modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+    /* The repeat line. AMBER, not red: this is "look again", not "you are
+       wrong" — a second entry under one name in a day is often perfectly
+       real, and colouring it as an error would make the red on this page
+       mean two different things. It sits ABOVE the recap table so it is read
+       before the figures rather than after them. */
+    .cb-repeat {
+        display: flex; align-items: flex-start; gap: 8px;
+        background: #fffbeb; border: 1px solid #fde68a; border-radius: 9px;
+        padding: 9px 11px; margin-bottom: 12px;
+        font-size: 0.82rem; font-weight: 600; color: #92400e; line-height: 1.45;
+        text-align: left;
+    }
+    .cb-repeat i { font-size: 0.95rem; line-height: 1.4; flex: 0 0 auto; }
+    /* ── The steer dialog ────────────────────────────────────────────────
+       ⚠ THE WHOLE CARD IS RED, on the owner's instruction, and it is the only
+       dialog in the app that is. Every other one here is a white box with a
+       coloured glyph, which is right when the question is "did you mean this?"
+       — the recap, the delete confirm. This one is not asking, it is STOPPING,
+       and a red glyph on a white card was being read past.
+
+       ⚠ AND THE CANCEL BUTTON IS GREEN, which is the point of the whole
+       treatment. On a red ground the eye lands on the one thing that is not
+       red, so the SAFE way out is the brightest object in the dialog. That is
+       the opposite of the recap beside it, where confirming is what you came
+       to do. A warning whose loudest control is "ignore me" is not a warning.
+       (Green here means "the good choice", not "proceed" — nothing on this
+       card proceeds; one button goes back and one carries on.) */
+    #cbSteerModal .cb-modal-box {
+        background: #b91c1c; border: 1px solid #7f1d1d;
+        box-shadow: 0 20px 52px rgba(127,29,29,.42);
+    }
+    #cbSteerModal .cb-modal-icon { background: rgba(255,255,255,.18); color: #fff; }
+    #cbSteerModal .cb-modal-title { color: #fff; }
+    /* Pure white reads 6.47:1 on #b91c1c; .92 keeps the reason a step
+       below the heading at 5.9:1, still plainly body text. */
+    #cbSteerModal .cb-modal-msg { color: rgba(255,255,255,.92); }
+    #cbSteerModal .cb-modal-msg strong { color: #fff; }
+    /* The safe way out: filled green, and it sits LAST so it is both the
+       brightest thing and the one under the thumb on a phone. */
+    /* ⚠ #15803d, NOT the app's own --color-success (#16a34a), and the
+       difference is measured rather than taste. That green is used everywhere
+       else as TEXT on a light ground, where it is dark enough; reversed —
+       white ON it — it measures 3.30:1, and this label is 13.6px bold, which
+       is under WCAG's large-text threshold and so needs 4.5:1. #15803d
+       measures 5.02:1. Do not "unify" it back to the token. */
+    /* ⚠ AND IT NEEDS A WHITE RING NOW THE CARD IS SOLID RED — arithmetic, not
+       decoration. #15803d carries its white label at 5.02:1, which is fine,
+       but against the red CARD it separates at only 1.29:1, so the button's
+       SHAPE would melt into the ground even though the text on it is legible.
+       WCAG wants 3:1 for a control's own boundary. The ring buys that without
+       lightening the fill and losing the label. */
+    #cbSteerModal .cb-btn-safe {
+        background: #15803d; color: #fff; border: 0; border-radius: 9px;
+        padding: 9px 18px; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+        box-shadow: 0 0 0 2px rgba(255,255,255,.9);
+    }
+    #cbSteerModal .cb-btn-safe:hover { background: #166534; }
+    /* ⚠ A WHITE BUTTON, on the owner's instruction. It was an outline — red on
+       red — which was barely readable the moment the card went solid. Filled
+       white puts its label at 6.5:1 and keeps the two plainly different
+       objects; the green RING beside it is what still says which is the way
+       out, rather than one of them being dim. */
+    #cbSteerModal .cb-btn-goon {
+        background: #fff; color: #b91c1c; border: 0;
+        border-radius: 9px; padding: 9px 16px; font-size: 0.85rem;
+        font-weight: 700; cursor: pointer;
+    }
+    #cbSteerModal .cb-btn-goon:hover { background: #fee2e2; }
     .cb-btn-cancel {
         background: var(--color-border-light); border: none; border-radius: 10px;
         padding: 11px 17px; font-size: 0.84rem; font-weight: 700; color: #475569;
@@ -866,6 +934,18 @@
     {{ categories|json_script:"cbCategoriesJson" }}
 
     <!-- ── ADD ENTRY ──────────────────────────────────────────── -->
+    {% comment %}
+      The keyword list that steers an entry to the section that owns it. Via
+      `json_script` rather than interpolated into markup — an owner's name is
+      free text, and this is the app's rule for handing data to JS.
+    {% endcomment %}
+    {{ steers|json_script:"cbSteers" }}
+    {% comment %}
+      What has already been keyed under each name TODAY, for the repeat line in
+      the confirmation card. Same reason as the steers: data, not markup.
+    {% endcomment %}
+    {{ today_names|json_script:"cbTodayNames" }}
+
     <form id="cbAddForm" method="post" action="{% url 'manage_add_cashbook_entry' %}"
           class="cb-add is-out" autocomplete="off">
         {% csrf_token %}
@@ -949,6 +1029,21 @@
             <div class="cb-modal-icon out" id="cbAddModalIcon"><i class="bi bi-arrow-up-right"></i></div>
             <div class="cb-modal-title" id="cbAddModalTitle">Confirm expense</div>
             <div class="cb-modal-msg">Check it over — this writes straight to the ledger.</div>
+            {% comment %}
+              ⚠ THE REPEAT LINE LIVES INSIDE THE EXISTING CARD, not in a second
+              dialog — the owner's instruction, and the right call: this
+              confirmation already opens on every entry, so the fact belongs
+              where the eye already is. A separate popup for it would be two
+              questions where the reader was expecting one.
+
+              It is ABSENT unless there is a repeat, so it can never become
+              furniture. The commonest double-entry in this workshop is one
+              person keying in a rush, or two people keying the same handover.
+            {% endcomment %}
+            <div class="cb-repeat" id="cbRepeat" hidden>
+                <i class="bi bi-arrow-repeat"></i>
+                <span id="cbRepeatText"></span>
+            </div>
             <dl class="cb-recap">
                 <div class="cb-recap-row"><dt>Name</dt><dd id="cbRecapName">—</dd></div>
                 <div class="cb-recap-row"><dt>Amount</dt><dd id="cbRecapAmount">—</dd></div>
@@ -959,6 +1054,38 @@
             <div class="cb-modal-actions">
                 <button type="button" class="cb-btn-cancel" data-cb-close="cbAddModal">Cancel</button>
                 <button type="button" class="cb-btn-confirm danger" id="cbAddConfirmBtn">Yes, add it</button>
+            </div>
+        </div>
+    </div>
+
+    {% comment %}
+      THE STEER. A separate question from the recap beside it, asked first and
+      only when a keyword matches: "is this the right SECTION?" before "is this
+      the right ENTRY?".
+
+      ⚠ IT IS THIS PAGE'S OWN MODAL, NOT `window.confirm()`. The native dialog
+      cannot be designed at all — it opened with "127.0.0.1:8000 says" above
+      the message, which is the browser talking, not the app — and it renders
+      the whole thing as one grey block, so the question, the reason and the
+      way out all carry the same weight. Nothing here is new furniture: the
+      overlay, box, icon, title and button classes are the ones the recap and
+      the delete dialog already use.
+
+      ⚠ THE SAFE BUTTON IS THE LOUD ONE, WHICH IS THE OPPOSITE OF THE RECAP.
+      There, confirming is the thing you came to do. Here, going back is —
+      the whole purpose is to stop somebody, so "Cancel" takes the filled
+      treatment and carrying on is the quiet secondary. A warning whose
+      brightest control is "ignore me" is not a warning.
+    {% endcomment %}
+    <div class="cb-modal-overlay" id="cbSteerModal" role="dialog" aria-modal="true"
+         aria-labelledby="cbSteerTitle">
+        <div class="cb-modal-box">
+            <div class="cb-modal-icon warn"><i class="bi bi-exclamation-triangle-fill"></i></div>
+            <div class="cb-modal-title" id="cbSteerTitle">&nbsp;</div>
+            <div class="cb-modal-msg" id="cbSteerWhy"></div>
+            <div class="cb-modal-actions">
+                <button type="button" class="cb-btn-goon" id="cbSteerGo">It&rsquo;s something else</button>
+                <button type="button" class="cb-btn-safe" data-cb-close="cbSteerModal">Go back</button>
             </div>
         </div>
     </div>
@@ -1220,6 +1347,81 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    /* ── Steering an entry to the section that owns it ───────────
+       Three kinds of money have a dedicated section AND land wrong if they
+       are typed here: wages are counted twice, an owner draw quietly cuts
+       reported profit, and a rent deposit is charged on top of the monthly
+       rent. This asks before taking one.
+
+       ⚠ WORD BOUNDARIES, NEVER `includes()`. A substring match on "rent"
+       also matches "current" — and "Current bill" is what the electricity
+       bill is actually called here, so a plain contains-check would question
+       the single most common entry in the ledger and be ignored inside a
+       week. The words come from the server so an owner's NAME is whoever
+       the owners are today.
+
+       ⚠ IT ASKS, IT NEVER BLOCKS. "Rent agreement stamp paper", "Advance to
+       a supplier" and a staff member sharing an owner's first name are all
+       real. Cancel returns the person to the box with what they typed. */
+    const steersEl = document.getElementById('cbSteers');
+    const STEERS = steersEl ? JSON.parse(steersEl.textContent || '[]') : [];
+    // What has already been keyed under each name TODAY. Read once at load:
+    // this catches the realistic double-entry — somebody opening the page
+    // after the first one was saved — and cannot catch two people who both
+    // loaded BEFORE either saved. That case is rarer and is what the day's
+    // own entry list is for.
+    const namesEl = document.getElementById('cbTodayNames');
+    const TODAY_NAMES = namesEl ? JSON.parse(namesEl.textContent || '{}') : {};
+
+    function steerFor(text) {
+      const value = (text || '').trim();
+      if (!value) { return null; }
+      for (const row of STEERS) {
+        for (const word of row.words) {
+          // Escaped: an owner's name is free text and could carry a regex
+          // character. \b on both sides is what keeps "current" clear of
+          // "rent" and "advanced" clear of "advance".
+          const safe = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          if (new RegExp('\\b' + safe + '\\b', 'i').test(value)) { return row; }
+        }
+      }
+      return null;
+    }
+
+    /* Asks in THIS PAGE'S modal, not `window.confirm()`. Async because a
+       designed dialog cannot block the thread the way the native one does —
+       the caller awaits the answer instead. */
+    let steerAnswer = null;
+    function askSteer(row, input) {
+      document.getElementById('cbSteerTitle').textContent = row.ask;
+      // `innerHTML` for the section name in bold. Everything variable in here
+      // — only an owner's name — is escaped server-side before it is sent.
+      document.getElementById('cbSteerWhy').innerHTML = row.why;
+      openModal('cbSteerModal');
+      return new Promise(function (resolve) {
+        steerAnswer = function (goOn) {
+          steerAnswer = null;
+          closeModal('cbSteerModal');
+          if (!goOn && input) { input.focus(); input.select(); }
+          resolve(goOn);
+        };
+      });
+    }
+    document.getElementById('cbSteerGo').addEventListener('click', function () {
+      if (steerAnswer) { steerAnswer(true); }
+    });
+    // Cancel, the backdrop and Escape all mean "no" — a dialog whose only
+    // honest exit is one button is a trap, and every other way out of this one
+    // must answer the promise or the caller waits for ever.
+    document.getElementById('cbSteerModal').addEventListener('click', function (e) {
+      if (e.target === this || e.target.closest('[data-cb-close="cbSteerModal"]')) {
+        if (steerAnswer) { steerAnswer(false); }
+      }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && steerAnswer) { steerAnswer(false); }
+    });
+
     /* ── Add form ───────────────────────────────────────────── */
     const addForm     = document.getElementById('cbAddForm');
     const entryType   = document.getElementById('cbEntryType');
@@ -1227,6 +1429,30 @@ document.addEventListener('DOMContentLoaded', function () {
     const submitLabel = document.getElementById('cbSubmitLabel');
     const nameInput   = document.getElementById('cbName');
     const categorySuggestions = document.getElementById('cbCategorySuggestions');
+
+    // ⚠ THE EDIT FORM ONLY. The ADD form is hooked inside `openAddConfirm()`
+    // instead, and the difference is the trap CLAUDE.md already records: the
+    // Add control opens a recap modal whose confirm button calls
+    // `addForm.submit()` PROGRAMMATICALLY, and a programmatic `.submit()`
+    // FIRES NO SUBMIT EVENT. A listener here caught the edit screen and was
+    // silent on the one door people actually use — which is exactly how it
+    // shipped and was found by the owner trying it.
+    //
+    // The edit modal has a real submit button, so its event does fire.
+    document.addEventListener('submit', function (e) {
+      const form = e.target.closest('#cbEditForm');
+      if (!form || form.dataset.steered) { return; }
+      const input = form.querySelector('input[name="category"]');
+      const row = steerFor(input ? input.value : '');
+      if (!row) { return; }
+      // Held rather than refused: a designed dialog cannot block the thread
+      // the way `window.confirm()` did, so the submit is stopped and re-issued
+      // if the answer is yes.
+      e.preventDefault();
+      askSteer(row, input).then(function (go) {
+        if (go) { form.dataset.steered = '1'; form.submit(); }
+      });
+    });
 
     const catJsonEl = document.getElementById('cbCategoriesJson');
     const allCategories = catJsonEl ? JSON.parse(catJsonEl.textContent || '[]') : [];
@@ -1400,7 +1626,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     /* ── Add confirmation ───────────────────────────────────── */
-    function openAddConfirm() {
+    function openAddConfirm(steered) {
         if (!addForm.reportValidity()) return;
         const isIncome = entryType.value === 'INCOME';
         const methodEl = document.getElementById('cbMethod');
@@ -1423,12 +1649,33 @@ document.addEventListener('DOMContentLoaded', function () {
             minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 });
         amtCell.className = isIncome ? 'amt-in' : 'amt-out';
 
+        // ⚠ TODAY IS JUST "Today". It read "Fri, 04 Sept 2026 (today)" — the
+        // date spelled out AND then labelled as the one date that needs no
+        // spelling out, on the row that is right on almost every entry. The
+        // full date is what a BACK-DATED entry needs, and that is exactly when
+        // it still prints, in amber.
         const backDated = dateInput.value !== TODAY_ISO;
         const dateCell  = document.getElementById('cbRecapDate');
-        dateCell.textContent = new Date(dateInput.value + 'T00:00:00')
-            .toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
-            + (backDated ? '' : ' (today)');
+        dateCell.textContent = backDated
+            ? new Date(dateInput.value + 'T00:00:00').toLocaleDateString(
+                'en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+            : 'Today';
         dateCell.className = backDated ? 'dated' : '';
+
+        // ⚠ THE REPEAT CHECK. Counts what is already under this NAME today —
+        // whatever the entry is worth, because the signal is the name coming
+        // round twice, not the figure. "Biljo 20,000" this morning and "Biljo
+        // 18,000" this afternoon is the case worth a second look.
+        const repeatBox = document.getElementById('cbRepeat');
+        const already = TODAY_NAMES[document.getElementById('cbName').value.trim().toLowerCase()] || 0;
+        if (already && !backDated) {
+            document.getElementById('cbRepeatText').innerHTML =
+                'Already entered <strong>' + already + ' time' + (already > 1 ? 's' : '') +
+                '</strong> today under this name. Adding another?';
+            repeatBox.hidden = false;
+        } else {
+            repeatBox.hidden = true;
+        }
 
         document.getElementById('cbRecapMethod').textContent =
             methodEl.options[methodEl.selectedIndex].text;
@@ -1439,9 +1686,29 @@ document.addEventListener('DOMContentLoaded', function () {
         confirmBtn.className = 'cb-btn-confirm ' + (isIncome ? 'success' : 'danger');
         confirmBtn.textContent = isIncome ? 'Yes, add income' : 'Yes, add expense';
 
+        // ⚠ THE STEER IS ASKED HERE, BEFORE THE RECAP OPENS — not on the form's
+        // submit event, which a programmatic `.submit()` never fires. Two
+        // separate questions in the right order: "is this the right SECTION?"
+        // first, then the recap's "is this the right ENTRY?". Cancel here
+        // returns to the box with the name selected and never opens the recap,
+        // so the two never stack.
+        if (!steered) {
+            const row = steerFor(nameInput.value);
+            if (row) {
+                askSteer(row, nameInput).then(function (go) {
+                    if (go) { openAddConfirm(true); }
+                });
+                return;
+            }
+        }
+
         openModal('cbAddModal');
     }
-    submitBtn.addEventListener('click', openAddConfirm);
+    // ⚠ WRAPPED, NEVER PASSED DIRECTLY. `addEventListener` hands the handler a
+    // MouseEvent as its first argument, which is truthy — so wiring
+    // `openAddConfirm` straight to the click would pass `steered = <event>`
+    // and skip the steer on the one path it exists for.
+    submitBtn.addEventListener('click', function () { openAddConfirm(); });
     // Enter anywhere in the form goes through the same confirmation rather
     // than posting straight past it.
     addForm.addEventListener('submit', function (e) {

@@ -1092,6 +1092,143 @@ Skipped on the AJAX path, since the datalist sits outside the swapped regions.
 a keyword filter would hide real money, so the Profit page shows a "wages may be
 counted twice" warning and lets the owner move the entry.
 
+**AND NOW THE LEDGER ASKS BEFORE IT TAKES ONE — `CASHBOOK_STEERS`.** The Profit
+page's warning is the same fact said a month later, on a screen the person who
+typed it may never open. Three kinds of money have a dedicated section AND land
+wrong here: **wages** are counted twice, an **owner draw** quietly cuts reported
+profit (that is the whole reason `OwnerWithdrawal` exists), and a **rent
+deposit** is charged on top of the monthly rent.
+
+**SEVEN GROUPS, 27 KEYWORDS.** Four are word lists in the file; **three are
+read from the database**, so a rename or a new row is protected with no code
+change:
+
+| group | goes to | why it lands wrong here |
+|---|---|---|
+| rent · deposit | Deposit & Rent | counted on top of the rent |
+| salary · salaries · wage(s) · advance · bonus | Salary & Advance | counted **twice** |
+| withdrawal · withdraw · drawing(s) · take out · takeout | Owner Withdrawals | makes profit look **smaller** |
+| shop · spare · parts · supplier · supplies | that shop's page | counted **twice** |
+| **every spare-shop and Supplies Shop name** | that shop's page | counted **twice** |
+| **each owner's name** | Owner Withdrawals | makes profit look **smaller** |
+
+⚠ **THE OWNER NAMES ARE READ FROM THE DATABASE, NEVER HARD-CODED.** The owner's
+own example is the case that matters: in a rush, one of them takes cash and
+types **"Sahad 5000"** here. So `_steers()` appends every name from
+`owner_accounts()` — the one answer to "who are the owners?" everywhere else —
+and each gets its own message, because *"Sahad is an owner"* is unarguable in a
+way a generic line about owner money is not.
+
+⚠ **AND SO ARE THE SHOP NAMES, for the same reason.** CLAUDE.md's own example
+of the double count is *"Paid Ninoos 20,000"* — and **Ninoos is a row in a
+table, not a word in a source file.** Both ledgers, archived shops included,
+since money paid to an archived shop is counted exactly as twice. The generic
+words are `analysis_engine.SHOP_WORDS`, **imported rather than restated**, so
+the entry-time steer and the Profit page's own `_shoplike_cashbook_count`
+warning can never come to mean different things — the same fact, said before it
+happens instead of a month later.
+
+⚠ **A shop name must be FOUR characters and is matched WHOLE.** A shop called
+"Oil" or "AC" would match half the ledger and make every steer noise; matching
+a shop's first *word* would fire on "Auto" or "New". The trade is that a shop
+called by half its name is missed, which the generic word list still tends to
+catch.
+
+⚠ **WORD BOUNDARIES, NEVER `includes()`.** A substring match on "rent" also
+matches "cur**rent**", and the electricity bill is called **"Current bill"** —
+so a contains-check would question the single most common row in the ledger and
+be ignored inside a week. Same for "advance" against "Advanced diagnostics".
+The regex escapes each word, because an owner's name is free text.
+
+**EACH STEER IS A QUESTION, THEN THE CONSEQUENCE — and nothing else.**
+
+> ⚠ **Is this money Sahad took out?**
+> **Sahad** is an owner. That goes in **Owner Withdrawals** — put here it makes
+> the **profit look smaller** than it is.
+
+It shipped first as flat statements and the owner's verdict was that it did not
+read as stopping them: *"Sahad is an owner — money they took belongs in Owner
+Withdrawals"* is a **fact**, and a fact slides past somebody in a hurry. A
+question makes the reader answer it; naming what breaks is what makes answering
+worth the second it costs. Read in one scan: **ask → what goes wrong → where it
+belongs.**
+
+⚠ **A STEER EXPLAINS NOTHING ELSE — the rent one carried a third line and it
+was removed.** It read *"The one monthly rent bill is still fine here"*, which
+is **true** (the monthly bill still reaches Profit as a Cashbook category) and
+which the owner read as *"workshop rent is fine to add here"* — the opposite of
+the point. It was answering a question nobody had asked yet. The heading
+already disambiguates: somebody keying the monthly bill reads "Is this a rent
+**deposit**?", answers no, and carries on.
+→ `test_NO_STEER_EXPLAINS_WHEN_THE_CASHBOOK_IS_STILL_RIGHT` asserts every row
+carries exactly `words`, `ask` and `why`, so a fourth field cannot come back.
+
+⚠ **That muddle existed only because rent is half-way out of the Cashbook.**
+When it gets its own expense line the wording gets *simpler*, not more careful.
+
+**THE DIALOG IS THIS PAGE'S OWN MODAL, FULLY RED, WITH A GREEN CANCEL.** It
+started as `window.confirm()`, which cannot be designed at all — it opened with
+"127.0.0.1:8000 says", the browser talking rather than the app, and rendered
+question, reason and exit as one flat grey block. It is now the same overlay,
+box, icon and button shapes the recap and delete dialogs use.
+
+⚠ **THE CARD IS SOLID `#b91c1c` AND EVERYTHING ON IT IS WHITE — the owner's
+instruction, in two passes, and it is the only dialog in the app like this.**
+Every other one is a white box with a coloured glyph, which is right when the
+question is *"did you mean this?"*. This one is not asking, it is **stopping**.
+A red glyph on a white card was read past; so was a pale `#fef2f2` wash. It is
+`#b91c1c` rather than a brighter `#dc2626` because the reason line is body text
+that has to stay readable: pure white measures **6.47:1** there against 4.83:1.
+
+| | |
+|---|---|
+| title / **Go back** label | 6.47 / 5.02:1 |
+| reason (white at .92) | 5.66:1 |
+| **It's something else** | 6.47:1 |
+
+⚠ **"GO BACK" IS GREEN AND "IT'S SOMETHING ELSE" IS WHITE.** Carrying on was an
+outline for a revision — red on red — and became unreadable the moment the card
+went solid, so it is filled white. The green **ring** on Go back is what still
+marks the way out, rather than one button being dim. That is the opposite of
+the recap beside it, where confirming is what you came to do: *a warning whose
+loudest control is "ignore me" is not a warning.*
+
+⚠ **THE RING IS ARITHMETIC, NOT DECORATION.** `#15803d` carries its white label
+at 5.02:1 — fine — but against the red CARD it separates at only **1.29:1**, so
+the button's *shape* melts into the ground even though its text is legible.
+WCAG wants 3:1 for a control's own boundary; the ring buys that without
+lightening the fill and losing the label.
+
+⚠ **The green is `#15803d`, NOT the app's `--color-success` (`#16a34a`).**
+That token is used everywhere else as TEXT on a light ground; **reversed —
+white ON it — it measures 3.30:1**, and this label is 13.6px bold, under WCAG's
+large-text threshold and so needing 4.5:1. Caught by measuring, not by eye.
+**Do not unify it back to the token.**
+
+⚠ **IT ASKS, IT NEVER BLOCKS, AND THERE IS NO SERVER GUARD.** "Rent agreement
+stamp paper", "Advance to a supplier" and a staff member sharing an owner's
+first name are all real. And this catches a **typo made in a rush** — a crafted
+POST is not that, so there is nothing to enforce server-side and nothing to
+keep in step. The money rules themselves are unchanged and still live in the
+views. Cancel returns the person to the box with what they typed, selected.
+
+⚠ **THE ADD PATH IS HOOKED INSIDE `openAddConfirm()`, NOT ON A SUBMIT EVENT —
+AND IT SHIPPED THE OTHER WAY, DOING NOTHING.** The owner tried every keyword
+and got no prompt at all. The Add control opens a recap modal whose confirm
+button calls `addForm.submit()` **programmatically**, and a programmatic
+`.submit()` **fires no submit event** — the trap this file already records for
+three other templates. A delegated `submit` listener therefore caught the edit
+screen and was silent on the one door people actually use.
+
+Asking inside `openAddConfirm()` also puts the two questions in the right
+order and stops them stacking: **"is this the right SECTION?"** first, then the
+recap's **"is this the right ENTRY?"**. Cancel returns to the box with the name
+selected and never opens the recap. The **edit** form keeps the delegated
+listener, because it has a real submit button and its event does fire. The list
+rides over via `json_script`, never interpolated into markup.
+→ `TheCashbookSteersAnEntryToTheSectionThatOwnsItTests`,
+`test_THE_ADD_PATH_IS_HOOKED_BEFORE_THE_RECAP_NOT_ON_SUBMIT`
+
 **A Cashbook entry is dated by the day the money moved, and that date is
 editable.** `CashbookEntry.date` has always existed and driven every filter, but
 **no form rendered a date input and neither view read one**, so every entry was
@@ -1845,9 +1982,39 @@ there is. This is the settle dialog's rule applied exactly: confirm where it
 can still surprise somebody, nowhere else.
 → `test_the_row_ITSELF_says_it_was_keyed_late_and_that_is_permanent`
 
+⚠ **AND THE ROW MARK ALONE WAS STILL NOT ENOUGH — the owner found that by
+using it too.** They back-dated a deposit, *knew* they had, and still could not
+find it: the mark is only visible once the RIGHT MONTH is open, so a row filed
+into a month nobody would think to open stayed findable only by hunting. They
+spotted it in the end because the demo data was uniform enough for one odd
+figure to stand out, **which is not a control.**
+
+**"Recently added" reads the same log by KEYSTROKE instead of by money date**,
+across every month, so whatever was just done is at the top. `?added=recent`,
+one link beside the heading, `RECENT_ROWS = 40` — it answers *"what did I just
+do?"*, and anything older is found by opening the month, where the row's own
+mark makes it obvious.
+
+**TWO TIERS, because they are different amounts of harm** — `backdating()`
+returns `''` / `'late'` / `'closed'`:
+
+| | | |
+|---|---|---|
+| **amber** | `late` | dated back inside its OWN month — the month's total is unchanged and no closed period moved, only the day is off |
+| **red** | `closed` | filed into a month already finished — that month's position, and every month since, has moved |
+
+⚠ **ONE RULE, READ BY BOTH VIEWS.** The month log and Recently added must
+never mark the same row differently, so neither computes its own answer.
+⚠ **RECENT MODE PRINTS NO DAY TOTALS.** A day header carries a day TOTAL, and
+that is only true when the block holds every deposit of that day. Ordered by
+keystroke the list is a SLICE — two rows of one day can be far apart — so a
+header there would print "the part of that day I happen to be showing". Each
+row stands alone instead.
+→ `FindingWhatWasFiledBackwardsTests`
+
 ⚠ **THE ROW MARKER IS NOT YET ON THE OTHER FIVE SCREENS.** They have the floor;
-they do not have the permanent visible trace. Every model involved already
-carries both dates, so it is the same four lines each — do it as its own pass.
+they do not have the permanent visible trace, and none has a Recently-added
+view. Every model involved already carries both dates — do it as its own pass.
 
 **Volume is what keeps them safe at CRITICAL** — the argument `LOGIN` already
 rests on. A rent changes about once a **year**; a deposit past the floor is a
@@ -6827,11 +6994,13 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 62 files, 2,081 tests. Always SQLite (see below).
-# Last full run 2026-09-04: 2,081 tests, ALL GREEN.
-# ⚠ RUN IT ALONE, and expect a wide spread. Three runs the same day measured
-# 4,236s / 2,521s / 4,546s — the slowest was contended with five other test
-# files running beside it. Concurrent runs are SAFE (in-memory SQLite, no
+# Full test suite — 62 files, 2,106 tests. Always SQLite (see below).
+# Last full run 2026-09-04: 2,106 tests, ALL GREEN (4,138s / 69 min, idle).
+# ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
+# 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
+# test files running beside it, but the two IDLE runs still differed by 27
+# minutes, so the spread is mostly ordinary machine load and a slow run is not
+# a signal. Concurrent runs are SAFE (in-memory SQLite, no
 # collision) but they are not FREE: they compete for the same cores. The
 # spread between the two solo runs is ordinary machine load, not a signal.
 python manage.py test workshop inventory
@@ -7178,7 +7347,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **62 files, 2,081 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **62 files, 2,106 tests**,
 counted 2026-09-04. (`workshop/tests/` is 56 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)

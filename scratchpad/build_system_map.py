@@ -551,6 +551,21 @@ def build(theme):
         # TRACKING in the row below.
         ('wdraw', 'OWNER WITHDRAWALS', ['what each owner took',
                                         'not a cost - cash out only'], FLOW['out']),
+        # The SECOND card here that moves money, and it is in this zone for the
+        # same reason OWNER WITHDRAWALS is: it is a LEDGER read as a history,
+        # which is what this zone holds. It was tried in FIN.05 first, beside
+        # the other things the workshop pays monthly, and `check_system_map.py`
+        # refused BOTH bottom slots of that zone - they are the lanes DISCOUNT
+        # AUDIT and DELETION HISTORY use to reach NOTIFICATIONS below. That is
+        # exactly what check 1 is for.
+        #
+        # ⚠ IT IS DRAWN WITH NO CONNECTOR, and the absence is the statement
+        # rather than an omission: the section touches `analysis_engine`
+        # nowhere, which is the whole reason switching it on moved no reported
+        # figure by a rupee. The second chip says so out loud, so a card with
+        # no line leaving it cannot be read as a line somebody forgot.
+        ('rent',  'DEPOSIT & RENT',    ['daily deposits - monthly rent',
+                                        'not in profit yet'],         FLOW['out']),
     ]
     for (cid, t, ch, ac), cell in zip(_tel, grid(
             1098, B1Y, 300, B1H, 1, len(_tel), top=32,

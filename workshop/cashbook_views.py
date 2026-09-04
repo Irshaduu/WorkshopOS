@@ -1,5 +1,9 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
+# `why` carries a little markup (the section name in bold), and an owner's NAME
+# goes into it — so the name is escaped here rather than trusted. The template
+# renders these through `innerHTML`, which is what makes the escape necessary.
+from django.utils.html import escape
 from datetime import date, timedelta
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -61,6 +65,166 @@ FILTER_LABELS = {
 # Longest term worth sending to the database. The name it searches is 100
 # characters wide, so anything past that cannot match a category anyway.
 MAX_SEARCH_LEN = 100
+
+
+# =============================================================================
+# STEERING AN ENTRY TO THE SECTION THAT OWNS IT
+# =============================================================================
+# Three kinds of money have a dedicated section AND land wrong if they are
+# typed here instead, so the Cashbook asks before taking one:
+#
+#   * WAGES are counted from Salary & Advance. A "Staff salary 40,000" row here
+#     is counted TWICE — the Profit page already warns about it after the fact
+#     ("wages may be counted twice"), and this is the same fact said before it
+#     happens rather than a month later.
+#   * AN OWNER DRAW is not an expense at all. `cashbook_expense()` feeds the
+#     profit equation, so "Sahad 5,000" here quietly cuts reported profit by
+#     5,000 — and the next distribution is decided from the smaller figure.
+#     That is the exact defect `OwnerWithdrawal` was built to remove, and in a
+#     rush an owner's own NAME is what gets typed.
+#   * A RENT DEPOSIT belongs in Deposit & Rent. The monthly rent charge does
+#     still belong here (see below), but a 2,000 daily handover typed here is
+#     charged on top of it.
+#
+# ⚠ "RENT" IS DELIBERATELY NOT IN THIS LIST, and adding it would cost the
+# workshop ₹35,000 a month of expense. Rent still reaches the Profit page as a
+# Cashbook category — that is the whole reason Deposit & Rent was built to
+# touch `analysis_engine` nowhere. Steering rent away from here before it has
+# an expense line of its own would simply delete it from the books. The word
+# joins this list on the day that line lands, and not before.
+#
+# ⚠ IT ASKS, IT NEVER BLOCKS. "Rent agreement stamp paper", "Advance to a
+# supplier" and a staff member who shares an owner's first name are all real,
+# so a refusal would be wrong and a person who cannot get their work done
+# routes around the tool. The app's own rule, from the settle dialog.
+#
+# ⚠ IT IS A BROWSER PROMPT AND NOTHING ELSE, on purpose. This catches a
+# TYPO MADE IN A RUSH; a crafted POST is not that, so there is no server guard
+# to write and none to keep in step. What the server does own is the money
+# rules themselves, which are unchanged.
+# ⚠ EACH ONE IS A QUESTION, THEN THE CONSEQUENCE. That shape is the owner's
+# own, after the first attempt shipped as flat statements and they said it did
+# not read as stopping them: "Sahad is an owner — money they took belongs in
+# Owner Withdrawals" is a FACT, and a fact slides past somebody in a hurry.
+# A question ("Is this money an owner took?") makes the reader answer it, and
+# naming what goes wrong ("it makes the profit look smaller") is what makes
+# answering worth the second it costs. Read in one eye scan, in this order:
+#
+#     ASK  -> what would go wrong -> where it belongs
+#
+# `ask` is the heading, `why` the line under it. Both are short on purpose;
+# anything longer is read as prose and skipped.
+CASHBOOK_STEERS = [
+    # ⚠ THE EXCEPTION LINE WAS REMOVED, AND THE QUESTION DOES ITS WORK.
+    # This carried "The one monthly rent bill is still fine here", which is
+    # TRUE today — the monthly bill still reaches the Profit page as a Cashbook
+    # category — and which the owner read as "workshop rent is fine to add
+    # here", the opposite of the point. It was an answer to a question nobody
+    # had asked yet.
+    #
+    # The heading already disambiguates: somebody keying the monthly bill reads
+    # "Is this a rent DEPOSIT?", answers no, and carries on. Nothing needed
+    # spelling out, and spelling it out is what caused the confusion.
+    #
+    # ⚠ The muddle exists at all only because rent is half-way out of the
+    # Cashbook. When it gets its own expense line the wording gets simpler
+    # again, not more careful.
+    (['rent', 'deposit'], {
+        'ask': 'Is this a rent deposit?',
+        'why': 'The daily cash you hand the collector goes in '
+               '<strong>Deposit&nbsp;&amp; Rent</strong>. Put here it gets '
+               'counted on top of the rent.',
+    }),
+    (['salary', 'salaries', 'wage', 'wages', 'advance', 'bonus'], {
+        'ask': 'Is this staff pay?',
+        'why': 'Wages and advances go in <strong>Salary&nbsp;&amp; '
+               'Advance</strong>. Put here they are counted '
+               '<strong>twice</strong>.',
+    }),
+    (['withdrawal', 'withdraw', 'drawing', 'drawings', 'take out', 'takeout'], {
+        'ask': 'Is this money an owner took out?',
+        'why': 'That goes in <strong>Owner Withdrawals</strong>. Put here it '
+               'makes the <strong>profit look smaller</strong> than it is.',
+    }),
+    # ⚠ THE FOURTH GROUP, AND THE ONE THE PROFIT PAGE ALREADY WARNS ABOUT AFTER
+    # THE FACT. `_shoplike_cashbook_count()` counts cashbook rows whose
+    # category reads like a shop payment, because paying a shop from here is
+    # counted TWICE — once as a cashbook expense, once against that shop's own
+    # ledger. CLAUDE.md's own example is "Paid Ninoos 20,000". The words are
+    # `analysis_engine.SHOP_WORDS`, imported rather than restated, so the
+    # warning and the steer can never come to mean different things.
+    (None, {          # words filled in from SHOP_WORDS by `_steers()`
+        'ask': 'Is this a payment to a shop?',
+        'why': 'Shop payments go on that shop&rsquo;s own page. Put here they '
+               'are counted <strong>twice</strong> &mdash; once here and once '
+               'against the shop.',
+    }),
+]
+
+
+def _steers():
+    """The keyword list, with the CURRENT owners' names appended.
+
+    ⚠ READ FROM THE DATABASE, never hard-coded. "Sahad" and "Rijas" are who
+    the owners happen to be today; a third owner, or one renamed, must not need
+    a code change to be protected — the same reason `owner_accounts()` is the
+    one answer to "who are the owners?" everywhere else.
+
+    A name gets its own message because naming the person is what makes the
+    prompt land: "Sahad is an owner" is unarguable in a way that a generic
+    line about owner money is not.
+    """
+    from .decorators import owner_accounts
+
+    from .analysis_engine import SHOP_WORDS
+
+    rows = [dict(say, words=list(words) if words else list(SHOP_WORDS))
+            for words, say in CASHBOOK_STEERS]
+
+    # ⚠ THE SHOPS ARE NAMED FROM THE DATABASE, like the owners and for the same
+    # reason: "Paid Ninoos 20,000" is CLAUDE.md's own example of the
+    # double-count, and Ninoos is a row in a table, not a word in this file.
+    # Both ledgers, and archived shops too — money paid to a shop that has
+    # since been archived is counted exactly as twice.
+    #
+    # ⚠ FOUR CHARACTERS MINIMUM, AND THE WHOLE NAME. A short or common shop
+    # name ("Oil", "AC") would match half the ledger, and matching a shop's
+    # first WORD would fire on "Auto" or "New". The trade is that a shop
+    # referred to by half its name is missed — which the word list above still
+    # tends to catch, since most are called "... Auto Parts" or "... Spares".
+    from inventory.models import SupplierShop
+    from .models import SpareShop
+
+    names = set()
+    for name in list(SpareShop.objects.values_list('name', flat=True)) + \
+            list(SupplierShop.objects.values_list('name', flat=True)):
+        cleaned = (name or '').strip()
+        if len(cleaned) >= 4:
+            names.add(cleaned.lower())
+    if names:
+        rows.append({
+            'words': sorted(names),
+            'ask': 'Is this a payment to a shop?',
+            'why': 'That is one of your shops. Pay it on its own page &mdash; '
+                   'put here it is counted <strong>twice</strong>.',
+        })
+
+    for account in owner_accounts():
+        name = (account.get_full_name() or account.username).strip()
+        first = name.split()[0] if name else ''
+        if not first:
+            continue
+        rows.append({
+            'words': sorted({name.lower(), first.lower()}),
+            # The NAME is the question, because that is what makes it
+            # unarguable: a generic line about owner money is easy to read past,
+            # and "Is this money Sahad took out?" is not.
+            'ask': f"Is this money {first} took out?",
+            'why': f"<strong>{escape(first)}</strong> is an owner. That goes in "
+                   f"<strong>Owner Withdrawals</strong> &mdash; put here it makes "
+                   f"the <strong>profit look smaller</strong> than it is.",
+        })
+    return rows
 
 
 def _apply_period(qs, filter_type, request, today):
@@ -227,6 +391,22 @@ def cashbook_view(request):
         'today_iso': today.isoformat(),
         # PRESENTATION ONLY — `too_far_back()` in the view is the control.
         'floor_iso': '' if is_owner(request.user) else backdate_floor().isoformat(),
+        # Handed over as data for `json_script`, never interpolated into
+        # markup: an owner's name is free text and would otherwise need
+        # escaping by hand on every render.
+        'steers': _steers(),
+        # ⚠ TODAY'S ENTRIES BY NAME, for the repeat line in the confirmation.
+        # Keyed on TODAY whatever period the page is filtered to: the question
+        # is "have I already keyed this today", not "is it in the window I am
+        # looking at". Lower-cased, because the ledger snaps a new heading to a
+        # spelling already in use and "Biljo" must count "biljo".
+        'today_names': {
+            (row['category'] or '').strip().lower(): row['n']
+            for row in CashbookEntry.objects.filter(date=today)
+                                            .values('category')
+                                            .annotate(n=Count('id'))
+            if (row['category'] or '').strip()
+        },
         # Date objects, so the list can head a group with "Today"/"Yesterday"
         # instead of making someone read a date to work out it is this morning.
         'today': today,

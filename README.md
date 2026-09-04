@@ -43,6 +43,12 @@ payroll, evidence photos and owner analytics, in one Django application.
   month-end settlement that freezes each person's salary, leave, advance and net pay.
   A settled month never re-prices itself, and only the most recent one can be
   corrected.
+- **Deposit and rent** — the premises are paid for in daily cash instalments to a
+  collector, so the page says what to hand over today: whatever is left of the
+  month's rent over the days left. Pay more today and tomorrow asks for less; skip a
+  day and it asks for a little more. The rent and the deposits stay two separate
+  numbers — what a month cost, and how it got paid — and twenty years of history
+  folds away behind one line per year.
 - **Owner withdrawals** — cash the owners take out for themselves, recorded where it
   belongs. It is not a business expense and the profit figure never moves because of
   it: profit is what is available to take. It shows as cash out, and nowhere else.

@@ -161,6 +161,18 @@
   .rt-late { flex: 0 0 auto; font-size: 0.68rem; font-weight: 600; color: #b45309;
              background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px;
              padding: 0.1rem 0.45rem; white-space: nowrap; }
+  /* RED for a row filed into a month that had already finished — that one
+     moved a closed position, where an amber one only got the day wrong. */
+  .rt-closed { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+  /* ⚠ `padding: 0` IS LOAD-BEARING. The legend dot reuses `.rt-late` to pick
+     up its colour, and that class carries the CHIP's padding — which leaked
+     through and rendered the amber dot as a squashed 16.4 x 9 pill beside a
+     round 9 x 9 red one. Both are single-class selectors, so this wins only by
+     coming later in the file; keep the two rules in this order. Found by
+     measuring in a browser — nothing in the Django suite executes CSS. */
+  .rt-late-dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px;
+                 padding: 0; border: 1px solid currentColor; background: currentColor;
+                 vertical-align: baseline; }
   .rt-note { flex: 1; min-width: 0; font-size: 0.78rem; color: #64748b;
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rt-by { font-size: 0.68rem; color: #94a3b8; white-space: nowrap; }
@@ -336,6 +348,7 @@
     anybody here is a back-dated entry, and the date box already turns amber
     and spells the day out when it is not today.
   {% endcomment %}
+  {{ day_counts|json_script:"rtDayCounts" }}
   <form method="post" action="{% url 'rent_deposit_add' %}" id="rtAddForm"
         data-floor="{{ floor_iso }}">
     {% csrf_token %}
@@ -390,16 +403,45 @@
 
   {% comment %} ── One month's deposits ──────────────────────────────────── {% endcomment %}
   <div class="rt-sec" id="deposits">
+    {% comment %}
+      TWO WAYS TO READ ONE LOG. By MONEY DATE it is one month at a time, which
+      is what the office checks against the collector's book. By KEYSTROKE it
+      is whatever was done most recently across EVERY month — the only view
+      that finds a row filed into a month nobody would think to open. The row
+      mark alone was not enough: it is visible only once the right month is
+      already open, so a mis-dated entry stayed findable by hunting.
+    {% endcomment %}
     <div class="rt-sec-h">
-      {{ focus|date:"F Y" }} deposits
-      <span>{{ days|length }} day{{ days|length|pluralize }} &middot;
-            &#8377;{{ focus_total|inr }} in total</span>
-      {% if not focus_is_current %}
+      {% if recent %}
+        Recently added
+        <span>newest keystroke first &middot; every month</span>
+      {% else %}
+        {{ focus|date:"F Y" }} deposits
+        <span>{{ days|length }} day{{ days|length|pluralize }} &middot;
+              &#8377;{{ focus_total|inr }} in total</span>
+      {% endif %}
+      {% if recent %}
         <a href="{% url 'rent_home' %}#deposits">
           <i class="bi bi-arrow-left"></i> Back to this month
         </a>
+      {% else %}
+        {% if not focus_is_current %}
+          <a href="{% url 'rent_home' %}#deposits">
+            <i class="bi bi-arrow-left"></i> This month
+          </a>
+        {% endif %}
+        <a href="?added=recent#deposits" class="{% if not focus_is_current %}ms-3{% else %}ms-auto{% endif %}">
+          <i class="bi bi-clock-history"></i> Recently added
+        </a>
       {% endif %}
     </div>
+    {% if recent and off_count %}
+      <p class="rt-foot mb-2" style="margin-top:-0.25rem;">
+        <span class="rt-late-dot rt-late"></span> dated back inside its own month
+        &nbsp;&nbsp;
+        <span class="rt-late-dot rt-closed"></span> filed into a month already finished
+      </p>
+    {% endif %}
     <div class="rt-list">
       {% comment %}
         A DAY HEADER APPEARS ONLY WHEN THE DAY HAS MORE THAN ONE DEPOSIT.
@@ -435,9 +477,19 @@
               AMBER, matching the date box that goes amber while a back-dated
               entry is being typed. Same fact, same colour, before and after.
             {% endcomment %}
-            {% if row.added_late %}
-              <span class="rt-late" title="Filed under {{ row.date|date:'F Y' }}, keyed on {{ row.added_on|date:'j M Y' }}">
-                <i class="bi bi-clock-history"></i> added {{ row.added_on|date:"j M Y" }}
+            {% comment %}
+              TWO TIERS, because they are different amounts of harm. AMBER is a
+              row dated back inside its OWN month: the month's total is
+              unchanged and no closed period moved, only the day is off. RED is
+              a row filed into a month that had already finished — that month's
+              position, and every month since, has moved. The tier is decided
+              by `rent.backdating()` so this list and Recently added can never
+              mark the same row differently.
+            {% endcomment %}
+            {% if row.tier %}
+              <span class="rt-late {% if row.tier == 'closed' %}rt-closed{% endif %}"
+                    title="Filed under {{ row.date|date:'F Y' }}, keyed on {{ row.added_on|date:'j M Y' }}">
+                <i class="bi bi-clock-history"></i> added {{ row.added_on|date:"j M" }}
               </span>
             {% endif %}
             <span class="rt-note">{{ row.note|default:"" }}</span>
@@ -806,16 +858,46 @@
   // is asked exactly where it can still surprise somebody.
   var addForm = document.getElementById('rtAddForm');
   var floorISO = addForm ? addForm.dataset.floor : '';
-  if (addForm && floorISO) {
+  // How many deposits each day of the month on screen already has.
+  var countsEl = document.getElementById('rtDayCounts');
+  var DAY_COUNTS = countsEl ? JSON.parse(countsEl.textContent || '{}') : {};
+
+  if (addForm) {
     addForm.addEventListener('submit', function (e) {
       var iso = dateInput ? dateInput.value : '';
-      if (!iso || iso >= floorISO) { return; }
-      var when = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, 1)
-        .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      if (!window.confirm('File this deposit under ' + when +
-          '?\n\nThat month is already closed — its position and every month ' +
-          'since will move, and the other owner is told.')) {
-        e.preventDefault();
+      if (!iso) { return; }
+
+      // ⚠ THE BACK-DATE QUESTION COMES FIRST, because it is the bigger fact:
+      // it moves a closed month's position and reaches the other owner's
+      // phone. Only one dialog ever shows — a person who has just been asked
+      // about a closed month does not also need to be asked whether it is the
+      // day's second entry.
+      if (floorISO && iso < floorISO) {
+        var when = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, 1)
+          .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+        if (!window.confirm('File this deposit under ' + when +
+            '?\n\nThat month is already closed — its position and every month ' +
+            'since will move, and the other owner is told.')) {
+          e.preventDefault();
+        }
+        return;
+      }
+
+      // ⚠ THE REPEAT CHECK. The collector comes once a day, so a second entry
+      // on one date is the shape a double-key takes here — one person keying
+      // in a rush, or two people recording the same handover. It ASKS: a
+      // morning and an evening handover is real, and the day total in the log
+      // is what catches whatever slips through either way.
+      var n = DAY_COUNTS[iso] || 0;
+      if (n > 0) {
+        var day = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1,
+                           Number(iso.slice(8, 10)))
+          .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        if (!window.confirm(
+            n + (n > 1 ? ' deposits are' : ' deposit is') +
+            ' already recorded for ' + day + '.\n\nAdd another?')) {
+          e.preventDefault();
+        }
       }
     });
   }

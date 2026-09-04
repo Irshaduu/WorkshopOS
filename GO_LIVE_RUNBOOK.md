@@ -327,6 +327,28 @@ python manage.py sweep_photo_blobs
 python manage.py sweep_photo_blobs --yes
 ```
 
+### 3.2b Read the Cashbook's keyword list once, after the real shops exist ☐
+
+Nothing to run. The Cashbook asks before it takes an entry that looks like a
+wage, an owner's draw, a rent deposit or a shop payment — and **the shop names
+and the owner names in that list are read from the database on every page
+load**, never written into the code. So the demo names disappear with the purge
+above and the real ones protect themselves the moment they are created. There
+is no step here and no deploy.
+
+The one thing worth a glance: **a shop whose whole name is a common word.** The
+match is the full name with word boundaries, so "Ninoos Auto Parts" only fires
+on that phrase — but a shop actually called *Lubricant* or *Water* would
+question ordinary entries that mention the word. It only ever ASKS, so nothing
+breaks; it just gets noisy. If one of the real shops is named like that, say
+so rather than living with it.
+
+To see the list as it stands:
+
+```bash
+python manage.py shell -c "from workshop.cashbook_views import _steers; [print(r['words']) for r in _steers()]"
+```
+
 ### 3.3 Owner accounts and real email addresses ☐
 
 The developer test addresses must not survive into production — password reset

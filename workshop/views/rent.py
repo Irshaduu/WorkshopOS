@@ -36,7 +36,7 @@ from django.utils import timezone
 
 from .. import rent as rent_calc
 from ..decorators import is_owner, office_required, owner_required
-from ..delete_window import refusal
+from ..delete_window import is_past_window, refusal
 from ..models import DeletionLog, RentDeposit, RentRate
 from ..money import fit_text, parse_money
 from ..money_dates import (backdate_floor, is_future, is_too_far_back,
@@ -93,10 +93,14 @@ def rent_home(request):
     state = rent_calc.position(today=today)
     focus = _focus_month(request.GET.get('month'), today)
 
-    # ONE MONTH, NEVER A PAGER. See `deposits_in` — a month is bounded at about
-    # sixty rows however long the business runs, so there is nothing to page,
-    # and the year blocks below are how any month in twenty years is reached.
-    rows = rent_calc.deposits_in(focus)
+    # TWO WAYS TO READ THE SAME LOG, and the second exists because the first
+    # cannot answer "I know I did it, but where?". By MONEY DATE it is one
+    # month at a time (bounded at about sixty rows however long the business
+    # runs, so there is nothing to page). By KEYSTROKE it is whatever was done
+    # most recently, across every month — which is the only view that finds a
+    # row filed into a month nobody would think to open.
+    recent = request.GET.get('added') == 'recent'
+    rows = rent_calc.recently_added() if recent else rent_calc.deposits_in(focus)
 
     # Whether each row may still be deleted by THIS user, decided once here
     # rather than per row in the template. A door somebody can see and cannot
@@ -115,18 +119,37 @@ def rent_home(request):
     # backdate floor uses one: keying yesterday's handover this morning is the
     # ordinary case and marking it would make the mark meaningless by the
     # second row.
+    # ⚠ `is_owner` ONCE, THE AGE RULE PER ROW. `refusal()` calls `is_owner`,
+    # which is `user.groups.filter(...)` — a fresh query every time, uncached —
+    # so asking it per row put one extra query on every deposit in the list.
+    # Sixty rows, sixty queries, found by a test asserting the cost does not
+    # grow with the data.
+    viewer_is_owner = is_owner(request.user)
     for row in rows:
-        row.locked = refusal(request.user, row.created_at, 'x') is not None
-        keyed = timezone.localtime(row.created_at).date()
-        row.added_late = rent_calc.month_of(keyed) > rent_calc.month_of(row.date)
-        row.added_on = keyed
+        row.locked = not viewer_is_owner and is_past_window(row.created_at)
+        # ONE rule for both views — `rent.backdating()` — so the month log and
+        # the Recently-added list can never mark the same row differently.
+        row.tier = rent_calc.backdating(row)
+        row.added_late = row.tier == 'closed'
+        row.added_on = timezone.localtime(row.created_at).date() if row.created_at else None
 
     return render(request, 'workshop/rent/rent_home.html', {
         'state': state,
+        'recent': recent,
+        # How many of the rows on screen were filed backwards, so the heading
+        # can say it without the reader counting chips.
+        'off_count': sum(1 for r in rows if r.tier),
         'focus': focus,
         'focus_is_current': focus == rent_calc.month_of(today),
         'focus_total': sum((r.amount for r in rows), Decimal('0')),
-        'days': _group_by_day(rows),
+        # ⚠ NO DAY GROUPING IN RECENT MODE. The day header carries a day TOTAL,
+        # and that total is only true when the block holds every deposit of
+        # that day. Ordered by keystroke this list is a slice — two rows of one
+        # day can be pages apart — so a header here would print a "day total"
+        # that is really "the part of that day I happen to be showing". Each
+        # row stands alone instead, with its own money date.
+        'days': ([{'day': r.date, 'rows': [r], 'total': r.amount} for r in rows]
+                 if recent else _group_by_day(rows)),
         'years': rent_calc.year_blocks(today=today),
         'rates': rent_calc.rates()[::-1],
         'is_owner': is_owner(request.user),
@@ -137,6 +160,18 @@ def rent_home(request):
         # Always handed over, owner or not: the browser asks before the button
         # on a date past it, which is the only guard an owner meets at all.
         'floor_iso': backdate_floor(today).isoformat(),
+        # ⚠ HOW MANY DEPOSITS EACH DAY ALREADY HAS, for the repeat check. The
+        # collector comes ONCE a day, so a second entry on one date is the
+        # shape a double-key takes here — there is no name to key on the way
+        # the Cashbook has.
+        #
+        # ⚠ THE RANGE IS THE BACK-DATE WINDOW, NOT THE MONTH BEING VIEWED. The
+        # log can be showing May while the form's date box still defaults to
+        # TODAY, so the viewed month's counts would find nothing for the date
+        # actually about to be submitted. Floor to today covers everything
+        # Office can choose; it costs one query, which is worth saying plainly
+        # rather than claiming it is free.
+        'day_counts': rent_calc.deposit_days(backdate_floor(today), today),
         'today_iso': today.isoformat(),
         'this_month_iso': f"{today:%Y-%m}",
         'back_qs': '' if focus == rent_calc.month_of(today) else f"?month={focus:%Y-%m}",

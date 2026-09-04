@@ -950,3 +950,183 @@ class TheDayTotalMakesADoubleEntryVisibleTests(_Signed):
         self.assertEqual(len(blocks), 1)
         self.assertEqual(len(blocks[0]['rows']), 2)
         self.assertEqual(blocks[0]['total'], D('3000'))
+
+
+class FindingWhatWasFiledBackwardsTests(_Signed):
+    """
+    ⚠ THE ROW MARK ALONE WAS NOT ENOUGH, AND THE OWNER FOUND THAT BY USING IT.
+    They back-dated a deposit, knew they had done it, and still could not find
+    it — the mark is only visible once the RIGHT MONTH is already open, so a
+    row filed into a month nobody would think to open stayed findable only by
+    hunting. They spotted it in the end because the demo data was uniform
+    enough for one odd figure to stand out, which is not a control.
+
+    "Recently added" reads the same log by KEYSTROKE instead of by money date,
+    across every month, so whatever was just done is at the top.
+    """
+
+    def setUp(self):
+        super().setUp()
+        today = timezone.localdate()
+        self.this_month = today.replace(day=1)
+        _rate(2026, 1, '35000')
+        self.ordinary = RentDeposit.objects.create(date=today, amount=D('2000'))
+        self.same_month = RentDeposit.objects.create(
+            date=self.this_month, amount=D('1234'))
+        self.closed = RentDeposit.objects.create(
+            date=self.this_month - timedelta(days=1), amount=D('4321'))
+
+    def test_the_two_tiers_are_different_amounts_of_harm(self):
+        """
+        AMBER is a row dated back inside its OWN month — the month's total is
+        unchanged and no closed period moved, only the day is off. RED is a row
+        filed into a month that had already finished, which moved that month's
+        position and every month since.
+        """
+        self.assertEqual(rent_calc.backdating(self.closed), 'closed')
+        self.assertEqual(rent_calc.backdating(self.ordinary), '')
+        if self.this_month != timezone.localdate():      # not on the 1st
+            self.assertEqual(rent_calc.backdating(self.same_month), 'late')
+
+    def test_keying_yesterdays_handover_this_morning_is_not_marked(self):
+        """The ordinary case. Marking it would make the mark meaningless by the
+        second row."""
+        row = RentDeposit.objects.create(
+            date=timezone.localdate() - timedelta(days=1), amount=D('1500'))
+        type(row).objects.filter(pk=row.pk).update(
+            created_at=timezone.now() - timedelta(days=1))
+        row.refresh_from_db()
+        self.assertEqual(rent_calc.backdating(row), '')
+
+    def test_recently_added_is_ordered_by_the_KEYSTROKE_not_the_money_date(self):
+        """
+        The model's own ordering is `-date, -created_at`, which is the money
+        order and the exact opposite of what this list is for — so it is
+        ordered explicitly.
+        """
+        rows = rent_calc.recently_added()
+        self.assertEqual([r.pk for r in rows[:3]],
+                         [self.closed.pk, self.same_month.pk, self.ordinary.pk])
+
+    def test_it_reaches_across_every_month_which_the_month_log_cannot(self):
+        res = self.as_(self.office).get(reverse('rent_home'), {'added': 'recent'})
+        listed = [r.pk for block in res.context['days'] for r in block['rows']]
+        self.assertIn(self.closed.pk, listed)
+        self.assertTrue(res.context['recent'])
+        # ...while the month log shows only the month it is looking at.
+        month = self.as_(self.office).get(reverse('rent_home'))
+        month_pks = [r.pk for b in month.context['days'] for r in b['rows']]
+        self.assertNotIn(self.closed.pk, month_pks)
+
+    def test_recent_mode_prints_no_day_totals(self):
+        """
+        ⚠ A day header carries a day TOTAL, and that is only true when the
+        block holds every deposit of that day. Ordered by keystroke this list
+        is a SLICE — two rows of one day can be far apart — so a header here
+        would print "the part of that day I happen to be showing".
+        """
+        res = self.as_(self.office).get(reverse('rent_home'), {'added': 'recent'})
+        for block in res.context['days']:
+            self.assertEqual(len(block['rows']), 1)
+
+    def test_both_views_mark_the_same_row_the_same_way(self):
+        """One rule — `rent.backdating()` — so the two lists can never
+        disagree about a row they both show."""
+        recent = self.as_(self.office).get(reverse('rent_home'), {'added': 'recent'})
+        month = self.as_(self.office).get(reverse('rent_home'))
+        in_recent = {r.pk: r.tier for b in recent.context['days'] for r in b['rows']}
+        for block in month.context['days']:
+            for row in block['rows']:
+                self.assertEqual(row.tier, in_recent[row.pk], row.pk)
+
+    def test_the_count_of_marked_rows_rides_over_so_the_heading_can_say_it(self):
+        res = self.as_(self.office).get(reverse('rent_home'), {'added': 'recent'})
+        self.assertGreaterEqual(res.context['off_count'], 1)
+
+
+class TheSameHandoverKeyedTwiceTests(_Signed):
+    """
+    ⚠ THE COMMONEST MONEY MISTAKE IN A WORKSHOP THIS SIZE, and nothing in the
+    schema prevents it: one person keying in a rush, or two people recording
+    the same handover because neither knew the other had.
+
+    The collector comes ONCE a day, so a second entry on one date is the shape
+    a double-key takes here — there is no name to key on the way the Cashbook
+    has, and the AMOUNT is the wrong key, because the same handover keyed twice
+    by two people is often typed slightly differently.
+
+    It ASKS, never refuses: a morning and an evening handover is real. The day
+    total in the log is what catches whatever slips through either way.
+    """
+
+    def setUp(self):
+        super().setUp()
+        today = timezone.localdate()
+        self.month = today.replace(day=1)
+        _rate(today.year, today.month, '35000')
+        self.taken = self.month
+        RentDeposit.objects.create(date=self.taken, amount=D('2000'))
+
+    def counts(self):
+        return self.as_(self.office).get(reverse('rent_home')).context['day_counts']
+
+    def test_a_day_that_already_has_one_is_counted(self):
+        self.assertEqual(self.counts().get(self.taken.isoformat()), 1)
+
+    def test_a_day_with_nothing_on_it_is_absent_rather_than_zero(self):
+        """Absent and zero mean the same thing to the browser, and absent is
+        the smaller payload — a month of empty days would otherwise ride over
+        on every page load."""
+        empty = (self.month + timedelta(days=1)).isoformat()
+        self.assertNotIn(empty, self.counts())
+
+    def test_it_counts_every_deposit_of_that_day_not_just_the_first(self):
+        RentDeposit.objects.create(date=self.taken, amount=D('1500'))
+        self.assertEqual(self.counts().get(self.taken.isoformat()), 2)
+
+    def test_the_amount_is_NOT_part_of_the_key(self):
+        """The same handover keyed twice is often typed slightly differently —
+        ₹2,000 and ₹2,050 — so keying on the amount would miss exactly the
+        case this exists for."""
+        RentDeposit.objects.create(date=self.taken, amount=D('999'))
+        self.assertEqual(self.counts().get(self.taken.isoformat()), 2)
+
+    def test_the_counts_cover_the_date_the_FORM_can_pick_not_the_month_shown(self):
+        """
+        ⚠ THE BUG THE QUERY TEST FOUND. The log can be showing May while the
+        date box still defaults to TODAY, so counts built from the VIEWED month
+        found nothing for the date actually about to be submitted — the check
+        silently doing nothing on exactly the page state where somebody is
+        least sure what they are looking at.
+        """
+        old = self.month - timedelta(days=40)
+        RentDeposit.objects.create(date=old, amount=D('1000'))
+        looking_back = self.as_(self.office).get(
+            reverse('rent_home'), {'month': f"{old:%Y-%m}"})
+        # Viewing an old month, TODAY's own count is still there...
+        self.assertIn(self.taken.isoformat(), looking_back.context['day_counts'])
+
+    def test_it_costs_one_query_however_many_deposits_exist(self):
+        """It is one query, not free — worth saying plainly. What must hold is
+        that the cost does not grow with the data."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        c = self.as_(self.office)
+        c.get(reverse('rent_home'))
+        with CaptureQueriesContext(connection) as busy:
+            c.get(reverse('rent_home'))
+        for day in range(2, 12):
+            RentDeposit.objects.create(
+                date=self.month.replace(day=day), amount=D('500'))
+        with CaptureQueriesContext(connection) as busier:
+            c.get(reverse('rent_home'))
+        self.assertEqual(len(busy), len(busier))
+
+    def test_the_page_hands_the_counts_over_as_data(self):
+        html = self.as_(self.office).get(reverse('rent_home')).content.decode()
+        self.assertIn('id="rtDayCounts"', html)
+        # ...and the back-date question is asked FIRST, because it is the
+        # bigger fact: it moves a closed month and reaches the other owner.
+        script = html.split('rtAddForm', 1)[1]
+        self.assertLess(script.index('That month is already closed'),
+                        script.index('Add another?'))

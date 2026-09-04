@@ -269,3 +269,191 @@ class TheBrowserSaysItBeforeTheButtonTests(_Screens):
         body = self.as_(self.office).get(reverse('cashbook')).content.decode()
         start = body[body.index('id="cbStart"'):]
         self.assertNotIn('min=', start[:start.index('>')])
+
+
+class TheCashbookSteersAnEntryToTheSectionThatOwnsItTests(TestCase):
+    """
+    Three kinds of money have a dedicated section AND land wrong if they are
+    typed into the Cashbook instead: wages are counted TWICE, an owner draw
+    quietly CUTS reported profit, and a rent deposit is charged on top of the
+    monthly rent. The ledger asks before taking one.
+
+    ⚠ IT ASKS, IT NEVER BLOCKS, and there is no server guard at all — this
+    catches a typo made in a rush, and a crafted POST is not that. The money
+    rules themselves are unchanged and still live in the views.
+    """
+
+    def setUp(self):
+        FailedAttempt.objects.all().delete()
+        Group.objects.get_or_create(name='Owner')
+        self.owner = User.objects.create_user('sahad_test', password='pw')
+        self.owner.first_name = 'Sahad'
+        self.owner.save()
+        self.owner.groups.add(Group.objects.get(name='Owner'))
+
+    def matched(self, text):
+        """The steer the browser would show, by the browser's own rule."""
+        import re
+        from workshop.cashbook_views import _steers
+        for row in _steers():
+            for word in row['words']:
+                if re.search(r'\b' + re.escape(word) + r'\b', text, re.I):
+                    return row
+        return None
+
+    def test_EVERY_STEER_ASKS_A_QUESTION_AND_NAMES_THE_CONSEQUENCE(self):
+        """
+        ⚠ THE SHAPE THE OWNER ASKED FOR, after the first attempt shipped as
+        flat statements and they said it did not read as stopping them.
+        "Sahad is an owner — money they took belongs in Owner Withdrawals" is
+        a FACT, and a fact slides past somebody in a hurry. A question makes
+        the reader answer it; naming what goes wrong is what makes answering
+        worth the second it costs.
+        """
+        from workshop.cashbook_views import _steers
+        for row in _steers():
+            with self.subTest(words=row['words']):
+                self.assertTrue(row['ask'].endswith('?'), row['ask'])
+                self.assertLess(len(row['ask']), 42,
+                                "the heading is scanned, not read")
+                # ...and the reason says what breaks, in the reader's terms.
+                self.assertRegex(
+                    row['why'],
+                    r'counted|profit look smaller|on top of the rent')
+
+    def test_the_owner_names_come_from_the_database_not_from_code(self):
+        """
+        "Sahad" and "Rijas" are who the owners happen to be today. A third
+        owner, or one renamed, must be protected without a code change — the
+        same reason `owner_accounts()` is the one answer to who the owners are.
+        """
+        self.assertIn('Sahad', (self.matched('Sahad 5000') or {}).get('ask', ''))
+        self.owner.first_name = 'Nasrin'
+        self.owner.save()
+        self.assertIsNone(self.matched('Sahad 5000'))
+        self.assertIn('Nasrin', (self.matched('Nasrin 5000') or {}).get('ask', ''))
+
+    def test_the_rush_typo_the_owner_described_is_caught(self):
+        self.assertIsNotNone(self.matched('Sahad 5000'))
+        self.assertIsNotNone(self.matched('Staff salary'))
+        self.assertIsNotNone(self.matched('Take out'))
+        self.assertIsNotNone(self.matched('Deposit'))
+
+    def test_WORD_BOUNDARIES_keep_the_commonest_entry_in_the_ledger_quiet(self):
+        """
+        ⚠ A substring match on "rent" also matches "cur-rent", and the
+        electricity bill is called "Current bill" here — so a plain
+        contains-check would question the single most common row in the ledger
+        and be ignored inside a week.
+        """
+        for benign in ('Current bill', 'Electricity', 'Advanced diagnostics',
+                       'Tea', 'Courier Charges', 'Water'):
+            with self.subTest(category=benign):
+                self.assertIsNone(self.matched(benign))
+
+    def test_RENT_ASKS_WITHOUT_SENDING_THE_MONTHLY_CHARGE_AWAY(self):
+        """
+        ⚠ THE ONE MESSAGE THAT CANNOT BE SHORTENED YET, and the reason is
+        arithmetic. "Rent" is on the list because the owner asked for it — a
+        ₹2,000 daily handover typed here IS charged on top of the monthly rent.
+        But the plain wording ("rent has its own section") would be FALSE
+        today and would cost ₹35,000 a month: the monthly charge still reaches
+        the Profit page AS a Cashbook category, because Deposit & Rent touches
+        `analysis_engine` nowhere.
+
+        So it steers the DEPOSIT and explicitly keeps the CHARGE. On the day
+        rent gets an expense line of its own, the second sentence goes.
+        """
+        said = self.matched('Rent')
+        self.assertIsNotNone(said)
+        self.assertIn('Deposit', said['why'])
+        self.assertEqual(said, self.matched('Deposit'))
+
+    def test_NO_STEER_EXPLAINS_WHEN_THE_CASHBOOK_IS_STILL_RIGHT(self):
+        """
+        ⚠ THE RENT STEER CARRIED AN EXCEPTION LINE FOR A REVISION AND IT WAS
+        REMOVED. It read "The one monthly rent bill is still fine here" — true
+        today, and the owner read it as "workshop rent is fine to add here",
+        the opposite of the point. It was answering a question nobody had asked
+        yet.
+
+        The heading already disambiguates: somebody keying the monthly bill
+        reads "Is this a rent DEPOSIT?", answers no, and carries on. A steer is
+        a question and a consequence, and nothing else.
+        """
+        from workshop.cashbook_views import _steers
+        for row in _steers():
+            with self.subTest(words=row['words'][:3]):
+                self.assertEqual(set(row) - {'words', 'ask', 'why'}, set())
+
+    def test_the_SHOPS_are_named_from_the_database_like_the_owners(self):
+        """
+        ⚠ CLAUDE.md's own example of the double-count is "Paid Ninoos 20,000",
+        and Ninoos is a row in a table, not a word in a source file. Paying a
+        shop from the Cashbook is counted twice — once here, once against that
+        shop's ledger — which the Profit page already warns about AFTER the
+        fact via `_shoplike_cashbook_count`.
+        """
+        SpareShop.objects.create(name='Ninoos Auto')
+        self.assertIsNotNone(self.matched('Ninoos Auto 20000'))
+        # ...and the generic words come from `SHOP_WORDS`, imported rather than
+        # restated, so the entry-time steer and the Profit page warning can
+        # never come to mean different things.
+        from workshop.analysis_engine import SHOP_WORDS
+        from workshop.cashbook_views import _steers
+        generic = next(r for r in _steers() if 'supplier' in r['words'])
+        self.assertEqual(sorted(generic['words']), sorted(SHOP_WORDS))
+
+    def test_a_very_short_shop_name_is_not_used_as_a_keyword(self):
+        """A shop called "Oil" or "AC" would match half the ledger and make
+        every steer noise. Four characters minimum, and the whole name."""
+        SpareShop.objects.create(name='Oil')
+        self.assertIsNone(self.matched('Oil filter'))
+
+    def test_a_word_that_merely_contains_a_keyword_is_still_quiet(self):
+        for benign in ('Current bill', 'Advanced diagnostics', 'Rental car hire'):
+            with self.subTest(category=benign):
+                self.assertIsNone(self.matched(benign))
+
+    def test_the_page_hands_the_list_over_as_data_never_as_markup(self):
+        """An owner's name is free text, so `json_script` rather than
+        interpolation — the app's rule for handing data to JS."""
+        Group.objects.get_or_create(name='Office')
+        staff = User.objects.create_user('off_steer', password='pw')
+        staff.groups.add(Group.objects.get(name='Office'))
+        c = Client()
+        c.force_login(staff)
+        html = c.get(reverse('cashbook')).content.decode()
+        self.assertIn('id="cbSteers"', html)
+        self.assertIn('application/json', html.split('id="cbSteers"')[0][-200:])
+
+    def test_THE_ADD_PATH_IS_HOOKED_BEFORE_THE_RECAP_NOT_ON_SUBMIT(self):
+        """
+        ⚠ THE BUG THIS SHIPPED WITH, found by the owner trying it: nothing
+        happened on the one door people actually use.
+
+        The Add control opens a recap modal whose confirm button calls
+        `addForm.submit()` PROGRAMMATICALLY, and a programmatic `.submit()`
+        FIRES NO SUBMIT EVENT — the trap CLAUDE.md already records for three
+        other templates. A delegated `submit` listener therefore caught the
+        edit screen and was silent on Add. The steer is asked inside
+        `openAddConfirm()` instead, before the recap opens, so the two
+        questions come in the right order and never stack.
+        """
+        Group.objects.get_or_create(name='Office')
+        staff = User.objects.create_user('off_hook', password='pw')
+        staff.groups.add(Group.objects.get(name='Office'))
+        c = Client()
+        c.force_login(staff)
+        html = c.get(reverse('cashbook')).content.decode()
+
+        # Asked before the recap opens...
+        recap = html.split('function openAddConfirm', 1)[1].split("openModal('cbAddModal')", 1)[0]
+        self.assertIn('steerFor(', recap)
+        self.assertIn('askSteer(', recap)
+        # ...and the delegated listener covers the EDIT form, which has a real
+        # submit button and so does fire the event.
+        self.assertIn("closest('#cbEditForm')", html)
+        # ...and it asks in THIS page's modal, never window.confirm().
+        self.assertIn('cbSteerModal', html)
+        self.assertNotIn('window.confirm(say', html)

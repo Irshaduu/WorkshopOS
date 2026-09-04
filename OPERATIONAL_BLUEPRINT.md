@@ -57,6 +57,7 @@ graph TD
    - Access Owner Analysis & Reports: the **Profit** page (Turnover − Expenses = Profit, filtered by month/year/custom — what profit distribution is decided from) and, from it, the **Deep Analysis** page (mechanics, spare parts, inventory, vehicles, fleet, shops, cashbook, operations).
    - Delete a whole month's salary settlement (Office can create and correct one, only an Owner can un-record it)
    - View the Paid Bills Dashboard over ANY period (Office sees the last 7 days). Neither role sees a money total on it any more — the grand Total Collected was removed because it summed a fleet card's whole cumulative receipt on the day it happened to close; what replaced it is Cash Tracking on the Profit page. The row COUNT stays, since how many bills are in the list is a fact about the list
+   - Set the **rent** in Deposit & Rent — what the premises cost per month, from a stated month onward. A rise agreed late can be dated back to the month it started, which re-prices those months; the other owner is told, and so is anyone reading the section. Office records the daily deposits but never decides the rent
    - Record **Owner Withdrawals** — cash taken out of the business for the owners. Owner-only end to end: Office and Floor cannot open the page or reach any of its three addresses. Not a business expense, so the profit figure never moves because of it
    - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
@@ -85,7 +86,8 @@ graph TD
    - View Car Profiles (vehicle history)
    - Run Data Cleanup (rename, merge, delete duplicates)
    - Manage inventory Categories (add/list/edit) + create/edit products via Supplier Shops (Add Product); all supplier-shop management
-   - Record and review Cashbook entries (income & expenses ledger)
+   - Record and review Cashbook entries (income & expenses ledger). Typing a wage, an owner's name or a rent deposit here asks first — each has its own section and would land wrong in the profit figure. It only asks
+   - Record the daily **rent deposit** in Deposit & Rent — the cash handed to the collector who comes round each day, keyed off his own book. The page says what to pay today: whatever is left of the month's rent over the days left. Office may date an entry back to the 1st of last month; anything older is an owner's
 
 
  FLOOR (Mechanics / Floor Manager)
