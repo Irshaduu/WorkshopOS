@@ -5190,10 +5190,46 @@ actions. **The 640px transition is now width-only and never a row change**:
 84/104px at 641px, 307/307px at 639px, 175px each at 375px, 147px each at 320px,
 with neither label clipped at any of them.
 
-⚠ *Known and NOT fixed:* `shop_print`'s purchase table overflows a 375px phone by
-14px (measured; the offenders are `TABLE`/`TR`/`TD`, nothing in the toolbar). It
-predates this work and prints correctly on A4 — a table-layout question, not a
-navigation one.
+⚠ **ITS TWO TABLES SCROLL INSIDE THEMSELVES, AND THE FIX WAS THE OPPOSITE OF
+WHAT IT LOOKED LIKE.** The page slid 14px sideways at 375px, which on a document
+whose toolbar is the only way out is the worst possible thing to move: reaching
+the PRICE column dragged the Back button and the section heading off screen.
+
+The owner's question was whether un-cramping it would make an already-cramped
+table *more* cramped. It does the reverse, and the measurement is the argument.
+At 375px the content box is **335px** while the table's own **MIN**-content is
+**369px** — so the browser was already crushing every column to its narrowest
+and still overflowing, which is why "Mercedes-Benz C220d" and "Brake Pads -
+Front" each wrapped to three lines. **The congestion WAS the squeeze.** Letting
+the table take its natural 579px inside an `overflow-x: auto` wrapper put every
+cell on one line:
+
+| | before | after |
+|---|---|---|
+| row height | 78px | **40px** |
+| page length | 23,488px | **11,361px** |
+| page slides sideways | 14px | **0** |
+| rows visible on a 375px screen | 4 | **14** |
+
+Half the report's length, for 244px of scroll *inside the box*. Verified that
+scrolling the table now moves nothing else: toolbar x=0, heading x=20, page
+`scrollX` 0.
+
+⚠ **`min-width: max-content` IS THE FIX; the scroller only makes it safe.**
+Without it the wrapper would scroll a table still crushed to 369px, which fixes
+the page slide and none of the wrapping. It needs no media query — `width: 100%`
+wins wherever the container is wider (768px and 1280px measured identical to
+before, zero internal scroll), and `min-width` bites only once the container is
+narrower than the table wants to be.
+
+⚠ **BOTH HALVES ARE UNDONE IN `@media print`, and that is not belt-and-braces.**
+`overflow` other than visible can CLIP at a page break, and `max-content` would
+let a wide report push past the 2cm margin instead of fitting the column — paper
+has no scrollbar to offer, so the screen's answer is the wrong one there.
+Simulated at A4 (794px, 2cm padding): table 628px filling the content box
+exactly, inside the margin, nothing clipped. **The printed sheet is identical to
+what it was before the scroller existed** — which is the property that made this
+safe to change at all.
 
 ### `workshop/return_to.py`
 

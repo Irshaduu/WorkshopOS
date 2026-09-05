@@ -109,8 +109,37 @@
       color: #495057;
       margin-top: 10px;
     }
+    /* ── The tables scroll inside themselves, they never move the page ─────
+       The app's rule is that wide content scrolls in its own `overflow-x`
+       container and the page body never scrolls sideways. This page broke it:
+       at 375px the whole document slid 14px, which drags the toolbar and the
+       section heading off screen just to reach the PRICE column — the one
+       control you need is the first thing that leaves.
+
+       ⚠ THE SCROLLER IS NOT THE POINT — `min-width: max-content` IS, and it
+       makes the table LESS cramped rather than more, which is the opposite of
+       what it looks like. Measured at 375px on a 266-row report: the content
+       box is 335px and the table's own MIN-content is 369px, so the browser
+       was already crushing every column to its narrowest and STILL overflowing
+       — which is why "Mercedes-Benz C220d" and "Brake Pads - Front" each wrapped
+       to three lines. Letting it take its natural 579px instead put every cell
+       on ONE line: rows 78px → 40px, and the page 23,488px → 11,361px. Half the
+       report's length, for 244px of sideways scroll inside the box.
+
+       It needs no media query. `width: 100%` wins wherever the container is
+       wider than the content (a laptop at 1280 has ~1225px against a 579px
+       max-content, so nothing changes there); `min-width` only bites once the
+       container is narrower than the table wants to be. */
+    .tbl-scroll {
+      overflow-x: auto;
+      /* A flex/grid child defaults to min-width:auto and would grow to the
+         table's full width instead of scrolling inside itself. Harmless here
+         and kept so a later wrapper cannot reintroduce that. */
+      min-width: 0;
+    }
     table {
       width: 100%;
+      min-width: max-content;
       border-collapse: collapse;
       margin-bottom: 30px;
     }
@@ -171,6 +200,19 @@
       }
       .no-print {
         display: none !important;
+      }
+      /* ⚠ BOTH HALVES OF THE SCROLLER ARE UNDONE ON PAPER, so the printed
+         sheet is exactly what it was before it existed. `overflow` other than
+         visible can CLIP at a page break, and `min-width: max-content` would
+         let a wide report push past the 2cm margin instead of fitting the
+         column. Paper has no scrollbar to offer, so the screen's answer is the
+         wrong one here — on A4 the content box is ~17cm against a 579px
+         max-content, so `width: 100%` fits it with room to spare. */
+      .tbl-scroll {
+        overflow: visible;
+      }
+      table {
+        min-width: 0;
       }
       .print-header {
         border-bottom: 1px solid #000;
@@ -256,6 +298,7 @@
   </div>
   <div style="margin-top: 30px; margin-bottom: 20px;">
     <h3 style="font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px; color: #000;">Purchase History</h3>
+    <div class="tbl-scroll">
     <table>
     <thead>
       <tr>
@@ -317,10 +360,12 @@
     </tbody>
   </table>
   </div>
+  </div>
 
   {% if payments %}
   <div style="margin-top: 40px; margin-bottom: 20px;">
     <h3 style="font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px; color: #000;">Payment History</h3>
+    <div class="tbl-scroll">
     <table>
       <thead>
         <tr>
@@ -343,6 +388,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
   {% endif %}
 
