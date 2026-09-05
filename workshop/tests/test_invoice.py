@@ -1465,3 +1465,94 @@ class TheDiscountAuditListsByAmountTests(InvoiceTestCase):
         resp_custom = self.client.get(reverse('audit_high_discounts') + f'?filter=custom&start_date={s_date}&end_date={e_date}')
         self.assertContains(resp_custom, 'KL01LASTYR')
         self.assertNotContains(resp_custom, 'KL01THISYR')
+
+
+class TheSavedPdfIsNamedForTheCarTests(InvoiceTestCase):
+    """
+    `document.title` is the only lever a web page has over a saved PDF's name,
+    and it reaches the file on exactly two of the three platforms this workshop
+    uses. Windows and Android take it; **iOS ignores it outright** and files
+    every one as "Safari - <date> at <time>". What iOS does give is an editable
+    name field, so the name is copied to the clipboard as the print sheet opens
+    and the owner pastes it.
+
+    Nothing in the Django suite executes a line of JavaScript, so none of this
+    can be exercised — and the handler is deliberately SILENT, so it changes
+    nothing on screen either. That combination is exactly how it gets deleted in
+    a tidy-up: it reads like a no-op and removing it breaks no test. These
+    assertions are the tripwire, and each one pins a property that was a
+    decision rather than a detail.
+    """
+
+    def _both(self):
+        from workshop.models import Estimate
+        bill = self._render(self._jobcard()).content.decode()
+        estimate = Estimate.objects.create(customer_name='Ramesh')
+        quote = self.client.get(
+            reverse('estimate_print', args=[estimate.pk])
+        ).content.decode()
+        return {'invoice': bill, 'estimate': quote}
+
+    def test_the_title_is_the_car_and_the_document_number(self):
+        """
+        The name an owner ends up with in a folder of hundreds. Searchable by
+        car, by plate and by document number at once.
+        """
+        html = self._render(self._jobcard()).content.decode()
+        title = re.search(r'<title>([^<]*)</title>', html).group(1)
+
+        self.assertIn('Volkswagen', title)
+        self.assertIn('Polo', title)
+        self.assertIn('HR26X1003', title)
+
+    def test_printing_never_depends_on_the_clipboard_script(self):
+        """
+        The load-bearing half. `onclick` stays inline on the button, so a bill
+        prints even if the script never ran, threw, or was stripped — and the
+        copy is wrapped so a rejected clipboard write cannot surface either.
+
+        `navigator.clipboard` is UNDEFINED on plain http://, which is not
+        hypothetical: serving the Floor tablet over the LAN would do it.
+        """
+        for name, html in self._both().items():
+            with self.subTest(document=name):
+                self.assertIn('onclick="window.print()"', html)
+                self.assertIn('navigator.clipboard && navigator.clipboard', html)
+                self.assertIn('catch', html)
+
+    def test_the_copy_is_registered_in_the_capture_phase(self):
+        """
+        `window.print()` BLOCKS until the dialog is dismissed, and at the target
+        listeners run in registration order whatever their capture flag — so a
+        listener bound to the button itself would copy AFTER the dialog had
+        already closed, which is silently useless. Only an ancestor capture
+        listener is guaranteed to run first.
+        """
+        for name, html in self._both().items():
+            with self.subTest(document=name):
+                handler = re.search(
+                    r"document\.addEventListener\('click',(.*?)\}, true\);",
+                    html, re.S,
+                )
+                self.assertIsNotNone(
+                    handler,
+                    'the clipboard copy is not a document-level capture listener',
+                )
+                self.assertIn('js-print', handler.group(1))
+                self.assertIn('writeText(document.title)', handler.group(1))
+
+    def test_the_print_button_carries_the_hook(self):
+        for name, html in self._both().items():
+            with self.subTest(document=name):
+                self.assertIn('btn btn-primary js-print', html)
+
+    def test_none_of_it_reaches_the_paper(self):
+        """
+        Every control lives outside `.sheet` — a customer's bill carries no
+        script, and this is one more thing that must not creep onto it.
+        """
+        sheet = _sheet(self._render(self._jobcard()).content.decode())
+
+        self.assertNotEqual(sheet, '')
+        for fragment in ('js-print', 'clipboard', 'window.print()'):
+            self.assertNotIn(fragment, sheet)

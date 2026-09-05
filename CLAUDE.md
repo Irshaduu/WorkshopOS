@@ -2808,6 +2808,14 @@ owner chosen" had been removed put both phrases straight back into the
 response. `{% comment %}` is the safe place for that note — Django strips it
 before anything is sent.
 
+⚠ **AND IT IS NOT ONLY RETIRED COPY — A URL SCHEME WRITTEN OUT IN A COMMENT
+TRIPS THE INVOICE'S OWN THIRD-PARTY TEST.** A `//` comment on the bill noting
+that `navigator.clipboard` is undefined over unencrypted HTTP wrote the scheme
+literally, and `test_the_page_loads_nothing_from_a_third_party` reads every
+absolute URL on the page — so the bill was reported as fetching something it
+does not fetch. The comment now spells the scheme out in words and says why.
+**A comment on that page is part of the page.**
+
 **Wages come from Salary & Advance, never the Cashbook.** Wage cost for a settled
 month is `net_amount + advance_used` (an advance is cash already out; the
 settlement pays the remainder), plus loose advances in months not yet settled.
@@ -3501,6 +3509,66 @@ above it are Calibri, which is a paste that kept its formatting.
 
 *Worth telling the owners, and not our bug:* their Excel page setup is **US
 Letter**, not A4, so every bill they print is being scaled or clipped.
+
+### The saved PDF's name
+
+**`document.title` IS the filename, and it reaches the file on two of the three
+platforms this workshop uses.** `invoice.document_title()` builds it for both
+documents — "Audi A4 KL 10 AA 1003 (JB-26-154)", searchable by car, plate and
+document number at once, in a folder of hundreds. It is not decoration.
+
+⚠ **THE DESTINATION DECIDES IT ON WINDOWS, AND THAT IS NOT OUR BUG TO FIX.**
+Chrome and Edge's own **Save as PDF** pre-fills the name box from the title.
+**Microsoft Print to PDF** — which Windows 11 often makes the DEFAULT
+destination — opens its "Save Print Output As" dialog with the box **blank,
+always**, because the Windows driver ignores the print job's title. Same page,
+same title, two destinations, two outcomes. The owners hit this and reported it
+as a system defect; the whole remedy is choosing the other destination once, and
+the browser remembers it. **Check which dialog is on screen before believing the
+title is broken** — "Save Print Output As" is the Windows driver, "Save As" is
+the browser.
+
+⚠ **iOS IGNORES THE TITLE OUTRIGHT AND NOTHING CAN CHANGE THAT.** Every PDF
+saved from Safari is filed as `Safari - <date> at <time>`, whatever the page
+says. It is not a bug in this app and no markup fixes it. What iOS *does* give
+is an editable name field in Save to Files — so **pressing Print copies the
+title to the clipboard** and the owner pastes it. That is the ceiling on iPhone:
+the paste is made effortless, never automatic.
+
+Four things are load-bearing, and three of them cost a real defect if changed:
+
+- **IT IS SILENT, ON THE OWNER'S DECISION.** No toast, no confirmation. There
+  are two owners, both were told once, and a message on every bill is confirming
+  what cannot surprise anyone — the settle dialog's own rule. The trade is that
+  the burden moves to the code comment and to this entry.
+- ⚠ **THEREFORE IT LOOKS EXACTLY LIKE DEAD CODE.** Nothing on screen changes
+  when it runs, nothing in the Django suite can execute it, and deleting it
+  breaks no behaviour that fails loudly — the owners simply lose the workflow.
+  `TheSavedPdfIsNamedForTheCarTests` is the tripwire, and it was verified by
+  deleting the handler and watching two tests fail.
+- ⚠ **CAPTURE, ON `document`, NEVER A LISTENER ON THE BUTTON.** The inline
+  `onclick` fires in the target phase and `window.print()` **blocks** until the
+  dialog is dismissed — and at the target, listeners run in registration order
+  whatever their capture flag. So anything bound to the button itself copies
+  AFTER the dialog has already closed, which is silently useless.
+- **IT CAN NEVER STOP A BILL PRINTING.** `onclick="window.print()"` stays inline,
+  so printing does not depend on this script having run at all, and the copy is
+  wrapped. `navigator.clipboard` is **undefined on plain `http://`**, which is
+  not hypothetical: serving the Floor tablet over the LAN would do it.
+
+*Considered and NOT done:* a **server-generated PDF** with
+`Content-Disposition: filename=...`, which is the only thing that would name the
+file automatically on iPhone. It needs either headless Chromium on Railway
+(~400MB in the image) or a second rendering engine such as WeasyPrint — and a
+second engine means the bill a customer receives could drift from the one the
+workshop prints, which is the "two implementations of one thing" failure this
+codebase refuses everywhere else. Revisit only if the iPhone becomes how bills
+actually reach customers.
+
+⚠ **`shop_print.html` is NOT covered and titles itself `Print - <shop name>`**,
+so a saved copy of a spare shop's report is called "Print - …". That is a
+separate defect in that template's title, not something the clipboard would fix.
+→ `TheSavedPdfIsNamedForTheCarTests`
 
 ## Estimates
 

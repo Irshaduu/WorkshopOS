@@ -651,7 +651,12 @@
             Edit Estimate
         </a>
 
-        <button type="button" class="btn btn-primary" onclick="window.print()">
+        {% comment %}
+        `onclick` stays inline, and `js-print` is only a hook for the clipboard
+        copy at the foot of this file. Printing must not depend on that script
+        having run — see the comment there.
+        {% endcomment %}
+        <button type="button" class="btn btn-primary js-print" onclick="window.print()">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
             Print<span class="btn-print-long"> / Save PDF</span>
         </button>
@@ -853,6 +858,40 @@
     <script>
         (function () {
             'use strict';
+
+            // ---------------------------------------------------------------
+            // THE FILE NAME, ONTO THE CLIPBOARD, AS THE PRINT SHEET OPENS.
+            // Identical to the invoice's, and must stay so — the two sheets are
+            // opened days apart by the same person.
+            //
+            // DO NOT DELETE THIS AS DEAD CODE. Nothing on screen changes when it
+            // runs and no test can execute it. See CLAUDE.md, "The saved PDF's
+            // name", for the whole reasoning; the short version is that iOS
+            // ignores `document.title` and files every saved PDF as
+            // "Safari - <date> at <time>", so the name is put on the clipboard
+            // at the moment of pressing Print and the owner pastes it into the
+            // name field Save to Files does give.
+            //
+            // CAPTURE, ON `document`, NEVER A LISTENER ON THE BUTTON: the
+            // inline `onclick` fires in the target phase and `window.print()`
+            // BLOCKS, so anything bound to the button itself would copy after
+            // the dialog had already closed.
+            //
+            // It can never stop a bill printing — the copy is wrapped and the
+            // inline `onclick` is independent of this script.
+            // ---------------------------------------------------------------
+            document.addEventListener('click', function (event) {
+                var node = event.target;
+                if (!node || !node.closest || !node.closest('.js-print')) return;
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        // Synchronous inside the gesture; iOS drops user
+                        // activation if the write is deferred.
+                        navigator.clipboard.writeText(document.title)
+                            .catch(function () { /* denied, or no permission */ });
+                    }
+                } catch (ignored) { /* printing outranks the clipboard */ }
+            }, true);
 
             // Fit the sheet to a narrow screen by SCALING it, never by
             // reflowing it. Owners open these on a phone; a layout that

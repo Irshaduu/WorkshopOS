@@ -1262,7 +1262,12 @@
         </button>
         {% endif %}
 
-        <button type="button" class="btn btn-primary" onclick="window.print()">
+        {% comment %}
+        `onclick` stays inline, and `js-print` is only a hook for the clipboard
+        copy at the foot of this file. Printing must not depend on that script
+        having run — see the comment there.
+        {% endcomment %}
+        <button type="button" class="btn btn-primary js-print" onclick="window.print()">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
             Print<span class="btn-print-long"> / Save PDF</span>
         </button>
@@ -1704,6 +1709,62 @@
     <script>
         (function () {
             'use strict';
+
+            // ---------------------------------------------------------------
+            // THE FILE NAME, ONTO THE CLIPBOARD, AS THE PRINT SHEET OPENS.
+            //
+            // DO NOT DELETE THIS AS DEAD CODE. Nothing on screen changes when it
+            // runs, no test can execute it, and removing it breaks nothing that
+            // fails loudly -- the owners simply lose the workflow and will not
+            // know why. See CLAUDE.md, "The saved PDF's name".
+            //
+            // WHY IT EXISTS: `document.title` is the only lever a web page has
+            // over a saved PDF's name, and iOS ignores it outright -- every one
+            // is filed as "Safari - <date> at <time>", whatever the page says.
+            // What iOS does give is an editable name field in Save to Files. So
+            // the name is put on the clipboard at the moment of pressing Print
+            // and the owner pastes it. Desktop needs none of this, as long as
+            // the destination is the browser's own Save as PDF rather than
+            // Microsoft Print to PDF, whose Windows dialog opens blank.
+            //
+            // SILENT ON PURPOSE, and that was the owner's call. There are two
+            // owners and both were told; a toast on every bill would be
+            // confirming what cannot surprise anyone, which is how a message
+            // stops being read -- the settle dialog's own rule.
+            //
+            // CAPTURE, ON `document`, NEVER A LISTENER ON THE BUTTON. The
+            // button's inline `onclick` fires in the target phase and
+            // `window.print()` BLOCKS until the dialog is dismissed -- and at
+            // the target, listeners run in registration order whatever their
+            // capture flag, so anything bound to the button itself would copy
+            // AFTER the dialog had already closed. An ancestor capture listener
+            // is the only one guaranteed to run first.
+            //
+            // IT CAN NEVER STOP A BILL PRINTING. The copy is wrapped, and the
+            // inline `onclick` is left in place so printing does not depend on
+            // this script having run at all. `navigator.clipboard` is UNDEFINED
+            // outside a secure context -- plain unencrypted HTTP -- which is not
+            // hypothetical here: serving the Floor tablet over the LAN would do
+            // exactly that.
+            //
+            // (That sentence deliberately spells out the scheme rather than
+            // writing it: this comment is SERVED to the browser, and the bill's
+            // own no-third-party test reads every absolute URL on the page --
+            // the literal in a code comment fails it. Same trap CLAUDE.md
+            // records for retired copy parked in a CSS comment.)
+            // ---------------------------------------------------------------
+            document.addEventListener('click', function (event) {
+                var node = event.target;
+                if (!node || !node.closest || !node.closest('.js-print')) return;
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        // Must be called synchronously inside the gesture; iOS
+                        // drops user activation if the write is deferred.
+                        navigator.clipboard.writeText(document.title)
+                            .catch(function () { /* denied, or no permission */ });
+                    }
+                } catch (ignored) { /* printing outranks the clipboard */ }
+            }, true);
 
             // Fit the sheet to a narrow screen by SCALING it, never by reflowing
             // it. Owners open invoices on a phone; a layout that rearranged
