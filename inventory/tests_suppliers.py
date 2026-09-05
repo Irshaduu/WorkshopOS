@@ -1086,7 +1086,16 @@ class ASupplierPaymentIsDatedByTheDayTheMoneyMovedTests(TestCase):
         The column is only worth having if what reads it agrees. A payment
         back-dated out of the window must drop out of the shop's own page.
         """
-        self._pay(amount='4000', date=(self.today - timedelta(days=400)).isoformat())
+        # ⚠ THE OLD ROW IS BUILT ON THE MODEL, NOT POSTED THROUGH THE FORM.
+        # This test is about what the shop PAGE reads, and it wants a payment
+        # far outside every window — 400 days — to prove one drops out of it.
+        # Office may no longer FILE one that old (`money_dates.too_far_back`),
+        # but one can certainly exist: an owner may file it, and go-live data
+        # carries older rows still. Posting it would turn this into a test of
+        # the form's policy, which is pinned in `test_backdate_floor.py`.
+        SupplierPayment.objects.create(
+            supplier=self.shop, amount=Decimal('4000'), payment_method='CASH',
+            date=self.today - timedelta(days=400))
         self._pay(amount='1500')
 
         self.shop.refresh_from_db()

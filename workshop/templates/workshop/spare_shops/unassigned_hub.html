@@ -84,16 +84,6 @@ TWO LAYOUT RULES WORTH NOT REDISCOVERING.
     white-space: nowrap;
   }
 
-  .ua-back {
-    color: var(--color-text-muted, #64748b);
-    font-size: 0.82rem;
-    font-weight: 600;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .ua-back:hover { color: var(--color-primary, #4f46e5); }
 
   /* ── Add a Purchase ─────────────────────────────────────── */
   /* `overflow: visible` — the datalist-style suggestion box hangs out of it. */
@@ -466,11 +456,9 @@ TWO LAYOUT RULES WORTH NOT REDISCOVERING.
 {% block content %}
 
 {% if can_manage %}
-<div class="mb-3">
-  <a href="{% url 'spare_shop_list' %}" class="ua-back">
-    <i class="bi bi-arrow-left"></i> Back to Spare Shops
-  </a>
-</div>
+<a href="{% url 'spare_shop_list' %}" class="pg-back">
+  <i class="bi bi-arrow-left"></i><span>Spare Shops</span>
+</a>
 {% endif %}
 
 <div class="ua-head">

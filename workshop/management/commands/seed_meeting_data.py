@@ -60,7 +60,7 @@ from workshop.models import (
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
     Mechanic, CashbookEntry, DeletionLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
-    CarBrand, CarModel,
+    CarBrand, CarModel, OwnerWithdrawal, RentRate, RentDeposit,
 )
 
 D = Decimal
@@ -135,10 +135,21 @@ FLEET_EVERY = 12        # every 12th card is billed to a fleet account
 SPARE_SHOP_BALANCE = D('50000')
 SUPPLIER_BALANCE = D('25000')
 
-CASHBOOK_MONTHLY = [('Rent', D('45000')), ('Electricity', D('12000')),
-                    ('Water', D('1500'))]
+# NO RENT LINE HERE. Rent is read from `RentRate` since it got its own expense
+# line, so a 'Rent' row in the Cashbook is the same money twice and the Profit
+# page flags it — the same reason there is no salary line. It is seeded into
+# Deposit & Rent below instead.
+CASHBOOK_MONTHLY = [('Electricity', D('12000')), ('Water', D('1500'))]
 CASHBOOK_INCOME = ('Scrap sale', D('5000'))
 ADVANCE = D('3000')     # each of the three mechanics, once a month
+
+# 14 x 2,500 = 35,000, so every finished month reads RENT 35,000 / DEPOSITED
+# 35,000 / POSITION 0 and the whole section is checkable by multiplication like
+# the rest of this dataset. The rate starts at the first WHOLE month in the
+# window, so no month is charged a rent the window has no days for.
+RENT_MONTHLY = D('35000')
+RENT_CHUNK = D('2500')
+RENT_DAYS = range(2, 29, 2)     # 14 handovers, the 2nd to the 28th
 
 
 class Command(BaseCommand):
@@ -172,6 +183,7 @@ class Command(BaseCommand):
         self._shop_payments()
         self._salary()
         self._cashbook()
+        self._rent()
         self._recount()
 
     # ------------------------------------------------------------------
@@ -182,7 +194,7 @@ class Command(BaseCommand):
         inventory catalog, the shops and the staff roster, which are exactly
         what is being kept here.
         """
-        self.stdout.write("\n[1/6] Clearing financial records")
+        self.stdout.write("\n[1/8] Clearing financial records")
         for label, qs in [
             ("job card photos", JobCardPhoto.objects.all()),
             ("job card spares", JobCardSpareItem.objects.all()),
@@ -199,6 +211,13 @@ class Command(BaseCommand):
             ("salary payment lines", SalaryPaymentLine.objects.all()),
             ("salary settlements", SalaryPayment.objects.all()),
             ("salary advances", SalaryAdvance.objects.all()),
+            # ⚠ THESE THREE WERE LEFT BEHIND UNTIL 2026-09-04, so a "uniform"
+            # rebuild inherited whatever rent and owner draws the last one had
+            # — and since rent moved onto its own expense line that is real
+            # money in the profit equation, not just a stale page.
+            ("owner withdrawals", OwnerWithdrawal.objects.all()),
+            ("rent deposits", RentDeposit.objects.all()),
+            ("rent rates", RentRate.objects.all()),
             ("deletion history", DeletionLog.objects.all()),
         ]:
             n = qs.count()
@@ -224,7 +243,7 @@ class Command(BaseCommand):
         unique but CASE-SENSITIVE, so 'Bmw' and 'BMW' both inserted at some
         point — and every report that groups by brand would show BMW twice.
         """
-        self.stdout.write("\n[2/6] Master list")
+        self.stdout.write("\n[2/8] Master list")
 
         dup = CarBrand.objects.filter(name='Bmw').first()
         keep = CarBrand.objects.filter(name='BMW').first()
@@ -258,7 +277,7 @@ class Command(BaseCommand):
         has no basis and is stored NULL — reported on the Profit page as "no
         cost recorded". Three days is simply comfortable clearance.
         """
-        self.stdout.write("\n[3/6] Supplies shops — catalog and restock bills")
+        self.stdout.write("\n[3/8] Supplies shops — catalog and restock bills")
 
         shops = {s.name: s for s in SupplierShop.objects.all()}
         by_name = {i.name: i for i in Item.objects.select_related('category')}
@@ -333,7 +352,7 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
     def _job_cards(self, by_name):
         """150 identical cards, spread over the window, every one settled."""
-        self.stdout.write("\n[4/6] Job cards")
+        self.stdout.write("\n[4/8] Job cards")
 
         mechs = {m.name: m for m in Mechanic.objects.filter(name__in=MECHANICS)}
         mech_list = [mechs[n] for n in MECHANICS if n in mechs]
@@ -473,7 +492,7 @@ class Command(BaseCommand):
         Paid in two instalments a month apart, so the history list itself has
         something to show.
         """
-        self.stdout.write("\n[5/7] Shop payments")
+        self.stdout.write("\n[5/8] Shop payments")
 
         for shop in SpareShop.objects.all():
             shop.update_totals()
@@ -522,7 +541,7 @@ class Command(BaseCommand):
         days of the next one — and it is what the Profit page's unsettled-wages
         banner is built to report.
         """
-        self.stdout.write("\n[5/6] Salary and advances")
+        self.stdout.write("\n[6/8] Salary and advances")
         staff = list(Mechanic.objects.filter(is_active=True).exclude(current_salary=None))
         if not staff:
             self.stdout.write("      no staff with a salary — skipped")
@@ -570,7 +589,7 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
     def _cashbook(self):
         """Fixed monthly running costs, so the breakdown is checkable by eye."""
-        self.stdout.write("\n[6/6] Cashbook")
+        self.stdout.write("\n[7/8] Cashbook")
         cursor = self.start.replace(day=1)
         n = 0
         while cursor <= self.today:
@@ -590,6 +609,37 @@ class Command(BaseCommand):
         self.stdout.write(f"      {n} entries")
 
     # ------------------------------------------------------------------
+    def _rent(self):
+        """One rent for the window, each finished month paid to the rupee.
+
+        The current month is paid only for the days that have passed, which is
+        the state the page is actually read in.
+        """
+        self.stdout.write("\n[8/8] Deposit & Rent")
+        first = self.start.replace(day=1)
+        if self.start.day != 1:
+            # The window opens mid-month, so that month has no days for a full
+            # rent. Start the ledger at the next WHOLE month instead, and the
+            # position on every charged month is then square to the rupee.
+            first = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+        RentRate.objects.create(effective_from=first, amount=RENT_MONTHLY,
+                                note='Seeded demo rent')
+
+        cursor, n, total = first, 0, D('0')
+        while cursor <= self.today:
+            for day in RENT_DAYS:
+                when = cursor.replace(day=day)
+                if when > self.today:
+                    break
+                RentDeposit.objects.create(amount=RENT_CHUNK, date=when)
+                n += 1
+                total += RENT_CHUNK
+            cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+        months = (self.today.year - first.year) * 12 + self.today.month - first.month + 1
+        self.stdout.write(f"      rent {RENT_MONTHLY} x {months} month(s), "
+                          f"{n} deposits totalling {total}")
+
+    # ------------------------------------------------------------------
     def _recount(self):
         """Print what was built, so the run itself is the first verification."""
         from django.db.models import Sum
@@ -606,4 +656,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  restock bills      {SupplierRestockBill.objects.count()}")
         self.stdout.write(f"  salary months      {SalaryPayment.objects.count()}")
         self.stdout.write(f"  cashbook entries   {CashbookEntry.objects.count()}")
+        self.stdout.write(f"  rent deposits      {RentDeposit.objects.count()}"
+                          f"  (total "
+                          f"{RentDeposit.objects.aggregate(t=Sum('amount'))['t'] or 0})")
         self.stdout.write(self.style.SUCCESS("\n  Done.\n"))

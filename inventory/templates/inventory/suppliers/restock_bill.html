@@ -8,14 +8,7 @@
     /* ---- Header ---- */
     .bill-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
     .bill-head h1 { font-size: 1.25rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; }
-    .btn-round {
-        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 50%; border: 1px solid var(--color-border);
-        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
-    }
-    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
-    .bill-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 18px 52px; }
+    .bill-sub { font-size: 0.78rem; color: var(--color-text-muted); margin: 0 0 18px; }
 
     /* ---- Item rows ---- */
     .bill-card {
@@ -116,7 +109,6 @@
         .per-unit .lbl::after { content: ":"; }
     }
     @media (max-width: 420px) {
-        .bill-sub { margin-left: 0; }
         .discount-box { flex-direction: column; align-items: stretch; }
         .discount-input { width: 100%; }
         .save-bar { flex-direction: column; }
@@ -125,10 +117,10 @@
 </style>
 
 <div class="bill-wrapper">
+    <a href="{% url 'shop_restock_select' shop.id %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>Product Selection</span>
+    </a>
     <div class="bill-head">
-        <a href="{% url 'shop_restock_select' shop.id %}" class="btn-round" aria-label="Back to product selection">
-            <i class="bi bi-arrow-left"></i>
-        </a>
         <h1>New Bill &middot; {{ shop.name }}</h1>
     </div>
     <p class="bill-sub">Enter how much arrived and what it cost. Stock is added automatically when you save.</p>

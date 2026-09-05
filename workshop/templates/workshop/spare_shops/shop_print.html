@@ -30,21 +30,74 @@
       margin: 0;
       color: #666;
     }
-    .print-actions {
-      text-align: right;
+    /* ── Screen-only toolbar ──────────────────────────────────────────────
+       Copied from the invoice's own `.bar`, values and all, rather than
+       approximated. This sheet, the printed invoice and the printed estimate
+       are the three standalone templates in the app — they extend no base, so
+       they carry no nav bar and no drawer, and the installed app has no browser
+       chrome to fall back on either. They are also opened by the same person in
+       the same sitting, so a toolbar that changed shape between them would read
+       as three different products.
+
+       The exit leads, on the left, because it is the one control on this page
+       that must never be hunted for. */
+    .bar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: -20px -20px 20px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, .92);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid #e2e8f0;
     }
-    .btn-print {
-      background-color: #0d6efd;
-      color: #fff;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
+    .bar-spacer { flex: 1; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      /* 44px — these are tapped on a tablet and a phone, not only clicked. */
+      min-height: 44px;
+      padding: 0 16px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      font: 600 14px/1 inherit;
+      font-family: inherit;
+      text-decoration: none;
       cursor: pointer;
-      font-weight: bold;
-      font-size: 14px;
+      white-space: nowrap;
     }
-    .btn-print:hover {
-      background-color: #0b5ed7;
+    .btn svg { width: 17px; height: 17px; flex: none; }
+    .btn-ghost { background: #fff; border-color: #cbd5e1; color: #334155; }
+    .btn-ghost:hover { background: #f8fafc; }
+    .btn-primary { background: #1f4e79; color: #fff; }
+    .btn-primary:hover { background: #17395a; }
+
+    /* ⚠ ONE ROW ON A PHONE — the one place this toolbar deliberately does NOT
+       follow the invoice's.
+
+       That one breaks into two rows below 640px, and it has to: it carries five
+       things (a back button, a payment-state chip and three actions), so the
+       row genuinely runs out. This carries TWO buttons whose content measures
+       ~87px and ~104px, which fits one row down to a ~217px viewport — far
+       below anything this app supports. Copying the break spent a whole row on
+       a gap, and pushed the report's own heading further down the one screen
+       where vertical space is scarcest.
+
+       So the spacer stops being a line break and the two buttons share the row
+       instead, each taking half of it — bigger targets than their natural
+       widths, and the same equal-columns treatment the invoice's own second row
+       uses for its three actions. `min-width: max-content` keeps either from
+       being squeezed below its label if a translation ever lengthens one. */
+    @media (max-width: 640px) {
+      .bar { gap: 8px 6px; padding: 8px 10px; }
+      .bar-spacer { display: none; }
+      .bar .btn { flex: 1 1 0; min-width: max-content; }
     }
     .filter-badge {
       display: inline-block;
@@ -56,8 +109,37 @@
       color: #495057;
       margin-top: 10px;
     }
+    /* ── The tables scroll inside themselves, they never move the page ─────
+       The app's rule is that wide content scrolls in its own `overflow-x`
+       container and the page body never scrolls sideways. This page broke it:
+       at 375px the whole document slid 14px, which drags the toolbar and the
+       section heading off screen just to reach the PRICE column — the one
+       control you need is the first thing that leaves.
+
+       ⚠ THE SCROLLER IS NOT THE POINT — `min-width: max-content` IS, and it
+       makes the table LESS cramped rather than more, which is the opposite of
+       what it looks like. Measured at 375px on a 266-row report: the content
+       box is 335px and the table's own MIN-content is 369px, so the browser
+       was already crushing every column to its narrowest and STILL overflowing
+       — which is why "Mercedes-Benz C220d" and "Brake Pads - Front" each wrapped
+       to three lines. Letting it take its natural 579px instead put every cell
+       on ONE line: rows 78px → 40px, and the page 23,488px → 11,361px. Half the
+       report's length, for 244px of sideways scroll inside the box.
+
+       It needs no media query. `width: 100%` wins wherever the container is
+       wider than the content (a laptop at 1280 has ~1225px against a 579px
+       max-content, so nothing changes there); `min-width` only bites once the
+       container is narrower than the table wants to be. */
+    .tbl-scroll {
+      overflow-x: auto;
+      /* A flex/grid child defaults to min-width:auto and would grow to the
+         table's full width instead of scrolling inside itself. Harmless here
+         and kept so a later wrapper cannot reintroduce that. */
+      min-width: 0;
+    }
     table {
       width: 100%;
+      min-width: max-content;
       border-collapse: collapse;
       margin-bottom: 30px;
     }
@@ -119,6 +201,19 @@
       .no-print {
         display: none !important;
       }
+      /* ⚠ BOTH HALVES OF THE SCROLLER ARE UNDONE ON PAPER, so the printed
+         sheet is exactly what it was before it existed. `overflow` other than
+         visible can CLIP at a page break, and `min-width: max-content` would
+         let a wide report push past the 2cm margin instead of fitting the
+         column. Paper has no scrollbar to offer, so the screen's answer is the
+         wrong one here — on A4 the content box is ~17cm against a 579px
+         max-content, so `width: 100%` fits it with room to spare. */
+      .tbl-scroll {
+        overflow: visible;
+      }
+      table {
+        min-width: 0;
+      }
       .print-header {
         border-bottom: 1px solid #000;
       }
@@ -134,6 +229,42 @@
   </style>
 </head>
 <body>
+
+  {% comment %}
+  THERE IS ALWAYS A WAY OFF THIS PAGE. Until now there was none at all: this
+  template rendered zero anchors, so once the installed app opened it — no
+  address bar, no Back button, no nav — the only exits left were the browser
+  gestures a standalone window does not show anybody.
+
+  Two destinations, and the FALLBACK is the interesting one. The invoice falls
+  back to Home because a bill has no single natural parent; this report does —
+  it is a report ABOUT one shop, and that shop's own page is always the right
+  answer. So `?back=` is not carrying the destination, it is carrying the
+  FILTER: `shop_detail` links here with its sort, its window and its custom
+  dates attached, and returning to a bare unfiltered ledger after reading a
+  filtered report is its own small defeat. Without one, the shop's page.
+
+  The arrow is an inline SVG, not an icon-font glyph: this template loads
+  nothing from anywhere, Bootstrap Icons included, so a `<i class="bi ...">`
+  here renders an empty box.
+  {% endcomment %}
+  <div class="bar no-print">
+    {% if back_url %}
+    <a href="{{ back_url }}" class="btn btn-ghost">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+      Back
+    </a>
+    {% else %}
+    <a href="{% url 'spare_shop_detail' shop.pk %}" class="btn btn-ghost">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+      {{ shop.name }}
+    </a>
+    {% endif %}
+
+    <span class="bar-spacer"></span>
+
+    <button type="button" class="btn btn-primary" onclick="window.print()">Print to PDF</button>
+  </div>
 
   <div class="print-header">
     <div class="shop-details">
@@ -164,12 +295,10 @@
       </div>
       <div class="filter-badge">{{ item_count }} Spare{{ item_count|pluralize }}</div>
     </div>
-    <div class="print-actions no-print">
-      <button class="btn-print" onclick="window.print()">Print to PDF</button>
-    </div>
   </div>
   <div style="margin-top: 30px; margin-bottom: 20px;">
     <h3 style="font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px; color: #000;">Purchase History</h3>
+    <div class="tbl-scroll">
     <table>
     <thead>
       <tr>
@@ -231,10 +360,12 @@
     </tbody>
   </table>
   </div>
+  </div>
 
   {% if payments %}
   <div style="margin-top: 40px; margin-bottom: 20px;">
     <h3 style="font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px; color: #000;">Payment History</h3>
+    <div class="tbl-scroll">
     <table>
       <thead>
         <tr>
@@ -257,6 +388,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
   {% endif %}
 

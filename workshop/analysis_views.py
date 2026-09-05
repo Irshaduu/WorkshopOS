@@ -70,15 +70,22 @@ def analysis_dashboard(request):
     owner checking profit should get the whole picture in one load rather than
     watching cards populate one by one.
 
-    Measured 2026-08-25 against 1,479 job cards over two years: **59 queries**
-    for an unfinished period, 48 for a finished one, 47 for All Time. (The
-    docstring said "~14" for a month, which had not been true for a long time.)
+    Measured 2026-09-04 against 161 job cards: **103 queries** for This Month,
+    97 for This Year, 89 for All Time, 85 for Last Month and 83 for Last Year.
     The spread is the comparison: an unfinished period builds the report three
     times — the window, the comparison period, and the window trimmed to today —
     and the last two pass `disclosures=False`, which drops six footnote-only
     queries each. All Time builds it once, because it has no previous period.
 
-    ⚠ Re-measure rather than trusting that line; it has gone stale once already:
+    ⚠ Re-measure rather than trusting that line; it has now gone stale TWICE.
+    It read "59 / 48 / 47, measured 2026-08-25", and the true figures were
+    already about 94 / 76 / 78 before rent was added to the equation — so the
+    line was describing a page that no longer existed. Nine of the current
+    count are the rent stream, down from fifteen: `rent_expense` reads the
+    months, the total and the ledger's start off ONE `rates()` lookup rather
+    than three, which is why those functions take an optional `all_rates` the
+    way `rate_for` and `charged_through` always have.
+
         with CaptureQueriesContext(connection) as ctx: analysis_dashboard(req)
     """
     start, end, range_key, label = engine.resolve_period(
@@ -533,6 +540,13 @@ def _insight_cashbook(start, end):
     warning that changes what the headline means belongs beside the headline.
     The flag is repeated on the row here so the two screens agree about which
     category is the suspect one.
+
+    ⚠ AND SINCE 2026-09-04 THERE ARE TWO SUCH FLAGS, on the same rule. Rent
+    moved onto its own expense line, read from the rate in Deposit & Rent, so a
+    Cashbook row still filed under a rent-shaped name is the same money charged
+    twice — exactly as a row called "Staff Salaries" is. Both flags come from
+    `cashbook_expense()` so this screen and the Profit page can never disagree
+    about which row is the suspect one.
     """
     expense = engine.cashbook_expense(start, end)
     income_rows = engine.cashbook_income_by_category(start, end)
@@ -550,6 +564,8 @@ def _insight_cashbook(start, end):
         'expense_total': total,
         'wage_suspects': expense['wage_suspects'],
         'wage_suspect_total': expense['wage_suspect_total'],
+        'rent_suspects': expense['rent_suspects'],
+        'rent_suspect_total': expense['rent_suspect_total'],
         'income_rows': income_rows,
         'income_total': income_total,
         'entries': sum(r['count'] for r in expense['by_category']),

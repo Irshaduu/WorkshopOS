@@ -9,6 +9,15 @@ from django.core.paginator import Paginator
 from ..analysis_engine import MONEY, SPARE_COST
 from ..models import JobCard, JobCardSpareItem
 from ..decorators import office_required, is_owner
+# How long a car was here, as one ready phrase. Imported rather than restated:
+# the read-only job card already prints this figure, and the two screens are
+# opened one after the other on the same card — a history row saying "3 days"
+# over a card saying "2 days" is the app disagreeing with itself about the one
+# thing this row was added to answer. It also carries the four edge cases a
+# second copy would get wrong: a card with no admitted date, a completion dated
+# before the admission, the singular, and an OPEN card counting to
+# `localdate()` rather than to a UTC "today".
+from .jobcard import _time_in_workshop
 
 
 ZERO = Decimal('0')
@@ -264,6 +273,23 @@ def car_profile_detail(request, registration):
     offset = (page_obj.number - 1) * VISITS_PER_PAGE
     for index, bill in enumerate(visits):
         bill.visit_number = total_visits - offset - index
+
+        # How long the car was here on that visit — the gap between admitted
+        # and completed, which is the question this list could not answer.
+        # Every other fact on a row is a single stored value; this one is a
+        # subtraction, so it is the one an owner had to do in their head across
+        # two dates only one of which was ever printed.
+        #
+        # Attached in PYTHON, never as a database annotation: SQLite (tests)
+        # and PostgreSQL (everything else) do not agree on date arithmetic,
+        # and this is 45 rows at most. It costs no query either — both columns
+        # are already on the row.
+        #
+        # An open card counts to today and says so ("12 days in"), which is the
+        # case where the number is actually changing. `None` where the
+        # arithmetic would be nonsense, and the row then prints nothing rather
+        # than a negative.
+        bill.span = _time_in_workshop(bill)
 
     # ---- gross profit, OWNER ONLY -------------------------------------
     #

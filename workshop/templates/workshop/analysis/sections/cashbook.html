@@ -44,7 +44,12 @@
       {% for c in expense_rows %}
       <tr>
         <td class="strong">
-          {% if c.looks_like_wages %}<i class="bi bi-exclamation-triangle-fill text-warning"></i> {% endif %}{{ c.category|default:"—" }}
+{% comment %}
+            ONE MARK FOR EITHER KIND OF DOUBLE COUNT. A row cannot be both a
+            wage and a rent, and if the words ever overlapped, two identical
+            glyphs side by side would say nothing the one already says.
+          {% endcomment %}
+          {% if c.looks_like_wages or c.looks_like_rent %}<i class="bi bi-exclamation-triangle-fill text-warning"></i> {% endif %}{{ c.category|default:"—" }}
         </td>
         <td class="num">{{ c.count }}</td>
         <td class="num neg">₹{{ c.total|inr }}</td>
@@ -75,6 +80,23 @@
   <span>₹{{ wage_suspect_total|inr }} is filed under
     {% for c in wage_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %},
     which looks like wages. Wages are already counted from Salary &amp; Advance, so this may be
+    the same money twice. Nothing was removed — move the entries if it is.</span>
+</div>
+{% endif %}
+
+{% if rent_suspects %}
+{% comment %}
+  Rent has its own expense line on the Profit page now, read from the rate in
+  Deposit & Rent — so a row still filed here under a rent-shaped name is the
+  same money charged twice. Same split as the wage note directly above: the
+  Profit page carries the consequence, this screen carries the ROW, which is
+  the thing an owner can actually recognise and move.
+{% endcomment %}
+<div class="ia-note" style="margin-top:8px; background:#fffbeb; color:#92400e;">
+  <i class="bi bi-exclamation-triangle-fill mt-1" style="color:#d97706;"></i>
+  <span>₹{{ rent_suspect_total|inr }} is filed under
+    {% for c in rent_suspects %}<strong>{{ c.category }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %},
+    which looks like rent. Rent is already counted from Deposit &amp; Rent, so this may be
     the same money twice. Nothing was removed — move the entries if it is.</span>
 </div>
 {% endif %}

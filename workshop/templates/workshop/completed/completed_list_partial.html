@@ -350,10 +350,14 @@ see the note in base.html for why the responsive `col-*` classes went.
                         <ul class="dropdown-menu dropdown-menu-end del-dropdown-menu">
                             {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                             <li>
-                                <form method="post" action="{% url 'undo_completed' jobcard.pk %}" class="d-inline">
+                                <form method="post" action="{% url 'undo_completed' jobcard.pk %}" class="d-inline"
+                                      data-confirm="{{ jobcard.registration_number }} goes back on the board as an active card, and its completion date is cleared."
+                                      data-confirm-title="Back onto the floor?"
+                                      data-confirm-icon="bi-arrow-counterclockwise"
+                                      data-confirm-theme="warning"
+                                      data-confirm-ok="Move it back">
                                     {% csrf_token %}
-                                    <button type="submit" class="dropdown-item text-warning"
-                                            onclick="return confirm('Move {{ jobcard.registration_number }} back to active workshop?');">
+                                    <button type="submit" class="dropdown-item text-warning">
                                         <i class="bi bi-arrow-counterclockwise"></i> Undo Completion
                                     </button>
                                 </form>

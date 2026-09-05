@@ -23,7 +23,7 @@ TURNOVER
                          "what the workshop actually earned" figure.
   • Cashbook Income .... CashbookEntry(entry_type=INCOME) — scrap sales etc.
 
-EXPENSES — four real, non-overlapping money-out streams, ALL ON ONE BASIS:
+EXPENSES — five real, non-overlapping money-out streams, ALL ON ONE BASIS:
 what the work done in this period cost.
   1. Spare Shops ....... Parts bought from a spare shop *for a specific job*:
                          the `unit_price` LINE TOTAL on JobCardSpareItem rows
@@ -34,11 +34,28 @@ what the work done in this period cost.
   3. Salary ............ From the Salary & Advance section — never from the
                          Cashbook. See salary_expense() for how advances are
                          folded in without double counting.
-  4. General Cashbook .. CashbookEntry(entry_type=EXPENSE) — rent, power,
+  4. General Cashbook .. CashbookEntry(entry_type=EXPENSE) — power, water,
                          consumables, tools…  Shown broken down by category.
+  5. Rent .............. What the premises cost for the whole months in the
+                         window, from `RentRate` — never from the deposits.
+                         See rent_expense().
 
   (+) Other spare purchases — a *transparency* line, normally ₹0. See
       unattributed_spare_expense().
+
+⚠ RENT COMES FROM THE RATE, AND THE DAILY DEPOSITS ARE CASH. Until 2026-09-04
+rent arrived here as a Cashbook category and the Deposit & Rent section touched
+this module nowhere — a deliberate boundary, and a correct one for exactly as
+long as the office kept keying the monthly bill into the Cashbook. It stopped
+being correct when they started recording rent in its own section instead:
+September 2026 carried ₹35,000 of real rent and this page charged ₹900 of it,
+while May–August carried ₹45,000 Cashbook rows against a stored rate of
+₹35,000. Two different rents in one system, and neither page aware of the
+other.
+
+So a Cashbook category NAMED like rent is now a DOUBLE COUNT, and is flagged
+(`RENT_WORDS`) exactly as a wage-looking one is — never filtered, because
+"Rent agreement stamp paper" is a real running cost.
 
 ⚠ A SUPPLIES SHOP BILL IS NOT AN EXPENSE. Buying stock converts cash (or a
 promise to pay) into goods on a shelf; it is not a cost until the goods are
@@ -54,13 +71,18 @@ The owners do not think "turnover minus expenses". Asked what the workshop
 earns from, the answer is four things:
 
     LABOUR + SPARE PARTS MARGIN + INVENTORY MARGIN + CASHBOOK INCOME
-        (less discounts given)          =  GROSS EARNINGS
-    less SALARY and GENERAL CASHBOOK    =  THE SAME PROFIT
+        (less discounts given)             =  GROSS EARNINGS
+    less SALARY, RENT and CASHBOOK EXPENSE =  THE SAME PROFIT
 
 `earnings_breakdown()` builds the second, and it closes with NOTHING in
 between — no conversion, no reconciling line. That is only true because both
 descriptions charge stock at the same moment. If a bridging line ever has to
 come back, the two bases have drifted apart and that is the bug.
+
+⚠ EVERY SHARED FIGURE IS HANDED IN, RENT INCLUDED. Leaving it out of `spend`
+would land this card on a profit ₹35,000 a month above the equation printed
+directly over it — and the whole safety of saying the profit twice is that the
+second statement lands on the first.
 
 --------------------------------------------------------------------------
 THE DOUBLE-COUNT RULE — the single most important thing in this file
@@ -106,6 +128,8 @@ Every stream is dated by its own natural date, so a period never mixes bases:
     car bills + ALL their parts cost → JobCard.admitted_date
     cashbook (income & expense)      → CashbookEntry.date
     salary                           → SalaryPayment.month (the 1st)
+    rent                             → the rent month (the 1st), capped at
+                                       the month in progress
 Keeping a job's revenue and that job's parts cost on the same date is what
 makes a month's margin internally consistent — and it is now true of BOTH
 parts routes, which is what let the reconciling line go.
@@ -113,6 +137,13 @@ parts routes, which is what let the reconciling line go.
 `SupplierRestockBill.bill_date` still dates two things, neither of which is an
 expense: the shelf's average cost (`inventory/costing.py` replays receipts in
 date order) and `supplier_billed()`.
+
+⚠ RENT IS THE ONLY STREAM THAT NEEDS A CAP, because it is the only one not
+summed from rows. No row exists in the future, so every other stream is
+self-limiting; `this_year` resolves to 1 Jan – 31 Dec deliberately, so an
+uncapped rent walk charges twelve months on 4 September — ₹1,05,000 of expense
+that has not happened, on the page distribution is decided from. The cap lives
+in `rent.charged_by_month`, which is the only implementation of it.
 
 --------------------------------------------------------------------------
 PERFORMANCE
@@ -124,6 +155,7 @@ Built for 5+ years of history (live: 5,478 job cards over 2021→2026):
   • the monthly series is a fixed number of grouped queries, not one per month
 """
 
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -135,8 +167,13 @@ from .models import (
     JobCard, JobCardSpareItem, CashbookEntry,
     SalaryPayment, SalaryPaymentLine, SalaryAdvance,
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
-    OwnerWithdrawal,
+    OwnerWithdrawal, RentRate, RentDeposit,
 )
+# ⚠ THE RENT ARITHMETIC IS NOT RESTATED HERE. `workshop/rent.py` owns the
+# rate spans, the month boundaries and the cap; this module calls it. A second
+# walk over the rate table would be a second answer, free to drift from the one
+# the Deposit & Rent page prints — the `SPARE_COST` rule, applied again.
+from . import rent as rent_calc
 
 # Wide enough that a multi-year Sum of 10-digit money columns cannot overflow.
 MONEY = DecimalField(max_digits=20, decimal_places=2)
@@ -267,6 +304,17 @@ _DATE_STREAMS = (
     # under-reports what left the drawer. Leaving salary out of this list is
     # what made All Time report the wage bill ₹1,22,167 short.
     (lambda: OwnerWithdrawal.objects, 'date'),
+    # ⚠ THE RATE IS IN THIS LIST AS WELL AS THE DEPOSIT, and leaving it out
+    # would repeat the salary bug exactly. A rate's month is a 1st, so a
+    # ledger opened in October 2023 whose first deposit fell on the 5th would
+    # anchor All Time to 5 October — and `charged_by_month` charges a month
+    # only when its 1st is inside the window, so that month's rent would drop
+    # out of the widest filter in the section. Measured before both were
+    # added: All Time opened on 2026-02-07 against a ledger reaching back to
+    # October 2023, hiding ₹10,15,000 of rent while claiming to cover
+    # everything.
+    (lambda: RentRate.objects, 'effective_from'),
+    (lambda: RentDeposit.objects, 'date'),
 )
 
 
@@ -830,6 +878,36 @@ def unsettled_months(start, end):
 # Used for a *warning*, never to silently filter — see cashbook_expense().
 WAGE_WORDS = ('salary', 'salaries', 'wage', 'wages', 'payroll', 'staff pay')
 
+#: Rent has its own expense line now (stream 5), so a Cashbook category NAMED
+#: like rent is the same money charged twice. Flagged, never filtered, exactly
+#: as the wage double-count is.
+#:
+#: ⚠ MATCHED ON WORD BOUNDARIES, NEVER AS A SUBSTRING, and this is the one
+#: place in the engine where that distinction is load-bearing: a `in` test for
+#: 'rent' also matches 'current', and this workshop calls its electricity
+#: bill "Current bill". A contains-check would flag the single most common row
+#: in the ledger as a rent double count, and a warning that fires on the
+#: obvious wrong thing is ignored inside a week. Done in Python over the rows
+#: already grouped below rather than as a database regex, because `\b` means a
+#: word boundary in Python and a BACKSPACE in PostgreSQL's POSIX regex — so a
+#: DB-side pattern would behave one way under test (SQLite) and another in
+#: production, which is the worst available outcome.
+#:
+#: ⚠ THE STEER ON THE CASHBOOK FORM READS THIS LIST AND ADDS ONE WORD. It is
+#: deliberately BROADER than this one — see `cashbook_views.CASHBOOK_STEERS`.
+#: A steer asks a question and never blocks, so a false positive costs a
+#: second; this flag ASSERTS that the profit figure above it is wrong, and a
+#: false warning on that page is worse than no warning at all.
+RENT_WORDS = ('rent', 'rents')
+
+_RENT_RE = re.compile(
+    r'\b(?:%s)\b' % '|'.join(re.escape(w) for w in RENT_WORDS), re.IGNORECASE)
+
+
+def looks_like_rent(category):
+    """Is this free-text Cashbook category naming rent? Word boundaries only."""
+    return bool(_RENT_RE.search(category or ''))
+
 
 def cashbook_expense(start, end):
     """
@@ -855,13 +933,92 @@ def cashbook_expense(start, end):
     )
     for row in by_category:
         row['looks_like_wages'] = any(w in (row['category'] or '').lower() for w in WAGE_WORDS)
+        row['looks_like_rent'] = looks_like_rent(row['category'])
 
     suspect = [r for r in by_category if r['looks_like_wages']]
+    rent_suspect = [r for r in by_category if r['looks_like_rent']]
     return {
         'total': _sum(qs, 'amount'),
         'by_category': by_category,
         'wage_suspects': suspect,
         'wage_suspect_total': sum((r['total'] for r in suspect), ZERO),
+        # Rent moved onto its own expense line, so a row still filed here
+        # under a rent-shaped category is counted twice. Named so the owner
+        # can move it; nothing is removed.
+        'rent_suspects': rent_suspect,
+        'rent_suspect_total': sum((r['total'] for r in rent_suspect), ZERO),
+    }
+
+
+def _rent_hint(months, starts, reaches_before):
+    """The one line under the Rent figure, on the expense list and the card.
+
+    `_salary_hint`'s shape: say what is IN the figure, and when the window
+    reaches further back than the ledger, say what is missing from it instead.
+    Computed here rather than in the view or the template because it is a
+    statement ABOUT the money, and the two places that print it must not be
+    free to word it differently.
+    """
+    if reaches_before:
+        return (f"{months} month{'' if months == 1 else 's'} — rent is only "
+                f"recorded from {starts.strftime('%B %Y')}")
+    if not months:
+        return 'No rent recorded for this period'
+    return f"{months} whole month{'' if months == 1 else 's'}, by the rent month"
+
+
+def rent_expense(start, end):
+    """
+    Stream 5 — what the premises cost for the whole months inside this window.
+
+    FROM THE RATE, NEVER FROM THE DEPOSITS, and that is the whole point of the
+    Deposit & Rent section. The rent is a fixed ₹35,000 a month whatever cash
+    happened to move; the daily handovers are how it gets PAID. Charge the
+    deposits instead and a month where the office had a good cash week reports
+    a higher rent than a lean one, so monthly profit swings on a cash-flow
+    decision rather than on what the month cost — on the page the owners read
+    to decide distribution.
+
+    That is the app's fourth instance of one rule, not a new idea: wages are
+    dated by the salary MONTH and not the day the cash left; a
+    `SupplierPayment` never touches profit while the stock DRAW does; a
+    spare-shop payment never touches profit while the part fitted does. The
+    cash side of rent is reported by `cash_position()` and appears here
+    nowhere.
+
+    ⚠ UNTIL 2026-09-04 THIS STREAM DID NOT EXIST, and the equation had four.
+    That was correct while rent still arrived as a Cashbook category, and it
+    stopped being correct when the office started recording rent in its own
+    section: September 2026 carried ₹35,000 of real rent and the page charged
+    ₹900 of it, while May–August carried ₹45,000 Cashbook rows against a
+    stored rate of ₹35,000 — two different rents in one system, neither page
+    aware of the other. Cashbook rows named like rent are now FLAGGED as the
+    double count they have become (`RENT_WORDS`), never filtered.
+
+    The cap, the month-dating rule and the reasoning for both are in
+    `rent.charged_by_month`, which is the only implementation.
+    """
+    # ONE rate lookup for all three reads. The table holds one row per rent
+    # CHANGE, so this is a handful of rows for the life of the business — but
+    # this report is built up to three times per page render, and three walks
+    # each was 9 of the 15 rent queries on a 109-query page.
+    all_rates = rent_calc.rates()
+    total = rent_calc.charged_between(start, end, all_rates=all_rates)
+    by_month = rent_calc.charged_by_month(start, end, all_rates=all_rates)
+    starts = rent_calc.ledger_starts(all_rates=all_rates)
+    # A window reaching back FURTHER than the rent ledger charges nothing for
+    # those months. That is the answer opening stock and the owner-withdrawal
+    # history already get — the figure is short for the period before the
+    # section existed — and like both of those the page says so rather than
+    # reading as though the premises had been free. It clears itself as
+    # history accumulates.
+    reaches_before = bool(starts and start < starts)
+    return {
+        'total': total,
+        'months': len(by_month),
+        'starts': starts,
+        'reaches_before': reaches_before,
+        'hint': _rent_hint(len(by_month), starts, reaches_before),
     }
 
 
@@ -964,7 +1121,8 @@ def parts_trading(start, end):
     }
 
 
-def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_total):
+def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_total,
+                       rent_total):
     """
     The same profit, said the owner's way. Every shared figure is HANDED IN.
 
@@ -1034,11 +1192,22 @@ def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_tota
     spend = [
         {'key': 'salary', 'label': 'Salary & Advance', 'icon': 'bi-cash-coin',
          'hint': 'The wage bill', 'amount': salary_total, 'negative': True},
+        # ⚠ RENT IS HANDED IN LIKE EVERY OTHER SHARED FIGURE. Left out, this
+        # card would land on a profit ₹35,000 a month above the equation
+        # printed directly over it — and the whole safety of stating the
+        # profit twice is that the second statement lands on the first with
+        # nothing in between.
+        {'key': 'rent', 'label': 'Rent', 'icon': 'bi-house-door',
+         'hint': 'What the premises cost', 'amount': rent_total, 'negative': True},
         # "Cashbook Expense", not "General Cashbook": `Cashbook Income` sits
         # four rows above it in this same card. One ledger, two directions,
         # and the two names have to say so.
+        #
+        # ⚠ THE HINT NO LONGER SAYS "RENT". Rent has its own row directly
+        # above, so naming it here too would point the reader at the wrong
+        # line for the largest fixed cost in the list.
         {'key': 'cashbook', 'label': 'Cashbook Expense', 'icon': 'bi-journal-text',
-         'hint': 'Rent, power, consumables', 'amount': cashbook_total, 'negative': True},
+         'hint': 'Power, water, consumables', 'amount': cashbook_total, 'negative': True},
     ]
 
     net_spend = sum((r['amount'] if r['negative'] else -r['amount']) for r in spend)
@@ -1093,8 +1262,14 @@ def build_profit_report(start, end, disclosures=True):
     salary = salary_expense(start, end, gaps=disclosures)
     cashbook = cashbook_expense(start, end)
     other_spares = unattributed_spare_expense(start, end)
+    # WHAT THE PREMISES COST, from the rate — never from the deposits, and
+    # ALWAYS computed. Like `stock_used` it is part of the equation, so
+    # `disclosures=False` must never skip it or the comparison period would be
+    # measuring a different definition of profit from the headline.
+    rent = rent_expense(start, end)
 
-    expense_total = spares + stock_used + salary['total'] + cashbook['total'] + other_spares
+    expense_total = (spares + stock_used + salary['total'] + cashbook['total']
+                     + other_spares + rent['total'])
     profit = turnover - expense_total
 
     # Ordered biggest-first so the page reads as "where the money went".
@@ -1114,8 +1289,11 @@ def build_profit_report(start, end, disclosures=True):
          'icon': 'bi-box-seam'},
         {'key': 'salary', 'label': 'Salary & Advance',
          'hint': salary['hint'], 'amount': salary['total'], 'icon': 'bi-cash-coin'},
+        # ⚠ THE HINT NO LONGER SAYS "RENT" — rent is the line below.
         {'key': 'cashbook', 'label': 'Cashbook Expense',
-         'hint': 'Rent, power, consumables', 'amount': cashbook['total'], 'icon': 'bi-journal-text'},
+         'hint': 'Power, water, consumables', 'amount': cashbook['total'], 'icon': 'bi-journal-text'},
+        {'key': 'rent', 'label': 'Rent',
+         'hint': rent['hint'], 'amount': rent['total'], 'icon': 'bi-house-door'},
     ]
     if other_spares > ZERO:
         expense_lines.append({
@@ -1138,11 +1316,13 @@ def build_profit_report(start, end, disclosures=True):
         'expense_lines': expense_lines,
         'salary': salary,
         'cashbook': cashbook,
+        'rent': rent,
         'warehouse_drawn': stock_used,
         # Skipped with the footnotes on the comparison reports, which read
         # nothing but `turnover` and `profit`.
         'earnings': earnings_breakdown(
             start, end, bills, cb_income, salary['total'], cashbook['total'],
+            rent['total'],
         ) if disclosures else None,
         'uncosted_draws': uncosted_draw_count(start, end) if disclosures else 0,
         'uncosted_shop': uncosted_shop_count(start, end) if disclosures else 0,
@@ -1204,12 +1384,22 @@ def monthly_series(start, end):
         source=JobCardSpareItem.SOURCE_SHOP, shop__isnull=True)
     oth = grouped(other_qs, 'job_card__admitted_date', SPARE_COST)
 
-    keys = sorted(set(rev) | set(inc) | set(sp) | set(inv) | set(cb) | set(sal) | set(adv) | set(oth))
+    # ⚠ RENT IS NOT A GROUPED QUERY — it is DERIVED, so it comes from the one
+    # implementation rather than from rows. It also has to join `keys`: a month
+    # carrying rent and nothing else must still draw a bar, or the chart stops
+    # totalling to the headline and `ConsistencyTests` fails. Same cap and same
+    # month-dating rule as the headline, because it is literally the same
+    # function.
+    rnt = rent_calc.charged_by_month(start, end)
+
+    keys = sorted(set(rev) | set(inc) | set(sp) | set(inv) | set(cb) | set(sal)
+                  | set(adv) | set(oth) | set(rnt))
     rows = []
     for k in keys:
         t = rev.get(k, ZERO) + inc.get(k, ZERO)
         e = (sp.get(k, ZERO) + inv.get(k, ZERO) + cb.get(k, ZERO)
-             + sal.get(k, ZERO) + adv.get(k, ZERO) + oth.get(k, ZERO))
+             + sal.get(k, ZERO) + adv.get(k, ZERO) + oth.get(k, ZERO)
+             + rnt.get(k, ZERO))
         y, m = k.split('-')
         rows.append({
             'key': k,
@@ -1325,6 +1515,13 @@ def cash_position(start, end):
     salary = salary_expense(start, end)
     wages = salary['total']
     running = cashbook_expense(start, end)   # a dict: the card wants its total
+    # ⚠ REAL CASH, HANDED TO A MAN WITH A BOOK, and it reached this card
+    # nowhere until 2026-09-04. ₹12,32,500 had been paid out over three years
+    # and the only screen in the app that reports cash movement did not know:
+    # September read ₹15,660 out against a true ₹23,160. It is the DEPOSITS
+    # here and the RATE in the profit equation, which is the same split a
+    # supplier payment and a stock draw already get.
+    rent_paid = rent_calc.deposited_between(start, end)
     owner_taken = _sum(
         OwnerWithdrawal.objects.filter(date__range=(start, end)), F('amount'))
 
@@ -1341,7 +1538,12 @@ def cash_position(start, end):
         {'label': 'Supplies shops', 'hint': 'paid against their ledgers', 'amount': supplies_paid},
         {'label': 'Wages and advances', 'hint': 'counted in the month they are for',
          'amount': wages},
-        {'label': 'Rent, power, consumables', 'hint': 'from the cashbook',
+        {'label': 'Rent deposits', 'hint': 'handed over, by the day it moved',
+         'amount': rent_paid},
+        # ⚠ THE LABEL NO LONGER SAYS "RENT". Rent is the line directly above,
+        # on its own basis, and one card naming the same cost twice is how an
+        # owner comes to read one of the two figures as the other.
+        {'label': 'Power, water, consumables', 'hint': 'from the cashbook',
          'amount': running['total']},
         # ⚠ CASH ONLY. An owner withdrawal is profit being TAKEN, not a cost of
         # earning it, so this is the only figure in the whole engine that reads
@@ -1487,9 +1689,59 @@ def financial_position():
     else:
         stock_tile = {'label': 'Stock on the shelf', 'amount': stock['value'],
                       'direction': 'hold'}
-    stock_tile['wide'] = True
     stock_tile['note'] = 'at what it cost'
     stock_tile['uncosted_products'] = stock['uncosted_products']
+
+    # RENT CHARGED AGAINST RENT DEPOSITED, as of today.
+    #
+    # ⚠ STATED, NEVER NETTED against anything, and the sign turned into words
+    # like every other tile here: a workshop that has handed over more than the
+    # months charged so far is PAID AHEAD, not owed — ₹27,500.
+    #
+    # It charges the current month in full, to agree with the expense line one
+    # card up. That is deliberately a DIFFERENT question from the Deposit &
+    # Rent hero's carry figure, which stops at the end of last month because it
+    # asks whether the FINISHED months are square; charge September there and
+    # the page reads "behind ₹35,000" from the 1st to the 5th every month.
+    #
+    # ⚠ IT WAS FULL WIDTH FOR A DAY, AND SO WAS THE STOCK TILE. The card was
+    # a two-column grid filled row by row, so five half-width tiles always
+    # orphaned one in a half-empty row, and a tile carrying a `note` line is
+    # taller than its neighbours — hence a row each. The owner's call
+    # (2026-09-04) was that the two read as odd slabs under four normal boxes:
+    # **every tile is the same shape now**, and the card splits by DIRECTION
+    # instead. See `tile_columns` below.
+    rent_due = rent_calc.outstanding()
+    rent_tile = tile(rent_due, 'Rent still to deposit', 'Rent paid ahead', 'out')
+    rent_tile['note'] = 'charged to the end of this month'
+
+    tiles = [
+        tile(receivable, 'Customers owe us', 'Customers paid ahead', 'in'),
+        # "Of that" only holds while it IS a slice of a positive figure. In
+        # credit it is not, and the longer phrase wrapped to two lines in a
+        # 305px tile on a phone where every other label sits on one.
+        tile(fleet_due, 'Of that, fleet accounts', 'Fleet accounts in credit', 'in'),
+        tile(spare_due, 'We owe spare shops', 'Spare shops paid ahead', 'out'),
+        tile(supplier_due, 'We owe supplies shops', 'Supplies shops paid ahead', 'out'),
+        # A thing the workshop HOLDS, not a debt in either direction, so it
+        # wears neither green nor red — and it is what makes the left-hand
+        # column read as "ours" rather than only "owed to us".
+        #
+        # ⚠ IT NO LONGER SITS DIRECTLY UNDER THE SUPPLIES PAYABLE, and that
+        # adjacency was recorded as answering the owner's own question — "we
+        # have to pay Supplies Shops ₹1,00,000, but we have ₹1,20,000 worth of
+        # stock". Splitting the card by direction puts the two figures in
+        # opposite columns instead of one above the other, so the comparison is
+        # made ACROSS the card. Both are still on one screen without scrolling,
+        # which was the original point; the lever, if the owner wants them
+        # level again, is the order of the owed column.
+        stock_tile,
+        # A debt, so it wears the same red rail as the two shop payables, but
+        # it is the only one here DERIVED from a rate rather than read off a
+        # stored ledger balance, and the only one settled in daily cash —
+        # hence the note.
+        rent_tile,
+    ]
 
     return {
         'receivable': receivable,
@@ -1499,18 +1751,36 @@ def financial_position():
         'payable_total': spare_due + supplier_due,
         'stock_value': stock['value'],
         'uncosted_products': stock['uncosted_products'],
-        'tiles': [
-            tile(receivable, 'Customers owe us', 'Customers paid ahead', 'in'),
-            # "Of that" only holds while it IS a slice of a positive figure. In
-            # credit it is not, and the longer phrase wrapped to two lines in a
-            # 305px tile on a phone where every other label sits on one.
-            tile(fleet_due, 'Of that, fleet accounts', 'Fleet accounts in credit', 'in'),
-            tile(spare_due, 'We owe spare shops', 'Spare shops paid ahead', 'out'),
-            tile(supplier_due, 'We owe supplies shops', 'Supplies shops paid ahead', 'out'),
-            # LAST, and full width. It sits directly under the supplies-shops
-            # payable it is read against, and its own row says what the other
-            # four cannot: this one is a thing the workshop HOLDS, not a debt in
-            # either direction.
-            stock_tile,
+        # ⚠ DELIBERATELY NOT ADDED TO `payable_total`. That figure is computed
+        # and never rendered, for the recorded reason that spare + supplies is
+        # not the whole debt — an unsettled month's wages are tracked as a
+        # payable nowhere — so a figure labelled "total debt" would exclude the
+        # largest monthly obligation the workshop has. Adding rent would make it
+        # less incomplete without making it true.
+        'rent_due': rent_due,
+        'tiles': tiles,
+        # WHAT WE HOLD ON THE LEFT, WHAT WE OWE ON THE RIGHT — the owner's
+        # instruction (2026-09-04), and it makes this card speak the same
+        # spatial language as CASH TRACKING directly above it, where money in
+        # is the left column and money out is the right.
+        #
+        # ⚠ DERIVED FROM `tiles` IN ONE EXPRESSION, never built alongside it.
+        # Two hand-maintained lists would be two orders free to drift, and they
+        # would drift the day a tile is added — which is exactly how this card
+        # ended up with a five-tile grid that orphaned one.
+        #
+        # ⚠ `credit` GOES LEFT WITH THE REST, not right. A shop paid ahead is
+        # money in the workshop's favour and is NOT a debt, so listing it in a
+        # column of debts would be the sign already turned into words and then
+        # contradicted by where it sits. The rule is simply: `out` is owed,
+        # everything else is not.
+        #
+        # The template loops columns and then tiles, so the tile markup exists
+        # once. On a phone the grid collapses to one column and these stack in
+        # order, which is why the held column is first: the owner reads what is
+        # theirs before what they owe.
+        'tile_columns': [
+            [t for t in tiles if t['direction'] != 'out'],
+            [t for t in tiles if t['direction'] == 'out'],
         ],
     }

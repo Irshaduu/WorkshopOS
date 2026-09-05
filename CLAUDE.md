@@ -1092,6 +1092,152 @@ Skipped on the AJAX path, since the datalist sits outside the swapped regions.
 a keyword filter would hide real money, so the Profit page shows a "wages may be
 counted twice" warning and lets the owner move the entry.
 
+**AND NOW THE LEDGER ASKS BEFORE IT TAKES ONE — `CASHBOOK_STEERS`.** The Profit
+page's warning is the same fact said a month later, on a screen the person who
+typed it may never open. Three kinds of money have a dedicated section AND land
+wrong here: **wages** are counted twice, an **owner draw** quietly cuts reported
+profit (that is the whole reason `OwnerWithdrawal` exists), and **rent** —
+either the monthly charge or a daily handover — is counted twice, since rent
+became its own expense line read from the rate.
+
+**FOUR WORD LISTS IN THE FILE, PLUS EVERY SHOP AND OWNER NAME FROM THE
+DATABASE**, so a rename or a new row is protected with no code change. ⚠ The
+totals are deliberately not written down here any more: they were "SEVEN
+GROUPS, 27 KEYWORDS", which counted six seeded shops and two owners and so was
+a fact about the development data rather than about the code. `_steers()`
+prints the truth on any run.
+
+| group | goes to | why it lands wrong here |
+|---|---|---|
+| rent · rents · deposit · deposits | Deposit & Rent | counted **twice** |
+| salary · salaries · wage(s) · advance · bonus | Salary & Advance | counted **twice** |
+| withdrawal · withdraw · drawing(s) · take out · takeout | Owner Withdrawals | makes profit look **smaller** |
+| shop · spare · parts · supplier · supplies | that shop's page | counted **twice** |
+| **every spare-shop and Supplies Shop name** | that shop's page | counted **twice** |
+| **each owner's name** | Owner Withdrawals | makes profit look **smaller** |
+
+⚠ **THE OWNER NAMES ARE READ FROM THE DATABASE, NEVER HARD-CODED.** The owner's
+own example is the case that matters: in a rush, one of them takes cash and
+types **"Sahad 5000"** here. So `_steers()` appends every name from
+`owner_accounts()` — the one answer to "who are the owners?" everywhere else —
+and each gets its own message, because *"Sahad is an owner"* is unarguable in a
+way a generic line about owner money is not.
+
+⚠ **AND SO ARE THE SHOP NAMES, for the same reason.** CLAUDE.md's own example
+of the double count is *"Paid Ninoos 20,000"* — and **Ninoos is a row in a
+table, not a word in a source file.** Both ledgers, archived shops included,
+since money paid to an archived shop is counted exactly as twice. The generic
+words are `analysis_engine.SHOP_WORDS`, **imported rather than restated**, so
+the entry-time steer and the Profit page's own `_shoplike_cashbook_count`
+warning can never come to mean different things — the same fact, said before it
+happens instead of a month later.
+
+⚠ **A shop name must be FOUR characters and is matched WHOLE.** A shop called
+"Oil" or "AC" would match half the ledger and make every steer noise; matching
+a shop's first *word* would fire on "Auto" or "New". The trade is that a shop
+called by half its name is missed, which the generic word list still tends to
+catch.
+
+⚠ **WORD BOUNDARIES, NEVER `includes()`.** A substring match on "rent" also
+matches "cur**rent**", and the electricity bill is called **"Current bill"** —
+so a contains-check would question the single most common row in the ledger and
+be ignored inside a week. Same for "advance" against "Advanced diagnostics".
+The regex escapes each word, because an owner's name is free text.
+
+**EACH STEER IS A QUESTION, THEN THE CONSEQUENCE — and nothing else.**
+
+> ⚠ **Is this money Sahad took out?**
+> **Sahad** is an owner. That goes in **Owner Withdrawals** — put here it makes
+> the **profit look smaller** than it is.
+
+It shipped first as flat statements and the owner's verdict was that it did not
+read as stopping them: *"Sahad is an owner — money they took belongs in Owner
+Withdrawals"* is a **fact**, and a fact slides past somebody in a hurry. A
+question makes the reader answer it; naming what breaks is what makes answering
+worth the second it costs. Read in one scan: **ask → what goes wrong → where it
+belongs.**
+
+⚠ **A STEER EXPLAINS NOTHING ELSE — the rent one carried a third line and it
+was removed.** It read *"The one monthly rent bill is still fine here"*, which
+was **true at the time** (the monthly bill then reached Profit as a Cashbook
+category) and which the owner read as *"workshop rent is fine to add here"* —
+the opposite of the point. It was answering a question nobody had asked yet.
+→ `test_NO_STEER_EXPLAINS_WHEN_THE_CASHBOOK_IS_STILL_RIGHT` asserts every row
+carries exactly `words`, `ask` and `why`, so a fourth field cannot come back.
+
+⚠ **THAT MUDDLE IS GONE, AND THE PREDICTION HELD.** This entry used to close
+*"That muddle existed only because rent is half-way out of the Cashbook. When
+it gets its own expense line the wording gets simpler, not more careful."* Rent
+went all the way out on 2026-09-04, so there is no exception left to explain
+and no distinction the reader has to hold: the heading is now **"Is this
+rent?"** — one question for the monthly charge and the daily handover alike,
+and the consequence is the same plain "counted **twice**" the other three
+groups carry. It is the shortest `ask` in the list, on the group that used to
+need the longest.
+
+**THE DIALOG IS THIS PAGE'S OWN MODAL, FULLY RED, WITH A GREEN CANCEL.** It
+started as `window.confirm()`, which cannot be designed at all — it opened with
+"127.0.0.1:8000 says", the browser talking rather than the app, and rendered
+question, reason and exit as one flat grey block. It is now the same overlay,
+box, icon and button shapes the recap and delete dialogs use.
+
+⚠ **THE CARD IS SOLID `#b91c1c` AND EVERYTHING ON IT IS WHITE — the owner's
+instruction, in two passes, and it is the only dialog in the app like this.**
+Every other one is a white box with a coloured glyph, which is right when the
+question is *"did you mean this?"*. This one is not asking, it is **stopping**.
+A red glyph on a white card was read past; so was a pale `#fef2f2` wash. It is
+`#b91c1c` rather than a brighter `#dc2626` because the reason line is body text
+that has to stay readable: pure white measures **6.47:1** there against 4.83:1.
+
+| | |
+|---|---|
+| title / **Go back** label | 6.47 / 5.02:1 |
+| reason (white at .92) | 5.66:1 |
+| **It's something else** | 6.47:1 |
+
+⚠ **"GO BACK" IS GREEN AND "IT'S SOMETHING ELSE" IS WHITE.** Carrying on was an
+outline for a revision — red on red — and became unreadable the moment the card
+went solid, so it is filled white. The green **ring** on Go back is what still
+marks the way out, rather than one button being dim. That is the opposite of
+the recap beside it, where confirming is what you came to do: *a warning whose
+loudest control is "ignore me" is not a warning.*
+
+⚠ **THE RING IS ARITHMETIC, NOT DECORATION.** `#15803d` carries its white label
+at 5.02:1 — fine — but against the red CARD it separates at only **1.29:1**, so
+the button's *shape* melts into the ground even though its text is legible.
+WCAG wants 3:1 for a control's own boundary; the ring buys that without
+lightening the fill and losing the label.
+
+⚠ **The green is `#15803d`, NOT the app's `--color-success` (`#16a34a`).**
+That token is used everywhere else as TEXT on a light ground; **reversed —
+white ON it — it measures 3.30:1**, and this label is 13.6px bold, under WCAG's
+large-text threshold and so needing 4.5:1. Caught by measuring, not by eye.
+**Do not unify it back to the token.**
+
+⚠ **IT ASKS, IT NEVER BLOCKS, AND THERE IS NO SERVER GUARD.** "Rent agreement
+stamp paper", "Advance to a supplier" and a staff member sharing an owner's
+first name are all real. And this catches a **typo made in a rush** — a crafted
+POST is not that, so there is nothing to enforce server-side and nothing to
+keep in step. The money rules themselves are unchanged and still live in the
+views. Cancel returns the person to the box with what they typed, selected.
+
+⚠ **THE ADD PATH IS HOOKED INSIDE `openAddConfirm()`, NOT ON A SUBMIT EVENT —
+AND IT SHIPPED THE OTHER WAY, DOING NOTHING.** The owner tried every keyword
+and got no prompt at all. The Add control opens a recap modal whose confirm
+button calls `addForm.submit()` **programmatically**, and a programmatic
+`.submit()` **fires no submit event** — the trap this file already records for
+three other templates. A delegated `submit` listener therefore caught the edit
+screen and was silent on the one door people actually use.
+
+Asking inside `openAddConfirm()` also puts the two questions in the right
+order and stops them stacking: **"is this the right SECTION?"** first, then the
+recap's **"is this the right ENTRY?"**. Cancel returns to the box with the name
+selected and never opens the recap. The **edit** form keeps the delegated
+listener, because it has a real submit button and its event does fire. The list
+rides over via `json_script`, never interpolated into markup.
+→ `TheCashbookSteersAnEntryToTheSectionThatOwnsItTests`,
+`test_THE_ADD_PATH_IS_HOOKED_BEFORE_THE_RECAP_NOT_ON_SUBMIT`
+
 **A Cashbook entry is dated by the day the money moved, and that date is
 editable.** `CashbookEntry.date` has always existed and driven every filter, but
 **no form rendered a date input and neither view read one**, so every entry was
@@ -1530,6 +1676,531 @@ that has one thing to delete. The corners are rounded on the rows.
 → `TheHistoryListCanAlwaysBeActedOnTests` asserts the declaration, because
 nothing in the Django suite executes CSS.
 
+## Deposit & Rent
+
+The workshop rents its premises for a fixed amount a month and pays for it in
+**daily cash instalments**. A collector comes round every day, the office gives
+him whatever it can spare — commonly ₹1,500 to ₹3,000, sometimes nothing — and
+he writes it in his own book. The landlord draws the accumulated pot every few
+months. The office worked out what to hand over by doing
+`(target − paid so far) ÷ days left` on paper every morning. `/rent/` is that
+calculation, and the owners asked for nothing else.
+
+⚠ **THE RENT AND THE DEPOSITS ARE TWO DIFFERENT NUMBERS AND MUST NEVER BECOME
+ONE.** The rent is what a month COST — a fixed ₹35,000, whatever cash happened
+to move. The deposits are how it gets PAID. Collapse them and a month where the
+office had a good week reports a higher rent than a month where it did not, so
+monthly profit swings on a cash-flow decision rather than on what the month
+cost — and the owners read monthly profit to decide distribution. This is the
+rule the app already follows three times: wages are dated by the salary MONTH
+and not the day the cash left; a `SupplierPayment` never touches profit while
+the stock DRAW does; a spare-shop payment never touches profit while the part
+fitted does. Rent is the fourth instance, not a new idea.
+
+**The owner's first design collapsed them, and it is worth recording why it was
+refused rather than just replaced.** The proposal was one editable ₹35,000 that
+was both the monthly target and the automated expense, with an over-deposit
+lowering next month's target to ₹30,000. Both halves are individually right;
+together they make September's *rent expense* ₹30,000 because August had a good
+week. And when the field reads 40,000 nothing can say whether that is a rent
+hike or a carry adjustment.
+
+**NOTHING IS STORED BUT THE RATE AND THE DEPOSITS.** No "this month's target"
+column, no carry-forward column, no per-month charge row. Everything else is
+derived on read in `workshop/rent.py`. That is what keeps the section two
+tables instead of a ledger somebody has to keep in step, and a stored carry
+would be a second copy of a figure already implied — free to drift, and it
+would drift at a month boundary, the only place anybody would notice.
+
+**THE PACE, in full** — one expression, no branches:
+
+```
+carry_in  = deposits BEFORE this month − rent charged for months BEFORE this
+due       = max(0, this month's rent − carry_in)
+remaining = max(0, due − deposits so far this month)
+pay today = remaining ÷ days left in the month, INCLUDING today
+```
+
+Every case the owner asked about falls out of it: an over-deposit turns
+`carry_in` positive so next month asks for less; a skipped day leaves
+`remaining` alone while `days_left` shrinks, so tomorrow asks for more; being a
+long way ahead floors at zero rather than printing a negative to pay. Including
+today in `days_left` is what makes the last day of the month ask for the whole
+shortfall instead of dividing by zero. **Rounded UP to the rupee** — down would
+leave a few rupees uncovered on the last day of every month, and the figure
+self-corrects tomorrow whatever is actually paid.
+
+⚠ **THE PACE AND THE POSITION CHARGE DIFFERENT MONTHS, AND THAT ASYMMETRY IS
+THE DESIGN.** `pay_today` charges the CURRENT month in full, because finishing
+it is what is being paced. `carry_in` stops at the END OF LAST MONTH, because
+it answers a different question — are the months that are *done* square? Charge
+the current month there too and the page reads **"behind ₹35,000" every month
+from the 1st to the 5th**: alarming, meaningless, and precisely how a real
+₹4,500 shortfall stops being noticed. Both sides cut deposits at the same
+boundary, so a catch-up paid in September clears August's shortfall the moment
+September ends.
+→ `ThePositionStopsAtTheEndOfLastMonthTests`
+
+**A RENT RATE IS ABSOLUTE AND EFFECTIVE-DATED, NEVER AN INCREMENT.** `RentRate`
+is `(effective_from, amount)`, one row per month, `unique`, pinned to the 1st in
+`save()`. An adjustment form (`+5,000` / `−3,000`) was proposed as the *safer*
+option and is the opposite: a delta on a number the person has to already know,
+so a mis-keyed `+5000` where `5000` was meant is silently ₹40,000, and after a
+few nobody can say what the rent IS without adding them up. The landlord says
+"forty thousand from January" — that is what gets stored, and what the history
+list prints back.
+
+**A RATE MAY BE BACKDATED, AND THAT IS DELIBERATE.** Hikes are routinely agreed
+late and applied from an earlier month; refusing one leaves the books
+permanently wrong. It *does* reprice those months, which is why it is
+Owner-only and confirmed by name — the danger was never backdating, it was
+history moving **silently**. The owner's own worked example, which is a test
+verbatim: rent raised to ₹40,000 from January, keyed in March, takes today's
+figure from ₹1,000 to ₹4,000 because three months reprice at once.
+**A rate may also be dated AHEAD** — a hike announced now, effective in
+January. That is the one forward date in the section, and it is safe because a
+rate is not money: `rate_for()` applies it only once its month arrives.
+→ `ARentChangeRepricesTheMonthsItCoversTests`, `ARateDatedAheadChangesNothingYetTests`
+
+**THERE IS NO OPENING-BALANCE FIELD, and none is needed.** The ledger begins at
+the first rate's month, so a workshop switching this on mid-September sets the
+rate from September and keys that month's deposits off the collector's book —
+a handful of rows, and the position is then exact. Whatever was settled before
+that month is history between the workshop and the landlord, the same answer
+opening stock gets. A signed opening figure was designed and dropped once this
+turned out to cover it.
+
+⚠ **THE HERO IS DARK GREEN, AND IT IS THE ONLY SECTION HEADER IN THE APP THAT
+IS NOT THE SHARED SLATE SLAB** (`#14532d` → `#052e16`, the owner's
+instruction). Same gradient geometry, same 16px radius, same type — only the
+two stops differ, so it still reads as this app's section header rather than as
+a different product, which is the failure the Owner Withdrawals green ground
+was reverted for.
+
+**Green is the app's MONEY-IN colour and rent is money OUT, so this is a stated
+exception rather than an oversight.** It survives because that rule governs
+AMOUNTS — a green figure means money coming in — and no amount on this card is
+green: the ground is, and a ground is an identity, not a direction. **Do not
+extend it to the figures.**
+
+⚠ **The label alpha is `.72`, NOT the slate slab's `.55`, and the difference is
+measured rather than eyeballed.** Green is a far lighter ground than `#1e293b`,
+so the same alpha composites to much less contrast: `.55` and even `.66` land
+at **4.15:1** against the gradient's lightest stop, and the label is 10.9px
+**bold** — under WCAG's large-text threshold, so it needs 4.5:1, not 3:1.
+Measured after the change: label **5.59:1**, the figure and the working line
+**9.11:1**.
+
+⚠ **UPDATE RENT LIVES IN A ⋮ IN THE HERO, NOT IN A CARD.** Setting the rent is
+a once-a-YEAR act; recording a deposit happens most days. It shipped as a card
+at the foot of the page and that was a permanent block of furniture for
+something almost nobody would ever press — the owner's call moved it. Behind
+the menu it costs one line of markup and nothing on screen, and everything it
+needs is in one modal: the form, the note about backdating, and the history of
+what the rent has been. Owner-only, ⋮ and modal alike, matching
+`@owner_required` on `rent_rate_set`.
+
+⚠ `.rt-hero-menu` needs `display: flex` AND `line-height: 0`. Bootstrap's
+`.dropdown` is a plain inline box, so it inherits the surrounding line-height
+and the button sits on THAT line box's baseline — dropped several pixels, and
+then setting the row's height. Same cause and same fix as the table cell
+holding an inline-flex child, and as the read-only job card's own ⋮.
+
+**BUILT FOR TWENTY YEARS, WITH NO CAP AND NO PAGER ANYWHERE.** Two rules do it:
+
+- **The deposit log shows ONE MONTH** (`?month=YYYY-MM`), which is naturally
+  bounded at about sixty rows however long the business runs. An unreadable or
+  future month falls back to the current one — the Estimates list's own rule —
+  because an empty list under a heading naming a month reads as "nothing was
+  deposited then", and that would be a lie.
+- **The history is COLLAPSED YEAR BLOCKS** — Salary & Advance's own pattern,
+  where the running year opens and older ones sit behind a one-line total. Two
+  decades is twenty closed lines and one open year of twelve. Each month row
+  **links to its own deposits**, which is the only navigation the log needs and
+  is why the log can show one month and carry no pager.
+
+A row cap was the first answer and it was wrong the way caps usually are:
+everything past it becomes unreachable, and a money list that quietly stops is
+worse than a long one.
+
+⚠ **`month_rows()` walks EVERY month, not just the ones drawn.** The running
+figure is the point of the table and it is only right if it carries the whole
+history, so a year opened halfway down twenty years still agrees with the hero.
+Twenty years is 240 iterations over one grouped query.
+→ `TwentyYearsStaysReadableTests`, `WhichMonthTheLogIsShowingTests`. The cost
+is asserted as an **invariant** — the same page over twenty years and over one
+month must issue the same query count — never against a magic number, which
+would go stale on the next query added.
+
+⚠ **A YEAR'S LINE COUNTS ONLY MONTHS THAT HAVE FINISHED — the hero's "before
+this month" rule, one level up.** Taken from its latest month, the CURRENT year
+carries an unfinished month's whole rent against a few days of deposits, so the
+running year read a five-figure **"behind" from the 1st of every month** — on
+the one line whose entire job is to say whether that year needs opening.
+`year_blocks()` backs the month in progress out of the current block only, by
+subtracting that row's own movement rather than by a second query. The month
+still shows its in-progress figure in the row inside.
+
+⚠ **AND THAT LINE CARRIES ONE FIGURE, NOT THREE.** It shipped as
+`₹2,58,300 of ₹2,80,000  −₹3,700` and the owner's verdict was that the section
+had too many numbers to read. The answer to "do I need to open this year?" is
+the position and nothing else, so it now reads **"All square"** or "Behind
+₹4,500" — a column of *All square* down twenty years is scannable in one pass
+and the year that is not jumps out. The two totals it carried are inside, as
+twelve rows, where they can be read against each other.
+
+⚠ **THE MONTH IN PROGRESS IS GREY IN THE TABLE, NOT RED.** Its position carries
+the whole month's rent against however many days have been paid, so on the 2nd
+it reads −₹33,000 — arithmetic, not a problem, and red is this app's colour for
+something being wrong. A figure that is alarming on the 2nd of every month is
+how the colour stops meaning anything by the 10th. The figure is unchanged and
+still signed; the hero already says what is actually owed today.
+
+**TWO WAYS THE TABLE AND THE HERO COULD DISAGREE, BOTH CLOSED.** They are two
+walks over the same two tables — `position()` sums, `month_rows()` accumulates
+— so they are two answers free to drift, and the drift is invisible:
+
+- **A deposit dated BEFORE the first rate's month** is how an opening position
+  is entered, and `position()` counts it (`paid_before` has no floor) while the
+  table started its walk at zero. The money was in the hero and in none of the
+  rows. `month_rows()` now seeds `running` with it.
+- **A row dated into a FUTURE month** was counted by `paid_this_month` and by
+  neither `deposits_in()` nor `month_rows()`. `rent_deposit_add` refuses a
+  future date so it cannot arise through the UI, but three surfaces reading one
+  figure have to cut it identically or one of them is wrong. All three are now
+  bounded at both ends.
+
+→ `TheTableAndTheHeroCanNeverDisagreeTests` asserts this as a **property** over
+several shapes of history — plain, with a rate change, with empty months, with
+no deposits at all — so a scenario nobody thought of still has to satisfy it.
+`EveryShapeOfMonthTests` covers the calendar: leap-year February, a 28-day
+February, 31-day months, a deposit on the 1st and on the last day, a carry
+crossing a year boundary, paise, three rate changes with every month square,
+and a removed rate falling back to the one before it.
+
+### How far back money may be filed — `money_dates.too_far_back()`
+
+**`is_future()` closed one end; this closes the other, and it is the end where
+the damage is quiet.** A figure dated forward is caught the moment somebody
+reads the period it lands in. One dated three years back rewrites the running
+position of every month since, on rows nobody scrolls to, and reports nothing.
+
+⚠ **IT IS A CALENDAR MONTH, NEVER A DAY COUNT** (`BACKDATE_MONTHS = 1`, so the
+floor is the 1st of last month). A fixed "14 days" was the obvious alternative
+and it breaks at exactly the moment the rule exists for: the office reconciles
+LAST month against the collector's book in the first days of this one, so a gap
+found on 3 September may belong to 5 August. A day count refuses that
+correction. It is the same lesson `delete_window` records for measuring on
+`created_at` — **a rule that cuts across the month end fights the workflow it
+is meant to protect.**
+
+⚠ **IT BINDS OFFICE, NOT OWNERS** — `delete_window`'s escalation, not a wall.
+Owners need the exception for real reasons: a go-live opening position is a
+deposit dated *before the ledger starts*, and an audit finding can be older.
+The refusal names the rule **and** the route, because "you cannot" without
+"here is who can" is the half nobody can act on.
+
+**IT IS NOW ON EVERY SCREEN THAT TAKES A TYPED MONEY DATE — six call sites**,
+which is why the rule lives in `money_dates.py` rather than in `views/rent.py`:
+
+| screen | what a back-dated row moves |
+|---|---|
+| rent deposit | the running position of every month since |
+| **cashbook add** | a closed Profit period — `cashbook_expense()` feeds the equation |
+| **cashbook edit** | the same, on the screen that exists to change a date |
+| **spare-shop payment** | that shop's own windows, and `cash_position()` |
+| **Supplies Shop payment** | `cash_position()`; the side whose collector comes weekly |
+| **fleet payment** | Cash Tracking, on the largest receipts the workshop takes |
+
+⚠ **TWO CALLERS ARE DELIBERATELY NOT GUARDED, and both would be a check that
+reads like a control:**
+
+- **`withdrawal_add`** — the whole section is `@owner_required`, so a rule that
+  refuses Office could never fire. Exactly why `delete_window` is not called
+  there either, recorded one section up.
+- **`SupplierRestockBill.bill_date`** — CLAUDE.md documents back-dating there
+  as the workshop's *intended rhythm* ("a Supplies Shop delivers, keeps its own
+  book, and the bill is only keyed when the collector comes at month end"), and
+  a back-dated bill is one of only two things allowed to re-cost a past draw.
+  The floor probably would not refuse the ordinary case — month end is inside
+  it — but changing it is a decision about the costing replay, not a hole to
+  plug. **Put it to the owner before adding it.**
+
+⚠ **THE CASHBOOK'S DATE-RANGE FILTER MUST NEVER BE FLOORED.** Reading last year
+is not filing money into it. The custom `start_date`/`end_date` pickers sit on
+the same page as the entry form and were briefly given `min` by a blanket edit,
+which would have made the ledger's own history unreachable from its own filter.
+→ `test_the_cashbook_DATE_FILTER_is_never_floored`
+
+**The `min` attribute on each box is presentation** — every guard is in the
+view and refuses a crafted POST that never rendered a box. `floor_iso` is `''`
+for an owner, so the browser stops nobody it should not.
+→ `workshop/tests/test_backdate_floor.py` — deliberately ONE list of screens
+rather than a class per section, because the point of the rule living in
+`money_dates` is that every screen answers it identically.
+
+### An owner cannot do it silently — where prevention stops, detection starts
+
+⚠ **THE ESCALATION STOPS AT THE OWNER, SO THE OWNER IS WHERE THE MODEL HAS TO
+CHANGE.** Every guard in this section refuses Office and points at an owner.
+Nothing can refuse an owner, and an approval queue in a two-owner workshop is
+machinery nobody would use. What is left is the control this codebase already
+relies on for every permanent delete: **the act reaches the OTHER owner's phone
+within seconds.** `notify()` excludes the actor, so an owner never buzzes
+themselves and what arrives is always *somebody else did this*, which with two
+owners is corroboration rather than a receipt.
+
+Two events, both CRITICAL, both Owner-audience:
+
+| | fires on | carries |
+|---|---|---|
+| **`RENT_RATE_SET`** | **every** rate change | `detail` says *backdated, N months re-priced* when it reached back |
+| **`RENT_BACKDATED`** | a deposit filed past the Office floor | the month it landed in |
+
+**One constant decides both halves.** `is_too_far_back()` is what refuses
+Office *and* what triggers the alert on an owner, so the rule enforced and the
+rule announced can never drift apart.
+
+⚠ **AND AN ALERT IS NOT ENOUGH ON ITS OWN, WHICH THE OWNER CAUGHT BY USING
+IT.** They back-dated a deposit, then asked why they still felt insecure — and
+they were right: a `Notification` is a **feed**, read rows are swept after
+`RETENTION_DAYS` (14), and `notify()` excludes the actor, so the one person who
+most needs to see what they did is the one it never reaches.
+
+The fix needed no new column. **Every deposit already stores two dates** —
+`date` (when the money moved) and `created_at` (when somebody keyed it) — and
+nothing showed them. A row whose two dates fall in **different months** is
+money filed into a month that had already closed, and it now says so on the row
+itself, permanently, visible to whoever opens that month:
+
+    ₹5,000   ⏱ added 4 Sep 2026   second handover
+
+Three things travel with it. The threshold is the **month**, not the day —
+keying yesterday's handover this morning is the ordinary case and marking it
+would make the mark meaningless by the second row. It is **amber**, the colour
+the date box already wears while a back-dated entry is being typed: one fact,
+one colour, before and after. And the **success message names the month**
+("filed under May 2024 — the position of every month since has moved"), because
+the actor is excluded from the alert and would otherwise be told only
+"Recorded ₹5,000 deposited".
+
+**The add form also asks first, but only past the floor.** Recording a deposit
+is the most frequent money action in the app and carries no dialog on purpose;
+a date past the floor is not most days, and for an owner it is the only guard
+there is. This is the settle dialog's rule applied exactly: confirm where it
+can still surprise somebody, nowhere else.
+→ `test_the_row_ITSELF_says_it_was_keyed_late_and_that_is_permanent`
+
+⚠ **AND THE ROW MARK ALONE WAS STILL NOT ENOUGH — the owner found that by
+using it too.** They back-dated a deposit, *knew* they had, and still could not
+find it: the mark is only visible once the RIGHT MONTH is open, so a row filed
+into a month nobody would think to open stayed findable only by hunting. They
+spotted it in the end because the demo data was uniform enough for one odd
+figure to stand out, **which is not a control.**
+
+**"Recently added" reads the same log by KEYSTROKE instead of by money date**,
+across every month, so whatever was just done is at the top. `?added=recent`,
+one link beside the heading, `RECENT_ROWS = 40` — it answers *"what did I just
+do?"*, and anything older is found by opening the month, where the row's own
+mark makes it obvious.
+
+**TWO TIERS, because they are different amounts of harm** — `backdating()`
+returns `''` / `'late'` / `'closed'`:
+
+| | | |
+|---|---|---|
+| **amber** | `late` | dated back inside its OWN month — the month's total is unchanged and no closed period moved, only the day is off |
+| **red** | `closed` | filed into a month already finished — that month's position, and every month since, has moved |
+
+⚠ **ONE RULE, READ BY BOTH VIEWS.** The month log and Recently added must
+never mark the same row differently, so neither computes its own answer.
+⚠ **RECENT MODE PRINTS NO DAY TOTALS.** A day header carries a day TOTAL, and
+that is only true when the block holds every deposit of that day. Ordered by
+keystroke the list is a SLICE — two rows of one day can be far apart — so a
+header there would print "the part of that day I happen to be showing". Each
+row stands alone instead.
+→ `FindingWhatWasFiledBackwardsTests`
+
+⚠ **THE ROW MARKER IS NOT YET ON THE OTHER FIVE SCREENS.** They have the floor;
+they do not have the permanent visible trace, and none has a Recently-added
+view. Every model involved already carries both dates — do it as its own pass.
+
+**Volume is what keeps them safe at CRITICAL** — the argument `LOGIN` already
+rests on. A rent changes about once a **year**; a deposit past the floor is a
+go-live opening entry or a rare correction. Two pushes a year between them.
+
+**`RENT_RATE_SET` fires on every change, not only a backdated one**, because
+what the premises cost is the figure every number in the section is measured
+against and the other owner wants to know it moved either way. The backdating
+rides in `detail` — the context, read second — so the body stays a complete
+statement on its own.
+
+⚠ **They stay SPLIT rather than becoming one "rent history changed".** The
+bodies are different facts with different remedies — one says what the premises
+now cost, the other says money was filed into a closed month — and a title
+covering both would have to be vague enough to say nothing. Same reasoning that
+keeps `LOGIN` and `STAFF_LOGIN` apart.
+
+⚠ **DELETING A RENT RATE WROTE NOTHING AT ALL for one revision** — the one act
+in the section that could rewrite what every past month cost and leave no
+trace, which is worse than deleting a deposit, logged from the start. It goes
+through `DeletionLog.record()` under **`ENTITY_RENT_RATE`**, which is the choke
+point: one call gives the audit row, the reason, the snapshot *and*
+`RECORD_DELETED` at CRITICAL. **No separate `notify()` belongs there** — that
+would be the same act announced twice.
+→ `HowFarBackMoneyMayBeFiledTests`, `AnOwnerCannotDoItSILENTLYTests`
+
+**A DAY HEADER APPEARS ONLY WHEN A DAY HAS MORE THAN ONE DEPOSIT.** The header
+exists to carry a day TOTAL, and on a day with one handover — most days — that
+total is the row's own amount printed twice, one line apart, for double the
+height. The invoice's own rule about a single part: with one unit there is
+nothing to break down. On a day with two or more the total is the whole point,
+because **the collector's book is the truth and this is a copy of it**, so the
+realistic failure is the same handover keyed twice — which quietly lowers
+today's figure and is invisible until month end. Never blocked; two genuine
+handovers in a day are ordinary. Measured: the list went 340px → 262px.
+→ `TheDayTotalMakesADoubleEntryVisibleTests`
+
+**NO CONFIRMATION DIALOG ON RECORDING A DEPOSIT — the only payment form in the
+app without one.** The other three settle a shop, a fleet account or an owner
+draw: large, occasional, worth a pause. This is the most frequent money action
+in the system, keyed most days, and a modal on every one is exactly how a
+confirmation stops being read. What can actually surprise anybody is a
+back-dated entry, and the shared date glyph already turns amber and spells the
+day out when it is not today.
+
+**No payment method**, deliberately — it is always cash handed to a man with a
+book, and a select that can only ever say one thing is a field to leave out.
+The form is otherwise the shared `.rpay-*` control, **red** because the money is
+going out; it is the fourth screen to use it and adds no copy of it.
+
+**Recording is `@office_required`; setting the rent is `@owner_required`.** The
+office hands over the cash and keys it; what the premises cost is a business
+term. The rent card is gated in the template to match the view — a door Office
+can see and cannot open is worse than no door. Floor sees none of it.
+
+### Rent is the fifth expense stream — 2026-09-04
+
+⚠ **THIS REVERSES WHAT THIS FILE SAID UNTIL 2026-09-04, AND THE WORKFLOW
+FORCED IT RATHER THAN ANYBODY CHOOSING IT.** The entry read **NOTHING IN THIS
+SECTION REACHES `analysis_engine.py`, AND THAT IS A BOUNDARY RATHER THAN AN
+OVERSIGHT**, on the reasoning that rent still became an expense the way it
+always had — as a Cashbook category — so switching the section on moved no
+reported figure by a rupee. `TheSectionStandsOnItsOwnTests` asserted it and
+said it should fail on the day somebody moved rent onto its own line, "which
+is the point: it should be a decision, not a side effect."
+
+That boundary held on ONE assumption, and the assumption was about people
+rather than code: **that the office would keep keying the monthly rent bill
+into the Cashbook.** Once they started recording rent in its own section
+instead, "no figure moves" quietly became "rent is in the books nowhere".
+Measured on the development data when it was found:
+
+| | Profit charged | the rent ledger said | |
+|---|---|---|---|
+| **September 2026** | ₹900 | ₹35,000 | profit **₹34,100 too high** |
+| **August 2026** | ₹45,000 | ₹35,000 | two different rents |
+| **This Year** | ₹1,80,900 | ₹3,15,000 | profit **₹1,34,100 too high** |
+| **2025** | ₹0 | ₹4,20,000 | the page read "nothing recorded" |
+
+**THE RULE NOW — three questions, three surfaces, and no figure on two of
+them:**
+
+| | | |
+|---|---|---|
+| what the month **COST** | the RATE, whole months | the **expense**, stream 5 |
+| what was **HANDED OVER** | the DEPOSITS, by the day the cash moved | **Cash Tracking** |
+| the **GAP** | charged less deposited | a `financial_position()` tile, in the owed column |
+
+That is the app's **fourth instance** of a rule it already followed three
+times, not a new idea: wages are dated by the salary MONTH and not the day the
+cash left; a `SupplierPayment` never touches profit while the stock DRAW does;
+a spare-shop payment never touches profit while the part fitted does. This
+module's own header said so before any of it was wired.
+
+⚠ **THE ARITHMETIC LIVES IN `rent.py`, AND `analysis_engine` CALLS IT.**
+`charged_by_month` / `charged_between` / `deposited_between` / `outstanding` /
+`ledger_starts`. A second walk over the rate table in the engine would be a
+second answer free to drift from the one the Deposit & Rent page prints — the
+`SPARE_COST` rule ("nothing may re-derive it") applied again. `charged_between`
+is deliberately the **sum of `charged_by_month`**, because the trend chart is
+built from the per-month figures and the headline from the single figure, and
+two walks would be two chances to cap differently.
+
+⚠ **RENT IS THE ONLY STREAM THAT NEEDS A CAP, AND THAT IS THE ONE GENUINELY
+NEW HAZARD.** Every other figure in the engine is a SUM OVER ROWS and no row
+exists in the future, so a window running past today is self-limiting. Rent is
+DERIVED from a rate, so nothing stops it being charged for months that have
+not happened: `this_year` resolves to 1 Jan – 31 Dec deliberately, so an
+uncapped walk charges **twelve months on 4 September — ₹4,20,000 against a true
+₹3,15,000**, which is ₹1,05,000 of invented expense on the page distribution is
+decided from.
+
+**The current month IS charged, in full, from the 1st**, and the difference
+from an unsettled wage bill is the whole reason: rent is **stored**, so it is
+known on day one, where a month's wages are not known until leave days are
+entered. `unsettled_months` names that gap instead precisely because the figure
+would have to be guessed. Nothing here is ever guessed.
+
+**A month is charged when its 1st falls inside the window** — `salary_expense`'s
+own rule (`SalaryPayment.month__range`), so the two monthly costs in this app
+are dated by one rule. Shared consequence: a mid-month custom range charges
+neither a wage bill nor a rent.
+
+⚠ **`_DATE_STREAMS` GAINED TWO ENTRIES, AND THE RATE IS THE ONE THAT MATTERS.**
+Before them All Time opened on 2026-02-07 against a ledger reaching back to
+October 2023 — **₹10,15,000 of rent outside the widest filter in the section
+while it claimed to cover everything**, the identical shape to the ₹1,22,167
+salary bug that list's own comment records. `RentDeposit.date` alone is not
+enough: a rate's month is a 1st and a month is charged only when its 1st is in
+the window, so a ledger opened in October whose first deposit fell on the 5th
+would drop October's rent.
+
+⚠ **A CASHBOOK CATEGORY NAMED LIKE RENT IS NOW A DOUBLE COUNT, AND IS FLAGGED
+RATHER THAN FILTERED** — `analysis_engine.RENT_WORDS`, the same treatment a
+wage-looking category gets, with the warning beside the headline because it
+changes what the figure above it means. "Rent agreement stamp paper" is a real
+running cost, so nothing is ever removed.
+
+**MATCHED ON WORD BOUNDARIES, NEVER AS A SUBSTRING**, and this is the one place
+in the engine where that distinction is load-bearing: a contains-check for
+"rent" also matches "cur·rent", and this workshop calls its electricity bill
+**"Current bill"** — so it would accuse the single most common row in the
+ledger and be ignored inside a week. Done in **Python** over the rows already
+grouped, never as a database regex: `\b` is a word boundary in Python and a
+**BACKSPACE** in PostgreSQL's POSIX regex, so a DB-side pattern would behave
+one way under test (SQLite) and another in production.
+
+**The Cashbook steer reads that same list and adds one pair of words**
+(`deposit`, `deposits`). Deliberately broader: a steer only ASKS and never
+blocks, so a false positive costs a second, while the flag ASSERTS the profit
+figure is wrong and a false warning on that page is worse than none.
+
+⚠ **THE STEER'S HEADER COMMENT HAD SAID THE OPPOSITE OF ITS OWN CODE SINCE
+`c594ee8`.** It read '"RENT" IS DELIBERATELY NOT IN THIS LIST, and adding it
+would cost the workshop ₹35,000 a month' — directly above
+`(['rent', 'deposit'], …)`. The reasoning was sound and the code never matched
+it, so the app was already nudging the office out of the one place rent was
+counted. The wording is simple now, exactly as that comment predicted: **"Is
+this rent?"**, one question for both halves.
+
+**On the map**: the card had NO connector, and the absence was the statement —
+its second chip read "not in profit yet". It now drops straight into **PROFIT**,
+and the chip says the thing the line cannot: **"the deposit is not the cost"**.
+⚠ **ONE line, not two, and the second is refused by the drawing rather than
+forgotten**: reaching CASH TRACKING means routing outside x=1040–1388 and both
+margins are full (x=1006 is the expense trunk, 1013/1024/1030 carry the fleet
+and photos runs, x=1404 is the owner withdrawal's own rail — a second coral run
+there sits 0px from it for 166px, which is what check 5 exists to refuse). It
+is also consistent: **no expense card on that sheet gets a cash line.** Rent
+does not tap the expense trunk either, for geometry rather than meaning — the
+rail's horizontal leg ends at x=1006 and this card sits at x≥1108, so every tap
+would be a diagonal on a sheet built entirely on right angles.
+→ `TheRentIsAnExpenseAndTheDepositIsCashTests`,
+`ACashbookRowNamedLikeRentIsFlaggedNotFilteredTests`. The invariant that used
+to BE the boundary is still asserted and is the most important test in the
+file: **a deposit moves no profit figure by a rupee.**
+
 ## Master data
 
 **Master data dedupes on `__iexact`, and there is exactly ONE rename
@@ -1755,8 +2426,15 @@ actually cost, and is the workshop's real rhythm.
 owner's question, in their words: *"we have to pay Supplies Shops ₹1,00,000,
 but we have ₹1,20,000 worth of stock in the workshop."* Both figures existed
 and lived on two different pages, so the comparison could not be made. "Stock
-on the shelf" is now the fifth tile in Position Right Now — full width, its own
-rail colour, directly under the supplies-shops payable.
+on the shelf" is a tile in Position Right Now, with its own rail colour.
+
+⚠ **IT WAS FULL WIDTH AND DIRECTLY UNDER THE SUPPLIES PAYABLE UNTIL
+2026-09-04, and the adjacency was the recorded reason for both.** The card
+splits by DIRECTION now (see below), so the shelf sits in the held column and
+the supplies payable in the owed one — **the comparison is made ACROSS the card
+rather than down it.** Both are still on one screen without scrolling, which is
+what the original change was for; the lever, if the owner wants them level
+again, is the order of the owed column in `financial_position()`.
 
 ⚠ **There is no accounting identity between them, so no net is computed.** The
 payable covers every unpaid bill whether or not those goods are still on the
@@ -1765,6 +2443,44 @@ they answer the real question — is the debt backed by goods we still hold — 
 the owner does that reading, not the page. The tile says **"at what it cost"**,
 because valuing the shelf at retail would put an unearned margin into a balance
 figure.
+
+⚠ **POSITION RIGHT NOW IS TWO COLUMNS BY DIRECTION — WHAT WE HOLD LEFT, WHAT
+WE OWE RIGHT** (the owner's instruction, 2026-09-04). Green and blue on the
+left, red on the right, and it makes this card speak the same spatial language
+as **Cash Tracking directly above it**, where money in is the left column and
+money out is the right.
+
+**Every tile is one shape.** Two of them were full width for a day — the shelf
+and the rent — because a two-column grid filled row by row always orphans the
+fifth of five, and a tile carrying a `note` line is taller than its neighbours.
+The owner's call was that the two read as odd slabs under four normal boxes.
+Two independent stacks solve both problems at once: nothing orphans, and an
+uneven tile is simply taller than the one beside it. `.pf-pos-item.wide` and
+the `wide` flag are both gone.
+
+⚠ **`tile_columns` IS DERIVED FROM `tiles` IN ONE EXPRESSION**, never built
+alongside it — two hand-maintained lists would be two orders free to drift, and
+they would drift the day a tile is added, which is exactly how the card ended
+up with a five-tile grid that orphaned one. The template loops columns and then
+tiles, so **the tile markup exists once**; `forloop.first` becomes per column,
+which is what the green figure wants (the held column opens on "Customers owe
+us", and the owed column's first tile is `out`, so it cannot fire there).
+
+⚠ **A `credit` TILE GOES LEFT, WITH WHAT IS HELD.** A shop paid ahead is money
+in the workshop's favour and is *not* a debt, so listing it in a column of
+debts would be the sign already turned into words and then contradicted by
+where it sits. The rule is simply: **`out` is owed, everything else is not.**
+
+**THE HELD COLUMN IS FIRST, and that is the phone layout.** Below 576px the
+grid collapses to one column and the two wrappers stack in DOM order, so the
+owner reads what is theirs before what they owe. Measured: at 1280 two 360px
+columns with rows level at 68/68/86 either side; at 600 — the narrowest
+two-column case — two 260px columns with both note lines still on one line; at
+375 a single 305px column reading green, green, blue, red, red, red.
+→ `test_WHAT_WE_OWE_IS_ONE_COLUMN_AND_EVERYTHING_ELSE_THE_OTHER`,
+`test_THE_COLUMNS_ARE_EXACTLY_THE_TILES_no_more_and_no_fewer` — that second one
+is the invariant, because the failure is invisible: a tile dropped from both
+columns still leaves a card that looks perfectly correct.
 
 **Unknown cost on an `Item` is `avg_cost == 0`, NOT NULL** (`default=0,
 null=False`), so an `isnull` filter matches nothing and would value opening
@@ -1806,8 +2522,8 @@ income**, less the running costs:
 
 ```
 LABOUR + SPARE PARTS MARGIN + INVENTORY MARGIN + CASHBOOK INCOME
-    (less discounts given)            = GROSS EARNINGS
-less SALARY and GENERAL CASHBOOK      = THE SAME PROFIT
+    (less discounts given)                 = GROSS EARNINGS
+less SALARY, RENT and CASHBOOK EXPENSE     = THE SAME PROFIT
 ```
 
 ⚠ **THERE IS NO RECONCILING LINE, AND ITS ABSENCE IS THE POINT.** This card
@@ -1818,9 +2534,14 @@ has to explain itself to itself is a page nobody trusts. The fix was to pick one
 basis, not to word the bridge better. **If a third row ever reappears in
 `spend`, the two bases have drifted apart and that is the bug.**
 
-Three things that make the identity close, each of which was an easy miss:
+Four things that make the identity close, each of which was an easy miss:
 - **The discount is its own line.** It is given on the whole bill, so it belongs
   to neither the labour line nor either margin. Shown only when there is some.
+- **Rent is handed in like every other shared figure.** It joined the equation
+  on 2026-09-04 and leaving it out of `spend` would land this card ₹35,000 a
+  month above the equation printed directly over it — and the whole safety of
+  stating the profit twice is that the second statement lands on the first with
+  nothing in between.
 - **`unattributed_spare_expense` is NOT deducted again.** `parts_trading` costs
   every `SOURCE_SHOP` row whether or not a shop was named, so it is already
   inside the shop margin. The equation splits it out; this absorbs it.
@@ -1888,7 +2609,7 @@ that ran out.
 
 **The breakpoint is 640px, the app's own phone line** — the nav bar moves to
 the bottom at the same width, so "mobile" means one thing across the whole app.
-It also clears the content: the longest line ("Rent, power, consumables" plus
+It also clears the content: the longest line ("Power, water, consumables" plus
 its figure) needs ~250px, and 640px leaves each column ~275px. Measured at
 1024 / 768 / 375: two 352px columns, two 329px columns, then stacked with the
 red starting 240px down.
@@ -1925,12 +2646,14 @@ names have to say so. Renamed in **both** places the engine prints it — the
 equation's expense line and the earnings card — since it is one figure.
 
 ⚠ **"MONEY SPENT" ON THE EXPENSES CARD WAS FALSE, and it is the spend/paid
-collision again.** Only **one** of its four lines is cash: General Cashbook.
+collision again.** Only **one** of its five lines is cash: Cashbook Expense.
 Spare Shops is the cost of parts fitted, dated by the job card, while the shops
 are settled in instalments months later; Inventory Used is stock drawn at
 weighted-average cost, bought and paid for on an earlier bill; Salary & Advance
 is the wage bill for the salary MONTH, whose settlement cash leaves in the
-first days of the next one. It became untenable the moment Cash Tracking landed
+first days of the next one; and **Rent** is what the premises cost for the
+month, where the cash went out in daily handovers that Cash Tracking reports
+separately. It became untenable the moment Cash Tracking landed
 directly above it — two adjacent cards, one saying "Money moved" and one "Money
 spent", over figures on entirely different bases and differing by lakhs. It now
 reads **"What the work cost, not cash out"**.
@@ -2084,6 +2807,14 @@ again on Owner Withdrawals: comments explaining that "Show everyone" and "No
 owner chosen" had been removed put both phrases straight back into the
 response. `{% comment %}` is the safe place for that note — Django strips it
 before anything is sent.
+
+⚠ **AND IT IS NOT ONLY RETIRED COPY — A URL SCHEME WRITTEN OUT IN A COMMENT
+TRIPS THE INVOICE'S OWN THIRD-PARTY TEST.** A `//` comment on the bill noting
+that `navigator.clipboard` is undefined over unencrypted HTTP wrote the scheme
+literally, and `test_the_page_loads_nothing_from_a_third_party` reads every
+absolute URL on the page — so the bill was reported as fetching something it
+does not fetch. The comment now spells the scheme out in words and says why.
+**A comment on that page is part of the page.**
 
 **Wages come from Salary & Advance, never the Cashbook.** Wage cost for a settled
 month is `net_amount + advance_used` (an advance is cash already out; the
@@ -2732,6 +3463,113 @@ keeping: **a trace approximates letterforms by construction** — it rendered at
 two-colour logo are the tell for the first failure; a ratio that disagrees with
 the source is the tell for the second.**
 
+### The type is measured off the reference bill, not chosen
+
+**Calibri, and the sizes are READ OUT OF THE WORKSHOP'S OWN PRINTED BILL** —
+`Running Invoice.pdf`, whose embedded font programs name themselves Calibri
+Regular / Bold / Bold Italic (Ascent 952, CapHeight 631, Descent -268) and whose
+every text run was measured after undoing the 0.75 device-to-point matrix that
+"Microsoft Print To PDF" lays a page out with. Not matched by eye.
+
+⚠ **THE LINE ITEMS ARE 10pt AND THE BANDS ARE 11pt, AND THAT IS NOT AN
+INCONSISTENCY TO TIDY UP.** The reference does exactly this: job and part rows
+at 10, the BILL TO / VEHICLE INFO block and every navy header band at 11. The
+owners reported the bill as "Calibri (Body) 11" — which is true of the block
+they happened to click, and false of the line items that make up most of the
+page. **A blanket lift to 11pt would break the half that was already correct.**
+
+| | |
+|---|---|
+| INVOICE / ESTIMATE title | 26pt |
+| address, line items, footer | 10pt |
+| vehicle block, header bands, DATE / # | 11pt |
+| thank-you line | 12pt |
+| TOTAL | 14pt |
+| PAID stamp | 9.5pt — ours alone, the reference has none |
+
+⚠ **THE TITLE INHERITS THE SHEET'S FAMILY AND MUST NOT BE GIVEN ITS OWN.** It
+was `Arial 21.5pt` for a year — the right WIDTH reached through the wrong font,
+because it had been sized until it set as wide as the DATE line beneath it, and
+Calibri is narrower than Arial, so 21.5pt Arial measures almost exactly 26pt
+Calibri Bold across. Measured after the change: 31.07mm against the ~31.2mm the
+old value had been tuned to. The width was always right; only the font was
+wrong.
+
+⚠ **`.inv-table td, .inv-table th` (0,1,1) SETS 10pt FOR THE WHOLE TABLE**, so
+the header bands need `.inv-table thead th` (0,1,2) to beat it — the same
+specificity trap the modifier classes are already qualified against, and the
+reason an `!important` blanket override is the wrong way to test a size change:
+it flattens TOTAL and the thank-you line too.
+
+**Two things in the reference are deliberately NOT copied.** Its parts SUBTOTAL
+sets the label at 10pt and the figure at 12pt while the job table's sets both at
+10 — an inconsistency inside its own file, which this template already resolved
+on purpose. And its email address is in **Arial** while the three address lines
+above it are Calibri, which is a paste that kept its formatting.
+
+*Worth telling the owners, and not our bug:* their Excel page setup is **US
+Letter**, not A4, so every bill they print is being scaled or clipped.
+
+### The saved PDF's name
+
+**`document.title` IS the filename, and it reaches the file on two of the three
+platforms this workshop uses.** `invoice.document_title()` builds it for both
+documents — "Audi A4 KL 10 AA 1003 (JB-26-154)", searchable by car, plate and
+document number at once, in a folder of hundreds. It is not decoration.
+
+⚠ **THE DESTINATION DECIDES IT ON WINDOWS, AND THAT IS NOT OUR BUG TO FIX.**
+Chrome and Edge's own **Save as PDF** pre-fills the name box from the title.
+**Microsoft Print to PDF** — which Windows 11 often makes the DEFAULT
+destination — opens its "Save Print Output As" dialog with the box **blank,
+always**, because the Windows driver ignores the print job's title. Same page,
+same title, two destinations, two outcomes. The owners hit this and reported it
+as a system defect; the whole remedy is choosing the other destination once, and
+the browser remembers it. **Check which dialog is on screen before believing the
+title is broken** — "Save Print Output As" is the Windows driver, "Save As" is
+the browser.
+
+⚠ **iOS IGNORES THE TITLE OUTRIGHT AND NOTHING CAN CHANGE THAT.** Every PDF
+saved from Safari is filed as `Safari - <date> at <time>`, whatever the page
+says. It is not a bug in this app and no markup fixes it. What iOS *does* give
+is an editable name field in Save to Files — so **pressing Print copies the
+title to the clipboard** and the owner pastes it. That is the ceiling on iPhone:
+the paste is made effortless, never automatic.
+
+Four things are load-bearing, and three of them cost a real defect if changed:
+
+- **IT IS SILENT, ON THE OWNER'S DECISION.** No toast, no confirmation. There
+  are two owners, both were told once, and a message on every bill is confirming
+  what cannot surprise anyone — the settle dialog's own rule. The trade is that
+  the burden moves to the code comment and to this entry.
+- ⚠ **THEREFORE IT LOOKS EXACTLY LIKE DEAD CODE.** Nothing on screen changes
+  when it runs, nothing in the Django suite can execute it, and deleting it
+  breaks no behaviour that fails loudly — the owners simply lose the workflow.
+  `TheSavedPdfIsNamedForTheCarTests` is the tripwire, and it was verified by
+  deleting the handler and watching two tests fail.
+- ⚠ **CAPTURE, ON `document`, NEVER A LISTENER ON THE BUTTON.** The inline
+  `onclick` fires in the target phase and `window.print()` **blocks** until the
+  dialog is dismissed — and at the target, listeners run in registration order
+  whatever their capture flag. So anything bound to the button itself copies
+  AFTER the dialog has already closed, which is silently useless.
+- **IT CAN NEVER STOP A BILL PRINTING.** `onclick="window.print()"` stays inline,
+  so printing does not depend on this script having run at all, and the copy is
+  wrapped. `navigator.clipboard` is **undefined on plain `http://`**, which is
+  not hypothetical: serving the Floor tablet over the LAN would do it.
+
+*Considered and NOT done:* a **server-generated PDF** with
+`Content-Disposition: filename=...`, which is the only thing that would name the
+file automatically on iPhone. It needs either headless Chromium on Railway
+(~400MB in the image) or a second rendering engine such as WeasyPrint — and a
+second engine means the bill a customer receives could drift from the one the
+workshop prints, which is the "two implementations of one thing" failure this
+codebase refuses everywhere else. Revisit only if the iPhone becomes how bills
+actually reach customers.
+
+⚠ **`shop_print.html` is NOT covered and titles itself `Print - <shop name>`**,
+so a saved copy of a spare shop's report is called "Print - …". That is a
+separate defect in that template's title, not something the clipboard would fix.
+→ `TheSavedPdfIsNamedForTheCarTests`
+
 ## Estimates
 
 **An ESTIMATE is connected to NOTHING, and that isolation is the feature.**
@@ -3355,11 +4193,11 @@ browsers.
 
 The whole event list is **`workshop/notifications.py`**. Add an event to `EVENTS`,
 then call `notify()` from the single place it happens — **never**
-`Notification.objects.create()` in a view. There are **16 call sites across 8
+`Notification.objects.create()` in a view. There are **17 call sites across 8
 modules**; that file is the only way to answer "what does this thing notify
 about?" without grepping.
 
-`EVENTS` holds **14 events — 11 CRITICAL, 3 INFO**, all Owner-audience.
+`EVENTS` holds **16 events — 13 CRITICAL, 3 INFO**, all Owner-audience.
 
 **Severity is a tier, not decoration: CRITICAL sends a Web Push, INFO only lands
 in the feed.** Keep the critical list short — a phone that buzzes for routine
@@ -4134,11 +4972,15 @@ Five things are load-bearing:
   information is the point.
 - **It must not fire on things that do not navigate.** Verified: `data-bs-toggle`
   (the drawer and every ⋮ menu), `#` anchors, `target`, `download`, cross-origin,
-  the same URL, and **a `confirm()` the person cancelled** — that last one matters,
-  since eleven templates ask through `confirm()`, mostly as an
-  `onsubmit="return confirm(…)"` attribute. It is delegated on
-  `document` in the BUBBLE phase, so the guards that refuse a submit in CAPTURE
-  (the Financial Lock, the inventory quantity check) never reach it.
+  the same URL, and **a question the person answered "no" to** — that last one
+  matters, and it now works for a different reason than it used to. It was
+  eleven templates asking through `onsubmit="return confirm(…)"`, which set
+  `defaultPrevented` synchronously; the shared confirmation card cancels the
+  submit **outright** and re-issues it only once Confirm is pressed, so a
+  cancelled question never reaches this at all and a confirmed one arrives as a
+  fresh submit. It is delegated on `document` in the BUBBLE phase, so the guards
+  that refuse a submit in CAPTURE (the Financial Lock, the inventory quantity
+  check) never reach it either.
 
 ⚠ Three templates confirm through a Bootstrap modal that then calls
 `formToSubmit.submit()`. **Programmatic `.submit()` fires no submit event**, so
@@ -4148,7 +4990,10 @@ There is exactly **one** nav: a fixed bar in `base.html` plus a Bootstrap
 off-canvas drawer (`#appDrawer`) behind the Manage/Menu button. There used to be a
 second, divergent mobile bottom nav; it was deleted because the two menus listed
 different things. **Don't add a second nav** — a new destination goes in the
-drawer, in the section it belongs to.
+drawer, in the section it belongs to. ⚠ That rule was tested in 2026-09 by a
+request for a global back button in the bar and it held: see "Going back — one
+control, one shape, one place" for the measurements that refused it, and for
+why every page carries its own `.pg-back` instead.
 
 **The top bar carries a different set per role:**
 - **Owner / Office** — Admin · Completed · **Live** · Alerts · Manage. The bell is
@@ -4319,6 +5164,366 @@ padding / icon tile / gaps / chevron — so **246px is the width at which the la
 label stops fitting on one line**. 70vw clears it from 360px up; the 240px floor
 stops a 320px screen wrapping. Grow the type or shrink the width past that and rows
 start wrapping.
+
+## Going back — one control, one shape, one place
+
+**Every page carries its own way out, because in the installed app there is
+nothing else.** `manifest.json` declares `"display": "standalone"`, so there is
+no address bar and no browser Back button. A phone still has a system back
+gesture; **a laptop has nothing at all**, and Office reads this app on a laptop.
+
+**It is `.pg-back`, declared ONCE in `static/css/style.css`** — the file
+`base.html` links on every page, which is what lets one declaration reach 23
+templates. It sits in its own row **above the page header**, left-aligned, and
+it **names its destination** ("Spare Shops", "Control Hub", or the shop's own
+name).
+
+⚠ **A BACK CONTROL HERE IS A NAMED DESTINATION, NEVER `history.back()`.** Three
+reasons, and the first is fatal on its own: `start_url` is `"/"`, so on the
+first tap of a session `history.length` is 1 and a history button does
+**nothing** — and a control that sometimes does nothing is worse than no
+control. `history.length` also cannot say whether the previous entry is
+same-origin. And these pages are routinely opened from a notification or a
+bookmark, where there is no "back" to go to but there is always a right answer.
+
+**What it replaced, and why the fix was consolidation rather than a new global
+button.** Seventeen controls, two placements, seven treatments:
+
+| | n | what it was |
+|---|---|---|
+| 40px round icon button | 9 | six **byte-identical** `.btn-round` blocks, plus three rebuilding the same 40×40 geometry out of `btn-outline-secondary rounded-circle` + inline styles |
+| text link + arrow | 8 | five Bootstrap `text-muted small`, plus `.ua-back` / `.si-back` / `.sa-back` — which agreed on the idea and disagreed on every value: 0.82 vs 0.85rem, weight 600 vs 700, gap 5.6 vs 6 vs 7px, and two different hover colours |
+| bare glyph | 1 | `inventory/manage.html`, inline-styled, on a `--text-secondary` token this app does not define |
+| form Cancel | 4 | `javascript:history.back()` |
+
+That is the `.rpay-*` story exactly — a control drawn by more than one template,
+kept in step by hand, drifting three ways — so it got the same answer.
+
+⚠ **WHY THE BREADCRUMB PLACEMENT WON, and not the round button that had the
+larger share.** It is the only position that works on **every** page shape here.
+Nine of the round buttons sat *inside* a header flex row as a sibling of the
+`<h1>` — a good-looking header, and impossible on the three pages built around
+the dark `.detail-header` slab, where a bordered light button is a redesign of
+the slab rather than a back button. A row **above** the header needs nothing of
+the header at all, so it fits the plain `<h1>` pages, the slab pages and the
+pages that open on a filter row alike. **One placement beats a rule with three
+exceptions in it.** Since the destination is fixed at render time, printing it
+costs one short label and saves the reader a guess — so this is `.btn-round`'s
+own fill, border, colour and hover with its `aria-label` made visible, not a new
+design.
+
+**The label is the destination's NAME, never "Back to X"** — the arrow already
+says back, and the app's own rule is that a glyph does not need a caption
+repeating it. Three pages under one Supplies Shop all read that shop's name.
+
+**38px, and 44px under `@media (hover: none)`** — keyed on input method rather
+than a width breakpoint, the same pair as the job card's Add buttons and its
+date chip, because the Floor tablet is wider than plenty of laptops.
+
+⚠ **`display: flex` + `width: max-content`, never `inline-flex`.** An
+inline-flex element sits on a line box and drags its parent's line-height strut
+underneath it — the trap this file records twice. This is block-level, shrinks
+to its contents and carries its own 16px bottom margin, so a page needs one
+element and no wrapper. In the two cases where it joins an existing filter row
+(`spare_shops/shop_detail`, `suppliers/shop_detail`) it takes Bootstrap's
+`mb-0` and the row carries the margin for both.
+
+### There is NO global back button, and that was a decision
+
+⚠ **This was asked for and is deliberately NOT built** (2026-09-05). The brief
+was a back control in the nav bar for the installed desktop app. Three
+measurements against it, and the first is the one that decides:
+
+- **THE BAR'S FAR LEFT IS NOT EMPTY.** At every width the first item is
+  Home/Admin/Floor. There is no free slot. Measured at 1280: an 800px container
+  centred at x=232, five pills with 78px between them; at 768: 753px with 65px
+  gaps; at **375: five equal columns of 71px with 4px gaps**.
+- **A sixth phone tab costs every existing tab 17%** — probed live, 71px →
+  **59px** — on the one device that already has a system back gesture and needs
+  this least.
+- **It would make the owner's actual complaint worse.** The complaint was that
+  the back controls were "all different look, different place, different design"
+  — about the controls that exist, not a missing one. Add a global button on top
+  and ~20 pages carry **two** back affordances in different places.
+
+Once every page carries `.pg-back`, the standalone gap is closed by
+construction, so the global button would buy only "return to where I actually
+came from" rather than "escape" — a convenience, over a control that does
+nothing on the first page of a session.
+
+⚠ **If it is ever revisited: top-LEFT, and desktop-standalone only.** The right
+end is the crowded end (the 44px bell sits next to the 110px Manage pill) and a
+mis-tap there opens the drawer. `@media (display-mode: standalone) and (pointer:
+fine)` is supported and gates it with no script — but note it renders the control
+**invisible in a dev browser tab**, so it has to be tested by flipping the gate.
+Never a sixth phone tab.
+
+⚠ **`"display": "minimal-ui"` is not the shortcut it looks like.** It is
+per-manifest, not per-platform, so phones lose full-screen too; `display_override`
+has no desktop-only selector; and an installed app **caches its manifest**, so
+every device needs a remove-and-re-add. Checked again 2026-09-05, unchanged.
+
+### The three standalone sheets
+
+The printed invoice, the printed estimate and a spare shop's printed purchase
+report extend no base, so they carry no nav bar and no drawer — and in the
+installed app, no browser chrome either. All three answer the same way: an
+optional **`?back=`** for the screen you came from, and a **named fallback** when
+there is none. The invoice's own comment states the rule: *"Home is the fallback,
+never a second button beside Back — one exit, in one place, whichever it is."*
+
+⚠ **`spare_shop_print` rendered ZERO anchors until 2026-09-05** — measured, not
+inferred. It was the only true dead end in the app: in a browser tab the address
+bar rescued it, and in the installed app there was nothing at all.
+
+Its fallback is **not** Home, and the difference is worth keeping: a bill has no
+single natural parent, but this report is *about one shop*, and that shop's page
+is always right. So `?back=` here is not carrying the destination — it is
+carrying the **FILTER**. `shop_detail` links across with its sort, its window and
+its custom dates, and returning to a bare unfiltered ledger after reading a
+filtered report is its own small defeat.
+
+⚠ **The arrow is an inline SVG, never `<i class="bi ...">`.** These sheets load
+nothing from anywhere, Bootstrap Icons included, so an icon-font glyph renders an
+empty box.
+
+⚠ **Its toolbar is COPIED from the invoice's `.bar`, values and all.** The three
+are opened by the same person in one sitting; a toolbar that changed shape
+between them reads as three different products. `.pg-back` cannot be used here —
+these templates link no stylesheet at all.
+
+⚠ **ONE EXCEPTION: it stays ONE ROW on a phone, where the invoice's breaks into
+two.** That break was copied over with everything else and was wrong here, on
+the owner's report (2026-09-05). The invoice needs it because it carries **five**
+things — a back button, a payment-state chip and three actions — so the row
+genuinely runs out. This carries **two** buttons measuring ~84px and ~104px,
+which fit one row down to a ~217px viewport, far below anything this app
+supports. So the break spent a whole row on a gap, on the screen where vertical
+space is scarcest: measured, the phone bar was **117px and is now 63px**, which
+lifts the report's own heading 54px up the page.
+
+Below 640px the spacer stops being a line break (`display: none`) and the two
+buttons take half the row each — bigger targets than their natural widths, and
+the same equal-columns treatment the invoice's own second row gives its three
+actions. **The 640px transition is now width-only and never a row change**:
+84/104px at 641px, 307/307px at 639px, 175px each at 375px, 147px each at 320px,
+with neither label clipped at any of them.
+
+⚠ **ITS TWO TABLES SCROLL INSIDE THEMSELVES, AND THE FIX WAS THE OPPOSITE OF
+WHAT IT LOOKED LIKE.** The page slid 14px sideways at 375px, which on a document
+whose toolbar is the only way out is the worst possible thing to move: reaching
+the PRICE column dragged the Back button and the section heading off screen.
+
+The owner's question was whether un-cramping it would make an already-cramped
+table *more* cramped. It does the reverse, and the measurement is the argument.
+At 375px the content box is **335px** while the table's own **MIN**-content is
+**369px** — so the browser was already crushing every column to its narrowest
+and still overflowing, which is why "Mercedes-Benz C220d" and "Brake Pads -
+Front" each wrapped to three lines. **The congestion WAS the squeeze.** Letting
+the table take its natural 579px inside an `overflow-x: auto` wrapper put every
+cell on one line:
+
+| | before | after |
+|---|---|---|
+| row height | 78px | **40px** |
+| page length | 23,488px | **11,361px** |
+| page slides sideways | 14px | **0** |
+| rows visible on a 375px screen | 4 | **14** |
+
+Half the report's length, for 244px of scroll *inside the box*. Verified that
+scrolling the table now moves nothing else: toolbar x=0, heading x=20, page
+`scrollX` 0.
+
+⚠ **`min-width: max-content` IS THE FIX; the scroller only makes it safe.**
+Without it the wrapper would scroll a table still crushed to 369px, which fixes
+the page slide and none of the wrapping. It needs no media query — `width: 100%`
+wins wherever the container is wider (768px and 1280px measured identical to
+before, zero internal scroll), and `min-width` bites only once the container is
+narrower than the table wants to be.
+
+⚠ **BOTH HALVES ARE UNDONE IN `@media print`, and that is not belt-and-braces.**
+`overflow` other than visible can CLIP at a page break, and `max-content` would
+let a wide report push past the 2cm margin instead of fitting the column — paper
+has no scrollbar to offer, so the screen's answer is the wrong one there.
+Simulated at A4 (794px, 2cm padding): table 628px filling the content box
+exactly, inside the margin, nothing clipped. **The printed sheet is identical to
+what it was before the scroller existed** — which is the property that made this
+safe to change at all.
+
+### `workshop/return_to.py`
+
+`safe_return(request, param='back')` — the one implementation of "honour `?back=`
+only when it points back into this site". It was two byte-identical copies
+(`views/billing.py`, `views/estimate.py`) before a third was needed.
+
+⚠ **`auth_views._safe_next` is a fourth spelling of the same host check and is
+deliberately NOT folded in.** It answers a different question — where to send
+somebody *after* they sign in, not where they came from — it reads POST as well
+as GET, and it is the more security-sensitive of the two with its own tests.
+Fold it in only as its own change, with those tests in front of you.
+
+### Cancel is not Back
+
+The four master-list forms cancelled with `javascript:history.back()`. Each has
+exactly one caller, so a named URL was always available and is strictly better:
+it survives an empty history, and it is the one thing on those pages a CSP would
+break.
+
+⚠ **They keep the word "Cancel" and do NOT take `.pg-back`.** Cancel-beside-Save
+in a form footer is a different control from a page's back affordance;
+collapsing the two would put a "back" pill inside a button group. `model_create`
+and `model_edit` pass a `cancel_url` because a model list is scoped to its brand
+— Toyota's models and another make's are different lists.
+
+→ `workshop/tests/test_back_navigation.py`. The scan for retired treatments is
+the load-bearing one: nothing in the Django suite executes CSS, and a new page
+pasting a bespoke back link is invisible to every other kind of test.
+
+## Asking a question — one card, one declaration
+
+**Nothing in this app asks the BROWSER any more.** Twenty-one native dialogs
+survived until 2026-09-05 — sixteen `window.confirm()`, four `alert()` and one
+`prompt()` — on the Undo Completion menu item, both Mark Completed buttons, the
+Financial Lock, both reactivate lists, the category delete, both delete-login
+rows, the master-list rename/merge, three rent questions plus the rate delete,
+the salary overwrite, the photo delete and the spare-status fallback. They
+opened with **"127.0.0.1:8000 says"**, which is the browser talking rather than
+the app, and drew the question, the reason and the way out as one flat grey
+block that can carry no glyph, no colour and no field.
+
+**The card is `.wcf-*` in `static/css/style.css`, the markup is
+`workshop/includes/_confirm_dialog.html` included once in `base.html`, and the
+controller is `static/js/confirm.js`.** That is the `.rpay-*` rule applied
+again: a control drawn by more than one template gets ONE declaration, because
+three near-copies of the payment form drifted three ways while somebody kept
+them in step by hand. **Converting twenty-one dialogs added one thing to keep
+in step, not twenty-one.**
+
+⚠ **IT IS GENERALISED FROM `.logout-modal`, NOT FROM `confirmActionModal`,
+and the difference is the tinted disc.** The two shop pages draw a bare 3rem
+glyph; the logout card puts it in a 52px round tint, which is what lets a card
+be recognised as *its own section's* before a word of it is read — a red bin
+for a delete, an amber calendar for a back-dated entry, a green tick for a
+handover, a red open padlock for the Financial Lock.
+
+⚠ **A VARIANT IS TWO CUSTOM PROPERTIES, NEVER A SECOND COPY OF THE CARD.**
+`--wcf-tint` is the disc, `--wcf-ink` is the glyph and the filled button, set
+off `data-theme`. Same mechanism as `--rpay-btn-a/b` and the crew chips' own
+`--tint`. **Every ink carries white at 4.5:1 or better, measured** — the label
+is ~13.9px bold, under WCAG's large-text threshold, so 3:1 is not enough:
+danger 4.83, warning 5.02, success 5.02, info 6.70, neutral 10.35:1. The amber
+is `#b45309`, the app's own back-dated amber, **not** a lighter `#f59e0b`,
+which carries white at 2.2:1.
+
+**Two ways in, and the split is deliberate.** `data-confirm` on a `<form>` for
+the plain "post this and go" sites — no page script at all, and it works on a
+row that arrived by AJAX, because the listener is delegated on `document`.
+`wsConfirm(opts)` returning a Promise for the sites whose question depends on
+what was just typed: the rent date, the master-list merge, the settlement
+overwrite, a photo delete inside a fetch handler. `wsAlert()` is the
+one-button form, for a statement rather than a question.
+
+⚠ **A `data-confirm` WITH NOTHING ELSE IS THE DEFECT COMING BACK.** It renders
+the default card — amber triangle, "Are you sure?", a button reading "Confirm"
+— which is exactly the anonymous dialog this replaced.
+`test_every_declarative_question_names_its_own_card` requires all four of the
+title, icon, theme and button label.
+
+⚠ **A CARD INHERITS THE VISIBILITY RULES OF THE SCREEN IT OPENS ON, AND FLOOR'S
+SCREENS CARRY NO MONEY AT ALL.** The Mark Completed card shipped reading *"The
+bill can still be settled afterwards."* Every word of it was true and it was
+the wrong thing to say: **that button is pressed mostly from the Floor tablet**,
+by somebody who cannot settle a bill, cannot see one, and is shown no price, no
+cost and no payment state on any other screen in this app. It was also the rent
+steer's own defect — a third line answering a question nobody had asked. The
+card now says what happens to the car and stops.
+
+⚠ **AND THE SAME PASS FOUND A REAL DEAD END ONE SCREEN OVER.** `jobcard_edit`
+is `@staff_required` and the auto-lock runs for every role, but **UNLOCK RECORD
+is gated to Office and Owner** — so a mechanic saving a settled card met a
+message telling them to press a button that is not rendered for them. That is
+the "a door somebody can see but cannot open" defect the frozen-advance ⋮ menu
+already records, and the remedy is the one `_unsettleable_staff` uses: the copy
+is **role-aware**. Office and Owner are sent to the button; Floor is sent to a
+person, in words carrying no money.
+→ `NoCardEverShowsFloorMoneyTests`. ⚠ **Its board test creates a job card in
+`setUp`, and that is load-bearing** — the first version passed on an empty
+database, where the dashboard renders no car cards and therefore no questions
+to read, so putting the bill sentence back left it green.
+
+⚠ **THE CARD IS ALWAYS THE TOPMOST THING ON SCREEN — `#wcfDialog` is z-index
+2100.** The photo lightbox is 2000, deliberately above the nav bar and the
+spare-date panel, so at Bootstrap's own 1055 the card asking "delete this
+photo?" opened **behind** it: invisible, with the page apparently frozen. A
+dialog that can be covered is worse than no dialog, because the act still
+happens the moment somebody finds the Confirm they cannot see.
+
+⚠ **OPENING OVER ANOTHER MODAL HANDS OFF; IT NEVER STACKS.** A shown modal or
+offcanvas runs a document-wide focus trap, so a reason box inside a card over
+it cannot hold the caret — the defect that sent every Fleet reversal to
+Deletion History blank. `hideParent()` closes it first and waits.
+
+Three things about that wait, each of which was measured and two of which were
+wrong first:
+- **Bootstrap REFUSES a `hide()` while the modal is still opening**, silently —
+  it returns at its own `_isTransitioning` guard and raises no event. Data
+  Cleanup renders **222 modals**, so its open transition had not finished 900ms
+  after the trigger; a single `hide()` was swallowed and the page was left with
+  a backdrop nothing could dismiss.
+- **Waiting on `hidden.bs.modal` alone hangs** on that swallowed call, and
+  **stripping `fade` to force an instant close made it worse** — Bootstrap
+  finishes a transition from the classes present when it STARTED, so removing
+  the class mid-open cut the very thread the retry was waiting on and the
+  parent never closed at all. What works is re-asking on a timer until the
+  modal is actually gone, with a ceiling so a parent that will not close can
+  never swallow the question.
+- **`heal()` is the recovery, not the mechanism.** One case survives: a form
+  submitted inside the ~150ms while its own modal is still animating open,
+  where Bootstrap interrupts its own transition and re-asserts `show` after the
+  hide. That needs a submit faster than anybody can type, so it is not worth
+  more machinery — it IS worth not leaving a workshop with a screen dimmed by a
+  backdrop nothing can dismiss. After the card closes, the page is made to
+  agree with what is on screen.
+
+**Sound needs no wiring.** The card is a Bootstrap modal carrying
+`data-sound-prompt`, which is what sound.js already plays the `prompt` tone
+for — so the hook cannot fall out of step with a dialog added later.
+
+**Two native calls survive, both deliberate FALLBACKS**: `wsConfirm` itself and
+`photos.js`, each reached only when the markup or the bundle did not arrive. An
+ugly dialog beats an action that happens with no question at all.
+→ `test_only_the_two_deliberate_fallbacks_survive_in_shared_js` pins the count
+at exactly two.
+
+### One press, one post
+
+**A form already on its way refuses the second submit**, and its own submit
+controls stop taking taps. Reported from the shop: on a slow connection the
+same control is tapped again and again, and every tap was another POST.
+
+It is the login form's guard (`js-auth-form`'s `dataset.submitting`) applied
+app-wide, in two lines rather than a mechanism: `data-ws-busy` on the form is
+the refusal, and one rule in `style.css` greys the buttons to say so.
+
+⚠ **IT IS `pointer-events`, NEVER `disabled`.** A disabled control is dropped
+from the payload, so disabling a submit button that carries a `name` would
+silently change what is posted — and nothing here knows which buttons do. Paint
+cannot have that effect.
+
+⚠ **THE LATCH IS SET IN A `setTimeout` AND ONLY IF NOTHING REFUSED THE SUBMIT.**
+Two rules in one line, and the second is the load-bearing one: the Cashbook's
+steer **stops a submit and re-issues it**, so latching on the first would kill
+the entry the question was protecting. Read after the event settles,
+`defaultPrevented` is final — which also keeps the latch out of the handler's
+own tick, where disabling a control cancels the submission in some browsers.
+Every AJAX search and filter in the app prevents its own default, so none of
+them latches and none of them can be searched only once.
+
+**The dialog's Confirm button locks itself on press**, which is the half that
+covers a programmatic `.submit()` — that fires no submit event for the form
+guard to catch. **A page restored from the back/forward cache is unlatched on
+`pageshow`.**
+→ `workshop/tests/test_confirmation_card.py`
 
 ## Card list grids — six lists, two breakpoints
 
@@ -4816,6 +6021,189 @@ point.
 
 ## Dashboard & board screens
 
+**THE BOARD NARROWS TO ONE MECHANIC, AND THE HEADING MUST NOT FOLLOW IT.** A
+scrolling chip row over the cards — `All 10 · Amlah 3 · Hijaz 3 · Sabith 3 ·
+Unassigned 1` — filtering the board to one person's cars.
+
+It exists because `_floor_by_mechanic` has grouped the floor by mechanic on the
+Live Report for months and that page is **`@office_required`**, so the people
+actually holding the cars had no way to see which ones were theirs. Not a
+duplicate of it either: that board is a read-only list of concerns for deciding
+what to say next, these are the working cards with the ⋮ menu on them.
+
+⚠ **"IN WORKSHOP" READS `floor_count`, NEVER `page_obj.paginator.count`.** Those
+were the same number only for as long as nothing could narrow this board. Read
+off the pager it prints **"3 IN WORKSHOP" while ten cars are in the workshop** —
+the one figure on the page that would then be flatly untrue. The Live Report
+keeps its own `floor_count` apart for exactly this reason.
+
+**It is also what makes the filter safe to LEAVE ON, which is the question that
+decided the persistence rule.** The filter rides in the URL (`?mechanic=`) like
+every other filter in this app, so it survives a refresh, Back and the pager —
+and the argument against that is real: this is the home page and the Floor
+tablet is shared, so somebody filters to Amlah, walks off, and the next person
+sees three cars of ten. The answer is that the page contradicts a stale filter
+out loud — the heading still says ten, over three cards, with a lit chip between
+them saying whose three they are. A filter that silently reset would be the
+confusing one: you tap a name, the tablet sleeps, you wake it and you are
+looking at everyone again with nothing saying why.
+
+**Four rules about what is on the row, all falling out of ONE aggregate** in
+`_floor_chips()` — which is also the only list of valid `?mechanic=` values, so
+a chip and the filter it applies cannot disagree:
+
+- **A mechanic holding no car gets no chip** — `_floor_by_mechanic`'s own rule,
+  and a `Shafeeq 0` chip is a door onto an empty board.
+- **The counts sum to All**, the unassigned group included, so the row can never
+  quietly lose a car. Asserted, because the failure is invisible: the row still
+  looks right, it just stops accounting for one.
+- **Unassigned is last, is the only chip carrying a colour, and appears only
+  when a car is in it** — it is the one entry asking for a decision rather than
+  reporting a fact, so it takes the red the Live Report already gives its "Not
+  assigned" group.
+- **Ordered by NAME, never by count.** By count a chip moves out from under the
+  thumb reaching for it every time a car changes hands.
+
+⚠ **A key that names no chip falls back to All, and validating against the CHIPS
+rather than the staff roster is what makes the stale case and the crafted case
+one rule.** Filter to Amlah, let somebody complete his last car, come back to
+the same URL — there is no Amlah chip any more, so the board falls back instead
+of rendering empty under a filter that no longer exists. Same fallback the
+Estimates list gives an unrecognised `?filter=`.
+
+⚠ **`.order_by()` on that aggregate is load-bearing, not tidying.** The board is
+ordered `-updated_at`, and an ordering field on a `values().annotate()` joins the
+GROUP BY — which returns one row per (mechanic, timestamp) and counts every car
+as **1**. Cleared explicitly so a later edit to the board's ordering cannot
+silently break the counts.
+
+⚠ **THE CHIP IS THE PROFIT PAGE'S ROW IN BEHAVIOUR AND DELIBERATELY NOT IN ITS
+CLOTHES.** That row is a 999px Inter pill; this is the only page in the app
+wearing the pit-board look, where every control is Barlow Condensed, uppercase
+and cut to a **6px** corner (`.btn-report`) and every small figure sits in a
+**4px** block (`.age-pill`, `.reg-badge`). A rounded Inter pill here would be the
+one object on the screen that came from somewhere else. What IS copied is the
+behaviour: one line, scrolls sideways at every width, never wraps. Measured —
+450px of chips, so nothing is hidden from 768px up and 131px slides at 375px,
+with the page body itself not scrolling.
+
+The active fill is **one custom property** (`--tint`, defaulting to the page's
+own `--pit-track`), so Unassigned overrides one value rather than restating the
+declaration — the Owner Withdrawals chip's own mechanism. The count resets
+`letter-spacing`, which is not tidying: the chip tracks its uppercase at 0.5px
+and digits inherit it, so "10" rendered with a gap down the middle.
+
+⚠ **THE LABEL IS `0.78rem` BECAUSE THAT IS `.mechanic-tag` — the same person's
+name at the same size whether it is in the filter or on the card under it.** It
+shipped at 0.85rem, and measuring the page's own scale is what settled it: at
+375px that was **13.6px, the largest secondary element on the screen** — over the
+plate (12.2), over the name on the card (12.5), and 1.6px over the `+ NEW`
+button (12.0), which is the primary action. **A filter is chrome and must not
+out-size what it filters.** At 0.78rem the chip is 33.5px against that button's
+36.8px on a pointer, so the loudest control on the header row is the one that
+should be. Condensed is narrower than the card's Barlow at equal px, so the chip
+also reads a shade lighter than the name it matches — the right way round.
+
+⚠ **THE TOUCH HEIGHT IS 38px, AND THAT IS THE 44px RULE READ PROPERLY RATHER
+THAN RELAXED — this reverses what this file said for a day.** It stood at 44px
+on the argument that a thumb needs 44px whatever the type is doing. The right
+rule is narrower: **44px is for a control where a MISS COSTS YOU SOMETHING.**
+The card's ⋮ keeps it, and the reason is already on the record here — a near
+miss there opens the job card. Mis-tapping a filter chip costs one more tap,
+with the result instantly visible in the lit chip and the board under it;
+nothing is destroyed and nothing navigates.
+
+The measurement is what settled it. The chip's natural content height is
+**37.4px** (16px padding + 2.7px border + 18.7px line-height), so `min-height:
+44px` was adding **6.6px of pure forced air** — and it left the filter the
+joint-tallest control on the phone, level with that ⋮ and **taller than the
+`+ NEW` button (33.5px)**, which is the primary action. Same failure as the type
+size, one dimension over: the filter outsizing what it filters. At 38px it sits
+with the "View" bar (38.7px), under the ⋮, and still clears **WCAG 2.5.8 Target
+Size (Minimum, AA) — 24×24 — on both axes at 38×63**. The pointer case never had
+a `min-height` and is untouched at 33.5px.
+
+⚠ **Measuring one chip's natural height by zeroing its own `min-height` reads
+the WRONG NUMBER.** These are flex items in a `align-items: stretch` row, so a
+single chip just stretches back to the tallest sibling and reports no change at
+all — it looked like `min-height` was doing nothing. Zero it on **every** chip
+to see the real content height.
+
+⚠ **THE SECOND PASS WAS PADDING, NOT TYPE, AND TAKING THE CHIP APART IS WHAT
+SAID SO.** At 375px an 82.6px "AMLAH 3" was **32.9px of label and 5.5px of
+digit — 46% content** — against 25.6px of its own side padding (31% of the
+chip), plus another 10px wrapped around the digit alone. So the row read airy
+while the type was already right. Trimming horizontal air is free here because
+**the smaller side is the one that binds**: the chip is ~73px wide against a
+44px minimum, so only `min-height` is load-bearing and it is untouched.
+
+Measured at 375px across both passes: chip **82.6 → 72.6px**, row **474 → 399px**,
+overflow **135 → 56px**, and **4 of the 5 chips now sit fully on screen where 3
+did**. The fifth peeking past the edge is the scroll cue — and with the red one
+last, it is also what says Unassigned is there at all. 1280 and 820 are
+unchanged at 33.5px with nothing hidden.
+
+⚠ **Do not chase all five onto a 375px screen.** It needs ~11px more off each
+chip, which puts the text against the border — and the row scrolls by design
+anyway: this workshop has five job-card-eligible staff, so a busy day is seven
+chips and no tightening fits those. Scrolling keeps the row **one line at 46px
+whatever the roster does**, which is why it is not the Owner Withdrawals chip
+row's wrap: that one has three chips and a fixed ceiling, this one grows with
+the staff list and would be three stacked rows above the cars.
+
+⚠ **EVERY RED RULE ON THE UNASSIGNED CHIP IS SCOPED `:not(.is-active)`, AND
+THAT IS THE DOCUMENT-ORDER TRAP, CAUGHT IN PRODUCTION USE RATHER THAN IN
+REVIEW.** `.pit-crew-chip.is-unassigned` and `.pit-crew-chip.is-active` are both
+**two classes** — equal specificity, so the winner is document order, and the
+unassigned block sits after the active one. Selected, the chip therefore took
+`color: #dc2626` back over the white it had just been given and rendered dark
+red on the red fill: **1.28:1**, which is the word disappearing. The badge went
+the same way (both selectors are three), and the hover was worse — at three it
+outranks `.is-active` outright. Scoping to `:not(.is-active)` states what is
+actually meant, that the red type is the UNSELECTED marking, so it no longer
+depends on where in the file the block sits.
+
+⚠ **THE SELECTED FILL IS `#dc2626`, NOT THE PAGE'S OWN `--pit-red` (#ef4444),
+AND THE BADGE DARKENS THERE WHERE IT LIGHTENS EVERYWHERE ELSE.** Both are
+arithmetic, not taste. `--pit-red` is decoration elsewhere on this page (the
+header hairline) and carries no text; this fill carries white at 13.6px bold,
+where it measures only **3.77:1** against the 4.5:1 that size needs — `#dc2626`
+measures **4.83:1**. And `.is-active .n` lays white at 20% over the fill, which
+on navy gives a lighter block at **9.6:1** but on red composites to
+rgb(227,81,81) — moving the block *towards* the white digit on it, leaving
+**3.78:1**. Darkening gives **7.1:1**. One overlay cannot serve both: a black
+overlay on navy leaves the badge indistinguishable from the fill.
+→ `test_the_selected_unassigned_chip_keeps_its_white_type`,
+`test_the_selected_red_fill_is_the_measured_one`
+
+⚠ **VERIFYING A COLOUR RULE MEANS MEASURING THE STATE THAT CHANGED, NOT THE
+ONE THAT DID NOT.** The 1.28:1 shipped past a browser check that measured the
+chip's computed colours *while it was idle* and only eyeballed the selected one
+in a screenshot. Two further traps sit behind it: this page declares its CSS
+**inline**, so fetching fresh markup and injecting it into an already-loaded
+page styles it with the STALE stylesheet — the page has to be reloaded before
+the new rule exists at all; and `.form-control`-style transitions mean a
+computed colour read mid-flight is the OLD one, so set `transition: none`
+before reading. Both cost a measurement that read as correct.
+
+**The lit chip is scrolled into view on load**, because every chip is a link and
+a full navigation resets the scroller to the left — so on a phone, where 131px
+of the row is off-screen, selecting Unassigned left nothing on screen saying
+what the board was showing. It nudges `scrollLeft` on the row itself, never
+`scrollIntoView`, which walks up and scrolls every scrollable ancestor including
+the document. Measured: 375px scrolls 134px with the page's own `scrollX` still
+0; 820 and 1280 do nothing at all.
+
+**Two things deliberately do NOT follow the chip.** "Completed today" counts a
+different population (cars that left today) — a mechanic filter is a way of
+reading the floor, not another workshop. And the row is **not drawn at all on an
+empty workshop**, since "ALL 0" over the empty state is a control with nothing to
+control.
+
+**Cost: +2 queries, flat** — one COUNT for the unfiltered floor, one aggregate
+for the chips, both on the existing `(is_deleted, completed, -updated_at)` index.
+→ `workshop/tests/test_dashboard_crew_filter.py`
+
 **The dashboard car card is worked with a THUMB.**
 - **The car's colour is stated twice, not three times.** The 10px stripe and the 8%
   wash; the 20% coloured halo was the weakest of the three and the only one that
@@ -4942,6 +6330,40 @@ different end of the page in the tests than in production.
 **A mechanic holding no car is not listed** — every name on the board has work under
 it, which is what keeps it short.
 
+**THE FLOOR BOARD IS LAST ON THE PAGE, UNDER ITS OWN "FLOOR" HEADING — moved
+2026-09-02 on the owner's instruction, from second.** It is by far the longest
+block here: one panel per mechanic, every open concern under every car. Sitting
+above the parts boxes it pushed all three of them off the first screen, so the
+two lists that are *scanned* were below the one that is *read*. "Billed but not
+filled" still leads, for its own reason, and the parts boxes keep their green →
+amber → red order.
+
+⚠ **It needed a HEADING, not just a move.** `<h6 class="lr-group">Spares</h6>`
+opens a group that nothing closes — there is no wrapper and no second heading —
+so a box dropped after the three parts boxes with no heading of its own reads as
+a fourth kind of spare, to the eye and to a screen reader alike. The heading is
+the thing that ends the Spares group. Adding a fourth `lr-group` would be the
+same trap one box further on.
+
+⚠ **THAT HEADING READS "STILL TO DO" AND THE BOX UNDER IT STILL READS "ON THE
+FLOOR" — TWO LEVELS SAYING TWO THINGS, WHICH IS THE WHOLE POINT.** It shipped
+for an hour as "Floor" over "On the floor", one fact twice. The heading names
+the WORK, because since the concerns landed that is what the box is for; the
+box title names its ROWS.
+
+⚠ **THE ROWS ARE CARS, AND THAT IS WHY THE BOX TITLE CANNOT BE ABOUT CONCERNS.**
+The count badge is `floor_count` — the rule every box here follows is that the
+count is the rows beneath it. "Pending Concerns · 10" was proposed and would
+read as ten concerns when it is ten CARS, on a board carrying many more
+concerns than that.
+
+⚠ **AND "PENDING" IS SPOKEN FOR.** `JobCardConcern.status` is
+PENDING / WORKING / FIXED, and this box deliberately lists **both** unfixed
+states — the red disc and the amber clock. Naming the section for one of the
+two statuses it contains is the "ONE WORD, ONE MEANING" rule broken on the
+page that draws the distinction. "Still to do" covers both, and covers the
+"All concerns fixed" car too, which is itself an action: nobody has closed it.
+
 **Mechanics are PANELS — two to a row from 800px up, one below it.** A bare
 column with a rule beside it read as clutter: a rule is only as tall as its column, so three mechanics
 holding three, two and one car drew three vertical lines of three different
@@ -5053,6 +6475,59 @@ row.
 fitted, so its `status` column means nothing; listing one as waiting would send
 somebody after a part that is already on the car. Rows on a completed or deleted card
 are out too, as are spares with no job card — every row here opens a job card.
+
+**"RECEIVED (LAST 5 DAYS)" IS THE ONE BOX ON THE PAGE THAT IS NOT A LIST
+OF WORK.** Shop parts received in the last `RECEIVED_WINDOW_DAYS`, green,
+sitting above "On the way" — so the three parts boxes run green, amber, red
+down the page: the lifecycle backwards, most-finished first, which is the order
+the two that were there already established.
+
+Everything else on this page is something to act on — fill this in, give this
+instruction, chase this, order this. **A part that has arrived needs nothing
+done to it**, and most of what this box shows is already on the car.
+
+⚠ **IT IS BUILT EXACTLY LIKE THE TWO BOXES BELOW IT — same head, same row, NO
+SUBTITLE — and that is the owner's instruction rather than a default.** It
+shipped for one revision with a note under the heading (*"Nothing to chase here
+— most of these are already on the car"*) and a per-row arrival age, on the
+reasoning that a reference list drawn like four action lists reads as a fifth
+thing to worry about. The owner's call is that **the headline carries it**: the
+window is said once, in the heading, and one shape across the three parts boxes
+beats three shapes explaining themselves. The heading interpolates
+`RECEIVED_WINDOW_DAYS`, so the number on screen cannot drift from the number
+enforced.
+→ `test_its_rows_are_built_exactly_like_the_two_boxes_below_it` asserts the row
+shape against "On the way" rather than against a list of class names, so the
+age chip cannot come back by accident.
+
+⚠ **THE WINDOW IS LOAD-BEARING, NOT A TIDY-UP.** Nearly every shop spare on a
+live card is already RECEIVED — **43 of 45** on the development data — so
+unwindowed this box would be longer than the rest of the page put together.
+**5 days is the owner's own number** and the reasoning is theirs: arrivals are
+tracked physically or the mechanic says so, and this exists only for looking
+one up again afterwards. Long enough to be useful, short enough to still be
+news.
+
+Two details. It is the only parts box ordered **newest first**, because it is
+not a queue to work down. And a RECEIVED row with **no `received_date` simply
+falls outside the window** rather than being special-cased: nothing can say when
+it arrived, so nothing here can honestly report it.
+
+⚠ A missing shop is **not** called out here the way the amber box calls it out.
+There it means the ledger has nowhere to land on a part still outstanding; here
+the part has arrived and the box asks for nothing.
+
+⚠ **A PARTS-BOX VARIANT IS FIVE RULES, NOT ONE.** Square corners
+(`border-radius: 0`, one shared rule naming every variant), the title colour,
+the count pill, the row hairline and the row hover. The green box shipped for a
+revision carrying only the background and border — so it was **rounded where
+its neighbours are square**, its rows had no separators, and its heading and
+count rendered in the default slate while amber's and red's are coloured. It
+read as a different KIND of object on a page whose whole point is that the
+colour is the first thing the eye lands on. Nothing in the Django suite
+executes CSS, so the declarations are asserted directly.
+→ `WhatLandedRecentlyIsListedApartTests`,
+`test_it_is_drawn_as_the_same_kind_of_box_as_its_neighbours`
 
 **The live-details card is FOUR sections** — Customer Concerns, Job Performed,
 Inventory Items, Spare Parts — in the order the work happens. The last two used to be
@@ -5170,6 +6645,68 @@ Completed is restyled, restyle this with it.
 - **No Invoice button on a visit row** — the job card it opens carries its own, so
   it was a second door to the same place, costing a column of width on a phone and
   needing its own z-index to stay clickable above the row-wide link.
+
+**A VISIT ROW IS TWO LINES AND THREE TYPE TIERS — anchor, fact, quiet.** It had
+**six font sizes inside a 4.3px range** (10.08 / 10.88 / 11.2 / 11.84 / 13.76 /
+14.4px) across four weights, with ten separate numbers in it. Six sizes that
+close is not a hierarchy; it is six things asking for the same glance. Same
+failure the notification feed records fixing — "three sizes within 2px of each
+other, which is no hierarchy at all" — at twice the count and twice the range.
+
+| tier | | carries |
+|---|---|---|
+| **anchor** | 0.92rem / 700 / dark | the DATE, and the AMOUNT |
+| **fact** | 0.76rem / 500 / muted | the detail line, and the stay |
+| **quiet** | 0.66rem | the badge, the #N tile, the margin |
+
+⚠ **THE TWO ANCHORS ARE IDENTICAL, NOT NEARLY IDENTICAL.** They were 14.4/700
+against 13.76/800 — two-thirds of a pixel and one weight step apart, which is the
+worst kind of difference: visibly not the same, with nothing said by the
+difference. Matched, they read as one pair spanning the row, so the eye crosses
+left-to-right in one move. The phone override that shrank only the amount to
+0.86rem is gone for the same reason. **Adding a fourth size is how the six came
+back last time.**
+
+**THE DATE LEADS THE ROW AND THE BILL NUMBER DOES NOT.** `bill_number` is what
+the workshop reads out on the phone — a lookup key, not a scan key — and it was
+drawn as the headline in the largest type while the DATE sat in the *quietest*,
+so reading a car's history meant landing on the one string you were not looking
+for, four rows running. The anchor line is now **when · how long · what state ·
+how much**, the four things this list is actually scanned for; the bill number,
+mechanic and mileage drop to the detail line, read once you have found the row.
+The link moved onto the date and carries an `aria-label` naming the card, since
+"12 Aug 2026" alone is thin link text.
+
+**HOW LONG THE CAR WAS HERE sits beside the day it arrived, and the words come
+from `_time_in_workshop()`** — imported from `views/jobcard.py`, never restated.
+The read-only card prints the same figure and the two screens are opened seconds
+apart on one card, so a second copy of that subtraction would be free to
+disagree exactly there. It brings four edge cases with it: no admitted date, a
+completion dated *before* the admission (prints nothing, never "−3 days"), the
+singular, and an OPEN card counting to `localdate()` rather than a UTC today.
+
+It carries a **clock glyph, not a middot**: "2 days" dropped into a run of facts
+reads as "2 days ago", which on an old visit is a wildly different number. A real
+element, never an icon-font codepoint — a stylesheet that failed to arrive would
+otherwise take the meaning with it. An open card reads "12 days in" in the amber
+the "On the floor" badge beside it already wears, with **no transition**, the
+status-colour rule.
+
+⚠ **THE DETAIL LINE'S SEPARATORS ARE DRAWN AS TRAILING `::after` MARKS, and that
+is a wrap fix rather than a style choice.** Written into the markup as a "· "
+PREFIX the middot travels with the item after it, so the moment the line wraps
+the new line OPENS with a separator and the fact reads as a fragment that fell
+off. Measured at 320px, and at 375–412px while the stay was still on that line.
+Trailing, the middot stays at the end of the line it belongs to, where it reads
+as "continues below". `:not(:last-child)`, not `+ span::before`: the template
+renders no span for a value it does not have, so a stray separator is not
+expressible either way — but only the trailing form also survives a wrap.
+
+Measured at 390px after the pass: **3 sizes, 2 weights, rows 88px → 68px**, no
+wrap at 375 or above, nothing hidden and nothing removed. A car on the floor is
+the one row that still takes a third line, for its two badges — the exception
+that deserves the space.
+→ `EveryVisitSaysHowLongTheCarWasHereTests`
 
 **The car wears its own colour — the SAME wash `.lr-car` uses, at the identical
 alpha.** Copying the alpha rather than picking a new one is the point: a car you can
@@ -5591,12 +7128,16 @@ modal (`show.bs.modal`, which bubbles, so one document listener catches every on
 native `<dialog>` (no bubbling open event, so `showModal` is wrapped once on the
 prototype), and plain **`window.confirm()`**, wrapped the same way.
 
-⚠ **The third was missed for a day and it was close to half the sites.** The `confirm()`
-sites are thirteen calls across eleven templates, most of them an
-`onsubmit="return confirm(…)"` attribute — nothing about that markup looks like a
-dialog needing wiring — against seventeen of the other two kinds (fourteen
-`data-bs-toggle="modal"` triggers and three `showModal()` calls, all three of those on
-the invoice).
+⚠ **The third was missed for a day and it was close to half the sites** — sixteen
+`onsubmit="return confirm(…)"` attributes across eleven templates, because nothing
+about that markup looks like a dialog needing wiring.
+
+⚠ **THOSE SIXTEEN NO LONGER EXIST — see "Asking a question — one card, one
+declaration".** Every one is now the shared `.wcf-*` card, which is a Bootstrap modal
+carrying `data-sound-prompt`, so they are covered by the *first* of the three hooks and
+need nothing of their own. **The `window.confirm` wrapper stays** and is not dead code:
+`wsConfirm` and `photos.js` each fall back to the native dialog when the card's markup
+or the bundle did not arrive, and a question asked on that path must still sound.
 → `test_every_way_the_app_asks_a_question_is_hooked` scans the templates for all three
 shapes and fails if sound.js does not hook one it finds, because a *missing* hook is
 invisible to every other kind of test.
@@ -6013,10 +7554,10 @@ and there is no build step.** Every outside review reaches the same suggestion, 
 reasoning is recorded here rather than re-argued.
 
 Roughly 188 KB of inline JS across 36 templates, and ~551 KB of inline CSS across 60
-of the 106 (most templates carry their own `<style>`). Seven shared JS files exist —
+of the 106 (most templates carry their own `<style>`). Eight shared JS files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
-`photos-core.js`, `spare_autofill.js` — and the rule for what goes in one is
-**used on more than one page**; what stays inline is genuinely page-specific.
+`photos-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
+is **used on more than one page**; what stays inline is genuinely page-specific.
 
 ⚠ **`static/css/style.css` is the CSS side of that same rule, and it is easy to
 miss because most of this app's CSS is inline.** `base.html` links it on every
@@ -6102,7 +7643,15 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 59 files, 1,916 tests. Always SQLite (see below).
+# Full test suite — 63 files, 2,145 tests. Always SQLite (see below).
+# Last full run 2026-09-04: 2,134 tests, ALL GREEN.
+# ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
+# 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
+# test files running beside it, but the two IDLE runs still differed by 27
+# minutes, so the spread is mostly ordinary machine load and a slow run is not
+# a signal. Concurrent runs are SAFE (in-memory SQLite, no
+# collision) but they are not FREE: they compete for the same cores. The
+# spread between the two solo runs is ordinary machine load, not a signal.
 python manage.py test workshop inventory
 ```
 
@@ -6161,10 +7710,21 @@ once the folder filled, evict a good backup to keep itself. Requires the Postgre
 client tools on PATH.
 
 **`purge_business_data` clears ALL business tables** — job cards, shops, fleet accounts,
-inventory, cashbook, staff roster, deletion history. It deliberately does *not* try to
-distinguish "dummy" rows from real ones, because nothing in the schema marks them and a
-command claiming otherwise would be lying. It never touches login accounts, groups, or
-the master lists. **It is the thing to run against Postgres before go-live.**
+inventory, cashbook, staff roster, owner withdrawals, the rent ledger, deletion history.
+It deliberately does *not* try to distinguish "dummy" rows from real ones, because
+nothing in the schema marks them and a command claiming otherwise would be lying. It
+never touches login accounts, groups, or the master lists. **It is the thing to run
+against Postgres before go-live.**
+
+⚠ **IT MISSED THREE MONEY TABLES UNTIL 2026-09-04** — `OwnerWithdrawal`,
+`RentRate` and `RentDeposit`, all three added to the app after the command was
+written. This is the command the go-live runbook says to run against production,
+so anything it forgets is **demo money surviving into the real books**, and it
+reported success either way: ₹12,60,000 of fabricated rent and ₹12,32,500 of
+fabricated cash out on the development data. **A new money model is not finished
+until it is in that list** — and `seed_meeting_data._purge` carries the same
+list for the same reason.
+→ `ThePreGoLivePurgeClearsTheRentLedgerTests`
 
 **`seed_meeting_data` is the opposite of `seed_dummy_data`, on purpose.** That one
 randomises to look like a real workshop; this one makes **every card identical** —
@@ -6210,8 +7770,8 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 1,916-test run
-is ~70 minutes rather than considerably worse. There is deliberately no flag to
+want. SQLite's test database is also in-memory, which is most of why a 2,000-test run
+is ~64 minutes rather than considerably worse. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
 
@@ -6336,10 +7896,10 @@ unless `EMAIL_REAL=true`; `manage.py test` uses locmem regardless.
 **`workshop/`** — job cards, billing, fleet accounts, spare shops, cashbook, estimates,
 photos, auth, owner analytics, deletion history, master data.
 
-`views/` is a package of **19 modules**: `audits`, `autocomplete`, `billing`,
-`bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`, `estimate`,
-`jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `photos`, `push`,
-`salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
+`views/` is a package of **21 modules**: `about`, `audits`, `autocomplete`,
+`billing`, `bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`,
+`estimate`, `jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `photos`,
+`push`, `rent`, `salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
 `from . import views; views.some_function` and existing URL wiring keep working — when
 adding a view, add it to both its module and the re-export list.
 
@@ -6347,7 +7907,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Nine modules hold no views at all** — this is the codebase's main structural idea, and
+**Eleven modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -6359,7 +7919,9 @@ each exists so that one rule has exactly one implementation:
 | `money.py` | is this typed rupee amount acceptable for its column? |
 | `money_dates.py` | what day did this money move? — both Cashbook forms, all three payment screens, the Supplies Shop bill and the job card's admitted date |
 | `spare_dates.py` | is this ordered/received pair the right way round? |
+| `return_to.py` | where does this page send you when you leave it? |
 | `delete_window.py` | has this money row been in the books too long for Office to delete? |
+| `rent.py` | how much should we hand the rent collector today? |
 | `photos.py` | where do the bytes go, and how is the URL signed? |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
@@ -6446,8 +8008,10 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` (53 `test_*.py` plus `tests.py`) and `inventory/` (5
-files) — **59 files, 1,916 tests**.
+Tests live in `workshop/tests/` and `inventory/` — **63 files, 2,145 tests**,
+counted 2026-09-05. (`workshop/tests/` is 57 `test_*.py` plus `tests.py`;
+`inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
+`test_*.py` glob — which is why the two halves used to be written down wrong.)
 
 ⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
 
@@ -6601,12 +8165,15 @@ close**. Each of those has caught a real defect:
   go, which is why the parts-and-stock zone is ordered by what connects to what
   rather than by category.
 - **Parallel runs.** Not crossing a card is not enough. Three long red lines side
-  by side are individually correct and collectively unreadable. The four expense
-  streams are drawn as **one trunk with short taps**, which is also the truer
-  picture — they add up to one number. The remaining shared-corridor lines are
+  by side are individually correct and collectively unreadable. Four of the five
+  expense streams are drawn as **one trunk with short taps**, which is also the
+  truer picture — they add up to one number. ⚠ **Rent is the fifth and drops
+  straight into PROFIT instead**, for geometry rather than meaning: the rail's
+  horizontal leg ends at x=1006 and DEPOSIT & RENT sits at x≥1108, so every tap
+  from it would be a diagonal on a sheet built entirely on right angles. The remaining shared-corridor lines are
   spaced by hand, ~12px minimum.
 
-⚠ **It states counts** (14 events, 11 critical, 10 signal handlers, ₹3,500, 25%,
+⚠ **It states counts** (16 events, 13 critical, 10 signal handlers, ₹3,500, 25%,
 keeps 14). Those drift like every other count in these docs — check them when you
 touch it. It read "10 critical" for a day after `LOGIN` was raised to CRITICAL,
 and that is worse on the map than in prose: the **About page prints this drawing

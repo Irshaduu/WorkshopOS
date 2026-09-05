@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.utils import timezone
 
 from django.shortcuts import render
@@ -12,25 +14,148 @@ from ..decorators import office_required, staff_required
 from ..settlement import unfilled
 
 
+#: `?mechanic=` value for the chip gathering cars nobody is holding yet.
+#:
+#: A real word rather than `0` or an empty string: this lands in a URL a
+#: mechanic may well be looking at on the tablet, and `?mechanic=none` says what
+#: it does. `''` already means All, so the two can never collide.
+UNASSIGNED_KEY = 'none'
+
+
+def _floor_chips(floor, floor_count):
+    """The mechanic filter row — one dict per chip, All first, Unassigned last.
+
+    ONE aggregate over the floor, and it is also the ONLY list of valid
+    `?mechanic=` values, so a chip and the filter it applies cannot disagree.
+
+    Three rules, each of which this app already follows somewhere else:
+
+      * **A mechanic holding no car gets no chip.** `_floor_by_mechanic`'s own
+        rule one screen over — every name on the board has work under it, which
+        is what keeps the row short enough to read at a glance. It also makes
+        the row self-consistent: a chip that could only ever open an empty board
+        is a door with nothing behind it.
+      * **The counts sum to All by construction**, the unassigned group
+        included, so the row can never quietly lose a car. That is the "every
+        job card is accounted for" rule the How Customers Paid table follows.
+      * **Ordered by NAME, never by count.** Ordered by how many cars each
+        holds, a chip moves out from under the thumb reaching for it every time
+        a car changes hands. Alphabetical is stable, and it is the order the
+        Live Report already lists the same names in.
+
+    `.order_by()` is not tidying. The board's queryset is ordered by
+    `-updated_at`, and an ordering field on a `values().annotate()` joins the
+    GROUP BY — which would return one row per (mechanic, timestamp) and count
+    every car as 1. Cleared explicitly, so a later edit to the board's ordering
+    cannot silently break the counts.
+    """
+    rows = (
+        floor.order_by()
+        .values('lead_mechanic', 'lead_mechanic__name')
+        .annotate(n=Count('id'))
+    )
+
+    named, unassigned = [], 0
+    for row in rows:
+        if row['lead_mechanic'] is None:
+            unassigned += row['n']
+        else:
+            named.append({
+                'key': str(row['lead_mechanic']),
+                'name': row['lead_mechanic__name'],
+                'count': row['n'],
+            })
+    named.sort(key=lambda chip: chip['name'].lower())
+
+    chips = [{'key': '', 'name': 'All', 'count': floor_count}]
+    chips.extend(named)
+    if unassigned:
+        # Last, and the one chip carrying a colour: a car nobody is holding is
+        # the only entry here asking for a decision rather than reporting a
+        # fact. Same red the Live Report gives its "Not assigned" group, and
+        # rendered only when there is actually a car in it.
+        chips.append({
+            'key': UNASSIGNED_KEY, 'name': 'Unassigned',
+            'count': unassigned, 'is_unassigned': True,
+        })
+    return chips
+
+
+def _resolve_mechanic(raw, chips):
+    """The requested chip's key, or `''` (All) when it names no chip on offer.
+
+    Validated against the CHIPS rather than against the staff roster, which is
+    what makes a stale link harmless: filter to Amlah, let somebody complete his
+    last car, come back to the same URL — there is no Amlah chip any more, so
+    the board falls back to All instead of rendering empty under a filter that
+    no longer exists. A crafted `?mechanic=999` lands the same way, which is the
+    rule the Estimates list already follows for an unrecognised `?filter=`.
+    """
+    keys = {chip['key'] for chip in chips}
+    raw = (raw or '').strip()
+    return raw if raw and raw in keys else ''
+
+
+def _apply_mechanic(floor, key):
+    """Narrow the board to one chip. `''` is All and narrows nothing."""
+    if key == UNASSIGNED_KEY:
+        return floor.filter(lead_mechanic__isnull=True)
+    if key:
+        return floor.filter(lead_mechanic_id=key)
+    return floor
+
+
 @staff_required
 def home(request):
     """
     Dashboard homepage showing all active job cards.
     Completion date is a planning field, not a filter.
     Cars only move to Completed when the "Completed" button is clicked.
+
+    The board narrows to one mechanic through the chip row above it. The Live
+    Report has grouped the floor by mechanic for months, but that page is
+    `@office_required` — so until now the people actually holding the cars had
+    no way to see which ones were theirs. This is that view, on the screen Floor
+    already works.
+
+    The filter rides in the URL, like every other filter in this app, so it
+    survives a refresh, the Back button and the pager. That is only safe because
+    the heading keeps counting the WHOLE floor — see `floor_count`.
     """
+    floor = JobCard.objects.filter(completed=False, is_deleted=False)
+
+    # The heading's "IN WORKSHOP" figure, and the All chip's, counted off the
+    # UNFILTERED floor. The heading used to read `page_obj.paginator.count`,
+    # which was the same number only for as long as nothing could narrow the
+    # board — filtered, that prints "3 IN WORKSHOP" while ten cars are in the
+    # workshop, the one figure on this page that would then be flatly untrue.
+    # The Live Report keeps its own `floor_count` apart for exactly this reason.
+    #
+    # It is also what makes a persistent filter safe: a filter left on by
+    # somebody else is contradicted out loud by the page itself, because the
+    # heading still reports ten over a board showing three, with a lit chip in
+    # between saying whose three they are.
+    floor_count = floor.count()
+    chips = _floor_chips(floor, floor_count)
+    mechanic_key = _resolve_mechanic(request.GET.get('mechanic'), chips)
+    for chip in chips:
+        chip['active'] = chip['key'] == mechanic_key
+
     # Get only non-completed job cards (where completed=False)
     # Optimized with select_related and prefetch_related for 1M+ records
-    active_jobcards = JobCard.objects.filter(
-        completed=False, is_deleted=False
-    ).select_related('lead_mechanic').prefetch_related(
+    active_jobcards = _apply_mechanic(floor, mechanic_key).select_related(
+        'lead_mechanic'
+    ).prefetch_related(
         'concerns', 'labours', 'spares', 'spares__item', 'spares__shop'
     ).annotate(
         total_concerns=Count('concerns'),
         fixed_concerns=Count('concerns', filter=Q(concerns__status='FIXED'))
     ).order_by('-updated_at', '-pk')
 
-    # Count completed today (Active only) — timezone.localdate() is IST-aware
+    # Count completed today (Active only) — timezone.localdate() is IST-aware.
+    # Deliberately NOT narrowed by the chip: it counts a different population
+    # (cars that left today), and a mechanic filter is a way of reading the
+    # floor, not a different workshop.
     completed_count = JobCard.objects.filter(
         completed=True,
         is_deleted=False,
@@ -42,7 +167,7 @@ def home(request):
         is_deleted=False,
         payment_status__in=['PENDING', 'PARTIAL']
     ).count()
-    
+
     # 5. Pagination for Floor (45 items per page)
     paginator = Paginator(active_jobcards, 45)
     page_number = request.GET.get('page')
@@ -50,13 +175,17 @@ def home(request):
 
     today = timezone.localdate()
     _attach_home_live_details(page_obj.object_list, today)
-    
+
     return render(request, 'workshop/dashboard/dashboard_home.html', {
         'active_jobcards': page_obj, # Pass page_obj as active_jobcards
         'completed_count': completed_count,
         'pending_bills_count': pending_bills_count,
         'page_obj': page_obj,
         'today': today,  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
+        'floor_count': floor_count,
+        'mechanic_chips': chips,
+        # Read by the shared pagination include, so page 2 keeps the filter.
+        'mechanic_key': mechanic_key,
     })
 
 
@@ -254,6 +383,18 @@ BILLED_STATUSES = ('PAID', 'BULK_PAID', 'PARTIAL')
 UNFILLED_ROW_CAP = 8
 
 
+#: How far back "Just arrived" looks, in calendar days INCLUDING today.
+#:
+#: Nearly every shop spare on a live card is already RECEIVED -- 43 of 45 on the
+#: development data -- so with no window this box would be longer than the rest
+#: of the page put together, and most of those parts are already on the car.
+#: Five days is the owner's own number, and the reasoning is theirs: arrivals
+#: are tracked physically or the mechanic says so, and this box is only for
+#: looking one up again afterwards. Long enough to be useful, short enough that
+#: what is in it is still news.
+RECEIVED_WINDOW_DAYS = 5
+
+
 def _billed_but_unfilled():
     """Billed job cards that still have an empty box somewhere, newest first.
 
@@ -356,9 +497,15 @@ def live_report(request):
 
       1. what has already been BILLED with holes in it — the critical one,
          because settling is what closed the door on correcting it;
-      2. who is holding which car, and what is still open on each of them —
-         the board the next instruction is given from;
-      3. which parts are travelling, and which nobody has ordered.
+      2. what has just landed, which parts are travelling, and which nobody
+         has ordered;
+      3. who is holding which car, and what is still open on each of them —
+         the board the next instruction is given from.
+
+    The floor board sits LAST, on the owner's instruction. It is the longest
+    block on the page by far — one panel per mechanic, every open concern under
+    every car — so above the parts boxes it pushed all three of them off the
+    first screen. The two chase lists are scanned; this one is read.
 
     None of this is narrowed by a search box, deliberately. The page answers
     "what is the state of the workshop right now", and a half-filtered answer
@@ -403,6 +550,20 @@ def live_report(request):
         )
         .select_related('job_card', 'shop')
     )
+    # What landed recently. Newest first, because the whole question this box
+    # answers is "what has come in lately" -- and it is the ONE box on the page
+    # that is not a queue to work down. The row itself is built exactly like the
+    # two boxes below, so the window is said once, in the heading. `received_date` is indexed, and a
+    # RECEIVED row with no date simply falls outside the window rather than
+    # being special-cased: nothing can say when it arrived, so nothing here can
+    # honestly report it.
+    received_spares = list(
+        awaited.filter(
+            status='RECEIVED',
+            received_date__gte=today - timedelta(days=RECEIVED_WINDOW_DAYS - 1),
+        )
+        .order_by('-received_date', '-pk')
+    )
     ordered_spares = list(
         awaited.filter(status='ORDERED')
         .order_by(F('ordered_date').asc(nulls_last=True), 'pk')
@@ -425,6 +586,8 @@ def live_report(request):
         'unfilled_count': page_obj.paginator.count,
         'mechanic_groups': mechanic_groups,
         'floor_count': floor_count,
+        'received_spares': received_spares,
+        'received_window_days': RECEIVED_WINDOW_DAYS,
         'ordered_spares': ordered_spares,
         'pending_spares': pending_spares,
     })

@@ -86,6 +86,20 @@ def age_in_days(created_at):
     return (timezone.localdate() - timezone.localtime(created_at).date()).days
 
 
+def is_past_window(created_at):
+    """
+    Is this row older than Office may delete? — the age rule, with no user.
+
+    ⚠ SPLIT OUT SO A LIST CAN ASK IT PER ROW WITHOUT A QUERY PER ROW.
+    `refusal()` below calls `is_owner()`, and that is `user.groups.filter(...)`
+    — a fresh query every time, uncached. A view annotating "may this be
+    deleted?" onto sixty rows was therefore issuing sixty extra queries; the
+    caller now asks `is_owner` ONCE and this per row. One implementation of the
+    age rule either way, which is the point of it living here.
+    """
+    return created_at is not None and age_in_days(created_at) > OFFICE_DELETE_WINDOW_DAYS
+
+
 def refusal(user, created_at, what):
     """
     The reason this user may not delete this row, or **None** if they may.
@@ -98,12 +112,10 @@ def refusal(user, created_at, what):
     None, and guessing "too old" about a row whose age is unknowable would
     block a delete on no evidence.
     """
-    if is_owner(user) or created_at is None:
+    if is_owner(user) or not is_past_window(created_at):
         return None
 
     days = age_in_days(created_at)
-    if days <= OFFICE_DELETE_WINDOW_DAYS:
-        return None
 
     when = "yesterday" if days == 1 else f"{days} days ago"
     return (

@@ -56,7 +56,9 @@ graph TD
    Can do EVERYTHING below + these exclusive actions:
    - Access Owner Analysis & Reports: the **Profit** page (Turnover − Expenses = Profit, filtered by month/year/custom — what profit distribution is decided from) and, from it, the **Deep Analysis** page (mechanics, spare parts, inventory, vehicles, fleet, shops, cashbook, operations).
    - Delete a whole month's salary settlement (Office can create and correct one, only an Owner can un-record it)
-   - View the Paid Bills Dashboard over ANY period, with the grand Total Collected (Office sees the last 7 days and no grand total)
+   - View the Paid Bills Dashboard over ANY period (Office sees the last 7 days). Neither role sees a money total on it any more — the grand Total Collected was removed because it summed a fleet card's whole cumulative receipt on the day it happened to close; what replaced it is Cash Tracking on the Profit page. The row COUNT stays, since how many bills are in the list is a fact about the list
+   - Set the **rent** in Deposit & Rent — what the premises cost per month, from a stated month onward. A rise agreed late can be dated back to the month it started, which re-prices those months; the other owner is told, and so is anyone reading the section. Office records the daily deposits but never decides the rent
+   - Record **Owner Withdrawals** — cash taken out of the business for the owners. Owner-only end to end: Office and Floor cannot open the page or reach any of its three addresses. Not a business expense, so the profit figure never moves because of it
    - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
    - Monitor all active login sessions, and remotely revoke any staff access
@@ -84,11 +86,13 @@ graph TD
    - View Car Profiles (vehicle history)
    - Run Data Cleanup (rename, merge, delete duplicates)
    - Manage inventory Categories (add/list/edit) + create/edit products via Supplier Shops (Add Product); all supplier-shop management
-   - Record and review Cashbook entries (income & expenses ledger)
+   - Record and review Cashbook entries (income & expenses ledger). Typing a wage, an owner's name or anything to do with rent here asks first — each has its own section and would land wrong in the profit figure. It only asks
+   - Record the daily **rent deposit** in Deposit & Rent — the cash handed to the collector who comes round each day, keyed off his own book. The page says what to pay today: whatever is left of the month's rent over the days left. Office may date an entry back to the 1st of last month; anything older is an owner's
 
 
  FLOOR (Mechanics / Floor Manager)
    - View Dashboard (active cars on floor), including each car's live details — the same four lists (Customer Concerns, Job Performed, Inventory Items, Spare Parts) the read-only job card shows. **This is where Floor reads a card**: the Live Report and the read-only card view at `/jobcards/<pk>/` are both Office/Owner
+   - Narrow that board to one mechanic from the chip row above the cards (`All 10 · Amlah 3 · Hijaz 3 · Unassigned 1`). Only names actually holding a car are listed, the counts always add up to All, and the choice rides in the URL so it survives a refresh. The "IN WORKSHOP" figure above it keeps counting the whole floor whatever is selected. **This is the only place Floor can see who is holding what** — the Live Report's own mechanic board is Office/Owner
    - Create new Job Cards
    - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Total Labour included, is Office/Owner only and is enforced on the server)
    - Use Autocomplete (search brands, models, spares, concerns)
@@ -898,26 +902,80 @@ SALARY & ADVANCE (Office and Owner)
     from here, never from the Cashbook.
 
 CASHBOOK
-  Shows: Daily income & expense ledger (rent, electricity, scrap sales, etc.)
+  Shows: One chronological ledger of money out and money in — electricity, water,
+    food, bus fares, courier charges on one side; scrap and black oil on the
+    other. Roughly 98% of it is expenses, and the page is weighted for that.
+    Rent is NOT one of them any more: it has its own expense line read from the
+    rate in Deposit & Rent, so a rent row here is counted twice.
   Filters: Today / This Week / This Month / This Year / Last Week / Last Month / Last Year / Custom
-  Displays: Net balance for the filtered period
+  Displays: TWO figures — Money Out and Money In for the period. There is no Net
+    card: the workshop does not work out a cashbook net, and a figure labelled
+    "Net" beside an expense total invites being read as profit, which is the
+    Profit page's job and a different calculation.
+  Reading it: All / Out / In chips narrow the stream, one search box covers the
+    name, the note, the method and an exact amount. The two totals follow the
+    date window and the search but NOT the chip — a chip is a way of reading the
+    period, not a different period.
+  Dating: every entry carries the day the money moved, typed and editable, so a
+    month-end expense keyed the following week still lands in the right month on
+    the Profit page.
   Access: Office and Owner only
+
+OWNER WITHDRAWALS (Owner only)
+  Shows: cash the owners take out of the business for themselves — one card per
+    owner for the chosen window, the form to record another, then every one of
+    them in a list.
+  THE ONE RULE: this is NOT a business expense, and the profit figure does not
+    move because of it. Profit is what is available to take; taking it cannot
+    make it smaller. It appears in exactly one figure in the whole system —
+    money OUT on Cash Tracking, dated by the day the cash was taken.
+  Why the section exists at all: the Cashbook is an expense ledger and its total
+    feeds the profit equation, so an owner recording "50,000 — Owner" there
+    quietly cut reported profit by 50,000. The likeliest place for that money to
+    land was the one place that breaks the figure.
+  The two totals are printed and never netted. What a gap between two owners
+    means depends on the partnership split, and the system does not hold one.
+  Filters: This Month / Last Month / This Year / Last Year / All Time / Custom —
+    the Profit page's vocabulary, not the day-to-day lists'. Owner money is taken
+    a handful of times a month, so Today and This Week would be empty nearly
+    every time.
+  No edit, deliberately: the section is Owner-only end to end, so delete is
+    always available and re-adding is one line of the form. Every correction
+    lands in Deletion History instead of silently overwriting what was there.
+  Access: Owner only — Office and Floor cannot open the page or reach any of its
+    three addresses.
 
 OWNER ANALYSIS — PROFIT (Owner only)
   Shows: Total Turnover − Total Expenses = Profit for one date window, stated as an equation
   Turnover: Car Bills (bills less discounts) + Cashbook Income
-  Expenses: Spare Shops · Inventory Used · Salary & Advance · General Cashbook
-    — all four are the cost of work DONE in the period. A part is charged when it is
+  Expenses: Spare Shops · Inventory Used · Salary & Advance · Cashbook Expense · Rent
+    — all five are the cost of work DONE in the period. A part is charged when it is
     fitted to a car, whichever shelf it came off.
+  Rent: what the premises COST, read from the rate in Deposit & Rent, charged in whole
+    months and capped at the month in progress. Never the daily deposits — those are
+    cash and are reported under Cash Tracking, the same split a supplier payment and a
+    stock draw already have. A Cashbook row named like rent is now the same money twice
+    and the page says so.
   Then the SAME profit a second way — "What Earned The Profit": Labour + Spare Parts
-    margin + Inventory margin + Cashbook Income = Gross Earnings, less salary and
-    general cashbook = the same Profit, with no reconciling line in between
-  Also: month-by-month trend, and Position Right Now — what is owed to/by the workshop,
-    plus what the warehouse shelf holds at cost, so the supplies-shop debt can be read
-    against the stock it bought (stated side by side, never netted)
+    margin + Inventory margin + Cashbook Income = Gross Earnings, less salary, rent and
+    cashbook expense = the same Profit, with no reconciling line in between
+  Also: CASH TRACKING — money in and money out for the window, by the day each rupee
+    actually moved, sitting ABOVE the equation and drawn as a different kind of object
+    so the two can never be added together. It is never called a balance: there is no
+    opening cash figure anywhere in the system, so what can honestly be reported is the
+    CHANGE over the window. Owner withdrawals appear here and nowhere else.
+  Also: month-by-month trend, and Position Right Now — read in two columns: what the
+    workshop HOLDS or is owed on the left (green and blue), what it OWES on the right
+    (red), which is the same left/right split Cash Tracking uses for money in and money
+    out. So the supplies-shop debt can be read against the stock it bought, stated side
+    by side and never netted. The rent still to deposit sits in the owed column — or
+    "paid ahead" in the held one, said in words rather than as a minus sign. On a phone
+    the two columns stack, held first.
   Dating: BOTH parts routes count on the job card's date. A Supplies Shop BILL is not an
     expense at all — it raises the shelf and the payable; a supplier PAYMENT moves the
-    payable again. Neither touches profit.
+    payable again. Neither touches profit. Rent is dated by the RENT MONTH, exactly as
+    wages are dated by the salary month, and a month that has not begun is never
+    charged — so "This Year" in September counts nine months of rent, not twelve.
   Filters: This Month / Last Month / This Year / Last Year / All Time / Custom
   Purpose: the figure the owners distribute profit from — kept deliberately plain
 

@@ -241,6 +241,15 @@ urlpatterns = [
     # ------------------
     # OWNER WITHDRAWALS - profit taken out. Owner-only, and NOT an expense:
     # nothing under this prefix reaches `build_profit_report`.
+    # Deposit & Rent — the daily cash that pays for the premises.
+    path('rent/', views.rent_home, name='rent_home'),
+    path('rent/deposit/add/', views.rent_deposit_add, name='rent_deposit_add'),
+    path('rent/deposit/<int:pk>/delete/', views.rent_deposit_delete,
+         name='rent_deposit_delete'),
+    path('rent/rate/set/', views.rent_rate_set, name='rent_rate_set'),
+    path('rent/rate/<int:pk>/delete/', views.rent_rate_delete,
+         name='rent_rate_delete'),
+
     path('withdrawals/', views.withdrawal_home, name='withdrawal_home'),
     path('withdrawals/add/', views.withdrawal_add, name='withdrawal_add'),
     path('withdrawals/<int:pk>/delete/', views.withdrawal_delete,

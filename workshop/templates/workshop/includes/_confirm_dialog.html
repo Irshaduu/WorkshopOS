@@ -1,0 +1,63 @@
+{% comment %}
+THE APP'S OWN CONFIRMATION CARD — ONE ELEMENT, INCLUDED ONCE IN base.html.
+
+It replaced the twenty-one native browser dialogs that were left: sixteen
+`window.confirm()`, four `alert()` and one `prompt()`. Those opened with
+"127.0.0.1:8000 says" — the browser talking rather than the app — and put the
+question, the reason and the way out into one flat grey block that cannot be
+designed, cannot carry a glyph, and on the Floor tablet does not read as part
+of this system at all.
+
+⚠ ONE DIALOG, NOT TWENTY-ONE. That is the `.rpay-*` rule: a control drawn by
+more than one template gets ONE declaration, because three near-copies of the
+payment form drifted three different ways while somebody kept them in step by
+hand. What varies per screen is the CONTENT and the two theme values — the
+glyph, the tint, the title, the wording of the button — which is what makes
+each one read as its own section's card. What must never vary is the shape.
+
+⚠ IT IS A BOOTSTRAP MODAL, DELIBERATELY, AND THAT IS WHAT KEEPS THE SOUND
+WIRED. sound.js plays the `prompt` tone off `show.bs.modal` for any modal
+carrying `data-sound-prompt`, so this needs no entry in that file and cannot
+fall out of step with it. A hand-rolled overlay would have needed its own
+hook — and would additionally be unable to hold a focusable reason box while
+another modal is open, which is the focus-trap trap the Fleet Account page
+records.
+
+Everything below is placeholder text. confirm.js writes it on every open, and
+CLEARS what the previous caller left, so a reason typed and then cancelled can
+never be filed against the next thing somebody deletes.
+{% endcomment %}
+<div class="modal fade" id="wcfDialog" tabindex="-1" aria-labelledby="wcfTitle"
+     aria-hidden="true" data-sound-prompt>
+    <div class="modal-dialog modal-dialog-centered wcf-dialog">
+        <div class="modal-content wcf-card" id="wcfCard" data-theme="warning">
+
+            <div class="wcf-icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill" id="wcfIcon"></i></div>
+
+            <h2 class="wcf-title" id="wcfTitle">Are you sure?</h2>
+            <p class="wcf-text" id="wcfText"></p>
+
+            <div class="wcf-reason" id="wcfReasonWrap" hidden>
+                <input type="text" id="wcfReason" maxlength="255"
+                       placeholder="Reason (optional)" aria-label="Reason">
+            </div>
+
+            {% comment %}
+            Cancel is FIRST in the DOM so it is on the left on a laptop, and
+            `.wcf-actions`' column-reverse puts Confirm on top when the row
+            stacks — the logout card's own rule, so the answer that cannot be
+            undone is never where a thumb lands by reflex.
+
+            ⚠ BOTH ARE type="button". A bare <button> inside a form submits
+            it, and while this dialog is not itself in a form today, the box
+            it fronts always is — the one control whose whole job is to let
+            somebody back out must never be able to commit the thing.
+            {% endcomment %}
+            <div class="wcf-actions">
+                <button type="button" class="wcf-btn wcf-btn--no" id="wcfNo" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="wcf-btn wcf-btn--yes" id="wcfYes">Confirm</button>
+            </div>
+
+        </div>
+    </div>
+</div>

@@ -845,3 +845,292 @@ select.status-fixed {
 @media (max-width: 640px) {
     .rpay-card { padding: 0.85rem 0.85rem 0.75rem; }
 }
+
+/* ==========================================================================
+   PAGE BACK — one control, one shape, one place
+   ==========================================================================
+
+   The installed app declares `"display": "standalone"`, so it carries no
+   address bar and no browser Back button. A phone still has a system back
+   gesture; a laptop has nothing at all. So every page has to carry its own way
+   out — and the way out has to look the same on all of them, or the app reads
+   as several products stitched together.
+
+   It did. Seventeen back controls had drifted into two placements and seven
+   treatments: a 40px round icon button beside the page title (nine of them —
+   six byte-identical `.btn-round` copies plus three more rebuilding the same
+   40x40 geometry out of `btn-outline-secondary rounded-circle` and inline
+   styles), and a text link above the content (eight — five Bootstrap
+   `text-muted small`, plus `.ua-back`, `.si-back` and `.sa-back`, which agreed
+   on the idea and disagreed on every value: 0.82 vs 0.85rem, weight 600 vs
+   700, gap 5.6 vs 6 vs 7px, and two different hover colours). This is the
+   `.rpay-*` story exactly — a control drawn by more than one template, kept in
+   step by hand, drifting three ways — so it gets the same answer: one
+   declaration in the file `base.html` links on every page.
+
+   WHY THE BREADCRUMB PLACEMENT WON, and not the round button that had the
+   larger share. It is the only position that works on every page shape in this
+   app. Nine of the round buttons sit INSIDE a header flex row as a sibling of
+   the `<h1>`, which is a good-looking header and is impossible on the three
+   pages built around the dark `.detail-header` slab — a bordered light button
+   dropped into that gradient is a redesign of the slab, not a back button. A
+   row above the header needs nothing of the header at all, so it fits the
+   plain `<h1>` pages, the slab pages and the pages that open on a filter row
+   alike. One placement beats a rule with three exceptions in it.
+
+   WHY IT NAMES ITS DESTINATION. A back control here is a NAMED DESTINATION,
+   never `history.back()`: it has to work when the page was opened from a
+   notification, a bookmark, or the first tap of a session — and `start_url` is
+   "/", so `history.length` is 1 on that first page and a history button would
+   do nothing at all. Since the destination is fixed, printing it costs one
+   short label and saves the reader a guess. This is `.btn-round`'s own fill,
+   border, colour and hover — its `aria-label` made visible, not a new design.
+
+   `display: flex` + `width: max-content` rather than `inline-flex`: an
+   inline-flex element sits on a line box and drags its parent's line-height
+   strut underneath it, which is the trap recorded twice in CLAUDE.md. This is
+   block-level, shrinks to its contents, and carries its own bottom margin, so
+   a page needs one element and no wrapper.
+   ========================================================================== */
+.pg-back {
+    display: flex;
+    width: max-content;
+    max-width: 100%;
+    align-items: center;
+    gap: 8px;
+    /* 12px on the arrow side, 14px on the label side — the arrow glyph carries
+       its own optical left-bearing, so equal padding reads as a control that
+       has slipped right inside its own pill. */
+    padding: 0 14px 0 12px;
+    /* 38px on a pointer and 44px on a finger, keyed on INPUT METHOD rather
+       than a width breakpoint — the Floor tablet is wider than plenty of
+       laptops, and it is the finger that decides how big a target must be.
+       Same pair as the job card's Add buttons and its date chip. */
+    min-height: 38px;
+    margin: 0 0 16px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 999px;
+    background: var(--color-card, #ffffff);
+    color: var(--color-text-muted, #64748b);
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* The label is what can run long; the arrow never is. Every fixed label in the
+   app is short — the longest is a settlement month ("September 2026
+   Settlement") — but four of these print a SHOP'S NAME, which is user data and
+   has no ceiling. Measured with a 52-character name in a 300px column: the
+   pill clamps to 284px and the label ellipsises rather than pushing the page
+   sideways. `max-width: 100%` on the pill is the other half of that. */
+.pg-back span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pg-back i {
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+/* Hover only where there is a pointer: on a touch screen it never fires, and
+   where it does fire it sticks. */
+@media (hover: hover) {
+    .pg-back:hover {
+        background: var(--color-hover, #f8fafc);
+        border-color: var(--color-text-muted, #64748b);
+        color: var(--color-text, #0f172a);
+    }
+}
+
+.pg-back:focus-visible {
+    outline: 2px solid var(--color-primary, #2563eb);
+    outline-offset: 2px;
+    color: var(--color-text, #0f172a);
+}
+
+/* A finger gets a real squash instead, and a bigger target. */
+@media (hover: none) {
+    .pg-back { min-height: 44px; }
+    .pg-back:active {
+        background: var(--color-hover, #f8fafc);
+        transform: scale(0.97);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pg-back { transition: none; }
+    .pg-back:active { transform: none; }
+}
+
+
+/* =========================================================================
+   THE CONFIRMATION CARD  —  .wcf-*
+   =========================================================================
+   ONE card, declared once, drawn by every screen that asks a question. It
+   replaced the app's twenty-one remaining NATIVE dialogs — sixteen
+   `window.confirm()`, four `alert()` and one `prompt()` — which opened with
+   "127.0.0.1:8000 says", could not be designed at all, and rendered the
+   question, the reason and the exit as one flat grey block.
+
+   ⚠ IT IS GENERALISED FROM `.logout-modal` IN base.html, NOT FROM
+   `confirmActionModal` ON THE TWO SHOP PAGES, and the difference is the
+   tinted disc. The shop pages draw a bare 3rem glyph; the logout card puts
+   it in a 52px round tint, which is what lets a card be recognised as ITS
+   OWN SECTION'S before a word of it is read — a red bin for a delete, an
+   amber calendar for a back-dated entry, a green tick for a handover.
+
+   ⚠ A VARIANT IS TWO CUSTOM PROPERTIES, NEVER A SECOND COPY OF THE CARD.
+   `--wcf-tint` is the disc, `--wcf-ink` is the glyph and the filled button.
+   Same mechanism as `--rpay-btn-a/b` on the payment card and `--tint` on
+   the crew chips, and for the same reason: a new variant sets two values
+   rather than restating a declaration somebody then has to keep in step.
+
+   ⚠ EVERY `--wcf-ink` CARRIES WHITE AT 4.5:1 OR BETTER, MEASURED.
+   The confirm label is ~13.9px bold — under WCAG's large-text threshold, so
+   3:1 is not enough. danger 4.83:1, warning 5.02:1, success 5.02:1,
+   info 6.70:1, neutral 10.35:1. The glyph on its own tint clears 3:1 four
+   times over (4.41 / 4.84 / 4.79 / 6.16 / 9.45:1). ⚠ The amber is
+   `#b45309`, the app's own back-dated amber, NOT a lighter `#f59e0b` —
+   white on that measures 2.2:1 and the settle button's own note records it.
+   ========================================================================= */
+
+/* ⚠ THE QUESTION IS ALWAYS THE TOPMOST THING ON SCREEN, and this is not
+   belt-and-braces. The photo lightbox is z-index 2000 — deliberately above the
+   nav bar and the spare-date panel — so at Bootstrap's own 1055 the card asking
+   "delete this photo?" opened BEHIND the lightbox, invisible, with the page
+   apparently frozen. A dialog that can be covered is worse than no dialog: the
+   act still happens the moment somebody finds the Confirm they cannot see.
+   2100 clears every layer this app declares. Its backdrop stays at Bootstrap's
+   1050 and is simply not seen over the lightbox, which is already a full-screen
+   dark ground of its own. */
+#wcfDialog { z-index: 2100; }
+
+.wcf-dialog { max-width: 380px; }
+
+.wcf-card {
+    /* Neutral is the default so a caller that names no theme still renders a
+       finished card rather than an unstyled one. */
+    --wcf-tint: #f1f5f9;
+    --wcf-ink:  #334155;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 18px;
+    padding: 26px 24px 22px;
+    text-align: center;
+    box-shadow: 0 18px 44px rgba(16, 24, 40, 0.18);
+}
+
+.wcf-card[data-theme="danger"]  { --wcf-tint: #fef2f2; --wcf-ink: #dc2626; }
+.wcf-card[data-theme="warning"] { --wcf-tint: #fffbeb; --wcf-ink: #b45309; }
+.wcf-card[data-theme="success"] { --wcf-tint: #f0fdf4; --wcf-ink: #15803d; }
+.wcf-card[data-theme="info"]    { --wcf-tint: #eff6ff; --wcf-ink: #1d4ed8; }
+
+.wcf-icon {
+    width: 52px; height: 52px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--wcf-tint);
+    color: var(--wcf-ink);
+    font-size: 1.35rem;
+}
+
+.wcf-title {
+    font-size: 1.12rem; font-weight: 800;
+    color: var(--color-text, #0f172a);
+    margin: 0;
+}
+
+.wcf-text {
+    font-size: 0.86rem;
+    color: var(--color-text-muted, #64748b);
+    margin: 8px 0 20px;
+    line-height: 1.5;
+}
+
+/* The reason box is opt-in. Most of these dialogs front an act that writes no
+   DeletionLog row — a handover, a reactivation, a rename — and a box asking
+   why on one of those is a question nobody can answer usefully. */
+.wcf-reason { margin: -6px 0 18px; }
+.wcf-reason input {
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 12px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 10px;
+    font-size: 0.86rem;
+    background: #fff;
+}
+.wcf-reason input:focus {
+    outline: none;
+    border-color: var(--wcf-ink);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--wcf-ink) 18%, transparent);
+}
+
+.wcf-actions { display: flex; gap: 10px; }
+
+.wcf-btn {
+    flex: 1;
+    width: 100%;
+    min-height: 46px;   /* past the 44px touch minimum — tapped on the Floor tablet */
+    border-radius: 11px;
+    font-size: 0.87rem; font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.16s ease, background-color 0.16s ease;
+}
+.wcf-btn--no {
+    border: 1px solid var(--color-border, #e2e8f0);
+    background: #fff;
+    color: var(--color-text, #0f172a);
+}
+.wcf-btn--yes {
+    border: 1px solid var(--wcf-ink);
+    background: var(--wcf-ink);
+    color: #fff;
+}
+@media (hover: hover) {
+    .wcf-btn--no:hover  { background: var(--color-hover, #f8fafc); }
+    .wcf-btn--yes:hover { filter: brightness(1.08); }
+}
+.wcf-btn:active { transform: scale(0.98); }
+
+/* A one-button card (wsAlert) has nothing to weigh up, so the row is a single
+   full-width control rather than a lone button floating beside a gap. */
+.wcf-card[data-single="1"] .wcf-btn--no { display: none; }
+
+/* Below 420px the row stacks, and Confirm goes on TOP — the logout card's own
+   rule, so the destructive answer is never where a thumb lands by reflex
+   straight after the menu item that opened this. */
+@media (max-width: 420px) {
+    .wcf-actions { flex-direction: column-reverse; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wcf-btn { transition: none; }
+    .wcf-btn:active { transform: none; }
+}
+
+/* -------------------------------------------------------------------------
+   ONE PRESS, ONE POST  —  the busy state
+   -------------------------------------------------------------------------
+   A form that has been submitted is marked `data-ws-busy`, and its own submit
+   controls stop taking taps. The GUARD is in confirm.js (a second submit is
+   refused there, which is what actually protects the server); this is the
+   feedback that says so.
+
+   ⚠ IT IS `pointer-events`, NEVER `disabled`. A disabled control is dropped
+   from the payload, so disabling a submit button that carries a `name` would
+   silently change what is posted — and nothing here knows which buttons do.
+   Paint cannot have that effect.
+   ------------------------------------------------------------------------- */
+form[data-ws-busy="1"] button[type="submit"],
+form[data-ws-busy="1"] input[type="submit"],
+form[data-ws-busy="1"] .js-ws-submit {
+    pointer-events: none;
+    opacity: 0.55;
+    cursor: progress;
+}

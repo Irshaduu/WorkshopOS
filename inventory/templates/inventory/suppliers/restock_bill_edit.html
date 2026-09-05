@@ -53,10 +53,10 @@
 </style>
 
 <div class="bill-wrapper">
+    <a href="{% url 'supplier_shop_detail' shop.id %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>{{ shop.name }}</span>
+    </a>
     <div class="d-flex align-items-center mb-4">
-        <a href="{% url 'supplier_shop_detail' shop.id %}" class="btn btn-outline-secondary rounded-circle me-3" style="width:40px; height:40px; padding:0; display:flex; align-items:center; justify-content:center;">
-            <i class="bi bi-arrow-left"></i>
-        </a>
         <div>
             <h2 class="fw-bold m-0">Edit Bill #{{ bill.id }}</h2>
             <div class="text-muted small">{{ shop.name }}</div>

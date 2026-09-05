@@ -11,13 +11,6 @@
     }
     .hub-head-text h1 { font-size: 1.3rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; color: var(--color-text); }
     .hub-head-text p { font-size: 0.82rem; color: var(--color-text-muted); margin: 4px 0 0; }
-    .btn-round {
-        width: 40px; height: 40px; flex: 0 0 40px; padding: 0;
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 50%; border: 1px solid var(--color-border);
-        background: var(--color-card); color: var(--color-text-muted); text-decoration: none;
-    }
-    .btn-round:hover { background: var(--color-hover); color: var(--color-text); }
 
     /* ---- Level 0: menu tiles ---- */
     .hub-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -119,6 +112,12 @@
     .modal-content { border-radius: 16px; border: 0; }
 </style>
 
+{% if section %}
+<a href="{% url 'manage_dashboard' %}" class="pg-back">
+    <i class="bi bi-arrow-left"></i><span>Control Hub</span>
+</a>
+{% endif %}
+
 <div class="hub-head">
     <div class="hub-head-text">
         {% if not section %}
@@ -135,11 +134,6 @@
             <p>Live login sessions across every device, with the ability to revoke access.</p>
         {% endif %}
     </div>
-    {% if section %}
-    <a href="{% url 'manage_dashboard' %}" class="btn-round" aria-label="Back to Control Hub">
-        <i class="bi bi-arrow-left"></i>
-    </a>
-    {% endif %}
 </div>
 
 {# Messages handled by base.html — no duplicate block needed here #}
@@ -233,7 +227,12 @@ it as a fix for an unrelated problem.
                         </form>
                         {% endif %}
                         <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}" aria-label="Reset password" title="Reset password"><i class="bi bi-key"></i></button>
-                        <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
+                        <form method="post" action="{% url 'manage_delete_user' u.id %}"
+                              data-confirm="{{ u.username }} can no longer sign in. Job cards and bills they created stay exactly as they are, and the other owner is told."
+                              data-confirm-title="Delete this login?"
+                              data-confirm-icon="bi-person-x-fill"
+                              data-confirm-theme="danger"
+                              data-confirm-ok="Delete login">
                             {% csrf_token %}<button type="submit" class="icon-btn danger" aria-label="Delete account" title="Delete account"><i class="bi bi-trash"></i></button>
                         </form>
                     </div>
@@ -276,7 +275,12 @@ it as a fix for an unrelated problem.
                         </form>
                         {% endif %}
                         <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}" aria-label="Reset password" title="Reset password"><i class="bi bi-key"></i></button>
-                        <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
+                        <form method="post" action="{% url 'manage_delete_user' u.id %}"
+                              data-confirm="{{ u.username }} can no longer sign in. Job cards and bills they created stay exactly as they are, and the other owner is told."
+                              data-confirm-title="Delete this login?"
+                              data-confirm-icon="bi-person-x-fill"
+                              data-confirm-theme="danger"
+                              data-confirm-ok="Delete login">
                             {% csrf_token %}<button type="submit" class="icon-btn danger" aria-label="Delete account" title="Delete account"><i class="bi bi-trash"></i></button>
                         </form>
                     </div>

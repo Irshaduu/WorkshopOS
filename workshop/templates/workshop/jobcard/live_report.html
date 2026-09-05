@@ -18,12 +18,25 @@
     ordering state and money-side gaps, none of which Floor is shown anywhere
     else in the app.
 
-    Four tinted boxes carry the meaning, so the colour is the first thing the
+    Five tinted boxes carry the meaning, so the colour is the first thing the
     eye lands on and the words only confirm it:
       red      bills already settled with boxes nobody filled in
       neutral  who is holding which car, and what is still to be done on it
+      green    parts that landed in the last few days
       amber    parts ordered and on their way
       red      parts nobody has ordered yet
+
+    The three parts boxes run green, amber, red down the page -- the lifecycle
+    backwards, most-finished first, which is the order the two that were here
+    already established.
+
+    ⚠ THE GREEN ONE IS THE ONLY BOX ON THIS PAGE THAT IS NOT A LIST OF WORK.
+    The other four are things to act on: fill this in, give this instruction,
+    chase this, order this. That one is a REFERENCE list -- a part that has
+    arrived needs nothing done to it, and most of what it shows is already on
+    the car. It carries a note saying so for one revision and the owner took it
+    out: the HEADLINE says the window, and the box is built exactly like the two
+    below it so there is one shape to learn rather than three.
     {% endcomment %}
 
     :root {
@@ -33,6 +46,9 @@
         --lr-red: #b91c1c;
         --lr-red-bg: rgba(239, 68, 68, 0.08);
         --lr-red-line: rgba(220, 38, 38, 0.26);
+        --lr-green: #15803d;
+        --lr-green-bg: rgba(34, 197, 94, 0.08);
+        --lr-green-line: rgba(22, 163, 74, 0.26);
     }
 
     /* ── Page heading ─────────────────────────────────────────── */
@@ -61,6 +77,28 @@
         white-space: nowrap;
     }
 
+    {% comment %}
+    ── The group heading over the three parts boxes ──────────────
+
+    "Spares" sits OUTSIDE the boxes, naming the family underneath it: what has
+    landed, what is coming, what nobody has ordered. It reads one level above a
+    box title and one below the page title, and the way it does that is CASE
+    rather than size -- every box title on this page is uppercase and muted, so
+    a sentence-case dark heading is unmistakably not one of them, and no extra
+    type size has to be introduced to say so.
+
+    There is no matching heading over "Billed but not filled" or "On the
+    floor": those are one box each and a heading over a single box is the box's
+    own title said twice. This one earns it by covering three.
+    {% endcomment %}
+    .lr-group {
+        margin: 0.35rem 0 0.6rem;
+        font-size: 0.92rem;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        color: var(--color-text);
+    }
+
     /* ── The boxes ────────────────────────────────────────────── */
     .lr-box {
         border-radius: 14px;
@@ -71,6 +109,8 @@
     }
     .lr-box--amber { background: var(--lr-amber-bg); border-color: var(--lr-amber-line); }
     .lr-box--red   { background: var(--lr-red-bg);   border-color: var(--lr-red-line); }
+    .lr-box--green { background: var(--lr-green-bg); border-color: var(--lr-green-line); }
+
 
     .lr-box-head {
         display: flex;
@@ -91,6 +131,7 @@
     }
     .lr-box--amber .lr-box-title { color: var(--lr-amber); }
     .lr-box--red   .lr-box-title { color: var(--lr-red); }
+    .lr-box--green .lr-box-title { color: var(--lr-green); }
     .lr-box-title .bi { font-size: 0.95rem; }
 
     .lr-box-count {
@@ -107,6 +148,7 @@
     }
     .lr-box--amber .lr-box-count { background: rgba(217, 119, 6, 0.16); color: var(--lr-amber); }
     .lr-box--red   .lr-box-count { background: rgba(220, 38, 38, 0.14); color: var(--lr-red); }
+    .lr-box--green .lr-box-count { background: rgba(22, 163, 74, 0.16); color: var(--lr-green); }
 
     .lr-empty {
         font-size: 0.82rem;
@@ -636,8 +678,17 @@
     a separate object to look at; the meaning is "these all belong to the same
     problem", and one unbroken colour says that. The billed box above follows
     the same rule for the same reason.
+
+    ⚠ ALL THREE PARTS BOXES TAKE ALL FIVE OF THESE RULES — square corners, the
+    title colour and the count pill above, and the row hairline and hover
+    below. The green one shipped for a revision carrying only the background
+    and border, which left it rounded where its neighbours are square, its rows
+    unruled, and its heading and count in the default slate while theirs are
+    coloured. It read as a different KIND of box on a page whose whole point is
+    that colour is the first thing the eye lands on. A new box variant here
+    means five rules, not one.
     {% endcomment %}
-    .lr-box--amber, .lr-box--red { border-radius: 0; }
+    .lr-box--amber, .lr-box--red, .lr-box--green { border-radius: 0; }
     .lr-spare {
         display: block;
         text-decoration: none;
@@ -650,9 +701,11 @@
     }
     .lr-box--amber .lr-spare + .lr-spare { border-top: 1px solid rgba(217, 119, 6, 0.22); }
     .lr-box--red   .lr-spare + .lr-spare { border-top: 1px solid rgba(220, 38, 38, 0.18); }
+    .lr-box--green .lr-spare + .lr-spare { border-top: 1px solid rgba(22, 163, 74, 0.22); }
     /* A row with no card of its own still has to answer a tap. */
     .lr-box--amber .lr-spare:hover { background: rgba(217, 119, 6, 0.10); }
     .lr-box--red   .lr-spare:hover { background: rgba(220, 38, 38, 0.08); }
+    .lr-box--green .lr-spare:hover { background: rgba(22, 163, 74, 0.10); }
 
     .lr-spare-name {
         display: block;
@@ -814,107 +867,55 @@ task; here it is a hole in the books.
 
 {% include 'workshop/includes/pagination.html' %}
 
-{# ── Who is holding which car, and what is left on it ───── #}
-<section class="lr-box">
+<h6 class="lr-group">Spares</h6>
+
+{# ── Parts that have landed recently ────────────────────── #}
+<section class="lr-box lr-box--green">
     <div class="lr-box-head">
-        <span class="lr-box-title"><i class="bi bi-people-fill"></i> On the floor</span>
-        <span class="lr-box-count">{{ floor_count }}</span>
+        <span class="lr-box-title"><i class="bi bi-box-seam"></i> Received (last {{ received_window_days }} days)</span>
+        <span class="lr-box-count">{{ received_spares|length }}</span>
     </div>
 
-    {% if mechanic_groups %}
-    <div class="lr-crews">
-        {% for crew in mechanic_groups %}
-        <div class="lr-crew {% if crew.unassigned %}lr-crew--none{% endif %}">
-            <div class="lr-crew-name">
-                <i class="bi {% if crew.unassigned %}bi-person-dash{% else %}bi-person-fill{% endif %}"></i>
-                <span class="lr-crew-who">{{ crew.name }}</span>
-                <span class="lr-crew-count">{{ crew.jobs|length }}</span>
-            </div>
-            <div class="lr-cars">
-                {% for job in crew.jobs %}
-                {% with color=job.get_car_color_hex|default:'#94a3b8' %}
-                <a href="{% url 'jobcard_edit' job.pk %}?next=mini"
-                   class="lr-car
-                          {% if not job.car_color %}lr-car--unset
-                          {% elif job.car_color == 'White' %}lr-car--white{% endif %}"
-                   style="--stripe: {{ color }}; --shade: {{ color }}14;"
-                   title="{{ job.brand_name }} {{ job.model_name }} — {{ job.get_car_color_display }}">
-                    <span class="lr-car-rail"></span>
-                    <span class="lr-car-body">
-                        {% comment %}
-                        The registration is what identifies the car; the make
-                        is how it is recognised. A card carrying neither make
-                        nor model prints no line at all rather than an empty
-                        one — a blank row reads as something failing to load.
-                        {% endcomment %}
-                        {% if job.brand_name or job.model_name %}
-                        <span class="lr-car-name">{{ job.brand_name }} {{ job.model_name }}</span>
-                        {% endif %}
-                        <span class="lr-car-sub">
-                            <span class="lr-car-reg">{{ job.registration_number }}</span>
-                            {% if job.on_hold %}
-                            <span class="lr-car-hold">On hold</span>
-                            {% else %}
-                            <span class="lr-car-age">{{ job.age_label }}</span>
-                            {% endif %}
-                        </span>
-                        {% comment %}
-                        What is still to be commanded on this car. Only Office
-                        and the owners decide what a mechanic does next — they
-                        are the ones tracking which parts have arrived — so
-                        until this was here they were holding the whole floor's
-                        work list in their heads to make that call, one job
-                        card at a time.
-
-                        Amber first, then red: what the mechanic is on right
-                        now, then what is queued behind it. Fixed concerns are
-                        counted rather than listed — a finished job is not a
-                        decision anybody has left to make.
-
-                        Everything stays inside the anchor, so a tap anywhere
-                        on the car opens the job card, which is where a
-                        concern's status is actually changed.
-                        {% endcomment %}
-                        {% if job.open_concerns %}
-                        <span class="lr-concerns">
-                            {% for concern in job.open_concerns %}
-                            {% if concern.status == 'WORKING' %}
-                            <span class="lr-concern lr-concern--working"
-                                  aria-label="Working: {{ concern.concern_text }}">
-                                <span class="lr-concern-mark"><i
-                                    class="bi bi-clock-history lr-concern-clock"
-                                    aria-hidden="true"></i></span>
-                                <span class="lr-concern-text" aria-hidden="true">{{ concern.concern_text }}</span>
-                            </span>
-                            {% else %}
-                            <span class="lr-concern">
-                                <span class="lr-concern-mark"><span class="lr-concern-dot"
-                                      role="img" aria-label="Not started"></span></span>
-                                <span class="lr-concern-text">{{ concern.concern_text }}</span>
-                            </span>
-                            {% endif %}
-                            {% endfor %}
-                            {% if job.open_concerns_more %}
-                            <span class="lr-concern-more">+{{ job.open_concerns_more }} more</span>
-                            {% endif %}
-                            {% if job.fixed_count %}
-                            <span class="lr-concern-done">{{ job.fixed_count }} done</span>
-                            {% endif %}
-                        </span>
-                        {% elif job.concern_total %}
-                        <span class="lr-concern-clear">All concerns fixed</span>
-                        {% endif %}
-                    </span>
-                </a>
-                {% endwith %}
-                {% endfor %}
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="lr-empty">No cars on the floor right now.</div>
-    {% endif %}
+    {% for spare in received_spares %}
+    {% with color=spare.job_card.get_car_color_hex|default:'#94a3b8' %}
+    <a href="{% url 'jobcard_edit' spare.job_card_id %}?next=mini" class="lr-spare">
+        <span class="lr-spare-name">
+            {{ spare.spare_part_name|default:"Unnamed part" }}{% comment %}
+            A quantity of one is not printed, the same rule the two boxes below
+            follow and the same one the printed bill follows.
+            {% endcomment %}{% if spare.quantity|gt:1 %}<span class="lr-spare-qty"> &times; {{ spare.quantity|clean_qty }}</span>{% endif %}
+        </span>
+        <span class="lr-spare-meta">
+            <span class="lr-spare-car">
+                <span class="lr-spare-dot" style="--stripe: {{ color }};"></span>
+                {% if spare.job_card.brand_name or spare.job_card.model_name %}
+                {{ spare.job_card.brand_name }} {{ spare.job_card.model_name }}
+                {% else %}{{ spare.job_card.registration_number }}{% endif %}
+            </span>
+            {% if spare.job_card.brand_name or spare.job_card.model_name %}
+            <span class="lr-spare-sep">&middot;</span>
+            <span class="lr-spare-reg">{{ spare.job_card.registration_number }}</span>
+            {% endif %}
+            {% comment %}
+            The shop is printed when there is one, but a missing one is NOT
+            called out the way the amber box calls it out: there a shop with
+            nothing recorded means the ledger has nowhere to land, and the part
+            is still outstanding. Here the part has already arrived, and this
+            box asks for nothing.
+            {% endcomment %}
+            {% if spare.shop or spare.shop_name %}
+            <span class="lr-spare-sep">&middot;</span>
+            <span class="lr-spare-shop">
+                <i class="bi bi-shop"></i>
+                {% if spare.shop %}{{ spare.shop.name }}{% else %}{{ spare.shop_name }}{% endif %}
+            </span>
+            {% endif %}
+        </span>
+    </a>
+    {% endwith %}
+    {% empty %}
+    <div class="lr-empty">Nothing received.</div>
+    {% endfor %}
 </section>
 
 {# ── Parts ordered, still travelling ────────────────────── #}
@@ -1019,4 +1020,117 @@ task; here it is a hole in the books.
     <div class="lr-empty">Every part is ordered.</div>
     {% endfor %}
 </section>
+
+{% comment %}
+── Who is holding which car, and what is left on it ─────
+
+Last on the page, on the owner's instruction. It carries its OWN group
+heading rather than simply moving down: `<h6 class="lr-group">Spares</h6>`
+opens a group that nothing closes, so a box dropped after the three parts
+boxes with no heading of its own reads — to the eye and to a screen reader
+alike — as a fourth kind of spare.
+{% endcomment %}
+<h6 class="lr-group">Still to do</h6>
+<section class="lr-box">
+    <div class="lr-box-head">
+        <span class="lr-box-title"><i class="bi bi-people-fill"></i> On the floor</span>
+        <span class="lr-box-count">{{ floor_count }}</span>
+    </div>
+
+    {% if mechanic_groups %}
+    <div class="lr-crews">
+        {% for crew in mechanic_groups %}
+        <div class="lr-crew {% if crew.unassigned %}lr-crew--none{% endif %}">
+            <div class="lr-crew-name">
+                <i class="bi {% if crew.unassigned %}bi-person-dash{% else %}bi-person-fill{% endif %}"></i>
+                <span class="lr-crew-who">{{ crew.name }}</span>
+                <span class="lr-crew-count">{{ crew.jobs|length }}</span>
+            </div>
+            <div class="lr-cars">
+                {% for job in crew.jobs %}
+                {% with color=job.get_car_color_hex|default:'#94a3b8' %}
+                <a href="{% url 'jobcard_edit' job.pk %}?next=mini"
+                   class="lr-car
+                          {% if not job.car_color %}lr-car--unset
+                          {% elif job.car_color == 'White' %}lr-car--white{% endif %}"
+                   style="--stripe: {{ color }}; --shade: {{ color }}14;"
+                   title="{{ job.brand_name }} {{ job.model_name }} — {{ job.get_car_color_display }}">
+                    <span class="lr-car-rail"></span>
+                    <span class="lr-car-body">
+                        {% comment %}
+                        The registration is what identifies the car; the make
+                        is how it is recognised. A card carrying neither make
+                        nor model prints no line at all rather than an empty
+                        one — a blank row reads as something failing to load.
+                        {% endcomment %}
+                        {% if job.brand_name or job.model_name %}
+                        <span class="lr-car-name">{{ job.brand_name }} {{ job.model_name }}</span>
+                        {% endif %}
+                        <span class="lr-car-sub">
+                            <span class="lr-car-reg">{{ job.registration_number }}</span>
+                            {% if job.on_hold %}
+                            <span class="lr-car-hold">On hold</span>
+                            {% else %}
+                            <span class="lr-car-age">{{ job.age_label }}</span>
+                            {% endif %}
+                        </span>
+                        {% comment %}
+                        What is still to be commanded on this car. Only Office
+                        and the owners decide what a mechanic does next — they
+                        are the ones tracking which parts have arrived — so
+                        until this was here they were holding the whole floor's
+                        work list in their heads to make that call, one job
+                        card at a time.
+
+                        Amber first, then red: what the mechanic is on right
+                        now, then what is queued behind it. Fixed concerns are
+                        counted rather than listed — a finished job is not a
+                        decision anybody has left to make.
+
+                        Everything stays inside the anchor, so a tap anywhere
+                        on the car opens the job card, which is where a
+                        concern's status is actually changed.
+                        {% endcomment %}
+                        {% if job.open_concerns %}
+                        <span class="lr-concerns">
+                            {% for concern in job.open_concerns %}
+                            {% if concern.status == 'WORKING' %}
+                            <span class="lr-concern lr-concern--working"
+                                  aria-label="Working: {{ concern.concern_text }}">
+                                <span class="lr-concern-mark"><i
+                                    class="bi bi-clock-history lr-concern-clock"
+                                    aria-hidden="true"></i></span>
+                                <span class="lr-concern-text" aria-hidden="true">{{ concern.concern_text }}</span>
+                            </span>
+                            {% else %}
+                            <span class="lr-concern">
+                                <span class="lr-concern-mark"><span class="lr-concern-dot"
+                                      role="img" aria-label="Not started"></span></span>
+                                <span class="lr-concern-text">{{ concern.concern_text }}</span>
+                            </span>
+                            {% endif %}
+                            {% endfor %}
+                            {% if job.open_concerns_more %}
+                            <span class="lr-concern-more">+{{ job.open_concerns_more }} more</span>
+                            {% endif %}
+                            {% if job.fixed_count %}
+                            <span class="lr-concern-done">{{ job.fixed_count }} done</span>
+                            {% endif %}
+                        </span>
+                        {% elif job.concern_total %}
+                        <span class="lr-concern-clear">All concerns fixed</span>
+                        {% endif %}
+                    </span>
+                </a>
+                {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="lr-empty">No cars on the floor right now.</div>
+    {% endif %}
+</section>
+
 {% endblock %}

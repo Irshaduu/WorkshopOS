@@ -60,3 +60,74 @@ def is_future(value):
     advance of the day it is recorded. Same reasoning as `spare_dates`.
     """
     return value > timezone.localdate()
+
+
+# =============================================================================
+# HOW FAR BACK A MONEY DATE MAY REACH
+# =============================================================================
+# `is_future()` closes one end. This closes the other, and it is the end where
+# the damage is quiet: a figure dated forward is caught the moment somebody
+# reads the period it lands in, while one dated three years back rewrites a
+# month nobody scrolls to and reports nothing.
+#
+# ⚠ IT IS A CALENDAR MONTH, NEVER A DAY COUNT, and that is the whole design.
+# A fixed "14 days" breaks at exactly the moment the feature exists for: the
+# office reconciles LAST month against the collector's book in the first days
+# of this one, so a gap found on 3 September may belong to 5 August. A day
+# count refuses that correction; the month boundary is the rhythm the work
+# actually follows. Same lesson `delete_window` records for measuring on
+# `created_at` rather than the money date — a rule that cuts across the month
+# end fights the workflow it is meant to protect.
+#
+# ⚠ IT BINDS OFFICE, NOT OWNERS — the escalation `delete_window` already uses,
+# not a wall. Owners need the exception for real reasons: a go-live opening
+# position is a deposit dated before the ledger even starts, and an audit
+# finding can be older still. What stops an owner's mistake is not a refusal,
+# it is that the act cannot happen SILENTLY: the caller raises a CRITICAL
+# notification to the other owner using this same floor as its trigger, so one
+# constant decides both who is refused and what is announced.
+
+#: How many whole calendar months back Office may file money. 1 means "the 1st
+#: of last month onward", so the window is the whole of this month plus the
+#: whole of the last — generous during the days a month is being reconciled and
+#: closed everywhere else.
+BACKDATE_MONTHS = 1
+
+
+def backdate_floor(today=None):
+    """The earliest money date Office may file: the 1st of `BACKDATE_MONTHS` months ago."""
+    today = today or timezone.localdate()
+    total = today.year * 12 + (today.month - 1) - BACKDATE_MONTHS
+    return _date(total // 12, total % 12 + 1, 1)
+
+
+def is_too_far_back(value, today=None):
+    """Is this money date older than Office may file? — the raw predicate.
+
+    Separate from the message below because two callers need the ANSWER
+    without the refusal: the view that decides whether to raise the alert on an
+    owner, and the template that sets the date box's `min`.
+    """
+    return value < backdate_floor(today)
+
+
+def too_far_back(value, user, what, today=None):
+    """
+    The reason this user may not file money on this date, or **None** if they may.
+
+    Shaped exactly like `delete_window.refusal()`: an owner is never refused,
+    and the message names the rule AND the route, because a refusal that says
+    "you cannot" without saying who can is the half nobody can act on.
+    """
+    from .decorators import is_owner              # avoids a circular import
+
+    if is_owner(user) or not is_too_far_back(value, today):
+        return None
+
+    # `{floor.day}` rather than a `%-d` / `%#d` strftime code: those are
+    # platform-specific (glibc vs MSVC) and this codebase is developed on
+    # Windows and deployed on Linux, so one of the two would print "01 August".
+    floor = backdate_floor(today)
+    return (f"{what} can only be dated back to "
+            f"{floor.day} {floor:%B %Y}. "
+            f"Ask an owner to record one older than that.")

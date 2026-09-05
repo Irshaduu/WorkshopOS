@@ -765,8 +765,28 @@
       var noteEl = document.getElementById('wdNote');
       var amount = amountEl.value;
 
-      if (!ownerSel || !ownerSel.value) { alert('Choose which owner took the money.'); return; }
-      if (!amount || parseFloat(amount) <= 0) { amountEl.focus(); alert('Enter a valid amount.'); return; }
+      // Two statements, one button each. The picker opens on "Who?" and this
+      // is the field the figures themselves can never catch afterwards, so the
+      // card names the person rather than the box.
+      if (!ownerSel || !ownerSel.value) {
+        wsAlert({
+          title: 'Who took the money?',
+          text: 'A withdrawal is filed against one owner, and nothing later can work '
+              + 'out which. Choose a name before recording it.',
+          icon: 'bi-person-fill',
+          theme: 'warning'
+        }).then(function () { ownerSel.focus(); });
+        return;
+      }
+      if (!amount || parseFloat(amount) <= 0) {
+        wsAlert({
+          title: 'Enter an amount',
+          text: 'A withdrawal needs a figure above zero.',
+          icon: 'bi-currency-rupee',
+          theme: 'warning'
+        }).then(function () { amountEl.focus(); });
+        return;
+      }
 
       var iso = dateInput ? dateInput.value : '';
       document.getElementById('hfOwner').value = ownerSel.value;

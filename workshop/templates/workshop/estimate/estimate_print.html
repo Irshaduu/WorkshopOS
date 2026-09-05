@@ -272,16 +272,19 @@
         }
 
         {% comment %}
-        Same 21.5pt as INVOICE, deliberately, even though ESTIMATE is a
-        character longer and therefore sets a little wider. The two documents
-        are a pair; matching the TYPE SIZE keeps them looking like it, whereas
-        matching the word's printed WIDTH would mean two different title sizes
-        for no reason a customer could name.
+        Same 26pt as INVOICE, deliberately, even though ESTIMATE is a character
+        longer and therefore sets a little wider. The two documents are a pair;
+        matching the TYPE SIZE keeps them looking like it, whereas matching the
+        word's printed WIDTH would mean two different title sizes for no reason
+        a customer could name.
+
+        The size and the family both come from the reference bill — see the
+        invoice's own note. No family declared here: it inherits the sheet's
+        Calibri stack.
         {% endcomment %}
         .inv-title {
-            font-family: Arial, Helvetica, sans-serif;
             font-weight: 700;
-            font-size: 21.5pt;
+            font-size: 26pt;
             line-height: 1;
             letter-spacing: -.01em;
         }
@@ -318,11 +321,15 @@
             overflow-wrap: break-word;
         }
 
+        /* 11pt, a point ABOVE the rows beneath it, as on the reference.
+           `.inv-table th` (0,1,1) sets 10pt for the whole table, so this needs
+           (0,1,2) to beat it. Must stay identical to the invoice's rule. */
         .inv-table thead th {
             background: #1f4e79;
             border-color: #1f4e79;
             color: #fff;
             font-weight: 700;
+            font-size: 11pt;
             height: 5.5mm;
             text-align: center;
         }
@@ -386,7 +393,7 @@
             color: #fff;
             font-weight: 700;
             height: 4.4mm;
-            font-size: 10pt;
+            font-size: 11pt;
             padding: 0 2mm;
             border-width: 1px;
             border-style: solid;
@@ -400,13 +407,15 @@
             padding-left: 3.5mm;
         }
 
+        /* 11pt, matching the band above it — the whole vehicle/customer
+           block is a point larger than the line items on the reference. */
         .inv-parties td {
             background: #dce6f1;
             border: 1px solid #dce6f1;
             vertical-align: top;
             padding-right: 2mm;
             line-height: 4.98mm;
-            font-size: 10pt;
+            font-size: 11pt;
         }
 
         /* ---- Jobs ---- */
@@ -450,7 +459,7 @@
         .inv-table .grand-amount {
             background: #bdd7ee;
             font-weight: 700;
-            font-size: 15pt;
+            font-size: 14pt;
             color: #1f4e79;
         }
 
@@ -460,7 +469,7 @@
             text-align: center;
             font-style: italic;
             font-weight: 700;
-            font-size: 13pt;
+            font-size: 12pt;
             color: #2e74b5;
         }
 
@@ -468,7 +477,7 @@
         .inv-foot {
             margin-top: 8.1mm;
             text-align: center;
-            font-size: 10.5pt;
+            font-size: 10pt;
             line-height: 4.6mm;
         }
 
@@ -642,7 +651,12 @@
             Edit Estimate
         </a>
 
-        <button type="button" class="btn btn-primary" onclick="window.print()">
+        {% comment %}
+        `onclick` stays inline, and `js-print` is only a hook for the clipboard
+        copy at the foot of this file. Printing must not depend on that script
+        having run — see the comment there.
+        {% endcomment %}
+        <button type="button" class="btn btn-primary js-print" onclick="window.print()">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
             Print<span class="btn-print-long"> / Save PDF</span>
         </button>
@@ -844,6 +858,40 @@
     <script>
         (function () {
             'use strict';
+
+            // ---------------------------------------------------------------
+            // THE FILE NAME, ONTO THE CLIPBOARD, AS THE PRINT SHEET OPENS.
+            // Identical to the invoice's, and must stay so — the two sheets are
+            // opened days apart by the same person.
+            //
+            // DO NOT DELETE THIS AS DEAD CODE. Nothing on screen changes when it
+            // runs and no test can execute it. See CLAUDE.md, "The saved PDF's
+            // name", for the whole reasoning; the short version is that iOS
+            // ignores `document.title` and files every saved PDF as
+            // "Safari - <date> at <time>", so the name is put on the clipboard
+            // at the moment of pressing Print and the owner pastes it into the
+            // name field Save to Files does give.
+            //
+            // CAPTURE, ON `document`, NEVER A LISTENER ON THE BUTTON: the
+            // inline `onclick` fires in the target phase and `window.print()`
+            // BLOCKS, so anything bound to the button itself would copy after
+            // the dialog had already closed.
+            //
+            // It can never stop a bill printing — the copy is wrapped and the
+            // inline `onclick` is independent of this script.
+            // ---------------------------------------------------------------
+            document.addEventListener('click', function (event) {
+                var node = event.target;
+                if (!node || !node.closest || !node.closest('.js-print')) return;
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        // Synchronous inside the gesture; iOS drops user
+                        // activation if the write is deferred.
+                        navigator.clipboard.writeText(document.title)
+                            .catch(function () { /* denied, or no permission */ });
+                    }
+                } catch (ignored) { /* printing outranks the clipboard */ }
+            }, true);
 
             // Fit the sheet to a narrow screen by SCALING it, never by
             // reflowing it. Owners open these on a phone; a layout that

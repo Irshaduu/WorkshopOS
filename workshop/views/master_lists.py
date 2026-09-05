@@ -186,7 +186,14 @@ def model_create(request, brand_id=None):
         # Redirect back to the brand model list
         return redirect('brand_model_list', brand_id=model.brand.id)
         
-    return render(request, 'workshop/master_lists/model_form.html', {'form': form, 'title': 'Add Model'})
+    # Cancel is a NAMED destination, never `history.back()`: this form is
+    # reachable with an empty history (a bookmark, the first tap of a session),
+    # and `javascript:` in an href is the one thing here that a CSP would break.
+    # Without a brand there is no model list to return to, so the brand list is.
+    cancel_url = (reverse('brand_model_list', args=[brand_id]) if brand_id
+                  else reverse('brand_list'))
+    return render(request, 'workshop/master_lists/model_form.html',
+                  {'form': form, 'title': 'Add Model', 'cancel_url': cancel_url})
 
 
 @office_required
@@ -215,7 +222,9 @@ def model_edit(request, pk):
             return redirect('brand_model_list', brand_id=brand_id)
         form.add_error('name', 'Model name cannot be empty.')
 
-    return render(request, 'workshop/master_lists/model_form.html', {'form': form, 'title': 'Edit Model'})
+    return render(request, 'workshop/master_lists/model_form.html',
+                  {'form': form, 'title': 'Edit Model',
+                   'cancel_url': reverse('brand_model_list', args=[model.brand_id])})
 
 
 @office_required

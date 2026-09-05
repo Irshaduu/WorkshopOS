@@ -78,7 +78,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (30)
+### Workshop App Models (31)
 
 ```mermaid
 erDiagram
@@ -129,6 +129,9 @@ erDiagram
 | 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
 | 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed, **date**, created_at | Ledger payment record. `date` is the day the money MOVED — typed on the payment form, defaulting to today — and is what every date window on the shop page and its print sheet filters and orders by; `created_at` (`auto_now_add`) stays as the audit trail. Added by migration `0071`, which backfills existing rows from `created_at`. Ordering `['-date', '-created_at']`. |
 | 21 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
+| 21a | **OwnerWithdrawal** | owner (FK→User, **PROTECT**), amount, payment_method, note, **date**, created_at, recorded_by (FK→User) | Cash an owner takes out for themselves. Migration `0075`. ⚠ **Not an expense** — it appears in exactly one figure in `analysis_engine.py`, `cash_position()`'s money-out list, and nowhere in `build_profit_report`; profit is what is available to take, so taking it cannot reduce it. Exists because the Cashbook was the likeliest place for this money to land and `cashbook_expense()` feeds the profit equation. `owner` is PROTECT — one of only two in the codebase — because the row's whole job is to say *which* owner took it. `date` is the day the cash moved, typed; `created_at` is the audit trail. CheckConstraint `amount > 0`. |
+| 21b | **RentRate** | effective_from (**unique**, always the 1st), amount, note, created_at, set_by (FK→User) | What the premises cost per month, from a stated month onward. Migration `0076`. **Effective-dated, never edited in place** — a rent change is a new row, so a hike cannot rewrite what an earlier month cost. The figure is **absolute, not an increment**: a delta is a number the person must already know, so a mis-keyed `+5000` is silently ₹40,000 and a run of them makes the current rent unreadable. May be **backdated** (a hike agreed late and applied from an earlier month is ordinary, and refusing it would leave the books wrong for good) and may be **dated ahead** (a rate is not money; `rate_for()` applies it only once its month arrives). Owner-only, and every change raises `RENT_RATE_SET` at CRITICAL. `effective_from` is pinned to the 1st in `save()`. CheckConstraint `amount > 0`. |
+| 21c | **RentDeposit** | amount, **date**, note, created_at, recorded_by (FK→User) | One handover of cash to the rent collector, who comes daily and keeps his own book. Migration `0076`. ⚠ **Not an expense** — what a month COST is the rent; this is how it gets PAID, the same split a supplier payment and a stock draw already have. **No payment method**, deliberately: it is always cash handed to a man with a book, and a select that can only say one thing is a field to leave out. `date` is the day the money moved, typed and back-dateable; `created_at` is the audit trail, is what `delete_window` measures, and is what marks a row **keyed in a later month than it is filed under** on the page. CheckConstraint `amount > 0`. ⚠ **Read by `cash_position()` and by nothing else in the engine** — the same footprint `OwnerWithdrawal` has, and for the same reason: handing cash over is not a cost. What the month cost is the RATE. |
 | 22 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers Job Card, Fleet/Spare-Shop/Supplier payments, Restock Bill, Cashbook Entry and **Inventory Product**. No restore. |
 | 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
 | 24 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
@@ -228,7 +231,7 @@ byte-identical.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (156 Total)
+## 4. ALL URL ROUTES — COMPLETE (162 Total)
 
 *Walked from `get_resolver().url_patterns` recursively and
 excluding Django admin (131 of its own) — the method below, not by grepping
@@ -240,10 +243,10 @@ routes (`robots.txt`, `sw.js`) since they are served by the same app.*
 ⚠ **Walk it with `DEBUG=False` or the total is one higher.**
 `formulad_workshop/urls.py` appends `MEDIA_URL` through Django's `static()` helper,
 which returns an **empty list** when `DEBUG=False` — so a development resolver reports
-**157 (124 + 33)** and production reports **156 (123 + 33)**. That one route is the
+**163 (130 + 33)** and production reports **162 (129 + 33)**. That one route is the
 media path, which is not served in production at all (§12, and `AUD-0088`).
 
-### Workshop App (123 routes)
+### Workshop App (129 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -336,6 +339,14 @@ media path, which is not served in production at all (§12, and `AUD-0088`).
 | | `/manage/mechanics/<id>/toggle/` | `manage_toggle_mechanic` | Owner |
 | | `/manage/mechanics/<id>/edit/` | `manage_edit_mechanic` | Owner |
 | | `/manage/sessions/<id>/terminate/` | `manage_terminate_session` | Owner |
+| **DEPOSIT & RENT** | `/rent/` | `rent_home` | Office |
+| | `/rent/deposit/add/` | `rent_deposit_add` | Office |
+| | `/rent/deposit/<id>/delete/` | `rent_deposit_delete` | Office (7-day window) |
+| | `/rent/rate/set/` | `rent_rate_set` | **Owner** |
+| | `/rent/rate/<id>/delete/` | `rent_rate_delete` | **Owner** |
+| **OWNER WITHDRAWALS** | `/withdrawals/` | `withdrawal_home` | **Owner** |
+| | `/withdrawals/add/` | `withdrawal_add` | **Owner** |
+| | `/withdrawals/<id>/delete/` | `withdrawal_delete` | **Owner** |
 | **CASHBOOK** | `/cashbook/` | `cashbook_view` | Office |
 | | `/cashbook/add/` | `add_cashbook_entry` | Office |
 | | `/cashbook/<id>/delete/` | `delete_cashbook_entry` | Office |
@@ -510,7 +521,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (106 HTML Files)
+## 7. TEMPLATE STRUCTURE (111 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -520,7 +531,7 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 83 files
+### Workshop Templates (`workshop/templates/workshop/`) — 88 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -541,6 +552,8 @@ stateDiagram-v2
 | `/manage/` | 4 files: `manage_dashboard.html` (Owner-only Control Hub), `data_cleanup.html`, `master_confirm_delete.html`, `master_confirm_merge.html` | Control Hub + Data Cleanup, plus the two confirmations shared with Master Lists so a rename that *collides* is gated identically from both screens |
 | `/deletion_history/` | `deletion_history_list.html`, `deletion_history_detail.html` | 2 files — the Owner-only, read-only audit log of every permanent delete. No restore |
 | `/notifications/` | `notification_list.html`, `_panel_items.html`, `_row.html` | 3 files — the full feed, the lazily-fetched bell panel, and the ONE row partial both share, so "read" cannot come to look like two different things |
+| `/rent/` | `rent/rent_home.html` | 1 file — Deposit & Rent, the whole section on one page: today's figure with its working printed beside it, this month against the months already finished, the shared `.rpay-*` record card, **one month's** deposit log, and the history as **collapsed year blocks** so twenty years is twenty lines. No cap and no pager anywhere. Setting the rent is behind a ⋮ in the hero, Owner-only, because it changes about once a year. |
+| `/withdrawals/` | `withdrawal_home.html` | 1 file — Owner Withdrawals, the whole section on one page: what each owner took in the window, the shared `.rpay-*` record card, and the history narrowed by a chip row. No per-owner drill-down (with two owners the comparison *is* the question) and no edit (Owner-only end to end, so delete and re-add is one line and lands in Deletion History rather than overwriting silently). |
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
 | `/includes/` | 7 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by both printed documents; and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
 
@@ -618,7 +631,7 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 | `create_user_groups` | `apps.py` | Auto-creates Owner/Office/Floor groups on migrate |
 | `inventory.signals` | `signals.py` | Auto stock sync — **10 handlers in 3 groups**: 3 for `JobCardSpareItem` (consumption, `source='INVENTORY'` only) + 2 for `JobCard` (soft-delete stock reversal, **dormant**) + 5 for supplier restocking — 3 on `SupplierRestockItem` (stock, and the only mover of `Item.avg_cost`) and a `SupplierRestockBill` pre/post_save pair that re-costs when `bill_date` or `discount_amount` changes. Never clamps stock at zero |
 | `inventory.costing` | `costing.py` | Weighted-average warehouse cost. Pure functions over a date-ordered replay of receipts and draws; holds no view logic and never touches `current_stock`. Receipts move the average, draws do not |
-| Management Commands | `management/commands/` | All eleven: `setup_groups` (legacy setup), `backup_db` (follows the active engine — `pg_dump` for Postgres, file copy for SQLite, keeps 14), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address), `load_master_data` (brands/models/spares), `seed_dummy_data` + `seed_salary_data` (demo data), `purge_business_data` (clears every business table; the reversal of seeding), `copy_sqlite_to_postgres` (seed on SQLite, push up), **`sweep_photo_blobs`** (storage objects whose rows are gone) and **`purge_old_photos`** (the 1-year retention sweep, which always skips an unpaid bill). The last two are dry-run by default, like the other destructive ones |
+| Management Commands | `management/commands/` | The ones worth knowing (the demo seeders are deliberately undocumented): `setup_groups` (legacy setup), `backup_db` (follows the active engine — `pg_dump` for Postgres, file copy for SQLite, keeps 14), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address), `load_master_data` (brands/models/spares), `seed_dummy_data` + `seed_salary_data` (demo data), `purge_business_data` (clears every business table — including the owner withdrawals and the rent ledger, which it silently missed until 2026-09-04; the reversal of seeding, and the thing to run against production before go-live), `copy_sqlite_to_postgres` (seed on SQLite, push up), **`sweep_photo_blobs`** (storage objects whose rows are gone) and **`purge_old_photos`** (the 1-year retention sweep, which always skips an unpaid bill). The last two are dry-run by default, like the other destructive ones |
 | Custom template filters | `templatetags/custom_filters.py` | **13 filters** — `has_group`, `is_drawer_section` (drives the nav's Manage highlight from one prefix list), `is_tomorrow`, `divide`, `multiply`, `clean_qty`/`qty`, `gt`, `get_range`, `abs_value`, and the four rupee formatters — `inr` (whole rupees, Indian grouping), `inr_amount` (paise only when there are any), `inr_exact` (paise always, for the printed invoice's money columns), `inr_compact` (`45.2L` / `4.57Cr`, for hero figures on a phone) |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV`, raises `ImproperlyConfigured` if unset |
 | `WhiteNoiseMiddleware` | `settings/base.py` | Serves static assets directly from the application, in **both** environments — it moved out of `production.py` when every third-party asset was vendored, so development renders against the same manifest that ships. Sits directly under `SecurityMiddleware` and above `GZipMiddleware` |
@@ -684,7 +697,7 @@ graph TB
 
 ---
 
-## 11. DJANGO ADMIN REGISTRATIONS (18 Total)
+## 11. DJANGO ADMIN REGISTRATIONS (20 Total)
 
 ### Workshop Admin (10)
 
@@ -781,7 +794,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (54 files · 1,685 tests)
+## 13. TEST SUITE (59 files · 1,921 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -789,7 +802,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (48 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (54 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -831,6 +844,7 @@ base classes.*
 | `test_money_guards.py` | The four screens where money MOVES — settling a bill, paying a Fleet Account, a spare shop and a Supplies Shop — all read `workshop/money.py`. Pins the property rather than the wording: `Infinity` (which passes a `> 0` guard honestly and corrupts the column), `NaN` (an ordered comparison against which RAISES, 500ing the page) and an 11-digit overflow all write nothing and move no stored figure, while an ordinary settlement, a real cascade and a blank-means-zero correction still work |
 | `test_spare_dates.py` | A part cannot arrive before it was ordered — the pair rule itself, the job card refusing it (which it never used to), and both screens reading the one implementation in `workshop/spare_dates.py` |
 | `test_job_line_suggestions.py` | "Job Performed" suggested from the parts already on the card: the datalist, every box pointing at it, a warehouse draw offered by its CATEGORY through the invoice's own rule, and the verbs declared in exactly one place |
+| `test_back_navigation.py` | One back-navigation system: every page on the shared `.pg-back` component with none of the seven retired treatments allowed back, each of the three standalone print sheets offering an exit whether or not it was given a `?back=`, the spare-shop purchase report no longer the app’s one dead end (it rendered ZERO anchors), a crafted `back` refused without costing the page its only way out, and Cancel on the four master-list forms naming a URL instead of jumping through history |
 | `test_card_list_grid.py` | The app's card lists as ONE shape: Completed, Pending Bills, Paid Bills, Job Cards and the High Discount Audit on the shared `row-cards` rule, Car Profiles on the identical two breakpoints (560 / 800), no fourth column, and the audit card stacked so three across cannot squeeze its number plate |
 | `test_jobcard_detail_view.py` | The read-only job card as the owner laid it out: data with NO labels anywhere, a missing value leaving no trace, a part carrying only its two dates and two figures, the four sections copied value-for-value from the dashboard drawer, no figure printed twice on the money line, nothing on the page posting, and the whole page Office/Owner only with its one Floor-visible link gated to match |
 | `test_car_profiles.py` | Car Profiles: totals aggregated in the database rather than summed from the page, "Total billed" as `total_bill_amount − discount_amount`, the search box held identical to Completed's, and the Owner-only gross-margin figure |
@@ -838,6 +852,7 @@ base classes.*
 | `test_jobcard_form_ux.py` | The form's own marks: an empty box hairlined unless it carries `jc-optional`, the amber unsaved-changes state, a date pair marked as one gap, an inventory quantity still marked when a spare one is not, and the blank-row DELETE flags recomputed rather than latched |
 | `test_paid_bills_rbac.py` | Paid Bills as Office-visible with a 7-day window enforced **in the view**, not by hiding the filter — `?filter=all` is one URL edit away — while the grand total and the high-discount audit stay Owner-only |
 | `test_settlement_preflight.py` | `workshop/settlement.py` read by both surfaces: one gap one box, the phrases derived from the chip labels, a warehouse draw never chased for a shop's fields, no labour nag on a parts-only card, and no way to settle while leaving the car on the board |
+| `test_owner_withdrawals.py` | Owner withdrawals — never an expense, cash out once |
 | `test_staff_login_alert.py` | An Office or Floor sign-in pushes (`STAFF_LOGIN`, CRITICAL) while an owner's does not (`LOGIN`, INFO), and the body carries the role so a lock-screen line says whether that account can see money |
 | `test_unassigned_spares.py` | The Unassigned Hub: Floor may add and nothing else, a crafted price from Floor writes nothing, an unpriced row stores NULL rather than 0, and an archived shop's rows stay listed and keep their shop |
 | `test_photos.py` | Job card photos: SigV4 pinned to AWS's published known-answer vector, the sign-then-commit ordering that stops a row ever pointing at a missing object, per-subject limits re-checked inside the commit transaction, the settled-card freeze keyed on payment status rather than on the page, Floor being able to take *and* delete on an open card, the box being a `<div>` so the Financial Lock cannot kill viewing, and — the reason the owner asked — that with storage switched off the form still opens, the invoice still prints and settlement never chases a photo |
@@ -871,8 +886,8 @@ WorkshopOS (Titan)/
 │   ├── urls.py                 ← Root: admin + workshop + inventory
 │   ├── wsgi.py / asgi.py
 │
-├── workshop/                   ← Core App (123 URL routes)
-│   ├── models.py               ← 30 Models
+├── workshop/                   ← Core App (129 URL routes)
+│   ├── models.py               ← 31 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
 │   │   ├── dashboard.py        ← home, live_report
@@ -893,15 +908,20 @@ WorkshopOS (Titan)/
 │   │   ├── notifications.py    ← feed, bell panel, open/mark-read (Owner-only)
 │   │   ├── push.py             ← Web Push subscribe / unsubscribe (one row per device)
 │   │   ├── photos.py           ← sign, commit, list, delete + the DEBUG-only blob endpoints
-│   │   └── salary_advance.py   ← Salary & Advance: advances, month-end settlement
+│   │   ├── salary_advance.py   ← Salary & Advance: advances, month-end settlement
+│   │   ├── rent.py             ← Deposit & Rent: the daily cash that pays the premises
+│   │   ├── withdrawal.py       ← Owner Withdrawals: profit taken out, never an expense
+│   │   └── about.py            ← The static tour of what exists (Owner-only)
 │   ├── analysis_views.py       ← Owner Profit + Insights views
 │   ├── analysis_engine.py      ← All Analysis money math (pure functions, no HTML)
 │   ├── invoice.py              ← What BOTH customer documents show — build_invoice + build_estimate (pure functions, no views)
 │   ├── settlement.py           ← What is still UNFILLED on a job card — read by the settle dialog and the Live Report's chase list (pure, no views)
 │   ├── spare_dates.py          ← The ordered/received pair rule, shared by the job card and the Unassigned Spares hub (pure, no views)
+│   ├── rent.py                 ← How much should we hand the rent collector today? Everything derived, nothing stored (pure, no views)
 │   ├── master_data.py          ← The ONE rename/merge rule, shared by Master Lists and Data Cleanup (pure, no views)
 │   ├── money.py                ← Is this typed rupee amount acceptable for its column? Bounds READ from the column (pure, no views)
-│   ├── money_dates.py          ← What day did this money move? Shared by the Cashbook and the spare-shop payment form (pure, no views)
+│   ├── money_dates.py          ← What day did this money move, and how far back may it be filed? Shared by all six money-date forms (pure, no views)
+│   ├── return_to.py            ← Where does this page send you when you leave it? The one `?back=` host check, shared by all three standalone print sheets (pure, no views)
 │   ├── photos.py               ← Where the bytes go and how the URL is signed — SigV4 on stdlib hmac/hashlib (pure, no views)
 │   ├── notifications.py        ← The EVENTS catalogue + the single notify() entry point
 │   ├── push.py                 ← Web Push sending, handed off on transaction.on_commit
@@ -982,4 +1002,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total**: 2 Django Apps · **38 Models** (30 workshop + 8 inventory) · **156 URL Routes** (123 + 33, excluding Django admin; 157 under `DEBUG=True`, which adds the media path) · **108 Templates** (85 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **54 Test Files / 1,685 tests** · **79 Migrations** (71 workshop + 8 inventory)
+> **Total**: 2 Django Apps · **39 Models** (31 workshop + 8 inventory) · **162 URL Routes** (129 + 33, excluding Django admin; 163 under `DEBUG=True`, which adds the media path) · **111 Templates** (88 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **59 Test Files / 1,921 tests** · **83 Migrations** (75 workshop + 8 inventory)

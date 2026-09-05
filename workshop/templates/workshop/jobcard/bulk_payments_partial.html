@@ -37,7 +37,12 @@
                 </div>
 
                 <div class="card-footer bg-transparent border-top px-4 py-3">
-                    <form method="POST" action="{% url 'bulk_payments_process' %}" class="d-flex gap-2">
+                    <form method="POST" action="{% url 'bulk_payments_process' %}" class="d-flex gap-2"
+                          data-confirm="The money is spread across these {{ group.jobs|length }} job cards oldest first, and anything left over is banked as advance credit."
+                          data-confirm-title="Distribute this payment?"
+                          data-confirm-icon="bi-cash-stack"
+                          data-confirm-theme="success"
+                          data-confirm-ok="Distribute">
                         {% csrf_token %}
                         <input type="hidden" name="customer_name" value="{{ group.customer_name }}">
                         <input type="hidden" name="customer_contact" value="{{ group.customer_contact|default:'' }}">
@@ -51,7 +56,15 @@
                             <option value="TRANSFER">🏦 Bank Transfer</option>
                         </select>
                         
-                        <button type="submit" class="btn btn-primary fw-bold px-4 shadow-sm" onclick="return confirm('Distribute payment across these {{ group.jobs|length }} jobs (oldest first)?')">
+                        {% comment %}
+                        This partial is reachable from no view and no include.
+                        It is kept in step anyway — with the payment-method list
+                        and now with the confirmation card — so that reviving it
+                        cannot quietly bring back a native browser dialog.
+                        The question rides on the form, which is where the
+                        `data-confirm` attributes below it belong.
+                        {% endcomment %}
+                        <button type="submit" class="btn btn-primary fw-bold px-4 shadow-sm">
                             Process
                         </button>
                     </form>
