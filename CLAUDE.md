@@ -3455,6 +3455,53 @@ keeping: **a trace approximates letterforms by construction** — it rendered at
 two-colour logo are the tell for the first failure; a ratio that disagrees with
 the source is the tell for the second.**
 
+### The type is measured off the reference bill, not chosen
+
+**Calibri, and the sizes are READ OUT OF THE WORKSHOP'S OWN PRINTED BILL** —
+`Running Invoice.pdf`, whose embedded font programs name themselves Calibri
+Regular / Bold / Bold Italic (Ascent 952, CapHeight 631, Descent -268) and whose
+every text run was measured after undoing the 0.75 device-to-point matrix that
+"Microsoft Print To PDF" lays a page out with. Not matched by eye.
+
+⚠ **THE LINE ITEMS ARE 10pt AND THE BANDS ARE 11pt, AND THAT IS NOT AN
+INCONSISTENCY TO TIDY UP.** The reference does exactly this: job and part rows
+at 10, the BILL TO / VEHICLE INFO block and every navy header band at 11. The
+owners reported the bill as "Calibri (Body) 11" — which is true of the block
+they happened to click, and false of the line items that make up most of the
+page. **A blanket lift to 11pt would break the half that was already correct.**
+
+| | |
+|---|---|
+| INVOICE / ESTIMATE title | 26pt |
+| address, line items, footer | 10pt |
+| vehicle block, header bands, DATE / # | 11pt |
+| thank-you line | 12pt |
+| TOTAL | 14pt |
+| PAID stamp | 9.5pt — ours alone, the reference has none |
+
+⚠ **THE TITLE INHERITS THE SHEET'S FAMILY AND MUST NOT BE GIVEN ITS OWN.** It
+was `Arial 21.5pt` for a year — the right WIDTH reached through the wrong font,
+because it had been sized until it set as wide as the DATE line beneath it, and
+Calibri is narrower than Arial, so 21.5pt Arial measures almost exactly 26pt
+Calibri Bold across. Measured after the change: 31.07mm against the ~31.2mm the
+old value had been tuned to. The width was always right; only the font was
+wrong.
+
+⚠ **`.inv-table td, .inv-table th` (0,1,1) SETS 10pt FOR THE WHOLE TABLE**, so
+the header bands need `.inv-table thead th` (0,1,2) to beat it — the same
+specificity trap the modifier classes are already qualified against, and the
+reason an `!important` blanket override is the wrong way to test a size change:
+it flattens TOTAL and the thank-you line too.
+
+**Two things in the reference are deliberately NOT copied.** Its parts SUBTOTAL
+sets the label at 10pt and the figure at 12pt while the job table's sets both at
+10 — an inconsistency inside its own file, which this template already resolved
+on purpose. And its email address is in **Arial** while the three address lines
+above it are Calibri, which is a paste that kept its formatting.
+
+*Worth telling the owners, and not our bug:* their Excel page setup is **US
+Letter**, not A4, so every bill they print is being scaled or clipped.
+
 ## Estimates
 
 **An ESTIMATE is connected to NOTHING, and that isolation is the feature.**

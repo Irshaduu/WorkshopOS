@@ -325,14 +325,21 @@
         }
 
         {% comment %}
-        Sized off the reference rather than picked: the word sets about as wide
-        as the DATE line beneath it and ends level with it, ~16.8% of the
-        content width. 30pt overshot that by half again.
+        26pt Calibri Bold, READ OUT OF THE REFERENCE PDF rather than matched by
+        eye. It stood at 21.5pt Arial for a year, and that was the right WIDTH
+        reached through the wrong font: the word was sized until it set about as
+        wide as the DATE line beneath it, and Calibri is narrower than Arial, so
+        21.5pt Arial happens to measure almost exactly 26pt Calibri Bold across.
+        The width matched and the letterforms did not.
+
+        No family of its own now - it inherits the sheet's Calibri stack, so the
+        title cannot drift away from the rest of the bill the way it silently
+        had. See `_brand_mark.html` for the one other place a size on this sheet
+        is measured rather than chosen.
         {% endcomment %}
         .inv-title {
-            font-family: Arial, Helvetica, sans-serif;
             font-weight: 700;
-            font-size: 21.5pt;
+            font-size: 26pt;
             line-height: 1;
             letter-spacing: -.01em;
         }
@@ -369,12 +376,19 @@
             overflow-wrap: break-word;
         }
 
-        /* The navy header is one unbroken bar — its internal borders are the bar. */
+        /* The navy header is one unbroken bar — its internal borders are the bar.
+
+           11pt, a point ABOVE the rows beneath it, because that is what the
+           reference prints: its bands and its vehicle block are 11 while every
+           line item is 10. `.inv-table th` (0,1,1) sets 10pt for the whole
+           table, so this needs (0,1,2) to beat it — the same specificity trap
+           the modifier classes below are qualified against. */
         .inv-table thead th {
             background: #1f4e79;
             border-color: #1f4e79;
             color: #fff;
             font-weight: 700;
+            font-size: 11pt;
             height: 5.5mm;
             text-align: center;
         }
@@ -442,7 +456,7 @@
             color: #fff;
             font-weight: 700;
             height: 4.4mm;
-            font-size: 10pt;
+            font-size: 11pt;
             padding: 0 2mm;
             border-width: 1px;
             border-style: solid;
@@ -462,13 +476,20 @@
             padding-left: 3.5mm;
         }
 
+        {% comment %}
+        11pt, matching the band above it — the whole vehicle/customer block is a
+        point larger than the line items on the reference, and it is the block
+        the owners read the size off when they reported the bill as "Calibri 11".
+        The 4.4mm band height is left alone: an 11pt line box is 4.46mm, so the
+        block grows by a third of a millimetre and nothing else moves.
+        {% endcomment %}
         .inv-parties td {
             background: #dce6f1;
             border: 1px solid #dce6f1;
             vertical-align: top;
             padding-right: 2mm;
             line-height: 4.98mm;
-            font-size: 10pt;
+            font-size: 11pt;
         }
 
         /* ---- Job performed ---- */
@@ -509,11 +530,14 @@
             background: #bdd7ee;
         }
 
+        /* 14pt, read off the reference. It was 15 — a picked figure, the only
+           size on this sheet with no derivation behind it — and the step from
+           the 10pt subtotal above it is emphatic enough at 14. */
         .inv-table .grand-label,
         .inv-table .grand-amount {
             background: #bdd7ee;
             font-weight: 700;
-            font-size: 15pt;
+            font-size: 14pt;
             color: #1f4e79;
         }
 
@@ -574,7 +598,7 @@
             text-align: center;
             font-style: italic;
             font-weight: 700;
-            font-size: 13pt;
+            font-size: 12pt;
             color: #2e74b5;
         }
 
@@ -582,7 +606,7 @@
         .inv-foot {
             margin-top: 8.1mm;
             text-align: center;
-            font-size: 10.5pt;
+            font-size: 10pt;
             line-height: 4.6mm;
         }
 
