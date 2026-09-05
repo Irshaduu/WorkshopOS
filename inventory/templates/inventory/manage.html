@@ -226,7 +226,11 @@
                 {% if category.product_count == 0 %}
                 {# Delete is offered only for an empty category — Item.category is PROTECT. #}
                 <form method="post" action="{% url 'inventory_delete_category' category.id %}"
-                      onsubmit="return confirm('Delete the empty category &quot;{{ category.name|escapejs }}&quot;?');">
+                      data-confirm="{{ category.name }} holds no products, so nothing on a shelf or a bill moves. It comes back on its own the next time somebody files a product under that name."
+                      data-confirm-title="Delete this category?"
+                      data-confirm-icon="bi-trash3-fill"
+                      data-confirm-theme="danger"
+                      data-confirm-ok="Delete">
                     {% csrf_token %}
                     <button type="submit" class="dropdown-delete-btn">
                         <i class="bi bi-trash3"></i> Delete

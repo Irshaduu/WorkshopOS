@@ -1222,10 +1222,14 @@ the empty state, which would be a control with nothing to control.
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
-                                    <form method="post" action="{% url 'mark_completed' job.pk %}" class="d-inline">
+                                    <form method="post" action="{% url 'mark_completed' job.pk %}" class="d-inline"
+                                          data-confirm="{{ job.registration_number }} leaves the board and moves to Completed."
+                                          data-confirm-title="Handing this car over?"
+                                          data-confirm-icon="bi-check2-circle"
+                                          data-confirm-theme="success"
+                                          data-confirm-ok="Mark completed">
                                         {% csrf_token %}
-                                        <button type="submit" class="dropdown-item text-success"
-                                                onclick="return confirm('Mark {{ job.registration_number }} as completed?');">
+                                        <button type="submit" class="dropdown-item text-success">
                                             <i class="bi bi-check-circle"></i> Mark Completed
                                         </button>
                                     </form>

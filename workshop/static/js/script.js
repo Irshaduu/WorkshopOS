@@ -174,9 +174,15 @@ if ('serviceWorker' in navigator) {
 
     // Bubble phase, deliberately. The guards that refuse a submit — the
     // Financial Lock, the inventory quantity check — run in CAPTURE and call
-    // stopPropagation(), so a refused save never reaches this at all. The
-    // sixteen `onsubmit="return confirm(...)"` attributes DO reach it, with
-    // defaultPrevented already set when the person answered no.
+    // stopPropagation(), so a refused save never reaches this at all.
+    //
+    // The confirmation card (confirm.js) is the other side of the same rule and
+    // it works differently from the `onsubmit="return confirm(...)"` attributes
+    // it replaced: it cancels the submit OUTRIGHT and re-issues it once Confirm
+    // is pressed. So a cancelled question never gets here, and a confirmed one
+    // arrives as a fresh submit with nothing prevented — which is why the card
+    // re-submits with requestSubmit() rather than a programmatic .submit(),
+    // that being the only one of the two that raises an event for this to hear.
     document.addEventListener('submit', function (e) {
         if (e.defaultPrevented) { return; }
         var form = e.target;

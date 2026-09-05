@@ -1461,10 +1461,14 @@ grey".
                                 <i class="bi bi-eye"></i> View
                             </a>
                             {% endif %}
-                            <form method="post" action="{% url 'mark_completed' job.pk %}" class="flex-fill">
+                            <form method="post" action="{% url 'mark_completed' job.pk %}" class="flex-fill"
+                                  data-confirm="{{ job.registration_number }} leaves the board and moves to Completed."
+                                  data-confirm-title="Handing this car over?"
+                                  data-confirm-icon="bi-check2-circle"
+                                  data-confirm-theme="success"
+                                  data-confirm-ok="Mark completed">
                                 {% csrf_token %}
-                                <button type="submit" class="btn btn-sm btn-success w-100"
-                                    onclick="return confirm('Mark {{ job.registration_number }} as completed?');">
+                                <button type="submit" class="btn btn-sm btn-success w-100">
                                     <i class="bi bi-check-lg"></i> Completed
                                 </button>
                             </form>
@@ -2887,10 +2891,17 @@ is now true, and the column width is unchanged at every breakpoint.
             const isLocked = form.getAttribute('data-locked') === 'true';
 
             if (isLocked) {
-                // UNLOCKING
-                const confirmMsg = "⚠️ PROCEED WITH CAUTION!\n\nYou are unlocking a FINALIZED financial record.\nThis action should only be done for essential corrections. Continue?";
-                
-                if (confirm(confirmMsg)) {
+                // UNLOCKING — the app's own card, not a browser dialog. This is
+                // the loudest question on the form and it used to be asked in
+                // the one box that cannot be designed at all.
+                wsConfirm({
+                    title: 'Unlock a settled bill?',
+                    text: 'This card is settled. Unlocking lets its figures be changed, and if the total moves the payment is put right to match it — a large gap alerts both owners.',
+                    icon: 'bi-unlock-fill',
+                    theme: 'danger',
+                    ok: 'Unlock it'
+                }).then(function (answer) {
+                    if (!answer.ok) { return; }
                     editableElements.forEach(el => el.disabled = false);
                     if (submitBtn) {
                         submitBtn.disabled = false;
@@ -2907,7 +2918,7 @@ is now true, and the column width is unchanged at every breakpoint.
                     toast.innerHTML = '🔓 FINANCIAL LOCK RELEASED';
                     document.body.appendChild(toast);
                     setTimeout(() => toast.remove(), 3000);
-                }
+                });
             } else {
                 // LOCKING
                 editableElements.forEach(el => el.disabled = true);
@@ -2923,7 +2934,33 @@ is now true, and the column width is unchanged at every breakpoint.
         document.getElementById('jobcardForm').addEventListener('submit', function(e) {
             if (this.getAttribute('data-locked') === "true") {
                 e.preventDefault();
-                alert("🚫 RECORD IS LOCKED. You cannot update a finalized job card without unlocking it first.");
+                {% comment %}
+                A statement, not a question — one button, and it names the way
+                forward rather than only what cannot be done.
+
+                ⚠ IT IS ROLE-AWARE, because UNLOCK RECORD is gated to Office and
+                Owner while `jobcard_edit` is `@staff_required` and the auto-lock
+                runs for every role. So a mechanic on a settled card meets this
+                message, and sending them to a button that is not rendered for
+                them is the "a door somebody can see but cannot open" defect the
+                frozen-advance menu already records — a lock that says "you
+                cannot" without saying who can is the half nobody can act on.
+
+                Floor's copy also carries no money in it. This role is shown no
+                price, no cost and no payment state anywhere else in the app, so
+                a dialog is not the place to introduce one.
+                {% endcomment %}
+                wsAlert({
+                    title: 'This card is locked',
+                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                    text: 'It is settled, so its figures cannot be changed until the lock is released. Use UNLOCK RECORD at the top of the card.',
+                    {% else %}
+                    text: 'This card is closed, so it cannot be changed here. Ask the office if something on it needs correcting.',
+                    {% endif %}
+                    icon: 'bi-lock-fill',
+                    theme: 'danger',
+                    ok: 'Got it'
+                });
                 return false;
             }
         });

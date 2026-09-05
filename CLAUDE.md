@@ -4857,11 +4857,15 @@ Five things are load-bearing:
   information is the point.
 - **It must not fire on things that do not navigate.** Verified: `data-bs-toggle`
   (the drawer and every ⋮ menu), `#` anchors, `target`, `download`, cross-origin,
-  the same URL, and **a `confirm()` the person cancelled** — that last one matters,
-  since eleven templates ask through `confirm()`, mostly as an
-  `onsubmit="return confirm(…)"` attribute. It is delegated on
-  `document` in the BUBBLE phase, so the guards that refuse a submit in CAPTURE
-  (the Financial Lock, the inventory quantity check) never reach it.
+  the same URL, and **a question the person answered "no" to** — that last one
+  matters, and it now works for a different reason than it used to. It was
+  eleven templates asking through `onsubmit="return confirm(…)"`, which set
+  `defaultPrevented` synchronously; the shared confirmation card cancels the
+  submit **outright** and re-issues it only once Confirm is pressed, so a
+  cancelled question never reaches this at all and a confirmed one arrives as a
+  fresh submit. It is delegated on `document` in the BUBBLE phase, so the guards
+  that refuse a submit in CAPTURE (the Financial Lock, the inventory quantity
+  check) never reach it either.
 
 ⚠ Three templates confirm through a Bootstrap modal that then calls
 `formToSubmit.submit()`. **Programmatic `.submit()` fires no submit event**, so
@@ -5259,6 +5263,152 @@ and `model_edit` pass a `cancel_url` because a model list is scoped to its brand
 → `workshop/tests/test_back_navigation.py`. The scan for retired treatments is
 the load-bearing one: nothing in the Django suite executes CSS, and a new page
 pasting a bespoke back link is invisible to every other kind of test.
+
+## Asking a question — one card, one declaration
+
+**Nothing in this app asks the BROWSER any more.** Twenty-one native dialogs
+survived until 2026-09-05 — sixteen `window.confirm()`, four `alert()` and one
+`prompt()` — on the Undo Completion menu item, both Mark Completed buttons, the
+Financial Lock, both reactivate lists, the category delete, both delete-login
+rows, the master-list rename/merge, three rent questions plus the rate delete,
+the salary overwrite, the photo delete and the spare-status fallback. They
+opened with **"127.0.0.1:8000 says"**, which is the browser talking rather than
+the app, and drew the question, the reason and the way out as one flat grey
+block that can carry no glyph, no colour and no field.
+
+**The card is `.wcf-*` in `static/css/style.css`, the markup is
+`workshop/includes/_confirm_dialog.html` included once in `base.html`, and the
+controller is `static/js/confirm.js`.** That is the `.rpay-*` rule applied
+again: a control drawn by more than one template gets ONE declaration, because
+three near-copies of the payment form drifted three ways while somebody kept
+them in step by hand. **Converting twenty-one dialogs added one thing to keep
+in step, not twenty-one.**
+
+⚠ **IT IS GENERALISED FROM `.logout-modal`, NOT FROM `confirmActionModal`,
+and the difference is the tinted disc.** The two shop pages draw a bare 3rem
+glyph; the logout card puts it in a 52px round tint, which is what lets a card
+be recognised as *its own section's* before a word of it is read — a red bin
+for a delete, an amber calendar for a back-dated entry, a green tick for a
+handover, a red open padlock for the Financial Lock.
+
+⚠ **A VARIANT IS TWO CUSTOM PROPERTIES, NEVER A SECOND COPY OF THE CARD.**
+`--wcf-tint` is the disc, `--wcf-ink` is the glyph and the filled button, set
+off `data-theme`. Same mechanism as `--rpay-btn-a/b` and the crew chips' own
+`--tint`. **Every ink carries white at 4.5:1 or better, measured** — the label
+is ~13.9px bold, under WCAG's large-text threshold, so 3:1 is not enough:
+danger 4.83, warning 5.02, success 5.02, info 6.70, neutral 10.35:1. The amber
+is `#b45309`, the app's own back-dated amber, **not** a lighter `#f59e0b`,
+which carries white at 2.2:1.
+
+**Two ways in, and the split is deliberate.** `data-confirm` on a `<form>` for
+the plain "post this and go" sites — no page script at all, and it works on a
+row that arrived by AJAX, because the listener is delegated on `document`.
+`wsConfirm(opts)` returning a Promise for the sites whose question depends on
+what was just typed: the rent date, the master-list merge, the settlement
+overwrite, a photo delete inside a fetch handler. `wsAlert()` is the
+one-button form, for a statement rather than a question.
+
+⚠ **A `data-confirm` WITH NOTHING ELSE IS THE DEFECT COMING BACK.** It renders
+the default card — amber triangle, "Are you sure?", a button reading "Confirm"
+— which is exactly the anonymous dialog this replaced.
+`test_every_declarative_question_names_its_own_card` requires all four of the
+title, icon, theme and button label.
+
+⚠ **A CARD INHERITS THE VISIBILITY RULES OF THE SCREEN IT OPENS ON, AND FLOOR'S
+SCREENS CARRY NO MONEY AT ALL.** The Mark Completed card shipped reading *"The
+bill can still be settled afterwards."* Every word of it was true and it was
+the wrong thing to say: **that button is pressed mostly from the Floor tablet**,
+by somebody who cannot settle a bill, cannot see one, and is shown no price, no
+cost and no payment state on any other screen in this app. It was also the rent
+steer's own defect — a third line answering a question nobody had asked. The
+card now says what happens to the car and stops.
+
+⚠ **AND THE SAME PASS FOUND A REAL DEAD END ONE SCREEN OVER.** `jobcard_edit`
+is `@staff_required` and the auto-lock runs for every role, but **UNLOCK RECORD
+is gated to Office and Owner** — so a mechanic saving a settled card met a
+message telling them to press a button that is not rendered for them. That is
+the "a door somebody can see but cannot open" defect the frozen-advance ⋮ menu
+already records, and the remedy is the one `_unsettleable_staff` uses: the copy
+is **role-aware**. Office and Owner are sent to the button; Floor is sent to a
+person, in words carrying no money.
+→ `NoCardEverShowsFloorMoneyTests`. ⚠ **Its board test creates a job card in
+`setUp`, and that is load-bearing** — the first version passed on an empty
+database, where the dashboard renders no car cards and therefore no questions
+to read, so putting the bill sentence back left it green.
+
+⚠ **THE CARD IS ALWAYS THE TOPMOST THING ON SCREEN — `#wcfDialog` is z-index
+2100.** The photo lightbox is 2000, deliberately above the nav bar and the
+spare-date panel, so at Bootstrap's own 1055 the card asking "delete this
+photo?" opened **behind** it: invisible, with the page apparently frozen. A
+dialog that can be covered is worse than no dialog, because the act still
+happens the moment somebody finds the Confirm they cannot see.
+
+⚠ **OPENING OVER ANOTHER MODAL HANDS OFF; IT NEVER STACKS.** A shown modal or
+offcanvas runs a document-wide focus trap, so a reason box inside a card over
+it cannot hold the caret — the defect that sent every Fleet reversal to
+Deletion History blank. `hideParent()` closes it first and waits.
+
+Three things about that wait, each of which was measured and two of which were
+wrong first:
+- **Bootstrap REFUSES a `hide()` while the modal is still opening**, silently —
+  it returns at its own `_isTransitioning` guard and raises no event. Data
+  Cleanup renders **222 modals**, so its open transition had not finished 900ms
+  after the trigger; a single `hide()` was swallowed and the page was left with
+  a backdrop nothing could dismiss.
+- **Waiting on `hidden.bs.modal` alone hangs** on that swallowed call, and
+  **stripping `fade` to force an instant close made it worse** — Bootstrap
+  finishes a transition from the classes present when it STARTED, so removing
+  the class mid-open cut the very thread the retry was waiting on and the
+  parent never closed at all. What works is re-asking on a timer until the
+  modal is actually gone, with a ceiling so a parent that will not close can
+  never swallow the question.
+- **`heal()` is the recovery, not the mechanism.** One case survives: a form
+  submitted inside the ~150ms while its own modal is still animating open,
+  where Bootstrap interrupts its own transition and re-asserts `show` after the
+  hide. That needs a submit faster than anybody can type, so it is not worth
+  more machinery — it IS worth not leaving a workshop with a screen dimmed by a
+  backdrop nothing can dismiss. After the card closes, the page is made to
+  agree with what is on screen.
+
+**Sound needs no wiring.** The card is a Bootstrap modal carrying
+`data-sound-prompt`, which is what sound.js already plays the `prompt` tone
+for — so the hook cannot fall out of step with a dialog added later.
+
+**Two native calls survive, both deliberate FALLBACKS**: `wsConfirm` itself and
+`photos.js`, each reached only when the markup or the bundle did not arrive. An
+ugly dialog beats an action that happens with no question at all.
+→ `test_only_the_two_deliberate_fallbacks_survive_in_shared_js` pins the count
+at exactly two.
+
+### One press, one post
+
+**A form already on its way refuses the second submit**, and its own submit
+controls stop taking taps. Reported from the shop: on a slow connection the
+same control is tapped again and again, and every tap was another POST.
+
+It is the login form's guard (`js-auth-form`'s `dataset.submitting`) applied
+app-wide, in two lines rather than a mechanism: `data-ws-busy` on the form is
+the refusal, and one rule in `style.css` greys the buttons to say so.
+
+⚠ **IT IS `pointer-events`, NEVER `disabled`.** A disabled control is dropped
+from the payload, so disabling a submit button that carries a `name` would
+silently change what is posted — and nothing here knows which buttons do. Paint
+cannot have that effect.
+
+⚠ **THE LATCH IS SET IN A `setTimeout` AND ONLY IF NOTHING REFUSED THE SUBMIT.**
+Two rules in one line, and the second is the load-bearing one: the Cashbook's
+steer **stops a submit and re-issues it**, so latching on the first would kill
+the entry the question was protecting. Read after the event settles,
+`defaultPrevented` is final — which also keeps the latch out of the handler's
+own tick, where disabling a control cancels the submission in some browsers.
+Every AJAX search and filter in the app prevents its own default, so none of
+them latches and none of them can be searched only once.
+
+**The dialog's Confirm button locks itself on press**, which is the half that
+covers a programmatic `.submit()` — that fires no submit event for the form
+guard to catch. **A page restored from the back/forward cache is unlatched on
+`pageshow`.**
+→ `workshop/tests/test_confirmation_card.py`
 
 ## Card list grids — six lists, two breakpoints
 
@@ -6863,12 +7013,16 @@ modal (`show.bs.modal`, which bubbles, so one document listener catches every on
 native `<dialog>` (no bubbling open event, so `showModal` is wrapped once on the
 prototype), and plain **`window.confirm()`**, wrapped the same way.
 
-⚠ **The third was missed for a day and it was close to half the sites.** The `confirm()`
-sites are thirteen calls across eleven templates, most of them an
-`onsubmit="return confirm(…)"` attribute — nothing about that markup looks like a
-dialog needing wiring — against seventeen of the other two kinds (fourteen
-`data-bs-toggle="modal"` triggers and three `showModal()` calls, all three of those on
-the invoice).
+⚠ **The third was missed for a day and it was close to half the sites** — sixteen
+`onsubmit="return confirm(…)"` attributes across eleven templates, because nothing
+about that markup looks like a dialog needing wiring.
+
+⚠ **THOSE SIXTEEN NO LONGER EXIST — see "Asking a question — one card, one
+declaration".** Every one is now the shared `.wcf-*` card, which is a Bootstrap modal
+carrying `data-sound-prompt`, so they are covered by the *first* of the three hooks and
+need nothing of their own. **The `window.confirm` wrapper stays** and is not dead code:
+`wsConfirm` and `photos.js` each fall back to the native dialog when the card's markup
+or the bundle did not arrive, and a question asked on that path must still sound.
 → `test_every_way_the_app_asks_a_question_is_hooked` scans the templates for all three
 shapes and fails if sound.js does not hook one it finds, because a *missing* hook is
 invisible to every other kind of test.
@@ -7285,10 +7439,10 @@ and there is no build step.** Every outside review reaches the same suggestion, 
 reasoning is recorded here rather than re-argued.
 
 Roughly 188 KB of inline JS across 36 templates, and ~551 KB of inline CSS across 60
-of the 106 (most templates carry their own `<style>`). Seven shared JS files exist —
+of the 106 (most templates carry their own `<style>`). Eight shared JS files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
-`photos-core.js`, `spare_autofill.js` — and the rule for what goes in one is
-**used on more than one page**; what stays inline is genuinely page-specific.
+`photos-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
+is **used on more than one page**; what stays inline is genuinely page-specific.
 
 ⚠ **`static/css/style.css` is the CSS side of that same rule, and it is easy to
 miss because most of this app's CSS is inline.** `base.html` links it on every

@@ -35,7 +35,7 @@
     owners' installed PWA (never fully quit) meant a shipped fix could simply not
     arrive. Bump this number whenever you change any file under static/.
     {% endcomment %}
-    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=11">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=12">
 
     <style>
         /* ========================================== */
@@ -1796,6 +1796,19 @@ owner to type the password back in.
 </style>
 {% endif %}
 
+{% comment %}
+The app's own confirmation card, once, for the whole app. Every screen that
+asks "are you sure?" now draws THIS rather than a native browser dialog —
+either declaratively (`data-confirm` on a form) or through `wsConfirm()`.
+See workshop/includes/_confirm_dialog.html and static/js/confirm.js.
+
+Outside the signed-in gate above, deliberately: it is inert markup carrying no
+user data, and the signed-out pages extend base_auth.html rather than this file
+— so gating it would only create one more way for the card to be missing on a
+page that needs it.
+{% endcomment %}
+{% include "workshop/includes/_confirm_dialog.html" %}
+
     <!-- CONTENT -->
     <main class="main-content">
         {% if messages %}
@@ -1824,7 +1837,17 @@ owner to type the password back in.
 
     <!-- SCRIPTS -->
     <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
-    <script src="{% static 'js/script.js' %}?v=8"></script>
+    <script src="{% static 'js/script.js' %}?v=9"></script>
+    {% comment %}
+    Two jobs, one file: it draws the confirmation card above, and it refuses a
+    second submit on a form already on its way. Both are needed by every role
+    on nearly every screen, and it must load BEFORE any page script that calls
+    `wsConfirm()` — page scripts are rendered inside the content block, which
+    base.html emits above these tags, but they run their work on DOM events
+    rather than at parse time, so ordering here is belt and braces rather than
+    load-bearing.
+    {% endcomment %}
+    <script src="{% static 'js/confirm.js' %}?v=6"></script>
     {% comment %}
     Loaded for every role, not just owners: the sounds confirm Office's
     payments and Floor's saves, which is most of what happens in a day. It

@@ -31,7 +31,11 @@
                         <td class="text-end">&#8377;{{ payer.get_pending_balance|floatformat:0 }}</td>
                         <td class="text-end">
                             <form method="post" action="{% url 'bulk_payer_restore' payer.pk %}"
-                                  onsubmit="return confirm('Reactivate {{ payer.customer_name }}?');">
+                                  data-confirm="{{ payer.customer_name }} goes back into the Fleet Accounts list and can take new job cards and payments again."
+                                  data-confirm-title="Reactivate this account?"
+                                  data-confirm-icon="bi-arrow-counterclockwise"
+                                  data-confirm-theme="success"
+                                  data-confirm-ok="Reactivate">
                                 {% csrf_token %}
                                 <button class="btn btn-sm btn-success"><i class="bi bi-arrow-counterclockwise"></i> Reactivate</button>
                             </form>

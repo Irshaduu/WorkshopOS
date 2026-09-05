@@ -864,7 +864,18 @@
 
   function submitQuickPayment() {
     const amount = document.getElementById('quickPayAmount').value;
-    if (!amount || parseFloat(amount) <= 0) { alert('Please enter a valid amount.'); return; }
+    if (!amount || parseFloat(amount) <= 0) {
+      // A statement, not a question, so it gets one button. The card is the
+      // same shape as the confirmation this form opens a moment later, which is
+      // the point: one product, one voice.
+      wsAlert({
+        title: 'Enter an amount',
+        text: 'A payment needs a figure above zero.',
+        icon: 'bi-currency-rupee',
+        theme: 'warning'
+      }).then(function () { document.getElementById('quickPayAmount').focus(); });
+      return;
+    }
     document.getElementById('hfAmount').value = amount;
     document.getElementById('hfMethod').value = document.getElementById('quickPayMethod').value;
     document.getElementById('hfNote').value = document.getElementById('quickPayNote').value;

@@ -440,7 +440,19 @@ document.addEventListener('DOMContentLoaded', function () {
     async function deleteCurrent() {
         var photo = gallery.current();
         if (!photo) { return; }
-        if (!window.confirm('Delete this photo? This cannot be undone.')) { return; }
+        // The app's own card. `wsConfirm` falls back to the browser's dialog if
+        // confirm.js or its markup did not arrive, so this can never delete a
+        // photo without asking — see the note on `ask()` in that file.
+        var answer = window.wsConfirm
+            ? await window.wsConfirm({
+                title: 'Delete this photo?',
+                text: 'It is removed from this card straight away and cannot be brought back. Nothing else about the job card changes.',
+                icon: 'bi-trash3-fill',
+                theme: 'danger',
+                ok: 'Delete it'
+            })
+            : { ok: window.confirm('Delete this photo? This cannot be undone.') };
+        if (!answer.ok) { return; }
         try {
             var res = await fetch(URLS.remove, {
                 method: 'POST',

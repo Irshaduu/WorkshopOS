@@ -227,7 +227,12 @@ it as a fix for an unrelated problem.
                         </form>
                         {% endif %}
                         <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}" aria-label="Reset password" title="Reset password"><i class="bi bi-key"></i></button>
-                        <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
+                        <form method="post" action="{% url 'manage_delete_user' u.id %}"
+                              data-confirm="{{ u.username }} can no longer sign in. Job cards and bills they created stay exactly as they are, and the other owner is told."
+                              data-confirm-title="Delete this login?"
+                              data-confirm-icon="bi-person-x-fill"
+                              data-confirm-theme="danger"
+                              data-confirm-ok="Delete login">
                             {% csrf_token %}<button type="submit" class="icon-btn danger" aria-label="Delete account" title="Delete account"><i class="bi bi-trash"></i></button>
                         </form>
                     </div>
@@ -270,7 +275,12 @@ it as a fix for an unrelated problem.
                         </form>
                         {% endif %}
                         <button type="button" class="icon-btn" data-bs-toggle="modal" data-bs-target="#resetModal{{ u.id }}" aria-label="Reset password" title="Reset password"><i class="bi bi-key"></i></button>
-                        <form method="post" action="{% url 'manage_delete_user' u.id %}" onsubmit="return confirm('Delete {{ u.username }}?');">
+                        <form method="post" action="{% url 'manage_delete_user' u.id %}"
+                              data-confirm="{{ u.username }} can no longer sign in. Job cards and bills they created stay exactly as they are, and the other owner is told."
+                              data-confirm-title="Delete this login?"
+                              data-confirm-icon="bi-person-x-fill"
+                              data-confirm-theme="danger"
+                              data-confirm-ok="Delete login">
                             {% csrf_token %}<button type="submit" class="icon-btn danger" aria-label="Delete account" title="Delete account"><i class="bi bi-trash"></i></button>
                         </form>
                     </div>

@@ -604,11 +604,19 @@ figures on it have already been paid out.
   const paymentForm = document.getElementById('paymentForm');
   if (paymentForm && {% if payment and not is_closed %}true{% else %}false{% endif %}) {
     paymentForm.addEventListener('submit', function (e) {
-      if (!confirm(
-          "Overwrite {{ target_month|date:'F Y' }}'s settlement with these figures?\n\n"
-          + "The amounts recorded for this month will be replaced.")) {
-        e.preventDefault();
-      }
+      if (paymentForm.dataset.wsConfirmed === '1') { return; }
+      e.preventDefault();
+      wsConfirm({
+        title: "Overwrite {{ target_month|date:'F Y' }}?",
+        text: 'The amounts already recorded for this month are replaced by the ones on '
+            + 'this form. The salary each person was first settled at does not change.',
+        icon: 'bi-arrow-repeat',
+        theme: 'warning',
+        ok: 'Overwrite it',
+        parent: paymentForm
+      }).then(function (answer) {
+        if (answer.ok) { wsSubmit(paymentForm); }
+      });
     });
   }
 

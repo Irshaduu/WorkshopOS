@@ -29,7 +29,11 @@
                         <td class="text-end">&#8377;{{ shop.get_pending_balance|floatformat:0 }}</td>
                         <td class="text-end">
                             <form method="post" action="{% url 'spare_shop_restore' shop.pk %}"
-                                  onsubmit="return confirm('Reactivate {{ shop.name }}?');">
+                                  data-confirm="{{ shop.name }} goes back into the Spare Shops list and can be picked on a job card again."
+                                  data-confirm-title="Reactivate this shop?"
+                                  data-confirm-icon="bi-arrow-counterclockwise"
+                                  data-confirm-theme="success"
+                                  data-confirm-ok="Reactivate">
                                 {% csrf_token %}
                                 <button class="btn btn-sm btn-success"><i class="bi bi-arrow-counterclockwise"></i> Reactivate</button>
                             </form>

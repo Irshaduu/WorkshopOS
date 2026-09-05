@@ -126,10 +126,22 @@ document.addEventListener('DOMContentLoaded', function () {
     function showConfirmationModal(originalStatus, newStatus, row, dropdownElement) {
         const modalEl = document.getElementById('statusConfirmModal');
         if (!modalEl) {
-            // Fallback if modal missing (should not happen)
-            if (confirm(`Reverting ${originalStatus} -> ${newStatus}. Clear dates?`)) {
-                applyConfirmedChange(originalStatus, newStatus, row, dropdownElement);
-            }
+            // Fallback when this page did not render the status modal. It asks
+            // in the app's own card rather than the browser's, so a screen that
+            // is missing one dialog does not answer with a different-looking
+            // one — `wsConfirm` has its own native fallback beneath this.
+            window.wsConfirm({
+                title: 'Clear the dates?',
+                text: 'Moving this spare back from ' + originalStatus + ' to ' + newStatus
+                    + ' clears the dates that no longer apply to it.',
+                icon: 'bi-calendar-x',
+                theme: 'warning',
+                ok: 'Clear them'
+            }).then(function (answer) {
+                if (answer.ok) {
+                    applyConfirmedChange(originalStatus, newStatus, row, dropdownElement);
+                }
+            });
             return;
         }
 

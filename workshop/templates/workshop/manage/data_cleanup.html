@@ -369,14 +369,36 @@
                     }
                 });
 
-                form.addEventListener('submit', function(e) {
-                    const msg = isMerge 
-                        ? "CAUTION: This name already exists. This will PERMANENTLY MERGE these records into the existing one. Continue?"
-                        : "Confirm permanent update to all historical job cards?";
-                    
-                    if (!confirm(msg)) {
-                        e.preventDefault();
-                    }
+                // A RENAME AND A MERGE ARE TWO DIFFERENT QUESTIONS, so they get
+                // two different cards — an amber pencil for tidying a spelling,
+                // a red fork for folding one name into another, which is not
+                // cleanly undoable. The gate fires on both because both rewrite
+                // every job card carrying the old name; only the merge also
+                // destroys an entry.
+                //
+                // `parent: form` hides the modal this form lives in before the
+                // card opens: a shown modal runs a focus trap, and two stacked
+                // backdrops read as the page having gone wrong.
+                form.addEventListener('submit', function (e) {
+                    if (form.dataset.wsConfirmed === '1') { return; }
+                    e.preventDefault();
+                    wsConfirm(isMerge ? {
+                        title: 'Merge into the existing name?',
+                        text: 'Every job card carrying this name is rewritten to the one already on the list, and this entry is removed. Renaming it back afterwards will not separate them again.',
+                        icon: 'bi-signpost-split-fill',
+                        theme: 'danger',
+                        ok: 'Merge them',
+                        parent: form
+                    } : {
+                        title: 'Rename across every job card?',
+                        text: 'The new spelling replaces the old one on every card in the history, so the list and the reports say the same thing. No money and no stock moves.',
+                        icon: 'bi-pencil-fill',
+                        theme: 'warning',
+                        ok: 'Rename',
+                        parent: form
+                    }).then(function (answer) {
+                        if (answer.ok) { wsSubmit(form); }
+                    });
                 });
             });
         }

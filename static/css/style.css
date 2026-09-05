@@ -966,3 +966,171 @@ select.status-fixed {
     .pg-back { transition: none; }
     .pg-back:active { transform: none; }
 }
+
+
+/* =========================================================================
+   THE CONFIRMATION CARD  —  .wcf-*
+   =========================================================================
+   ONE card, declared once, drawn by every screen that asks a question. It
+   replaced the app's twenty-one remaining NATIVE dialogs — sixteen
+   `window.confirm()`, four `alert()` and one `prompt()` — which opened with
+   "127.0.0.1:8000 says", could not be designed at all, and rendered the
+   question, the reason and the exit as one flat grey block.
+
+   ⚠ IT IS GENERALISED FROM `.logout-modal` IN base.html, NOT FROM
+   `confirmActionModal` ON THE TWO SHOP PAGES, and the difference is the
+   tinted disc. The shop pages draw a bare 3rem glyph; the logout card puts
+   it in a 52px round tint, which is what lets a card be recognised as ITS
+   OWN SECTION'S before a word of it is read — a red bin for a delete, an
+   amber calendar for a back-dated entry, a green tick for a handover.
+
+   ⚠ A VARIANT IS TWO CUSTOM PROPERTIES, NEVER A SECOND COPY OF THE CARD.
+   `--wcf-tint` is the disc, `--wcf-ink` is the glyph and the filled button.
+   Same mechanism as `--rpay-btn-a/b` on the payment card and `--tint` on
+   the crew chips, and for the same reason: a new variant sets two values
+   rather than restating a declaration somebody then has to keep in step.
+
+   ⚠ EVERY `--wcf-ink` CARRIES WHITE AT 4.5:1 OR BETTER, MEASURED.
+   The confirm label is ~13.9px bold — under WCAG's large-text threshold, so
+   3:1 is not enough. danger 4.83:1, warning 5.02:1, success 5.02:1,
+   info 6.70:1, neutral 10.35:1. The glyph on its own tint clears 3:1 four
+   times over (4.41 / 4.84 / 4.79 / 6.16 / 9.45:1). ⚠ The amber is
+   `#b45309`, the app's own back-dated amber, NOT a lighter `#f59e0b` —
+   white on that measures 2.2:1 and the settle button's own note records it.
+   ========================================================================= */
+
+/* ⚠ THE QUESTION IS ALWAYS THE TOPMOST THING ON SCREEN, and this is not
+   belt-and-braces. The photo lightbox is z-index 2000 — deliberately above the
+   nav bar and the spare-date panel — so at Bootstrap's own 1055 the card asking
+   "delete this photo?" opened BEHIND the lightbox, invisible, with the page
+   apparently frozen. A dialog that can be covered is worse than no dialog: the
+   act still happens the moment somebody finds the Confirm they cannot see.
+   2100 clears every layer this app declares. Its backdrop stays at Bootstrap's
+   1050 and is simply not seen over the lightbox, which is already a full-screen
+   dark ground of its own. */
+#wcfDialog { z-index: 2100; }
+
+.wcf-dialog { max-width: 380px; }
+
+.wcf-card {
+    /* Neutral is the default so a caller that names no theme still renders a
+       finished card rather than an unstyled one. */
+    --wcf-tint: #f1f5f9;
+    --wcf-ink:  #334155;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 18px;
+    padding: 26px 24px 22px;
+    text-align: center;
+    box-shadow: 0 18px 44px rgba(16, 24, 40, 0.18);
+}
+
+.wcf-card[data-theme="danger"]  { --wcf-tint: #fef2f2; --wcf-ink: #dc2626; }
+.wcf-card[data-theme="warning"] { --wcf-tint: #fffbeb; --wcf-ink: #b45309; }
+.wcf-card[data-theme="success"] { --wcf-tint: #f0fdf4; --wcf-ink: #15803d; }
+.wcf-card[data-theme="info"]    { --wcf-tint: #eff6ff; --wcf-ink: #1d4ed8; }
+
+.wcf-icon {
+    width: 52px; height: 52px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--wcf-tint);
+    color: var(--wcf-ink);
+    font-size: 1.35rem;
+}
+
+.wcf-title {
+    font-size: 1.12rem; font-weight: 800;
+    color: var(--color-text, #0f172a);
+    margin: 0;
+}
+
+.wcf-text {
+    font-size: 0.86rem;
+    color: var(--color-text-muted, #64748b);
+    margin: 8px 0 20px;
+    line-height: 1.5;
+}
+
+/* The reason box is opt-in. Most of these dialogs front an act that writes no
+   DeletionLog row — a handover, a reactivation, a rename — and a box asking
+   why on one of those is a question nobody can answer usefully. */
+.wcf-reason { margin: -6px 0 18px; }
+.wcf-reason input {
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 12px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 10px;
+    font-size: 0.86rem;
+    background: #fff;
+}
+.wcf-reason input:focus {
+    outline: none;
+    border-color: var(--wcf-ink);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--wcf-ink) 18%, transparent);
+}
+
+.wcf-actions { display: flex; gap: 10px; }
+
+.wcf-btn {
+    flex: 1;
+    width: 100%;
+    min-height: 46px;   /* past the 44px touch minimum — tapped on the Floor tablet */
+    border-radius: 11px;
+    font-size: 0.87rem; font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.16s ease, background-color 0.16s ease;
+}
+.wcf-btn--no {
+    border: 1px solid var(--color-border, #e2e8f0);
+    background: #fff;
+    color: var(--color-text, #0f172a);
+}
+.wcf-btn--yes {
+    border: 1px solid var(--wcf-ink);
+    background: var(--wcf-ink);
+    color: #fff;
+}
+@media (hover: hover) {
+    .wcf-btn--no:hover  { background: var(--color-hover, #f8fafc); }
+    .wcf-btn--yes:hover { filter: brightness(1.08); }
+}
+.wcf-btn:active { transform: scale(0.98); }
+
+/* A one-button card (wsAlert) has nothing to weigh up, so the row is a single
+   full-width control rather than a lone button floating beside a gap. */
+.wcf-card[data-single="1"] .wcf-btn--no { display: none; }
+
+/* Below 420px the row stacks, and Confirm goes on TOP — the logout card's own
+   rule, so the destructive answer is never where a thumb lands by reflex
+   straight after the menu item that opened this. */
+@media (max-width: 420px) {
+    .wcf-actions { flex-direction: column-reverse; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wcf-btn { transition: none; }
+    .wcf-btn:active { transform: none; }
+}
+
+/* -------------------------------------------------------------------------
+   ONE PRESS, ONE POST  —  the busy state
+   -------------------------------------------------------------------------
+   A form that has been submitted is marked `data-ws-busy`, and its own submit
+   controls stop taking taps. The GUARD is in confirm.js (a second submit is
+   refused there, which is what actually protects the server); this is the
+   feedback that says so.
+
+   ⚠ IT IS `pointer-events`, NEVER `disabled`. A disabled control is dropped
+   from the payload, so disabling a submit button that carries a `name` would
+   silently change what is posted — and nothing here knows which buttons do.
+   Paint cannot have that effect.
+   ------------------------------------------------------------------------- */
+form[data-ws-busy="1"] button[type="submit"],
+form[data-ws-busy="1"] input[type="submit"],
+form[data-ws-busy="1"] .js-ws-submit {
+    pointer-events: none;
+    opacity: 0.55;
+    cursor: progress;
+}

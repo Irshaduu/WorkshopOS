@@ -1538,5 +1538,10 @@ class TheSameHandoverKeyedTwiceTests(_Signed):
         # ...and the back-date question is asked FIRST, because it is the
         # bigger fact: it moves a closed month and reaches the other owner.
         script = html.split('rtAddForm', 1)[1]
-        self.assertLess(script.index('That month is already closed'),
-                        script.index('Add another?'))
+        # Anchored on the two cards' TITLES, which are what each question is
+        # called on screen. It used to match a phrase out of the body copy, and
+        # that broke the day both questions moved from `window.confirm()` into
+        # the app's own confirmation card and were reworded — the rule was
+        # untouched, only the words it was pinned to.
+        self.assertLess(script.index('File into a closed month?'),
+                        script.index('Another one for '))

@@ -864,73 +864,117 @@
 
   if (addForm) {
     addForm.addEventListener('submit', function (e) {
+      // wsSubmit() re-issues a real submit once the card has been answered, so
+      // this handler has to let that second one through or it would ask again
+      // for ever.
+      if (addForm.dataset.wsConfirmed === '1') { return; }
+
       var iso = dateInput ? dateInput.value : '';
       if (!iso) { return; }
 
       // ⚠ THE BACK-DATE QUESTION COMES FIRST, because it is the bigger fact:
       // it moves a closed month's position and reaches the other owner's
-      // phone. Only one dialog ever shows — a person who has just been asked
+      // phone. Only one card ever shows — a person who has just been asked
       // about a closed month does not also need to be asked whether it is the
-      // day's second entry.
+      // day's second entry. Two different questions, two different cards: a
+      // red calendar for a closed month, an amber stack of pages for a repeat.
+      var question = null;
+
       if (floorISO && iso < floorISO) {
         var when = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, 1)
           .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-        if (!window.confirm('File this deposit under ' + when +
-            '?\n\nThat month is already closed — its position and every month ' +
-            'since will move, and the other owner is told.')) {
-          e.preventDefault();
+        question = {
+          title: 'File into a closed month?',
+          text: 'This deposit lands in ' + when + '. That month is finished, so its '
+              + 'position and every month since moves — and the other owner is told.',
+          icon: 'bi-calendar-event',
+          theme: 'danger',
+          ok: 'File it there',
+          parent: addForm
+        };
+      } else {
+        // ⚠ THE REPEAT CHECK. The collector comes once a day, so a second entry
+        // on one date is the shape a double-key takes here — one person keying
+        // in a rush, or two people recording the same handover. It ASKS: a
+        // morning and an evening handover is real, and the day total in the log
+        // is what catches whatever slips through either way.
+        var n = DAY_COUNTS[iso] || 0;
+        if (n > 0) {
+          var day = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1,
+                             Number(iso.slice(8, 10)))
+            .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          question = {
+            title: 'Another one for ' + day + '?',
+            text: n + (n > 1 ? ' deposits are' : ' deposit is') + ' already recorded '
+                + 'for that day. Two handovers in a day is normal — the same one '
+                + 'keyed twice is not.',
+            icon: 'bi-files',
+            theme: 'warning',
+            ok: 'Add it',
+            parent: addForm
+          };
         }
-        return;
       }
 
-      // ⚠ THE REPEAT CHECK. The collector comes once a day, so a second entry
-      // on one date is the shape a double-key takes here — one person keying
-      // in a rush, or two people recording the same handover. It ASKS: a
-      // morning and an evening handover is real, and the day total in the log
-      // is what catches whatever slips through either way.
-      var n = DAY_COUNTS[iso] || 0;
-      if (n > 0) {
-        var day = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1,
-                           Number(iso.slice(8, 10)))
-          .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-        if (!window.confirm(
-            n + (n > 1 ? ' deposits are' : ' deposit is') +
-            ' already recorded for ' + day + '.\n\nAdd another?')) {
-          e.preventDefault();
-        }
-      }
+      if (!question) { return; }
+      e.preventDefault();
+      wsConfirm(question).then(function (answer) {
+        if (answer.ok) { wsSubmit(addForm); }
+      });
     });
   }
 
   var rateForm = document.getElementById('rtRateForm');
   if (rateForm) {
     rateForm.addEventListener('submit', function (e) {
+      if (rateForm.dataset.wsConfirmed === '1') { return; }
       var monthEl = document.getElementById('rtRateMonth');
       var thisMonth = todayISO().slice(0, 7);
       if (!monthEl || !monthEl.value || monthEl.value >= thisMonth) { return; }
       var when = new Date(Number(monthEl.value.slice(0, 4)),
                           Number(monthEl.value.slice(5, 7)) - 1, 1)
         .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      if (!window.confirm('Apply this rent from ' + when +
-          '? Every month from then on is re-priced.')) {
-        e.preventDefault();
-      }
+      e.preventDefault();
+      wsConfirm({
+        title: 'Re-price from ' + when + '?',
+        text: 'Every month from then to now is charged at the new rent, so what the '
+            + 'page says is owed today will move. Both owners are told.',
+        icon: 'bi-graph-up-arrow',
+        theme: 'danger',
+        ok: 'Apply it',
+        parent: rateForm
+      }).then(function (answer) {
+        if (answer.ok) { wsSubmit(rateForm); }
+      });
     });
   }
 
   document.addEventListener('submit', function (e) {
     var f = e.target.closest('[data-rt-rate-del]');
     if (!f) { return; }
-    // `prompt` rather than `confirm`, because this one is logged: the reason
-    // is the only field that later says why a past month's rent was changed
-    // back. Cancel returns null and stops the submit; an empty string is a
-    // deliberate "no reason" and goes through, which is the rule every other
-    // logged delete here follows.
-    var why = window.prompt('Remove the rent change dated ' + f.dataset.rtRateDel +
-      '? The rent before it applies instead.\n\nReason (optional):');
-    if (why === null) { e.preventDefault(); return; }
-    var box = f.querySelector('.rt-rate-why');
-    if (box) { box.value = why; }
+    if (f.dataset.wsConfirmed === '1') { return; }
+    // The card carries a REASON BOX, because this one is logged: the reason is
+    // the only field that later says why a past month's rent was changed back.
+    // An empty string is a deliberate "no reason" and goes through, which is
+    // the rule every other logged delete here follows — Cancel is the only
+    // answer that stops it.
+    e.preventDefault();
+    wsConfirm({
+      title: 'Remove this rent change?',
+      text: 'The change dated ' + f.dataset.rtRateDel + ' is deleted and the rent '
+          + 'before it applies instead, so those months are charged again at the '
+          + 'older rate.',
+      icon: 'bi-trash3-fill',
+      theme: 'danger',
+      ok: 'Remove it',
+      reason: 'removing this rent change',
+      parent: f
+    }).then(function (answer) {
+      if (!answer.ok) { return; }
+      var box = f.querySelector('.rt-rate-why');
+      if (box) { box.value = answer.reason; }
+      wsSubmit(f);
+    });
   });
 })();
 </script>
