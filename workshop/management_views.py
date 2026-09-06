@@ -156,7 +156,8 @@ def manage_create_user(request):
             messages.error(
                 request,
                 f"The '{role}' role is missing from this database — no account was created. "
-                f"Run `manage.py setup_groups` to restore the Owner/Office/Floor roles."
+                f"An owner needs to run `manage.py setup_groups` on the server to "
+                f"create the Owner/Office/Floor roles, then try again."
             )
             return redirect(reverse('manage_dashboard') + '?section=accounts')
 

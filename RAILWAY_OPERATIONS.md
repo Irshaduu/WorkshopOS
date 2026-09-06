@@ -119,7 +119,50 @@ network.
 Do **not** put `migrate` in the start command as well. Pre-deploy runs once per
 deployment; the start command runs on every container start.
 
+⚠ **The Pre-deploy Command is not its own field.** It is behind the
+**"+ Add pre-deploy step"** link directly under Custom Start Command, which is
+easy to scroll straight past looking for a labelled box.
+
 **Leave Serverless OFF.** See §8.
+
+**Settings → Networking:** Generate Domain, and give it port **8080**.
+
+### 2.4b Set the region — worth more than everything else on this page
+
+**Settings → Scale → Southeast Asia (Singapore).** Do it on **BOTH** services,
+the app and Postgres.
+
+Railway defaults to **US East (Virginia)**, and nothing on screen suggests that
+is a decision. It is roughly 200ms from Kerala against Singapore's ~50ms, and
+every page here is a full server-rendered navigation over a `no-store`
+response, so that distance is paid on every tap.
+
+Measured on a throwaway deployment, empty database, five runs per page, median:
+
+| Page | Virginia | Singapore | |
+|---|---|---|---|
+| Completed | 522ms | **117ms** | 4.5x |
+| Dashboard | 449ms | **129ms** | 3.5x |
+| Cashbook | 483ms | **132ms** | 3.7x |
+| Live Report | 472ms | **133ms** | 3.5x |
+| Car Profiles | 514ms | **136ms** | 3.8x |
+| Profit | 450ms | **296ms** | 1.5x |
+
+⚠ **BOTH services, or it is worse than leaving it alone.** Split across
+regions, every one of the Profit page's 97 queries crosses an ocean instead of
+one page load doing so.
+
+⚠ **Moving Postgres migrates its volume and takes brief downtime**, so do it
+before there is real data, not after.
+
+⚠ **"Multi-region replicas are only available on the Pro plan" is not about
+this.** That warns about running in several regions at once. Moving to one
+different region is fine on any plan.
+
+**The Profit page is the canary.** Distance hid it before; in Singapore it is
+the slowest page by a clear margin (296ms against ~130ms) because it issues 97
+queries, and that is on an EMPTY database. If anything here ever needs
+optimising, it is that page.
 
 ### 2.5 Variables
 

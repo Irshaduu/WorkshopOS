@@ -86,9 +86,24 @@ Railway dashboard → service → **Settings**:
 | Build Command | `python manage.py collectstatic --noinput` |
 | Pre-Deploy Command | `python manage.py migrate --noinput` |
 | Start Command | `gunicorn formulad_workshop.wsgi:application` |
+| **Region (Settings -> Scale)** | **Southeast Asia (Singapore)** — on BOTH services |
+| Serverless | OFF |
 
 Pre-deploy is the correct home for migrations: it runs once before the new
-version takes traffic, rather than on every restart of every replica.
+version takes traffic, rather than on every restart of every replica. It is
+behind the **"+ Add pre-deploy step"** link under Custom Start Command, not a
+labelled field of its own.
+
+⚠ **THE REGION IS THE SINGLE LARGEST SPEED DECISION ON THIS PAGE, AND RAILWAY
+DEFAULTS IT WRONG FOR THIS WORKSHOP.** The default is US East (Virginia), ~200ms
+from Kerala against Singapore's ~50ms, and every page here is a full navigation
+over a `no-store` response — so the distance is paid on every tap. Measured on a
+rehearsal deployment: most pages went **3.5x-4.5x faster** on the same code and
+the same empty database. See `RAILWAY_OPERATIONS.md` §2.4b for the numbers.
+
+**Set it on the app AND on Postgres.** Split across two regions is worse than
+leaving both alone. Do it before there is real data — moving Postgres migrates
+its volume and takes brief downtime.
 
 ### 1.3 Railway: environment variables ☐
 
@@ -298,12 +313,29 @@ Starting empty, on Railway Postgres:
 
 ```bash
 python manage.py migrate
-python manage.py setup_groups
+python manage.py shell -c "from django.contrib.auth.models import Group; [Group.objects.get_or_create(name=n) for n in ('Owner','Office','Floor')]"
 python manage.py load_master_data
 ```
 
 - ☐ `migrate` reports no errors
-- ☐ `setup_groups` created Owner / Office / Floor
+- ☐ the three roles exist — Owner, Office, Floor
+
+⚠ **DO NOT RUN `setup_groups`. It does not do what this runbook used to claim.**
+It is a legacy command that creates **`Workers`** and **`Admins`**, two groups
+nothing in this app reads. The line above said it "created Owner / Office /
+Floor"; it never did, and no migration creates them either.
+
+The trap is that it fails helpfully in the wrong direction: Control Hub refuses
+to create an Office or Floor login when the role row is missing and tells you to
+*"Run `manage.py setup_groups` to restore the Owner/Office/Floor roles"* — so you
+run it, it reports success, and you are exactly where you started. Found on a
+rehearsal deployment, 2026-09-06.
+
+`sync_owner_identity` does `get_or_create(name='Owner')`, so **Owner** appears on
+its own once that is run. **Office and Floor are created by nothing** — hence the
+one-liner above.
+
+*Fix the command and this error message before go-live, and this note goes away.*
 
 ### 3.2 If any demo data reached this database, remove it ☐
 
