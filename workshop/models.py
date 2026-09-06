@@ -9,6 +9,8 @@ from django.contrib.auth.signals import user_logged_out
 from django.dispatch import receiver
 from django.utils import timezone
 
+from .mileage import normalise as normalise_mileage
+
 # -----------------------------------------------------------------------------
 # 0. AUTHENTICATION & USERS
 # -----------------------------------------------------------------------------
@@ -1069,6 +1071,18 @@ class JobCard(CarColourMixin, models.Model):
             )
             if canonical:
                 self.model_name = canonical
+
+        # The odometer reading, tidied to plain digits when it can be read at
+        # all: '50k', '50,000' and '50000 km' all store as '50000'. Same reason
+        # the three fields above are normalised — the column is free text and
+        # is read back by more than one screen, so one number must have one
+        # spelling. It matters more here than it looks, because the service
+        # history SUBTRACTS these: see `workshop/mileage.py`.
+        #
+        # Anything unreadable is kept exactly as typed. This runs on every
+        # save, including saves that touched nothing near this box, so it may
+        # never discard what somebody wrote.
+        self.mileage = normalise_mileage(self.mileage)
 
     def save(self, *args, **kwargs):
         """
@@ -2144,6 +2158,13 @@ class Estimate(CarColourMixin, models.Model):
             # Whitespace only — NOT title-cased. 'i20' → 'I20' and 'CR-V' →
             # 'Cr-V' is why JobCard.clean does the same.
             self.model_name = ' '.join(self.model_name.split())
+
+        # Same rule as the job card's, for the same reason the two share every
+        # other normalisation here: an estimate is written for a car days
+        # before the job card that follows it, and a quotation reading
+        # '50k km' beside a bill reading '50000 km' is one document
+        # contradicting the other about the same car on the same week.
+        self.mileage = normalise_mileage(self.mileage)
 
     def save(self, *args, **kwargs):
         self.clean()

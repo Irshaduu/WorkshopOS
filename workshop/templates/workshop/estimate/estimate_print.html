@@ -906,7 +906,10 @@
                 wrap.style.height = '';
                 var available = wrap.clientWidth - 24;   // .sheet-wrap side padding
                 var natural = sheet.offsetWidth;
-                if (!natural || available >= natural) return;
+                // `available <= 0` is the degenerate case: a hidden or zero-width
+                // container measures 0 and the scale computes to 0, collapsing the
+                // sheet to nothing rather than simply leaving it unscaled.
+                if (!natural || available <= 0 || available >= natural) return;
                 var scale = available / natural;
                 sheet.style.transform = 'scale(' + scale + ')';
                 // The transform does not shrink the space the sheet reserves,

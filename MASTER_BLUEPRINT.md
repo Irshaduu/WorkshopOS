@@ -231,22 +231,29 @@ byte-identical.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (162 Total)
+## 4. ALL URL ROUTES — COMPLETE (169 Total)
 
 *Walked from `get_resolver().url_patterns` recursively and
 excluding Django admin (131 of its own) — the method below, not by grepping
 `path(`, which misses routes reached through `include()`. **Recount rather than
-trusting this line; it has now gone stale twice**, most recently reading 147/114
-when the resolver said 150/117. The workshop figure includes the root-level
-routes (`robots.txt`, `sw.js`) since they are served by the same app.*
+trusting this line; it has now gone stale three times**, most recently reading
+162/129 when the resolver said 169/136 — a seven-route drift, of which only
+three were the service-history change that prompted the recount. The workshop
+figure includes the root-level routes (`robots.txt`, `sw.js`) since they are
+served by the same app.*
 
 ⚠ **Walk it with `DEBUG=False` or the total is one higher.**
 `formulad_workshop/urls.py` appends `MEDIA_URL` through Django's `static()` helper,
 which returns an **empty list** when `DEBUG=False` — so a development resolver reports
-**163 (130 + 33)** and production reports **162 (129 + 33)**. That one route is the
+**170 (137 + 33)** and production reports **169 (136 + 33)**. That one route is the
 media path, which is not served in production at all (§12, and `AUD-0088`).
 
-### Workshop App (129 routes)
+⚠ **And filter for it on `'media/' in pattern`, not `startswith`.** It is a
+`re_path`, so its pattern string is `^media/(?P<path>.*)$` — a `startswith`
+check finds nothing and quietly reports the development figure as if it were
+production's. Cost a wrong number on the way into this very entry.
+
+### Workshop App (136 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -318,6 +325,9 @@ media path, which is not served in production at all (§12, and `AUD-0088`).
 | | `/api/spare-price-hint/` | `spare_price_hint` | **Office** — it returns a price, and Floor sees no prices anywhere |
 | **CAR PROFILES** | `/car-profiles/` | `car_profile_list` | Office |
 | | `/car-profiles/<reg>/` | `car_profile_detail` | Office |
+| | `/car-profiles/<reg>/service-history/` | `car_service_history` | Office — the tick boxes and the current-reading box |
+| | `/car-profiles/<reg>/service-history/sheet/` | `car_service_history_sheet` | Office — the printable record |
+| | `/car-profiles/<reg>/invoices/` | `car_all_invoices` | Office — every bill for one car, one per page |
 | **INVOICE** | `/invoice/<pk>/` | `invoice_view` | Office |
 | **ESTIMATES** | `/estimates/` | `estimate_list` | Office |
 | | `/estimates/create/` | `estimate_create` | Office |
@@ -521,7 +531,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (111 HTML Files)
+## 7. TEMPLATE STRUCTURE (118 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -531,7 +541,7 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 88 files
+### Workshop Templates (`workshop/templates/workshop/`) — 95 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -545,7 +555,7 @@ stateDiagram-v2
 | `/jobcard/` | **16 files**: CRUD (`jobcard_form` / `jobcard_detail` / `jobcard_list` / `jobcard_confirm_delete`), `job_list_partial`, `live_report`, pending + paid bills with their partials, Fleet Accounts (`bulk_payer_detail`, `bulk_payer_panel`, `bulk_payer_archived`, `bulk_payments` + partial), and `audit_high_discounts` | Job, payment and audit screens. *Corrected 2026-08-22: this row claimed 23 files, counting a unified Trash with four tab partials and an `audit_deleted_bulk_payers` screen — none of which exist any more.* |
 | `/completed/` | `completed_list.html`, `completed_list_partial.html` | 2 completed-jobs screens |
 | `/master_lists/` | 11 files: `master_lists_home.html`, brands (list/form/confirm_delete), models (list/form/confirm_delete), spares (list/form), concerns (list/form) | Master list CRUD screens. Spares and concerns have no confirm_delete of their own — both delete flows confirm through `/manage/master_confirm_delete.html`, which is also where a **merge** is confirmed |
-| `/car_profiles/` | `car_profile_list.html`, `car_profile_detail.html`, `car_list_partial.html` | 3 car profile screens |
+| `/car_profiles/` | 6 files: `car_profile_list.html`, `car_profile_detail.html`, `car_list_partial.html`, `service_history_options.html`, `service_history_print.html`, `all_invoices_print.html` | The three car-profile screens, plus the two customer documents a profile opens. The last two are **standalone** — they extend no base, load nothing from any origin, and carry their stylesheet inline, exactly like the invoice and the estimate |
 | `/invoice/` | `invoice_template.html` | The printed bill. Standalone (does **not** extend `base.html`) and fully self-contained — no Bootstrap, no icon font, no CDN of any kind, so nothing external can move a column on a customer's invoice. Screen controls live outside the `.sheet` element entirely, not merely behind `display:none`. |
 | `/estimate/` | `estimate_print.html`, `estimate_form.html`, `estimate_list.html`, `estimate_list_partial.html`, `estimate_confirm_delete.html` | The quotation. `estimate_print.html` is a deliberate near-twin of `invoice_template.html` — same letterhead, bands, column grid and totals block, standalone and self-contained on the same terms. It differs in what the document *is* — title `ESTIMATE`, heading `JOB NEEDS TO BE PERFORMED`, no payment chip, no settle control — and in exactly two columns: **QTY prints only what was typed** (blank stays blank, though it still counts as 1 in the maths) and **UNIT PRICE prints only when a rate was entered** (never derived). Both follow from a bill recording work that happened while an estimate describes work that has not; see `build_estimate`. **Restyle one and you must restyle both**, or the customer gets two documents that look like different businesses. |
 | `/spare_shops/` | 5 files: `shop_list.html`, `shop_detail.html`, `shop_archived.html`, `shop_print.html`, `unassigned_hub.html` | Spare shop screens. `shop_archived` is the reactivate list — archiving must never hide what is owed |
@@ -555,7 +565,7 @@ stateDiagram-v2
 | `/rent/` | `rent/rent_home.html` | 1 file — Deposit & Rent, the whole section on one page: today's figure with its working printed beside it, this month against the months already finished, the shared `.rpay-*` record card, **one month's** deposit log, and the history as **collapsed year blocks** so twenty years is twenty lines. No cap and no pager anywhere. Setting the rent is behind a ⋮ in the hero, Owner-only, because it changes about once a year. |
 | `/withdrawals/` | `withdrawal_home.html` | 1 file — Owner Withdrawals, the whole section on one page: what each owner took in the window, the shared `.rpay-*` record card, and the history narrowed by a chip row. No per-owner drill-down (with two owners the comparison *is* the question) and no edit (Owner-only end to end, so delete and re-add is one line and lands in Deletion History rather than overwriting silently). |
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
-| `/includes/` | 7 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by both printed documents; and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
+| `/includes/` | 10 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_confirm_dialog.html`, `_invoice_sheet.html`, `_invoice_sheet_style.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by every printed document; the ONE confirmation card (`.wcf-*`), included by `base.html`; **the ONE printed bill — `_invoice_sheet.html` + its stylesheet, rendered by both `invoice_view` and `car_all_invoices` so the two can never differ by a column width or a rounding** (it carries no `id`, since several sheets share one page, and it must `{% load custom_filters %}` itself because an include inherits nothing); and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
 
 ### Inventory Templates (`inventory/templates/inventory/`) — 20 files
 
@@ -794,7 +804,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (59 files · 1,921 tests)
+## 13. TEST SUITE (69 files · 2,337 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -802,7 +812,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (54 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (64 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -856,6 +866,11 @@ base classes.*
 | `test_staff_login_alert.py` | An Office or Floor sign-in pushes (`STAFF_LOGIN`, CRITICAL) while an owner's does not (`LOGIN`, INFO), and the body carries the role so a lock-screen line says whether that account can see money |
 | `test_unassigned_spares.py` | The Unassigned Hub: Floor may add and nothing else, a crafted price from Floor writes nothing, an unpriced row stores NULL rather than 0, and an archived shop's rows stay listed and keep their shop |
 | `test_photos.py` | Job card photos: SigV4 pinned to AWS's published known-answer vector, the sign-then-commit ordering that stops a row ever pointing at a missing object, per-subject limits re-checked inside the commit transaction, the settled-card freeze keyed on payment status rather than on the page, Floor being able to take *and* delete on an open card, the box being a `<div>` so the Financial Lock cannot kill viewing, and — the reason the owner asked — that with storage switched off the form still opens, the invoice still prints and settlement never chases a photo |
+
+| `test_mileage.py` | `workshop/mileage.py` — the allowlist of odometer shapes. What `parse_km` accepts (`50,000`, `1,02,340`, `50k`, `50.5k`, `50000 km`) and what it refuses on purpose: zero, negatives, **miles — never converted**, notes, anything past `MAX_KM`. Plus `normalise()` keeping an unreadable value exactly as typed, because it runs in `clean()` on every save |
+| `test_service_history.py` | The arithmetic behind the sheet: gaps measured from the immediately previous visit and never reaching past one with no reading, part chains numbered from the first fitting, the commonest spelling winning a chain's name, `typical_km` over completed lives only, due-soon at `DUE_AT_FRACTION` of this car's OWN average, and the printed amount being `total_bill_amount` rather than what the Car Profile calls billed |
+| `test_service_history_view.py` | The two pages: RBAC on both, what each tick box does, a current reading that cannot be true being refused on the page rather than dropped, the `go`/`edit` split that stopped the Change link redirecting back to the sheet, `?back=` surviving the whole chain, the Part life tick never reaching the paper, the closing TOTAL adding up from the rows above it, and the toolbar staying one row at 375px |
+| `test_all_invoices.py` | Every bill for one car in one PDF — and the class that matters, `ItIsTheSameBillNotACopyTests`, which renders one card through both routes and asserts the sheets match **character for character** |
 
 *JavaScript: `workshop/tests/js/photos-core.test.js` runs under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. It covers the photo upload queue's failure paths and the gallery's index arithmetic. It is the only JavaScript in this repo with tests, and it adds no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
@@ -915,6 +930,8 @@ WorkshopOS (Titan)/
 │   ├── analysis_views.py       ← Owner Profit + Insights views
 │   ├── analysis_engine.py      ← All Analysis money math (pure functions, no HTML)
 │   ├── invoice.py              ← What BOTH customer documents show — build_invoice + build_estimate (pure functions, no views)
+│   ├── mileage.py              ← Can this hand-typed odometer reading be believed? An ALLOWLIST of shapes, never a scrub (pure, no views)
+│   ├── service_history.py      ← Every figure and every name on the service-history sheet — visits, gaps, part chains, due-soon (pure, no views)
 │   ├── settlement.py           ← What is still UNFILLED on a job card — read by the settle dialog and the Live Report's chase list (pure, no views)
 │   ├── spare_dates.py          ← The ordered/received pair rule, shared by the job card and the Unassigned Spares hub (pure, no views)
 │   ├── rent.py                 ← How much should we hand the rent collector today? Everything derived, nothing stored (pure, no views)

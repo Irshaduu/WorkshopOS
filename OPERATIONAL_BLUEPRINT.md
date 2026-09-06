@@ -635,6 +635,79 @@ Visit 4 (Feb 2026):  Engine check, Battery           Rs.6,800
 One click: "New Visit" pre-fills all customer and vehicle details
 ```
 
+### 8B. THE TWO DOCUMENTS A PROFILE HANDS OVER
+
+Customers ask for two things, most often because they are **selling the car**,
+and until now both meant opening every job card, printing it one at a time, and
+sending them one at a time. Two buttons at the foot of the profile, side by
+side on a laptop and a tablet, stacked on a phone.
+
+**ALL INVOICES** is the simpler one: every bill for that car, newest first, one
+per page, as a single PDF. It is the *same* bill the customer was handed on the
+day — the same template and the same arithmetic, not a second layout that
+resembles it.
+
+**SERVICE HISTORY** is the one with the work in it. It answers what a stack of
+invoices cannot:
+
+```
+Office presses Service History
+  → a short page asks two things:
+
+      WHAT TO INCLUDE     [x] Amount   [x] Job Performed   [x] Customer Concerns
+      CURRENT READING     [ 1,08,000 ] km      (optional)
+
+  → the sheet opens
+```
+
+The reading is the point of having a page at all. A customer rings up asking
+for their record; the office asks **"what is it showing now?"**, types it in,
+and every part currently on the car can then say how far it has run. Without
+it, those figures stop at the last visit — the one reading the customer already
+knows. ⚠ **It is never saved.** It is one person's word on one day, the
+workshop did not measure it, and the sheet says *as told by the customer* on
+the line itself.
+
+What the sheet then shows, per visit, newest at the top:
+
+```
+   VISIT 5 · 6 Dec 2025 · JB-25-002                        96,500 km
+   CUSTOMER CONCERNS     Brake pedal vibration while stopping
+   JOB PERFORMED         Front brake pads and discs replaced
+   PART NAME                          DISTANCE RUN     STATUS
+     (5) Engine Oil x5                   11,500 km    RUNNING
+         usually lasts about 12,075 km on this car
+     (2) Brake Pads - Front              11,500 km    RUNNING
+                                     AMOUNT   Rs 50,900.00
+                    │
+              12,400 km · 357 days          ← the gap, drawn between the cards
+                    │
+   VISIT 4 · 14 Dec 2024 · JB-24-003                       84,100 km
+   ...
+
+   PART LIFE
+   Engine Oil — averages 12,075 km between changes
+     (5) 6 Dec 2025    96,500 km    11,500 km   RUNNING
+     (4) 14 Dec 2024   84,100 km    12,400 km
+     ...
+```
+
+Three things the office should know when a customer queries it:
+
+- **Only completed visits appear.** A car on the floor has a total that is not
+  final. If one is in the workshop that day the sheet says so out loud, so the
+  customer is never left thinking the record stopped last month.
+- **The amount printed is what the INVOICE said**, not what the profile's
+  "Total billed" says. Those differ by any discount given at the counter — the
+  profile shows revenue, the sheet shows the paper the customer holds.
+- **"Due soon" comes from this car's own history**, never a manufacturer
+  schedule. The system holds no service intervals, so it only ever says what
+  the last few changes on *this* car actually measured.
+
+The **Part life** tick beside Print drops the durability table from that copy —
+useful when the customer wants the visit record alone. It is not remembered:
+the next print starts from the full record.
+
 ---
 
 ## 9. SECURITY — COMPLETE PROTECTION CHAIN

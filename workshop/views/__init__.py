@@ -33,7 +33,10 @@ from .spare_shop import (
 )
 from .pending import pending_payments_list
 from .paid import paid_bills_list
-from .car_profiles import car_profile_list, car_profile_detail
+from .car_profiles import (
+    car_profile_list, car_profile_detail,
+    car_service_history, car_service_history_sheet, car_all_invoices,
+)
 from .master_lists import (
     master_lists_home,
     brand_list, brand_create, brand_edit, brand_delete, brand_model_list,

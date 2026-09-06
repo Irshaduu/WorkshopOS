@@ -3570,6 +3570,257 @@ so a saved copy of a spare shop's report is called "Print - …". That is a
 separate defect in that template's title, not something the clipboard would fix.
 → `TheSavedPdfIsNamedForTheCarTests`
 
+## Service history & All Invoices — the third and fourth documents
+
+Two more things a customer asks for, both of which used to mean opening every
+job card, printing it, and sending them one at a time. `/car-profiles/<reg>/`
+carries a button for each.
+
+| route | what it is |
+|---|---|
+| `…/service-history/` | the three tick boxes and the current-reading box |
+| `…/service-history/sheet/` | the printable record — every visit, every part |
+| `…/invoices/` | every bill for one car, one per page, one PDF |
+
+**ALL INVOICES IS THE SAME BILL, NOT A COPY THAT LOOKS LIKE ONE — and that is
+the whole feature.** The tempting build is a second template laying a bill out
+the same way. It would look right on the day and drift on some later one — a
+column width, a rounding, a label — and the CUSTOMER would find it, holding
+both documents at once. So the markup was extracted the way the arithmetic
+already had been: `includes/_invoice_sheet.html` plus
+`includes/_invoice_sheet_style.html`, rendered over `build_invoice()` by both
+`invoice_view` and `car_all_invoices`.
+→ `ItIsTheSameBillNotACopyTests` renders one card through both routes and
+asserts the sheets match **character for character**.
+
+⚠ **The shared partial carries NO `id`.** With several sheets on one page an id
+is no longer unique and `getElementById` would silently scale only the first,
+leaving every bill after it overflowing a phone sideways. Both documents select
+on `.sheet`.
+
+⚠ **AND IT NEEDS ITS OWN `{% load custom_filters %}`, AS THE FIRST LINE.** An
+`{% include %}`d template does not inherit the parent's loaded libraries — the
+same trap this file records for `{% load static %}` through `{% extends %}`.
+Without it every page rendering a bill dies on `Invalid filter: 'inr_exact'`.
+
+### `workshop/mileage.py` — reading an odometer that was typed by hand
+
+`JobCard.mileage` is a `CharField`, and every figure the service history
+computes is the difference between two of them.
+
+**IT IS AN ALLOWLIST OF SHAPES, NOT A SCRUB-AND-HOPE.** Stripping non-digits
+turns `approx 50000` into 50000, `50000 miles` into 50000, and `85000 2` into
+850002. `parse_km` accepts `50000`, `50,000`, `1,02,340` (Indian grouping),
+`50000 km`, `50k`, `50.5k` and `50000.4`, and refuses everything else.
+
+Three refusals worth knowing:
+- **Zero.** A car at 0 km does not reach a used-premium workshop, and taking it
+  literally makes the NEXT visit report the car's lifetime distance as one
+  interval.
+- **Miles — refused, never converted.** Silently mixing units makes an interval
+  60% short, and nothing on the card says which unit was meant.
+- **Anything over `MAX_KM` (2,000,000).**
+
+**`normalise()` KEEPS AN UNREADABLE VALUE EXACTLY AS TYPED, only trimmed.** It
+runs in `clean()` on every save — `JobCard` and `Estimate` alike, and both call
+`clean()` unconditionally from `save()`, so one implementation covers forms,
+the shell, management commands and the seeders. Discarding what it cannot read
+would delete a mechanic's "cluster not working" during an unrelated edit.
+
+**No new column, deliberately.** An integer field beside the text one would be
+a second copy of a stored figure, free to drift.
+
+### `workshop/service_history.py` — every rule the sheet prints
+
+**THE AMOUNT PRINTED IS `total_bill_amount` — WHAT THE INVOICE SAID — NOT WHAT
+THE CAR PROFILE CALLS "BILLED".** That hero figure is
+`total_bill_amount − discount_amount`, which is REVENUE. A part-paid walk-in is
+marked PAID with the shortfall booked as a discount, so the two differ on
+exactly the visits a customer checks against their own stack of bills. The
+sheet must agree with the paper.
+
+**NO PAYMENT STATE ANYWHERE ON IT.** It is a record of WORK, not of debt.
+
+**Visits are built OLDEST FIRST and returned NEWEST FIRST.** Chains and gaps
+can only be walked in the direction time runs; the document reads the other
+way. Instance numbers count from the FIRST fitting, so `(3)` means the same
+thing whichever end you start from.
+
+⚠ **ONE ANCHOR: both `gap_km` and `gap_days` measure from the IMMEDIATELY
+PREVIOUS visit, never reaching back past one with no reading.** A gap spanning
+a visit whose odometer was never recorded would be quietly reported as one
+service interval.
+
+**TWO ODOMETER GUARDS, and they answer different questions.** `MAX_KM` refuses
+garbage. `IMPLAUSIBLE_KM_PER_DAY` (1000) catches a slipped digit that is only
+visible in context — 85,000 typed as 850,000 is a perfectly plausible reading
+until you see the date beside it. The second marks the join with `*` rather
+than dropping it; the legend renders only when something on the page carries
+one.
+
+**A CHAIN'S NAME IS THE COMMONEST SPELLING, ties broken by the most recent.**
+The newest was tempting and wrong: a part name is typed fresh every visit, so
+one slip on the latest card would rename four years of history.
+
+**`typical_km` is over COMPLETED lives only** — the running one is still
+accumulating, and including it would drag every average down.
+
+**DUE SOON COMES FROM THIS CAR'S OWN HISTORY, never a manufacturer interval.**
+`DUE_AT_FRACTION` is 0.9 of the chain's own average. This system holds no
+service schedules, and inventing one would be the sheet asserting something
+nobody at this workshop agreed.
+
+⚠ **THE CURRENT READING IS NEVER STORED.** It is one person's word on one day
+— "what is it showing now?" asked over the phone — and the workshop did not
+measure it. Writing it to `JobCard.mileage` would put an unverified figure into
+the column every other screen reads and every future interval is computed from.
+It rides in the query string and leaves with the page, and the sheet says
+*as told by the customer* on the line itself rather than in a footnote nobody
+reaches. `build_service_history` DROPS one that fails `current_km_problem`
+rather than clamping it — a single bad figure would otherwise poison every
+RUNNING row at once.
+
+### The sheet's design — two rules, and they are not suggestions
+
+⚠ **NOTHING ON IT MAY USE A TYPE SIZE OR A COLOUR THE INVOICE DOES NOT ALREADY
+USE.**
+
+    SIZES   26pt title · 14pt total · 11pt bands · 10pt body · 9.5pt stamp
+    COLOUR  #1f4e79 navy · #dce6f1 band fill · #bdd7ee total fill ·
+            #2e74b5 accent · #eaf5ea/#7fb37f/#24632c the settled stamp ·
+            white gridlines · black text
+
+It shipped once wearing the invoice's letterhead over its own invented design
+system — 7.5/8/8.5/9pt type, nine greys and two reds that appear on no Formula
+D document — and the owner's verdict was that it read as generic. That was why.
+**There is no red on this sheet**: the invoice has none, so an odometer problem
+is said in italic navy. Audited live: 0 off-palette sizes, 0 off-palette
+colours.
+
+**THE VISIT CARD'S BODY IS A TABLE ON THE INVOICE'S OWN GRID.** It was a flex
+layout imitating one — a fixed label column and, inside PARTS, four more flex
+columns with no heading naming any of them. The column widths are the
+invoice's SPLIT rather than chosen: `7.7 + 49.8 = 57.5` (its PART NAME column),
+`22.2 = its 14.5 + 7.7`, and `20.3` untouched. Measured against a real bill,
+the name column ends at 56.62% against 56.63% and the amount column starts at
+76.23% against 76.27% — so a customer laying the two side by side finds the
+right-hand gridline in the same place. **Change one and the two documents stop
+agreeing.**
+
+Each block announces itself with a `#dce6f1` head carrying the invoice's own
+words — `CUSTOMER CONCERNS`, `JOB PERFORMED`, `PART NAME`. ⚠ **NOT a second
+navy bar**: the card's `.sh-band` is its heading, and a navy strip directly
+under another reads as a header that failed to end. For the same reason the
+content rows are **not** banded — two things in one fill and the head stops
+being a head. Banding lives in PART LIFE, where twenty-four near-identical
+lines actually need it, and each part there sits behind a 2px navy rule so its
+name stays a heading against rows wearing the same fill.
+
+**THE JOIN IS THE OWNER'S OWN SKETCH IN CSS** — `[job 4] | 1,200 km | [job 3]`.
+Two pseudo-element rules and the figure between them, so the connector is one
+element and cannot be half-rendered, and `background` rather than `border` so a
+printer that drops hairlines still lays down the ink.
+
+**"DISTANCE RUN", in BOTH tables.** It was unheaded on the cards and `LASTED`
+in PART LIFE, for one figure — and *lasted* is untrue of the part still on the
+car, which is the row a reader cares most about.
+
+**THE RECORD CLOSES WITH A TOTAL, and it adds up from the rows above it.**
+`summary.total_billed` is the sum of the AMOUNT lines printed on the page, so a
+customer can check the closing figure against the document it closes. 14pt on
+`#bdd7ee` is the invoice's TOTAL and **nothing else on this sheet may wear it**
+— that is what makes the line read as the end. Labelled `TOTAL BILLED` rather
+than the bill's bare `TOTAL`, which after four cards each carrying their own
+AMOUNT would read as the last one's. Gone entirely when Amount is unticked: a
+lone figure under a list carrying none would be the sheet answering a question
+it had just refused to ask.
+
+**PART LIFE's average says "averages X km BETWEEN CHANGES", never "over N
+changes".** Six fittings give five intervals, so a customer counting the rows
+would find one more than the sentence claims. A part fitted twice reads
+"— the first one lasted X km", because *average* is the wrong word for a single
+measurement.
+
+### The two markers on the options page
+
+⚠ **`go` AND `edit` ARE TWO QUESTIONS, AND COLLAPSING THEM BROKE THE SHEET'S
+"CHANGE" BUTTON OUTRIGHT.** An unticked checkbox sends nothing, so
+"everything was unticked" and "the page just opened" arrive as the identical
+empty payload — hence a marker at all. The sheet's Change link has to carry the
+current ticks or changing one would mean setting them all again, so it carried
+`go`; the options view reads `go` as *submitted, open the sheet*, and following
+the link fired one 302 straight back to the sheet the person was standing on.
+Nothing on screen, nothing in the console, a button that did nothing.
+
+`edit` says **read the ticks literally**; `go` says **read them AND leave**.
+→ `TheChangeLinkActuallyOpensTheChoicesTests`
+
+⚠ **`?back=` IS CARRIED THROUGH THE WHOLE CHAIN.** The sheet sends it to the
+options page, the form re-posts it as a hidden field, and the redirect puts it
+back on the sheet — otherwise opening the sheet from Completed, pressing Change
+and submitting quietly moved the document's own exit to the car profile. It is
+`safe_return`-validated at every hop, and this is a GET form, so anything here
+ends up in a URL a customer may be handed.
+
+⚠ **THE SHEET'S "CHANGE" LINK IS REBUILT FROM RECOGNISED PARAMETERS, never by
+echoing `QUERY_STRING`.** That was the first version and it put ANY parameter
+somebody appended straight into an href on a page about to be handed over:
+`?back=https://evil.example` came through untouched and rendered as a link on
+Formula D's own letterhead.
+
+### The toolbar
+
+**PART LIFE IS A TICK BESIDE PRINT, not a fourth box on the options page.** It
+is a decision about THIS copy taken at the moment of printing, and the answer
+is visible the instant it is tapped — the table leaves the sheet on screen
+exactly as it leaves the paper, so nobody takes the result on trust. Rendered
+only when the car has part life to hide. **Nothing is remembered**: not stored,
+not in the URL, so a re-print starts from the full record — a default that
+quietly dropped a section from a document being handed over is a worse failure
+than one extra tap.
+
+⚠ **THE WAY BACK SAYS "Back", NOT THE REGISTRATION — and this REVERSES what
+this file said, on the owner's instruction (2026-09-06).** `.pg-back`'s
+name-the-destination rule is about pages whose parent is FIXED; `back_url` here
+is `?back=` when one was carried and the car's profile otherwise, so the plate
+was a named destination naming the wrong thing on every sheet opened from
+anywhere else. The invoice and the spare shop's printed report both say plain
+"Back" in exactly this case, and those three are opened in one sitting.
+
+**The options link is the cog alone**, with an `aria-label` and a `title` — the
+app's rule for any pill that goes icon-only, plus the hover word, which is the
+only thing dropping the caption costs.
+
+⚠ **THOSE TWO CAPTIONS WERE SPENT TO BUY ONE ROW ON A PHONE, AND THE BUDGET IS
+NOW GONE.** Measured at 375px: `77 + 44 + 108 + 77` plus gaps is 324 against
+355 of usable row. Before, it was 427 and the bar wrapped — 121px of a screen
+where vertical space is scarcest, with Print stranded alone at the start of row
+two, the primary action as far from the thumb as the row allows. A fifth
+control does not fit here and neither does a longer label on any of these four.
+**Measure before adding one.**
+→ `TheToolbarIsOneRowOnAPhoneTests`
+
+⚠ **A COMMENT INSIDE THE INLINE `<script>` IS PART OF THE PAGE.** The Part life
+handler's comment named the table it hides, and the sheet then reported itself
+as carrying that table on a car with none. Same trap this file already records
+for retired copy in a CSS comment and for a URL scheme written out on the bill.
+
+### Which visits appear
+
+**Completed only, deleted excluded — on BOTH documents.** A car still on the
+floor has a total that is not final, so its bill is not a bill yet and its
+parts are still being added. But the count of what was left out is carried
+through, and the sheet says so out loud: a customer whose car is in the
+workshop today, reading a history that stops last month, would reasonably think
+the record was wrong.
+
+⚠ **`_history_cards()` returns EVERY card and lets `build_service_history`
+decide.** It also has to COUNT the ones it leaves out, so the filtering cannot
+move up into the query.
+
+→ `workshop/tests/test_mileage.py`, `test_service_history.py`,
+`test_service_history_view.py`, `test_all_invoices.py`
+
 ## Estimates
 
 **An ESTIMATE is connected to NOTHING, and that isolation is the feature.**
@@ -7643,8 +7894,8 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 63 files, 2,145 tests. Always SQLite (see below).
-# Last full run 2026-09-04: 2,134 tests, ALL GREEN.
+# Full test suite — 69 files, 2,337 tests. Always SQLite (see below).
+# Last full run 2026-09-06: 2,337 tests, ALL GREEN.
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
 # test files running beside it, but the two IDLE runs still differed by 27
@@ -7907,7 +8158,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Eleven modules hold no views at all** — this is the codebase's main structural idea, and
+**Thirteen modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -7923,6 +8174,8 @@ each exists so that one rule has exactly one implementation:
 | `delete_window.py` | has this money row been in the books too long for Office to delete? |
 | `rent.py` | how much should we hand the rent collector today? |
 | `photos.py` | where do the bytes go, and how is the URL signed? |
+| `mileage.py` | can this hand-typed odometer reading be believed? |
+| `service_history.py` | every figure and every name on the service-history sheet |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
 `SessionTrackingMiddleware`, `NoStoreMiddleware` and `NoIndexMiddleware`.
@@ -8008,12 +8261,15 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **63 files, 2,145 tests**,
-counted 2026-09-05. (`workshop/tests/` is 57 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **69 files, 2,337 tests**,
+counted 2026-09-06. (`workshop/tests/` is 63 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 
-⚠ **Re-count rather than trusting that line; it has gone stale six times.** The counter:
+⚠ **Re-count rather than trusting that line; it has gone stale seven times.**
+It was wrong again on the way into this entry: it read 63 files / 2,145 having
+been counted the day before, and the true figures then were 65 / 2,172. The
+counter: 
 
 ```bash
 python -c "import django,os,sys; os.environ.setdefault('DJANGO_SETTINGS_MODULE','formulad_workshop.settings'); sys.argv=['manage.py','test']; django.setup(); from django.test.runner import DiscoverRunner; print(DiscoverRunner(verbosity=0).build_suite(['workshop','inventory']).countTestCases())"

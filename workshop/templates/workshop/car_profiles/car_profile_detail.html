@@ -146,6 +146,54 @@
             {{ car_info.uncosted_parts|pluralize:"has,have" }} no cost recorded, so the gross profit above is higher than the real one.
         </p>
         {% endif %}
+
+        {% comment %}
+        ==================================================================
+        THE TWO DOCUMENTS
+        ==================================================================
+        The only controls on this page that produce something a customer takes
+        away, so they sit at the foot of the hero, directly above the visits
+        they are built from, rather than in the ⋮ of a row or beside the page
+        title.
+
+        They are a PAIR because a customer asks for one of two things —
+        "what has been done to my car" and "send me my bills" — and answering
+        the second used to mean opening every job card and printing each one.
+        Side by side they read as one choice; stacked they would read as a
+        primary action and an afterthought.
+
+        ⚠ The line under each name is SHORT and QUIET on purpose. A hint that
+        has to be read is a hint competing with the name above it, and these
+        two names nearly explain themselves — the line only has to say what
+        comes out. It was a full sentence for a revision and it made each
+        button three lines tall on a phone.
+
+        Neither is gated on there being completed visits. A car on its first
+        visit produces an honest sheet that says so, and a button that
+        disappears on some cars is one nobody learns is there.
+        {% endcomment %}
+        <div class="cd-docs">
+            <a class="cd-doc" href="{% url 'car_service_history' car_info.registration %}">
+                <svg class="cd-doc-ico" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M4 1h5l3 3v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zm4.6 1.2V4.4H11L8.6 2.2zM5 7.2h6v1.1H5V7.2zm0 2.4h6v1.1H5V9.6zm0 2.4h4v1.1H5V12z"/>
+                </svg>
+                <span class="cd-doc-text">
+                    <b>Service History</b>
+                    <small>every visit, one record</small>
+                </span>
+            </a>
+
+            <a class="cd-doc" href="{% url 'car_all_invoices' car_info.registration %}">
+                <svg class="cd-doc-ico" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M2.5 0h7L12 2.4V12a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1V1a1 1 0 0 1 1-1zM9 1.1v1.8h1.9L9 1.1zM3.4 5h6v1H3.4V5zm0 2.2h6v1h-6v-1zm0 2.2h4v1h-4v-1z"/>
+                    <path d="M13.5 3.6a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1h9.5V3.6z"/>
+                </svg>
+                <span class="cd-doc-text">
+                    <b>All Invoices</b>
+                    <small>every bill, one PDF</small>
+                </span>
+            </a>
+        </div>
     </header>
 
     {% comment %}
@@ -502,6 +550,92 @@
        the row out differently, so the boxes move between cars. */
     .cd-stats > .cd-stat:first-child { flex: 0 0 92px; }    /* Visits */
     .cd-stat-date { flex: 0 0 132px; }                      /* a date */
+
+    /* ---- the two document doors ----
+       ONE ROW on desktop and tablet, stacked only on a phone. Below 576px two
+       buttons share ~343px, which leaves each about 160px — less than the
+       longer of the two names needs — so they wrap rather than truncate. That
+       is the app's own phone line, the same one the Owner Withdrawals chips
+       and the job card's fold use. */
+    .cd-docs {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 0.9rem;
+    }
+
+    @media (min-width: 576px) {
+        .cd-docs { flex-direction: row; }
+        /* `min-width: 0` is load-bearing on a flex ROW: an item defaults to
+           `min-width: auto`, so without it a long name refuses to shrink and
+           pushes the second button off the card. */
+        .cd-docs > .cd-doc { flex: 1 1 0; min-width: 0; }
+    }
+
+    /* Navy rather than the app's blue, because these open DOCUMENTS whose own
+       letterhead, bands and totals are set in #1f4e79. The buttons and the
+       sheets they lead to are one object seen twice. */
+    .cd-doc {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        /* 44px on any device — tapped on the tablet and the owners' phones,
+           not only clicked. */
+        min-height: 44px;
+        padding: 0.6rem 0.75rem;
+        background: #1f4e79;
+        border-radius: 11px;
+        color: #fff;
+        text-decoration: none;
+    }
+
+    /* Paint only. A lift would move the visits list under a finger already on
+       its way down to it. */
+    @media (hover: hover) {
+        .cd-doc:hover { background: #17395a; color: #fff; }
+    }
+
+    .cd-doc:active { background: #17395a; color: #fff; }
+
+    .cd-doc-ico { width: 19px; height: 19px; flex: none; opacity: .9; }
+
+    /* `min-width: 0` again, one level down: without it the name refuses to
+       shrink inside its own button. */
+    .cd-doc-text { min-width: 0; flex: 1; }
+
+    .cd-doc-text b {
+        display: block;
+        font-size: 0.87rem;
+        font-weight: 700;
+        line-height: 1.2;
+        /* Two buttons on one row cannot both grow, so the NAME truncates
+           rather than wrapping — a two-line name would make one button taller
+           than the other and the pair would stop reading as a pair. Neither
+           name is long enough for this to bite above 576px; it is a floor, not
+           a behaviour anybody should see. */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* ⚠ SMALL AND SHORT, on the owner's instruction. This line only has to say
+       what comes out of the button; the name above it already says what it is.
+       0.62rem is 9.9px — small, and it carries because it is one short phrase
+       rather than a sentence somebody has to read.
+
+       .8 rather than a lighter tone: it composites to 8.3:1 on this navy, and
+       at 9.9px it is well under WCAG's large-text threshold, so it needs
+       4.5:1 rather than 3:1. */
+    .cd-doc-text small {
+        display: block;
+        font-size: 0.62rem;
+        line-height: 1.35;
+        letter-spacing: .01em;
+        color: rgba(255, 255, 255, .8);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 
     .cd-stat dt {
         font-size: 0.65rem;

@@ -1,0 +1,369 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% comment %}
+    Named like the invoices it contains, so it files beside them in a
+    customer's folder:
+
+        Audi A4 KL11 AJ 2266 (JB-26-037).pdf
+        Audi A4 KL11 AJ 2266 (All Invoices).pdf
+        Audi A4 KL11 AJ 2266 (Service History).pdf
+
+    Built by `invoice.document_title`, the same function all three use.
+    {% endcomment %}
+    <title>{{ document_title }}</title>
+
+    {% comment %}
+    ============================================================================
+    EVERY BILL FOR ONE CAR, ONE PER PAGE, AS A SINGLE PDF.
+    ============================================================================
+    ⚠ **THERE IS ALMOST NOTHING IN THIS FILE, AND THAT IS THE POINT.**
+
+    The sheet is `includes/_invoice_sheet.html` and its styles are
+    `includes/_invoice_sheet_style.html` — the very same two partials
+    `invoice_template.html` renders. A customer holding this PDF and the paper
+    bill they were handed last year must find them identical to the
+    millimetre, and the only way to promise that is for there to be one
+    implementation of the bill rather than two that are kept in step by hand.
+
+    So this template contributes exactly three things: a toolbar, a page break
+    between sheets, and a fitSheet that scales all of them instead of one.
+    Anything else that starts growing here belongs in the shared partial or
+    nowhere.
+
+    SELF-CONTAINED, like the invoice: no Bootstrap, no icon font, no CDN. A
+    workshop printing on a dropped connection must not get an unstyled page.
+    ============================================================================
+    {% endcomment %}
+
+    <style>
+        /* ==================================================================
+           PAGE — the invoice's, so the paper chosen in the dialog wins and the
+           browser has nowhere to draw its own header and footer.
+           ================================================================== */
+        @page {
+            margin: 0;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #f1f3f6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            color: #1e293b;
+        }
+
+        /* ==================================================================
+           SCREEN-ONLY CHROME — the invoice's toolbar, copied. Two controls:
+           there is nothing to settle and nothing to edit here.
+           ================================================================== */
+        .bar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, .92);
+            backdrop-filter: blur(6px);
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .bar-spacer {
+            flex: 1 1 auto;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            /* 44px — tapped on a tablet and a phone, not only clicked. */
+            min-height: 44px;
+            padding: 0 16px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            font: 600 14px/1 inherit;
+            font-family: inherit;
+            text-decoration: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn svg {
+            width: 17px;
+            height: 17px;
+            flex: none;
+        }
+
+        .btn-ghost {
+            background: #fff;
+            border-color: #cbd5e1;
+            color: #334155;
+        }
+
+        .btn-ghost:hover {
+            background: #f8fafc;
+        }
+
+        .btn-primary {
+            background: #1f4e79;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #17395a;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            font-size: 12.5px;
+            font-weight: 700;
+            letter-spacing: .02em;
+            background: #dce6f1;
+            color: #1f4e79;
+        }
+
+        {% comment %}
+        THE SHEET AND ITS PRINT RULES — the invoice's own, included rather than
+        restated. Everything from `.sheet-wrap` to the pagination lives there.
+        {% endcomment %}
+        {% include 'workshop/includes/_invoice_sheet_style.html' %}
+
+        {% comment %}
+        THE ONE RULE THIS DOCUMENT ADDS.
+
+        A bill is a page. Two bills sharing a sheet of paper would be the one
+        thing that makes this a printout rather than a set of invoices — and
+        the customer could not hand any single one of them to anybody.
+
+        `break-before` on every sheet AFTER the first, rather than
+        `break-after` on every sheet, so the document does not end with a
+        blank final page. Both spellings are given: the modern property and
+        the legacy one browsers still honour in print.
+        {% endcomment %}
+        @media print {
+            .sheet-wrap + .sheet-wrap {
+                break-before: page;
+                page-break-before: always;
+            }
+        }
+
+        /* On SCREEN they are separate pieces of paper too, so the gap between
+           them is the shadow the sheet already carries plus the wrapper's own
+           padding. Nothing to add. */
+
+        .no-invoices {
+            max-width: 210mm;
+            margin: 40px auto;
+            padding: 24px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            text-align: center;
+            color: #334155;
+        }
+
+        @media (max-width: 640px) {
+            .bar {
+                gap: 8px 6px;
+                padding: 8px 10px;
+            }
+
+            .btn {
+                padding: 0 12px;
+                font-size: 13px;
+            }
+
+            {% comment %}
+            No row break: this toolbar carries a way back, a count and one
+            action, which fit a single row far below any width this app
+            supports. The invoice needs its break because it carries five
+            things.
+            {% endcomment %}
+            .bar .btn {
+                flex: 0 0 auto;
+            }
+
+            .btn-print-long {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="bar no-print">
+        {% comment %}
+        There is ALWAYS a way off this page. Resolved in the VIEW to a single
+        value, so this can never render an empty href — a document whose only
+        exit depends on a query parameter traps whoever opened it from a
+        bookmark. Labelled with the registration, following `.pg-back`
+        everywhere else: the arrow already says back.
+        {% endcomment %}
+        <a href="{{ back_url }}" class="btn btn-ghost">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+            {{ registration }}
+        </a>
+
+        <span class="chip">{{ count }} invoice{{ count|pluralize }}</span>
+
+        <span class="bar-spacer"></span>
+
+        {% comment %}
+        `onclick` stays inline and `js-print` is only a hook for the clipboard
+        copy at the foot of this file. Printing must not depend on that script
+        having run at all.
+        {% endcomment %}
+        <button type="button" class="btn btn-primary js-print" onclick="window.print()">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
+            Print<span class="btn-print-long"> / Save PDF</span>
+        </button>
+    </div>
+
+    {% comment %}
+    ========================================================================
+    THE BILLS — newest first, one per page.
+    ========================================================================
+    Each is the shared partial, handed one `build_invoice` result. There is no
+    arithmetic and no markup of a bill anywhere in this file.
+    {% endcomment %}
+    {% for item in sheets %}
+    <div class="sheet-wrap">
+        {% include 'workshop/includes/_invoice_sheet.html' with doc=item.doc jobcard=item.jobcard %}
+    </div>
+    {% empty %}
+    <div class="no-invoices">
+        <p><b>No bills yet for {{ registration }}.</b></p>
+        <p>A visit is billed when the car is handed over, so a car still in the
+            workshop has no invoice to print.</p>
+    </div>
+    {% endfor %}
+
+    <script>
+        (function () {
+            // ---------------------------------------------------------------
+            // The saved PDF's name — the invoice's own handler, verbatim.
+            //
+            // document.title is what every browser suggests in Save as PDF, so
+            // putting it on the clipboard as well rescues the two platforms
+            // that ignore it: Microsoft Print to PDF opens its dialog with the
+            // name box BLANK whatever the page says, and iOS files every Safari
+            // print under its own date-stamped name.
+            //
+            // CAPTURE, on `document`, never a listener on the button:
+            // window.print() BLOCKS until the dialog is dismissed, and at the
+            // target phase listeners run in registration order whatever their
+            // capture flag — so anything bound to the button itself would copy
+            // AFTER the dialog had already closed.
+            //
+            // IT CAN NEVER STOP A PRINT. The copy is wrapped and the inline
+            // onclick is left in place. navigator.clipboard is UNDEFINED
+            // outside a secure context -- plain unencrypted HTTP -- which is
+            // not hypothetical: serving the Floor tablet over the LAN does
+            // exactly that. (The scheme is spelled out in words rather than
+            // written, because this comment is served to the browser and the
+            // customer-document tests read every absolute URL on the page.)
+            // ---------------------------------------------------------------
+            document.addEventListener('click', function (event) {
+                var node = event.target;
+                if (!node || !node.closest || !node.closest('.js-print')) return;
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(document.title)
+                            .catch(function () { /* denied, or no permission */ });
+                    }
+                } catch (ignored) { /* printing outranks the clipboard */ }
+            }, true);
+
+            // ---------------------------------------------------------------
+            // Fit EVERY sheet, not one.
+            //
+            // The invoice's fitSheet scales the single sheet on its page. Here
+            // there are as many as the car has bills, each in its own wrapper,
+            // so the same arithmetic runs per PAIR. Scaling only the first —
+            // which is what `getElementById('sheet')` would have done, and the
+            // reason the shared partial carries no id — would leave every bill
+            // after it overflowing a phone sideways.
+            //
+            // Narrow screens SCALE, they never reflow: a bill that rearranged
+            // itself to fit would stop being the bill that prints.
+            // ---------------------------------------------------------------
+            var wraps = [].slice.call(document.querySelectorAll('.sheet-wrap'));
+
+            function fitAll() {
+                wraps.forEach(function (wrap) {
+                    var sheet = wrap.querySelector('.sheet');
+                    if (!sheet) return;
+                    sheet.style.transform = '';
+                    wrap.style.height = '';
+                    var available = wrap.clientWidth - 24;   // .sheet-wrap side padding
+                    var natural = sheet.offsetWidth;
+                    // `available <= 0` is the degenerate case: a wrapper inside a
+                    // hidden or zero-width container measures 0, and the scale then
+                    // computes to 0 — every bill collapsing to nothing rather than
+                    // simply not being scaled. Bail and leave the sheet at its
+                    // natural size, which is always recoverable.
+                    if (!natural || available <= 0 || available >= natural) return;
+                    var scale = available / natural;
+                    sheet.style.transform = 'scale(' + scale + ')';
+                    // The transform does not shrink the space the sheet
+                    // reserves, so the wrapper would keep a page of empty
+                    // scroll beneath every bill.
+                    wrap.style.height = (sheet.offsetHeight * scale + 58) + 'px';
+                });
+            }
+
+            fitAll();
+            window.addEventListener('resize', fitAll);
+
+            // WIDTH only: fitAll sets each wrapper's height, which is itself a
+            // resize, so watching both would have it call itself forever.
+            if (window.ResizeObserver && wraps.length) {
+                var lastWidth = wraps[0].clientWidth;
+                new ResizeObserver(function () {
+                    if (wraps[0].clientWidth === lastWidth) return;
+                    lastWidth = wraps[0].clientWidth;
+                    fitAll();
+                }).observe(wraps[0]);
+            }
+
+            // Fonts land after first paint and change each sheet's height.
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(fitAll);
+            }
+
+            // Ctrl/Cmd+P prints the sheets, not the scaled-down screen copies.
+            window.addEventListener('beforeprint', function () {
+                wraps.forEach(function (wrap) {
+                    var sheet = wrap.querySelector('.sheet');
+                    if (sheet) sheet.style.transform = '';
+                    wrap.style.height = '';
+                });
+            });
+            window.addEventListener('afterprint', fitAll);
+        }());
+    </script>
+
+    <script src="{% static 'js/sound.js' %}?v=8"></script>
+</body>
+
+</html>

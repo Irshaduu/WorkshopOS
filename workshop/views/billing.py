@@ -50,6 +50,16 @@ def invoice_view(request, pk):
 
     context = build_invoice(jobcard)
     context.update({
+        # ⚠ THE SAME DICT UNDER A SECOND NAME, and both are load-bearing.
+        #
+        # The sheet itself is now `includes/_invoice_sheet.html`, shared with
+        # the All Invoices document, which loops and so must be handed ONE
+        # invoice at a time — it reads `doc.grand_total`. Everything else on
+        # this page (the title, the settle dialog) still reads the flat names
+        # this view has always passed, so they stay exactly as they were.
+        #
+        # One object, two names: there is no second copy to fall out of step.
+        'doc': dict(context),
         'jobcard': jobcard,
         'back_url': safe_return(request),
         # What is still unfilled, for the confirmation in front of Settle Bill.

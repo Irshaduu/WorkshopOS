@@ -1,0 +1,271 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Service History · {{ registration }}{% endblock %}
+
+{% block content %}
+{% comment %}
+==========================================================================
+WHAT GOES ON THIS COPY
+==========================================================================
+The page between the button and the document. It exists for one question that
+nothing in the database can answer — WHAT IS THE CAR READING NOW — and it asks
+the other three while it has the person's attention.
+
+The reading is the reason this page is worth a click. A customer rings up
+asking for their history; the office asks what the odometer says and types it
+in, and every part currently on the car can then report how far it has run.
+Without it those figures stop at the last visit, which is the one reading the
+customer already knows.
+
+It is NEVER STORED. See the view.
+==========================================================================
+{% endcomment %}
+<div class="sh-opt-page">
+
+    <a href="{{ profile_url }}" class="pg-back">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+        {{ registration }}
+    </a>
+
+    <header class="sh-opt-hero">
+        <h1>Service History</h1>
+        <p class="sh-opt-car">
+            {% if car.brand_name or car.model_name %}{{ car.brand_name }} {{ car.model_name }} · {% endif %}{{ registration }}
+        </p>
+        {% comment %}
+        What the sheet will be built from, said before it is built. The count
+        and the last reading are the two facts that tell whoever is on the
+        phone whether this is the car they think it is.
+        {% endcomment %}
+        <p class="sh-opt-facts">
+            {{ summary.visits }} completed visit{{ summary.visits|pluralize }}{% if summary.last_date %} ·
+            last in {{ summary.last_date|date:"j M Y" }}{% endif %}{% if summary.latest_reading %} at
+            {{ summary.latest_reading|inr }} km{% endif %}
+        </p>
+    </header>
+
+    <form method="get" class="sh-opt-form">
+        {% comment %}
+        `go` is what tells the view this is a submission. An unticked checkbox
+        sends NOTHING, so without this marker "everything was unticked" and
+        "the page just opened" arrive as the identical empty payload — and the
+        boxes could never default to ticked.
+        {% endcomment %}
+        <input type="hidden" name="go" value="1">
+
+        {% comment %}
+        Where the SHEET's Back should point, carried through. Only rendered
+        when the sheet sent one, and already validated by `safe_return` in the
+        view — this is a GET form, so anything here ends up in a URL a customer
+        may be handed.
+        {% endcomment %}
+        {% if back_url %}<input type="hidden" name="back" value="{{ back_url }}">{% endif %}
+
+        <section class="sh-opt-card">
+            <h2>What to include</h2>
+            <p class="sh-opt-note">
+                Every visit, the distance between them and the parts fitted are always
+                on the sheet. These three are yours to choose.
+            </p>
+            {% for option in options %}
+            <label class="sh-opt-tick">
+                <input type="checkbox" name="{{ option.key }}" value="1"{% if option.checked %} checked{% endif %}>
+                <span>
+                    <b>{{ option.label }}</b>
+                    <small>{{ option.hint }}</small>
+                </span>
+            </label>
+            {% endfor %}
+        </section>
+
+        <section class="sh-opt-card{% if km_error %} sh-opt-card--bad{% endif %}">
+            <h2>Current reading <span class="sh-opt-opt">optional</span></h2>
+            <p class="sh-opt-note">
+                Ask the customer what the odometer shows now. It is used only to work
+                out how far the parts on the car have run since they were fitted —
+                <b>it is not saved anywhere.</b>
+            </p>
+            <div class="sh-opt-km">
+                {% comment %}
+                `inputmode` rather than `type="number"`, matching the job card's
+                own mileage box: a number spinner on a six-digit odometer
+                reading is a control nobody wants, and the value is parsed by
+                `mileage.parse_km` either way.
+                {% endcomment %}
+                <input type="text" name="km" value="{{ typed_km }}" inputmode="numeric"
+                       autocomplete="off" aria-label="Current odometer reading in kilometres"
+                       placeholder="{% if summary.latest_reading %}{{ summary.latest_reading|inr }} or more{% else %}e.g. 130000{% endif %}">
+                <span>km</span>
+            </div>
+            {% if km_error %}
+            <p class="sh-opt-error">{{ km_error }}</p>
+            {% elif summary.latest_reading %}
+            <p class="sh-opt-note">
+                Leave it empty and the sheet measures to {{ summary.latest_reading|inr }} km,
+                the reading from the last visit.
+            </p>
+            {% endif %}
+        </section>
+
+        <button type="submit" class="sh-opt-go">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 1h5l3 3v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zm4.6 1.2V4.4H11L8.6 2.2zM5 7.2h6v1.1H5V7.2zm0 2.4h6v1.1H5V9.6zm0 2.4h4v1.1H5V12z"/></svg>
+            Create Service History
+        </button>
+    </form>
+</div>
+
+<style>
+    .sh-opt-page { max-width: 560px; }
+
+    .sh-opt-hero { margin-bottom: 1.1rem; }
+
+    .sh-opt-hero h1 {
+        margin: 0;
+        font-size: 1.35rem;
+        font-weight: 800;
+        letter-spacing: -.01em;
+    }
+
+    .sh-opt-car {
+        margin: .2rem 0 0;
+        font-size: .95rem;
+        font-weight: 600;
+        color: var(--color-text);
+    }
+
+    .sh-opt-facts {
+        margin: .15rem 0 0;
+        font-size: .8rem;
+        color: var(--color-text-muted);
+    }
+
+    .sh-opt-card {
+        background: var(--color-card);
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        padding: .9rem 1rem;
+        margin-bottom: .8rem;
+    }
+
+    /* The error state is a BORDER, never a background: the card holds an input
+       whose text has to stay readable, and a wash behind a form field is how a
+       value stops being legible on the one screen it is being corrected on. */
+    .sh-opt-card--bad { border-color: #b45309; }
+
+    .sh-opt-card h2 {
+        margin: 0 0 .15rem;
+        font-size: .82rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: var(--color-text-muted);
+    }
+
+    .sh-opt-opt {
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: 500;
+        opacity: .75;
+    }
+
+    .sh-opt-note {
+        margin: 0 0 .7rem;
+        font-size: .78rem;
+        line-height: 1.45;
+        color: var(--color-text-muted);
+    }
+
+    /* 44px per row — this is ticked on the office laptop and on a phone while
+       somebody is on a call, so the target is sized for the worse case. */
+    .sh-opt-tick {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        min-height: 44px;
+        padding: .3rem 0;
+        cursor: pointer;
+    }
+
+    .sh-opt-tick input {
+        width: 19px;
+        height: 19px;
+        flex: none;
+        accent-color: #1f4e79;
+        cursor: pointer;
+    }
+
+    .sh-opt-tick b {
+        display: block;
+        font-size: .88rem;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+
+    .sh-opt-tick small {
+        display: block;
+        font-size: .74rem;
+        color: var(--color-text-muted);
+    }
+
+    .sh-opt-km {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+    }
+
+    .sh-opt-km input {
+        width: 160px;
+        min-height: 44px;
+        padding: 0 .7rem;
+        border: 1px solid var(--color-border);
+        border-radius: 9px;
+        font-size: 1rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .sh-opt-km span {
+        font-size: .85rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+    }
+
+    .sh-opt-error {
+        margin: .6rem 0 0;
+        font-size: .78rem;
+        line-height: 1.45;
+        font-weight: 600;
+        color: #b45309;
+    }
+
+    /* Navy rather than the app's blue, because it opens a DOCUMENT whose own
+       letterhead, bands and totals are set in #1f4e79. The button and the sheet
+       it leads to are one object seen twice. */
+    .sh-opt-go {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: .55rem;
+        width: 100%;
+        min-height: 48px;
+        border: 0;
+        border-radius: 11px;
+        background: #1f4e79;
+        color: #fff;
+        font-size: .95rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .sh-opt-go svg { width: 18px; height: 18px; }
+
+    /* Paint only. A lift would move the button under a finger already on its
+       way down to it. */
+    @media (hover: hover) {
+        .sh-opt-go:hover { background: #17395a; }
+    }
+
+    .sh-opt-go:active { background: #17395a; }
+</style>
+{% endblock %}

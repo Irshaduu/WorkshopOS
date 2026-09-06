@@ -76,6 +76,14 @@ payroll, evidence photos and owner analytics, in one Django application.
 - Print-ready A4 invoices on the workshop's own letterhead, rendered the same on
   screen as on paper.
 - Estimates on the same letterhead, with a searchable history (`EST-26-001`).
+- A **service history** for one car: every visit, the distance and the days between
+  them, and each part numbered across its own replacements with how far that fitting
+  has run. The office can type the reading the customer gives on the phone, and every
+  part currently fitted then reports against it — used for the calculation, never
+  stored.
+- **Every bill for one car as a single PDF**, one per page. It renders through the same
+  template and the same arithmetic as the single invoice, so a customer holding both
+  cannot find them differing.
 - Warehouse parts are billed under their category rather than the branded product, so
   a customer's bill does not name the workshop's suppliers.
 
@@ -177,6 +185,8 @@ WorkshopOS/
 │   ├── views/            # views package, one module per area
 │   ├── analysis_engine.py   # the profit and cash figures
 │   ├── invoice.py           # both customer documents
+│   ├── mileage.py           # can this hand-typed odometer reading be believed
+│   ├── service_history.py   # visits, gaps, part chains, what is due soon
 │   ├── settlement.py        # what is unfilled before a bill is settled
 │   ├── master_data.py       # renaming and merging a name
 │   ├── delete_window.py     # how old a record may be for Office to delete it
@@ -198,7 +208,7 @@ WorkshopOS/
 python manage.py test workshop inventory
 ```
 
-1,921 tests covering the financial rules, access control, stock signals, the printed
+2,337 tests covering the financial rules, access control, stock signals, the printed
 documents, and the supplier, fleet and salary flows. The suite runs on SQLite, so it
 never touches a live database. A full run takes 20 to 80 minutes.
 

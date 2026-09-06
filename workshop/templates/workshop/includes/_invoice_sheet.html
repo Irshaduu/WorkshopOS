@@ -1,0 +1,232 @@
+{% load custom_filters %}{% comment %}
+⚠ THE LOAD TAG IS NOT INHERITED. An {% include %}d template does not
+get the parent's loaded libraries — the same trap CLAUDE.md records for
+{% load static %} through {% extends %} — so without this line every
+page rendering a bill dies on `Invalid filter: 'inr_exact'`. It must be
+the FIRST thing in the file, above the first tag that uses a filter.
+{% endcomment %}
+{% comment %}
+==========================================================================
+ONE INVOICE, AS IT PRINTS — the sheet itself, and nothing around it.
+==========================================================================
+Included by TWO documents:
+
+  invoice/invoice_template.html          one bill, with its toolbar and
+                                         its settle dialog
+  car_profiles/all_invoices_print.html   every bill for one car, one per
+                                         page, as a single PDF
+
+⚠ THAT IS THE WHOLE POINT OF THIS FILE. The second document exists because
+customers ask for all their bills at once, and the one thing it must never
+become is a bill that merely RESEMBLES the invoice — a customer holding both
+would find them differing in a column width, a rounding, a label. The
+arithmetic already has one home (`workshop/invoice.py`); this gives the markup
+one too.
+
+Takes `doc` — whatever `build_invoice()` returned — and `jobcard`. Every figure
+is decided in that module; there is no arithmetic here.
+
+⚠ NO `id`. With several sheets on one page an id is no longer unique, and
+`getElementById` would quietly scale only the first. Both documents select on
+`.sheet`.
+{% endcomment %}
+        <div class="sheet">
+
+            <header class="inv-head">
+                <div class="brand">
+                    {% comment %}
+                    The client's own artwork, inline. It replaces a three-part
+                    typographic approximation (Arial Black italic wordmark, a
+                    CSS rule, an Arial Black tagline) that was close but was
+                    never the logo.
+
+                    The original note here — a logo file that fails to load
+                    leaves a customer holding an unbranded invoice, and a raster
+                    one prints soft — still holds, and inline vector satisfies
+                    both: nothing to fetch, and it prints at the device's own
+                    resolution.
+                    {% endcomment %}
+                    {% include 'workshop/includes/_brand_mark.html' %}
+                    <div class="brand-addr">
+                        Calicut Road, Pullara<br>
+                        PIN: 676517<br>
+                        Phone: +91 9207217978<br>
+                        formuladservice.in@gmail.com
+                    </div>
+                </div>
+
+                <div class="inv-doc">
+                    <div class="inv-title">INVOICE</div>
+                    <div class="inv-meta">
+                        <span>DATE:&nbsp; {{ jobcard.admitted_date|date:"j-M-Y" }}</span>
+                        <span>#: {{ jobcard.bill_number|default:"" }}</span>
+                    </div>
+                </div>
+            </header>
+
+            <table class="inv-table inv-parties">
+                <colgroup>
+                    <col style="width:57.5%">
+                    <col style="width:42.5%">
+                </colgroup>
+                {% comment %}
+                This heading row sits in a <tbody>, NOT a <thead>, on purpose:
+                `thead { display: table-header-group }` repeats a heading on
+                every printed page, which is right for the money columns and
+                wrong for the vehicle block — it belongs to page 1 only.
+                {% endcomment %}
+                <tbody>
+                    <tr class="band">
+                        <th>BILL TO</th>
+                        <th>VEHICLE INFO</th>
+                    </tr>
+                    <tr>
+                        <td>
+                            NAME: {{ jobcard.customer_name|default:"" }}<br>
+                            MAKE: {{ jobcard.brand_name|default:"" }}
+                        </td>
+                        <td>
+                            REG NO: {{ jobcard.registration_number|default:"" }}<br>
+                            MODEL: {{ jobcard.model_name|default:"" }}<br>
+                            MILEAGE: {{ jobcard.mileage|default:"" }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {% comment %}
+            JOB PERFORMED — descriptions only. The per-line amounts exist on the
+            job card and are deliberately not printed; the section is charged as
+            one SUBTOTAL. See workshop/invoice.py for why.
+            {% endcomment %}
+            <table class="inv-table inv-jobs">
+                <colgroup>
+                    <col style="width:57.5%">
+                    <col style="width:7.7%">
+                    <col style="width:14.5%">
+                    <col style="width:20.3%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th colspan="3" class="h-left">JOB PERFORMED</th>
+                        <th>AMOUNT</th>
+                    </tr>
+                </thead>
+                <tbody class="rows">
+                    {% for line in doc.job_lines %}
+                    <tr>
+                        <td colspan="3">{{ line.description }}</td>
+                        <td></td>
+                    </tr>
+                    {% endfor %}
+                    {% for _ in doc.job_pad %}
+                    <tr>
+                        <td colspan="3">&nbsp;</td>
+                        <td></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tbody class="totals">
+                    <tr>
+                        <td colspan="2" class="void"></td>
+                        <td class="sub-label">SUBTOTAL</td>
+                        <td class="money sub-cell">
+                            <span class="acct"><span>₹</span><span>{{ doc.job_subtotal|inr_exact }}</span></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {% comment %}
+            PART NAME — spare-shop purchases and warehouse draws in ONE list, in
+            the order they were added. A draw prints under its category name
+            ("Engine Oil"), never the branded product it was bought as; a blank
+            quantity has already been resolved to 1 and the unit price derived
+            from the customer total, so no row can print an amount with nothing
+            beside it. The QTY cell is empty for a quantity of one, blank or
+            typed — the workshop writes a number down only when there is more
+            than one of something. All of that happens in workshop/invoice.py.
+            {% endcomment %}
+            <table class="inv-table inv-parts">
+                <colgroup>
+                    <col style="width:57.5%">
+                    <col style="width:7.7%">
+                    <col style="width:14.5%">
+                    <col style="width:20.3%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="h-left">PART NAME</th>
+                        <th>QTY</th>
+                        <th>UNIT PRICE</th>
+                        <th>AMOUNT</th>
+                    </tr>
+                </thead>
+                <tbody class="rows">
+                    {% for part in doc.part_lines %}
+                    <tr>
+                        <td>{{ part.name }}</td>
+                        <td class="c">{{ part.display_quantity|clean_qty }}</td>
+                        <td class="r">{{ part.unit_price|inr_exact }}</td>
+                        <td class="money">
+                            {% if part.priced %}<span class="acct"><span>₹</span><span>{{ part.amount|inr_exact }}</span></span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% for _ in doc.part_pad %}
+                    <tr>
+                        <td>&nbsp;</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tbody class="totals">
+                    <tr>
+                        <td class="void"></td>
+                        <td class="sub-cell"></td>
+                        <td class="sub-label">SUBTOTAL</td>
+                        <td class="r sub-cell">{{ doc.part_subtotal|inr_exact }}</td>
+                    </tr>
+                    <tr class="grand">
+                        <td class="thanks">Thank you for your business!</td>
+                        <td class="grand-cell"></td>
+                        <td class="grand-label">TOTAL</td>
+                        <td class="money grand-amount">
+                            <span class="acct"><span>₹</span><span>{{ doc.grand_total|inr_exact }}</span></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {% comment %}
+            PAID — only once the bill is settled, and OUTSIDE the table on
+            purpose.
+
+            It is a separate block rather than a third row in `<tbody
+            class="totals">` because those two rows are the bill's arithmetic:
+            SUBTOTAL and TOTAL add up, and a receipt line does not belong in
+            that sum. Adding a row would also have widened the totals block's
+            `break-inside: avoid`, making it likelier to be pushed whole onto a
+            page of its own on a long bill.
+
+            `doc.settlement` is None until the card reaches PAID/BULK_PAID, so an
+            unpaid bill prints exactly what it printed before this existed —
+            nothing here at all, and no gap. See `doc.settlement()` in
+            workshop/invoice.py for why the template does not decide this.
+            {% endcomment %}
+            {% if doc.settlement %}
+            <div class="paid-box">
+                <span class="paid-label">{{ doc.settlement.label|upper }}</span>
+                <span class="paid-amount">
+                    <span class="acct"><span>₹</span><span>{{ doc.settlement.received|inr_exact }}</span></span>
+                </span>
+            </div>
+            {% endif %}
+
+            <div class="inv-foot">
+                Should you have any enquiries concerning this invoice please contact:<br>
+                Rijas Mohd, +91 92 07 21 79 78
+            </div>
+        </div>

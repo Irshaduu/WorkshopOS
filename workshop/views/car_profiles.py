@@ -1,14 +1,23 @@
 from decimal import Decimal
 
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.http import Http404
-from django.db.models import Count, Max, Q, Sum, F, DecimalField
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.http import urlencode
+from django.db.models import Count, Max, Prefetch, Q, Sum, F, DecimalField
 from django.db.models.functions import Coalesce, Greatest, TruncDate
 from django.core.paginator import Paginator
 
 from ..analysis_engine import MONEY, SPARE_COST
-from ..models import JobCard, JobCardSpareItem
+from ..models import (
+    JobCard, JobCardConcern, JobCardLabourItem, JobCardSpareItem,
+)
 from ..decorators import office_required, is_owner
+from ..return_to import safe_return
+from ..mileage import parse_km
+from ..invoice import build_invoice, document_title
+from ..service_history import build_service_history, current_km_problem
 # How long a car was here, as one ready phrase. Imported rather than restated:
 # the read-only job card already prints this figure, and the two screens are
 # opened one after the other on the same card — a history row saying "3 days"
@@ -366,4 +375,300 @@ def car_profile_detail(request, registration):
         'bills': visits,
         'page_obj': page_obj,
         'show_profit': show_profit,
+    })
+
+
+# =====================================================================
+# SERVICE HISTORY — the third customer document
+# =====================================================================
+#
+# TWO views for one document, and the split is the feature rather than
+# plumbing. The button on the car profile opens the OPTIONS page, which asks
+# the two questions only a person can answer — what should be on this copy, and
+# what is the car showing now — and only then opens the SHEET.
+#
+# The second question is the one worth having a page for. A customer rings up
+# asking for their history; the office asks "what is it reading now?" and types
+# it in, and every part currently on the car can then say how far it has run.
+# Without it those figures stop at the last visit, which is the one reading the
+# customer already knows.
+#
+# ⚠ THE ANSWER IS NEVER STORED. It is one person's word on one day, the
+# workshop did not measure it, and writing it to `JobCard.mileage` would put an
+# unverified figure into the column every other screen reads and every future
+# interval is computed from. It rides in the query string and leaves with the
+# page.
+
+
+def _history_cards(registration):
+    """
+    Every job card for one registration, with what the document reads.
+
+    The prefetches are not an optimisation, they are what makes the sheet
+    affordable: it prints EVERY visit with EVERY part, concern and job line on
+    it, so a fleet car with forty visits would otherwise cost a hundred and
+    twenty queries. `item__category` is selected because a warehouse draw is
+    named on a customer document by its category, never by the branded SKU.
+
+    ⚠ Every card is returned, not a filtered list. Which visits count is
+    `build_service_history`'s decision — completed only, deleted excluded — and
+    it also has to COUNT the ones it leaves out, so a customer whose car is in
+    the workshop today is told so rather than reading a history that silently
+    omits it.
+    """
+    cards = list(
+        JobCard.objects
+        .filter(registration_number=registration)
+        .prefetch_related(
+            # All three ordered by pk — insertion order, so a visit lists its
+            # concerns, work and parts the way they were typed. None of these
+            # models declares a default ordering, so without this one visit
+            # could read two ways on two different days.
+            Prefetch('labours', queryset=JobCardLabourItem.objects.order_by('pk')),
+            Prefetch('concerns', queryset=JobCardConcern.objects.order_by('pk')),
+            Prefetch(
+                'spares',
+                queryset=JobCardSpareItem.objects
+                .select_related('item__category').order_by('pk'),
+            ),
+        )
+    )
+    # The same 404 the profile page gives — a registration with no cards at all
+    # is not a car this workshop knows. A car whose only visit is still in
+    # progress is a different thing and renders normally, with the sheet saying
+    # so.
+    if not cards:
+        raise Http404("Car not found")
+    return cards
+
+
+#: What the sheet can be asked to include. PARTS are not on this list because
+#: they are the document — everything else is a choice about who this copy is
+#: for. The keys are the query parameters, so one list drives the tick boxes,
+#: the redirect and the sheet, and a fourth option cannot be added to two of
+#: the three.
+HISTORY_OPTIONS = (
+    ('amount', 'Amount', 'what each visit was billed'),
+    ('work', 'Job Performed', 'the work carried out at each visit'),
+    ('concerns', 'Customer Concerns', 'what the customer reported on arrival'),
+)
+
+
+@office_required
+def car_service_history(request, registration):
+    """
+    Choose what goes on the sheet, then open it.
+
+    A plain GET form rather than a POST: nothing here changes anything, and the
+    sheet has to stay a bookmarkable, re-printable URL.
+
+    ⚠ `go` MARKS A SUBMISSION, AND WITHOUT IT THE TICK BOXES CANNOT WORK. An
+    unticked checkbox sends nothing at all, so "the user unticked Amount" and
+    "the page has just opened" are the identical payload — an empty one. The
+    marker is what lets the first load default every box to ticked while a
+    submission is read literally.
+
+    ⚠ **`edit` IS A SECOND MARKER AND IT IS NOT THE SAME QUESTION.** Reading
+    the ticks literally and LEAVING for the sheet are two different decisions,
+    and collapsing them into one flag broke the sheet's "Change" button
+    outright. That link has to carry the current choices or changing one tick
+    would mean setting all of them again — so it carried `go`, this view read
+    that as a submission, and it redirected straight back to the sheet the
+    person had just left. One 302, nothing on screen, a button that looked
+    dead. `edit` says *read literally and stop here*; only `go` says *leave*.
+    """
+    cards = _history_cards(registration)
+    history = build_service_history(cards)
+    summary = history['summary']
+
+    submitted = 'go' in request.GET
+    ticks = {
+        key: (bool(request.GET.get(key)) if submitted or 'edit' in request.GET
+              else True)
+        for key, _label, _hint in HISTORY_OPTIONS
+    }
+
+    typed_km = (request.GET.get('km') or '').strip()
+    current_km = parse_km(typed_km) if typed_km else None
+    if typed_km and current_km is None:
+        km_error = (
+            "That is not a reading this can use. Enter the kilometres on the "
+            "odometer, like 130000."
+        )
+    else:
+        # The one rule about a typed reading, read from the module that also
+        # enforces it on the sheet — so the message shown here and the refusal
+        # there can never come to mean different things.
+        km_error = current_km_problem(current_km, summary.latest_reading)
+
+    # Where the SHEET's own Back should point once this form has been
+    # submitted. The sheet already sends it along with the ticks, and it was
+    # being dropped here — so opening the sheet from anywhere but the car
+    # profile, pressing Change and submitting quietly moved its exit. Already
+    # through `safe_return`, so what travels is the validated form.
+    back_url = safe_return(request)
+
+    if submitted and not km_error:
+        chosen = {key: '1' for key in ticks if ticks[key]}
+        if current_km is not None:
+            chosen['km'] = current_km
+        if back_url:
+            chosen['back'] = back_url
+        target = reverse('car_service_history_sheet', args=[registration])
+        query = urlencode(chosen)
+        return redirect(f'{target}?{query}' if query else target)
+
+    return render(request, 'workshop/car_profiles/service_history_options.html', {
+        'car': max(cards, key=lambda card: (card.admitted_date, card.pk)),
+        'registration': registration,
+        'summary': summary,
+        # Resolved here rather than looked up in the template. Django has no
+        # dictionary lookup by variable key, and adding a filter for one screen
+        # would be a new piece of app-wide machinery to carry a boolean.
+        'options': [
+            {'key': key, 'label': label, 'hint': hint, 'checked': ticks[key]}
+            for key, label, hint in HISTORY_OPTIONS
+        ],
+        'typed_km': typed_km,
+        'km_error': km_error,
+        'profile_url': reverse('car_profile_detail', args=[registration]),
+        # Rendered as a hidden field so the GET form carries it forward. This
+        # page's own way out stays the car profile whatever it holds — that is
+        # where the button is — so it only travels.
+        'back_url': back_url,
+    })
+
+
+@office_required
+def car_service_history_sheet(request, registration):
+    """
+    The printable sheet.
+
+    All the arithmetic and every naming decision live in
+    `workshop/service_history.py`; this resolves the records and renders, the
+    same division of labour `invoice_view` follows. If a figure looks wrong,
+    that module is where it is decided.
+    """
+    cards = _history_cards(registration)
+
+    # A hand-edited URL reaches here without passing the options page, so the
+    # reading is parsed here too. `build_service_history` DROPS one that cannot
+    # be true rather than clamping it — a single bad figure would otherwise
+    # poison every RUNNING row on the page at once.
+    current_km = parse_km(request.GET.get('km') or '')
+    context = build_service_history(cards, current_km=current_km)
+
+    newest = max(cards, key=lambda card: (card.admitted_date, card.pk))
+
+    # Where Back goes. Resolved to a single value HERE rather than left to the
+    # template to choose between two, because a document must never be able to
+    # render with no way out at all. The fallback is the car's own profile,
+    # deliberately not Home: the invoice falls back to Home because it is
+    # reached from half a dozen screens and has no single parent, while this
+    # one describes exactly one car.
+    profile_url = reverse('car_profile_detail', args=[registration])
+    back_url = safe_return(request) or profile_url
+
+    # Back to the OPTIONS page carrying what is already chosen, so changing one
+    # tick does not mean setting all four again.
+    #
+    # ⚠ REBUILT FROM THE PARAMETERS THIS VIEW RECOGNISES — never by echoing
+    # `QUERY_STRING`. That was the first version and it put ANY parameter
+    # somebody appended to the URL straight into an href on a page about to be
+    # handed to a customer: `?back=https://evil.example` came through untouched
+    # and rendered as a link on Formula D's own letterhead. The `back` value is
+    # the one thing here that has already been through `safe_return`, so it is
+    # the validated form that travels, and nothing else does.
+    carried = {
+        key: request.GET[key]
+        for key in ('amount', 'work', 'concerns', 'km')
+        if request.GET.get(key)
+    }
+    # `edit`, never `go` — see `car_service_history`. `go` means "this form was
+    # submitted, open the sheet", so sending it from here bounced the person
+    # straight back to the page they were trying to leave.
+    carried['edit'] = '1'
+    if back_url != profile_url:
+        carried['back'] = back_url
+    options_url = (
+        f"{reverse('car_service_history', args=[registration])}"
+        f"?{urlencode(carried)}"
+    )
+
+    context.update({
+        'car': newest,
+        'registration': registration,
+        'back_url': back_url,
+        'options_url': options_url,
+        # `timezone.localdate()`, never `date.today()` — the server can run in
+        # UTC while the workshop is on IST, so a sheet printed late on a Kerala
+        # evening would otherwise be issued "tomorrow".
+        'issued': timezone.localdate(),
+        # Presentation only; every figure is computed either way. An unticked
+        # box means this copy is not for whoever would read that column.
+        'show_amount': bool(request.GET.get('amount')),
+        'show_work': bool(request.GET.get('work')),
+        'show_concerns': bool(request.GET.get('concerns')),
+        # Whether the footnote explaining the '*' mark is needed at all. A
+        # legend for a mark that appears nowhere on the page is the same defect
+        # as a door somebody can see and cannot open.
+        'has_flagged_reading': any(
+            visit.rate_implausible for visit in context['visits']
+        ),
+    })
+    return render(request, 'workshop/car_profiles/service_history_print.html', context)
+
+
+@office_required
+def car_all_invoices(request, registration):
+    """
+    Every bill for one car, one per page, as a single PDF.
+
+    The second half of what the service history is for. That sheet SUMMARISES
+    the visits; this hands over the bills themselves — which is the other thing
+    a customer asks for, and which today means opening each job card, printing
+    it, and sending them one at a time.
+
+    ⚠ **IT IS THE SAME BILL, NOT A COPY THAT LOOKS LIKE ONE.** Both the
+    arithmetic and the markup are shared: `build_invoice` per card, rendered
+    through `includes/_invoice_sheet.html`, which `invoice_view` renders too. A
+    customer holding this PDF and the paper invoice they were handed last year
+    must find them identical to the millimetre, and the only way to promise
+    that is for there to be one implementation.
+
+    NEWEST FIRST, matching the service history. One vocabulary: an owner
+    opening both documents for the same car in one sitting should not have to
+    work out that they run in opposite directions.
+
+    Completed visits only, again matching the service history — a car still on
+    the floor has a total that is not final, so its bill is not a bill yet.
+    """
+    cards = [
+        card for card in _history_cards(registration)
+        if card.completed and not card.is_deleted
+    ]
+    cards.sort(key=lambda card: (card.admitted_date, card.pk), reverse=True)
+
+    newest = max(
+        _history_cards(registration),
+        key=lambda card: (card.admitted_date, card.pk),
+    )
+    profile_url = reverse('car_profile_detail', args=[registration])
+
+    return render(request, 'workshop/car_profiles/all_invoices_print.html', {
+        # One entry per bill. `build_invoice` is called per card and its result
+        # handed to the shared partial, so every sheet here is built by exactly
+        # the code that builds the single invoice.
+        'sheets': [{'doc': build_invoice(card), 'jobcard': card} for card in cards],
+        'car': newest,
+        'registration': registration,
+        'count': len(cards),
+        # Named like the invoices it contains, so it files beside them:
+        #     Audi A4 KL11 AJ 2266 (JB-26-037).pdf
+        #     Audi A4 KL11 AJ 2266 (All Invoices).pdf
+        'document_title': document_title(newest, 'All Invoices', 'All Invoices'),
+        # A document must never render with no way out at all — see the sheet
+        # view. Same fallback: this one describes exactly one car.
+        'back_url': safe_return(request) or profile_url,
+        'issued': timezone.localdate(),
     })

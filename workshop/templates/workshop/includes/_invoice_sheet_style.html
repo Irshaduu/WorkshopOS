@@ -1,0 +1,502 @@
+{% comment %}
+==========================================================================
+THE SHEET'S OWN STYLES — shared by every document that prints a bill.
+==========================================================================
+Included INSIDE the <style> block of `invoice_template.html` and of
+`all_invoices_print.html`, so both are still fully self-contained: no CDN, no
+external stylesheet, nothing to fetch. See `_invoice_sheet.html` for why the
+two documents share rather than copy.
+
+⚠ EVERY VALUE HERE WAS MEASURED OFF THE WORKSHOP'S OWN PRINTED BILL rather
+than chosen — the 56mm lockup, the 26pt title, the 10pt line items against
+11pt bands, the navy and the band fill. Read the comments before changing one;
+several record a wrong answer that shipped first.
+
+It carries the @media print block as well, because almost all of that block is
+about the sheet. `.no-print` rides along: both documents have a toolbar, and
+both need it gone on paper.
+{% endcomment %}
+        /* ==================================================================
+           THE SHEET
+           ==================================================================
+           210mm wide on screen as well as on paper, so what an owner reviews on
+           a phone is the document, not an approximation of it. Narrow screens
+           scale the whole sheet down (see fitSheet() at the foot of this file)
+           rather than reflowing it — a bill that rearranged itself to fit a
+           phone would not be the bill that prints.
+           ================================================================== */
+        .sheet-wrap {
+            padding: 18px 12px 40px;
+            overflow: hidden;
+        }
+
+        .sheet {
+            width: 210mm;
+            min-height: 297mm;
+            /* Same 12mm the print rule uses, so the screen IS the preview. */
+            padding: 12mm;
+            margin: 0 auto;
+            background: #fff;
+            box-shadow: 0 4px 24px rgba(15, 23, 42, .16);
+            transform-origin: top left;
+
+            /* Calibri is what the reference invoice is set in and is present on
+               every Windows machine in the workshop; the rest are fallbacks with
+               comparable metrics so a bill opened on a phone keeps its line
+               breaks. */
+            font-family: Calibri, "Segoe UI", Candara, "Trebuchet MS", Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.15;
+            color: #000;
+        }
+
+        /* ---- Letterhead ---- */
+        .inv-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8mm;
+        }
+
+        {% comment %}
+        The lockup is one piece of artwork (see includes/_brand_mark.html), so
+        it is sized once, by WIDTH.
+
+        56mm is not a guess: the owner's own running bill was measured and its
+        lockup spans 55.6mm — the red rule being the widest element — against a
+        13.3mm height. The artwork's ratio puts 56mm at 12.74mm tall, which
+        lands within half a millimetre of the real thing on both axes.
+
+        Height stays `auto` so the ratio comes from the file. Setting both is
+        how a wordmark ends up subtly squashed, and this one has already been
+        caught once: the traced SVG that briefly stood here rendered at 3.73:1
+        against the artwork's true 4.40:1, a 15% vertical stretch that was
+        visible to the owner beside the real mark.
+
+        `display: block` matters — an inline image sits on the text baseline and
+        would otherwise carry a few points of descender space beneath it,
+        pushing the address block down by an amount that varies with the font.
+        {% endcomment %}
+        .brand-logo {
+            width: 56mm;
+            height: auto;
+            display: block;
+        }
+
+        .brand-addr {
+            margin-top: 5mm;
+            font-size: 10pt;
+            line-height: 4.05mm;
+        }
+
+        .inv-doc {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            padding-right: 14mm;
+        }
+
+        {% comment %}
+        26pt Calibri Bold, READ OUT OF THE REFERENCE PDF rather than matched by
+        eye. It stood at 21.5pt Arial for a year, and that was the right WIDTH
+        reached through the wrong font: the word was sized until it set about as
+        wide as the DATE line beneath it, and Calibri is narrower than Arial, so
+        21.5pt Arial happens to measure almost exactly 26pt Calibri Bold across.
+        The width matched and the letterforms did not.
+
+        No family of its own now - it inherits the sheet's Calibri stack, so the
+        title cannot drift away from the rest of the bill the way it silently
+        had. See `_brand_mark.html` for the one other place a size on this sheet
+        is measured rather than chosen.
+        {% endcomment %}
+        .inv-title {
+            font-weight: 700;
+            font-size: 26pt;
+            line-height: 1;
+            letter-spacing: -.01em;
+        }
+
+        .inv-meta {
+            display: flex;
+            align-items: baseline;
+            gap: 7mm;
+            margin-top: 20mm;
+            font-weight: 700;
+            font-size: 11pt;
+            white-space: nowrap;
+        }
+
+        /* ---- Shared table shell ----
+           Both money tables run on ONE column grid so the QTY / UNIT PRICE /
+           AMOUNT boundaries line up between them, exactly as they do on the
+           reference. Change a width here and both tables move together. */
+        .inv-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .inv-table td,
+        .inv-table th {
+            /* Gridlines are WHITE: the banding is what separates the rows, and a
+               grey rule over a blue band reads as a smudge at print size. */
+            border: 1px solid #fff;
+            padding: 0 2mm;
+            font-weight: 400;
+            font-size: 10pt;
+            vertical-align: middle;
+            overflow-wrap: break-word;
+        }
+
+        /* The navy header is one unbroken bar — its internal borders are the bar.
+
+           11pt, a point ABOVE the rows beneath it, because that is what the
+           reference prints: its bands and its vehicle block are 11 while every
+           line item is 10. `.inv-table th` (0,1,1) sets 10pt for the whole
+           table, so this needs (0,1,2) to beat it — the same specificity trap
+           the modifier classes below are qualified against. */
+        .inv-table thead th {
+            background: #1f4e79;
+            border-color: #1f4e79;
+            color: #fff;
+            font-weight: 700;
+            font-size: 11pt;
+            height: 5.5mm;
+            text-align: center;
+        }
+
+        .inv-table thead th.h-left {
+            text-align: left;
+        }
+
+        {% comment %}
+        Every cell modifier below is qualified with `.inv-table` on purpose.
+        `.inv-table td` is specificity (0,1,1); a bare `.thanks` or `.grand-label`
+        is (0,1,0) and LOSES to it. That is not theoretical — it shipped once and
+        silently flattened SUBTOTAL, TOTAL and the thank-you line to 10pt
+        regular, while their colours and fills (which nothing else set) came
+        through fine, so the page looked almost right. Qualifying makes each one
+        (0,2,0) and beats the base rule.
+        {% endcomment %}
+        .inv-table .c {
+            text-align: center;
+        }
+
+        .inv-table .r {
+            text-align: right;
+        }
+
+        /* An accounting cell: the ₹ sits against the left edge, the figure
+           against the right, the way every amount on the reference is set.
+           A flex row rather than a float — a float inside a cell anchors to the
+           top of the box, so the rupee sign drifted off the baseline of the
+           figure it belongs to on every row with a set height. */
+        .money .acct {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 2mm;
+        }
+
+        /* Cells outside the shaded totals block carry no fill and no rule. */
+        .inv-table .void {
+            background: #fff;
+            border-color: #fff;
+        }
+
+        .inv-table .sub-cell {
+            background: #dce6f1;
+            /* The SUBTOTAL figure carries the same weight as its label. It is a
+               total, and it was the only number in the shaded block set lighter
+               than the words beside it. */
+            font-weight: 700;
+        }
+
+        .inv-table .sub-label {
+            background: #dce6f1;
+            font-weight: 700;
+        }
+
+        /* ---- Bill to / vehicle ---- */
+        .inv-parties {
+            margin-top: 2.7mm;
+        }
+
+        .inv-parties .band th {
+            background: #1f4e79;
+            border-color: #1f4e79;
+            color: #fff;
+            font-weight: 700;
+            height: 4.4mm;
+            font-size: 11pt;
+            padding: 0 2mm;
+            border-width: 1px;
+            border-style: solid;
+        }
+
+        {% comment %}
+        BILL TO and VEHICLE INFO are both left-aligned, on the SAME indent as the
+        data underneath them. The reference sets VEHICLE INFO adrift towards the
+        middle of its half while REG NO / MODEL / MILEAGE sit hard left, so the
+        heading floats above nothing — the one place the reference is simply
+        wrong rather than deliberate. One indent value drives the band and the
+        cells beneath it, so they cannot drift apart again.
+        {% endcomment %}
+        .inv-parties .band th,
+        .inv-parties td {
+            text-align: left;
+            padding-left: 3.5mm;
+        }
+
+        {% comment %}
+        11pt, matching the band above it — the whole vehicle/customer block is a
+        point larger than the line items on the reference, and it is the block
+        the owners read the size off when they reported the bill as "Calibri 11".
+        The 4.4mm band height is left alone: an 11pt line box is 4.46mm, so the
+        block grows by a third of a millimetre and nothing else moves.
+        {% endcomment %}
+        .inv-parties td {
+            background: #dce6f1;
+            border: 1px solid #dce6f1;
+            vertical-align: top;
+            padding-right: 2mm;
+            line-height: 4.98mm;
+            font-size: 11pt;
+        }
+
+        /* ---- Job performed ---- */
+        .inv-jobs {
+            margin-top: 1.4mm;
+        }
+
+        .inv-jobs tbody td {
+            height: 5.25mm;
+        }
+
+        /* Banding starts on the SECOND row here and on the FIRST row in the
+           parts table — that is how the reference is set, not an oversight. */
+        .inv-jobs tbody.rows tr:nth-child(even) td {
+            background: #dce6f1;
+        }
+
+        /* ---- Parts ---- */
+        .inv-parts {
+            margin-top: 5.6mm;
+        }
+
+        .inv-parts tbody td {
+            height: 6.94mm;
+        }
+
+        .inv-parts tbody.rows tr:nth-child(odd) td {
+            background: #dce6f1;
+        }
+
+        .inv-parts .grand td {
+            height: 6.8mm;
+            /* A little air above the closing line, as on the reference. */
+            border-top-width: 2px;
+        }
+
+        .inv-table .grand-cell {
+            background: #bdd7ee;
+        }
+
+        /* 14pt, read off the reference. It was 15 — a picked figure, the only
+           size on this sheet with no derivation behind it — and the step from
+           the 10pt subtotal above it is emphatic enough at 14. */
+        .inv-table .grand-label,
+        .inv-table .grand-amount {
+            background: #bdd7ee;
+            font-weight: 700;
+            font-size: 14pt;
+            color: #1f4e79;
+        }
+
+        {% comment %}
+        PAID — a receipt stamp under the bill, not part of it.
+
+        Width is the TOTAL label + amount columns added (14.5% + 20.3%), so its
+        right edge and its internal split line up with the row above rather than
+        merely looking close. `margin-left: auto` does the rest; it never
+        stretches the sheet because it is a block inside the same padded column
+        the table sits in.
+
+        Deliberately quieter than TOTAL and smaller: green says settled at a
+        glance, but a receipt line competing with the amount due would be the
+        loudest thing on a customer's bill. Not a table, so it cannot disturb
+        the column widths the table computes.
+        {% endcomment %}
+        .paid-box {
+            width: 34.8%;
+            margin: 1.6mm 0 0 auto;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 2mm;
+            padding: 1.1mm 1.8mm;
+            border: .35mm solid #7fb37f;
+            background: #eaf5ea;
+            color: #24632c;
+            font-size: 9.5pt;
+            line-height: 1.15;
+        }
+
+        .paid-label {
+            font-weight: 700;
+            letter-spacing: .02em;
+            white-space: nowrap;
+        }
+
+        /* Mirrors `.money .acct` — the rupee sign anchors left, the figure
+           right — but scoped here because the box is not inside `.money`. */
+        .paid-box .acct {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 1.5mm;
+            flex: 1;
+        }
+
+        .paid-amount {
+            font-weight: 700;
+            flex: 1;
+            text-align: right;
+        }
+
+        .inv-table .thanks {
+            background: #fff;
+            border-color: #fff;
+            text-align: center;
+            font-style: italic;
+            font-weight: 700;
+            font-size: 12pt;
+            color: #2e74b5;
+        }
+
+        /* ---- Foot ---- */
+        .inv-foot {
+            margin-top: 8.1mm;
+            text-align: center;
+            font-size: 10pt;
+            line-height: 4.6mm;
+        }
+
+        /* ==================================================================
+           PRINT
+           ==================================================================
+           Everything the workshop uses to drive this page disappears; the sheet
+           becomes the page itself. Pagination rules are the second half — see
+           the comment on each.
+           ================================================================== */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            html,
+            body {
+                background: #fff;
+            }
+
+            .sheet-wrap {
+                padding: 0;
+                overflow: visible;
+                height: auto !important;
+            }
+
+            .sheet {
+                width: auto;
+                min-height: 0;
+                margin: 0;
+                /* The page margin itself — @page is zero so the browser cannot
+                   draw its header and footer. See the note on @page above. */
+                padding: 12mm;
+                box-shadow: none;
+                /* The screen's fit-to-width scaling must never reach paper. */
+                transform: none !important;
+            }
+
+            /* Bands and banding ARE the design — without this the bill prints as
+               an unreadable grid of empty boxes on a default browser setup. */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            /* --- Pagination ---
+               The column headings repeat at the top of every page they carry
+               rows onto, so page 3 of a parts list is still labelled
+               PART NAME / QTY / UNIT PRICE / AMOUNT. */
+            thead {
+                display: table-header-group;
+            }
+
+            /* ...and never strand a heading at the foot of a page with its rows
+               overleaf. */
+            thead tr {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            .inv-table {
+                /* The table itself MUST be breakable — it is the only thing long
+                   enough to need more than one page. */
+                break-inside: auto;
+                page-break-inside: auto;
+            }
+
+            /* A row is atomic. Half a part name at the foot of a page and its
+               price at the top of the next is the failure this prevents. */
+            tr {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            /* SUBTOTAL and TOTAL are one thought and travel together. They sit in
+               their own <tbody> for exactly this — a <tfoot> would have repeated
+               them at the bottom of every page. */
+            .totals {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            /* The letterhead and the vehicle block belong to page 1, whole, with
+               the table that follows them started rather than orphaned. */
+            .inv-head,
+            .inv-parties {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .inv-parties {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            /* The PAID stamp follows TOTAL or it means nothing — a receipt line
+               alone at the top of a fresh page reads as belonging to whatever
+               comes next. `break-before: avoid` keeps it with the totals block
+               it is commenting on. */
+            .paid-box {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-before: avoid;
+                page-break-before: avoid;
+                /* Background fills are dropped by default when printing. This
+                   is the one element whose meaning IS its colour, so it keeps
+                   the fill where the browser honours the request, and stays
+                   legible on its border and bold text where it does not. */
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* One footer, on the last page, entire — and not stranded on a page
+               of its own when the totals happen to end on a page boundary. */
+            .inv-foot {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-before: avoid;
+                page-break-before: avoid;
+            }
+        }

@@ -122,6 +122,22 @@ urlpatterns = [
     # ------------------
     path('car-profiles/', views.car_profile_list, name='car_profile_list'),
     path('car-profiles/<str:registration>/', views.car_profile_detail, name='car_profile_detail'),
+    # The printable sheet. Deliberately UNDER the car it describes, so the
+    # URL reads as what it is; `<str:registration>` already tolerates the
+    # spaces a real plate carries, exactly as the profile page does.
+    # TWO routes for one document. The first ASKS — what belongs on this copy,
+    # and what is the car reading now — and the second PRINTS. Splitting them
+    # keeps the sheet a plain bookmarkable URL that re-prints identically,
+    # which a form posting to itself would not be.
+    path('car-profiles/<str:registration>/service-history/',
+         views.car_service_history, name='car_service_history'),
+    path('car-profiles/<str:registration>/service-history/sheet/',
+         views.car_service_history_sheet, name='car_service_history_sheet'),
+    # Every bill for one car as one PDF — the other half of what a customer
+    # asks for. It needs no options page: there is nothing to choose, the
+    # bills are what they are.
+    path('car-profiles/<str:registration>/invoices/',
+         views.car_all_invoices, name='car_all_invoices'),
 
     # ------------------
     # INVOICE

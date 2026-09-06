@@ -1,0 +1,1545 @@
+{% load custom_filters static %}<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% comment %}
+    The title IS the filename. Every browser suggests document.title in Save as
+    PDF, so this lands in a customer's folder beside their bills under one
+    naming scheme:
+
+        Audi A4 KL11 AJ 2266 (JB-26-037).pdf
+        Audi A4 KL11 AJ 2266 (Service History).pdf
+
+    Built in workshop/service_history.py, which imports `document_title` from
+    invoice.py rather than reimplementing it, so the two cannot drift.
+    {% endcomment %}
+    <title>{{ document_title }}</title>
+
+    {% comment %}
+    ============================================================================
+    THE SERVICE HISTORY. Read this before changing anything below.
+    ============================================================================
+    The third customer document, after the invoice and the estimate, and the
+    first that describes a CAR rather than a visit. It is handed over when a
+    customer asks for their record — most often because they are SELLING the
+    car — so every figure will be read by somebody with no reason to give the
+    workshop the benefit of the doubt, beside a stack of invoices they can
+    check it against.
+
+    ⚠⚠ **TWO RULES GOVERN EVERY DECLARATION IN THIS FILE, AND THEY ARE NOT
+    SUGGESTIONS. NOTHING HERE MAY USE A TYPE SIZE OR A COLOUR THE INVOICE DOES
+    NOT ALREADY USE.**
+
+        SIZES   26pt title · 14pt total · 12pt · 11pt bands and blocks ·
+                10pt body and line items · 9.5pt stamp
+        COLOUR  #1f4e79 navy · #dce6f1 band fill · #bdd7ee total fill ·
+                #2e74b5 accent · #eaf5ea/#7fb37f/#24632c the settled stamp ·
+                white gridlines · black text
+
+    This sheet shipped once wearing the invoice's letterhead over its own
+    invented design system — 7.5pt, 8pt, 8.5pt and 9pt type, nine greys and two
+    reds that appear on no Formula D document. It read as generic, and that was
+    why. **There is no red on this sheet**: the invoice has none, so an odometer
+    problem is said in italic navy rather than in a colour invented for it.
+
+    SELF-CONTAINED, exactly like the invoice: no Bootstrap, no icon font, no
+    CDN. A framework reset shipping tomorrow must not be able to move a column
+    on a document the workshop hands out, and a workshop printing on a dropped
+    connection must not get an unstyled page.
+
+    Two layers, and the boundary is absolute:
+
+      .no-print   the workshop's controls. Screen only. Never on paper.
+      .sheet      the document.
+
+    No arithmetic lives here. Every figure is decided in
+    `workshop/service_history.py`.
+    ============================================================================
+    {% endcomment %}
+
+    <style>
+        /* ==================================================================
+           PAGE — the invoice's rules verbatim. See that file for the full
+           reasoning: no `size:` so the paper chosen in the dialog wins, and a
+           zero margin so the browser has nowhere to draw its own header and
+           footer (the date, the URL, the page number), which no CSS can
+           switch off directly.
+
+           ⚠ ONE CONSEQUENCE THAT MATTERS HERE AND NOT THERE. With no @page
+           margin the sheet's own padding pads page 1's top and the last page's
+           foot only, so continuation pages start closer to the paper edge. On
+           the invoice that is a rare case; a service history is MULTI-PAGE BY
+           NATURE, so it is the normal one. Accepted for the same reason it was
+           accepted there: the alternative restores a @page margin and with it
+           the browser's printed headers, which would put a localhost address
+           across a document handed to a customer. `.sh-chain` keeps a top
+           margin so a continuation page's first card is never hard against the
+           edge.
+           ================================================================== */
+        @page {
+            margin: 0;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: #f1f3f6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            color: #1e293b;
+        }
+
+        /* ==================================================================
+           SCREEN-ONLY CHROME — the invoice's toolbar, copied.
+           ================================================================== */
+        .bar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, .92);
+            backdrop-filter: blur(6px);
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .bar-spacer {
+            flex: 1 1 auto;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            /* 44px — tapped on a tablet and a phone, not only clicked. */
+            min-height: 44px;
+            padding: 0 16px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            font: 600 14px/1 inherit;
+            font-family: inherit;
+            text-decoration: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn svg {
+            width: 17px;
+            height: 17px;
+            flex: none;
+        }
+
+        .btn-ghost {
+            background: #fff;
+            border-color: #cbd5e1;
+            color: #334155;
+        }
+
+        .btn-ghost:hover {
+            background: #f8fafc;
+        }
+
+        /* Icon only. `min-width` as well as the inherited 44px height, because
+           a target is only as big as its SMALLER side — the app's own rule,
+           and the base button's 16px side padding would leave this one 49px
+           wide by accident rather than by decision. */
+        .btn-icon {
+            padding: 0;
+            min-width: 44px;
+        }
+
+        .btn-primary {
+            background: #1f4e79;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #17395a;
+        }
+
+        {% comment %}
+        THE PART LIFE TICK — a control, so it wears the toolbar's own shell.
+
+        It sits directly beside Print because it is a decision about THIS copy,
+        taken at the moment of printing, and because the answer is visible the
+        instant it is tapped: the table leaves the sheet on screen exactly as it
+        leaves the paper. That is the whole reason it is here rather than a
+        fourth box on the options page, which would cost a round trip to see.
+
+        ⚠ NOTHING IS REMEMBERED. Nothing is stored, and it is not in the URL —
+        so a re-print starts from the full record. A default that quietly
+        dropped a section from a document handed to a customer is a worse
+        failure than one extra tap.
+        {% endcomment %}
+        .bar-tick {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 44px;
+            padding: 0 14px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: #fff;
+            color: #334155;
+            font: 600 14px/1 inherit;
+            font-family: inherit;
+            cursor: pointer;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .bar-tick:hover {
+            background: #f8fafc;
+        }
+
+        /* The native box, sized up to be a real target rather than restyled.
+           A hand-drawn checkbox would be a fifth control shape on a sheet
+           whose entire rule is that it invents nothing. */
+        .bar-tick input {
+            width: 17px;
+            height: 17px;
+            margin: 0;
+            accent-color: #1f4e79;
+            cursor: pointer;
+        }
+
+        /* ==================================================================
+           THE SHEET — 210mm on screen as well as on paper, so what is reviewed
+           on a phone is the document rather than an approximation. Narrow
+           screens SCALE it (see fitSheet at the foot of this file); they never
+           reflow it.
+           ================================================================== */
+        .sheet-wrap {
+            padding: 18px 12px 40px;
+            overflow: hidden;
+        }
+
+        .sheet {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 12mm;
+            margin: 0 auto;
+            background: #fff;
+            box-shadow: 0 4px 24px rgba(15, 23, 42, .16);
+            transform-origin: top left;
+
+            /* The invoice's stack. Calibri is what the workshop's own printed
+               bill is set in and is on every Windows machine here; the rest
+               are fallbacks with comparable metrics so the sheet keeps its
+               line breaks on a phone. */
+            font-family: Calibri, "Segoe UI", Candara, "Trebuchet MS", Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.15;
+            color: #000;
+        }
+
+        /* ---- Letterhead — the invoice's, including the 56mm lockup width,
+                which is measured off the workshop's own running bill rather
+                than chosen. Height stays auto so the ratio comes from the
+                file. ---- */
+        .inv-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8mm;
+        }
+
+        .brand-logo {
+            width: 56mm;
+            height: auto;
+            display: block;
+        }
+
+        .brand-addr {
+            margin-top: 5mm;
+            font-size: 10pt;
+            line-height: 4.05mm;
+        }
+
+        .inv-doc {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            padding-right: 14mm;
+        }
+
+        {% comment %}
+        26pt, the invoice's title size, read out of the reference PDF rather
+        than matched by eye. Kept identical here even though the word is twice
+        as long: the two sheets sit in one folder, and a title set two points
+        smaller on one reads as a different document family. It fits with room
+        to spare — the lockup is 56mm and this block runs to about 83mm
+        including its own right padding, inside 186mm of content width.
+
+        No font-family of its own: it inherits the sheet's Calibri stack. The
+        invoice's title carried Arial 21.5pt for a year, which was the right
+        WIDTH reached through the wrong font.
+        {% endcomment %}
+        .inv-title {
+            font-weight: 700;
+            font-size: 26pt;
+            line-height: 1;
+            letter-spacing: -.01em;
+        }
+
+        .inv-meta {
+            display: flex;
+            align-items: baseline;
+            gap: 7mm;
+            margin-top: 20mm;
+            font-weight: 700;
+            font-size: 11pt;
+            white-space: nowrap;
+        }
+
+        /* ---- Shared table shell, the invoice's ---- */
+        .inv-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .inv-table td,
+        .inv-table th {
+            /* Gridlines are WHITE: the banding separates the rows, and a grey
+               rule over a blue band reads as a smudge at print size. */
+            border: 1px solid #fff;
+            padding: 0 2mm;
+            font-weight: 400;
+            font-size: 10pt;
+            vertical-align: middle;
+            overflow-wrap: break-word;
+        }
+
+        /* 11pt, a point above the rows beneath — the reference sets its bands
+           and its vehicle block at 11 while every line item is 10.
+           `.inv-table th` is (0,1,1), so this needs (0,1,2) to beat it. */
+        .inv-table thead th {
+            background: #1f4e79;
+            border-color: #1f4e79;
+            color: #fff;
+            font-weight: 700;
+            font-size: 11pt;
+            height: 5.5mm;
+            text-align: center;
+        }
+
+        .inv-table thead th.h-left {
+            text-align: left;
+        }
+
+        {% comment %}
+        Every cell modifier is qualified with `.inv-table`. `.inv-table td` is
+        (0,1,1); a bare `.r` is (0,1,0) and LOSES to it. Not theoretical — on
+        the invoice it shipped once and silently flattened SUBTOTAL, TOTAL and
+        the thank-you line while their fills came through fine, so the page
+        looked almost right.
+        {% endcomment %}
+        .inv-table .c {
+            text-align: center;
+        }
+
+        .inv-table .r {
+            text-align: right;
+        }
+
+        /* ---- Vehicle / record block ---- */
+        .inv-parties {
+            margin-top: 2.7mm;
+        }
+
+        .inv-parties .band th {
+            background: #1f4e79;
+            border-color: #1f4e79;
+            color: #fff;
+            font-weight: 700;
+            height: 4.4mm;
+            font-size: 11pt;
+            padding: 0 2mm;
+            border-width: 1px;
+            border-style: solid;
+        }
+
+        /* One indent drives the band and the cells under it, so a heading can
+           never float above nothing — the one place the reference bill is
+           simply wrong, corrected on the invoice and not repeated here. */
+        .inv-parties .band th,
+        .inv-parties td {
+            text-align: left;
+            padding-left: 3.5mm;
+        }
+
+        .inv-parties td {
+            background: #dce6f1;
+            border: 1px solid #dce6f1;
+            vertical-align: top;
+            padding-right: 2mm;
+            line-height: 4.98mm;
+            font-size: 11pt;
+        }
+
+        /* The label half of each fact. Bold rather than a second column, so a
+           long value wraps under its own label instead of forcing the table to
+           re-decide two column widths. */
+        .sh-k {
+            font-weight: 700;
+        }
+
+        {% comment %}
+        A NOTE THE CUSTOMER MUST NOT MISS.
+
+        A car in the workshop RIGHT NOW has no completed visit, so it is not in
+        the chain — its parts are still being added and its total is not final,
+        and printing a figure that changes after the sheet was handed over is
+        the one thing this document cannot do. But a customer whose car is here
+        today, reading a history that stops last month, would reasonably think
+        the record was wrong. So it is said out loud.
+
+        Drawn as the band fill with a navy rule, because that is the vocabulary
+        this sheet already has. No amber, no red — see the type and colour rule
+        at the head of this file.
+        {% endcomment %}
+        .sh-note {
+            margin-top: 2.2mm;
+            padding: 1.4mm 3.5mm;
+            border-left: 1mm solid #1f4e79;
+            background: #dce6f1;
+            font-size: 10pt;
+            line-height: 4.4mm;
+        }
+
+        /* ==================================================================
+           THE CHAIN OF VISITS
+           ==================================================================
+           The heart of the redesign. A service history printed as one long
+           table reads as a spreadsheet: correct, and telling you nothing you
+           could not have got from the invoices. Each visit is its own CARD,
+           newest first, with the distance and the days between them drawn in
+           the join — so the document's shape is the car's own timeline, and
+           the question "how far between services?" is answered by the space
+           between two boxes rather than by subtracting two columns.
+           ================================================================== */
+        .sh-chain {
+            margin-top: 5.6mm;
+        }
+
+        .sh-visit {
+            border: .35mm solid #1f4e79;
+        }
+
+        /* The band carries the four things that identify a visit, at the same
+           11pt every other band on this sheet uses. */
+        .sh-band {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 4mm;
+            padding: .8mm 2mm;
+            background: #1f4e79;
+            color: #fff;
+            font-size: 11pt;
+            font-weight: 700;
+        }
+
+        .sh-band-r {
+            white-space: nowrap;
+        }
+
+        {% comment %}
+        ⚠⚠ THE CARD BODY IS A TABLE, AND THAT IS THE WHOLE OF THIS PASS.
+
+        It was a flex layout imitating one: a fixed 22mm label column, a value
+        column, and inside PARTS four more flex columns with no heading naming
+        a single one of them. It lined up perfectly and it did not read as this
+        workshop's paperwork — the bill's entire visual signature is a heading
+        band over an ALIGNED GRID with named columns, and none of that reached
+        here. The card, the join and the chain are untouched; only what is
+        inside the box changed.
+
+        ⚠ THE COLUMN WIDTHS ARE THE INVOICE'S OWN, SPLIT RATHER THAN CHOSEN:
+
+            7.7 + 49.8 = 57.5   the bill's PART NAME column, exactly
+            22.2        = its 14.5 + 7.7
+            20.3                its AMOUNT column, untouched
+
+        So a customer laying this sheet beside one of their bills finds the
+        right-hand gridline in the same place on both — which is what "the same
+        family" means when it is measured instead of eyeballed. Change one of
+        these and the two documents stop agreeing.
+        {% endcomment %}
+        .sh-vt tbody td {
+            height: 5.25mm;
+        }
+
+        {% comment %}
+        A SECTION HEAD INSIDE A CARD — `.sub-label`'s treatment, one level under
+        the navy band above it.
+
+        NOT a second navy bar. The card's own `.sh-band` is its heading, and a
+        navy strip directly beneath another navy strip reads as a header that
+        failed to end. `#dce6f1` with navy type is the step the invoice already
+        has between its header and its rows, and it is what gives the card its
+        stripe rhythm — which is also why the content rows are NOT banded on
+        top of it: two things in the same fill and the head stops being a head.
+        {% endcomment %}
+        .inv-table .sh-sec td {
+            background: #dce6f1;
+            border-color: #dce6f1;
+            color: #1f4e79;
+            font-weight: 700;
+            height: 4.6mm;
+        }
+
+        /* The instance number. `(3)` means the third time this car has ever
+           had this part — counted from the first, so the numbers read the same
+           way whichever end of the document you start from. */
+        .inv-table .sh-p-n {
+            font-weight: 700;
+            color: #1f4e79;
+        }
+
+        /* The distances form a column an eye can run down — the whole reason
+           the chain is worth printing. */
+        .inv-table .sh-p-life {
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        {% comment %}
+        The bill's own accounting cell, copied rather than approximated: the ₹
+        against the left edge, the figure against the right. A flex row and not
+        a float — a float inside a cell anchors to the top of the box, so the
+        rupee sign drifts off the baseline of the figure it belongs to on every
+        row with a set height.
+        {% endcomment %}
+        .money .acct {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 2mm;
+        }
+
+        /* Cells outside a shaded totals block carry no fill and no rule. */
+        .inv-table .void {
+            background: #fff;
+            border-color: #fff;
+        }
+
+        .inv-table .sub-label,
+        .inv-table .sub-cell {
+            background: #dce6f1;
+            font-weight: 700;
+        }
+
+        {% comment %}
+        RUNNING — the settled stamp's own three colours, at its own 9.5pt.
+
+        It is the one thing on the sheet describing NOW rather than what
+        happened, and the invoice already has a vocabulary for "this is
+        settled, at a glance": the PAID box. Reusing it exactly is what keeps
+        this sheet inside the family instead of inventing a fifth colour.
+        {% endcomment %}
+        .sh-run {
+            display: inline-block;
+            padding: .2mm 1.4mm;
+            border: .3mm solid #7fb37f;
+            background: #eaf5ea;
+            color: #24632c;
+            font-size: 9.5pt;
+            font-weight: 700;
+            letter-spacing: .02em;
+            white-space: nowrap;
+        }
+
+        /* The one line on this sheet that looks FORWARD, so it is the accent
+           blue and italic rather than another bold navy figure. It only ever
+           renders off this car's own completed lives — see DUE_AT_FRACTION. */
+        .inv-table .sh-due {
+            font-style: italic;
+            color: #2e74b5;
+        }
+
+        /* An odometer that went backwards, or a jump that cannot be true.
+           Italic navy, because there is no red on this sheet. */
+        .inv-table .sh-flag {
+            font-style: italic;
+            color: #1f4e79;
+        }
+
+        {% comment %}
+        ============================================================
+        THE RECORD'S OWN TOTAL — the bill's grand row, verbatim.
+        ============================================================
+        The sheet printed an AMOUNT on every card and then never added them
+        up, so the one figure a customer asks for out loud — what has this car
+        cost me here — was the one thing they had to work out themselves off a
+        document built to save them exactly that.
+
+        `summary.total_billed` is the sum of the very AMOUNT rows printed
+        above it (see service_history.py), so the closing line adds up from
+        the rows on the page. Same rule the Cashbook's totals follow: a total
+        nobody can reach from what is on screen is worse than no total.
+
+        14pt on `#bdd7ee` is the invoice's TOTAL and nothing else on this
+        sheet is allowed to wear it — that is what makes it read as the end.
+        {% endcomment %}
+        .sh-total {
+            margin-top: 2.6mm;
+        }
+
+        .sh-total .grand td {
+            height: 6.8mm;
+            /* A little air above the closing line, as on the reference. */
+            border-top-width: 2px;
+        }
+
+        .inv-table .grand-label,
+        .inv-table .grand-amount {
+            background: #bdd7ee;
+            font-weight: 700;
+            font-size: 14pt;
+            color: #1f4e79;
+        }
+
+        /* The bill's own closing line, in its own italic accent blue. It says
+           the same thing on both documents because it is the same sentence to
+           the same customer. */
+        .inv-table .thanks {
+            font-style: italic;
+            font-weight: 700;
+            color: #2e74b5;
+            text-align: center;
+        }
+
+        {% comment %}
+        THE JOIN — the distance between two visits, drawn rather than tabulated.
+
+        ⚠ It is the OWNER'S OWN SKETCH built in CSS: a short rule, the figure,
+        a short rule. The two rules are pseudo-elements so the connector is one
+        element in the markup and cannot be half-rendered, and they are
+        `background` rather than `border` so a printer that drops borders on a
+        1-pixel box still lays down the ink.
+        {% endcomment %}
+        .sh-gap {
+            text-align: center;
+            font-size: 0;
+        }
+
+        .sh-gap::before,
+        .sh-gap::after {
+            content: '';
+            display: block;
+            width: .4mm;
+            height: 2.6mm;
+            margin: 0 auto;
+            background: #1f4e79;
+        }
+
+        .sh-gap-fig {
+            display: inline-block;
+            padding: .5mm 2.5mm;
+            border: .35mm solid #1f4e79;
+            background: #dce6f1;
+            color: #1f4e79;
+            font-size: 10pt;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        /* The chain has to END, or the oldest card reads as though the record
+           were cut off there. */
+        .sh-first {
+            margin-top: 2.6mm;
+            padding: .8mm 2mm;
+            border: .35mm solid #1f4e79;
+            background: #dce6f1;
+            color: #1f4e79;
+            font-size: 10pt;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        /* ==================================================================
+           PART LIFE
+           ==================================================================
+           Every part this car has ever had, with each fitting's distance
+           stacked under it. The chain on the visit cards answers "what was
+           done that day"; this answers "how long does this part last on THIS
+           car", which is the question a buyer actually has and which no single
+           invoice can answer.
+           ================================================================== */
+        .sh-life {
+            margin-top: 7mm;
+        }
+
+        /* What the toolbar's Part life tick actually does. `.sh-life` declares
+           no `display` of its own, so the `hidden` attribute alone would carry
+           it today — stated anyway because the day somebody gives this table a
+           display value the switch stops working silently, and nothing in the
+           Django suite executes CSS to notice. */
+        [hidden] {
+            display: none !important;
+        }
+
+        /* The part's own name, spanning the table — a heading for the fittings
+           under it rather than a cell in a column. */
+        .inv-table .sh-life-name {
+            background: #dce6f1;
+            font-weight: 700;
+            font-size: 11pt;
+            color: #1f4e79;
+            height: 5.2mm;
+            {% comment %}
+            ⚠ THE RULE IS WHAT KEEPS THIS A HEADING ONCE THE ROWS BELOW IT ARE
+            BANDED. Both wear `#dce6f1` — the banding could not use any other
+            fill without inventing one — so with nothing between them a part's
+            name read as simply another tinted row, and one chain ran into the
+            next. It is the bill's own device, the 2px it puts above its
+            closing line, and it does two jobs at once here: it says "heading",
+            and it says "a new part starts".
+            {% endcomment %}
+            border-top: 2px solid #1f4e79;
+        }
+
+        .sh-life-avg {
+            font-weight: 400;
+            font-style: italic;
+            font-size: 10pt;
+            color: #2e74b5;
+        }
+
+        .sh-life tbody td {
+            height: 5.2mm;
+        }
+
+        {% comment %}
+        BANDED FITTINGS — the bill's own alternating fill, and the one place on
+        this sheet where it earns its keep. The invoice bands because it prints
+        many rows of one shape; so does this table, and a car with six parts
+        replaced four times each is twenty-four near-identical lines that an
+        eye slides off. Inside a visit card there is nothing to band — those
+        rows are three different shapes under headings already wearing
+        `#dce6f1`.
+
+        ⚠ Each chain is its OWN `<tbody>` whose first row is the part's name,
+        so `nth-child` counts from that name row: even rows are fittings 1, 3,
+        5. The banding therefore restarts per part, which is right — it is a
+        reading aid inside one part's list, not a stripe down the page.
+        {% endcomment %}
+        .sh-life tbody tr:nth-child(even) td {
+            background: #dce6f1;
+        }
+
+        .sh-empty {
+            margin-top: 5.6mm;
+            padding: 6mm;
+            border: .35mm solid #1f4e79;
+            text-align: center;
+            font-size: 11pt;
+            color: #1f4e79;
+        }
+
+        {% comment %}
+        THE FOOT IS WHAT TURNS A PRINTOUT INTO A RECORD.
+
+        The invoice's foot names somebody to call about that bill. This one
+        does the same and adds the sentence the whole document rests on: every
+        line here has an invoice behind it, and anybody can check any of them by
+        quoting one number. A buyer who can verify a service history is a buyer
+        who believes it.
+        {% endcomment %}
+        .inv-foot {
+            margin-top: 8.1mm;
+            padding-top: 2.2mm;
+            border-top: .35mm solid #1f4e79;
+            text-align: center;
+            font-size: 10pt;
+            line-height: 4.6mm;
+        }
+
+        .inv-foot .sh-verify {
+            font-weight: 700;
+            color: #1f4e79;
+        }
+
+        .inv-foot .sh-fine {
+            display: block;
+            margin-top: 1.4mm;
+            font-size: 10pt;
+            line-height: 4.1mm;
+        }
+
+        /* ==================================================================
+           PRINT
+           ================================================================== */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            html,
+            body {
+                background: #fff;
+            }
+
+            .sheet-wrap {
+                padding: 0;
+                overflow: visible;
+                height: auto !important;
+            }
+
+            .sheet {
+                width: auto;
+                min-height: 0;
+                margin: 0;
+                /* The page margin itself — @page is zero so the browser cannot
+                   draw its header and footer. */
+                padding: 12mm;
+                box-shadow: none;
+                /* The screen's fit-to-width scaling must never reach paper. */
+                transform: none !important;
+            }
+
+            /* Bands, fills and the RUNNING stamp ARE the design — without this
+               the sheet prints as an unreadable set of empty boxes on a
+               default browser setup. */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            /* --- Pagination ---
+               This document is multi-page by nature, so these rules do real
+               work on every copy rather than only on a long one. */
+            thead {
+                display: table-header-group;
+            }
+
+            thead tr {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            /* ⚠ A VISIT IS ATOMIC, and it matters more here than on a bill:
+               these cards are compared against each other, so one split across
+               a fold breaks the comparison the document exists to make. A card
+               taller than a page is broken by the browser anyway, which is the
+               right fallback. */
+            .sh-visit {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            /* A join stranded at the top of a page describes two cards the
+               reader cannot see together. It belongs to the card above it. */
+            .sh-gap {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-before: avoid;
+                page-break-before: avoid;
+            }
+
+            .inv-table {
+                break-inside: auto;
+                page-break-inside: auto;
+            }
+
+            tr {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            /* A part's name must never sit at the foot of a page with its
+               fittings overleaf. */
+            .sh-life-name {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            .inv-head,
+            .inv-parties,
+            .sh-note {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .inv-parties {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            /* The record's closing total belongs to the chain it closes, and
+               it is two rows — cheap to keep whole and meaningless apart from
+               what it totals. */
+            .sh-total {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-before: avoid;
+                page-break-before: avoid;
+            }
+
+            /* The verification note is the document's own guarantee. Stranded
+               alone on a final page it reads as belonging to nothing. */
+            .inv-foot {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-before: avoid;
+                page-break-before: avoid;
+            }
+        }
+
+        /* ==================================================================
+           PHONE — the invoice's own toolbar treatment, at the same 640px.
+           ================================================================== */
+        @media (max-width: 640px) {
+            .bar {
+                gap: 8px 6px;
+                padding: 8px 10px;
+            }
+
+            .btn {
+                padding: 0 12px;
+                font-size: 13px;
+            }
+
+            {% comment %}
+            ⚠ NO ROW BREAK, and that is a deliberate departure from the invoice
+            rather than an omission. That sheet carries FIVE things — a way
+            back, a payment chip and three actions — so its row genuinely runs
+            out and the spacer becomes a chosen line break. This carries four,
+            and they fit.
+
+            ⚠ THEY FIT BECAUSE TWO CAPTIONS WERE SPENT TO MAKE THEM (the
+            owner's call, 2026-09-06). The way back gave up the registration
+            for the word "Back" and the options link gave up "Change" for its
+            cog alone, which is what took the row from 427px to 324px against
+            355 of usable width at 375px. Wrapping was the alternative and it
+            cost 60px of vertical on the screen where it is scarcest (the bar
+            measured 121px and now measures 61px), with
+            Print stranded alone at the start of row two — the primary action
+            as far from the thumb as the row allows.
+
+            So the caption budget is SPENT. A fifth control here does not fit
+            and a longer label on any of these four does not either; measure
+            before adding one.
+            {% endcomment %}
+            .bar .btn {
+                flex: 0 0 auto;
+            }
+
+            .btn-print-long {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    {% comment %}
+    ========================================================================
+    SCREEN ONLY — nothing from here to the sheet reaches paper.
+    ========================================================================
+    {% endcomment %}
+    <div class="bar no-print">
+        {% comment %}
+        There is ALWAYS a way off this page. Unlike a bill — reached from half
+        a dozen screens and so needing `?back=` to know where it came from —
+        this document has exactly ONE natural parent, the profile of the car it
+        describes. The VIEW resolves the two into a single value, so this can
+        never render an empty href: a document whose only exit depends on a
+        query parameter being present traps whoever opened it from a bookmark.
+
+        ⚠ "BACK", NOT THE REGISTRATION — AND THIS REVERSES WHAT THIS FILE SAID,
+        on the owner's instruction (2026-09-06). It read that the button is
+        "labelled with the REGISTRATION rather than the word Back, following
+        `.pg-back` everywhere else in this app". That rule is real and it is
+        about pages whose parent is FIXED; this one's is not. `back_url` is
+        `?back=` when there is one and the car's profile otherwise, so on a
+        sheet opened from Completed the button said "KL 10 AA 1000" and landed
+        somewhere else entirely — a named destination that named the wrong
+        thing, which is worse than not naming one.
+
+        It also puts this sheet back in step with the two other standalone
+        documents: the invoice and the spare shop's printed report BOTH say
+        plain "Back" the moment a `?back=` is carried, and those three are
+        opened by the same person in one sitting.
+        {% endcomment %}
+        <a href="{{ back_url }}" class="btn btn-ghost">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
+            Back
+        </a>
+
+        {% comment %}
+        Back to the choices, carrying what is already chosen. Changing one tick
+        or correcting the reading must not mean setting all four again — and
+        without this the only route back to the options is the browser's own
+        Back button, which the installed app does not have.
+        {% endcomment %}
+        {% comment %}
+        ⚠ THE GLYPH ALONE, AND IT CARRIES ITS NAME IN TWO PLACES BECAUSE OF
+        THAT. `aria-label` for a screen reader — the app-wide rule for any pill
+        that goes icon-only — and `title` so a pointer gets the word on hover,
+        which is the only thing lost by dropping the caption. A cog is the
+        settings glyph in every part of this app, so it is not being asked to
+        mean something new.
+
+        What it buys is the whole toolbar on ONE row at 375px, which is worth
+        more than the caption: the four controls measure 77 + 44 + 108 + 77 plus gaps
+        against 355px of usable row — 324, with 31 to spare.
+        {% endcomment %}
+        <a href="{{ options_url }}" class="btn btn-ghost btn-icon"
+           aria-label="Change what is on this copy" title="Change what is on this copy">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.8 1h2.4l.3 2.1 1.5.9 2-.8 1.2 2.1-1.6 1.4v1.6l1.6 1.4-1.2 2.1-2-.8-1.5.9-.3 2.1H6.8l-.3-2.1-1.5-.9-2 .8L1.8 9.7l1.6-1.4V6.7L1.8 5.3l1.2-2.1 2 .8 1.5-.9L6.8 1zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+        </a>
+
+        <span class="bar-spacer"></span>
+
+        {% comment %}
+        Gated on `chains`, so a car whose parts have never been replaced is not
+        offered a switch for a table it does not have — the same rule the
+        footnote about the '*' mark follows, and the one the audit menu follows
+        app-wide. A door onto nothing is worse than no door.
+        {% endcomment %}
+        {% if chains %}
+        <label class="bar-tick">
+            <input type="checkbox" id="lifeTick" checked>
+            Part life
+        </label>
+        {% endif %}
+
+        {% comment %}
+        `onclick` stays inline and `js-print` is only a hook for the clipboard
+        copy at the foot of this file. Printing must not depend on that script
+        having run at all — see the comment there.
+        {% endcomment %}
+        <button type="button" class="btn btn-primary js-print" onclick="window.print()">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
+            Print<span class="btn-print-long"> / Save PDF</span>
+        </button>
+    </div>
+
+    {% comment %}
+    ========================================================================
+    THE DOCUMENT
+    ========================================================================
+    {% endcomment %}
+    <div class="sheet-wrap">
+        <div class="sheet" id="sheet">
+
+            <header class="inv-head">
+                <div class="brand">
+                    {% include 'workshop/includes/_brand_mark.html' %}
+                    <div class="brand-addr">
+                        Calicut Road, Pullara<br>
+                        PIN: 676517<br>
+                        Phone: +91 9207217978<br>
+                        formuladservice.in@gmail.com
+                    </div>
+                </div>
+
+                <div class="inv-doc">
+                    <div class="inv-title">SERVICE HISTORY</div>
+                    {% comment %}
+                    ISSUED, not DATE. A bill's date is the day the work
+                    happened and never changes; this sheet is generated fresh
+                    every time it is printed, so the date says how CURRENT the
+                    record is — exactly what somebody reading a two-year-old
+                    printout needs to know.
+                    {% endcomment %}
+                    <div class="inv-meta">
+                        <span>ISSUED:&nbsp; {{ issued|date:"j-M-Y" }}</span>
+                    </div>
+                </div>
+            </header>
+
+            <table class="inv-table inv-parties">
+                <colgroup>
+                    <col style="width:57.5%">
+                    <col style="width:42.5%">
+                </colgroup>
+                {% comment %}
+                This heading row sits in a <tbody>, NOT a <thead>:
+                `thead { display: table-header-group }` repeats a heading on
+                every printed page, which is right for the PART LIFE columns
+                and wrong for a block belonging to page 1 alone.
+                {% endcomment %}
+                <tbody>
+                    <tr class="band">
+                        <th>VEHICLE</th>
+                        <th>SERVICE RECORD</th>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span class="sh-k">MAKE:</span> {{ car.brand_name|default:"" }}<br>
+                            <span class="sh-k">MODEL:</span> {{ car.model_name|default:"" }}<br>
+                            <span class="sh-k">REG NO:</span> {{ registration }}
+                            {% comment %}
+                            The owner's NAME and nothing else — no phone number.
+                            This sheet is handed to a buyer, and the number on
+                            it should be the workshop's, which the foot
+                            carries. Taken from the newest card, so a car that
+                            has changed hands names whoever owns it now and no
+                            earlier owner appears anywhere.
+                            {% endcomment %}
+                            {% if car.customer_name %}<br>
+                            <span class="sh-k">OWNER:</span> {{ car.customer_name }}{% endif %}
+                        </td>
+                        <td>
+                            <span class="sh-k">VISITS:</span> {{ summary.visits }}<br>
+                            {% if summary.first_date %}
+                            <span class="sh-k">FIRST VISIT:</span> {{ summary.first_date|date:"j M Y" }}<br>
+                            <span class="sh-k">LATEST VISIT:</span> {{ summary.last_date|date:"j M Y" }}{% if summary.span_label %} ({{ summary.span_label }}){% endif %}<br>
+                            {% endif %}
+                            {% if summary.latest_reading %}
+                            <span class="sh-k">LAST RECORDED:</span> {{ summary.latest_reading|inr }} km<br>
+                            {% endif %}
+                            {% comment %}
+                            What the customer said on the phone, marked as
+                            theirs. It is the only figure on this sheet the
+                            workshop did not measure, and every RUNNING
+                            distance is computed from it — so it says whose
+                            number it is, on the line itself rather than in a
+                            footnote nobody reaches.
+                            {% endcomment %}
+                            {% if summary.current_km %}
+                            <span class="sh-k">READING TODAY:</span> {{ summary.current_km|inr }} km
+                            <span class="sh-life-avg">as told by the customer</span><br>
+                            {% endif %}
+                            {% if summary.distance %}
+                            <span class="sh-k">DISTANCE WITH US:</span> {{ summary.distance|inr }} km<br>
+                            {% endif %}
+                            {% if summary.km_per_month %}
+                            <span class="sh-k">AVERAGE USE:</span> {{ summary.km_per_month|inr }} km / month
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {% if summary.in_progress %}
+            <div class="sh-note">
+                <b>This car is in the workshop now.</b>
+                {{ summary.in_progress }} visit{{ summary.in_progress|pluralize }} in progress
+                {{ summary.in_progress|pluralize:"is,are" }} not shown below — that work is
+                not finished, so its figures are not final yet.
+            </div>
+            {% endif %}
+
+            {% if visits %}
+            <div class="sh-chain">
+                {% for visit in visits %}
+                <section class="sh-visit">
+                    <div class="sh-band">
+                        <span>VISIT {{ visit.number }}&nbsp; ·&nbsp; {{ visit.date|date:"j M Y" }}{% if visit.bill_number %}&nbsp; ·&nbsp; {{ visit.bill_number }}{% endif %}</span>
+                        <span class="sh-band-r">
+                            {% if visit.reading %}{{ visit.reading|inr }} km{% elif visit.reading_text %}{{ visit.reading_text }}{% endif %}
+                        </span>
+                    </div>
+
+                    {% comment %}
+                    THE CARD'S CONTENTS, ON THE BILL'S OWN GRID. The widths are
+                    the invoice's split rather than chosen — see the CSS — so
+                    the two documents share a right-hand gridline. Each block
+                    announces itself with a `#dce6f1` head, exactly as the bill
+                    announces JOB PERFORMED and PART NAME with a navy one.
+
+                    ONE ROW PER LINE, not a run of items joined by middots.
+                    That is how the bill prints a job list, it is what makes
+                    the head above it a column heading rather than a label, and
+                    it is the difference between a document and a paragraph.
+                    {% endcomment %}
+                    <table class="inv-table sh-vt">
+                        <colgroup>
+                            <col style="width:7.7%">
+                            <col style="width:49.8%">
+                            <col style="width:22.2%">
+                            <col style="width:20.3%">
+                        </colgroup>
+                        <tbody>
+                            {% if visit.reading_dropped %}
+                            <tr>
+                                <td></td>
+                                <td colspan="3" class="sh-flag">Lower than the previous visit — the odometer may have been replaced.</td>
+                            </tr>
+                            {% endif %}
+
+                            {% if show_concerns and visit.concerns %}
+                            <tr class="sh-sec">
+                                <td colspan="4">CUSTOMER CONCERNS</td>
+                            </tr>
+                            {% for concern in visit.concerns %}
+                            <tr>
+                                <td></td>
+                                <td colspan="3">{{ concern }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endif %}
+
+                            {% if show_work and visit.jobs %}
+                            <tr class="sh-sec">
+                                <td colspan="4">JOB PERFORMED</td>
+                            </tr>
+                            {% for job in visit.jobs %}
+                            <tr>
+                                <td></td>
+                                <td colspan="3">{{ job }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endif %}
+
+                            {% if visit.parts %}
+                            {% comment %}
+                            ⚠ "DISTANCE RUN", and PART LIFE says the same
+                            thing lower down. It was unheaded here and
+                            "LASTED" there, for one figure — and LASTED is
+                            simply untrue of the part still on the car, which
+                            is the row a reader cares most about. One word,
+                            one meaning, on one sheet.
+                            {% endcomment %}
+                            <tr class="sh-sec">
+                                <td colspan="2">PART NAME</td>
+                                <td class="r">DISTANCE RUN</td>
+                                <td class="c">STATUS</td>
+                            </tr>
+                            {% for part in visit.parts %}
+                            <tr>
+                                <td class="c sh-p-n">({{ part.number }})</td>
+                                <td>{{ part.name }}{% if part.quantity %} &times;{{ part.quantity|clean_qty }}{% endif %}</td>
+                                <td class="r sh-p-life">{% if part.life_km is not None %}{{ part.life_km|inr }} km{% endif %}</td>
+                                <td class="c">{% if part.running %}<span class="sh-run">RUNNING</span>{% endif %}</td>
+                            </tr>
+                            {% comment %}
+                            Only ever from this car's own completed lives, and
+                            only on the part currently fitted. See
+                            DUE_AT_FRACTION — this system holds no manufacturer
+                            intervals, and inventing one would be the sheet
+                            asserting something nobody at this workshop agreed.
+                            {% endcomment %}
+                            {% if part.due_soon %}
+                            <tr>
+                                <td></td>
+                                <td colspan="3" class="sh-due">
+                                    {% if part.sample_count == 1 %}the one before it lasted{% else %}usually lasts{% endif %}
+                                    about {{ part.typical_km|inr }} km on this car
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                            {% endif %}
+                        </tbody>
+
+                        {% comment %}
+                        The visit's own closing line, in the bill's SUBTOTAL
+                        treatment because it is the same kind of figure — a
+                        total under a list, one step below the record's own
+                        TOTAL further down. `.acct` anchors the ₹ left and the
+                        figure right, the way every amount on a Formula D
+                        document is set.
+                        {% endcomment %}
+                        {% if show_amount %}
+                        <tbody class="totals">
+                            <tr>
+                                <td colspan="2" class="void"></td>
+                                <td class="sub-label">AMOUNT</td>
+                                <td class="money sub-cell">
+                                    <span class="acct"><span>&#8377;</span><span>{{ visit.amount|inr_exact }}</span></span>
+                                </td>
+                            </tr>
+                        </tbody>
+                        {% endif %}
+                    </table>
+                </section>
+
+                {% comment %}
+                THE JOIN. It carries the visit's OWN gap, which is the distance
+                since the card BELOW it — the sheet prints newest first, so a
+                card's "since the previous visit" figure belongs under it.
+                Absent on the oldest card, which has nothing before it.
+                {% endcomment %}
+                {% if visit.gap_km is not None or visit.gap_days %}
+                <div class="sh-gap">
+                    <span class="sh-gap-fig">
+                        {% if visit.gap_km is not None %}{{ visit.gap_km|inr }} km{% if visit.rate_implausible %} *{% endif %}{% endif %}
+                        {% if visit.gap_km is not None and visit.gap_days %}&nbsp;·&nbsp;{% endif %}
+                        {% if visit.gap_days %}{{ visit.gap_days|inr }} day{{ visit.gap_days|pluralize }}{% endif %}
+                    </span>
+                </div>
+                {% endif %}
+                {% endfor %}
+
+                {% comment %}
+                The chain has to END. Without this the oldest card reads as
+                though the record were simply cut off there, which on a
+                document a buyer is checking is the worst possible ambiguity.
+                {% endcomment %}
+                <div class="sh-first">
+                    FIRST VISIT&nbsp; ·&nbsp; {{ summary.first_date|date:"j M Y" }}{% if summary.first_reading %}&nbsp; ·&nbsp; {{ summary.first_reading|inr }} km{% endif %}
+                </div>
+            </div>
+
+            {% comment %}
+            WHAT THIS CAR HAS COST HERE — the bill's grand row, verbatim, and
+            the figure this sheet was missing. It printed an AMOUNT on every
+            card and never added them up, so the one thing a customer asks out
+            loud was the one thing they had to work out for themselves.
+
+            "TOTAL BILLED", not the bill's bare "TOTAL": there it closes one
+            list and cannot mean anything else, while here it follows four
+            cards each carrying their own AMOUNT and would read as the last
+            one's. The label takes the bill's two right-hand cells as one so
+            the words fit at 14pt — the shaded block still spans the identical
+            42.5%.
+
+            Amounts only. With the tick off there is nothing above this to
+            total, and a lone figure under a list that carries none would be
+            the sheet answering a question it had refused to ask.
+            {% endcomment %}
+            {% if show_amount %}
+            <table class="inv-table sh-total">
+                <colgroup>
+                    <col style="width:57.5%">
+                    <col style="width:7.7%">
+                    <col style="width:14.5%">
+                    <col style="width:20.3%">
+                </colgroup>
+                <tbody class="totals">
+                    <tr class="grand">
+                        <td class="thanks">Thank you for your business!</td>
+                        <td colspan="2" class="r grand-label">TOTAL BILLED</td>
+                        <td class="money grand-amount">
+                            <span class="acct"><span>&#8377;</span><span>{{ summary.total_billed|inr_exact }}</span></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            {% endif %}
+
+            {% if chains %}
+            <table class="inv-table sh-life">
+                <colgroup>
+                    <col style="width:8%">
+                    <col style="width:24%">
+                    <col style="width:21%">
+                    <col style="width:24%">
+                    <col style="width:23%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="h-left" colspan="2">PART LIFE</th>
+                        <th>FITTED AT</th>
+                        {% comment %}
+                        "DISTANCE RUN", matching the visit cards above. It read
+                        LASTED, which is true of a fitting that has been
+                        replaced and false of the one still on the car — the
+                        row a reader cares most about, and the row the NOW
+                        column then has to contradict.
+                        {% endcomment %}
+                        <th>DISTANCE RUN</th>
+                        <th>NOW</th>
+                    </tr>
+                </thead>
+                {% for chain in chains %}
+                <tbody>
+                    <tr>
+                        <td class="sh-life-name" colspan="5">
+                            {{ chain.name }}
+                            {% comment %}
+                            ⚠ "BETWEEN CHANGES", never "over N changes". The
+                            average is over the INTERVALS, and six fittings
+                            give five intervals — so a customer counting the
+                            rows below finds one more than the sentence claims
+                            and reasonably stops trusting the figure. Between
+                            changes is exactly what it measures and needs no
+                            count at all.
+
+                            A part fitted twice has one interval, where an
+                            "average" is a word for a single measurement, so it
+                            says what actually happened instead.
+                            {% endcomment %}
+                            {% if chain.typical_km %}
+                            <span class="sh-life-avg">{% if chain.sample_count == 1 %}— the first one lasted
+                                {{ chain.typical_km|inr }} km{% else %}— averages
+                                {{ chain.typical_km|inr }} km between changes{% endif %}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% for part in chain.instances %}
+                    <tr>
+                        <td class="c"><b>({{ part.number }})</b></td>
+                        <td>{{ part.fitted_date|date:"j M Y" }}</td>
+                        <td class="r">{% if part.fitted_km %}{{ part.fitted_km|inr }} km{% endif %}</td>
+                        <td class="r"><b>{% if part.life_km is not None %}{{ part.life_km|inr }} km{% endif %}</b></td>
+                        <td class="c">{% if part.running %}<span class="sh-run">RUNNING</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% endfor %}
+            </table>
+            {% endif %}
+
+            {% else %}
+            <div class="sh-empty">
+                No completed visits to report yet.
+            </div>
+            {% endif %}
+
+            <div class="inv-foot">
+                <span class="sh-verify">Every visit listed above has an invoice held by Formula D.</span><br>
+                To verify any entry, quote its number to Rijas Mohd, +91 92 07 21 79 78.
+                <span class="sh-fine">
+                    Prepared from this workshop's own records on {{ issued|date:"j M Y" }}.
+                    Odometer readings are as recorded when the vehicle was admitted{% if summary.current_km %}, apart from today's reading, which the customer supplied{% endif %}.
+                    {% if has_flagged_reading %}A distance marked <b>*</b> is unusually large and is worth confirming.{% endif %}
+                    Work carried out elsewhere does not appear.
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            // ---------------------------------------------------------------
+            // The saved PDF's name.
+            //
+            // document.title is what every browser suggests in Save as PDF, so
+            // putting it on the clipboard as well rescues the two platforms
+            // that ignore it: Microsoft Print to PDF opens its dialog with the
+            // name box BLANK whatever the page says, and iOS files every Safari
+            // print under its own date-stamped name. One paste fixes both.
+            //
+            // CAPTURE, on `document`, never a listener on the button:
+            // window.print() BLOCKS until the dialog is dismissed, and at the
+            // target phase listeners run in registration order whatever their
+            // capture flag — so anything bound to the button itself would copy
+            // AFTER the dialog had already closed.
+            //
+            // IT CAN NEVER STOP A PRINT. The copy is wrapped and the inline
+            // onclick is left in place, so printing does not depend on this
+            // script having run at all. navigator.clipboard is UNDEFINED
+            // outside a secure context -- plain unencrypted HTTP -- which is
+            // not hypothetical: serving the Floor tablet over the LAN does
+            // exactly that.
+            //
+            // (That sentence spells the scheme out in words rather than
+            // writing it. This comment is SERVED to the browser, and the
+            // customer-document tests read every absolute URL on the page, so
+            // the literal would report the sheet as fetching something it does
+            // not fetch.)
+            // ---------------------------------------------------------------
+            document.addEventListener('click', function (event) {
+                var node = event.target;
+                if (!node || !node.closest || !node.closest('.js-print')) return;
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        // Synchronously inside the gesture; iOS drops user
+                        // activation if the write is deferred.
+                        navigator.clipboard.writeText(document.title)
+                            .catch(function () { /* denied, or no permission */ });
+                    }
+                } catch (ignored) { /* printing outranks the clipboard */ }
+            }, true);
+
+            // Fit the sheet to a narrow screen by SCALING it, never by
+            // reflowing it. A document that rearranged itself to fit would
+            // stop being a preview of what prints. Print clears the transform
+            // outright (see @media print).
+            var wrap = document.querySelector('.sheet-wrap');
+            var sheet = document.getElementById('sheet');
+
+            function fitSheet() {
+                if (!wrap || !sheet) return;
+                sheet.style.transform = '';
+                wrap.style.height = '';
+                var available = wrap.clientWidth - 24;   // .sheet-wrap side padding
+                var natural = sheet.offsetWidth;
+                // `available <= 0` is the degenerate case: a hidden or zero-width
+                // container measures 0 and the scale computes to 0, collapsing the
+                // sheet to nothing rather than simply leaving it unscaled.
+                if (!natural || available <= 0 || available >= natural) return;
+                var scale = available / natural;
+                sheet.style.transform = 'scale(' + scale + ')';
+                // The transform does not shrink the space the sheet reserves,
+                // so the wrapper would keep a page of empty scroll beneath it.
+                wrap.style.height = (sheet.offsetHeight * scale + 58) + 'px';
+            }
+
+            fitSheet();
+
+            // Both signals, deliberately. window.resize always exists; a
+            // ResizeObserver additionally catches a rotation some browsers
+            // report without one. fitSheet is idempotent, so the two firing
+            // together costs one wasted measure.
+            window.addEventListener('resize', fitSheet);
+
+            // WIDTH only: fitSheet sets the wrapper's height, which is itself
+            // a resize, so watching both would have it call itself forever.
+            if (window.ResizeObserver && wrap) {
+                var lastWidth = wrap.clientWidth;
+                new ResizeObserver(function () {
+                    if (wrap.clientWidth === lastWidth) return;
+                    lastWidth = wrap.clientWidth;
+                    fitSheet();
+                }).observe(wrap);
+            }
+
+            // Fonts land after first paint and change the sheet's height.
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(fitSheet);
+            }
+
+            // ---------------------------------------------------------------
+            // The part-durability table at the foot, in or out of this copy.
+            //
+            // (It names that table in lower case rather than quoting its
+            // heading. This comment is SERVED — an inline script is part of
+            // the page — so the literal would make the sheet report itself as
+            // still carrying the table on a car that has none. The same trap
+            // the clipboard comment below spells a URL scheme out in words to
+            // avoid.)
+            //
+            // It leaves the sheet on SCREEN as well as on paper, which is the
+            // point rather than a side effect: this document is a preview of
+            // what prints, so a switch that changed only the print output
+            // would ask somebody to take the result on trust.
+            //
+            // fitSheet() again afterwards — the table is most of a page on a
+            // well-used car, so removing it changes the height the wrapper
+            // reserves, and without this a phone would keep scrolling through
+            // the space where it used to be.
+            // ---------------------------------------------------------------
+            var lifeTick = document.getElementById('lifeTick');
+            var lifeTable = document.querySelector('.sh-life');
+            if (lifeTick && lifeTable) {
+                lifeTick.addEventListener('change', function () {
+                    lifeTable.hidden = !lifeTick.checked;
+                    fitSheet();
+                });
+            }
+
+            // Ctrl/Cmd+P prints the sheet, not the scaled-down screen copy.
+            window.addEventListener('beforeprint', function () {
+                if (sheet) sheet.style.transform = '';
+                if (wrap) wrap.style.height = '';
+            });
+            window.addEventListener('afterprint', fitSheet);
+        }());
+    </script>
+
+    <script src="{% static 'js/sound.js' %}?v=8"></script>
+</body>
+
+</html>
