@@ -23,9 +23,20 @@ It is NEVER STORED. See the view.
 {% endcomment %}
 <div class="sh-opt-page">
 
+    {% comment %}
+    ⚠ THE GLYPH IS THE ICON FONT, NOT AN INLINE SVG. `.pg-back` sizes `i` and
+    ellipsises `span`, and nothing in it sizes an `svg` — so this page carried
+    the class and drew the pill without an arrow in it. The two standalone
+    SHEETS use an inline SVG because they load no stylesheet at all; this page
+    extends `base.html` and has the font.
+
+    The label is the destination's NAME, and the destination here is fixed: the
+    view resolves this button to the car's own profile whatever `?back=` holds,
+    because that is where the button is. `?back=` only travels through, as a
+    hidden field, for the sheet to use.
+    {% endcomment %}
     <a href="{{ profile_url }}" class="pg-back">
-        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
-        {{ registration }}
+        <i class="bi bi-arrow-left"></i><span>{{ registration }}</span>
     </a>
 
     <header class="sh-opt-hero">

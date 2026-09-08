@@ -216,12 +216,20 @@
         There is ALWAYS a way off this page. Resolved in the VIEW to a single
         value, so this can never render an empty href — a document whose only
         exit depends on a query parameter traps whoever opened it from a
-        bookmark. Labelled with the registration, following `.pg-back`
-        everywhere else: the arrow already says back.
+        bookmark.
+
+        ⚠ IT SAYS "Back", NOT THE REGISTRATION. `.pg-back`'s name-the-
+        destination rule is about pages whose parent is FIXED; `back_url` here
+        is `?back=` when one was carried and the car's profile otherwise, so
+        the plate was a named destination naming the wrong thing on every copy
+        opened from anywhere else — and the plate is already the loudest thing
+        on the sheet below it. The invoice, the estimate, the spare shop's
+        report and the service history sheet all say plain "Back" in exactly
+        this case, and they are opened by the same person in one sitting.
         {% endcomment %}
         <a href="{{ back_url }}" class="btn btn-ghost">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
-            {{ registration }}
+            Back
         </a>
 
         <span class="chip">{{ count }} invoice{{ count|pluralize }}</span>

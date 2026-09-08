@@ -7,9 +7,16 @@
 {% block content %}
 <div class="cd-page">
 
-    <a href="{% url 'car_profile_list' %}" class="cd-back">
-        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8a.5.5 0 0 0-.5-.5H2.7l3.15-3.15a.5.5 0 1 0-.7-.7l-4 4a.5.5 0 0 0 0 .7l4 4a.5.5 0 0 0 .7-.7L2.7 8.5h11.8A.5.5 0 0 0 15 8z"/></svg>
-        All cars
+    {% comment %}
+    The app's own back control — `.pg-back`, declared ONCE in
+    `static/css/style.css` and drawn by every page that carries one. This page
+    carried its own copy instead — the same idea in a different shape (a bare
+    text link, 36px, its own hover, a 13px inline SVG), which is precisely the
+    drift that consolidation was for. The retired class name is deliberately not
+    written here: it is on the scanner's own list now.
+    {% endcomment %}
+    <a href="{% url 'car_profile_list' %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>All cars</span>
     </a>
 
     {% comment %}
@@ -366,26 +373,22 @@
        between other things — so the hero stacks, the numbers sit in a row that
        wraps rather than a table that scrolls, and nothing here needs a
        horizontal swipe at 320px. */
+    {% comment %}
+    ⚠ NO TOP PADDING, AND ITS REMOVAL IS THE BACK CONTROL'S DOING (2026-09-08,
+    the owner: "unnecessary extra space" above it). The 0.85rem predates
+    `.pg-back` — it was the gap over a page that opened on a HEADING. With a
+    pill above that heading it stacked on `.main-content`'s own 24px, so this
+    was the only `.pg-back` page in the app pushing its control down: measured
+    at 1280, **37.6px above and 16px below**, against a flat 24/16 on the
+    Unassigned Hub and on the Service History options page. A control with more
+    air over it than under it reads as floating rather than as the first thing
+    on the page.
+    {% endcomment %}
     .cd-page {
-        padding: 0.85rem 0 2.5rem;
+        padding: 0 0 2.5rem;
         max-width: 1100px;
         margin: 0 auto;
     }
-
-    .cd-back {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        min-height: 36px;
-        font-size: 0.82rem;
-        font-weight: 600;
-        color: var(--color-text-muted);
-        text-decoration: none;
-        margin-bottom: 0.6rem;
-    }
-
-    .cd-back svg { width: 13px; height: 13px; }
-    .cd-back:hover { color: var(--color-primary); }
 
     /* ---------- hero ---------- */
     .cd-hero {

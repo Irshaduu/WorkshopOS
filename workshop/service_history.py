@@ -205,6 +205,11 @@ class Summary:
     latest_reading_date: Optional[date]
     distance: Optional[int]
     km_per_month: Optional[int]
+    #: How regularly the car comes in — the average distance and the average
+    #: number of days between two visits. See `_summarise` for why an
+    #: implausible gap is kept out of the first and left in the second.
+    service_every_km: Optional[int]
+    service_every_days: Optional[int]
     total_billed: Decimal
     in_progress: int
     #: What the customer said on the phone, and what RUNNING measures against.
@@ -604,7 +609,8 @@ def _summarise(visits, in_progress, current_km, reference_km):
         return Summary(
             visits=0, first_date=None, last_date=None, span_label='',
             first_reading=None, latest_reading=None, latest_reading_date=None,
-            distance=None, km_per_month=None, total_billed=ZERO,
+            distance=None, km_per_month=None, service_every_km=None,
+            service_every_days=None, total_billed=ZERO,
             in_progress=in_progress, current_km=current_km,
             reference_km=reference_km,
         )
@@ -631,6 +637,27 @@ def _summarise(visits, in_progress, current_km, reference_km):
         if months >= USAGE_MIN_MONTHS:
             km_per_month = round(distance / months)
 
+    # ⚠ **HOW REGULARLY THE CAR IS SERVICED — the buyer's own question, and the
+    # one thing a stack of invoices cannot answer without doing arithmetic on
+    # the kitchen table.** The gaps were already computed to be drawn in the
+    # joins between the cards; nothing here is a second walk over anything.
+    #
+    # Averaged over the GAPS, so five visits give four of them — the same
+    # distinction `Chain.typical_km` records as "between changes, never over N
+    # changes". A car serviced once has no gap and so has no answer, which is
+    # honest: one visit says nothing about regularity.
+    #
+    # ⚠ AN IMPLAUSIBLE GAP IS LEFT OUT OF THE DISTANCE AND KEPT IN THE DAYS,
+    # and that asymmetry is the point rather than an oversight.
+    # `rate_implausible` marks a distance that cannot be true — 85,000 typed as
+    # 850,000 — and one of those in a mean of four moves it by more than every
+    # real gap put together. The DAYS either side of that same mistyped reading
+    # are two admission dates and are not in question, so dropping them would
+    # discard a good figure over a fault in a different column.
+    gaps_km = [visit.gap_km for visit in visits
+               if visit.gap_km is not None and not visit.rate_implausible]
+    gaps_days = [visit.gap_days for visit in visits if visit.gap_days]
+
     return Summary(
         visits=len(visits),
         first_date=visits[0].date,
@@ -641,6 +668,10 @@ def _summarise(visits, in_progress, current_km, reference_km):
         latest_reading_date=latest.date if latest else None,
         distance=distance,
         km_per_month=km_per_month,
+        service_every_km=(round(sum(gaps_km) / len(gaps_km))
+                          if gaps_km else None),
+        service_every_days=(round(sum(gaps_days) / len(gaps_days))
+                            if gaps_days else None),
         total_billed=sum((visit.amount for visit in visits), ZERO),
         in_progress=in_progress,
         current_km=current_km,

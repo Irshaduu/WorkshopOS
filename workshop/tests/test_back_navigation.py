@@ -65,6 +65,7 @@ RETIRED = {
     'ua-back': 'the Unassigned Hub\'s own copy',
     'si-back': 'the item-suppliers copy',
     'sa-back': 'the salary staff-detail copy',
+    'cd-back': "the car profile's own copy",
     'javascript:history.back': 'a history jump — see the module docstring',
 }
 

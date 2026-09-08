@@ -241,7 +241,18 @@ class WhatTheTicksDoTests(ServiceHistoryPageTestCase):
         with_km = self._sheet({'km': '95000'})
         self.assertNotIn('15,000 km', without)
         self.assertIn('15,000 km', with_km)
-        self.assertIn('as told by the customer', with_km)
+        # ⚠ WHOSE FIGURE IT IS IS SAID ONCE, IN THE NOTES. The TODAY row
+        # printed `as told by the customer` beside it as well, and the note is
+        # gated on the same reading — so the two always appeared together and
+        # the sentence was on the page twice, once inside the record and once
+        # in the block of statements about the document. The owner's call was
+        # to drop the inline copy (2026-09-08).
+        self.assertNotIn('as told by the customer', with_km)
+        self.assertEqual(
+            with_km.count("Today's reading was supplied by the customer"), 1)
+
+        # And it is not claimed at all when nobody supplied one.
+        self.assertNotIn('supplied by the customer', without)
 
 
 class NothingInternalReachesTheCustomerTests(ServiceHistoryPageTestCase):
@@ -458,6 +469,22 @@ class TheSheetItselfTests(ServiceHistoryPageTestCase):
         self.assertIn('FIRST VISIT', html)
         self.assertIn('94,200 km', html)
 
+    def test_an_odometer_that_went_backwards_is_said_on_the_card_itself(self):
+        """
+        The module has always decided this; nothing checked that the sheet
+        PRINTS it — and the note moved into the card's own tinted block when
+        the card was rebuilt, which is exactly the kind of markup change that
+        can drop a line with every module test still green.
+
+        Italic navy, because there is no red on this sheet.
+        """
+        self._visit(date(2024, 1, 1), '90000')
+        self._visit(date(2026, 1, 1), '40000')
+
+        sheet = self._sheet()
+        self.assertIn('odometer may have been replaced', sheet)
+        self.assertIn('sh-flag', sheet)
+
     def test_a_car_in_the_workshop_is_named_rather_than_silently_omitted(self):
         self._visit(date(2026, 1, 1))
         self._visit(date(2026, 6, 1), completed=False)
@@ -510,19 +537,55 @@ class TheSheetItselfTests(ServiceHistoryPageTestCase):
         self.assertIn('#bdd7ee', html)
         self.assertIn('font-size: 14pt', html)
 
-    def test_one_figure_one_heading_across_both_tables(self):
+    def test_how_far_a_fitting_ran_is_answered_in_exactly_one_place(self):
         """
-        The visit cards and PART LIFE print the same number — how far this
-        fitting has run — and it was unheaded on one and called LASTED on the
-        other. LASTED is also untrue of the part still on the car, which is the
-        row a reader cares most about.
+        ⚠ THIS REPLACES `test_one_figure_one_heading_across_both_tables`, WHICH
+        ASSERTED THE OPPOSITE AND WAS RIGHT AT THE TIME. That test required the
+        heading to appear three times — once per visit card, once in PART LIFE
+        — because the figure was printed in both and the two had drifted into
+        two different words for it.
+
+        The redesign removed the duplication instead of naming it better. Every
+        fitting used to print with its distance on the card that fitted it AND
+        again in PART LIFE: about thirty rows twice over on a five-visit car.
+        The copy on the card was also the confusing one, because the distance a
+        fitting RAN is a fact about its future, printed against the visit that
+        began it — so a card dated March carried a number covering the two
+        years after it.
+
+        The rule now is the one this codebase follows everywhere else: **one
+        question, one place.** The card says what happened that day; PART LIFE
+        says how long a part lasts. So the heading appears exactly ONCE.
         """
         self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
         self._visit(date(2026, 4, 1), '69800', parts=['Wheel bearing left'])
 
         html = self._sheet()
-        self.assertEqual(html.count('DISTANCE RUN'), 3)   # two cards, one table
+        self.assertEqual(html.count('DISTANCE RUN'), 1)
         self.assertNotIn('LASTED', html)
+
+        # The card still names what was fitted — it is the distance that left,
+        # not the part.
+        self.assertIn('PARTS FITTED', html)
+        self.assertIn('Wheel bearing left', html)
+
+    def test_the_card_carries_no_figure_that_belongs_to_part_life(self):
+        """
+        The visit card's own columns went with the distance: a status chip and
+        an instance number are both answers to "how long has this been on the
+        car", which is the other section's question.
+
+        Asserted on the CARD rather than on the page, because both marks are
+        legitimate — and required — inside PART LIFE.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        self._visit(date(2026, 4, 1), '69800', parts=['Wheel bearing left'])
+
+        html = self._sheet()
+        chain = html[html.index('sh-chain'):html.index('PART LIFE')]
+        self.assertNotIn('ON THE CAR', chain)
+        self.assertNotIn('sh-run', chain)
+        self.assertNotIn('(1)', chain)
 
     def test_the_asterisk_legend_appears_only_when_something_carries_one(self):
         """
@@ -583,6 +646,461 @@ class TheSheetItselfTests(ServiceHistoryPageTestCase):
         sheet = self._sheet()
         self.assertNotIn('<form', sheet)
         self.assertNotIn('<input', sheet)
+
+
+class ItIsSetLikeTheBillTests(ServiceHistoryPageTestCase):
+    """
+    ⚠ **THE RULE AT THE HEAD OF THE TEMPLATE WAS BEING OBEYED WHILE THE SHEET
+    STILL LOOKED WRONG, WHICH IS WHY THESE EXIST.** Every size and every colour
+    on it was legal. What nothing checked was the WEIGHT and the COUNT — the
+    bill sets 57% of its text in 10pt regular and 5 elements in 10pt bold,
+    while this sheet had 166 bold against 135 regular, and it spent 30 green
+    chips where the bill spends three greens on one settled stamp.
+
+    Both were found by measuring the two rendered documents element by element,
+    not by reading either stylesheet, and neither can be caught by looking at
+    one page on its own. So each is pinned here as the DECLARATION that causes
+    it — nothing in the Django suite executes CSS.
+    """
+
+    def _css(self, selector, html):
+        """The body of one rule, so an assertion cannot match a neighbour."""
+        start = html.index(selector + ' {')
+        return html[start:html.index('}', start)]
+
+    def test_no_label_in_the_vehicle_block_is_bold(self):
+        """
+        The bill sets `NAME: Anwar Sadath` in regular 11pt end to end. This
+        block bolded every prefix through a `.sh-k` class, which is what left
+        the sheet painting eleven-point regular NOT ONCE while the bill paints
+        it twice. The colon does the work on both.
+        """
+        self._visit(date(2026, 1, 1))
+        html = self._render()
+        self.assertNotIn('sh-k', html)
+
+        sheet = self._sheet()
+        block = sheet[sheet.index('VEHICLE'):sheet.index('sh-chain')]
+        self.assertIn('MAKE:', block)
+        self.assertNotIn('<b>', block)
+        self.assertNotIn('font-weight', block)
+
+    def test_nothing_on_the_sheet_is_green(self):
+        """
+        Green in this system means MONEY — the Profit page's own rule, and the
+        settled stamp on the bill. This sheet carries no payment state at all
+        by design, so the one warm signal on a Formula D document was being
+        spent thirty times on a fact about a wheel bearing.
+
+        Asserted over the WHOLE page, stylesheet included: the chip's fill and
+        border live only in CSS, so a sheet-only search would have passed while
+        the paper stayed green.
+        """
+        self._visit(date(2026, 1, 1), parts=['Wheel bearing left'])
+        html = self._render()
+        for green in ('#eaf5ea', '#7fb37f', '#24632c', '#16a34a'):
+            self.assertNotIn(green, html, f'{green} is a money colour')
+
+    def test_the_marker_for_a_part_still_fitted_is_navy(self):
+        self._visit(date(2026, 1, 1), parts=['Wheel bearing left'])
+        html = self._render()
+        self.assertIn('#1f4e79', self._css('.sh-run', html))
+        self.assertIn('ON THE CAR', self._sheet())
+
+    def test_the_thank_you_line_is_the_bills_own_twelve_point(self):
+        """
+        The invoice sets this line two points above its body. This file simply
+        did not restate the size, so `.inv-table td` handed it 10pt — the same
+        sentence, in the same italic, in the same blue, set smaller on one of
+        two documents that are handed over together.
+
+        It has its own class rather than the bill's `.thanks` only because on
+        this sheet the sentence is no longer inside a table.
+        """
+        self._visit(date(2026, 1, 1))
+        rule = self._css('.sh-thanks', self._render())
+        self.assertIn('font-size: 12pt', rule)
+        self.assertIn('#2e74b5', rule)
+        self.assertIn('italic', rule)
+
+    def test_the_thank_you_leads_the_foot_rather_than_the_total(self):
+        """
+        ⚠ READING ORDER, NOT TASTE. On the bill that sentence sits beside TOTAL
+        because that row is the LAST thing before the foot. Here it is not:
+        PART LIFE follows the total and runs most of a page, so the sentence
+        that closes the bill was closing nothing — buried mid-document with a
+        table after it.
+
+        ⚠ AND IT IS NO LONGER GATED ON THE AMOUNTS. It rode inside the totals
+        table, so a copy printed without amounts lost it altogether, and a
+        courtesy to a customer is not a figure.
+        """
+        card = self._visit(date(2026, 1, 1), parts=['Wheel bearing left'])
+        card.labour_amount = Decimal('4000')
+        card.update_totals()
+
+        sheet = self._sheet()
+        self.assertLess(sheet.index('TOTAL BILLED'),
+                        sheet.index('Thank you for your business'))
+        foot = sheet[sheet.index('inv-foot'):]
+        self.assertIn('Thank you for your business', foot)
+
+        # No amounts on this copy at all — the thank-you still appears.
+        bare = self._sheet({})
+        self.assertNotIn('TOTAL BILLED', bare)
+        self.assertIn('Thank you for your business', bare)
+
+    def test_the_foot_carries_no_rule_above_it(self):
+        """The bill's foot is centred 10pt on white with nothing drawn over
+        it. A navy hairline here was one more line this sheet had and that one
+        did not; the 8.1mm gap separates it on both."""
+        self._visit(date(2026, 1, 1))
+        rule = self._css('.inv-foot', self._render())
+        self.assertIn('margin-top: 8.1mm', rule)
+        self.assertNotIn('border-top', rule)
+
+    def test_the_card_splits_on_the_bills_own_gridline(self):
+        """
+        WORK DONE ends and PARTS FITTED begins at 57.5%, where BILL TO ends and
+        VEHICLE INFO begins — so a customer laying the two documents side by
+        side finds the rule in the same place. Change a width here and they
+        stop agreeing.
+        """
+        self._visit(date(2026, 1, 1), parts=['Wheel bearing left'])
+        sheet = self._sheet()
+        card = sheet[sheet.index('sh-vt'):]
+        for width in ('57.5%', '7.7%', '14.5%', '20.3%'):
+            self.assertIn('width:' + width, card)
+
+    def test_the_record_block_is_the_bills_own_parties_block(self):
+        """
+        ⚠⚠ THIS RENDERS THE BILL AND COMPARES THE TWO, rather than asserting
+        one page against a description of the other — the same form
+        `test_both_documents_end_the_same_way` takes, and for the same reason:
+        the claim is that these are ONE object drawn twice.
+
+        ⚠ IT REVERSES A FOUR-COLUMN BUILD, AND BOTH SIDES OF THAT ARE WORTH
+        KEEPING. The owner's word for the FIRST inline version was "brain
+        draining": six facts a side behind labels of six different lengths
+        start their values at six different x. Splitting label and value into
+        their own columns fixed exactly that — and it stopped being the bill's
+        block, because on the bill `NAME: Anwar Sadath` is one run of text.
+
+        The bill is the reference document: the owners supplied its wording and
+        its layout. So the ragged left edge of the values is an accepted cost,
+        and it is the same cost the bill pays on its own block.
+        """
+        card = self._visit(date(2026, 1, 1))
+        bill = self.client.get(reverse('invoice_view', args=[card.pk]))
+        self.assertEqual(bill.status_code, 200)
+
+        def parties(html):
+            block = html[html.index('inv-table inv-parties'):]
+            return block[:block.index('</table>')]
+
+        theirs = parties(bill.content.decode())
+        ours = parties(self._sheet())
+
+        # The same two columns, on the bill's own gridline.
+        widths = lambda b: re.findall(r'<col style="width:([\d.]+)%">', b)
+        self.assertEqual(widths(ours), ['57.5', '42.5'])
+        self.assertEqual(widths(ours), widths(theirs))
+
+        # One row of two cells under the band, on both — never a cell per fact.
+        rows = lambda b: b.count('<tr')
+        self.assertEqual(rows(ours), rows(theirs))
+        self.assertEqual(rows(ours), 2)
+
+        # `LABEL: value` inline, separated by <br>, exactly as the bill sets it.
+        self.assertIn('MAKE: ', ours)
+        self.assertIn('<br>MODEL: ', ours)
+        self.assertNotIn('<td>MAKE:</td>', ours)
+        self.assertNotIn('sh-v', ours)
+
+    def test_it_uses_the_bills_own_labels_in_the_bills_own_order(self):
+        """
+        NAME, MAKE, MODEL — the order the bill sets them in, and its words.
+
+        ⚠ TWO EXCEPTIONS WERE ARGUED FOR AND BOTH WERE OVERRULED (2026-09-09),
+        which is worth keeping because each objection was reasonable:
+
+        `OWNER:` was defended on the ground that NAME sits under BILL TO on the
+        bill, so under a band reading VEHICLE it would name the car. The value
+        settles it in every real case: `NAME: Anwar Sadath` cannot be read as a
+        car, and the bill in the customer's hand says NAME for the same person.
+
+        `ODOMETER:` was defended on "one word per fact inside one document",
+        against the PART LIFE column of the same name. That rule is right and
+        the conclusion was backwards — **MILEAGE is the workshop's own word**
+        (`JobCard.mileage`, `workshop/mileage.py`, and the bill has printed it
+        for longer than this sheet has existed), and ODOMETER was invented
+        here. So PART LIFE's heading moved too, which is what this asserts.
+        """
+        self._visit(date(2026, 1, 1), customer_name='Anwar Sadath',
+                    customer_contact='9847012345',
+                    parts=['Wheel bearing left'])
+        sheet = self._sheet()
+        block = sheet[sheet.index('inv-parties'):sheet.index('sh-chain')]
+
+        self.assertIn('NAME: Anwar Sadath', block)
+        self.assertNotIn('OWNER:', block)
+        self.assertIn('MILEAGE: ', block)
+        self.assertNotIn('ODOMETER', sheet)
+
+        # NAME, then MAKE, then MODEL — the bill's order.
+        self.assertLess(block.index('NAME: '), block.index('MAKE: '))
+        self.assertLess(block.index('MAKE: '), block.index('MODEL: '))
+
+        # ⚠ ONE WORD FOR ONE FACT ACROSS THE WHOLE SHEET: the record block and
+        # the PART LIFE column head the same figure, so they take the same
+        # word. This is the half that made the rename worth doing rather than
+        # trading one inconsistency for another.
+        self.assertIn('<th>MILEAGE</th>', sheet)
+
+        # The name and nothing else. This sheet is handed to a buyer, and the
+        # only phone number on it should be the workshop's own.
+        self.assertNotIn('9847012345', sheet)
+
+    def test_a_car_with_no_customer_recorded_opens_on_MAKE(self):
+        """
+        ⚠ NAME IS THE ONE OPTIONAL LINE THAT COMES FIRST, so its `<br>` TRAILS
+        where every other one leads. Most cards at this workshop carry no
+        customer name at all, and on those MAKE has to be the first line with
+        no break in front of it — a leading break would open the cell with a
+        blank line. The bill instead prints a bare `NAME:` with nothing after
+        it, which is fine on one bill and reads as missing data at the head of
+        a document handed to a buyer.
+        """
+        self._visit(date(2026, 1, 1))
+        block = self._sheet()
+        block = block[block.index('inv-parties'):block.index('sh-chain')]
+
+        self.assertNotIn('NAME:', block)
+        cell = block[block.index('<tr>'):]
+        self.assertIn('<td>MAKE: ', cell)
+        self.assertNotIn('<td><br>', cell)
+
+    def test_how_many_visits_and_how_long_are_two_lines(self):
+        """
+        ⚠ `VISITS: 5 over 3 years 5 months` PUT TWO FACTS BEHIND ONE LABEL,
+        and the owner's word for the result was "confusion". It reads as a
+        fraction at a glance — "5 over 3" — with a second 5 four words later.
+
+        The span is not dropped: FIRST VISIT and LATEST VISIT do carry it, but
+        only as two dates somebody has to subtract, and how long the workshop
+        has known the car is the second thing a buyer asks. It gets its own
+        label, on its own line, under the count it qualifies.
+        """
+        self._visit(date(2022, 6, 18))
+        self._visit(date(2025, 12, 6))
+        sheet = self._sheet()
+        block = sheet[sheet.index('inv-parties'):sheet.index('sh-chain')]
+
+        self.assertIn('VISITS: ', block)
+        self.assertIn('<br>OVER: ', block)
+
+        # The count stands alone on its line — no span riding with it.
+        count = block[block.index('VISITS: '):]
+        self.assertNotIn('over', count[:count.index('<br>')])
+
+        # And each is said once, not once here and again in a heading.
+        self.assertEqual(block.count('OVER: '), 1)
+
+    def test_the_caveats_are_one_separated_run_above_the_sign_off(self):
+        """
+        ⚠ "SO MESS" WAS THE OWNER'S VERDICT ON THE FOOT, and it took two goes.
+
+        First it was a paragraph: four sentences run together into three
+        full-width CENTRED lines, ragged on both edges with no left margin for
+        the eye to return to. Then it was one sentence per line, which fixed
+        the raggedness and bought a new problem — four short centred statements
+        floating in white, reported as "small and light grey" when every one of
+        them is `rgb(0, 0, 0)` at the sheet's own body size.
+
+        A middot-separated run is neither: the separators are anchors, so it
+        reads as a LIST rather than as prose, and the block is dense enough to
+        hold its own weight.
+
+        ⚠ AND IT SITS ABOVE THE TWO CONTACT LINES. The caveats qualify the data
+        they follow; the contact block is the sign-off, and "quote its number to
+        Rijas Mohd" is a better last line than "work carried out elsewhere does
+        not appear".
+
+        Two sentences were deleted rather than rewrapped: the issued date is
+        in the letterhead, and the run's own "Today's reading was supplied by
+        the customer" item says what a blanket "apart from today's reading"
+        clause was reaching for — and only when there IS such a reading, so it
+        is never left false.
+        """
+        self._visit(date(2026, 1, 1), parts=['Wheel bearing left'])
+        sheet = self._sheet()
+
+        self.assertNotIn('Prepared from this workshop', sheet)
+        self.assertNotIn('apart from today', sheet)
+        self.assertNotIn('sh-fine-line', sheet)
+
+        # ⚠ IT IS MAIN CONTENT, NOT FOOTER FURNITURE. It sat inside `.inv-foot`
+        # on a narrow centred measure, which made it the one block on the sheet
+        # that did not line up with the record it is about.
+        self.assertLess(sheet.index('sh-notes'), sheet.index('inv-foot'))
+        notes = sheet[sheet.index('sh-notes'):sheet.index('inv-foot')]
+        self.assertIn('&middot;', notes)
+        self.assertLess(notes.index('Every visit listed above'),
+                        notes.index('Odometer readings are as recorded'))
+
+        # …and the item that only appears when there IS such a reading.
+        with_reading = self._sheet(dict(EVERYTHING, km='90000'))
+        self.assertIn("Today's reading was supplied by the customer",
+                      with_reading)
+
+    def test_the_separator_is_never_the_asterisk(self):
+        """
+        ⚠ `*` ALREADY MEANS SOMETHING ON THIS SHEET — it marks a distance too
+        large to be credible, and the legend explaining it is one of these very
+        caveats. Bulleting the run with it would print "* A distance marked *
+        is unusually large", which is one mark doing two jobs an inch apart.
+        """
+        self._visit(date(2026, 1, 1), '60000')
+        self._visit(date(2026, 3, 1), '600000')          # trips the flag
+
+        sheet = self._sheet()
+        self.assertIn('unusually large', sheet)
+        notes = sheet[sheet.index('sh-notes'):sheet.index('inv-foot')]
+        self.assertNotIn('*&nbsp;', notes)
+        self.assertNotIn('&middot; *', notes)
+
+    def test_the_foot_is_set_exactly_like_the_bills(self):
+        """
+        Two centred 10pt lines in black, with no emphasis on either.
+
+        "Every visit listed above has an invoice held by Formula D." carried
+        bold navy through a `.sh-verify` class, for the sentence it is. The
+        reasoning was right and the emphasis was wrong twice over: the
+        invoice's own foot has no bold and no colour anywhere, and — measured —
+        that one line pulled so much weight that the black caveats beside it
+        were reported as faint. Nothing in the foot is emphasised, so nothing
+        in the foot looks faint.
+        """
+        self._visit(date(2026, 1, 1), parts=['Wheel bearing left'])
+        html = self._render()
+        self.assertNotIn('sh-verify', html)
+
+        sheet = self._sheet()
+        foot = sheet[sheet.index('inv-foot'):]
+        self.assertIn('Should you have any enquiries concerning this record '
+                      'please contact:', foot)
+        for loud in ('<b>', '<strong>', '#1f4e79', 'font-weight'):
+            self.assertNotIn(loud, foot)
+
+        # The promise it used to carry is a NOTE now, and still on the page.
+        self.assertIn('Every visit listed above has an invoice held by '
+                      'Formula D', sheet[:sheet.index('inv-foot')])
+
+    def test_both_documents_end_the_same_way(self):
+        """
+        ⚠ THE SHAPE IS THE POINT, NOT ONLY THE SIZE AND THE COLOUR — so this
+        renders the BILL as well and compares them, rather than asserting one
+        page against a description of the other. The bill reads
+
+            Should you have any enquiries concerning this invoice please contact:
+            Rijas Mohd, +91 92 07 21 79 78
+
+        and the name standing by ITSELF is what makes the last line read as a
+        signature rather than as another sentence. This sheet had two centred
+        10pt black lines of the right size and colour in the wrong shape, with
+        the name buried mid-sentence: "quote its number to Rijas Mohd, +91 …".
+
+        No full stop on that line, on either document.
+        """
+        card = self._visit(date(2026, 1, 1))
+        bill = self.client.get(reverse('invoice_view', args=[card.pk]))
+        self.assertEqual(bill.status_code, 200)
+
+        def signature(html):
+            foot = html[html.index('inv-foot'):]
+            self.assertIn('please contact:<br>', foot)
+            tail = foot.split('please contact:<br>')[1]
+            return tail[:tail.index('</div>')].strip()
+
+        self.assertEqual(signature(bill.content.decode()),
+                         signature(self._sheet()))
+        self.assertEqual(signature(self._sheet()),
+                         'Rijas Mohd, +91 92 07 21 79 78')
+
+    def test_the_caveats_recede_from_the_record(self):
+        """
+        ⚠ THE ONE GREY ON THE SHEET, AND THE ONE STATED EXCEPTION TO THE COLOUR
+        RULE. Everything else is black, white, navy or the accent blue — all
+        four the bill's. This earns the exception because it is the only thing
+        on the page that is not part of the RECORD: every other line is a fact
+        about the car, and this is a note about the document. At the same size
+        and colour as the record it competed with it.
+
+        ⚠ `#6E6E6E` MEASURES 5.1:1 ON WHITE, AND THE 4.5:1 FLOOR IS NOT
+        NEGOTIABLE HERE. The obvious "light grey" `#808080` is 3.95:1 and
+        fails. These are the caveats a BUYER relies on — where the odometer
+        figures came from, that work done elsewhere is absent — and fine print
+        somebody cannot read on a document about a car they are buying reads as
+        the workshop hiding it.
+
+        ⚠ 8.5pt IS THE SECOND HALF OF THE SAME EXCEPTION. It ran at 9.5pt,
+        the PAID stamp's size, so it introduced no new size at all — and the
+        owner's call (2026-09-08) was that the notes still sat too close to
+        the record they are notes ABOUT. The size and the colour now say one
+        thing together: read this second.
+
+        ⚠ THE CONTRAST FLOOR DOES NOT BOUND THE SIZE. WCAG only RELAXES its
+        ratio for LARGE text and never tightens it for small, so `#6E6E6E`
+        clears 4.5:1 at 8.5pt exactly as it did at 9.5. What bounds it is
+        paper, and that is a judgement nothing here can assert — so what IS
+        asserted is the relationship: quieter than the record, never louder.
+        """
+        self._visit(date(2026, 1, 1))
+        rule = self._css('.sh-notes', self._render())
+        self.assertIn('font-size: 8.5pt', rule)
+        self.assertIn('#6E6E6E', rule)
+
+        # The invariant behind the number: the notes are smaller than the
+        # 10pt body they sit under. A size bumped back up to the record's
+        # would undo the whole point of the block being set apart.
+        size = float(re.search(r'font-size: ([\d.]+)pt', rule).group(1))
+        self.assertLess(size, 10)
+
+        # 5.1:1 — recompute rather than trust the comment.
+        def channel(value):
+            value /= 255
+            return (value / 12.92 if value <= 0.03928
+                    else ((value + 0.055) / 1.055) ** 2.4)
+
+        grey = channel(0x6E)
+        luminance = 0.2126 * grey + 0.7152 * grey + 0.0722 * grey
+        self.assertGreaterEqual(1.05 / (luminance + 0.05), 4.5)
+
+    def test_a_part_still_on_the_car_prints_no_distance_when_there_is_none(self):
+        """
+        ⚠ EVERY PART FITTED AT THE LATEST VISIT READS ZERO, because the newest
+        reading this workshop holds IS that visit's. A well-serviced car
+        therefore opened PART LIFE with a column of "0 km", once per chain,
+        which on a document a buyer is checking looks like the sheet is broken
+        rather than like a part that is new.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+
+        sheet = self._sheet()
+        self.assertIn('ON THE CAR', sheet)
+        self.assertNotIn('>0 km<', sheet)
+
+    def test_but_a_finished_life_of_zero_still_prints(self):
+        """
+        The distinction is real: a part replaced at the same reading it was
+        fitted at failed immediately, and that IS a measurement. Zero on a
+        running fitting is not one — it means nobody has read the odometer
+        since.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        self._visit(date(2026, 2, 1), '60000', parts=['Wheel bearing left'])
+
+        self.assertIn('>0 km<', self._sheet())
 
 
 class PartLifeCanBeLeftOffThisCopyTests(ServiceHistoryPageTestCase):

@@ -3665,6 +3665,22 @@ one slip on the latest card would rename four years of history.
 **`typical_km` is over COMPLETED lives only** — the running one is still
 accumulating, and including it would drag every average down.
 
+**`service_every_km` / `service_every_days` AVERAGE THE GAPS, so five visits
+give four of them** — the same distinction `typical_km` records as "between
+changes, never over N changes". A car with one visit has no gap and therefore
+no answer, which is honest: one visit says nothing about regularity. Derived
+from the visits already built, never re-queried.
+
+⚠ **AN IMPLAUSIBLE GAP IS LEFT OUT OF THE DISTANCE AND KEPT IN THE DAYS**, and
+the asymmetry is the point. `rate_implausible` marks a distance that cannot be
+true — 85,000 typed as 850,000 — and one of those in a mean of four moves the
+figure by more than every real gap put together. The DAYS either side of that
+same mistyped reading are two admission dates and are not in question, so
+dropping them would discard a good figure over a fault in a different column.
+A visit with NO reading reaches the same split from the other side: `gap_km`
+needs a reading at both ends and `gap_days` needs neither.
+→ `HowRegularlyTheCarIsServicedTests`
+
 **DUE SOON COMES FROM THIS CAR'S OWN HISTORY, never a manufacturer interval.**
 `DUE_AT_FRACTION` is 0.9 of the chain's own average. This system holds no
 service schedules, and inventing one would be the sheet asserting something
@@ -3674,72 +3690,411 @@ nobody at this workshop agreed.
 — "what is it showing now?" asked over the phone — and the workshop did not
 measure it. Writing it to `JobCard.mileage` would put an unverified figure into
 the column every other screen reads and every future interval is computed from.
-It rides in the query string and leaves with the page, and the sheet says
-*as told by the customer* on the line itself rather than in a footnote nobody
-reaches. `build_service_history` DROPS one that fails `current_km_problem`
+It rides in the query string and leaves with the page, and **the sheet says
+whose figure it is — once**, as its own item in the notes ("Today's reading
+was supplied by the customer"), gated on there being such a reading.
+
+⚠ **THE TODAY ROW USED TO SAY IT AS WELL, IN ITALIC BESIDE THE FIGURE, AND
+THAT WAS THE SAME SENTENCE TWICE** (removed 2026-09-08, the owner's
+instruction). The reasoning for the inline copy was sound on its own — a fact
+about one number belongs on that number's line rather than in fine print — and
+it ignored the note, which is gated on **exactly the same condition**, so the
+two could never appear apart. The notes are the block of statements ABOUT the
+document, which is the whole reason that block exists, so that is the copy that
+stays. `build_service_history` DROPS one that fails `current_km_problem`
 rather than clamping it — a single bad figure would otherwise poison every
 RUNNING row at once.
 
-### The sheet's design — two rules, and they are not suggestions
+### The sheet's design — three rules, and they are not suggestions
 
-⚠ **NOTHING ON IT MAY USE A TYPE SIZE OR A COLOUR THE INVOICE DOES NOT ALREADY
-USE.**
+⚠ **NOTHING ON IT MAY USE A TYPE SIZE, A WEIGHT OR A COLOUR THE INVOICE DOES
+NOT ALREADY USE.**
 
-    SIZES   26pt title · 14pt total · 11pt bands · 10pt body · 9.5pt stamp
+    SIZES   26pt title · 14pt total · 12pt thank-you · 11pt bands and blocks ·
+            10pt body · 9.5pt stamp
+            — plus ONE stated exception: **8.5pt** on the notes block and
+              nowhere else, for the same reason the grey is one. See "The
+              notes".
+    WEIGHT  bold is for a TOTAL and a HEADING. A figure is regular, a label is
+            regular, and the column does the work.
     COLOUR  #1f4e79 navy · #dce6f1 band fill · #bdd7ee total fill ·
-            #2e74b5 accent · #eaf5ea/#7fb37f/#24632c the settled stamp ·
-            white gridlines · black text
+            #2e74b5 accent · white gridlines · black text
+            — plus ONE stated exception: `#6E6E6E` on the notes block and
+              nowhere else, because it is the one block on the sheet that
+              is not part of the RECORD. See "The notes".
 
 It shipped once wearing the invoice's letterhead over its own invented design
 system — 7.5/8/8.5/9pt type, nine greys and two reds that appear on no Formula
 D document — and the owner's verdict was that it read as generic. That was why.
 **There is no red on this sheet**: the invoice has none, so an odometer problem
-is said in italic navy. Audited live: 0 off-palette sizes, 0 off-palette
-colours.
+is said in italic navy.
 
-**THE VISIT CARD'S BODY IS A TABLE ON THE INVOICE'S OWN GRID.** It was a flex
-layout imitating one — a fixed label column and, inside PARTS, four more flex
-columns with no heading naming any of them. The column widths are the
-invoice's SPLIT rather than chosen: `7.7 + 49.8 = 57.5` (its PART NAME column),
-`22.2 = its 14.5 + 7.7`, and `20.3` untouched. Measured against a real bill,
-the name column ends at 56.62% against 56.63% and the amount column starts at
-76.23% against 76.27% — so a customer laying the two side by side finds the
-right-hand gridline in the same place. **Change one and the two documents stop
-agreeing.**
+⚠ **THE WEIGHT RULE IS NEW, AND IT EXISTS BECAUSE THE FIRST TWO WERE BEING
+OBEYED WHILE THE SHEET STILL LOOKED WRONG** (2026-09-08, the owner's second
+verdict on it). Every size and every colour on it was legal — "0 off-palette
+sizes, 0 off-palette colours", audited and true — and it still did not read as
+the bill. Measuring the two RENDERED documents element by element, rather than
+reading either stylesheet, is what found it:
 
-Each block announces itself with a `#dce6f1` head carrying the invoice's own
-words — `CUSTOMER CONCERNS`, `JOB PERFORMED`, `PART NAME`. ⚠ **NOT a second
-navy bar**: the card's `.sh-band` is its heading, and a navy strip directly
-under another reads as a header that failed to end. For the same reason the
-content rows are **not** banded — two things in one fill and the head stops
-being a head. Banding lives in PART LIFE, where twenty-four near-identical
-lines actually need it, and each part there sits behind a 2px navy rule so its
-name stays a heading against rows wearing the same fill.
+| | invoice | sheet, before |
+|---|---|---|
+| 10pt **regular** | 33 elements (57%) | 135 (36%) |
+| 10pt **bold** | **5** — SUBTOTAL, and nothing else | **166** (44%) |
+| 11pt regular — the vehicle block | 2 | **0** |
+| the thank-you line | 12pt | 10pt |
+| green ink / fill / border | 3 / 1 / 4 — the one PAID stamp | 30 / 30 / 120 |
+
+**The sheet was set in bold and the bill is not.** No declaration said so,
+because a weight is what you get by default from a dozen small decisions that
+each looked reasonable: a `.sh-k` class bolding every label in the vehicle block
+(which is why the sheet painted eleven-point regular *not once*), bold
+distances, bold instance numbers, bold section heads.
+
+⚠ **AND THE GREEN IS GONE.** The bill spends its three greens on ONE thing, the
+settled stamp, because **green in this system means money** — the Profit page's
+own rule. This sheet carries no payment state at all by design, and it was
+spending that signal 30 times to say a part was still fitted. The chip keeps its
+shape, its border and its 9.5pt and is **navy**, reading `ON THE CAR`; the ink
+on the RECORD is now a strict subset of the bill's. (The foot's caveat strip is
+grey — the one stated exception, and the one block that is not part of the
+record.) The old note — "the invoice already
+has a vocabulary for *this is settled, at a glance*" — had the right idea about
+the shape and the wrong one about the colour.
+
+### One question, one place — what the visit card stopped saying
+
+⚠ **THIS REVERSES "DISTANCE RUN, IN BOTH TABLES" AND THE FOUR-COLUMN CARD BODY,
+AND IT IS THE HALF OF THE REDESIGN THAT IS ABOUT LOGIC RATHER THAN PAINT.**
+
+The card listed every concern, every job and every part **one per row** in a
+four-column grid. Two things were wrong, and only the second is about design:
+
+- **It said everything twice.** Every fitting printed on its visit card with its
+  DISTANCE RUN and its status, and again in PART LIFE with the same two figures
+  — about **thirty rows duplicated** on a five-visit car. The copy on the card
+  was also the confusing one: the distance a fitting RAN is a fact about its
+  *future*, printed against the visit that began it, so a March card carried a
+  number covering the two years after it.
+- **Concerns and jobs are prose, and a four-column grid cannot hold prose.** They
+  spanned columns 2–4 behind an empty column 1, so two of the card's three blocks
+  began a full column in and stopped near the halfway line — the right-hand half
+  of the sheet blank down most of its height.
+
+**The rule now is the codebase's own governing idea applied to a document:**
+
+| question | answered by |
+|---|---|
+| what happened on this visit | the visit card |
+| how long a part lasts on this car | PART LIFE |
+| how well the car has been kept | the record block |
+
+So the card is **REPORTED** full width, then **WORK DONE** and **PARTS FITTED**
+side by side, and it carries no distance, no status chip and no instance number
+— all three are PART LIFE's. Measured on the same car: 3.20 pages → **2.65**,
+cards 92mm → 64–78mm, and every card still fits inside one page so
+`break-inside: avoid` can never be defeated.
+
+⚠ **THE TWO LISTS ARE NOT ZIPPED INTO ROWS, and that is a correctness rule rather
+than a layout one.** Rows would band beautifully, and row 2 would set "Brake
+pedal vibration" beside "Air filter replaced" — a pairing the schema does not
+hold and nobody at this workshop agreed to. `JobCardConcern` carries no link to
+the work that answered it. So the two lists sit in two cells, each read on its
+own, and the block is the invoice's **parties block**: one navy band, one
+`#dce6f1` field, the shaded total closing it.
+
+⚠ **A BLOCK'S NAME IS THE FIRST LINE OF ITS OWN CELL, not a strip above it** —
+bold navy on `#dce6f1`, which is `.sub-label`'s treatment. Three stacked pale
+heads with white rows between them made the card read NAVY BAND / head / rows /
+head / rows / head / rows: six changes of fill before a figure appeared. A second
+navy bar under the visit band is still refused, for the recorded reason.
+
+**THE CARD SPLITS ON THE INVOICE'S OWN GRIDLINES**, and this is now measured on
+both rendered pages rather than inferred from the percentages — bill against
+sheet, in px at one width: edge 43.0/43.4, 57.5% 316.6/316.6, 65.2% 353.2/353.1,
+79.7% 422.2/422.0. **Change a width and the two documents stop agreeing.** The
+visit band's own indent is `.inv-parties`' split (3.5mm left, 2mm right); it was
+2mm both sides, so VISIT 5 sat 1.5mm left of the REPORTED under it.
+
+**"DISTANCE RUN" NOW APPEARS EXACTLY ONCE**, in PART LIFE, and `LASTED` still
+appears nowhere — *lasted* is untrue of the part still on the car.
+→ `test_how_far_a_fitting_ran_is_answered_in_exactly_one_place` replaces
+`test_one_figure_one_heading_across_both_tables`, which asserted the count was
+**three** and was right until this change.
+
+⚠ **A RUNNING FITTING WITH NOTHING BEHIND IT PRINTS NOTHING, NOT "0 km".** Every
+part fitted at the latest visit reads zero, because the newest reading the
+workshop holds IS that visit's — so a well-serviced car opened PART LIFE with a
+column of "0 km", once per chain, which on a document a buyer is checking looks
+like the sheet is broken rather than like a part that is new. **A completed life
+of 0 km still prints**: a part replaced at the reading it was fitted at failed
+immediately, and that is a measurement. Zero on a running fitting is not one — it
+means nobody has read the odometer since, and asking the customer for today's
+reading fills the whole column in. ⚠ **That is the bill's own rule rather than a
+new one** — the invoice prints an empty cell for a part with no price and `₹0.00`
+for one given away, and `PartLine.priced` exists so a truthiness check cannot
+collapse the two. A blank here reads the way a blank reads on the document beside
+it.
+
+**PART LIFE's own columns land on the bill's two gridlines** —
+7.7 / 24.9 / 24.9 / 22.2 / 20.3, so 57.5% and 79.7% fall where they fall on the
+invoice. They were 8/24/21/24/23, five widths agreeing with nothing. The odometer
+column is `MILEAGE`, one word naming its own column; it was `FITTED AT`, sitting
+one column right of a column of dates. Banding is on **odd** rows and matched on
+`.sh-fit`: the chain's name row is child 1 and already wears `#dce6f1`, so on
+`even` the newest fitting was tinted too and each chain opened with a two-row
+block of one colour.
+
+**DUE SOON MOVED TO THE CHAIN'S HEADING ROW** when the card lost its parts
+detail. It is a statement about the part *currently* fitted, measured against
+this car's own completed lives, and `_summarise_chains` already sorts a due chain
+to the top — so it is found where a reader is when they ask what is coming. Still
+italic accent blue: the one line that looks forward is not drawn as another bold
+navy fact.
 
 **THE JOIN IS THE OWNER'S OWN SKETCH IN CSS** — `[job 4] | 1,200 km | [job 3]`.
 Two pseudo-element rules and the figure between them, so the connector is one
 element and cannot be half-rendered, and `background` rather than `border` so a
 printer that drops hairlines still lays down the ink.
 
-**"DISTANCE RUN", in BOTH tables.** It was unheaded on the cards and `LASTED`
-in PART LIFE, for one figure — and *lasted* is untrue of the part still on the
-car, which is the row a reader cares most about.
+**HOW REGULARLY THE CAR IS SERVICED IS ON THE SHEET — `SERVICED EVERY: 12,075 km
+· 317 days`.** The buyer's own first question, and the one thing a stack of
+invoices cannot answer without arithmetic on the kitchen table. It costs nothing:
+the gaps were already computed to be drawn in the joins. How it is averaged, and
+what is kept out of it, is a rule of the module — see above.
 
-**THE RECORD CLOSES WITH A TOTAL, and it adds up from the rows above it.**
-`summary.total_billed` is the sum of the AMOUNT lines printed on the page, so a
-customer can check the closing figure against the document it closes. 14pt on
-`#bdd7ee` is the invoice's TOTAL and **nothing else on this sheet may wear it**
-— that is what makes the line read as the end. Labelled `TOTAL BILLED` rather
-than the bill's bare `TOTAL`, which after four cards each carrying their own
-AMOUNT would read as the last one's. Gone entirely when Amount is unticked: a
-lone figure under a list carrying none would be the sheet answering a question
-it had just refused to ask.
+**THE MILEAGE MOVED INTO THE VEHICLE COLUMN.** It is the first thing anybody
+asks about a used car, and it sat in the record column with five other figures
+while the vehicle column held four short lines — 79mm of cell doing the work of
+107mm, with the long lines wrapping and a block of empty tint under the make. The
+customer's own reading sits directly under it, where the two can be compared.
 
-**PART LIFE's average says "averages X km BETWEEN CHANGES", never "over N
-changes".** Six fittings give five intervals, so a customer counting the rows
-would find one more than the sentence claims. A part fitted twice reads
-"— the first one lasted X km", because *average* is the wrong word for a single
-measurement.
+⚠⚠ **THE RECORD BLOCK IS THE BILL'S PARTIES BLOCK — TWO COLUMNS,
+`LABEL: value` INLINE — AND THIS REVERSES A FOUR-COLUMN BUILD FROM EARLIER THE
+SAME DAY** (2026-09-08, the owner's instruction with the two blocks put side by
+side: *"invoice words and structure is owner's preference — can we make this
+section same as invoice?"*). Both halves are worth keeping, because the
+four-column version was a right answer to a real complaint:
+
+- **The owner's word for the FIRST inline build was "brain draining"**, and
+  that is the defect named exactly. Six facts a side behind labels running
+  10.2mm to 26.0mm start their values at **six different x**, so the eye has to
+  hunt for every one. Splitting label and value into their own columns fixed
+  precisely that, and it was measured and tested.
+- **And it stopped being the bill's block.** On the bill `NAME: Anwar Sadath`
+  is ONE RUN OF TEXT; a column of labels beside a column of values is a
+  different kind of object however exactly the fill, the band and the type
+  match. Put the two side by side — which is what the owner did — and the
+  difference is the first thing you see.
+
+**The bill is the reference document: its wording and its layout came from the
+owners.** So where the two disagree the bill wins, and the ragged left edge of
+the values is an accepted cost — the same cost the bill pays on its own block.
+
+⚠ **THE WIDTHS ARE COPIED, NOT MEASURED AGAIN** — `57.5% / 42.5%`, straight out
+of `_invoice_sheet.html`, which is also the gridline the visit cards and PART
+LIFE already split on. Every table on the sheet now lands on one rule, and
+there is nothing left to re-derive: the measured four-column table this entry
+used to carry (14.4 / 43.1 / 18.3 / 24.2, with its slack in millimetres) is
+gone with the columns.
+
+⚠ **THE CELL HEIGHTS LOOK AFTER THEMSELVES, which is a real gain over the
+seven-row version.** The record side runs one line longer than the vehicle
+side; one row of two cells takes the taller and tints both, so the block is a
+rectangle **by construction** rather than by drawing empty cells opposite.
+
+⚠⚠ **IT TAKES THE BILL'S LABELS TOO, IN THE BILL'S ORDER — NAME, MAKE, MODEL
+— AND BOTH EXCEPTIONS THIS ENTRY ARGUED FOR WERE OVERRULED THE NEXT DAY**
+(2026-09-09, the owner on each in turn). Both objections were reasonable and
+both missed something, which is why they are kept rather than deleted:
+
+- **`OWNER:` → `NAME:`.** The objection: NAME sits under BILL TO on the bill,
+  so under a band reading VEHICLE it would name the car. What it missed is that
+  **the value settles it in every real case** — `NAME: Anwar Sadath` cannot be
+  read as a car, and the bill in the customer's hand says NAME for that same
+  person.
+- **`ODOMETER:` → `MILEAGE:`.** The objection: ODOMETER is what the PART LIFE
+  column two sections down is called, and one word per fact inside one document
+  outranks matching the other one. **That rule is right and the conclusion was
+  backwards.** MILEAGE is *the workshop's own word* — the column is
+  `JobCard.mileage`, the module that reads it is `workshop/mileage.py`, and the
+  bill has printed MILEAGE since before this sheet existed. **ODOMETER was
+  invented here.** So the PART LIFE heading moved to MILEAGE as well, and the
+  sheet still says one word per fact: the workshop's.
+
+**What is NOT taken from the bill is the phone number.** The name and nothing
+else — this sheet is handed to a buyer, and the only number on it should be the
+workshop's, which the foot carries. Taken from the newest card, so a car that
+has changed hands names whoever owns it now.
+
+⚠ **NAME LEADS, AND ITS `<br>` TRAILS WHERE EVERY OTHER ONE LEADS.** It is the
+only OPTIONAL line that comes FIRST, and most cards at this workshop carry no
+customer name at all — so on those MAKE has to be the first line with no break
+in front of it. A trailing break on a conditional first line does that. The
+bill instead prints a bare `NAME:` with nothing after it, which is fine on one
+bill and reads as missing data at the head of a document handed to a buyer.
+
+⚠ **HOW MANY VISITS AND HOW LONG ARE TWO LINES.** `VISITS: 5 over 3 years 5
+months` put two facts behind one label and the owner's word for it was
+"confusion", which is exact: it reads as a **fraction** at a glance — "5 over
+3" — with a second 5 four words later. The span is **not dropped**, because
+FIRST VISIT and LATEST VISIT carry it only as two dates somebody has to
+subtract, and how long the workshop has known the car is the second thing a
+buyer asks. It gets its own label — `OVER:` — on its own line, under the count
+it qualifies.
+
+⚠ **TWO LABELS WERE SHORTENED WHILE THE COLUMNS EXISTED, AND BOTH STAY.**
+`READING TODAY:` → **`TODAY:`**, which sits directly under `MILEAGE:` and is
+the whole point of the pair. `DISTANCE WITH US:` → **`DISTANCE:`** — under a
+heading reading SERVICE RECORD, beside SERVICED EVERY and AVERAGE USE, there is
+nothing else the distance could be. The width argument for shortening them is
+gone with the columns; they are simply better labels.
+
+⚠ **SERVICED EVERY is the line this sheet was missing and the one a buyer asks
+for first.** It costs nothing — the gaps were already computed to be drawn in
+the joins between the cards. No "on average" after it: the word EVERY already
+says it is a rate.
+
+⚠ **EVERY `<br>` LEADS ITS LINE RATHER THAN TRAILING THE ONE BEFORE**, so a
+card with no owner recorded, or a copy printed with no customer reading, cannot
+leave a blank line hanging in the cell. The first fact on each side is
+unconditional, which is what guarantees there is always something for the rest
+to hang off. ⚠ **And every `{% … %}` stays on ONE SOURCE LINE** — see the Django traps section; wrapping one of these to fit is how the
+whole page 500s.
+
+⚠⚠ **THE FOOT IS THE BILL'S, LINE FOR LINE** (2026-09-08, the owner's
+instruction, with the bill's own foot put in front of me). The bill closes:
+
+    Thank you for your business!                                          (beside TOTAL)
+    Should you have any enquiries concerning this invoice please contact:
+    Rijas Mohd, +91 92 07 21 79 78
+
+and the sheet now closes the same way, in the same order, with **`record` for
+`invoice`** — the one word that has to change, because this document is not a
+bill.
+
+**THREE THINGS MAKE IT THE SAME FOOT, and each was wrong on its own before:**
+
+- ⚠ **THE THANK-YOU LEADS IT.** On the bill that sentence sits in the TOTAL row
+  because that row is the LAST thing before the foot. **Here it was not**: PART
+  LIFE follows the total and runs most of a page, so the sentence that closes
+  the bill was closing nothing — buried mid-document with a table after it. It
+  is the first line of the foot instead, in the bill's own treatment for it
+  (12pt bold italic `#2e74b5`, `.sh-thanks` — its own class only because the
+  sentence is no longer inside a table). **It is also no longer gated on
+  `show_amount`**: it rode inside the totals table, so a copy printed without
+  amounts lost it, and a courtesy to a customer is not a figure.
+- ⚠ **THE NAME AND NUMBER STAND ALONE ON THE LAST LINE, with no full stop.**
+  That is what makes it read as a signature rather than as another sentence.
+  The sheet had the name buried mid-sentence — *"To verify any entry, quote its
+  number to Rijas Mohd, +91 …"* — two centred lines of the right size and
+  colour in the wrong shape.
+- ⚠ **`.sh-verify` IS GONE.** *"Every visit listed above…"* carried bold navy,
+  for the sentence it is. The reasoning was right and the emphasis wrong twice
+  over: the bill's foot has no emphasis anywhere, and — measured — that one
+  line pulled so much weight that the black 10pt notes beside it were reported
+  as "small and light grey" when they were `rgb(0, 0, 0)` at the body size.
+
+**The verification promise moved to the notes**, where it belongs: the foot is
+two lines on the bill and had to be two here, and that sentence was never a
+contact instruction. It is a statement about the record — which is exactly what
+the notes block is — and it leads it.
+
+→ `test_both_documents_end_the_same_way` renders the BILL as well and compares
+the two signature lines, rather than asserting one page against a description
+of the other. Measured on both: 10pt / weight 400 / `rgb(0,0,0)` / centred /
+17.4px line-height / 8.1mm above, identical.
+
+### The notes — main content, not footer furniture
+
+⚠ **ONE MIDDOT-SEPARATED RUN AT THE RECORD'S OWN WIDTH AND ITS OWN LEFT EDGE,
+IN 9.5pt GREY.** It took four goes and each failure is worth keeping, because
+each was a reasonable answer to the wrong question:
+
+- **A paragraph** — four sentences run together into three full-width CENTRED
+  lines, ragged on both edges with no left margin for the eye to return to.
+  The owner's word was "so mess".
+- **One sentence per line** — fixed the raggedness and bought a new problem:
+  four short centred statements floating in white read as thin, which is what
+  "small and light grey" was describing.
+- **A run on a measured 144mm centred** — derived honestly, to stop the run's
+  last line stranding two words. It answered the block and ignored the page: a
+  narrow centred strip sits **narrower than every table above it and centred
+  under a stack of left-aligned ones**, so the one block that is *about* the
+  record was the only one that did not line up with it.
+- **Full content width, left-aligned** — starts on the same rule as every
+  table, band and card. Measured: `left 42.7 / right 519.1`, identical to the
+  PART LIFE and TOTAL tables to the pixel. **The ragged last line stops
+  mattering the moment the block is left-aligned** — a short final line under a
+  flush left edge is what a paragraph looks like. It was only ever a problem
+  because the block was centred, and centring is what went.
+
+⚠ **THE PART LIFE NOTE IS HIDDEN BY THE TOOLBAR TICK, AND WAS NOT.** `chains`
+only says the car *has* a part-life table; the tick says whether **this copy**
+carries one. Unticking it left *"In PART LIFE, (1) is the first fitting
+recorded here"* on a page with no such table — the same defect as a door
+somebody can see and cannot open. `.sh-note-life` wraps the note **with its
+leading separator**, so hiding it cannot strand a middot between two others.
+The table's name is `&nbsp;`-glued so it can never break across a line either.
+
+⚠⚠ **THE GREY IS THE ONE STATED EXCEPTION TO THE COLOUR RULE.** Everything else
+on the sheet is black, white, navy or the accent blue, all four the bill's.
+This is not, and it earns the exception because **it is the only block that is
+not part of the RECORD** — every other line is a fact about the car, and these
+are statements about the document. At the record's own size and colour they
+competed with it.
+
+⚠ **`#6E6E6E` IS THE LIGHTEST GREY THAT STILL CLEARS 4.5:1 — measured 5.1:1 on
+white — AND THAT FLOOR IS NOT NEGOTIABLE HERE.** The obvious "light grey"
+`#808080` is 3.95:1 and fails. These are the notes a BUYER relies on: where the
+odometer figures came from, that work done elsewhere is absent. Fine print
+somebody cannot read on a document about a car they are buying reads as the
+workshop hiding it.
+
+⚠⚠ **AND 8.5pt IS THE SECOND HALF OF THE SAME EXCEPTION — A SIZE THE BILL
+DOES NOT HAVE** (2026-09-08, the owner's instruction: *"make this more
+small"*). It ran at **9.5pt**, the PAID stamp's size, deliberately so that no
+new size was introduced; the owner's call is that the notes still sat too close
+to the record they are notes ABOUT. It is not a second exception, it is the
+same one — this is the only block on the sheet that is not part of the record,
+so it is the only place a size and a colour of its own can mean anything, and
+both now say one thing: **read this second.**
+
+⚠ **THE CONTRAST FLOOR SAYS NOTHING ABOUT HOW FAR IT CAN SHRINK, which is
+easy to get backwards.** WCAG only RELAXES its ratio for LARGE text and never
+tightens it for small, so `#6E6E6E` clears 4.5:1 at 8.5pt exactly as it did at
+9.5. What bounds this is **paper**: 8.5pt Calibri is about where a printed note
+stops being comfortable, and a buyer has to be able to read it. **Do not go
+under it without putting a printed sheet in front of somebody.** The line
+height moved with it — 4.1mm → 3.7mm, the same 1.22 ratio — so the run got
+quieter without also getting tighter to read.
+
+⚠ **A MIDDOT, NEVER AN ASTERISK, AND THE REASON IS ON THE PAGE.** `*` already
+means something specific here — it marks a distance too large to be credible,
+and the legend explaining it is one of these very notes. Bulleting with `*`
+would print *"* A distance marked * is unusually large"*, one mark doing two
+jobs an inch apart. `·` is the sheet's own separator already, in the visit band
+and the join chip. It is glued to the word before it with `&nbsp;` so a line can
+only break AFTER it — the rule the car profile's detail line records for the
+same glyph. **Nothing in the run is bold, including the two marks it quotes**: a
+legend has to look like the thing it explains, and neither the `(1)` in PART
+LIFE nor the `*` on a join is bold.
+
+**Two sentences were deleted rather than rewrapped, because both were already on
+the page**: *"Prepared from this workshop's own records on 8 Sep 2026"* — the
+letterhead prints `ISSUED:` — and *"…apart from today's reading, which the
+customer supplied"*, which the run already carries as its own item, and only
+when there IS such a reading, so the blanket sentence before it is never left
+false. (The TODAY row printed the same thing in italic until 2026-09-08 — see
+"THE CURRENT READING IS NEVER STORED" for why the inline copy went.)
+→ `test_the_record_block_is_the_bills_own_parties_block`,
+`test_the_labels_that_are_shared_match_and_the_rest_are_this_documents`,
+`test_how_many_visits_and_how_long_are_two_lines`,
+`test_the_caveats_are_one_separated_run_above_the_sign_off`,
+`test_the_separator_is_never_the_asterisk`,
+`test_the_foot_is_set_exactly_like_the_bills`,
+`test_both_documents_end_the_same_way`,
+`test_the_thank_you_leads_the_foot_rather_than_the_total`,
+`test_the_caveats_recede_from_the_record`
 
 ### The two markers on the options page
 
@@ -5523,6 +5878,14 @@ optional **`?back=`** for the screen you came from, and a **named fallback** whe
 there is none. The invoice's own comment states the rule: *"Home is the fallback,
 never a second button beside Back — one exit, in one place, whichever it is."*
 
+⚠ **ALL INVOICES SAYS "Back" TOO, and it was the last one naming the plate**
+(2026-09-08, the owner's instruction). Same rule as the sheet's own toolbar one
+section up: `.pg-back`'s name-the-destination rule is for pages whose parent is
+FIXED, and `back_url` here is `?back=` when one was carried and the car's
+profile otherwise — so the registration was a named destination naming the
+wrong thing on every copy opened from anywhere else, and the plate is already
+the loudest thing on the bill underneath it. Four documents, one word.
+
 ⚠ **`spare_shop_print` rendered ZERO anchors until 2026-09-05** — measured, not
 inferred. It was the only true dead end in the app: in a browser tab the address
 bar rescued it, and in the installed app there was nothing at all.
@@ -5626,9 +5989,41 @@ collapsing the two would put a "back" pill inside a button group. `model_create`
 and `model_edit` pass a `cancel_url` because a model list is scoped to its brand
 — Toyota's models and another make's are different lists.
 
+⚠ **TWO MORE WERE FOUND BY OPENING THE PAGES, NOT BY READING THEM** (2026-09-08,
+the owner's report — "we need the back button here as in the other sections").
+Both were on the car-profile chain, which is where a customer document is
+reached from:
+
+- **`car_profile_detail` carried a NINTH copy**, `.cd-back` — a bare text link,
+  36px, its own hover, a 13px inline SVG. It is on the scanner's RETIRED list
+  now, which is why neither this file nor the template writes the class name
+  out any more: the scan reads template source, so quoting a retired name is
+  the same defect as parking retired copy in a CSS comment.
+- **`service_history_options` carried the class and still drew no arrow.**
+  `.pg-back` sizes `i` and ellipsises `span`, and **nothing in it sizes an
+  `svg`** — so a page that pasted the sheets' inline-SVG arrow got a pill with
+  a label and no glyph. The two standalone SHEETS use an SVG because they link
+  no stylesheet at all; every page that extends `base.html` has the icon font
+  and must use `<i class="bi bi-arrow-left"></i><span>…</span>`. Measured after
+  the fix: 15.2px glyph, `::before` in `bootstrap-icons`, pill 111×38.
+
+⚠ **AND A THIRD THING WAS ONLY VISIBLE ONCE THE PILL WAS THERE: `.cd-page`
+CARRIED A TOP PADDING** (2026-09-08, the owner: "unnecessary extra space"
+above it). The `0.85rem` predates the control — it was the gap over a page
+that opened on a HEADING — and with a pill above that heading it simply
+stacked on `.main-content`'s own 24px. Measured at 1280: **37.6px above the
+control against 16px below**, where the Unassigned Hub and the Service History
+options page both sit at a flat **24/16**. A control with more air over it
+than under it reads as floating rather than as the first thing on the page.
+**A page wrapper's own top padding is now the back control's**, so check for
+one before adding `.pg-back` to a page that has a wrapper.
+
 → `workshop/tests/test_back_navigation.py`. The scan for retired treatments is
 the load-bearing one: nothing in the Django suite executes CSS, and a new page
-pasting a bespoke back link is invisible to every other kind of test.
+pasting a bespoke back link is invisible to every other kind of test. ⚠ **It
+cannot catch the second or third failure above** — the class was right and the markup
+inside it was wrong — so a page that renders a back control still has to be
+LOOKED AT once.
 
 ## Asking a question — one card, one declaration
 
@@ -7490,6 +7885,18 @@ lands on the correct IST calendar day.
 
 **Django's `{# … #}` comment is single-line only.** See UI conventions.
 
+**A TEMPLATE TAG CANNOT SPAN A NEWLINE — Django's `tag_re` is compiled
+WITHOUT `re.DOTALL`.** So `{% endif` on one line and `%}` on the next is not a tag at all: it is literal text,
+the `endif` closes nothing, and the page dies on **`Unclosed tag on line N`**
+naming a line hundreds of rows away from the one that was actually broken.
+Wrapping a long tag to fit a column is exactly the tidy-up that causes it, and
+it looks like the most innocent edit there is. Cost a render on the service
+history sheet's own vehicle block, where six gated facts share one table cell.
+
+⚠ **The newlines BETWEEN tags are fine**, which is what makes the fix easy: put
+each `{% if … %}…{% endif %}` on its own single line and
+let the line breaks between them collapse to spaces.
+
 **A TEMPLATE TAG TYPED INSIDE A `<script>` IS STILL A TEMPLATE TAG.** Django's
 parser knows nothing about script elements, so `{% block content %}` written
 into a JavaScript comment *to explain a bug* produced a second block of that
@@ -7894,8 +8301,8 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 69 files, 2,337 tests. Always SQLite (see below).
-# Last full run 2026-09-06: 2,337 tests, ALL GREEN.
+# Full test suite — 69 files, 2,362 tests. Always SQLite (see below).
+# Last full run 2026-09-09: 2,362 tests, ALL GREEN, 5,337s (89 min).
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
 # test files running beside it, but the two IDLE runs still differed by 27
@@ -8261,8 +8668,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **69 files, 2,337 tests**,
-counted 2026-09-06. (`workshop/tests/` is 63 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **69 files, 2,362 tests**,
+counted 2026-09-08. (`workshop/tests/` is 63 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

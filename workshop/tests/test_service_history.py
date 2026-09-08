@@ -633,6 +633,74 @@ class TheCarOverItsWholeLifeTests(ServiceHistoryTestCase):
         self.assertEqual(summary.span_label, '4 years 2 months')
 
 
+class HowRegularlyTheCarIsServicedTests(ServiceHistoryTestCase):
+    """
+    The buyer's own question, and the one thing a stack of invoices cannot
+    answer without doing arithmetic on the kitchen table.
+
+    Averaged over the GAPS, so N visits give N-1 of them — the same
+    distinction `Chain.typical_km` records as "between changes, never over N
+    changes".
+    """
+
+    def test_it_averages_the_gaps_between_visits(self):
+        self._visit(date(2024, 1, 1), '60000')
+        self._visit(date(2024, 7, 1), '70000')          # +10,000 over 182 days
+        self._visit(date(2025, 1, 1), '82000')          # +12,000 over 184 days
+
+        summary = self._build()['summary']
+        self.assertEqual(summary.service_every_km, 11000)
+        self.assertEqual(summary.service_every_days, 183)
+
+    def test_one_visit_says_nothing_about_regularity(self):
+        """A car with no gap has no answer, and inventing one would be a
+        claim about a pattern of exactly one event."""
+        self._visit(date(2026, 1, 1), '60000')
+
+        summary = self._build()['summary']
+        self.assertIsNone(summary.service_every_km)
+        self.assertIsNone(summary.service_every_days)
+
+    def test_an_impossible_gap_is_kept_out_of_the_distance(self):
+        """
+        ⚠ 85,000 typed as 850,000 is the case this exists for. One of those in
+        a mean of three moves it by more than every real gap put together, and
+        the figure lands on a document a buyer is checking.
+        """
+        self._visit(date(2024, 1, 1), '60000')
+        self._visit(date(2024, 7, 1), '70000')          # +10,000, believable
+        self._visit(date(2024, 7, 10), '700000')        # +630,000 in 9 days
+
+        summary = self._build()['summary']
+        self.assertEqual(summary.service_every_km, 10000)
+
+    def test_but_its_DAYS_still_count(self):
+        """
+        The asymmetry is the point. A mistyped odometer says nothing about the
+        two admission dates either side of it, so dropping them would discard a
+        good figure over a fault in a different column.
+        """
+        self._visit(date(2024, 1, 1), '60000')
+        self._visit(date(2024, 7, 1), '70000')          # 182 days
+        self._visit(date(2024, 7, 10), '700000')        # 9 days
+
+        self.assertEqual(self._build()['summary'].service_every_days, 96)
+
+    def test_a_visit_with_no_reading_costs_the_distance_and_not_the_days(self):
+        """
+        `gap_km` needs a reading at BOTH ends and `gap_days` needs neither, so
+        a blank odometer thins one average and leaves the other whole — which
+        is the same rule as the mistyped one, reached from the other side.
+        """
+        self._visit(date(2024, 1, 1), '60000')
+        self._visit(date(2024, 7, 1), None)             # 182 days, no reading
+        self._visit(date(2025, 1, 1), '82000')          # 184 days, no reading
+
+        summary = self._build()['summary']
+        self.assertIsNone(summary.service_every_km)
+        self.assertEqual(summary.service_every_days, 183)
+
+
 class APartKeyJoinsWhatIsTheSamePartTests(TestCase):
 
     def test_case_and_spacing_do_not_matter(self):
