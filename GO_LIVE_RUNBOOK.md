@@ -313,29 +313,35 @@ Starting empty, on Railway Postgres:
 
 ```bash
 python manage.py migrate
-python manage.py shell -c "from django.contrib.auth.models import Group; [Group.objects.get_or_create(name=n) for n in ('Owner','Office','Floor')]"
+python manage.py setup_groups
 python manage.py load_master_data
 ```
 
 - ☐ `migrate` reports no errors
-- ☐ the three roles exist — Owner, Office, Floor
+- ☐ `setup_groups` prints all three roles — Owner, Office, Floor
 
-⚠ **DO NOT RUN `setup_groups`. It does not do what this runbook used to claim.**
-It is a legacy command that creates **`Workers`** and **`Admins`**, two groups
-nothing in this app reads. The line above said it "created Owner / Office /
-Floor"; it never did, and no migration creates them either.
+**`setup_groups` now creates the roles this app's RBAC actually reads**, and it
+is safe to re-run: `get_or_create` touches nothing that already exists, and it
+never removes a group or moves anybody between them.
 
-The trap is that it fails helpfully in the wrong direction: Control Hub refuses
-to create an Office or Floor login when the role row is missing and tells you to
-*"Run `manage.py setup_groups` to restore the Owner/Office/Floor roles"* — so you
-run it, it reports success, and you are exactly where you started. Found on a
-rehearsal deployment, 2026-09-06.
+⚠ **It did not, until 2026-09-06** — worth knowing because it is the shape of
+failure this whole runbook exists to catch. It created `Workers` and `Admins`,
+two groups nothing in this codebase reads, left over from an RBAC model the app
+has not used in a long time. It failed in the worst possible direction: **this
+runbook's own checklist claimed it created Owner / Office / Floor**, and Control
+Hub refuses to create an Office or Floor login with the role row missing and
+tells you to *"Run `manage.py setup_groups` to restore the Owner/Office/Floor
+roles"*. So the documented remedy and the on-screen remedy both pointed at a
+command that reported success in green ticks and changed nothing.
 
-`sync_owner_identity` does `get_or_create(name='Owner')`, so **Owner** appears on
-its own once that is run. **Office and Floor are created by nothing** — hence the
-one-liner above.
+It was found on a rehearsal deployment, **and that is the only place it could
+be found**: an empty database is the one state that reveals it, which is exactly
+what go-live day is and what no development database ever is. `test_setup_groups.py`
+now pins it.
 
-*Fix the command and this error message before go-live, and this note goes away.*
+No migration creates these groups. `sync_owner_identity` does
+`get_or_create(name='Owner')` as a side effect of its own job, which is why Owner
+tends to appear on its own — **Office and Floor are created by nothing else.**
 
 ### 3.2 If any demo data reached this database, remove it ☐
 
@@ -492,9 +498,20 @@ For each owner, on their own phone:
 - ☐ Print an invoice — confirm it fits one A4 sheet
 - ☐ Take a payment, confirm it appears in Paid Bills
 - ☐ Add a Cashbook entry, confirm the Profit page moves
+- ☐ Record a rent deposit; confirm today's figure on `/rent/` drops by it
 - ☐ Write an Estimate, print it, confirm it carries the same letterhead as the bill
+- ☐ Open a car profile → **Service History** → print; confirm the letterhead, the
+      type and the foot match the bill you printed above. Then **All Invoices** on
+      the same car — it must be the *same* sheet, one bill per page
 - ☐ Sign in as Office and as Floor; confirm each sees only what it should
 - ☐ Open the app on the Floor tablet at its real screen size
+- ☐ **On a phone**, press something that asks a question — a delete, or Mark
+      Completed. The card must be **centred**, not pinned to one side, and it must
+      be the app's own card, never a browser dialog saying "…says"
+- ☐ **On the slowest connection you can find**, press a Confirm twice. The second
+      press must do nothing — one press is one post
+- ☐ From a page reached by a notification or a bookmark, press the **back control**;
+      it must name where it is going and actually go there
 - ☐ *(if photos are configured)* Take one from the tablet's camera, reload, confirm
       it is still there — then settle the bill and confirm the camera is gone but
       the photo is still viewable

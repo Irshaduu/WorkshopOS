@@ -5,8 +5,7 @@ inventory, spare and supplier shops, fleet billing, estimates, invoicing, a cash
 payroll, evidence photos and owner analytics, in one Django application.
 
 > **[SYSTEM_MAP_DARK.pdf](SYSTEM_MAP_DARK.pdf)** — the whole system on one page: every
-> section as a card, every flow as a line. Also in a light theme,
-> [SYSTEM_MAP.pdf](SYSTEM_MAP.pdf).
+> section as a card, every flow as a line.
 >
 > **[TITAN_SPEC_SHEET.md](TITAN_SPEC_SHEET.md)** — every file, model, route and rule,
 > counted from the repository rather than estimated.
@@ -77,10 +76,12 @@ payroll, evidence photos and owner analytics, in one Django application.
   screen as on paper.
 - Estimates on the same letterhead, with a searchable history (`EST-26-001`).
 - A **service history** for one car: every visit, the distance and the days between
-  them, and each part numbered across its own replacements with how far that fitting
-  has run. The office can type the reading the customer gives on the phone, and every
-  part currently fitted then reports against it — used for the calculation, never
-  stored.
+  them, how regularly the car has been serviced, and each part numbered across its own
+  replacements with how far that fitting has run. The office can type the reading the
+  customer gives on the phone, and every part currently fitted then reports against it
+  — used for the calculation, never stored. It is set from the invoice: the same type
+  sizes, the same weights, the same four colours, so the two documents read as one
+  workshop's.
 - **Every bill for one car as a single PDF**, one per page. It renders through the same
   template and the same arithmetic as the single invoice, so a customer holding both
   cannot find them differing.
@@ -111,6 +112,11 @@ payroll, evidence photos and owner analytics, in one Django application.
 - One navigation bar, at the top on a laptop and at the bottom on a phone, with a
   drawer holding everything else. Built for three devices: office laptop, workshop
   tablet, owners' phones.
+- Every page carries its own way out, naming where it goes rather than relying on a
+  browser Back button the installed app does not have.
+- Every question is asked in the application's own card — never a browser dialog — and
+  a form already on its way refuses the second press, so a slow connection cannot turn
+  one tap into two payments.
 - Installable as a PWA, with an offline page for unreliable workshop wifi.
 
 ---
@@ -189,10 +195,12 @@ WorkshopOS/
 │   ├── service_history.py   # visits, gaps, part chains, what is due soon
 │   ├── settlement.py        # what is unfilled before a bill is settled
 │   ├── master_data.py       # renaming and merging a name
+│   ├── rent.py              # what to hand the rent collector today
 │   ├── delete_window.py     # how old a record may be for Office to delete it
 │   ├── money.py             # is this typed amount usable
 │   ├── money_dates.py       # which day did this money move
 │   ├── spare_dates.py       # ordered before received
+│   ├── return_to.py         # where a page sends you when you leave it
 │   └── photos.py            # object keys and URL signing
 ├── inventory/            # warehouse stock, categories and supplier shops
 ├── templates/            # error pages
@@ -208,7 +216,7 @@ WorkshopOS/
 python manage.py test workshop inventory
 ```
 
-2,337 tests covering the financial rules, access control, stock signals, the printed
+2,366 tests covering the financial rules, access control, stock signals, the printed
 documents, and the supplier, fleet and salary flows. The suite runs on SQLite, so it
 never touches a live database. A full run takes 20 to 80 minutes.
 

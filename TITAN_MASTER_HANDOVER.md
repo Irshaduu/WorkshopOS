@@ -1,7 +1,8 @@
 # TITAN MASTER HANDOVER — WorkshopOS
 
 > **Status:** pre-go-live · security hardened · in active development
-> **Version:** 8
+> **Version:** 9 · every count in this file re-derived from the working tree on
+> 2026-09-09
 
 This is the **mission, status and roadmap** doc. The single authoritative "what's
 next" list lives here; other docs link to it rather than keeping their own copy.
@@ -29,7 +30,7 @@ leave days are typed once a month instead of tracked daily, and why performance 
 judged against real volume rather than generic "web scale".
 
 **The standard:** functional integrity across every operation that touches money or
-access. Backed by **59 test files / 1,921 tests** covering security, views, signals,
+access. Backed by **69 test files / 2,366 tests** covering security, views, signals,
 financial logic, cashbook, spare shops, salary settlement, the profit engine, the
 printed documents, photos and the email transport behind password reset.
 
@@ -110,24 +111,43 @@ who typed the address that privileged accounts exist and where their door is.
 The nav bell is an owner-only feed at `/notifications/` with an unread badge,
 mark-one-on-open, mark-all-read, and a 14-day sweep of *read* rows.
 
-**14 events, all Owner-audience, all declared in `workshop/notifications.py`.**
+**16 events, all Owner-audience, all declared in `workshop/notifications.py`.**
 
 | Severity | Behaviour | Events |
 |---|---|---|
-| **CRITICAL** (10) | push to a phone + feed | `STAFF_LOGIN`, `ACCOUNT_LOCKED`, `PASSWORD_RESET`, `RESET_CODE_LIMIT`, `RESET_CODE_ATTEMPTS_SPENT`, `USER_CREATED`, `USER_DELETED`, `STAFF_PASSWORD_SET`, `HIGH_DISCOUNT`, `RECORD_DELETED` |
-| **INFO** (4) | feed only | `LOGIN`, `ACCOUNT_ARCHIVED`, `SALARY_ADVANCE`, `SALARY_SETTLED` |
+| **CRITICAL** (13) | push to a phone + feed | `LOGIN`, `STAFF_LOGIN`, `ACCOUNT_LOCKED`, `PASSWORD_RESET`, `RESET_CODE_LIMIT`, `RESET_CODE_ATTEMPTS_SPENT`, `USER_CREATED`, `USER_DELETED`, `STAFF_PASSWORD_SET`, `HIGH_DISCOUNT`, `RECORD_DELETED`, `RENT_RATE_SET`, `RENT_BACKDATED` |
+| **INFO** (3) | feed only | `ACCOUNT_ARCHIVED`, `SALARY_ADVANCE`, `SALARY_SETTLED` |
 
 - **`RECORD_DELETED` hooks `DeletionLog.record()`** — the single choke point every
-  permanent delete already passes through, so one call covers all eleven entity types
-  and anything added later.
+  permanent delete already passes through, so one call covers all **fourteen** entity
+  types and anything added later.
 - **The actor is excluded from their own events**, which roughly halves volume with
   two owners; **Floor receives nothing at all**. Notification fatigue is the failure
   mode here: a bell that cries wolf stops being read, and the events that matter
   (large discount, permanent delete) are exactly the ones that would be missed.
-- **An Office or Floor sign-in pushes; an owner sign-in does not.** A staff account is
-  used on shared shop-floor devices and is the one the owners cannot see being used.
+- ⚠ **GETTING IN ALWAYS PUSHES — all three, and this reverses what this doc said
+  until 2026-08-29.** It read *"an Office or Floor sign-in pushes; an owner sign-in
+  does not"*, with `LOGIN` at INFO because an owner signing in is routine. What
+  overruled it: an owner account is the highest-privilege thing in this system, and a
+  sign-in on one with a **stolen password reached no phone at all** — `PASSWORD_RESET`
+  pushes, but only if the intruder went through the reset flow. Volume is what keeps
+  it safe, the same argument `STAFF_LOGIN` already rested on: the session cookie lasts
+  40 days, so this fires on a genuinely new session, roughly one or two a month across
+  two owners. The two events stay split because the tier was never all the split
+  carried — the titles differ, and a staff alert leads its `detail` with the ROLE.
 - **The two reset-abuse events are the only ones raised with no actor**, so they reach
   both owners including the one targeted, de-duped to one per account per hour.
+- **A row is three strings** (`0074` added the third): `body` is the loud line and a
+  complete statement ending in what happened; `title` is the category; `detail` is the
+  context read second. Nothing that decides what a row MEANS may live in `detail`.
+  Both the feed and the push lead with `body` — the push used to send the CATEGORY as
+  its bold line, so nine alerts in a row opened with "Record deleted" and the
+  ₹1,00,000 sat in the small type below.
+- ⚠ **A push carries no `tag`.** It used to carry a constant one, which is a *replace*
+  key, so every push replaced the one before it: two deletions a minute apart showed
+  as one, and a staff sign-in wiped a ₹1,00,000 record deletion off the lock screen
+  before anybody read it. Only CRITICAL events reach the push path and none of them
+  supersedes any other, so there is nothing here a later alert is entitled to replace.
 - `HIGH_DISCOUNT` uses `JobCard.HIGH_DISCOUNT_AMOUNT` — **a flat ₹3,500** — the same
   constant as `audit_high_discounts` and the settle dialog, so none can disagree about
   what "large" means.
@@ -290,10 +310,17 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
 - **Both environments run PostgreSQL** — development on a local instance, production
   on Railway's own Postgres in the same project as the app. SQLite is used only for bulk seeding
   (`USE_SQLITE=true`) and automatically for `manage.py test`.
-- **Modular views**: the `workshop` app's views live in a `views/` package of **18
+- **Modular views**: the `workshop` app's views live in a `views/` package of **21
   focused modules**, with full backward compatibility via re-exports in `__init__.py`.
-  **Seven** further modules hold **no views at all** and exist so that one rule has
-  exactly one implementation — see `CLAUDE.md` § Architecture.
+  **Thirteen** further modules hold **no views at all** and exist so that one rule has
+  exactly one implementation — `analysis_engine`, `invoice`, `settlement`,
+  `master_data`, `money`, `money_dates`, `spare_dates`, `return_to`, `delete_window`,
+  `rent`, `photos`, `mileage`, `service_history`. See `CLAUDE.md` § Architecture.
+- **One declaration per shared control**: `static/css/style.css` is the CSS side of
+  that same rule, linked by `base.html` on every page — the "Record a Payment" card
+  (`.rpay-*`), the back control (`.pg-back`), the question card (`.wcf-*`) and the
+  phone-centring fix for every dialog all live there rather than being pasted a
+  second time.
 - **Deployment**: Railway (app + PostgreSQL in one project) behind
   `app.formuladservice.in`.
 
@@ -311,7 +338,7 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
 | 4 | **Auth & notifications rebuild** | Delivered in six ordered phases so each left a working system: owner identity into the DB → Change Password → emailed reset code → login rebuilt → Control Hub locked to Owners → in-app feed. Web Push followed once the app was hosted. |
 | 5 | **Owner Analysis rebuild** | The 7-zone placeholder system was deleted entirely and replaced with the two pages in §II.9. |
 | 6 | **PostgreSQL migration** | Both environments. SQLite retained for exactly two jobs. |
-| 7 | **Repo & docs cleanup** | Unreferenced files removed; every count in `MASTER_BLUEPRINT.md` re-derived from the code. **This is recurring, not finished** — the 2026-08-22 pass found the docs describing access rules the code had outgrown (the whole Supplier-Shops module and Control Hub had been tightened to Office/Owner while three docs still said Floor could reach them), a Trash-with-restore screen that no longer exists, a `CarModel.sample_image` field that never did, and six counts that had drifted (10 signal handlers reported as 8, 11 forms as 12, 16 `notify()` call sites as 18, 13 template filters as 12, 11 commands as 9, 30 models as 28). **Re-derive before quoting; do not trust a number because it is written down.** |
+| 7 | **Repo & docs cleanup** | Unreferenced files removed; every count in `MASTER_BLUEPRINT.md` re-derived from the code. **This is recurring, not finished** — the 2026-08-22 pass found the docs describing access rules the code had outgrown (the whole Supplier-Shops module and Control Hub had been tightened to Office/Owner while three docs still said Floor could reach them), a Trash-with-restore screen that no longer exists, a `CarModel.sample_image` field that never did, and six counts that had drifted (10 signal handlers reported as 8, 11 forms as 12, 16 `notify()` call sites as 18, 13 template filters as 12, 11 commands as 9, 30 models as 28). **Re-derive before quoting; do not trust a number because it is written down.**<br><br>The **2026-09-09 pass** proved the point again and found more than the August one: the architecture diagram and file tree in `MASTER_BLUEPRINT.md` had drifted on *ten* counts at once (30 models for 33, 18 view modules for 21, 123 routes for 136, 13 filters for 16, 11 commands for 14, 83 templates for 95, 71 migrations for 77, 49 test files for 64, 2,337 tests for 2,366, 14 events for 16), its closing **Total** line was stale on every single figure it carried, and **nine test files were documented nowhere**. Worse than any count: four docs still said an owner's `LOGIN` was INFO and reached no phone, which had been **reversed on 2026-08-29** — a security-relevant claim, stated confidently, and false. ⚠ **The lesson is the same one twice: a doc pass that only touches the sections a feature obviously belongs to will leave every number alone, and numbers are where these docs rot.** |
 | 8 | **Photos** | Car photos on a saved job card, a box per Spare Parts row, and a read-only box on Purchase History. Storage is S3-compatible (Cloudflare R2, or Supabase as the no-card fallback), reached by the browser directly on presigned URLs — the app has no upload path and no media backend. Optional: with no credentials the section is simply absent. |
 | 9 | **One origin, and a page that says it is loading** | Delivered 2026-08-21 as two commits. Every typed rupee amount now goes through `workshop/money.py` — the four payment screens had kept hand-rolled parsing, so `Infinity` settled a bill at an infinite receipt and 11 digits 500'd on Postgres. `GZipMiddleware` is on (211 KB → 55 KB on the job card form), which matters because `no-store` makes every page uncacheable. Every third-party asset is self-hosted from `static/vendor/`. And a 3px progress bar reports navigations, plus in-page updates that outlast 250 ms — the installed PWA is `display: standalone`, so it has no address bar or tab spinner of its own. Along the way: two JS tests that could never have passed now do, and a 300 ms debounce was removed from filter and pager taps. |
 
@@ -321,17 +348,18 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
 
 | 11b | **Rent became the fifth expense stream** | Delivered 2026-09-04, and the workflow forced it rather than anybody choosing it. The boundary above held on one assumption about PEOPLE — that the office would keep keying the monthly rent bill into the Cashbook. Once they started recording rent in its own section instead, "no figure moves" quietly became **"rent is in the books nowhere"**: September 2026 carried ₹35,000 of real rent and the Profit page charged ₹900 of it, while May–August carried ₹45,000 Cashbook rows against a stored rate of ₹35,000 — two different rents in one system, neither page aware of the other. All Time was worse: it opened on 2026-02-07 against a ledger reaching back to October 2023, hiding **₹10,15,000** of rent while claiming to cover everything.<br><br>The split is now the app's **fourth instance** of a rule it already followed three times: what the month COST is the rate, charged in whole months → the expense; what was HANDED OVER is the deposits, by the day the cash moved → Cash Tracking; the gap → a position tile. The arithmetic lives in `rent.py` and the engine calls it, so the Profit page and the Deposit & Rent page cannot drift. ⚠ Rent is the **only stream that needs a cap**, because it is the only one not summed from rows — a 1 Jan – 31 Dec window would otherwise charge twelve months in September, ₹1,05,000 of expense that has not happened. A Cashbook category named like rent is now a double count and is **flagged, never filtered**, matched on word boundaries because this workshop calls its electricity bill "Current bill".<br><br>The same pass closed a **go-live defect** found on the way: `purge_business_data` — the command the runbook says to run against production — had never cleared `OwnerWithdrawal`, `RentRate` or `RentDeposit`, all three added after it was written. It reported success either way, leaving ₹12,60,000 of fabricated rent and ₹12,32,500 of fabricated cash out on the development data. Setting the rent from the go-live month is now an opening-balance step, because nothing on any screen looks broken without it. |
 
-| 12 | **Service History, and every bill in one PDF** | Delivered 2026-09-06. The two things customers ask for, most often because they are **selling the car**, and both meant opening every job card, printing it one at a time and sending them one at a time. `/car-profiles/<reg>/invoices/` is the simpler half and its whole discipline is that it is **the same bill, not a copy that looks like one** — the markup was extracted into `includes/_invoice_sheet.html` the way the arithmetic already lived in `invoice.py`, and a test renders one card through both routes and asserts the sheets match character for character. A second template would have looked right on the day and drifted on some later one, and the *customer* would have found it holding both documents at once.<br><br>The service history is the one with the work in it: every visit newest-first as its own card, the **distance and days between them drawn in the join** rather than tabulated, and each part carrying `(3) Wheel bearing left · 10,000 km · RUNNING` — a chain numbered from the first fitting, so `(3)` means the same thing whichever end you read from. Two foundations were needed. `mileage.py` reads `JobCard.mileage`, which is free text: an **allowlist of shapes, never a scrub**, because stripping non-digits turns `85000 2` into 850002 and `50000 miles` into a 60%-short interval — and it keeps what it cannot read exactly as typed, because it runs in `clean()` on every save and would otherwise delete a mechanic's note during an unrelated edit. `service_history.py` holds every figure and every name: gaps anchored to the **immediately previous** visit and never reaching past one with no reading, a chain named by its **commonest** spelling (the newest was tempting and wrong — the name is typed fresh every visit), averages over **completed lives only**, and due-soon at 0.9 of *this car's own* average, because the system holds no manufacturer schedules and inventing one would assert something nobody here agreed.<br><br>⚠ **The current reading is never stored.** The office asks "what is it showing now?" on the phone, and that answer makes every fitted part able to say how far it has run — but the workshop did not measure it, so writing it to `mileage` would poison the column every future interval is computed from. It rides in the query string and the sheet says *as told by the customer* on the line itself.<br><br>Two design passes, both the owner's. The first shipped wearing the invoice's letterhead over an **invented** design system — 7.5/8/8.5/9pt type, nine greys and two reds on no Formula D document — and read as generic; the rule now is that nothing may use a size or colour the invoice does not already use, audited live at 0 off-palette of each. The second turned the visit card's body from a flex layout imitating a table into a real one **on the invoice's own grid**, its column widths the bill's own split, measured: the name column ends at 56.62% against 56.63%. |
+| 12 | **Service History, and every bill in one PDF** | Delivered 2026-09-06. The two things customers ask for, most often because they are **selling the car**, and both meant opening every job card, printing it one at a time and sending them one at a time. `/car-profiles/<reg>/invoices/` is the simpler half and its whole discipline is that it is **the same bill, not a copy that looks like one** — the markup was extracted into `includes/_invoice_sheet.html` the way the arithmetic already lived in `invoice.py`, and a test renders one card through both routes and asserts the sheets match character for character. A second template would have looked right on the day and drifted on some later one, and the *customer* would have found it holding both documents at once.<br><br>The service history is the one with the work in it: every visit newest-first as its own card, the **distance and days between them drawn in the join** rather than tabulated, and each part carrying `(3) Wheel bearing left · 10,000 km · RUNNING` — a chain numbered from the first fitting, so `(3)` means the same thing whichever end you read from. Two foundations were needed. `mileage.py` reads `JobCard.mileage`, which is free text: an **allowlist of shapes, never a scrub**, because stripping non-digits turns `85000 2` into 850002 and `50000 miles` into a 60%-short interval — and it keeps what it cannot read exactly as typed, because it runs in `clean()` on every save and would otherwise delete a mechanic's note during an unrelated edit. `service_history.py` holds every figure and every name: gaps anchored to the **immediately previous** visit and never reaching past one with no reading, a chain named by its **commonest** spelling (the newest was tempting and wrong — the name is typed fresh every visit), averages over **completed lives only**, and due-soon at 0.9 of *this car's own* average, because the system holds no manufacturer schedules and inventing one would assert something nobody here agreed.<br><br>⚠ **The current reading is never stored.** The office asks "what is it showing now?" on the phone, and that answer makes every fitted part able to say how far it has run — but the workshop did not measure it, so writing it to `mileage` would poison the column every future interval is computed from. It rides in the query string and the sheet says *as told by the customer* on the line itself.<br><br>⚠ **The sheet also answers the buyer's own first question — how regularly the car has been serviced** (`SERVICED EVERY: 12,075 km · 317 days`), which a stack of invoices cannot without arithmetic on a kitchen table. It costs nothing: the gaps were already computed to be drawn in the joins. An implausible gap is left out of the DISTANCE and kept in the DAYS, and that asymmetry is the point — a mistyped odometer says nothing about two admission dates.<br><br>**THREE design passes, all the owner's**, and the third is the one worth reading. The first shipped wearing the invoice's letterhead over an **invented** design system — 7.5/8/8.5/9pt type, nine greys and two reds on no Formula D document — and read as generic; the rule became that nothing may use a size or colour the invoice does not already use, audited live at 0 off-palette of each. The second turned the visit card's body into a real table **on the invoice's own grid**. The third (2026-09-08) is the one that mattered, because **the first two rules were being obeyed and the sheet still looked wrong**. Measuring the two RENDERED documents element by element — rather than reading either stylesheet — found it: **the sheet was set in BOLD and the bill is not**, 166 bold elements against the bill's five, with eleven-point regular painted not once. So the head-of-file rule gained a third clause, WEIGHT, and the green that said "still fitted" thirty times went navy: **green means MONEY** in this system and this document carries no payment state at all. The same pass stopped the visit card saying everything twice (about thirty duplicated rows on a five-visit car), took the record block, its labels, its order and the whole foot from the bill line for line, and moved the notes to 8.5pt grey as the **one stated exception** to the size and colour rules — earned because it is the only block on the page that is not part of the RECORD. 3.20 pages to 2.63. |
+| 13 | **One way out, one way to ask, one press** | Delivered 2026-09-05 → 09. Three UI-consistency defects the owner reported in the same breath as "all different look, different place, different design", each fixed by the rule this codebase already applies to arithmetic: **one declaration, not copies kept in step.**<br><br>**Back navigation** was 17 controls in 7 treatments across 2 placements — six byte-identical round buttons, three rebuilding the same geometry out of Bootstrap utilities, eight text links that agreed on the idea and disagreed on every value, one bare glyph, and four `javascript:history.back()` cancels. All now `.pg-back`, in its own row above the page header, **naming its destination** — because `start_url` is `/`, so on the first tap of a session a history button does nothing at all, and a control that sometimes does nothing is worse than no control. A **global** back button in the nav bar was asked for and deliberately **not built**: measured at 375px the bar is five equal 71px columns with no free slot, a sixth tab costs every existing tab 17%, and ~20 pages would then carry two back affordances. The spare shop's printed report was the app's one true dead end — it rendered **zero** anchors.<br><br>**Asking a question** was 21 native browser dialogs opening with "127.0.0.1:8000 says". All now the shared `.wcf-*` card. A card inherits the visibility rules of the screen it opens on, which caught a real defect on the way in: Mark Completed is pressed mostly from the Floor tablet and its card was explaining that the bill could still be settled afterwards — to somebody shown no money anywhere in this app. The same pass found `jobcard_edit` telling a mechanic to press an Unlock button that is not rendered for Floor.<br><br>**One press, one post** — reported from the shop. On a slow connection the same Confirm was tapped again and again and every tap was another POST: a payment deleted twice, an advance deleted twice. The app-wide guard listens for a submit EVENT and a programmatic `.submit()` fires none, so the nine dialogs posting that way were outside the rule entirely; `HTMLFormElement.prototype.submit` is wrapped in `confirm.js`. And **every dialog is now centred on a phone** — Bootstrap centres one only from 576px up, so each of the twenty carrying its own width sat pinned left, 4px out at 360px and 56px out at 412px, which is the width most of the workshop's handsets report. |
 
 ### Open
 
 | # | Item | State |
 |---|---|---|
-| 11 | **Hosting & go-live** | *In progress.* The system runs on Railway at a temporary URL; static serving, build commands and the email transport are done. **Remaining:** the production project on the Hobby plan under the workshop's own account, DNS for `app.formuladservice.in`, Resend domain verification, Cloudflare, and the go-live steps. Procedure: `GO_LIVE_RUNBOOK.md`. |
-| 12 | **Deep debug pass** | The serious pre-handover sweep, to run once everything is wired on the real infrastructure. |
-| 13 | **Frontend polish** | Ongoing. Raise the visual/UX bar to match the backend's rigor. |
-| 14 | **Stability / security / performance / code-quality hardening** | Ongoing across both apps. |
-| 15 | **Keep every financial and security rule under test** | Not a coverage percentage. The existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. **Add a test when a rule is added or a bug is fixed, not to move a metric.** |
+| 15 | **Hosting & go-live** | *In progress.* The system runs on Railway at a temporary URL; static serving, build commands and the email transport are done. **Remaining:** the production project on the Hobby plan under the workshop's own account, DNS for `app.formuladservice.in`, Resend domain verification, Cloudflare, and the go-live steps. Procedure: `GO_LIVE_RUNBOOK.md`. |
+| 16 | **Deep debug pass** | The serious pre-handover sweep, to run once everything is wired on the real infrastructure. |
+| 17 | **Frontend polish** | Ongoing. Raise the visual/UX bar to match the backend's rigor. |
+| 18 | **Stability / security / performance / code-quality hardening** | Ongoing across both apps. |
+| 19 | **Keep every financial and security rule under test** | Not a coverage percentage. The existing tests already cover the money and the access rules, which is where the risk is; chasing a number buys tests for template rendering and Django's own internals. **Add a test when a rule is added or a bug is fixed, not to move a metric.** |
 
 ### Carried into go-live
 

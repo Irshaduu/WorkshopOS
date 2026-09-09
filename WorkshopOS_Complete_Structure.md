@@ -1,6 +1,10 @@
+*Every screen in the app, as an outline. Re-derived from the nav bar and the
+drawer on 2026-09-09. The drawer's own group labels are the headings in
+brackets — a section belongs where the app puts it, not where a category would.*
 
 ├── HOME
-│   └── Live Cars
+│   ├── Live Cars
+│   └── Filter the board to one mechanic (All · Amlah · Hijaz · Unassigned)
 │
 ├── Job Card
 │   ├── Create, Update
@@ -9,9 +13,10 @@
 │
 ├── Live Report
 │   ├── Not filled in Bills
-│   ├── Car list under Mech
-│   ├── On the Way (spares)
-│   └── Not Ordered (spares)
+│   ├── [Spares] Received (last 5 days)
+│   ├── [Spares] On the Way
+│   ├── [Spares] Not Ordered
+│   └── [Still to do] Car list under Mech, with each car's open concerns
 │
 ├── Completed
 │   └── Done cars, ready to bill
@@ -52,8 +57,11 @@
 │
 ├── Car Profiles
 │   ├── Car Jobcards
-│   ├── Gross bill 
-│   └── Gross Profit
+│   ├── Gross bill
+│   ├── Gross Profit
+│   └── The two documents a profile hands over
+│       ├── Service History (choices → printed sheet)
+│       └── All Invoices (every bill for one car, one PDF)
 │
 ├── Estimates
 │
@@ -61,6 +69,13 @@
 │   └── Unfilled tracking
 │
 ├── Salary & Advance
+│
+├── Deposit & Rent
+│   ├── What to hand the collector today
+│   ├── Deposit log (one month), and Recently added
+│   └── Update Rent (Owner only) — rate history
+│
+├── Owner Withdrawals   (Owner only)
 │
 ├── Cashbook
 │   ├── General expenses (Bus, food)
@@ -70,12 +85,18 @@
 │
 ├── Analysis & Reports
 │   ├── Profit
+│   │   ├── Cash Tracking
+│   │   ├── Turnover − Expenses = Profit
+│   │   ├── The same profit, by what earned it
+│   │   └── Position Right Now
 │   └── Deep Analysis
 │       ├── Mechanics
-│       ├── Spares
+│       ├── Spare Parts
+│       ├── Inventory
 │       ├── Vehicles
 │       ├── Fleet
 │       ├── Shops
+│       ├── Cashbook
 │       └── Operations
 │
 ├── Control Hub
@@ -89,6 +110,8 @@
 │       ├── Used Concerns
 │       └── Used Spare Parts
 │           └── Edit, Delete, Merge
+│
+├── About   (Owner only — the system map, and what every section does)
 │
 └── Account / Security
     ├── Login, Logout

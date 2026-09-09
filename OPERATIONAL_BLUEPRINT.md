@@ -668,16 +668,23 @@ knows. ⚠ **It is never saved.** It is one person's word on one day, the
 workshop did not measure it, and the sheet says *as told by the customer* on
 the line itself.
 
-What the sheet then shows, per visit, newest at the top:
+The sheet opens on a block naming the car and summarising the record, then the
+visits newest at the top, then the part-durability table:
 
 ```
+   VEHICLE                          │  SERVICE RECORD
+   NAME: Anwar Sadath               │  VISITS: 5
+   MAKE: Audi                       │  OVER: 3 years 5 months
+   MODEL: A4                        │  FIRST VISIT: 4 Jul 2022
+   REG NO: KL 10 AA 1003            │  LATEST VISIT: 6 Dec 2025
+   MILEAGE: 96,500 km               │  SERVICED EVERY: 12,075 km · 317 days
+   TODAY: 1,08,000 km               │  DISTANCE: 41,300 km
+
    VISIT 5 · 6 Dec 2025 · JB-25-002                        96,500 km
-   CUSTOMER CONCERNS     Brake pedal vibration while stopping
-   JOB PERFORMED         Front brake pads and discs replaced
-   PART NAME                          DISTANCE RUN     STATUS
-     (5) Engine Oil x5                   11,500 km    RUNNING
-         usually lasts about 12,075 km on this car
-     (2) Brake Pads - Front              11,500 km    RUNNING
+   REPORTED       Brake pedal vibration while stopping
+   WORK DONE                        │  PARTS FITTED
+   Front brake pads and discs       │  Brake Pads - Front
+   replaced                         │  Engine Oil
                                      AMOUNT   Rs 50,900.00
                     │
               12,400 km · 357 days          ← the gap, drawn between the cards
@@ -686,13 +693,30 @@ What the sheet then shows, per visit, newest at the top:
    ...
 
    PART LIFE
-   Engine Oil — averages 12,075 km between changes
-     (5) 6 Dec 2025    96,500 km    11,500 km   RUNNING
+   Engine Oil — averages 12,075 km between changes · due soon
+     (5) 6 Dec 2025    96,500 km    11,500 km   ON THE CAR
      (4) 14 Dec 2024   84,100 km    12,400 km
      ...
 ```
 
-Three things the office should know when a customer queries it:
+**One question, one place — the visit card and PART LIFE do not repeat each
+other.** The card says what happened that day; PART LIFE says how long a part
+lasts on this car; the record block at the top says how the car has been kept.
+Until 2026-09-08 every fitting printed on its card with its distance and its
+status *and* again in PART LIFE with the same two figures — about thirty
+duplicated rows on a five-visit car. The copy on the card was also the
+confusing one: how far a fitting RAN is a fact about its *future*, printed
+against the visit that began it, so a March card carried a number covering the
+two years after it.
+
+⚠ **The two lists on the card are not zipped into rows**, and that is a
+correctness rule rather than a layout one. Rows would band beautifully and row
+2 would set "Brake pedal vibration" beside "Air filter replaced" — a pairing
+the schema does not hold and nobody at this workshop agreed to. A concern
+carries no link to the work that answered it, so the two sit in two cells and
+each is read on its own.
+
+Four things the office should know when a customer queries it:
 
 - **Only completed visits appear.** A car on the floor has a total that is not
   final. If one is in the workshop that day the sheet says so out loud, so the
@@ -702,7 +726,25 @@ Three things the office should know when a customer queries it:
   profile shows revenue, the sheet shows the paper the customer holds.
 - **"Due soon" comes from this car's own history**, never a manufacturer
   schedule. The system holds no service intervals, so it only ever says what
-  the last few changes on *this* car actually measured.
+  the last few changes on *this* car actually measured. It is printed on the
+  chain's own heading row in PART LIFE, where a reader asking what is coming
+  already is.
+- **A part still on the car with nothing behind it prints nothing, not "0 km".**
+  Every part fitted at the latest visit reads zero, because the newest reading
+  the workshop holds *is* that visit's — so a well-serviced car used to open
+  PART LIFE with a column of "0 km". A *completed* life of 0 km still prints:
+  a part replaced at the reading it was fitted at failed immediately, and that
+  is a measurement. Asking the customer for today's reading fills the column in.
+
+**It is set from the invoice, not merely on the same letterhead.** Nothing on it
+uses a type size, a weight or a colour the bill does not already use — the sheet
+was audited element by element against the rendered bill in September 2026 and
+had been set in **bold** where the bill is not (166 bold elements against the
+bill's five), with eleven-point regular painted not once. The green that marked a
+part as still fitted is now navy: **green means money** in this system, and this
+document carries no payment state at all by design. Two stated exceptions, both
+on the notes block at the foot, and both earned the same way — it is the only
+block on the page that is not part of the RECORD.
 
 The **Part life** tick beside Print drops the durability table from that copy —
 useful when the customer wants the visit record alone. It is not remembered:
@@ -737,9 +779,34 @@ SOMEONE TRIES TO LOGIN
  (updates on every request via SessionTrackingMiddleware)
         |
         v
- notify('LOGIN') -> one Notification row per *other* owner
- "Sahad signed in - Google Chrome on Samsung Galaxy - 192.168.1.5"
- Read from the nav bell. The signer-in is not told about their own sign-in.
+ notify('LOGIN')       -> an OWNER signed in
+ notify('STAFF_LOGIN') -> an OFFICE or FLOOR account signed in
+   one Notification row per *other* owner, and BOTH are CRITICAL, so both
+   also push to the owners' phones:
+
+     body    "Sahad signed in"
+     title   "Owner signed in"          (a staff one reads "Staff signed in")
+     detail  "Google Chrome on Samsung Galaxy"
+             (a staff one leads with the ROLE — "Office · Google Chrome …" —
+              because that is what says whether the account can see money)
+
+ The signer-in is never told about their own sign-in, so what arrives is always
+ *somebody signed into the other account*, which with two owners is
+ corroboration rather than a receipt.
+
+ ⚠ NO IP ON EITHER. Every device in this workshop leaves through one
+ connection, so on a routine sign-in the address is near-constant and carries
+ almost no information, while the DEVICE is what would look wrong. It stays on
+ all four SECURITY events — a lockout or a reset attack is the opposite case,
+ where the address is the evidence. Control Hub -> Security lists both per
+ session either way.
+
+ ⚠ `LOGIN` was INFO until 2026-08-29 — bell only, no push — on the reasoning
+ that an owner signing in is routine. What overruled it: an owner account is
+ the highest-privilege thing in this system, and a sign-in on one with a stolen
+ password reached no phone at all. Safe at CRITICAL because the session cookie
+ lasts 40 days, so a signed-in phone stays signed in and this fires on a
+ genuinely new session — roughly one or two a month across two owners.
 ```
 
 ### Forgot Password Flow
@@ -807,7 +874,61 @@ TRANSACTIONS & RECORDS (Job Cards, Fleet/Shop/Supplier payments,
 DELETION HISTORY (/deletion-history/) — Owner only, READ-ONLY
   - One unified list of all deletions, filterable by type, click to read the snapshot.
   - Also mirrored read-only in Django Admin (DeletionLog).
+
+HOW OLD A RECORD MAY BE — Office corrects, an owner takes anything older
+  Six money deletes are Office's: a fleet payment, a spare-shop payment, a
+  Supplies Shop payment, a restock bill, a cashbook entry and a salary advance.
+  Office may remove one recorded in the last SEVEN DAYS; past that the POST is
+  refused and the message names the row, its age, the rule and who to ask.
+    • Measured on when it was KEYED, never on the money date. Back-dating is
+      normal here — a Supplies Shop keeps its own book and the bill is keyed at
+      month end — so a money-date window would refuse Office permission to
+      delete a typo they made thirty seconds earlier.
+    • An escalation, not a wall. No approval queue and no second sign-off: the
+      owners already hold the role and are already alerted within seconds.
+    • The button is still OFFERED. Hiding it would say "you cannot" without
+      saying why, and would additionally say something false — an owner can.
+
+EVERY REASON BOX IS OPTIONAL, AND THAT IS DELIBERATE
+  All the logged deletes take a free-text reason and none requires it. The
+  compensating control is already stronger: the log stores who, when, what, how
+  much and a full snapshot, and raises a CRITICAL alert to both owners' phones
+  within seconds. In a seven-person workshop with two owners who deal with
+  customers personally, ASKING them beats a required box that people defeat
+  with "a" or "." — a log full of noise that looks like signal is worse than
+  one with blanks in it.
 ```
+
+---
+
+## 11B. HOW THE APP ASKS A QUESTION
+
+Every question the app asks is now asked in the app's own card. There is no
+browser dialog anywhere: twenty-one native ones survived until 2026-09-05 —
+sixteen `confirm()`, four `alert()` and one `prompt()` — and they opened with
+**"127.0.0.1:8000 says"**, which is the browser talking rather than the app,
+drawing the question, the reason and the way out as one flat grey block.
+
+What that changes for the people using it:
+
+- **A card is recognisable as its section's before a word of it is read** — a
+  red bin for a delete, an amber calendar for a back-dated entry, a green tick
+  for a handover, a red open padlock for the Financial Lock.
+- **A card inherits the visibility rules of the screen it opens on.** Mark
+  Completed is pressed mostly from the Floor tablet, by somebody who cannot
+  settle a bill, cannot see one, and is shown no price on any other screen — so
+  that card says what happens to the CAR and stops. Where a message has to
+  point at a control, the copy is **role-aware**: Office and Owner are sent to
+  the Unlock button, Floor is sent to a person, because that button is not
+  rendered for Floor.
+- **One press is one post.** A form already on its way refuses the second
+  submit and its buttons stop taking taps. This was reported from the shop: on
+  a slow connection the same control was tapped again and again and every tap
+  was another POST — a shop payment deleted twice, an advance deleted twice.
+- **Every dialog is centred on a phone.** Bootstrap centres one only from 576px
+  up, so each of the twenty carrying its own width sat pinned left by however
+  much the screen is wider than the box — 4px out at 360px and 56px out at
+  412px, the width most of the workshop's handsets report.
 
 ---
 
@@ -835,25 +956,70 @@ LIVE REPORT — Office / Owner only, WHOLE PAGE
          anywhere else. Floor reads a card from the dashboard car card's own
          live-details drawer, which is these same four lists.
 
-  Operations board
-    ON THE FLOOR    Mechanics as panels — four names across on a laptop, three
-                    on a tablet, two on a phone, wrapping to a second row for
-                    the fifth, all panels on a row ending level — with that
-                    person's cars listed beneath their name and a "Not
-                    assigned" panel last, in red. A card is the car's name in
-                    large type, then
-                    its registration and how long it has been in — New, 9d,
-                    213d — or ON HOLD, on one small line, with a stripe and
-                    wash in the car's own colour. A mechanic holding nothing
-                    is not listed. Tap a car to open its job card.
-    ON THE WAY      Amber box: parts ordered from a spare shop and still
+  Operations board — in this order down the page:
+
+    BILLED BUT      Red, and it LEADS the page. Every other box here is work in
+    NOT FILLED      progress, where an empty box is a task nobody has got to
+                    yet. These cards have been BILLED: the money moved, the
+                    card went PAID, any shortfall became a permanent discount,
+                    and the Financial Lock now stands between the card and
+                    anyone correcting it — so an empty box on one of these is a
+                    hole in the books. Each car is its own card; the count is
+                    in GAPS, not rows, so a spare missing four things is four
+                    problems. Paginated rather than windowed by date: it is a
+                    queue to be worked down, and nothing is hidden behind a
+                    filter somebody would have to widen to find the oldest and
+                    worst cards.
+
+    ── Spares ──    Three boxes, green → amber → red: the lifecycle backwards,
+                    most-finished first.
+
+    RECEIVED        Green: shop parts that arrived in the last five days. The
+    (LAST 5 DAYS)   one box on the page that is not a list of work — a part
+                    that has arrived needs nothing done to it, and this exists
+                    only for looking one up again afterwards. Newest first, the
+                    only parts box ordered that way. ⚠ The window is
+                    load-bearing rather than tidy: nearly every shop spare on a
+                    live card is already received, so unwindowed this box would
+                    be longer than the rest of the page put together.
+    ON THE WAY      Amber: parts ordered from a spare shop and still
                     travelling. Part name, then car · registration · shop.
-    NOT ORDERED YET Red box: parts nobody has ordered yet. Same shape.
-                    Both boxes are square, and their rows sit directly on the
-                    box's colour rather than on white cards of their own.
-    Both boxes list SHOP purchases only — a warehouse draw came off the shelf
-    already fitted and has no ordering workflow to wait on — and only for cars
-    still in the workshop.
+    NOT ORDERED YET Red: parts nobody has ordered yet. Same shape.
+                    All three are square, drawn identically, and their rows sit
+                    directly on the box's colour rather than on white cards of
+                    their own. They list SHOP purchases only — a warehouse draw
+                    came off the shelf already fitted and has no ordering
+                    workflow to wait on — and only for cars still in the
+                    workshop.
+
+    ── Still to do ──  The heading names the WORK; the box under it names its
+                    ROWS, which are CARS.
+
+    ON THE FLOOR    Mechanics as panels, TWO across from 800px and one below
+                    it, with that person's cars beneath their name and a "Not
+                    assigned" panel last, in red. A mechanic holding nothing is
+                    not listed.
+
+                    **Every car carries the concerns still open on it** — this
+                    is where the next instruction is given, not just a list of
+                    who is holding what. The owner's own workflow: finish this
+                    car's vibration, then tell him the periodic service because
+                    those parts are here, then move him to his second car.
+                    UNFIXED concerns only, with the fixed ones counted ("3
+                    done"); under way sorts above not started, because that is
+                    the order the sentence is spoken in. An amber clock marks
+                    under way and a red disc not started — the same two marks
+                    the read-only job card uses, which is what every row here
+                    opens. A car whose every concern is fixed says "All
+                    concerns fixed", because nobody has closed the card; a car
+                    with no concerns at all says nothing, since nobody writing
+                    one down is a different fact.
+
+                    It sits LAST because it is by far the longest block on the
+                    page — one panel per mechanic, every open concern under
+                    every car. Above the parts boxes it pushed all three off the
+                    first screen, so the two lists that are *scanned* sat below
+                    the one that is *read*.
 
   Live Jobs
     The detailed card per active car: make, model, registration, the mechanic
@@ -873,7 +1039,14 @@ LIVE REPORT — Office / Owner only, WHOLE PAGE
   Rules in: workshop/views/dashboard.py — see CLAUDE.md "Deliberate decisions"
 
 COMPLETED LIST
-  Shows: Cars that have been picked up
+  Shows: Cars that have been picked up, NEWEST FIRST. `completed_date` is a
+         DateField, so every car handed over today carries the same value and
+         the order inside that day used to be whatever the database returned —
+         which on the default Today filter is the whole page, so the car
+         somebody opened the list to see could be anywhere in it. The tiebreaker
+         is `-id`, never `-updated_at`: that is `auto_now` and would jump an old
+         card to the top of today the moment it was edited for an unrelated
+         reason, the same defect `paid_date` exists to keep off Paid Bills.
   Filters: Today / Week / Month / Year / Custom range / All
   Actions: Undo completion, View invoice
 
@@ -930,14 +1103,38 @@ ESTIMATES (Office / Owner)
   Rules in: workshop/invoice.py (build_estimate — shared with the bill)
 
 PENDING BILLS
-  Shows: All unpaid/partially paid jobs
-  Displays: Total outstanding balance
+  Shows: Unpaid and part-paid jobs for cars that have been HANDED OVER — the
+         list filters `completed=True`. A card is PENDING from the moment it is
+         created, so every live car used to sit here burying the bills somebody
+         is actually chasing: nothing about a car still on the floor is
+         chaseable, no figure is final and no bill was handed to anybody. It is
+         not stranded either — a live card is on the dashboard board the whole
+         time it is on the floor, and joins this list the moment it is marked
+         completed.
+  Displays: Total outstanding. ⚠ Deliberately SMALLER than the Profit page's
+         "Customers owe us", which counts every unsettled card including fleet
+         and still-on-the-floor. The subtitle — "Handed over and not yet
+         settled" — is what stops the total quietly meaning something new.
+         Don't reconcile the two by widening either; they answer different
+         questions.
   Linked to: Bulk Payer system
 
-PAID BILLS (Owner only)
-  Shows: All fully settled job cards (PAID and BULK_PAID)
+PAID BILLS (Office and Owner)
+  Shows: All fully settled job cards (PAID and BULK_PAID), sorted and filtered
+         on `paid_date` — never `updated_at`, which is `auto_now` and would
+         resurface an old paid bill under "Today" the moment somebody edited it
+         for an unrelated reason.
   Filters: Time ranges (Today, 1 Week, 1 Month, 1 Year, Custom) and Payment Methods
-  Displays: Total collected revenue for the filtered period
+  Access: Office sees it with a **7-day window enforced in the view**, not by
+         hiding the filter — `?filter=all` is one URL edit away. Office settles
+         bills, so it needs to look one up.
+  Displays: The row COUNT and per-card amounts. ⚠ There is **no grand total any
+         more, for either role**: it summed `received_amount` over cards that
+         reached settled status in the window, which is exact for a walk-in and
+         wrong for a fleet three ways at once — a card closed this month carried
+         its whole cumulative receipt, a PARTIAL card holding real cash appeared
+         nowhere, and banked advance credit appeared nowhere. Cash Tracking on
+         the Profit page replaced it.
 
 BULK PAYERS ("Fleet Account" in UI)
   Shows: Fleet/repeat customer groups, including any advance credit balance

@@ -4799,7 +4799,7 @@ browsers.
 
 The whole event list is **`workshop/notifications.py`**. Add an event to `EVENTS`,
 then call `notify()` from the single place it happens — **never**
-`Notification.objects.create()` in a view. There are **17 call sites across 8
+`Notification.objects.create()` in a view. There are **18 call sites across 9
 modules**; that file is the only way to answer "what does this thing notify
 about?" without grepping.
 
@@ -4898,7 +4898,7 @@ which is where the link already goes.
 characters). It still states that the remedy expires, which is the rule.
 
 **`DeletionLog.record()` is the deletion hook.** Every permanent delete funnels
-through it, so one call covers all twelve entity types and any added later. Don't
+through it, so one call covers all fourteen entity types and any added later. Don't
 scatter equivalent `notify()` calls into individual delete views.
 
 **Owners only, and the actor never hears about their own action.** Floor gets
@@ -5011,10 +5011,12 @@ for.
 
 **`DeletionLog.record` builds the one body assembled from parts, and it must
 say each fact ONCE.** It printed the record type twice (the label usually opens
-with it) and the amount twice in two spellings, because **7 of the 18
+with it) and the amount twice in two spellings, because **9 of the 21
 `record()` call sites already put the amount in their own label**. Both guards
 read what the LABEL carries rather than a list of which call sites do what, so
-a nineteenth cannot reintroduce either.
+a twenty-second cannot reintroduce either. *(It read "7 of the 18" until
+2026-09-09 — true when written, and exactly the kind of figure that goes stale
+silently, which is why the guards were built to read the label instead.)*
 → `TheDeletedRecordBodySaysEachFactOnceTests`
 
 **The bell opens a floating panel, fetched lazily** from `/notifications/panel/`.
@@ -5311,9 +5313,15 @@ writes a snapshot via `DeletionLog.record(...)` to the Owner-only, read-only
 **Deletion History** (`/deletion-history/`). There is deliberately **no restore** —
 reviving stale financial data corrupts running balances.
 
-**EVERY LOGGED DELETE POSTS A REASON, AND THE REASON IS OPTIONAL.** All 13
+**EVERY LOGGED DELETE POSTS A REASON, AND THE REASON IS OPTIONAL.** 16 of the 21
 `DeletionLog.record()` call sites read `request.POST.get('reason', '')` and the
-column has always stored it — but four dialogs never rendered the input, so a
+column has always stored it. ⚠ **The other five take no typed reason at all,
+and that is correct rather than a gap**: `master_data.py`'s four merge paths
+write a *generated* one (`Merged into '<survivor>'`), because a merge's reason
+is the merge, and the inventory-item delete passes none — it fires only on a
+zero-stock, no-history orphan, as a side effect of removing a product from a
+shop's catalog, so there is no moment to ask at. Four dialogs never rendered the
+input, so a
 Fleet payment reversal, a spare-shop payment reversal, a Supplies Shop payment,
 a restock bill and a salary advance all reached the Owner's Deletion History
 blank on the one field that says *why the money moved back*. Closed 2026-08-28;
@@ -7782,7 +7790,7 @@ signing in `photos.py` must stay UTC**; that is protocol, not display.
 `data-sound-tag` on the message banner. The app already tags every outcome, so one
 attribute covers every action in the system and anything added later.
 
-⚠ **Do not wire per-button sounds:** ~180 call sites is 180 chances to attach the wrong
+⚠ **Do not wire per-button sounds:** ~230 call sites is 230 chances to attach the wrong
 tone, and each would fire at *click* time, announcing "done" before the server had done
 anything.
 
@@ -8285,8 +8293,8 @@ reason it is being shown.
 and there is no build step.** Every outside review reaches the same suggestion, so the
 reasoning is recorded here rather than re-argued.
 
-Roughly 188 KB of inline JS across 36 templates, and ~551 KB of inline CSS across 60
-of the 106 (most templates carry their own `<style>`). Eight shared JS files exist —
+Roughly 254 KB of inline JS across 42 templates, and ~690 KB of inline CSS across 67
+of the 118 (most templates carry their own `<style>`). Eight shared JS files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
 `photos-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
 is **used on more than one page**; what stays inline is genuinely page-specific.
@@ -8419,7 +8427,7 @@ python manage.py migrate
 | `backup_db` | rotated backup of whichever DB is active, keeps last 14 in `/backups` |
 | `sweep_photo_blobs` | DRY RUN — photo objects whose rows are gone (`--yes` to delete) |
 | `purge_old_photos` | DRY RUN — photos past the 1-year window (`--yes`; always skips unpaid bills) |
-| `setup_groups` | (legacy) creates the Owner/Office/Floor auth groups |
+| `setup_groups` | creates the Owner/Office/Floor auth groups — no migration does, and Office/Floor are created by nothing else. Safe to re-run. Part of go-live §3.1 |
 | `sync_owner_identity` | DRY RUN — owner group / mobile / admin-access: `.env` → DB (`--yes`) |
 | `set_owner_email <user> <email>` | DRY RUN — preview (`--yes` to apply) |
 | `load_master_data` | brands / models / spare parts — **prerequisite for seeding** |
@@ -8428,6 +8436,12 @@ python manage.py migrate
 | `seed_salary_data` | salary months + advances only |
 | `purge_business_data` | DRY RUN — prints what it would delete (`--yes`) |
 | `copy_sqlite_to_postgres` | DRY RUN — prints the plan (`--yes` to replace Postgres) |
+
+⚠ **`management/commands/` holds 14 files and this table describes 12.** The two
+missing are one-shot demo seeders, and they are left undocumented **on purpose**
+— seed tooling gets short code comments and nothing here, so that a demo fixture
+can never be mistaken for part of the system. The count is stated so the gap
+reads as a decision rather than as an omission somebody should close.
 
 **`backup_db` follows whichever database is active** — `pg_dump` for PostgreSQL, a file
 copy for SQLite.
@@ -8743,7 +8757,7 @@ table into the general roster at `/manage/?section=staff`. Only
 # Testing conventions
 
 Tests live in `workshop/tests/` and `inventory/` — **69 files, 2,366 tests**,
-counted 2026-09-08. (`workshop/tests/` is 63 `test_*.py` plus `tests.py`;
+re-counted 2026-09-09 and unchanged. (`workshop/tests/` is 63 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 
@@ -8870,6 +8884,22 @@ exactly what this file exists to make unnecessary. `trunk()` now appends, and
 **check 6 asserts every tap actually lands on it** (verified by reintroducing
 the bug and watching it fail). The checker is only ever as good as what it is
 shown.
+
+⚠ **A CHIP GOES STALE THE WAY A COUNT DOES, AND THE CHECKER CANNOT SEE IT
+EITHER.** All six checks are geometric; none of them reads a word. CAR
+PROFILES carried `history by registration` from the day it was drawn, which
+was true and had quietly stopped being the whole card — the **service-history
+sheet and every bill for one car in a single PDF are both handed to a customer
+from that card**, and neither appeared anywhere on a sheet whose header on the
+About page calls itself the whole system. Fixed 2026-09-09 to
+`history - record - all bills`.
+
+**A chip is capped by the card's width, not by a rule anybody enforces**: the
+longest on the sheet is 28 characters at 7.6px on a 230px card, so treat that
+as the ceiling and re-run the checker afterwards — text changes move nothing,
+but the run is cheap and it re-emits all five outputs, which is the actual
+point. ⚠ **The five outputs must be regenerated together**, or the printed PDF
+and the About page's embedded partial start describing different systems.
 
 ⚠ **The drafting rulers and the zone numbers are GONE, deliberately.** A–I
 across the top, 1–6 down the side, and a numbered circle per zone: nothing on

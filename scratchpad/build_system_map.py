@@ -539,7 +539,12 @@ def build(theme):
     _tel = [
         ('dash',  'DASHBOARD',        ['cars on the floor - progress'], FLOW['data']),
         ('live',  'LIVE REPORT',      ['billed but unfilled - crews'],  FLOW['data']),
-        ('cars',  'CAR PROFILES',     ['history by registration'],      FLOW['data']),
+        # The chip names the two DOCUMENTS as well as the history, because this
+        # card is the only place either of them is reachable from. It read
+        # 'history by registration' until 2026-09-09, which was true and had
+        # stopped being the whole card: a service-history sheet and every bill
+        # for one car in a single PDF are both handed to a customer FROM here.
+        ('cars',  'CAR PROFILES',     ['history - record - all bills'], FLOW['data']),
         ('jlist', 'JOB CARDS',        ['every card - searchable'],      FLOW['data']),
         ('ehist', 'ESTIMATE HISTORY', ['searchable'],                   FLOW['data']),
         # The only section that was on no part of the sheet. It is a HISTORY -

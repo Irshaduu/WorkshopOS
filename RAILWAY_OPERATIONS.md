@@ -674,8 +674,14 @@ pg_dump "<DATABASE_PUBLIC_URL>" -Fc -f titan_$(date +%F).dump
 
 # In the Railway console (management commands only)
 python manage.py migrate
+python manage.py setup_groups                       # Owner/Office/Floor; safe to re-run
 python manage.py sync_owner_identity --yes
 python manage.py set_owner_email <user> <email> --yes
+```
+
+```bash
+# JavaScript tests — a SECOND command, not part of manage.py test
+node --test "workshop/tests/js/*.test.js"
 ```
 
 | Doc | Owns |
