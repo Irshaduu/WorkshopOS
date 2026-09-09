@@ -833,6 +833,58 @@ select.status-fixed {
 }
 .rpay-foot i { font-size: 0.72rem; margin-top: 2px; flex-shrink: 0; }
 
+/* ── A footnote that waits to be asked ───────────────────────────────────
+   Opt-in, with `.rpay-ask` beside `.rpay-foot`, and it is for the card whose
+   footnote is a standing EXPLANATION rather than a one-line rule. The rent
+   card's is two sentences — 48px and three lines on a phone — sitting between
+   the amount box and the log the page exists to be read against. The four
+   carrying a single short line keep theirs standing: a tap to read six words
+   is a tap for nothing.
+
+   A native <details>, never a wired-up button — the Job Card's Customer
+   Details fold's own reasoning: nothing to initialise, and keyboard and
+   screen-reader behaviour for free.
+
+   ⚠ THE OPEN STATE IS THE SHARED FOOTNOTE, TO THE PIXEL. `.rpay-foot` is
+   already `display: flex`, so the summary and the text sit on one row exactly
+   as the glyph and the text do on the other four cards — ONE control with two
+   states, rather than a second footnote drawn a second way. */
+.rpay-ask > summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    /* A 30px target on a 16px line. The negative margins mean the extra 14px
+       is REACH rather than layout, so a closed card is exactly as tall as the
+       one line it shows, and the glyph sits where the other four cards' does.
+       Not 44px: that size is for a control where a miss costs something, and
+       a miss here costs one tap. */
+    width: 30px;
+    height: 30px;
+    margin: -7px -7px -7px -8px;
+    border-radius: 9px;
+    color: #94a3b8;
+    cursor: pointer;
+    list-style: none;
+}
+.rpay-ask > summary::-webkit-details-marker { display: none; }
+/* `.rpay-foot i` nudges the bullet glyph down 2px to sit on the first text
+   line; inside a centred 30px box that nudge is off-centre instead. */
+.rpay-ask > summary i { font-size: 0.95rem; margin: 0; }
+@media (hover: hover) {
+    .rpay-ask > summary:hover { background: #f1f5f9; color: #64748b; }
+}
+.rpay-ask[open] > summary { color: #64748b; }
+.rpay-ask > summary:focus-visible {
+    outline: 2px solid var(--color-primary, #2563eb);
+    outline-offset: 1px;
+}
+/* ⚠ THE CLOSED STATE IS STATED, NOT INHERITED. A UA hides a closed
+   <details>'s contents on its own — but a `display` other than `block` on the
+   element is exactly where that has broken, and a footnote that would not
+   close is worse than one that never folded. */
+.rpay-ask:not([open]) > :not(summary) { display: none; }
+
 /* ── Phone ───────────────────────────────────────────────────────────────
    640px is the app's own phone line — the nav bar moves to the bottom at the
    same width — so "mobile" means one thing across the whole app.
@@ -1012,8 +1064,8 @@ select.status-fixed {
 
 .wcf-dialog { max-width: 380px; }
 
-/* ⚠ BOOTSTRAP ONLY CENTRES A MODAL FROM 576px UP, AND EVERY DIALOG IN THIS APP
-   CARRIES ITS OWN max-width. `.modal-dialog` is `margin: var(--bs-modal-margin)`
+/* ⚠ BOOTSTRAP ONLY CENTRES A MODAL FROM 576px UP, AND HALF THE DIALOGS IN THIS
+   APP CARRY THEIR OWN max-width. `.modal-dialog` is `margin: var(--bs-modal-margin)`
    — 0.5rem, all four sides — at every width, and gains `margin-left/right: auto`
    inside `@media (min-width: 576px)` ALONE. Under that the box is therefore
    pinned to the LEFT by however much the screen is wider than it, and
@@ -1030,9 +1082,28 @@ select.status-fixed {
    of the twenty dialogs — the `.rpay-*` rule — so a dialog added later is
    centred with nothing to remember. Safe as a blanket: `.modal-fullscreen`
    (which sets `margin: 0`) is used nowhere in this app, and were it added, an
-   auto margin on a box already filling its container resolves to 0 anyway. */
+   auto margin on a box already filling its container resolves to 0 anyway.
+
+   ⚠ AND THAT LAST SENTENCE IS EXACTLY WHY THE WIDTH IS HERE TOO. An auto
+   margin resolving to 0 is harmless on a box that was already full width —
+   and 19 of this app's 37 dialogs declare NO max-width at all (`modal-sm`
+   included: Bootstrap's 300px cap on it lives inside `min-width: 576px`), so
+   below the breakpoint they ARE that box. On those, `margin-left/right: auto`
+   replaced Bootstrap's own 8px with nothing, and a dialog that used to sit
+   inset went edge to edge: measured on the rent card's Update rent at 375px,
+   `margin: 8px 0px` and a 375px dialog touching both sides of the screen.
+
+   Taking the side gap out of the WIDTH instead leaves both facts true at once
+   — the auto margins still centre anything narrower, and nothing can reach the
+   screen edge. A dialog that caps itself is untouched, because `max-width`
+   beats `width` whatever the specificity: at 375px a 340px dialog stays 340px
+   and centres on 17.5px of margin, while one with no cap is 359px on 8px. */
 @media (max-width: 575.98px) {
-    .modal-dialog { margin-left: auto; margin-right: auto; }
+    .modal-dialog {
+        margin-left: auto;
+        margin-right: auto;
+        width: calc(100% - var(--bs-modal-margin, 0.5rem) * 2);
+    }
 }
 
 .wcf-card {

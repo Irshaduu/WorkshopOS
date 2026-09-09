@@ -1545,3 +1545,84 @@ class TheSameHandoverKeyedTwiceTests(_Signed):
         # untouched, only the words it was pinned to.
         self.assertLess(script.index('File into a closed month?'),
                         script.index('Another one for '))
+
+
+class TheRowStaysINSIDETheCardOnAPhoneTests(_Signed):
+    """
+    ⚠ NOTHING IN THIS SUITE EXECUTES CSS, so these assert the two things it CAN
+    reach — the markup the layout hangs off, and the declarations themselves.
+    The defect they stand in for was measured in a browser: at 409px a row
+    carrying the "added 9 Sep" chip needed 391px inside a 341px card, so the ⋮
+    rendered 49px OUTSIDE the list and sat on the viewport edge. At 375px it is
+    84px out and the page scrolls sideways. The ONLY delete there is, off the
+    screen — and clipping cannot be the answer, because every row carries a
+    dropdown and a clipping ancestor is the one thing Popper cannot escape.
+    """
+
+    def setUp(self):
+        super().setUp()
+        RentRate.objects.create(effective_from=date(2026, 1, 1), amount=D('35000'))
+        self.today = timezone.localdate()
+
+    def page(self):
+        return self.as_(self.office).get(reverse('rent_home')).content.decode()
+
+    def test_the_wrapper_renders_even_with_nothing_to_put_in_it(self):
+        """On a laptop `.rt-meta` IS the row's flexer — the thing that pushes
+        who-recorded-it up against the ⋮, which `.rt-note` did alone before it
+        existed. A wrapper that appeared only when it had content would move
+        every plain row's ⋮ in the same edit that fixed the annotated one."""
+        RentDeposit.objects.create(date=self.today, amount=D('2000'))
+        # Scoped to the LIST: `.rt-meta.is-on` is also a rule in this page's
+        # own <style> block, so a whole-page search finds it on every render.
+        rows = self.page().split('class="rt-list"', 1)[1]
+        self.assertIn('class="rt-meta"', rows)
+        self.assertNotIn('is-on', rows)
+
+    def test_an_annotated_row_says_so_in_a_class_and_not_by_being_empty(self):
+        """`is-on` is what the phone reads to give the wrapper a line of its
+        own. An `:empty` test would do the same job until somebody put a
+        newline inside it."""
+        RentDeposit.objects.create(date=self.today, amount=D('2000'),
+                                   note='second handover')
+        self.assertIn('rt-meta is-on', self.page())
+
+    def test_the_row_is_allowed_to_wrap_below_the_pages_own_breakpoint(self):
+        """576px is the width `.rt-status` already switches on, and it clears
+        the content: at 576px the one-line row needs 366px of 515px."""
+        html = self.page()
+        phone = html.split('@media (max-width: 575.98px)', 1)
+        self.assertEqual(len(phone), 2, 'the row has no phone rule at all')
+        self.assertIn('flex-wrap: wrap', phone[1][:600])
+        self.assertIn('.rt-meta.is-on', phone[1][:600])
+
+    def test_the_only_auto_margin_on_the_first_line_holds_the_menu_right(self):
+        """An annotated row loses its flexer to the second line, so without
+        this the ⋮ would sit against the amount on exactly the rows that took
+        two lines — the list reading as two different shapes."""
+        html = self.page()
+        phone = html.split('@media (max-width: 575.98px)', 1)[1][:600]
+        self.assertIn('.rt-row > .dropdown { margin-left: auto; }', phone)
+
+
+class TheFootnoteWaitsToBeAskedTests(_Signed):
+    """The one card of the five whose footnote is a standing EXPLANATION rather
+    than a one-line rule: two sentences, three lines and 48px on a phone,
+    between the amount box and the log the page exists to be read against."""
+
+    def test_the_sentence_is_still_on_the_page_behind_its_own_glyph(self):
+        html = self.as_(self.office).get(reverse('rent_home')).content.decode()
+        self.assertIn('the two are never the same number', html)
+        card = html.split('rpay-card', 1)[1]
+        self.assertIn('<details class="rpay-foot rpay-ask">', card)
+        self.assertIn('<summary', card.split('rpay-ask', 1)[1][:400])
+
+    def test_it_is_a_native_details_and_not_a_wired_up_button(self):
+        """The Job Card's Customer Details fold's own reasoning: nothing to
+        initialise, and keyboard and screen-reader behaviour for free. The
+        glyph also carries a name, since it is a control now rather than a
+        bullet."""
+        html = self.as_(self.office).get(reverse('rent_home')).content.decode()
+        summary = html.split('rpay-ask', 1)[1].split('</summary>', 1)[0]
+        self.assertIn('aria-label=', summary)
+        self.assertNotIn('<button', summary)

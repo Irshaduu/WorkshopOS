@@ -2061,6 +2061,62 @@ today's figure and is invisible until month end. Never blocked; two genuine
 handovers in a day are ordinary. Measured: the list went 340px → 262px.
 → `TheDayTotalMakesADoubleEntryVisibleTests`
 
+⚠ **ON A PHONE A DEPOSIT ROW'S ANNOTATIONS TAKE A LINE OF THEIR OWN, and
+before they did, the ⋮ RENDERED OUTSIDE THE CARD.** The date column is a fixed
+118px and the "added 9 Sep" chip is 92px, so a row carrying both fitted no phone
+at all: measured at 409px it needed **391px inside a 341px card** — with the
+note already crushed to nothing — so the menu sat **49px past the list, on the
+viewport edge**, and at 375px it is 84px out and the page itself scrolls
+sideways. The only delete there is, off the screen.
+
+**Clipping is not available here**, which is what forces the shape: every row
+carries a dropdown, and a clipping ancestor is the one thing Popper cannot
+escape — the same reason `.rt-list` is not `overflow: hidden`. So the rule is
+that **nothing on the first line may refuse to shrink** except the date and the
+⋮, and the chip and the note drop to a second line together below 576px.
+
+Three things carry it:
+- **`.rt-meta` renders whether or not it holds anything**, because on a laptop
+  it is the row's flexer — the thing that pushes who-recorded-it against the ⋮,
+  which `.rt-note` did alone before it existed. The desktop row is unchanged to
+  the pixel, empty wrapper included; `is-on` is what the phone reads. An
+  `:empty` test would not survive somebody adding a newline inside it.
+- **Every phone row's first line is identical** — when, how much, who, ⋮ — and
+  the ⋮ holds the right edge on the only auto margin on that line, because an
+  empty `.rt-meta` stops flexing there. An annotated row and a plain one draw
+  their first line the same.
+- **576px is this page's own breakpoint**, the one `.rt-status` already switches
+  on, and it clears the content: at 576px the one-line row needs 366px of 515px.
+
+The note gains by it — **33px on line one at 375px, ~200px on its own**, so a
+note is readable on a phone for the first time. Measured after: 375px, every ⋮
+at 344px inside a card ending at 359, no row overflowing and no page scroll.
+
+⚠ **THE LEGEND ON "RECENTLY ADDED" BREAKS BETWEEN ITS TWO ITEMS, NEVER INSIDE
+ONE.** Written as one run separated by two `&nbsp;`, it wrapped as *"...filed
+into a month already / finished"* — a dangling word sitting under the AMBER dot,
+so the red item read as belonging to the wrong colour, on the one line whose
+whole job is to say which colour means what. Each item is its own `nowrap` box
+now.
+
+⚠ **THE FOOTNOTE WAITS TO BE ASKED, and this is the one card of the five that
+earns it** (the owner's instruction). Two sentences of standing explanation —
+three lines and 48px on a phone — between the amount box and the log the page
+exists to be read against. The glyph is the control; the text opens beside it.
+The other four `.rpay-foot`s carry a single short line and keep it standing: a
+tap to read six words is a tap for nothing.
+
+It is `.rpay-ask` in **`static/css/style.css`**, opt-in beside `.rpay-foot`, so
+it is one declaration a second card could adopt with one class rather than a
+second footnote drawn a second way — and **open, it IS the shared footnote**,
+glyph then text on one row, because `.rpay-foot` is already `display: flex`. A
+native `<details>`, never a wired-up button: the Job Card's Customer Details
+fold's own reasoning — nothing to initialise, keyboard and screen-reader
+behaviour for free. ⚠ **The closed state is stated rather than inherited** — a
+UA hides a closed `<details>`'s contents on its own, but a `display` other than
+`block` on the element is exactly where that has broken, and a footnote that
+would not close is worse than one that never folded.
+
 **NO CONFIRMATION DIALOG ON RECORDING A DEPOSIT — the only payment form in the
 app without one.** The other three settle a shop, a fleet account or an owner
 draw: large, occasional, worth a pause. This is the most frequent money action
@@ -8026,9 +8082,9 @@ pinned to the LEFT on a phone.** `.modal-dialog` is `margin: var(--bs-modal-marg
 — 0.5rem, all four sides — at every width, and gains `margin-left/right: auto`
 inside `@media (min-width: 576px)` **alone**. Below that a dialog is only
 *visually* centred because `width: auto` makes it fill the row; the moment it
-carries its own `max-width` — which all twenty of this app's dialogs do, most as
-an inline `style="max-width:340px"` — the left margin stays 8px and every
-remaining pixel piles up on the right.
+carries its own `max-width` — which **18 of this app's 37** do, most as an
+inline `style="max-width:340px"` — the left margin stays 8px and every remaining
+pixel piles up on the right.
 
 ⚠ **`modal-dialog-centered` is not the fix and reads like it is.** That class
 centres **vertically**. Every one of these dialogs already had it.
@@ -8047,13 +8103,35 @@ remember:
 
 ```css
 @media (max-width: 575.98px) {
-    .modal-dialog { margin-left: auto; margin-right: auto; }
+    .modal-dialog {
+        margin-left: auto;
+        margin-right: auto;
+        width: calc(100% - var(--bs-modal-margin, 0.5rem) * 2);
+    }
 }
 ```
 
 Safe as a blanket: `.modal-fullscreen` (which sets `margin: 0`) is used nowhere
 in this app, and were it added, an auto margin on a box already filling its
 container resolves to 0 anyway.
+
+⚠ **AND THAT LAST SENTENCE IS WHY THE WIDTH IS THERE — THE FIRST VERSION
+SHIPPED WITHOUT IT AND TOOK THE SIDE GAP OFF NINETEEN DIALOGS.** An auto margin
+resolving to 0 is harmless on a box that was already full width, and **19 of the
+37 declare no `max-width` at all** — `modal-sm` included, because Bootstrap's
+300px cap on it lives inside `min-width: 576px`. Below the breakpoint those ARE
+that box, so `margin-left/right: auto` replaced Bootstrap's own 8px with
+nothing and every one of them went **edge to edge**: measured on the rent card's
+Update rent at 375px, `margin: 8px 0px` on a 375px dialog touching both sides of
+the screen. Taking the gap out of the WIDTH instead leaves both facts true at
+once — the auto margins still centre anything narrower, and nothing can reach
+the screen edge. A dialog that caps itself is untouched, because `max-width`
+beats `width` whatever the specificity: at 375px a 340px dialog is 340px on
+17.5px of margin, one with no cap is 359px on 8px.
+
+⚠ **The count is why it went unnoticed: this entry said "all twenty of this
+app's dialogs" carry a `max-width`.** They do not, and a claim nobody recounted
+is what made a fix for half of them look like a fix for all of them.
 
 ⚠ **MEASURING THIS NEEDS THE MODAL LAID OUT, and a zero-size rect reads exactly
 like a dialog flung off screen.** Forcing `display:block` on a `.modal` and
