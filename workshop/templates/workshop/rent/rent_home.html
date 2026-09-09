@@ -173,9 +173,20 @@
   .rt-late-dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px;
                  padding: 0; border: 1px solid currentColor; background: currentColor;
                  vertical-align: baseline; }
+  /* THE TWO ANNOTATIONS TRAVEL TOGETHER, and that is what stops the row
+     escaping its own card on a phone. The chip and the note, nothing else.
+
+     On a laptop this wrapper is simply the flexer that pushes who-recorded-it
+     up against the ⋮ — the job `.rt-note` did alone before it existed — so the
+     desktop row is unchanged to the pixel, empty wrapper included. Below 576px
+     it drops to a line of its own. */
+  .rt-meta { display: flex; align-items: center; gap: 0.7rem; flex: 1 1 auto; min-width: 0; }
   .rt-note { flex: 1; min-width: 0; font-size: 0.78rem; color: #64748b;
              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rt-by { font-size: 0.68rem; color: #94a3b8; white-space: nowrap; }
+  /* The last valve. Nothing on this row may refuse to shrink except the date
+     and the ⋮, so no length of username can push the menu off the card again. */
+  .rt-by { font-size: 0.68rem; color: #94a3b8; white-space: nowrap;
+           min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .rt-kebab {
     border: 0; background: transparent; color: #94a3b8; border-radius: 8px;
     width: 32px; height: 32px; line-height: 0; flex: 0 0 auto;
@@ -183,6 +194,43 @@
   @media (hover: hover) { .rt-kebab:hover { background: #f1f5f9; color: #334155; } }
   @media (hover: none) { .rt-kebab { width: 34px; height: 34px; } }
   .rt-empty { padding: 1.1rem 0.9rem; text-align: center; color: #94a3b8; font-size: 0.82rem; }
+
+  /* ⚠ THE LEGEND BREAKS BETWEEN ITS TWO ITEMS, NEVER INSIDE ONE. Written as
+     one run separated by two &nbsp;, it wrapped at 409px as "...filed into a
+     month already / finished" — a dangling word under the AMBER dot, so the
+     red item read as belonging to the wrong colour. Each item is its own
+     nowrap box now and the wrap can only fall between them. Measured at 409px:
+     two lines, 182px and 195px, neither broken. */
+  .rt-legend { display: flex; flex-wrap: wrap; column-gap: 0.9rem; row-gap: 0.1rem; }
+  .rt-legend > span { white-space: nowrap; }
+
+  /* ⚠ ON A PHONE THE ANNOTATIONS TAKE A LINE OF THEIR OWN, and every row's
+     first line then reads the same: when, how much, who, ⋮.
+
+     The chip is 92px and the date column a fixed 118px, so a row carrying both
+     fitted no phone: measured at 409px it needed 391px inside a 341px card,
+     with the note already crushed to zero — so the ⋮ rendered 49px OUTSIDE the
+     list, on the viewport edge, and at 375px it is 84px out and the page
+     itself scrolls sideways. The only delete there is, off the screen.
+
+     ⚠ CLIPPING IS NOT AVAILABLE HERE. Every row carries a dropdown, and a
+     clipping ancestor is the one thing Popper cannot escape — which is why
+     `.rt-list` is not `overflow: hidden` either. Shrinking is the only answer,
+     so the fix is that nothing on line one refuses to shrink.
+
+     576px is this page's own breakpoint, the one `.rt-status` already switches
+     on, and it clears the content: at 576px the one-line row needs 366px of
+     515px. The ⋮ holds the right edge on its own auto margin — the ONLY one on
+     the line, because an empty `.rt-meta` stops flexing here, so an annotated
+     row and a plain one draw their first line identically.
+
+     The note gains by it: 33px on line one at 375px, ~200px on its own. */
+  @media (max-width: 575.98px) {
+    .rt-row { flex-wrap: wrap; column-gap: 0.5rem; row-gap: 0.1rem; }
+    .rt-meta { flex: 0 1 auto; gap: 0.5rem; }
+    .rt-meta.is-on { flex: 0 0 100%; order: 9; padding-bottom: 0.1rem; }
+    .rt-row > .dropdown { margin-left: auto; }
+  }
 
   /* ── The year history ───────────────────────────────────────────────────
      Salary & Advance's own collapsed-year pattern. Twenty years is twenty
@@ -393,11 +441,23 @@
           </div>
         </div>
       </div>
-      <p class="rpay-foot">
-        <i class="bi bi-info-circle"></i>
+      {% comment %}
+        THE FOOTNOTE WAITS TO BE ASKED — the shared `.rpay-ask` disclosure, on
+        the owner's instruction. This is the one card of the five that earns
+        it: two sentences of standing explanation, three lines and 48px on a
+        phone, between the amount box and the log the page exists to be read
+        against. The other four carry a single short line and keep it standing.
+
+        Open, it is the shared footnote unchanged — glyph, then the same
+        sentence on the same row.
+      {% endcomment %}
+      <details class="rpay-foot rpay-ask">
+        <summary aria-label="What a deposit is" title="What a deposit is">
+          <i class="bi bi-info-circle"></i>
+        </summary>
         <span>Cash handed to the rent collector. The rent itself is charged monthly,
               whatever was deposited &mdash; the two are never the same number.</span>
-      </p>
+      </details>
     </div>
   </form>
 
@@ -436,10 +496,9 @@
       {% endif %}
     </div>
     {% if recent and off_count %}
-      <p class="rt-foot mb-2" style="margin-top:-0.25rem;">
-        <span class="rt-late-dot rt-late"></span> dated back inside its own month
-        &nbsp;&nbsp;
-        <span class="rt-late-dot rt-closed"></span> filed into a month already finished
+      <p class="rt-foot rt-legend mb-2" style="margin-top:-0.25rem;">
+        <span><span class="rt-late-dot rt-late"></span> dated back inside its own month</span>
+        <span><span class="rt-late-dot rt-closed"></span> filed into a month already finished</span>
       </p>
     {% endif %}
     <div class="rt-list">
@@ -486,13 +545,22 @@
               by `rent.backdating()` so this list and Recently added can never
               mark the same row differently.
             {% endcomment %}
-            {% if row.tier %}
-              <span class="rt-late {% if row.tier == 'closed' %}rt-closed{% endif %}"
-                    title="Filed under {{ row.date|date:'F Y' }}, keyed on {{ row.added_on|date:'j M Y' }}">
-                <i class="bi bi-clock-history"></i> added {{ row.added_on|date:"j M" }}
-              </span>
-            {% endif %}
-            <span class="rt-note">{{ row.note|default:"" }}</span>
+            {% comment %}
+              ⚠ THE WRAPPER RENDERS WHETHER OR NOT IT HOLDS ANYTHING, because
+              on a laptop it is the row's flexer — the thing that pushes who
+              recorded it against the ⋮. `is-on` says it has something to show,
+              which is what the phone reads to give it a line of its own; an
+              `:empty` test would not survive a newline being added inside it.
+            {% endcomment %}
+            <span class="rt-meta{% if row.tier or row.note %} is-on{% endif %}">
+              {% if row.tier %}
+                <span class="rt-late {% if row.tier == 'closed' %}rt-closed{% endif %}"
+                      title="Filed under {{ row.date|date:'F Y' }}, keyed on {{ row.added_on|date:'j M Y' }}">
+                  <i class="bi bi-clock-history"></i> added {{ row.added_on|date:"j M" }}
+                </span>
+              {% endif %}
+              {% if row.note %}<span class="rt-note">{{ row.note }}</span>{% endif %}
+            </span>
             {% if row.recorded_by %}<span class="rt-by">{{ row.recorded_by.username }}</span>{% endif %}
             <div class="dropdown">
               <button class="rt-kebab" type="button" data-bs-toggle="dropdown"
@@ -905,9 +973,20 @@
             .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
           question = {
             title: 'Another one for ' + day + '?',
-            text: n + (n > 1 ? ' deposits are' : ' deposit is') + ' already recorded '
-                + 'for that day. Two handovers in a day is normal — the same one '
-                + 'keyed twice is not.',
+            // ⚠ THE FACT, AND NOTHING ELSE — the owner's instruction. A second
+            // sentence used to follow, saying that two handovers in a day are
+            // ordinary and the same one twice is not: it explained the question
+            // to somebody who had already been asked it, and a line telling the
+            // reader that both answers are reasonable is the rent steer's own
+            // third-line defect. The title asks, the buttons answer, and what
+            // is printed is what gets checked against the collector's book.
+            //
+            // ⚠ AND IT IS PARAPHRASED HERE RATHER THAN QUOTED, because a
+            // comment inside an inline <script> is served with the page — the
+            // trap this codebase has paid for on a CSS comment and on the
+            // bill's own third-party test.
+            text: n + (n > 1 ? ' deposits are' : ' deposit is')
+                + ' already recorded for that day.',
             icon: 'bi-files',
             theme: 'warning',
             ok: 'Add it',

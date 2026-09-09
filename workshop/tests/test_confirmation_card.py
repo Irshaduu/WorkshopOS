@@ -300,6 +300,55 @@ class TheCardCanAlwaysBeSeenAndAnsweredTests(TestCase):
         self.assertIsNotNone(height)
         self.assertGreaterEqual(int(height.group(1)), 44)
 
+    def test_every_dialog_is_centred_on_a_phone(self):
+        """
+        ⚠ BOOTSTRAP CENTRES A MODAL ONLY FROM 576px UP. `.modal-dialog` carries
+        `margin: 0.5rem` at every width and gains `margin-left/right: auto`
+        inside `@media (min-width: 576px)` ALONE — so every dialog that sets
+        its own max-width, 18 of this app's 37, was pinned to the LEFT on a
+        phone. `modal-dialog-centered` does not help: it centres VERTICALLY.
+
+        It hides on a narrow screen and grows with the width, which is why it
+        went unreported for so long. MEASURED on the Supplies Shop's delete
+        confirmation (max-width 340): 4px out at 360px and 56px out at 412px —
+        8px of gap on the left against 64px on the right.
+        """
+        block = re.search(
+            r'@media \(max-width: 575\.98px\) \{\s*\.modal-dialog \{([^}]*)\}',
+            self.css,
+        )
+        self.assertIsNotNone(
+            block, 'nothing re-centres a modal below Bootstrap\'s 576px breakpoint'
+        )
+        self.assertIn('margin-left: auto', block.group(1))
+        self.assertIn('margin-right: auto', block.group(1))
+
+    def test_and_no_dialog_is_centred_onto_the_screen_edge(self):
+        """
+        ⚠ THE OTHER 19 DECLARE NO max-width AT ALL — `modal-sm` included, since
+        Bootstrap's 300px cap on it lives inside `min-width: 576px`. Below the
+        breakpoint those dialogs are `width: auto` and already fill the row, so
+        the auto margins above resolve to ZERO and replaced Bootstrap's own 8px
+        with nothing: every one of them went edge to edge. MEASURED on the rent
+        card's Update rent at 375px — `margin: 8px 0px` on a 375px dialog
+        touching both sides of the screen.
+
+        Taking the gap out of the WIDTH keeps both facts true at once, and a
+        dialog that caps itself is untouched because `max-width` beats `width`
+        whatever the specificity: at 375px a 340px dialog is 340px on 17.5px of
+        margin, one with no cap is 359px on 8px.
+        """
+        block = re.search(
+            r'@media \(max-width: 575\.98px\) \{\s*\.modal-dialog \{([^}]*)\}',
+            self.css,
+        )
+        self.assertIsNotNone(block)
+        self.assertRegex(
+            block.group(1),
+            r'width:\s*calc\(100% - var\(--bs-modal-margin[^)]*\) \* 2\)',
+            'a dialog with no max-width of its own would sit on the screen edge',
+        )
+
     def test_a_busy_form_is_greyed_by_paint_and_never_by_disabled(self):
         """
         ⚠ A disabled control is dropped from the payload, so disabling a submit
