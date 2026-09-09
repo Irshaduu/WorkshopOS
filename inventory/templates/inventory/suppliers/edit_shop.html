@@ -81,6 +81,12 @@
       confirmBtn.addEventListener('click', function() {
         if (formToSubmit) {
           formToSubmit.submit();
+          // One press, one post. confirm.js latches the FORM, which is what
+          // protects the server; this is what says so on screen. Disabled in
+          // a timeout, never inline: a button disabled inside its own handler
+          // cancels the submission in some browsers.
+          const self = this;
+          setTimeout(function () { self.disabled = true; }, 0);
         }
       });
     }

@@ -282,6 +282,30 @@
         window.setTimeout(function () { delete form.dataset.wsBusy; }, 15000);
     }
 
+    /*
+     * ⚠ A PROGRAMMATIC `.submit()` FIRES NO SUBMIT EVENT, so the delegated
+     * latch below never sees one — the trap this codebase already records for
+     * the nav progress bar. Every dialog that posts through
+     * `formToSubmit.submit()` was therefore outside the rule, and those are
+     * the screens where a second press costs the most: a spare-shop or
+     * Supplies Shop payment deleted twice, an advance deleted twice, a part
+     * unassigned twice. Wrapped at the one place all of them go through
+     * rather than restated in each template, which is the same technique
+     * sound.js already uses on `window.confirm`.
+     *
+     * `.submit()` always navigates, so latching until the page is replaced is
+     * right for every caller — including the filter selects that post with
+     * `this.form.submit()`.
+     */
+    if (window.HTMLFormElement && window.HTMLFormElement.prototype.submit) {
+        var nativeSubmit = window.HTMLFormElement.prototype.submit;
+        window.HTMLFormElement.prototype.submit = function () {
+            if (this.dataset.wsBusy === '1') { return; }
+            markBusy(this);
+            return nativeSubmit.apply(this, arguments);
+        };
+    }
+
     // The reason cannot live in the dialog: this is ONE card and the forms are
     // one per row, often inside a dropdown. So it is copied into the posting
     // form as a hidden input at the moment Confirm is pressed.
@@ -300,15 +324,15 @@
         /*
          * `requestSubmit()` rather than `submit()`, deliberately: it fires a
          * real submit event, so the nav bar paints and the busy latch below
-         * catches it. A programmatic `.submit()` fires nothing — the trap this
-         * codebase records for three other templates — so it is only the
-         * fallback, and it latches by hand.
+         * catches it. A programmatic `.submit()` fires nothing, so it is only
+         * the fallback — and it must NOT latch by hand any more: the wrapper
+         * above latches it, and pre-latching would make the wrapper read this
+         * very call as the second press and refuse it.
          */
         form.dataset.wsConfirmed = '1';
         if (typeof form.requestSubmit === 'function') {
             form.requestSubmit();
         } else {
-            markBusy(form);
             form.submit();
         }
         delete form.dataset.wsConfirmed;

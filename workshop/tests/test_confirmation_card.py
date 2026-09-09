@@ -300,6 +300,29 @@ class TheCardCanAlwaysBeSeenAndAnsweredTests(TestCase):
         self.assertIsNotNone(height)
         self.assertGreaterEqual(int(height.group(1)), 44)
 
+    def test_every_dialog_is_centred_on_a_phone(self):
+        """
+        ⚠ BOOTSTRAP CENTRES A MODAL ONLY FROM 576px UP. `.modal-dialog` carries
+        `margin: 0.5rem` at every width and gains `margin-left/right: auto`
+        inside `@media (min-width: 576px)` ALONE — so every dialog in this app,
+        all of which set their own max-width, was pinned to the LEFT on a
+        phone. `modal-dialog-centered` does not help: it centres VERTICALLY.
+
+        It hides on a narrow screen and grows with the width, which is why it
+        went unreported for so long. MEASURED on the Supplies Shop's delete
+        confirmation (max-width 340): 4px out at 360px and 56px out at 412px —
+        8px of gap on the left against 64px on the right.
+        """
+        block = re.search(
+            r'@media \(max-width: 575\.98px\) \{\s*\.modal-dialog \{([^}]*)\}',
+            self.css,
+        )
+        self.assertIsNotNone(
+            block, 'nothing re-centres a modal below Bootstrap\'s 576px breakpoint'
+        )
+        self.assertIn('margin-left: auto', block.group(1))
+        self.assertIn('margin-right: auto', block.group(1))
+
     def test_a_busy_form_is_greyed_by_paint_and_never_by_disabled(self):
         """
         ⚠ A disabled control is dropped from the payload, so disabling a submit
@@ -352,3 +375,73 @@ class OnePressIsOnePostTests(TestCase):
     def test_a_page_restored_from_the_back_cache_comes_back_alive(self):
         self.assertIn("'pageshow'", self.js)
         self.assertIn('e.persisted', self.js)
+
+    def test_a_programmatic_submit_is_latched_too(self):
+        """
+        ⚠ THE DELEGATED GUARD CANNOT SEE A PROGRAMMATIC `.submit()`, because it
+        fires no submit event — so every dialog posting through
+        `formToSubmit.submit()` sat outside the rule, and those are the screens
+        where a second press costs the most: a shop payment deleted twice, an
+        advance deleted twice.
+
+        Wrapped on the prototype, at the one place all of them go through,
+        rather than restated in each template — the same technique sound.js
+        already uses on `window.confirm`. Nothing here executes JavaScript, so
+        removing the wrapper would leave every other test green.
+        """
+        self.assertIsNotNone(
+            re.search(
+                r'window\.HTMLFormElement\.prototype\.submit = function.*?'
+                r"this\.dataset\.wsBusy === '1'.*?markBusy\(this\)",
+                self.js, re.S,
+            ),
+            'a programmatic .submit() is no longer latched — every dialog that '
+            'posts with formToSubmit.submit() can be pressed twice again',
+        )
+
+    def test_the_fallback_submit_does_not_latch_itself_out(self):
+        """
+        ⚠ `submitForm`'s fallback used to call `markBusy(form)` and then
+        `form.submit()`. With the wrapper above in place that reads its OWN
+        call as the second press and refuses it — so the question would be
+        asked, Confirm pressed, and nothing posted at all.
+        """
+        fallback = self.js[self.js.index('function submitForm'):]
+        fallback = fallback[:fallback.index('function optsFrom')]
+        self.assertIn('form.submit()', fallback)
+        self.assertNotIn('markBusy', fallback)
+
+
+class EveryConfirmButtonLocksItselfTests(TestCase):
+    """
+    ⚠ THE FORM LATCH PROTECTS THE SERVER; THIS IS WHAT SAYS SO ON SCREEN.
+
+    Four dialogs predate the shared card and still post through
+    `formToSubmit.submit()` from a button that lives OUTSIDE the form — so
+    `form[data-ws-busy="1"] button` can never reach them, and on a slow
+    connection the Confirm button sat there looking live while every tap was
+    another POST.
+    """
+
+    # Every template whose confirmation posts with a programmatic `.submit()`.
+    PAGES = [
+        'workshop/templates/workshop/spare_shops/shop_detail.html',
+        'workshop/templates/workshop/salary_advance/home.html',
+        'workshop/templates/workshop/jobcard/jobcard_form.html',
+        'workshop/templates/workshop/jobcard/bulk_payer_detail.html',
+        'workshop/templates/workshop/rent/rent_home.html',
+        'workshop/templates/workshop/withdrawals/withdrawal_home.html',
+        'workshop/templates/workshop/cashbook/cashbook.html',
+        'inventory/templates/inventory/suppliers/shop_detail.html',
+        'inventory/templates/inventory/suppliers/edit_shop.html',
+    ]
+
+    def test_a_confirm_button_that_posts_by_hand_stops_taking_taps(self):
+        missing = []
+        for page in self.PAGES:
+            src = (Path(settings.BASE_DIR) / page).read_text(encoding='utf-8')
+            if not re.search(r'\.submit\(\)', src):
+                continue
+            if not re.search(r'\.disabled = true', src):
+                missing.append(page)
+        self.assertEqual(missing, [], f'Confirm button never locks on: {missing}')

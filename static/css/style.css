@@ -1012,6 +1012,29 @@ select.status-fixed {
 
 .wcf-dialog { max-width: 380px; }
 
+/* ⚠ BOOTSTRAP ONLY CENTRES A MODAL FROM 576px UP, AND EVERY DIALOG IN THIS APP
+   CARRIES ITS OWN max-width. `.modal-dialog` is `margin: var(--bs-modal-margin)`
+   — 0.5rem, all four sides — at every width, and gains `margin-left/right: auto`
+   inside `@media (min-width: 576px)` ALONE. Under that the box is therefore
+   pinned to the LEFT by however much the screen is wider than it, and
+   `modal-dialog-centered` does not help: that class centres VERTICALLY.
+
+   It hides on a narrow phone and grows with the screen, which is why it went
+   unnoticed. Measured on this page's delete confirmation (max-width 340):
+   4px out at 360px, and 56px out at 412px — 8px of gap on the left against
+   64px on the right, which is the Pixel/Samsung width most of this workshop's
+   phones report. The shared card and the logout modal were 16px out on the
+   same screen.
+
+   ONE declaration in the shared stylesheet rather than a margin added to each
+   of the twenty dialogs — the `.rpay-*` rule — so a dialog added later is
+   centred with nothing to remember. Safe as a blanket: `.modal-fullscreen`
+   (which sets `margin: 0`) is used nowhere in this app, and were it added, an
+   auto margin on a box already filling its container resolves to 0 anyway. */
+@media (max-width: 575.98px) {
+    .modal-dialog { margin-left: auto; margin-right: auto; }
+}
+
 .wcf-card {
     /* Neutral is the default so a caller that names no theme still renders a
        finished card rather than an unstyled one. */

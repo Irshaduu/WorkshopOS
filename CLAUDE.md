@@ -6165,11 +6165,43 @@ own tick, where disabling a control cancels the submission in some browsers.
 Every AJAX search and filter in the app prevents its own default, so none of
 them latches and none of them can be searched only once.
 
-**The dialog's Confirm button locks itself on press**, which is the half that
-covers a programmatic `.submit()` — that fires no submit event for the form
-guard to catch. **A page restored from the back/forward cache is unlatched on
-`pageshow`.**
-→ `workshop/tests/test_confirmation_card.py`
+**The dialog's Confirm button locks itself on press.** **A page restored from
+the back/forward cache is unlatched on `pageshow`.**
+
+⚠ **AND A PROGRAMMATIC `.submit()` IS LATCHED ON THE PROTOTYPE — this CORRECTS
+what this section used to claim.** It read that the card's own Confirm button
+"covers a programmatic `.submit()`", which was true of every question that goes
+through the shared card and false of the four dialogs that predate it: the
+spare shop's and the Supplies Shop's `confirmActionModal`, the Supplies Shop's
+edit page, the salary-advance delete and the job card's unassign each post with
+`formToSubmit.submit()` from a button that is not the card's. **A programmatic
+`.submit()` fires no submit event**, so the delegated guard never saw one, and
+on a slow connection every retap of Confirm was another POST — a shop payment
+deleted twice, an advance deleted twice.
+
+`window.HTMLFormElement.prototype.submit` is wrapped in confirm.js to latch and
+then refuse, which is the `.rpay-*` rule again: **one declaration where all of
+them already go through, rather than the rule restated in nine templates.**
+Same technique sound.js uses on `window.confirm`. `.submit()` always navigates,
+so latching until the page is replaced is right for every caller, the filter
+selects that post with `this.form.submit()` included.
+
+⚠ **`submitForm`'s fallback MUST NOT `markBusy` itself first.** It did, back
+when it was the only thing latching that path — and with the wrapper in place
+that reads its own call as the second press and refuses it, so the question
+would be asked, Confirm pressed, and nothing posted at all.
+
+⚠ **The wrapper is the control; the button's `disabled` is what says so.**
+Those Confirm buttons live OUTSIDE the form they post, so
+`form[data-ws-busy="1"] button` can never reach them and the button would sit
+there looking live. Each sets `disabled` **in a `setTimeout`, never inline** —
+the rule the rent and withdrawal dialogs already followed.
+→ `workshop/tests/test_confirmation_card.py` —
+`test_a_programmatic_submit_is_latched_too`,
+`test_the_fallback_submit_does_not_latch_itself_out`,
+`EveryConfirmButtonLocksItselfTests`. All three fail on the reintroduced
+regression, which was verified rather than assumed; nothing in the Django suite
+executes a line of this.
 
 ## Card list grids — six lists, two breakpoints
 
@@ -7981,6 +8013,48 @@ block applied, and `getComputedStyle().flexGrow` reporting `0` forever. It looks
 exactly like a media query that is not being applied. **Transition the paint**
 (background, border-color, color, box-shadow), never the layout.
 
+**BOOTSTRAP CENTRES A MODAL ONLY FROM 576px UP, so every dialog in this app was
+pinned to the LEFT on a phone.** `.modal-dialog` is `margin: var(--bs-modal-margin)`
+— 0.5rem, all four sides — at every width, and gains `margin-left/right: auto`
+inside `@media (min-width: 576px)` **alone**. Below that a dialog is only
+*visually* centred because `width: auto` makes it fill the row; the moment it
+carries its own `max-width` — which all twenty of this app's dialogs do, most as
+an inline `style="max-width:340px"` — the left margin stays 8px and every
+remaining pixel piles up on the right.
+
+⚠ **`modal-dialog-centered` is not the fix and reads like it is.** That class
+centres **vertically**. Every one of these dialogs already had it.
+
+⚠ **IT HIDES ON A NARROW PHONE AND GROWS WITH THE SCREEN, which is why it went
+unreported for months.** The offset is `viewport − max-width − 16`, so it is
+nothing at 375px and obvious at 412px — and 412 is the width most Pixel and
+Samsung handsets report, which is what the owners actually hold. Measured on the
+Supplies Shop's delete confirmation (max-width 340): **4px out at 360px, 56px
+out at 412px** — 8px of gap on the left against 64px on the right. The shared
+`.wcf-*` card and the logout modal were 16px out on the same screen.
+
+**One rule in `static/css/style.css`**, not a margin added to each of the twenty
+dialogs — the `.rpay-*` rule, so a dialog added later is centred with nothing to
+remember:
+
+```css
+@media (max-width: 575.98px) {
+    .modal-dialog { margin-left: auto; margin-right: auto; }
+}
+```
+
+Safe as a blanket: `.modal-fullscreen` (which sets `margin: 0`) is used nowhere
+in this app, and were it added, an auto margin on a box already filling its
+container resolves to 0 anyway.
+
+⚠ **MEASURING THIS NEEDS THE MODAL LAID OUT, and a zero-size rect reads exactly
+like a dialog flung off screen.** Forcing `display:block` on a `.modal` and
+reading the dialog's rect returns all zeros until layout has settled, which
+scores as `offBy == viewport` — on Data Cleanup, which renders 446 modals, that
+reported 444 false positives in one sweep. **Check `rect.width` before believing
+an offset.**
+→ `test_every_dialog_is_centred_on_a_phone`
+
 **A rounded list container must NOT be `overflow: hidden` if it holds a dropdown.**
 Popper cannot escape a clipping ancestor, and it fails invisibly and only sometimes:
 with a long list the menu opens over the rows beneath and stays inside the box, so it
@@ -8301,8 +8375,8 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 69 files, 2,362 tests. Always SQLite (see below).
-# Last full run 2026-09-09: 2,362 tests, ALL GREEN, 5,337s (89 min).
+# Full test suite — 69 files, 2,366 tests. Always SQLite (see below).
+# Last full run 2026-09-09: 2,366 tests, ALL GREEN, 5,649s (94 min).
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
 # test files running beside it, but the two IDLE runs still differed by 27
@@ -8668,7 +8742,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **69 files, 2,362 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **69 files, 2,366 tests**,
 counted 2026-09-08. (`workshop/tests/` is 63 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
