@@ -562,28 +562,60 @@ class TheAmountIsWhatTheInvoiceSaidTests(ServiceHistoryTestCase):
         The invoice said ₹600, and so does this.
         """
         self._settled(date(2026, 1, 1), '600', '100', '500')
-        self.assertEqual(self._build()['visits'][0].amount, Decimal('600'))
+        visit = self._build()['visits'][0]
+        self.assertEqual(visit.amount, Decimal('600'))
+        # ...and the ₹100 it was given travels beside it, by the owners'
+        # decision, so the sheet can print what the invoice alone does not.
+        self.assertEqual(visit.discount, Decimal('100'))
 
-    def test_neither_the_discount_nor_the_receipt_reaches_the_sheet(self):
+    def test_the_receipt_and_the_payment_state_never_reach_the_sheet(self):
+        """
+        ⚠ THE DISCOUNT WAS ON THIS LIST UNTIL 2026-09-11 and came off it by
+        the owners' decision: Formula D discounts every customer on purpose and
+        wants it seen. What a discount is NOT is payment state — it is what
+        the workshop took off the bill. What was received, and whether anything
+        is still owed, stay off this document: it records work, not debt.
+        """
         self._settled(date(2026, 1, 1), '600', '100', '500')
         visit = self._build()['visits'][0]
-        for banned in ('discount', 'received', 'payment_status', 'balance'):
+        for banned in ('received', 'payment_status', 'balance', 'paid'):
             self.assertFalse(
                 hasattr(visit, banned),
                 f"A visit must not carry {banned!r} — this document records "
                 f"work, not debt.",
             )
 
+    def test_a_discount_is_never_negative(self):
+        """
+        Floored at zero, so a mistyped negative could never ADD to a bill on a
+        document handed to a buyer.
+        """
+        card = self._settled(date(2026, 1, 1), '600', '0', '600')
+        type(card).objects.filter(pk=card.pk).update(discount_amount=Decimal('-50'))
+        self.assertEqual(self._build()['visits'][0].discount, Decimal('0'))
+
     def test_the_lifetime_total_is_the_sum_of_the_cards(self):
         self._settled(date(2026, 1, 1), '600', '100', '500')
         self._settled(date(2026, 6, 1), '2400', '0', '2400')
 
         history = self._build()
-        self.assertEqual(history['summary'].total_billed, Decimal('3000'))
+        summary = history['summary']
+        self.assertEqual(summary.total_billed, Decimal('3000'))
         self.assertEqual(
-            history['summary'].total_billed,
+            summary.total_billed,
             sum(v.amount for v in history['visits']),
         )
+
+        # The discount and the net close the sheet, so both have to add up from
+        # the same rows as well.
+        self.assertEqual(summary.total_discount, Decimal('100'))
+        self.assertEqual(
+            summary.total_discount,
+            sum(v.discount for v in history['visits']),
+        )
+        self.assertEqual(summary.net_total, Decimal('2900'))
+        self.assertEqual(summary.net_total,
+                         summary.total_billed - summary.total_discount)
 
 
 class TheCarOverItsWholeLifeTests(ServiceHistoryTestCase):
@@ -767,6 +799,8 @@ class AHistoryWithNothingInItTests(ServiceHistoryTestCase):
         self.assertEqual(summary.visits, 0)
         self.assertEqual(summary.in_progress, 1)
         self.assertEqual(summary.total_billed, Decimal('0'))
+        self.assertEqual(summary.total_discount, Decimal('0'))
+        self.assertEqual(summary.net_total, Decimal('0'))
         self.assertIsNone(summary.first_date)
         self.assertEqual(summary.span_label, '')
 

@@ -447,10 +447,16 @@ def _history_cards(registration):
 #: for. The keys are the query parameters, so one list drives the tick boxes,
 #: the redirect and the sheet, and a fourth option cannot be added to two of
 #: the three.
+#:
+#: ⚠ EACH LABEL IS THE WORD THE SHEET PRINTS for the block it switches —
+#: AMOUNT, WORK DONE, REPORTED. They read "Job Performed" and "Customer
+#: Concerns" (the job card's own section names) while the sheet said something
+#: else, so a tick named one thing turned on a block called another. There is
+#: no hint line under each any more: every one restated its own label.
 HISTORY_OPTIONS = (
-    ('amount', 'Amount', 'what each visit was billed'),
-    ('work', 'Job Performed', 'the work carried out at each visit'),
-    ('concerns', 'Customer Concerns', 'what the customer reported on arrival'),
+    ('amount', 'Amount'),
+    ('work', 'Work done'),
+    ('concerns', 'What was reported'),
 )
 
 
@@ -485,7 +491,7 @@ def car_service_history(request, registration):
     ticks = {
         key: (bool(request.GET.get(key)) if submitted or 'edit' in request.GET
               else True)
-        for key, _label, _hint in HISTORY_OPTIONS
+        for key, _label in HISTORY_OPTIONS
     }
 
     typed_km = (request.GET.get('km') or '').strip()
@@ -526,8 +532,8 @@ def car_service_history(request, registration):
         # dictionary lookup by variable key, and adding a filter for one screen
         # would be a new piece of app-wide machinery to carry a boolean.
         'options': [
-            {'key': key, 'label': label, 'hint': hint, 'checked': ticks[key]}
-            for key, label, hint in HISTORY_OPTIONS
+            {'key': key, 'label': label, 'checked': ticks[key]}
+            for key, label in HISTORY_OPTIONS
         ],
         'typed_km': typed_km,
         'km_error': km_error,

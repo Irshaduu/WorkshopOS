@@ -691,11 +691,14 @@ visits newest at the top, then the part-durability table:
                     │
    VISIT 4 · 14 Dec 2024 · JB-24-003                       84,100 km
    ...
+                          TOTAL BILLED   Rs 2,63,400.00
+                          DISCOUNT      −Rs   12,400.00
+                          NET TOTAL      Rs 2,51,000.00   ← TOTAL BILLED alone when no visit has a discount
 
    PART LIFE
-   Engine Oil — averages 12,075 km between changes · due soon
-     (5) 6 Dec 2025    96,500 km    11,500 km   ON THE CAR
-     (4) 14 Dec 2024   84,100 km    12,400 km
+   Engine Oil                   AVG 12,075 km   due soon
+      5  6 Dec 2025    96,500 km    11,500 km   ON THE CAR
+      4  14 Dec 2024   84,100 km    12,400 km
      ...
 ```
 
@@ -721,9 +724,15 @@ Four things the office should know when a customer queries it:
 - **Only completed visits appear.** A car on the floor has a total that is not
   final. If one is in the workshop that day the sheet says so out loud, so the
   customer is never left thinking the record stopped last month.
-- **The amount printed is what the INVOICE said**, not what the profile's
-  "Total billed" says. Those differ by any discount given at the counter — the
-  profile shows revenue, the sheet shows the paper the customer holds.
+- **Each visit's amount is what the INVOICE said, and any discount prints
+  under it** — the owners give every customer one on purpose and want it seen.
+  The record closes on TOTAL BILLED, DISCOUNT and **NET TOTAL**; with no
+  discount anywhere it closes on TOTAL BILLED alone. The closing figure says
+  NET, never "paid", because it also counts completed visits nobody has paid
+  for yet. NET TOTAL is the same figure as the profile's "Total billed".
+- **The part numbers are bare** — `5 4 3 2 1`, navy, beside their dates. 1 is
+  the first fitting recorded here; the date beside each number says so, so the
+  sheet carries no legend for them.
 - **"Due soon" comes from this car's own history**, never a manufacturer
   schedule. The system holds no service intervals, so it only ever says what
   the last few changes on *this* car actually measured. It is printed on the

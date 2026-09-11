@@ -75,17 +75,11 @@ It is NEVER STORED. See the view.
 
         <section class="sh-opt-card">
             <h2>What to include</h2>
-            <p class="sh-opt-note">
-                Every visit, the distance between them and the parts fitted are always
-                on the sheet. These three are yours to choose.
-            </p>
+            <p class="sh-opt-note">Visits, distances and parts are always included.</p>
             {% for option in options %}
             <label class="sh-opt-tick">
                 <input type="checkbox" name="{{ option.key }}" value="1"{% if option.checked %} checked{% endif %}>
-                <span>
-                    <b>{{ option.label }}</b>
-                    <small>{{ option.hint }}</small>
-                </span>
+                <b>{{ option.label }}</b>
             </label>
             {% endfor %}
         </section>
@@ -93,9 +87,7 @@ It is NEVER STORED. See the view.
         <section class="sh-opt-card{% if km_error %} sh-opt-card--bad{% endif %}">
             <h2>Current reading <span class="sh-opt-opt">optional</span></h2>
             <p class="sh-opt-note">
-                Ask the customer what the odometer shows now. It is used only to work
-                out how far the parts on the car have run since they were fitted —
-                <b>it is not saved anywhere.</b>
+                Ask the customer — it fills in how far each part has run. <b>Not saved.</b>
             </p>
             <div class="sh-opt-km">
                 {% comment %}
@@ -113,8 +105,7 @@ It is NEVER STORED. See the view.
             <p class="sh-opt-error">{{ km_error }}</p>
             {% elif summary.latest_reading %}
             <p class="sh-opt-note">
-                Leave it empty and the sheet measures to {{ summary.latest_reading|inr }} km,
-                the reading from the last visit.
+                Left empty, the sheet measures to {{ summary.latest_reading|inr }} km.
             </p>
             {% endif %}
         </section>
@@ -211,12 +202,6 @@ It is NEVER STORED. See the view.
         font-size: .88rem;
         font-weight: 600;
         line-height: 1.2;
-    }
-
-    .sh-opt-tick small {
-        display: block;
-        font-size: .74rem;
-        color: var(--color-text-muted);
     }
 
     .sh-opt-km {

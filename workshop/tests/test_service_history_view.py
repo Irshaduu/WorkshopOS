@@ -143,6 +143,21 @@ class ChoosingWhatGoesOnTheCopyTests(ServiceHistoryPageTestCase):
         self.assertEqual(html.count('type="checkbox"'), 3)
         self.assertEqual(html.count('value="1" checked'), 3)
 
+    def test_each_tick_is_named_for_the_block_it_switches(self):
+        """
+        The sheet prints AMOUNT, WORK DONE and REPORTED. The ticks read "Job
+        Performed" and "Customer Concerns", so a tick named one thing turned on
+        a block called another — and each carried a hint line restating its
+        own label.
+        """
+        self._visit(date(2026, 1, 1))
+        html = self.client.get(self._options_url()).content.decode()
+        form = html[html.index('sh-opt-form'):html.index('sh-opt-go')]
+        for label in ('Amount', 'Work done', 'What was reported'):
+            self.assertIn(f'<b>{label}</b>', form)
+        for gone in ('Job Performed', 'Customer Concerns', '<small>'):
+            self.assertNotIn(gone, form)
+
     def test_submitting_opens_the_sheet_carrying_the_choices(self):
         self._visit(date(2026, 1, 1))
         response = self.client.get(
@@ -311,14 +326,35 @@ class NothingInternalReachesTheCustomerTests(ServiceHistoryPageTestCase):
         self._loaded_card()
         self.assertNotIn('do not wash', self._sheet())
 
-    def test_the_discount_is_not_printed(self):
+    def test_a_discount_is_printed_and_NAMED(self):
         """
-        The workshop's own write-off, agreed verbally at the counter. Printing
-        it invites renegotiating a figure nobody was quoted — the reason
-        `settlement()` keeps it off the invoice too.
+        ⚠ THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-09-11. The discount was
+        kept off on `settlement()`'s reasoning — a write-off agreed at the
+        counter, which printing invites renegotiating. The owners reversed it
+        for this document: Formula D discounts every customer on purpose and
+        wants it seen. The invoice still prints none.
+
+        ⚠ AND IT IS NAMED, NEVER LEFT AS A SECOND FIGURE. ₹18,000 beside
+        ₹17,100 with nothing between them reads to a buyer as ₹900 still owed.
         """
         self._loaded_card()
-        self.assertNotIn('900.00', self._sheet())
+        sheet = self._sheet()
+        self.assertIn('&minus;900.00', sheet)
+        card = sheet[sheet.index('sh-chain'):sheet.index('sh-total')]
+        self.assertIn('DISCOUNT', card)
+        self.assertLess(card.index('AMOUNT'), card.index('DISCOUNT'))
+
+        # The discount is working, drawn plain; only AMOUNT keeps the shading.
+        self.assertIn('<tr class="sh-calc">', card)
+
+    def test_a_visit_with_no_discount_prints_no_discount_line(self):
+        """Confirming what cannot surprise anyone is how a line stops being read."""
+        card = self._visit(date(2026, 1, 1), '60000', labour_amount=Decimal('4000'))
+        card.update_totals()
+        sheet = self._sheet()
+        self.assertNotIn('DISCOUNT', sheet)
+        self.assertNotIn('NET TOTAL', sheet)
+        self.assertIn('TOTAL BILLED', sheet)
 
     def test_no_payment_state_appears_anywhere(self):
         """
@@ -333,12 +369,17 @@ class NothingInternalReachesTheCustomerTests(ServiceHistoryPageTestCase):
     def test_the_bill_TOTAL_is_printed_because_that_is_what_the_invoice_said(self):
         """
         ₹4,000 labour + ₹8,000 pads + ₹6,000 of oil = ₹18,000, which is what
-        the customer's own invoice totals — not the ₹17,100 of revenue left
-        after the discount.
+        the customer's own invoice totals and what the visit's AMOUNT prints.
+        The ₹17,100 left after the ₹900 discount is printed as well — as the
+        NET TOTAL that closes the record, never in place of the AMOUNT.
         """
         card = self._loaded_card()
         self.assertEqual(card.total_bill_amount, Decimal('18000'))
-        self.assertIn('18,000.00', self._sheet())
+        sheet = self._sheet()
+        visit = sheet[sheet.index('sh-chain'):sheet.index('sh-total')]
+        self.assertIn('18,000.00', visit)
+        self.assertNotIn('17,100.00', visit)
+        self.assertIn('17,100.00', sheet[sheet.index('sh-total'):])
 
 
 class ThereIsAlwaysAWayOutTests(ServiceHistoryPageTestCase):
@@ -525,6 +566,79 @@ class TheSheetItselfTests(ServiceHistoryPageTestCase):
         card.update_totals()
         self.assertNotIn('TOTAL BILLED', self._sheet({}))
 
+    def _discounted(self):
+        """Two settled visits: ₹95,000 billed, ₹7,000 off, ₹88,000 net."""
+        first = self._visit(date(2026, 1, 1), '60000')
+        second = self._visit(date(2026, 4, 1), '69800')
+        for card, amount, discount in ((first, '25000', '2000'),
+                                       (second, '70000', '5000')):
+            card.labour_amount = Decimal(amount)
+            card.update_totals()
+            card.discount_amount = Decimal(discount)
+            card.received_amount = card.total_bill_amount - card.discount_amount
+            card.payment_status = 'PAID'
+            card.save()
+
+    def _closing_block(self, sheet):
+        close = sheet[sheet.index('sh-total'):]
+        return close[:close.index('</table>')]
+
+    def test_with_a_discount_the_record_closes_on_three_lines_that_add_up(self):
+        """
+        TOTAL BILLED, DISCOUNT, NET TOTAL — two plain working lines and one
+        answer, in that order, with the arithmetic on the page:
+        ₹95,000 − ₹7,000 = ₹88,000.
+        """
+        self._discounted()
+        close = self._closing_block(self._sheet())
+        self.assertLess(close.index('TOTAL BILLED'), close.index('DISCOUNT'))
+        self.assertLess(close.index('DISCOUNT'), close.index('NET TOTAL'))
+        self.assertIn('95,000.00', close)
+        self.assertIn('&minus;7,000.00', close)
+        self.assertIn('88,000.00', close)
+
+        # NET TOTAL, not TOTAL BILLED, wears the bill's 14pt closing treatment.
+        self.assertIn('grand-label">NET TOTAL', close)
+        self.assertNotIn('grand-label">TOTAL BILLED', close)
+
+        # ⚠ ONLY THE ANSWER IS SHADED. All three in the SUBTOTAL/TOTAL fills
+        # read as clutter: three bold bands, nothing for the eye to land on.
+        self.assertEqual(close.count('<tr class="sh-calc">'), 2)
+        self.assertNotIn('sub-label', close)
+        self.assertNotIn('sub-cell', close)
+
+    def test_the_closing_figure_is_NET_never_PAID(self):
+        """
+        ⚠ A discount exists only on a settled card, but this total also counts
+        completed visits nobody has paid for yet — so "TOTAL PAID" would claim
+        that money too. Asserted with an unpaid visit on the record for exactly
+        that reason.
+        """
+        self._discounted()
+        unpaid = self._visit(date(2026, 8, 1), '80000')
+        unpaid.labour_amount = Decimal('22000')
+        unpaid.update_totals()
+
+        close = self._closing_block(self._sheet())
+        self.assertNotIn('PAID', close.upper())
+        self.assertIn('1,10,000.00', close)   # 95,000 + 22,000 − 7,000
+
+    def test_unticking_amount_removes_every_money_line(self):
+        self._discounted()
+        sheet = self._sheet({})
+        paper = sheet[:sheet.index('<script')]
+        for gone in ('AMOUNT', 'DISCOUNT', 'TOTAL BILLED', 'NET TOTAL'):
+            self.assertNotIn(gone, paper)
+
+    def test_the_working_lines_are_plain(self):
+        """Asserted on the declaration: nothing in the suite executes CSS."""
+        self._discounted()
+        html = self._render()
+        start = html.index('.inv-table .sh-calc td {')
+        rule = html[start:html.index('}', start)]
+        self.assertIn('background: #fff', rule)
+        self.assertIn('font-weight: 400', rule)
+
     def test_the_closing_total_wears_the_bills_own_total_treatment(self):
         """
         14pt on #bdd7ee is the invoice's TOTAL and nothing else on this sheet
@@ -585,7 +699,73 @@ class TheSheetItselfTests(ServiceHistoryPageTestCase):
         chain = html[html.index('sh-chain'):html.index('PART LIFE')]
         self.assertNotIn('ON THE CAR', chain)
         self.assertNotIn('sh-run', chain)
-        self.assertNotIn('(1)', chain)
+        self.assertNotIn('sh-inst', chain)
+
+    def test_a_fitting_is_numbered_bare_with_no_legend(self):
+        """
+        `(2)` `(1)` read as unprofessional, and the brackets were only there
+        because the number sits in the bill's QTY column drawn like a quantity.
+        Navy, it needs neither the brackets nor the note that explained them —
+        the date beside it says which came first.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        self._visit(date(2026, 4, 1), '69800', parts=['Wheel bearing left'])
+
+        sheet = self._sheet()
+        life = sheet[sheet.index('sh-life'):]
+        self.assertIn('class="sh-inst">2<', life)
+        self.assertIn('class="sh-inst">1<', life)
+        for gone in ('(1)', '(2)', 'first fitting', 'sh-note-life'):
+            self.assertNotIn(gone, sheet)
+
+    def test_the_number_is_navy_and_centred(self):
+        """Asserted on the declaration: nothing in the suite executes CSS."""
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        html = self._render()
+        start = html.index('.inv-table .sh-inst {')
+        rule = html[start:html.index('}', start)]
+        self.assertIn('#1f4e79', rule)
+        self.assertIn('text-align: center', rule)
+        self.assertNotIn('font-weight', rule)
+
+    def test_the_average_sits_over_the_figures_it_averages(self):
+        """
+        "AVG 9,500 km" in the DISTANCE RUN column of the part's own name row,
+        right-aligned over the distances it is the mean of — the owner's call.
+        It trailed the name as a sentence first ("averages … km between
+        changes"), then as "— AVG …".
+
+        With only ONE finished life there is no average to show: the figure
+        would be the number printed directly beneath it in row 1, so the note
+        is left off rather than said twice.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        self._visit(date(2026, 4, 1), '69800', parts=['Wheel bearing left'])
+        once = self._sheet()
+        self.assertNotIn('AVG', once)
+        self.assertNotIn('First one', once)
+
+        self._visit(date(2026, 7, 1), '79000', parts=['Wheel bearing left'])
+        sheet = self._sheet()
+        head = sheet[sheet.index('sh-chain-head'):]
+        head = head[:head.index('</tr>')]
+        # The name alone on the left, across the first three columns...
+        self.assertIn('<td colspan="3">', head)
+        # ...and the average in the DISTANCE RUN column, right-aligned.
+        self.assertIn('<td class="r sh-aside">AVG 9,500 km</td>', head)  # (9,800 + 9,200) / 2
+        for gone in ('between changes', 'lasted', 'averages', 'First one', '— AVG'):
+            self.assertNotIn(gone, sheet)
+
+    def test_part_life_stands_apart_from_the_visit_record(self):
+        """
+        16.8mm — three times the bill's own gap between its two sections
+        (5.6mm above PART NAME). Twice read as one run under the closing total.
+        Whitespace separates two questions without new ink.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        html = self._render()
+        start = html.index('.sh-life {')
+        self.assertIn('margin-top: 16.8mm', html[start:html.index('}', start)])
 
     def test_the_asterisk_legend_appears_only_when_something_carries_one(self):
         """

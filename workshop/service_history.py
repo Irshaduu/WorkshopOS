@@ -19,32 +19,45 @@ three rows on three job cards and nothing joins them up. Here they are one
 chain, numbered from the first time this car ever had that part, each carrying
 the distance it covered before it was replaced:
 
-    (3) Wheel Bearing - Left    10,000 km   RUNNING
-    (2) Wheel Bearing - Left    12,800 km
-    (1) Wheel Bearing - Left    13,000 km
+    3  Wheel Bearing - Left    10,000 km   RUNNING
+    2  Wheel Bearing - Left    12,800 km
+    1  Wheel Bearing - Left    13,000 km
 
 That is the answer to "how long does this part last on THIS car", and it is
 worth more to a buyer than any single invoice. It costs nothing but ordering:
 every figure is one stored reading minus another.
 
-⚠ **WHAT THIS PRINTS AS AN AMOUNT IS `total_bill_amount` — WHAT THE INVOICE
-SAID — AND NOT WHAT THE CAR PROFILE PAGE CALLS "billed".** They are different
-figures and the difference is deliberate:
+⚠ **EACH VISIT'S AMOUNT IS `total_bill_amount` — WHAT THE INVOICE SAID — AND
+ANY DISCOUNT IS PRINTED UNDER IT.** Both halves are deliberate.
 
-  * `car_profile_detail` reports `total_bill_amount - discount_amount`, which
-    is REVENUE as `analysis_engine` defines it. Right for an internal screen
-    asking what the workshop earned from this car.
-  * This document reprints the figure that was on the paper the customer was
-    handed. A part-paid walk-in is marked PAID with the shortfall booked as a
-    discount (see CLAUDE.md), so the two differ on exactly the visits a
-    customer is most likely to check — and a history disagreeing with an
-    invoice about one visit is the one failure that would make the whole
-    document worthless.
+  * The amount stays the invoice's own TOTAL, so a customer checking one visit
+    against the paper they were handed never finds a disagreement.
+  * **The discount is printed, by the owners' decision (2026-09-11).** Formula
+    D gives one to every customer on purpose and the owners want it seen: it
+    reminds the customer what they were given, and it stops a later buyer
+    reading the lifetime figure as a workshop that overcharges. This REVERSES
+    what this module held until then — "the discount itself is never
+    printed", on `settlement()`'s reasoning that it is a write-off agreed at
+    the counter and printing it invites renegotiation. That reasoning is still
+    why the INVOICE prints none; a history is read months later, when there is
+    nothing left to renegotiate.
+  * ⚠ **The gap must be NAMED.** Two unlabelled figures side by side — ₹25,000
+    and ₹23,000 — read to a stranger as ₹2,000 still OWED: a false debt, on the
+    one document handed to people with no reason to give the workshop the
+    benefit of the doubt. One word, DISCOUNT, is the whole fix.
+  * ⚠ **The closing figure is NET, never PAID.** A discount exists only on a
+    settled card (the shortfall-is-the-discount rule), so per visit PAID would
+    be true — but the lifetime total also counts completed visits nobody has
+    paid for yet, and "TOTAL PAID" would claim that money as well.
 
-    The discount itself is never printed, for the reason `settlement()` gives:
-    it is the workshop's own write-off, agreed verbally at the counter.
+`net_total` is `total_billed − total_discount`, both summed from the visit rows
+printed above them, so the closing block adds up from the page. It is the same
+figure `car_profile_detail` calls "Total billed" (revenue as `analysis_engine`
+defines it).
 
-**NO PAYMENT STATE APPEARS ANYWHERE.** This is a record of WORK, not of debt.
+**NO PAYMENT STATE APPEARS ANYWHERE.** This is a record of WORK, not of debt. A
+discount is not payment state — it is what the workshop took off the bill —
+and nothing here reads `received_amount` or `payment_status`.
 
 Nothing here is a money source of truth; every amount is the job card's own
 denormalized column, read the way every other screen reads it.
@@ -185,6 +198,10 @@ class Visit:
     jobs: tuple
     parts: tuple
     amount: Decimal                   # exactly what the invoice totalled
+    #: What was taken off that invoice at the counter, never negative.
+    #: Printed under the amount by the owners' decision — see the module
+    #: docstring for why it is shown and why it is always named.
+    discount: Decimal
 
 
 @dataclass(frozen=True)
@@ -211,6 +228,11 @@ class Summary:
     service_every_km: Optional[int]
     service_every_days: Optional[int]
     total_billed: Decimal
+    #: Every visit's discount, and what the car cost here after them. The
+    #: sheet closes on `net_total` whenever any visit carries a discount,
+    #: and it is the Car Profile's own "Total billed" to the rupee.
+    total_discount: Decimal
+    net_total: Decimal
     in_progress: int
     #: What the customer said on the phone, and what RUNNING measures against.
     #: `reference_km` falls back to `latest_reading`, so every running figure
@@ -545,6 +567,9 @@ def build_service_history(jobcards, current_km=None):
             # See the module docstring: what the invoice totalled, never
             # revenue and never what was received.
             amount=card.total_bill_amount or ZERO,
+            # Floored, so a mistyped negative could never ADD to a bill on a
+            # document handed to a buyer. Zero prints nothing at all.
+            discount=max(card.discount_amount or ZERO, ZERO),
         ))
         previous = visits[-1]
 
@@ -611,6 +636,7 @@ def _summarise(visits, in_progress, current_km, reference_km):
             first_reading=None, latest_reading=None, latest_reading_date=None,
             distance=None, km_per_month=None, service_every_km=None,
             service_every_days=None, total_billed=ZERO,
+            total_discount=ZERO, net_total=ZERO,
             in_progress=in_progress, current_km=current_km,
             reference_km=reference_km,
         )
@@ -658,6 +684,11 @@ def _summarise(visits, in_progress, current_km, reference_km):
                if visit.gap_km is not None and not visit.rate_implausible]
     gaps_days = [visit.gap_days for visit in visits if visit.gap_days]
 
+    # Both sums of the rows printed above them, so the closing block can be
+    # checked against the page it closes.
+    total_billed = sum((visit.amount for visit in visits), ZERO)
+    total_discount = sum((visit.discount for visit in visits), ZERO)
+
     return Summary(
         visits=len(visits),
         first_date=visits[0].date,
@@ -672,7 +703,9 @@ def _summarise(visits, in_progress, current_km, reference_km):
                           if gaps_km else None),
         service_every_days=(round(sum(gaps_days) / len(gaps_days))
                             if gaps_days else None),
-        total_billed=sum((visit.amount for visit in visits), ZERO),
+        total_billed=total_billed,
+        total_discount=total_discount,
+        net_total=total_billed - total_discount,
         in_progress=in_progress,
         current_km=current_km,
         reference_km=reference_km,

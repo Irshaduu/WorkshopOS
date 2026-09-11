@@ -3688,19 +3688,102 @@ a second copy of a stored figure, free to drift.
 
 ### `workshop/service_history.py` — every rule the sheet prints
 
-**THE AMOUNT PRINTED IS `total_bill_amount` — WHAT THE INVOICE SAID — NOT WHAT
-THE CAR PROFILE CALLS "BILLED".** That hero figure is
-`total_bill_amount − discount_amount`, which is REVENUE. A part-paid walk-in is
-marked PAID with the shortfall booked as a discount, so the two differ on
-exactly the visits a customer checks against their own stack of bills. The
-sheet must agree with the paper.
+**EACH VISIT'S AMOUNT IS `total_bill_amount` — WHAT THE INVOICE SAID — AND ANY
+DISCOUNT PRINTS UNDER IT.** The amount stays the invoice's own TOTAL, so a
+customer checking one visit against their stack of bills never finds a
+disagreement.
 
-**NO PAYMENT STATE ANYWHERE ON IT.** It is a record of WORK, not of debt.
+⚠ **THE DISCOUNT IS PRINTED, AND THAT REVERSES WHAT THIS FILE SAID UNTIL
+2026-09-11, on the owners' decision.** It read that the discount is never
+printed, on `settlement()`'s reasoning: a write-off agreed at the counter,
+which printing invites renegotiating. That still governs the INVOICE, which
+prints none. It does not govern this document. **Formula D discounts every
+customer on purpose** — the owners' impression tactic — and they want it seen:
+it reminds a returning customer what they were given, and a later buyer reading
+the lifetime figure does not take Formula D for a workshop that overcharges. A
+history is read months after the counter, when there is nothing left to
+renegotiate.
+
+Three things carry it:
+
+- ⚠ **THE GAP IS NAMED, NEVER LEFT AS A SECOND FIGURE.** It was proposed as
+  `₹25,000  ₹23,000` side by side, on the reasoning that anybody can see the
+  difference is a discount. The customer who was there can. To a BUYER two
+  unlabelled figures read as ₹2,000 still OWED — a false debt, on the one
+  document handed to people with no reason to give the workshop the benefit of
+  the doubt. One word fixes it.
+- **Two rows per visit, the net once.** A discounted visit prints `AMOUNT` then
+  a plain `DISCOUNT −₹2,000` line; a visit with none prints its single AMOUNT
+  row, because `DISCOUNT ₹0.00` would be confirming what cannot surprise
+  anyone. The record then closes on `TOTAL BILLED` / `DISCOUNT` /
+  **`NET TOTAL`**, or on the single `TOTAL BILLED` row when no visit has one.
+  Chosen over three rows with a per-visit net because a discount is expected on
+  nearly every real card, which the seeded data (2 of 163 on 2026-09-11) does
+  not show.
+- ⚠ **ONLY THE ANSWER IS SHADED.** It first shipped with TOTAL BILLED and
+  DISCOUNT in the bill's SUBTOTAL treatment above a 14pt NET TOTAL — three bold
+  rows on three bands of fill — and the owner's verdict was *cluttered*. Three
+  things asking for the same glance is no hierarchy, and the sheet's own weight
+  rule already said why: bold is for a TOTAL. The steps to a total are
+  `.sh-calc` — white, regular weight — on both DISCOUNT lines and on TOTAL
+  BILLED above NET TOTAL; the shading stays on the figures that ARE totals, a
+  visit's AMOUNT and the NET TOTAL.
+- ⚠ **NET, NEVER "PAID".** A discount only exists on a settled card, so per
+  visit PAID would be true — but the closing total also counts completed
+  visits nobody has paid for yet, and "TOTAL PAID" would claim that money too.
+  `net_total` is `total_billed − total_discount`, both summed from the printed
+  rows, and it equals the Car Profile's own "Total billed" to the rupee.
+
+The branch reads `discount > 0` and nothing else — no payment-status check.
+Checked against every card in the development database on 2026-09-11: no
+discount on an unsettled card, none on a fleet card, and
+`bill − discount == received` on every PAID one.
+
+**NO PAYMENT STATE ANYWHERE ON IT.** It is a record of WORK, not of debt. A
+discount is not payment state — it is what the workshop took off the bill —
+and nothing here reads `received_amount` or `payment_status`.
 
 **Visits are built OLDEST FIRST and returned NEWEST FIRST.** Chains and gaps
 can only be walked in the direction time runs; the document reads the other
-way. Instance numbers count from the FIRST fitting, so `(3)` means the same
+way. Instance numbers count from the FIRST fitting, so `3` means the same
 thing whichever end you start from.
+
+**THE NUMBER IS BARE, NAVY AND CENTRED IN ITS COLUMN — no brackets, no
+legend (2026-09-11).** It printed as `(3)`, which read as unprofessional,
+and the brackets were only an apology for the styling: the number sits in the
+invoice's 7.7% QTY column, which is centred, 10pt and black because it holds a
+quantity, so a bare `3` there read as "three of these". Navy is what tells it
+apart now — structure is drawn in navy on this sheet. It was right-aligned
+against its date for one revision and centred on the owner's call. **The date beside each number is the
+legend** — 1 sits beside the oldest, the top one beside ON THE CAR — so the
+note that explained the brackets went with them, and so did the toolbar hook
+that had to hide it. PART LIFE also now sits **16.8mm** below the record,
+three times the bill's own 5.6mm gap between its two sections — twice was
+tried first and still read as one run under the closing total — so the visit
+record and the durability table read as two questions without a rule drawn
+between them.
+
+**A PART'S AVERAGE SITS IN THE DISTANCE RUN COLUMN OF ITS NAME ROW —
+`AVG 24,150 km`, right-aligned over the figures it averages (2026-09-11, the
+owner's call).** It read *"averages 24,150 km between changes"* after the name,
+then *"— AVG 24,150 km"*; in the column the eye reads straight down — AVG
+24,150, then 3,500, 24,200, 24,100 — and can check it, since it is the mean of
+the finished lives with the one still on the car left out. The name now stands
+alone on the left. It still carries no count, for the recorded reason: six
+fittings give five finished lives, and "over 6" would have a buyer count the
+rows and stop trusting the figure.
+
+⚠ **ONLY WHEN THERE IS A REAL AVERAGE — two or more finished lives.** With one,
+the figure is always the number printed directly beneath it in row 1, so the
+note that read *"First one 36,900 km"* became the same figure twice in one
+column the moment it moved there. It was dropped rather than moved.
+
+**THE LAST COLUMN STAYS `NOW`, NOT `STATUS` (2026-09-11).** Asked and kept, for
+two reasons. A blank under NOW reads as *not on the car now* — replaced — while
+a blank under STATUS reads as *unknown*, and fixing that means printing
+"Replaced" on every old row of a table already judged cluttered. And *status*
+is this app's word for payment and ordering state, the one thing this document
+never shows.
 
 ⚠ **ONE ANCHOR: both `gap_km` and `gap_days` measure from the IMMEDIATELY
 PREVIOUS visit, never reaching back past one with no reading.** A gap spanning
@@ -4084,13 +4167,19 @@ each was a reasonable answer to the wrong question:
   flush left edge is what a paragraph looks like. It was only ever a problem
   because the block was centred, and centring is what went.
 
-⚠ **THE PART LIFE NOTE IS HIDDEN BY THE TOOLBAR TICK, AND WAS NOT.** `chains`
-only says the car *has* a part-life table; the tick says whether **this copy**
-carries one. Unticking it left *"In PART LIFE, (1) is the first fitting
-recorded here"* on a page with no such table — the same defect as a door
-somebody can see and cannot open. `.sh-note-life` wraps the note **with its
-leading separator**, so hiding it cannot strand a middot between two others.
-The table's name is `&nbsp;`-glued so it can never break across a line either.
+**THERE IS NO PART LIFE NOTE ANY MORE (2026-09-11).** It explained what the
+bracketed `(1)` meant, and the numbers are bare now with the date beside each
+one doing that job. It was also the one note the toolbar tick had to hide —
+`.sh-note-life` and its script hook went with it.
+
+**THE NOTES THAT REMAIN STAY ON A COPY WITHOUT PART LIFE, AND THAT IS RIGHT.**
+It was reported as a leftover the day the legend went (2026-09-11): untick
+Part life and the whole run is still there under the total. Every item is about
+the RECORD, not the table — the invoices behind the visits, where the odometer
+figures came from, whose word today's reading is (it prints as `TODAY:` in the
+vehicle block whatever the tick says), a flagged join, and that work done
+elsewhere is absent. None of them names PART LIFE, so none has anything to
+follow off the page.
 
 ⚠⚠ **THE GREY IS THE ONE STATED EXCEPTION TO THE COLOUR RULE.** Everything else
 on the sheet is black, white, navy or the accent blue, all four the bill's.
@@ -4131,9 +4220,9 @@ would print *"* A distance marked * is unusually large"*, one mark doing two
 jobs an inch apart. `·` is the sheet's own separator already, in the visit band
 and the join chip. It is glued to the word before it with `&nbsp;` so a line can
 only break AFTER it — the rule the car profile's detail line records for the
-same glyph. **Nothing in the run is bold, including the two marks it quotes**: a
-legend has to look like the thing it explains, and neither the `(1)` in PART
-LIFE nor the `*` on a join is bold.
+same glyph. **Nothing in the run is bold, including the mark it quotes**: a
+legend has to look like the thing it explains, and the `*` on a join is not
+bold.
 
 **Two sentences were deleted rather than rewrapped, because both were already on
 the page**: *"Prepared from this workshop's own records on 8 Sep 2026"* — the
@@ -4153,6 +4242,14 @@ false. (The TODAY row printed the same thing in italic until 2026-09-08 — see
 `test_the_caveats_recede_from_the_record`
 
 ### The two markers on the options page
+
+**EACH TICK IS NAMED FOR THE BLOCK IT SWITCHES — Amount, Work done, What was
+reported (2026-09-11).** They read "Job Performed" and "Customer Concerns", the
+job card's own section names, while the sheet prints WORK DONE and REPORTED —
+a tick named one thing turning on a block called another. Each also carried a
+hint line restating its label; those went, and the page's explanatory prose
+went from 88 words to 29. The query keys (`amount` / `work` / `concerns`) did
+not change, so every URL already handed out still opens the same copy.
 
 ⚠ **`go` AND `edit` ARE TWO QUESTIONS, AND COLLAPSING THEM BROKE THE SHEET'S
 "CHANGE" BUTTON OUTRIGHT.** An unticked checkbox sends nothing, so

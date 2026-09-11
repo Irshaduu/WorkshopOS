@@ -726,6 +726,20 @@
             border-top-width: 2px;
         }
 
+        {% comment %}
+        THE WORKING — the steps to a total, drawn plain. The SUBTOTAL shading
+        and weight stay on figures that ARE totals (a visit's AMOUNT, the NET
+        TOTAL), so the eye lands on the answer and reads the working only if
+        it wants to. Both DISCOUNT lines, and TOTAL BILLED above NET TOTAL.
+        Stated rather than inherited, so a later rule on `.money` or a row
+        band cannot quietly shade them back.
+        {% endcomment %}
+        .inv-table .sh-calc td {
+            background: #fff;
+            font-weight: 400;
+            height: 5.2mm;
+        }
+
         .inv-table .grand-label,
         .inv-table .grand-amount {
             background: #bdd7ee;
@@ -792,7 +806,12 @@
            invoice can answer.
            ================================================================== */
         .sh-life {
-            margin-top: 7mm;
+            /* Three times the bill's own gap between its two sections
+               (5.6mm, above PART NAME). Twice read as one run under the
+               closing total — the owner's verdict, 2026-09-11. The visit
+               record and this table answer two different questions, and
+               whitespace separates them without new ink. */
+            margin-top: 16.8mm;
         }
 
         /* What the toolbar's Part life tick actually does. `.sh-life` declares
@@ -817,9 +836,10 @@
 
         ⚠ THE FILL AND THE RULE ARE ON THE ROW; THE BOLD NAVY IS ON THE NAME.
         They used to be one class on one cell, which was fine while the row
-        held one cell. It now holds two — the name, and the due-soon note in
-        the NOW column — and that note is italic accent blue, so it must not
-        inherit the name's weight and colour.
+        held one cell. It now holds three — the name, the average in the
+        DISTANCE RUN column and the due-soon note in the NOW column — and both
+        notes are italic accent blue, so neither may inherit the name's weight
+        and colour.
         {% endcomment %}
         .inv-table .sh-chain-head td {
             background: #dce6f1;
@@ -851,6 +871,26 @@
 
         .sh-life tbody td {
             height: 5.2mm;
+        }
+
+        {% comment %}
+        WHICH FITTING THIS IS — 1 is the first recorded here, and the top row
+        of each part is the one on the car now.
+
+        ⚠ IT SITS IN THE INVOICE'S QTY COLUMN, AND THAT IS WHY IT HAD BRACKETS.
+        That 7.7% cell is centred, 10pt and black on the bill because it holds
+        a quantity, so a bare number there read as "this many of these" — the
+        brackets were apologising for the styling. NAVY is what tells it apart
+        now — structure is drawn in navy on this sheet. Centred in its column
+        on the owner's call (2026-09-11); it was right-aligned against the date
+        for one revision. The date beside each number is the legend, so the
+        note explaining them went too.
+
+        Regular weight: on this sheet bold is for a total and a heading.
+        {% endcomment %}
+        .inv-table .sh-inst {
+            color: #1f4e79;
+            text-align: center;
         }
 
         {% comment %}
@@ -1591,6 +1631,25 @@
                         TOTAL further down. `.acct` anchors the ₹ left and the
                         figure right, the way every amount on a Formula D
                         document is set.
+
+                        ⚠ AMOUNT IS THE INVOICE'S OWN TOTAL, AND A DISCOUNT
+                        PRINTS UNDER IT — the owners' decision (2026-09-11),
+                        reversing "the discount is never printed". Formula D
+                        gives one to every customer on purpose and wants it
+                        seen. Only on a visit that HAS one: a DISCOUNT row at
+                        zero would be confirming what cannot surprise anyone.
+
+                        ⚠ IT IS NAMED, NEVER LEFT AS A SECOND FIGURE. ₹25,000
+                        beside ₹23,000 with nothing between reads to a buyer as
+                        ₹2,000 still owed. There is no per-visit net: the one
+                        net figure closes the record below, which keeps this
+                        block to two rows on a sheet where most visits will
+                        carry a discount.
+
+                        ⚠ THE DISCOUNT LINE IS PLAIN — white, regular weight —
+                        and only AMOUNT keeps the SUBTOTAL shading. It is the
+                        working, not a total: the `.sh-calc` treatment the
+                        closing block gives the same line.
                         {% endcomment %}
                         {% if show_amount %}
                         <tbody class="totals">
@@ -1601,6 +1660,15 @@
                                     <span class="acct"><span>&#8377;</span><span>{{ visit.amount|inr_exact }}</span></span>
                                 </td>
                             </tr>
+                            {% if visit.discount %}
+                            <tr class="sh-calc">
+                                <td colspan="2" class="void"></td>
+                                <td>DISCOUNT</td>
+                                <td class="money">
+                                    <span class="acct"><span>&#8377;</span><span>&minus;{{ visit.discount|inr_exact }}</span></span>
+                                </td>
+                            </tr>
+                            {% endif %}
                         </tbody>
                         {% endif %}
                     </table>
@@ -1649,6 +1717,22 @@
             Amounts only. With the tick off there is nothing above this to
             total, and a lone figure under a list that carries none would be
             the sheet answering a question it had refused to ask.
+
+            ⚠ WITH A DISCOUNT ANYWHERE ON THE RECORD IT IS THREE LINES: TOTAL
+            BILLED and DISCOUNT as plain working lines (`.sh-calc` — white,
+            regular), then NET TOTAL, the only shaded one, at 14pt. With none
+            it stays the single TOTAL BILLED row — there is nothing to take off.
+
+            ⚠ THE WORKING IS PLAIN BECAUSE ALL THREE SHADED READ AS CLUTTER —
+            the owner's verdict on the first build (2026-09-11). Three bold
+            rows on three bands of fill is three things asking for the same
+            glance; the sheet's own rule is that bold is for a TOTAL, and here
+            there is one total and two steps to it.
+
+            ⚠ NET, NEVER "PAID". A discount only exists once a bill is settled,
+            but this total also counts completed visits nobody has paid for
+            yet, so "TOTAL PAID" would claim that money as well. NET TOTAL is
+            the Car Profile's own "Total billed" to the rupee.
             {% endcomment %}
             {% if show_amount %}
             <table class="inv-table sh-total">
@@ -1672,6 +1756,29 @@
                 to anyway: white fill, white border.
                 {% endcomment %}
                 <tbody class="totals">
+                    {% if summary.total_discount %}
+                    <tr class="sh-calc">
+                        <td class="void"></td>
+                        <td colspan="2" class="r">TOTAL BILLED</td>
+                        <td class="money">
+                            <span class="acct"><span>&#8377;</span><span>{{ summary.total_billed|inr_exact }}</span></span>
+                        </td>
+                    </tr>
+                    <tr class="sh-calc">
+                        <td class="void"></td>
+                        <td colspan="2" class="r">DISCOUNT</td>
+                        <td class="money">
+                            <span class="acct"><span>&#8377;</span><span>&minus;{{ summary.total_discount|inr_exact }}</span></span>
+                        </td>
+                    </tr>
+                    <tr class="grand">
+                        <td class="void"></td>
+                        <td colspan="2" class="r grand-label">NET TOTAL</td>
+                        <td class="money grand-amount">
+                            <span class="acct"><span>&#8377;</span><span>{{ summary.net_total|inr_exact }}</span></span>
+                        </td>
+                    </tr>
+                    {% else %}
                     <tr class="grand">
                         <td class="void"></td>
                         <td colspan="2" class="r grand-label">TOTAL BILLED</td>
@@ -1679,6 +1786,7 @@
                             <span class="acct"><span>&#8377;</span><span>{{ summary.total_billed|inr_exact }}</span></span>
                         </td>
                     </tr>
+                    {% endif %}
                 </tbody>
             </table>
             {% endif %}
@@ -1740,27 +1848,30 @@
                 {% for chain in chains %}
                 <tbody>
                     <tr class="sh-chain-head">
-                        <td colspan="4">
+                        <td colspan="3">
                             <span class="sh-chain-name">{{ chain.name }}</span>
-                            {% comment %}
-                            ⚠ "BETWEEN CHANGES", never "over N changes". The
-                            average is over the INTERVALS, and six fittings
-                            give five intervals — so a customer counting the
-                            rows below finds one more than the sentence claims
-                            and reasonably stops trusting the figure. Between
-                            changes is exactly what it measures and needs no
-                            count at all.
-
-                            A part fitted twice has one interval, where an
-                            "average" is a word for a single measurement, so it
-                            says what actually happened instead.
-                            {% endcomment %}
-                            {% if chain.typical_km %}
-                            <span class="sh-aside">{% if chain.sample_count == 1 %}— the first one lasted
-                                {{ chain.typical_km|inr }} km{% else %}— averages
-                                {{ chain.typical_km|inr }} km between changes{% endif %}</span>
-                            {% endif %}
                         </td>
+                        {% comment %}
+                        ⚠ THE AVERAGE SITS IN THE DISTANCE RUN COLUMN, RIGHT-
+                        ALIGNED OVER THE FIGURES IT AVERAGES (2026-09-11, the
+                        owner's call). It trailed the part's name as "— AVG
+                        24,150 km"; here the eye reads straight down one column
+                        — AVG 24,150, then 3,500, 24,200, 24,100 — and can check
+                        it: the mean of the finished lives, the one still on the
+                        car left out. The name stands alone on the left.
+
+                        ⚠ ONLY WHEN THERE IS A REAL AVERAGE — two or more
+                        finished lives. With one, the figure is always the
+                        number printed directly beneath it in row 1, so
+                        "First one 36,900 km" became the same figure twice in
+                        one column the moment it moved here.
+
+                        ⚠ STILL NO COUNT. The average is over finished lives,
+                        not fittings — six fittings give five — so "over 6"
+                        would have a customer count the rows, find one fewer,
+                        and stop trusting the figure.
+                        {% endcomment %}
+                        <td class="r sh-aside">{% if chain.typical_km and chain.sample_count > 1 %}AVG {{ chain.typical_km|inr }} km{% endif %}</td>
                         {% comment %}
                         ⚠ DUE SOON MOVED HERE FROM THE VISIT CARD, and it is
                         the one thing that had to survive that card losing its
@@ -1781,7 +1892,7 @@
                     </tr>
                     {% for part in chain.instances %}
                     <tr class="sh-fit">
-                        <td class="c">({{ part.number }})</td>
+                        <td class="sh-inst">{{ part.number }}</td>
                         <td>{{ part.fitted_date|date:"j M Y" }}</td>
                         <td class="r">{% if part.fitted_km %}{{ part.fitted_km|inr }} km{% endif %}</td>
                         {% comment %}
@@ -1846,20 +1957,21 @@
             legend already followed: a note about something that is nowhere on
             the page is a door somebody can see and cannot open.
 
-            ⚠ THE PART LIFE NOTE IS WRAPPED SO THE TOOLBAR CAN HIDE IT. `chains`
-            only says the car HAS a part-life table; the tick says whether this
-            COPY carries one, and unticking it left a legend on the page
-            explaining a table that was no longer there. The wrapper takes the
-            separator with it, or hiding the note would leave a floating middot.
+            ⚠ THERE IS NO PART LIFE NOTE ANY MORE. It explained what the
+            bracketed marks meant; the numbers are bare now and the date beside
+            each one says it, so a legend for them would be the page explaining
+            itself. It was also the one note the toolbar tick had to hide, which
+            is why that hook is gone from the script below. Everything left in
+            this run is about the RECORD, so it stays when the tick takes PART
+            LIFE off the copy.
 
-            ⚠ NOTHING HERE IS BOLD, INCLUDING THE TWO MARKS IT QUOTES. A legend
-            has to look like the thing it explains, and neither the `(1)` in
-            PART LIFE nor the `*` on a join is bold.
+            ⚠ NOTHING HERE IS BOLD, INCLUDING THE MARK IT QUOTES. A legend has
+            to look like the thing it explains, and the `*` on a join is not
+            bold.
             {% endcomment %}
             <p class="sh-notes">Every visit listed above has an invoice held by Formula D&nbsp;&middot;
                 Odometer readings are as recorded when the vehicle was admitted{% if summary.current_km %}&nbsp;&middot;
-                Today's reading was supplied by the customer{% endif %}{% if chains %}<span class="sh-note-life">&nbsp;&middot;
-                In&nbsp;PART&nbsp;LIFE, (1) is the first fitting recorded here</span>{% endif %}{% if has_flagged_reading %}&nbsp;&middot;
+                Today's reading was supplied by the customer{% endif %}{% if has_flagged_reading %}&nbsp;&middot;
                 A distance marked * is unusually large and worth confirming{% endif %}&nbsp;&middot;
                 Work carried out elsewhere does not appear</p>
 
@@ -2009,20 +2121,11 @@
             // reserves, and without this a phone would keep scrolling through
             // the space where it used to be.
             // ---------------------------------------------------------------
-            // ...and with it the NOTE that explains its `(1)` marks. `chains`
-            // only says the car HAS a part-life table; the tick says whether
-            // THIS COPY carries one, and unticking it used to leave a legend
-            // on the page for a table that was no longer there -- the same
-            // defect as a door somebody can see and cannot open. The wrapper
-            // carries the leading separator, so hiding it cannot strand a
-            // middot between two notes.
             var lifeTick = document.getElementById('lifeTick');
             var lifeTable = document.querySelector('.sh-life');
-            var lifeNote = document.querySelector('.sh-note-life');
             if (lifeTick && lifeTable) {
                 lifeTick.addEventListener('change', function () {
                     lifeTable.hidden = !lifeTick.checked;
-                    if (lifeNote) lifeNote.hidden = !lifeTick.checked;
                     fitSheet();
                 });
             }
