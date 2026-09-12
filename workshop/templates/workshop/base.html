@@ -59,6 +59,24 @@
                .main-content offsets itself by this, so changing it here is enough. */
             --nav-h: 58px;
 
+            /* The bar FLOATS on a phone — a pill inset from all three edges
+               rather than a slab welded to the bottom. These two are 0 here
+               because at the top of a laptop it is neither inset from
+               anything nor clearing a home indicator; the phone block sets
+               both. */
+            --nav-float: 0px;
+            --nav-inset: 0px;
+
+            /* How far the top of the bar sits from the BOTTOM of the
+               viewport — height, plus the home-indicator strip, plus the
+               gap it floats above. Five things have to clear the bar (the
+               page's own bottom padding, the notification sheet's origin
+               and its cap, the install banner and the job card's sticky
+               save) and every one of them used to repeat that sum itself,
+               which is five chances to fix four. They read this instead, so
+               the float gap reaches all of them or none. */
+            --nav-clear: calc(var(--nav-h) + var(--nav-inset) + var(--nav-float));
+
             /* Where a `position: sticky` page header should come to rest.
                Clears the bar while the bar is at the top; on a phone the bar
                is at the BOTTOM, so it becomes 0 (see the phone block below)
@@ -307,17 +325,22 @@
             like a dead end.
 
             Written as `75vh - (everything below the panel)` rather than a bare
-            `66vh` so the exposed strip stays exactly 25vh as the bar height or
-            the phone's safe-area inset changes — the same reason `--nav-h` is
-            a variable rather than a number repeated in five places.
+            `66vh` so the exposed strip stays exactly 25vh as the bar height,
+            the phone's safe-area inset or the gap it floats above change —
+            the same reason `--nav-clear` is a variable rather than a sum
+            repeated in five places.
+
+            Its side inset reads `--nav-float`, so the sheet and the bar it
+            rises from sit on ONE edge. They were 10px and 12px for a few
+            minutes and the two-pixel step was plainly visible.
             {% endcomment %}
             .notif-panel {
                 position: fixed;
                 top: auto;
-                bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 8px);
-                left: 10px; right: 10px;
+                bottom: calc(var(--nav-clear) + 8px);
+                left: var(--nav-float); right: var(--nav-float);
                 width: auto;
-                max-height: calc(75vh - var(--nav-h) - env(safe-area-inset-bottom, 0px) - 8px);
+                max-height: calc(75vh - var(--nav-clear) - 8px);
             }
         }
 
@@ -494,25 +517,52 @@
         @media (max-width: 640px) {
             /* Nothing at the top of the viewport now, so a sticky page
                header rests against it directly. */
-            :root { --sticky-top: 0px; }
+            :root {
+                --sticky-top: 0px;
+                /* The bar floats this far off all three edges. 12px rather
+                   than a token value: it is what the notification sheet
+                   above it is inset by (it reads this same variable), so
+                   two stacked floating objects share one edge instead of
+                   missing each other by two pixels. */
+                --nav-float: 12px;
+                /* iPhone home-indicator strip. Resolves to 0 everywhere
+                   else, so it costs nothing on Android or in a tab. */
+                --nav-inset: env(safe-area-inset-bottom, 0px);
+            }
 
-            /* `fixed-top` stays on the element deliberately, even though it
-               now paints at the bottom: Bootstrap's scrollbar helper pads
-               `.fixed-top` when the drawer locks body scroll, and without
-               that class the bar shifts sideways by the scrollbar width on
-               open. Adding `.fixed-bottom` instead is NOT the fix — its
-               `bottom: 0` would combine with our own `top: 0` and stretch
-               the bar down the whole viewport. */
+            {% comment %}
+            THE FIXED ELEMENT STAYS FULL-BLEED AND BECOMES TRANSPARENT; THE
+            PILL IS THE CONTAINER INSIDE IT. The float gap is PADDING on the
+            outer box, never `left`/`right` on a painted one — and that is
+            load-bearing rather than tidy.
+
+            Bootstrap's scrollbar helper reads the computed `padding-right`
+            of every `.fixed-top` and adds the scrollbar width to it when the
+            drawer locks body scroll. As padding on a transparent parent that
+            lands exactly right: the viewport widens by the scrollbar width,
+            the padding grows by the same amount, and the pill's right edge
+            does not move. Painted at `right: 12px` instead, the pill would
+            visibly grow wider on one side every time the drawer opened.
+
+            `fixed-top` therefore stays on the element, even though it now
+            paints at the bottom. Adding `.fixed-bottom` instead is NOT the
+            fix — its `bottom: 0` would combine with our own `top: 0` and
+            stretch the bar down the whole viewport.
+
+            The outer box still swallows taps in the gutter beside the pill,
+            and that is deliberate: `body`'s bottom padding already keeps
+            content out of that strip, and a tappable 12px lane immediately
+            beside the navigation is a mis-tap generator on the one device
+            with the least room. Do not reach for `pointer-events: none`.
+            {% endcomment %}
             .navbar-top {
                 top: auto;
                 bottom: 0;
-                height: auto;   /* grows by the safe-area inset below */
-                border-bottom: 0;
-                border-top: 1px solid rgba(147, 197, 253, 0.22);
-                box-shadow: 0 -3px 18px rgba(10, 25, 60, 0.32);
-                /* iPhone home-indicator strip. Resolves to 0 everywhere
-                   else, so it costs nothing on Android or in a tab. */
-                padding-bottom: env(safe-area-inset-bottom, 0px);
+                height: auto;
+                background: none;
+                border: 0;
+                box-shadow: none;
+                padding: 0 var(--nav-float) calc(var(--nav-inset) + var(--nav-float));
             }
 
             /* Even columns, edge to edge — a tab bar, not a row of pills
@@ -522,7 +572,25 @@
             .navbar-container {
                 height: var(--nav-h);
                 gap: 4px;
-                padding: 0 2px;
+                /* 3px, not 2px, so the inset is UNIFORM: 1px border + 3px
+                   padding puts a tab 4px inside the pill on the sides, which
+                   is exactly what the 62px pill minus the 54px tab already
+                   leaves above and below. An uneven inset is what makes a
+                   rounded tab in a rounded pill look wedged into the corner.
+                   Costs 0.4px per tab, measured. */
+                padding: 0 3px;
+                /* The paint moves here from `.navbar-top` — see the note
+                   above. The gradient is fully opaque, so content scrolling
+                   underneath disappears cleanly and no backdrop blur is
+                   needed; one would be a permanent compositing cost on the
+                   one element that is always on screen. */
+                background: linear-gradient(90deg, var(--nav-blue-1) 0%, var(--nav-blue-mid) 45%, var(--nav-blue-2) 100%);
+                border: 1px solid rgba(147, 197, 253, 0.22);
+                border-radius: 18px;
+                /* Cast in every direction now that it is detached, where the
+                   welded bar threw light upwards only. */
+                box-shadow: 0 6px 24px rgba(10, 25, 60, 0.28),
+                            0 2px 6px rgba(10, 25, 60, 0.18);
                 /* Only takes effect once the tabs stop filling the row — a
                    landscape phone, or the two-item signed-out bar, where
                    equal shares would otherwise be 150px+ slabs. Spread from
@@ -544,7 +612,10 @@
                 width: 100%;
                 height: 54px;
                 padding: 5px 0;
-                border-radius: 12px;
+                /* Concentric with the pill: the outer radius (18px) less the
+                   uniform 4px inset. At 12px the active tab's corner cut
+                   across the pill's own curve instead of following it. */
+                border-radius: 14px;
             }
             .nav-btn i { font-size: 20px; }
             .nav-btn .nav-label {
@@ -569,7 +640,7 @@
                declared *after* this block, so an override up here would lose
                the cascade to it and the page would keep a 62px gap at the
                top with nothing in it. */
-            body { padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 24px); }
+            body { padding-bottom: calc(var(--nav-clear) + 24px); }
         }
 
         /* ========================================== */
@@ -1096,11 +1167,13 @@
 
         /* On a phone the nav bar owns the bottom edge, so the banner sits on
            top of it instead of underneath it — z-index 1025 is below the
-           bar's 1030, so at bottom:0 it would simply be hidden by it. The
-           safe-area inset moves to the bar for the same reason. */
+           bar's 1030, so at bottom:0 it would simply be hidden by it.
+           `--nav-clear` carries the bar's height, the home-indicator strip
+           and the gap it floats above, so the banner's own padding-bottom
+           drops back to a plain 12px. */
         @media (max-width: 640px) {
             .pwa-banner {
-                bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+                bottom: var(--nav-clear);
                 padding-bottom: 12px;
             }
         }
