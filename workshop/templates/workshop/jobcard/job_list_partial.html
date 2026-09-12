@@ -283,7 +283,7 @@ family is on these two numbers; the reasoning lives beside the rule.
 
                 <!-- Top Row: Vehicle name + 3-dot -->
                 <div class="jl-top">
-                    <a href="{% url 'jobcard_detail' job.pk %}" class="jl-vehicle">
+                    <a href="{% url 'jobcard_detail' job.pk %}?back={{ request.get_full_path|urlencode }}" class="jl-vehicle">
                         {{ job.brand_name }} {{ job.model_name }}
                     </a>
                     
@@ -294,7 +294,7 @@ family is on these two numbers; the reasoning lives beside the rule.
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end jl-dropdown-menu">
                             <li>
-                                <a class="dropdown-item" href="{% url 'jobcard_detail' job.pk %}">
+                                <a class="dropdown-item" href="{% url 'jobcard_detail' job.pk %}?back={{ request.get_full_path|urlencode }}">
                                     <i class="bi bi-eye"></i> View Job
                                 </a>
                             </li>

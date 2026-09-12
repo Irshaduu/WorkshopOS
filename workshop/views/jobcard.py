@@ -4,6 +4,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q
@@ -22,6 +23,7 @@ from django.contrib.humanize.templatetags.humanize import intcomma
 from django.template.defaultfilters import floatformat
 
 from ..decorators import staff_required, office_required, is_office_or_owner
+from ..return_to import safe_return
 # The app's ONE way of printing a quantity — 1.00 → "1", 1.50 → "1.5". Imported
 # rather than restated so the read-only card cannot disagree with every other
 # screen about how many of something there are.
@@ -697,8 +699,20 @@ def jobcard_detail(request, pk):
     def _sum(rows):
         return sum((r.total_price or Decimal('0')) for r in rows)
 
+    # THE WAY BACK. This page is opened from a car's profile, the Job Cards list
+    # and a Fleet Account, so its parent is not fixed: each of those links hands
+    # over `?back=`, validated here by `safe_return`, and the label is plain
+    # "Back" — the rule the service history sheet and All Invoices follow. A cold
+    # arrival (a bookmark, a redirect) falls back to the car's own profile, which
+    # always lists this card; a card with no registration, which the form
+    # refuses, falls back to the Job Cards list rather than failing to reverse.
+    back_url = safe_return(request) or (
+        reverse('car_profile_detail', args=[jobcard.registration_number])
+        if jobcard.registration_number else reverse('jobcard_list'))
+
     return render(request, 'workshop/jobcard/jobcard_detail.html', {
         'jobcard': jobcard,
+        'back_url': back_url,
         'inventory_draws': draws,
         'shop_spares': shop_spares,
         'stages': _lifecycle(jobcard),

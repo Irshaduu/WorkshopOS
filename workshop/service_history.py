@@ -51,9 +51,9 @@ ANY DISCOUNT IS PRINTED UNDER IT.** Both halves are deliberate.
     paid for yet, and "TOTAL PAID" would claim that money as well.
 
 `net_total` is `total_billed − total_discount`, both summed from the visit rows
-printed above them, so the closing block adds up from the page. It is the same
-figure `car_profile_detail` calls "Total billed" (revenue as `analysis_engine`
-defines it).
+printed above them, so the closing block adds up from the page.
+`car_profile_detail` counts the same completed visits and prints TOTAL BILLED
+and DISCOUNT as these same figures; NET TOTAL is its Paid + Still owed.
 
 **NO PAYMENT STATE APPEARS ANYWHERE.** This is a record of WORK, not of debt. A
 discount is not payment state — it is what the workshop took off the bill —
@@ -229,8 +229,8 @@ class Summary:
     service_every_days: Optional[int]
     total_billed: Decimal
     #: Every visit's discount, and what the car cost here after them. The
-    #: sheet closes on `net_total` whenever any visit carries a discount,
-    #: and it is the Car Profile's own "Total billed" to the rupee.
+    #: sheet closes on `net_total` whenever any visit carries a discount; on
+    #: the Car Profile it is Paid + Still owed.
     total_discount: Decimal
     net_total: Decimal
     in_progress: int

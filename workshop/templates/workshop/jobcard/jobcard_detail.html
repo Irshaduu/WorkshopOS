@@ -762,6 +762,16 @@ foot of the page. See the stylesheet for why each of those merges earns its
 place, and for the two absences on `.dv-head` (no clip, not sticky) that are
 load-bearing rather than accidental.
 {% endcomment %}
+{% comment %}
+THE WAY BACK — the app's own `.pg-back`, declared once in `static/css/style.css`.
+This page had none: it is reached from a car's profile, the Job Cards list and a
+Fleet Account, and in the installed app there is no browser Back to fall on. Its
+parent is not fixed, so the label is plain "Back" and the view resolves
+`back_url` — the `?back=` it was handed, or the car's own profile.
+{% endcomment %}
+<a href="{{ back_url }}" class="pg-back">
+    <i class="bi bi-arrow-left"></i><span>Back</span>
+</a>
 <div class="dv-head{% if jobcard.car_color == 'White' %} dv-head--white{% endif %}{% if not jobcard.car_color %} dv-head--unset{% endif %}"
      style="--dv-accent: {{ jobcard.get_car_color_hex }};">
 

@@ -210,10 +210,13 @@ class GrossProfitTests(CarProfileBase):
         #   parts COST  ₹2,000 (the shop's line total, not a rate)
         #             + (4 x ₹250 warehouse average)  = ₹3,000
         #   gross profit                           ₹5,000  = 62.5%
+        # Completed, because the hero counts completed visits only — the
+        # service history sheet's rule. An open card is in no total.
         self.bill = self.visit(
             self.reg, date(2026, 8, 1),
             discount_amount=D('1000'), received_amount=D('8000'),
-            payment_status='PAID', labour_amount=D('4000'))
+            payment_status='PAID', labour_amount=D('4000'),
+            completed=True, completed_date=date(2026, 8, 2))
         JobCardSpareItem.objects.create(
             job_card=self.bill, source=JobCardSpareItem.SOURCE_SHOP,
             # `unit_price` on a SHOP row is what the shop billed for the
@@ -312,6 +315,20 @@ class GrossProfitTests(CarProfileBase):
         # Those extra visits carry no parts, so each is ₹100 of pure margin.
         self.assertEqual(info['gross_profit'], D('5000') + D('100') * (VISITS_PER_PAGE + 2))
 
+    def test_a_visit_still_on_the_floor_is_not_in_the_headline(self):
+        """
+        Revenue and parts cost are cut from the same completed cards. Counted,
+        this open card would add ₹7,000 of unfinished bill and ₹3,000 of parts
+        and the headline would read ₹9,000.
+        """
+        open_card = self.visit(self.reg, date(2026, 9, 1), labour_amount=D('4000'))
+        JobCardSpareItem.objects.create(
+            job_card=open_card, source=JobCardSpareItem.SOURCE_SHOP,
+            spare_part_name='Clutch Plate', quantity=D('1'), unit_price=D('3000'),
+            total_price=D('3000'))
+        info = self.owner_page().context['car_info']
+        self.assertEqual(info['gross_profit'], D('5000'))
+
     # ---- when it cannot be trusted -----------------------------------
 
     def test_an_uncosted_part_is_counted_and_declared(self):
@@ -368,18 +385,86 @@ class OneCarsHistoryTests(CarProfileBase):
         resp = self.client.get(reverse('car_profile_detail', args=['NOSUCHCAR']))
         self.assertEqual(resp.status_code, 404)
 
-    def test_billed_to_date_is_the_profit_pages_definition_of_revenue(self):
+    def test_the_money_counts_completed_visits_only(self):
         """
-        `total_bill_amount − discount_amount`, summed. A discount is money never
-        earned rather than an expense, and a second definition of "what this
-        customer has paid us" is the one an owner ends up quoting at the counter.
+        Total billed is what the invoices said, the discount is its own figure,
+        and Paid is the cash — all over COMPLETED visits, the ones the service
+        history sheet counts. `self.new` is still on the floor, so its ₹5,000
+        is in none of them.
         """
         info = self.page().context['car_info']
-        self.assertEqual(info['billed'], D('14000'))     # (10000-1000) + 5000
+        self.assertEqual(info['billed'], D('10000'))
+        self.assertEqual(info['discount'], D('1000'))
+        self.assertEqual(info['paid'], D('9000'))
 
-    def test_outstanding_counts_only_what_is_still_owed(self):
+    def test_a_car_on_the_floor_owes_nothing_yet(self):
+        """Its bill is not final — Pending Bills' own rule."""
+        self.assertEqual(self.page().context['car_info']['outstanding'], D('0'))
+
+    def test_still_owed_is_a_completed_bill_nobody_has_paid(self):
+        self.visit(self.reg, date(2026, 3, 1),
+                   completed=True, completed_date=date(2026, 3, 2),
+                   total_bill_amount=D('4000'), payment_status='PENDING')
+        self.assertEqual(self.page().context['car_info']['outstanding'], D('4000'))
+
+    def test_billed_less_discount_is_paid_plus_still_owed(self):
+        """
+        The one equation the tiles state, left to right — asserted with a
+        part-paid visit in it, the case where Paid and Still owed both carry
+        part of one bill.
+        """
+        self.visit(self.reg, date(2026, 3, 1),
+                   completed=True, completed_date=date(2026, 3, 2),
+                   total_bill_amount=D('4000'), received_amount=D('1500'),
+                   payment_status='PARTIAL')
         info = self.page().context['car_info']
-        self.assertEqual(info['outstanding'], D('5000'))
+        self.assertEqual(info['outstanding'], D('2500'))
+        self.assertEqual(info['billed'] - info['discount'],
+                         info['paid'] + info['outstanding'])
+
+    def test_the_car_on_the_floor_is_its_own_tile(self):
+        response = self.page()
+        self.assertEqual(response.context['car_info']['on_floor_so_far'], D('5000'))
+        body = response.content.decode()
+        self.assertIn('<dt>On the floor</dt>', body)
+        self.assertIn('class="cd-sofar">so far</span>', body)
+
+    def test_a_car_that_has_left_has_no_floor_tile(self):
+        JobCard.objects.filter(pk=self.new.pk).update(
+            completed=True, completed_date=date(2026, 8, 3))
+        self.assertNotIn('<dt>On the floor</dt>', self.page().content.decode())
+
+    def test_the_discount_tile_appears_only_when_there_is_one(self):
+        """As the sheet prints DISCOUNT only when a visit carries one."""
+        self.assertIn('<dt>Discount</dt>', self.page().content.decode())
+        JobCard.objects.filter(pk=self.old.pk).update(discount_amount=D('0'))
+        self.assertNotIn('<dt>Discount</dt>', self.page().content.decode())
+
+    def test_a_discounted_visit_says_so_on_its_row(self):
+        """
+        The sheet prints a visit's AMOUNT and then its DISCOUNT, and the hero's
+        Discount tile is the sum of these lines — so the row names its own, and
+        only a visit that had one does. Without it a PAID badge beside the
+        amount read as that whole amount paid.
+
+        Asserted on the markup, never the bare word: "discount" also appears in
+        this page's stylesheet comment.
+        """
+        body = self.page().content.decode()
+        self.assertEqual(body.count('class="cd-disc"'), 1)
+        self.assertIn('<div class="cd-disc">&minus;₹1,000 discount</div>', body)
+
+    def test_the_row_hands_the_job_card_its_way_back(self):
+        """
+        The read-only job card is opened from three screens, so it cannot name
+        one fixed parent. The row says where it came from; a `?back=` nothing
+        sends is a column nothing reads.
+        """
+        body = self.page().content.decode()
+        self.assertIn(
+            '%s?back=%s' % (reverse('jobcard_detail', args=[self.old.pk]),
+                            reverse('car_profile_detail', args=[self.reg])),
+            body)
 
     def test_the_hero_describes_the_car_as_it_is_now(self):
         info = self.page().context['car_info']
@@ -429,7 +514,7 @@ class OneCarsHistoryTests(CarProfileBase):
                        payment_status='PAID')
         info = self.page().context['car_info']
         self.assertEqual(info['visits'], VISITS_PER_PAGE + 5)
-        self.assertEqual(info['billed'], D('14000') + D('100') * (VISITS_PER_PAGE + 3))
+        self.assertEqual(info['billed'], D('10000') + D('100') * (VISITS_PER_PAGE + 3))
 
     def test_visit_numbers_do_not_restart_on_page_two(self):
         """
@@ -462,16 +547,24 @@ class OneCarsHistoryTests(CarProfileBase):
         self.assertNotIn(reverse('invoice_view', args=[self.new.pk]), body)
         self.assertIn(reverse('jobcard_detail', args=[self.new.pk]), body)
 
-    def test_the_total_is_labelled_in_words_the_owner_recognises(self):
+    def test_the_tiles_are_labelled_in_words_the_owner_recognises(self):
         """
         "Billed to date" was the first wording and could not be read at a
         glance. Not "Total spent" either — that is the customer's side of the
         same number and it is wrong on exactly the cars that matter, because an
-        unpaid bill has been billed and not spent.
+        unpaid bill has been billed and not spent. "Paid", not "Settled": the
+        rows below already say Paid / Part paid / Unpaid.
+
+        No Visits or Last in tile — the count is beside "Visit history" and on
+        every row, and the last visit is the top row.
         """
         body = self.page().content.decode()
-        self.assertIn('Total billed', body)
+        for label in ('Total billed', 'Discount', 'Paid'):
+            self.assertIn(f'<dt>{label}</dt>', body)
+        for gone in ('Visits', 'Last in', 'Settled'):
+            self.assertNotIn(f'<dt>{gone}</dt>', body)
         self.assertNotIn('Billed to date', body)
+        self.assertIn('class="cd-section-count">2<', body)
 
     def test_the_car_wears_its_own_colour(self):
         """
@@ -766,3 +859,75 @@ class TheRowIsScannedByDateNotByBillNumberTests(CarProfileBase):
         """
         for line in self._detail_lines(self.page().content.decode()):
             self.assertNotIn('·', line)
+
+
+class OneWordNamesOneFigureOnBothScreensTests(CarProfileBase):
+    """
+    The Car Profile and the service history sheet are one tap apart — the sheet
+    is a button on the profile — and until 2026-09-11 they said "Total billed"
+    for two different figures: the profile meant the net over EVERY visit, the
+    sheet the invoices' own totals over COMPLETED visits. On the development
+    data KL 1 A 1111 read ₹1,85,550 on one and ₹1,86,950 on the other, and 8 of
+    the 9 cars on the floor showed two different totals.
+
+    Asserted as the PROPERTY, by rendering both screens for one car rather than
+    against either implementation, so a later change to either side that breaks
+    the agreement fails here. The car carries three shapes at once: two settled
+    visits with a discount, one completed and unpaid, and one on the floor.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.reg = 'KL01AB1234'
+        self.visit(self.reg, date(2026, 1, 5),
+                   completed=True, completed_date=date(2026, 1, 6),
+                   total_bill_amount=D('25000'), discount_amount=D('2000'),
+                   received_amount=D('23000'), payment_status='PAID')
+        self.visit(self.reg, date(2026, 4, 5),
+                   completed=True, completed_date=date(2026, 4, 7),
+                   total_bill_amount=D('12000'), discount_amount=D('500'),
+                   received_amount=D('11500'), payment_status='PAID')
+        self.visit(self.reg, date(2026, 7, 1),
+                   completed=True, completed_date=date(2026, 7, 2),
+                   total_bill_amount=D('8000'), payment_status='PENDING')
+        self.visit(self.reg, date(2026, 9, 1), total_bill_amount=D('6000'))
+
+    def both(self):
+        profile = self.client.get(reverse('car_profile_detail', args=[self.reg]))
+        sheet = self.client.get(
+            reverse('car_service_history_sheet', args=[self.reg]), {'amount': '1'})
+        return profile, sheet
+
+    def test_total_billed_and_discount_are_the_sheets_own_figures(self):
+        profile, sheet = self.both()
+        info, summary = profile.context['car_info'], sheet.context['summary']
+        self.assertEqual(info['billed'], summary.total_billed)
+        self.assertEqual(info['discount'], summary.total_discount)
+        self.assertEqual(info['billed'], D('45000'))     # 25,000 + 12,000 + 8,000
+        self.assertEqual(info['discount'], D('2500'))
+
+    def test_the_sheets_net_total_is_paid_plus_still_owed(self):
+        profile, sheet = self.both()
+        info, summary = profile.context['car_info'], sheet.context['summary']
+        self.assertEqual(info['paid'] + info['outstanding'], summary.net_total)
+        self.assertEqual(summary.net_total, D('42500'))
+
+    def test_the_car_on_the_floor_is_in_neither_screens_total(self):
+        profile, sheet = self.both()
+        self.assertEqual(profile.context['car_info']['on_floor_so_far'], D('6000'))
+        self.assertEqual(sheet.context['summary'].in_progress, 1)
+
+    def test_both_screens_print_the_same_figure_under_the_same_word(self):
+        """
+        The half the context cannot prove: the WORD is printed beside the
+        figure. The profile rounds to the rupee and the sheet prints paise, so
+        each is matched in its own format. Both totals are unique on the sheet
+        — no single visit is ₹45,000 or carries a ₹2,500 discount.
+        """
+        profile, sheet = (response.content.decode() for response in self.both())
+        self.assertRegex(profile, r'<dt>Total billed</dt>\s*<dd>₹45,000</dd>')
+        self.assertRegex(profile, r'<dt>Discount</dt>\s*<dd>&minus;₹2,500</dd>')
+        self.assertNotIn('Net total', profile)
+        self.assertIn('TOTAL BILLED', sheet)
+        self.assertIn('45,000.00', sheet)
+        self.assertIn('2,500.00', sheet)

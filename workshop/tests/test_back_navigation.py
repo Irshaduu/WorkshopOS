@@ -31,6 +31,7 @@ how these pages are actually reached.
 """
 
 import re
+from datetime import date
 from html import unescape
 from pathlib import Path
 
@@ -39,7 +40,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from workshop.models import SpareShop
+from workshop.models import JobCard, SpareShop
 
 
 TEMPLATE_SUFFIXES = ('.html', '.js', '.txt', '.svg', '.xml')
@@ -275,3 +276,80 @@ class CancelIsANamedDestinationTests(TestCase):
                 self.assertIn(
                     '<a href="%s" class="btn btn-outline-secondary py-2">Cancel</a>'
                     % expected, html)
+
+
+class TheReadOnlyJobCardHasAWayOutTests(TestCase):
+    """
+    `/jobcards/<pk>/` carried no back control at all (found 2026-09-11, the
+    owner's report). It is opened from a car's profile, the Job Cards list and
+    a Fleet Account, so its parent is not fixed: it takes `?back=` like the
+    standalone sheets, with the car's own profile as the fallback.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_superuser(
+            'owner-jc-back', 'owner-jc-back@example.com', 'pw')
+        self.client.force_login(self.owner)
+        self.job = JobCard.objects.create(
+            admitted_date=date(2026, 8, 1), brand_name='Audi', model_name='A4',
+            registration_number='KL07JC1234')
+        # `save()` runs `clean()`, which may normalise the plate, so the
+        # expected profile is read back rather than typed a second time.
+        self.job.refresh_from_db()
+        self.url = reverse('jobcard_detail', args=[self.job.pk])
+        self.profile = reverse('car_profile_detail',
+                               args=[self.job.registration_number])
+
+    def _back(self, response):
+        match = re.search(r'<a href="([^"]*)" class="pg-back">',
+                          response.content.decode())
+        self.assertIsNotNone(match, 'the read-only job card carries no .pg-back')
+        return unescape(match.group(1))
+
+    def test_a_cold_arrival_goes_to_the_cars_own_profile(self):
+        """A bookmark or a redirect carries no `?back=`, and that is exactly
+        when the page must not be a trap."""
+        self.assertEqual(self._back(self.client.get(self.url)), self.profile)
+
+    def test_a_supplied_back_is_where_it_returns(self):
+        came_from = reverse('jobcard_list') + '?q=Audi&page=2'
+        self.assertEqual(
+            self._back(self.client.get(self.url, {'back': came_from})), came_from)
+
+    def test_a_crafted_back_is_refused_and_the_page_keeps_its_exit(self):
+        """
+        The value lands in an `href`, so an unchecked one would put another
+        origin — or `javascript:` — behind a button wearing this app's styling.
+
+        Asserted on the HREFS, not the whole page: the ⋮ menu's Invoice link
+        carries this page's own full path, percent-encoded, which is where a
+        refused value still appears as text and is harmless.
+        """
+        for hostile in ('https://evil.example.com/harvest',
+                        'javascript:alert(1)',
+                        '//evil.example.com'):
+            with self.subTest(back=hostile):
+                response = self.client.get(self.url, {'back': hostile})
+                body = response.content.decode()
+                self.assertEqual(self._back(response), self.profile)
+                self.assertNotIn('href="https://evil', body)
+                self.assertNotIn('href="//evil', body)
+                self.assertNotIn('href="javascript:', body)
+
+    def test_the_label_is_plain_back(self):
+        """
+        Its parent varies, so a named destination would name the wrong one on
+        every arrival from the other two screens — the rule the service
+        history sheet and All Invoices already follow.
+        """
+        body = self.client.get(self.url).content.decode()
+        self.assertIn('<i class="bi bi-arrow-left"></i><span>Back</span>', body)
+
+    def test_the_job_cards_list_hands_over_its_address(self):
+        """
+        A `?back=` nothing sends is a column nothing reads. Fetched the way the
+        list's own search fetches it, because that partial renders the rows.
+        """
+        body = self.client.get(reverse('jobcard_list'),
+                               HTTP_X_REQUESTED_WITH='XMLHttpRequest').content.decode()
+        self.assertIn('%s?back=%s' % (self.url, reverse('jobcard_list')), body)

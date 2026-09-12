@@ -26,9 +26,9 @@
     This page used to open with the make, the plate and the owner's name, and
     nothing else — every other question an owner brings to it ("how often does
     this car come in?", "have they paid?", "is it here now?") meant reading down
-    the list and adding up. Those are three numbers and one flag; they belong at
-    the top, and they come from a database aggregate over the WHOLE history, not
-    from the rows below, which are paginated.
+    the list and adding up. The money belongs at the top, and it comes from a
+    database aggregate over the WHOLE history, not from the rows below, which
+    are paginated.
     ================================================================== {% endcomment %}
     {% comment %}
     The car's own colour: a rail down the edge and an 8% wash across the card,
@@ -78,15 +78,53 @@
             {% endif %}
         </div>
 
+        {% comment %}
+        THE MONEY — one equation, over COMPLETED visits only (the owners'
+        structure, 2026-09-11):
+
+            Total billed − Discount = Paid + Still owed
+
+        Every word here that the service history sheet also prints names the
+        sheet's own figure — TOTAL BILLED is what the invoices said, DISCOUNT
+        is what came off them — and the sheet's NET TOTAL is Paid + Still owed.
+        This tile used to say "Total billed" for the NET figure over every
+        visit, while the sheet one tap away used the same words for the gross
+        over completed visits: one word, two figures, seconds apart.
+
+        "Total billed" is still the owner's word ("Billed to date" confused
+        them; "Total spent" is the customer's side and wrong on an unpaid
+        bill). "Paid", not "Settled": the visit rows below already say Paid /
+        Part paid / Unpaid, and a part-paid fleet bill is not settled.
+
+        There is no Visits or Last in tile. The count is beside "Visit history"
+        and on every row's number, and the last visit is the top row.
+        {% endcomment %}
         <dl class="cd-stats">
             <div class="cd-stat">
-                <dt>Visits</dt>
-                <dd>{{ car_info.visits }}</dd>
+                <dt>Total billed</dt>
+                <dd>₹{{ car_info.billed|inr }}</dd>
             </div>
-            <div class="cd-stat cd-stat-date">
-                <dt>Last in</dt>
-                <dd>{{ car_info.last_visit|date:"d M Y"|default:"—" }}</dd>
+            {% comment %}
+            Only when there is one, as the sheet prints DISCOUNT only when a
+            visit carries one — "Discount ₹0" confirms what cannot surprise
+            anyone. The minus is the sheet's own.
+            {% endcomment %}
+            {% if car_info.discount > 0 %}
+            <div class="cd-stat">
+                <dt>Discount</dt>
+                <dd>&minus;₹{{ car_info.discount|inr }}</dd>
             </div>
+            {% endif %}
+            <div class="cd-stat">
+                <dt>Paid</dt>
+                <dd>₹{{ car_info.paid|inr }}</dd>
+            </div>
+            {% if car_info.outstanding > 0 %}
+            <div class="cd-stat cd-stat-due">
+                <dt>Still owed</dt>
+                <dd>₹{{ car_info.outstanding|inr }}</dd>
+            </div>
+            {% endif %}
 
             {% comment %}
             GROSS PROFIT — owner only, and deliberately not highlighted.
@@ -112,29 +150,17 @@
                 <dd>₹{{ car_info.gross_profit|inr }}{% if car_info.gross_profit_pct %}<span class="cd-pct">{{ car_info.gross_profit_pct|floatformat:0 }}%</span>{% endif %}</dd>
             </div>
             {% endif %}
-            <div class="cd-stat">
-                {% comment %}
-                "Billed to date" was the first wording and the owner could not
-                tell what it meant. "Total billed" reads as a plain sum and sits
-                parallel with VISITS and LAST IN beside it.
-
-                Not "Total spent": that is the customer's side of the same
-                number and it is wrong on exactly the cars that matter — an
-                unpaid bill has been billed and not spent. When there IS an
-                unpaid part, the "Still owed" tile appears next to this one, so
-                the pair reads without ambiguity.
-
-                The figure is `total_bill_amount − discount_amount` summed over
-                every visit, which is the Profit page's own definition of
-                revenue — a discount is money never earned, not an expense.
-                {% endcomment %}
-                <dt>Total billed</dt>
-                <dd>₹{{ car_info.billed|inr }}</dd>
-            </div>
-            {% if car_info.outstanding > 0 %}
-            <div class="cd-stat cd-stat-due">
-                <dt>Still owed</dt>
-                <dd>₹{{ car_info.outstanding|inr }}</dd>
+            {% comment %}
+            A car ON THE FLOOR — its own tile, added to nothing. Its bill is not
+            final (parts are still being typed in), which is why the sheet and
+            Pending Bills leave it out too, and "so far" says so. Amber, the
+            "On the floor" badge's own colour on its row below. A card with
+            nothing priced yet reads "Not priced", the row's own wording.
+            {% endcomment %}
+            {% if car_info.on_floor %}
+            <div class="cd-stat cd-stat-floor">
+                <dt>On the floor</dt>
+                <dd>{% if car_info.on_floor_so_far > 0 %}₹{{ car_info.on_floor_so_far|inr }}<span class="cd-sofar">so far</span>{% else %}Not priced{% endif %}</dd>
             </div>
             {% endif %}
         </dl>
@@ -246,7 +272,7 @@
                 {% endcomment %}
                 <div class="cd-visit-top">
                     <a class="cd-visit-link stretched-link"
-                       href="{% url 'jobcard_detail' bill.pk %}"
+                       href="{% url 'jobcard_detail' bill.pk %}?back={{ request.get_full_path|urlencode }}"
                        aria-label="Visit {{ bill.visit_number }}, {{ bill.admitted_date|date:"d M Y" }}{% if bill.bill_number %}, {{ bill.bill_number }}{% endif %}">
                         {{ bill.admitted_date|date:"d M Y" }}
                     </a>
@@ -328,6 +354,23 @@
                 <div class="cd-amount">₹{{ bill.total_bill_amount|inr }}</div>
                 {% else %}
                 <div class="cd-amount cd-amount-none">Not priced</div>
+                {% endif %}
+
+                {% comment %}
+                THE DISCOUNT, under the bill it came off — only on a visit that
+                had one, and always NAMED. The sheet prints a visit's AMOUNT and
+                then DISCOUNT under it, and the hero's Discount tile is the sum
+                of these lines, so the tile can be traced to the visits behind
+                it. Without it a PAID badge beside the amount read as that whole
+                amount paid, when the discount had come off it. `> 0` is the
+                sheet's own floor.
+
+                ⚠ The word is NOT dropped on a phone, unlike the gross line's —
+                the owner's call (2026-09-11), knowing it widens this column and
+                pushes that row's PAID badge onto a second line at 375px.
+                {% endcomment %}
+                {% if bill.discount_amount > 0 %}
+                <div class="cd-disc">&minus;₹{{ bill.discount_amount|inr }} discount</div>
                 {% endif %}
 
                 {% comment %}
@@ -525,17 +568,16 @@
         border-top: 1px dashed var(--color-border);
     }
 
-    /* ---- tile widths are PROPORTIONAL, never content-driven ----
-       "Visits: 1" does not deserve the same width as ₹20,75,361, so the grow
-       factors differ: a narrow box for a small fact, wide ones for money.
+    /* ---- every tile is a money tile, so every tile is one width ----
+       The count and the date tiles carried fixed, narrower widths because
+       their contents could not vary. Both are gone, so there is nothing left
+       to size differently.
 
-       Fixed proportions rather than letting each box size to its contents,
+       Still one fixed basis rather than each box sizing to its contents,
        which is the tempting version and the wrong one: a car billed ₹500 and a
        car billed ₹1,25,000 would then lay their tiles out differently, so the
-       boxes move between cars and the eye has to find them again each time.
-       These weights give the same arrangement on every car. */
+       boxes move between cars and the eye has to find them again each time. */
     .cd-stat {
-        /* Money tiles share whatever is left. */
         flex: 1 1 128px;
         min-width: 0;
         background: var(--color-hover);
@@ -543,16 +585,6 @@
         border-radius: 11px;
         padding: 0.5rem 0.7rem;
     }
-
-    /* The two tiles whose contents CANNOT vary get a fixed, smaller width:
-       a visit count is one to three digits and a date is always "03 Jul 2026".
-       Fixing them is safe precisely because their width is not a function of
-       the data — where the money tiles ARE, which is why those flex instead.
-       Sizing every tile to its contents would have been the tempting version
-       and the wrong one: a car billed ₹500 and one billed ₹1,25,000 would lay
-       the row out differently, so the boxes move between cars. */
-    .cd-stats > .cd-stat:first-child { flex: 0 0 92px; }    /* Visits */
-    .cd-stat-date { flex: 0 0 132px; }                      /* a date */
 
     /* ---- the two document doors ----
        ONE ROW on desktop and tablet, stacked only on a phone. Below 576px two
@@ -658,8 +690,6 @@
         font-variant-numeric: tabular-nums;
     }
 
-    .cd-stat-date dd { font-size: 0.92rem; }
-
     /* Gross profit is NOT highlighted. It sits in the same grey tile as the
        others, at the same weight — an owner's figure to glance at, not the
        headline. The percentage rides on the same line, smaller and muted, so
@@ -683,6 +713,31 @@
     }
     .cd-stat-due dt { color: #b91c1c; }
     .cd-stat-due dd { color: #b91c1c; }
+
+    /* A car on the floor: its bill is not final, so it is its own tile and is
+       added to nothing. The border and type are `.cd-badge-open`'s, copied
+       rather than approximated, so the tile and the "On the floor" badge on its
+       row are one colour.
+
+       ⚠ NO BACKGROUND HERE, deliberately. `.cd-hero .cd-stat` (two classes)
+       gives every tile the same 72% white ground and outranks any single-class
+       background, which is why Still owed's own `#fef2f2` above never paints
+       either. So the ground is shared and the colour lives on the border and
+       the type, as it does on Still owed. #b45309 on that ground computes to
+       4.7:1 or better on any car's wash, over the 4.5:1 a 10.4px bold label
+       needs. */
+    .cd-stat-floor { border-color: #fde68a; }
+    .cd-stat-floor dt,
+    .cd-stat-floor dd { color: #b45309; }
+
+    /* "so far" rides the figure's line like the gross profit's percentage, so
+       the tile stays two lines and the row keeps one height. */
+    .cd-stat-floor .cd-sofar {
+        margin-left: 0.35rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0;
+    }
 
     .cd-caveat {
         margin: 0.6rem 0 0;
@@ -947,9 +1002,11 @@
         color: var(--color-text-muted);
     }
 
-    /* This visit's gross profit. Grey, light, small — everything about it says
-       "secondary". The bill above stays the number the row is about. */
-    .cd-gp {
+    /* This visit's gross profit, and above it — only when there was one — its
+       discount. One quiet tier for both: grey, light, small, everything about
+       it says "secondary". The bill above stays the number the row is about. */
+    .cd-gp,
+    .cd-disc {
         margin-top: 0.1rem;
         font-size: 0.66rem;
         font-weight: 500;
@@ -994,17 +1051,9 @@
         .cd-name { font-size: 1.15rem; }
 
         /* Two tiles a row rather than five squeezed ones. `1 1 calc(50% - …)`
-           and not `grid`, so an odd number of tiles — three for Office, or four
-           on a car with nothing outstanding — fills the last row instead of
-           leaving a hole.
-
-           The fixed widths above are overridden here: at 375px a 92px tile
-           beside a 132px one leaves a third of the row empty, and the point of
-           the different widths was to stop small facts taking big boxes on a
-           wide screen, not to strand space on a narrow one. */
-        .cd-stat,
-        .cd-stats > .cd-stat:first-child,
-        .cd-stat-date { flex: 1 1 calc(50% - 0.25rem); }
+           and not `grid`, so an odd number of tiles — three on an ordinary
+           car — fills the last row instead of leaving a hole. */
+        .cd-stat { flex: 1 1 calc(50% - 0.25rem); }
 
         /* The row NO LONGER reflows on a phone. It used to wrap the amount and
            the Invoice button onto a third line, because the right-hand column

@@ -241,24 +241,43 @@ def car_profile_detail(request, registration):
     """
     all_visits = JobCard.objects.filter(registration_number=registration)
 
-    # Revenue, defined exactly as `analysis_engine` defines it: a discount is
-    # money never earned, not an expense. Any other sum here would put a second
-    # definition of "what this customer has paid us" in the app, and it would be
-    # the one an owner quotes at the counter.
+    # ⚠ THE MONEY COUNTS COMPLETED VISITS ONLY, and every word it shares with
+    # the service history sheet names the sheet's own figure (2026-09-11, the
+    # owners' structure):
+    #
+    #     Total billed − Discount = Paid + Still owed
+    #
+    # "Total billed" used to be `total_bill_amount − discount_amount` over
+    # EVERY visit, while the sheet — a button on this page — prints TOTAL
+    # BILLED for the invoices' own totals over completed visits. One word, two
+    # figures, seconds apart. The sheet's NET TOTAL is Paid + Still owed here.
+    #
+    # A car ON THE FLOOR is in none of them: its bill is not final, which is
+    # why the sheet and Pending Bills leave it out too. It gets its own figure,
+    # `on_floor_so_far`, added to nothing.
+    #
+    # The discount counts positive rows only — the floor the sheet applies to
+    # each visit's discount, so the two can never print different DISCOUNTs.
+    done = Q(completed=True, is_deleted=False)
+    total_field = DecimalField(max_digits=14, decimal_places=2)
     money = all_visits.aggregate(
         visits=Count('id'),
-        billed=Coalesce(
-            Sum(F('total_bill_amount') - F('discount_amount'),
-                output_field=DecimalField(max_digits=14, decimal_places=2)),
-            ZERO, output_field=DecimalField(max_digits=14, decimal_places=2),
-        ),
+        billed=Coalesce(Sum('total_bill_amount', filter=done),
+                        ZERO, output_field=total_field),
+        discount=Coalesce(Sum('discount_amount', filter=done & Q(discount_amount__gt=0)),
+                          ZERO, output_field=total_field),
+        paid=Coalesce(Sum('received_amount', filter=done),
+                      ZERO, output_field=total_field),
         outstanding=Coalesce(
             Sum(F('total_bill_amount') - F('discount_amount') - F('received_amount'),
-                output_field=DecimalField(max_digits=14, decimal_places=2),
-                filter=Q(payment_status__in=('PENDING', 'PARTIAL'))),
-            ZERO, output_field=DecimalField(max_digits=14, decimal_places=2),
+                output_field=total_field,
+                filter=done & Q(payment_status__in=('PENDING', 'PARTIAL'))),
+            ZERO, output_field=total_field,
         ),
-        last_visit=Max('admitted_date'),
+        on_floor_so_far=Coalesce(
+            Sum('total_bill_amount', filter=Q(completed=False, is_deleted=False)),
+            ZERO, output_field=total_field,
+        ),
     )
 
     if not money['visits']:
@@ -326,9 +345,12 @@ def car_profile_detail(request, registration):
         # The headline is over the WHOLE history, not this page — the same rule
         # as every other figure in the hero. Summed in the database so it can
         # never drift from the rows, and so page 2 does not report a different
-        # total from page 1.
-        totals = _parts_cost(JobCardSpareItem.objects.filter(job_card__in=all_visits))
-        car_profit, car_profit_pct = _gross_profit(money['billed'], totals['cost'])
+        # total from page 1. And over COMPLETED visits only, like the money
+        # tiles beside it, so revenue and parts cost are cut from the same cards.
+        totals = _parts_cost(
+            JobCardSpareItem.objects.filter(job_card__in=all_visits.filter(done)))
+        car_profit, car_profit_pct = _gross_profit(
+            money['billed'] - money['discount'], totals['cost'])
         uncosted_parts = totals['uncosted']
     else:
         car_profit = car_profit_pct = None
@@ -360,9 +382,12 @@ def car_profile_detail(request, registration):
         # newest is it when there is one.
         'on_floor': (not latest.completed) and (not latest.is_deleted),
         'visits': total_visits,
+        # Completed visits only — see the aggregate above.
         'billed': money['billed'],
+        'discount': money['discount'],
+        'paid': money['paid'],
         'outstanding': money['outstanding'],
-        'last_visit': money['last_visit'],
+        'on_floor_so_far': money['on_floor_so_far'],
         # None for anyone but an owner, so the template gates on the value
         # itself and there is no second role check to fall out of step.
         'gross_profit': car_profit,

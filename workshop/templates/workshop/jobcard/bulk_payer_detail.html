@@ -899,7 +899,7 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end bd-dropdown">
                     <li>
-                        <a class="dropdown-item" href="{% url 'jobcard_detail' job.pk %}">
+                        <a class="dropdown-item" href="{% url 'jobcard_detail' job.pk %}?back={{ request.get_full_path|urlencode }}">
                             <i class="bi bi-eye me-2"></i>View Details
                         </a>
                     </li>
@@ -921,7 +921,7 @@
                 </ul>
             </div>
 
-            <a href="{% url 'jobcard_detail' job.pk %}" class="bd-card-link">
+            <a href="{% url 'jobcard_detail' job.pk %}?back={{ request.get_full_path|urlencode }}" class="bd-card-link">
                 <!-- Left stripe — car colour -->
                 <div class="bd-stripe
                     {% if not job.car_color %}stripe-unset
@@ -1004,7 +1004,7 @@
         {% with color=job.get_car_color_hex|default:'#475569' %}
         <div class="col-12 col-md-6 col-lg-4">
             <div class="bd-card bd-card-settled" style="--card-glow: {{ color }}22; --card-shade: {% if job.car_color %}{{ color }}14{% else %}transparent{% endif %};">
-                <a href="{% url 'jobcard_detail' job.pk %}" class="bd-card-link">
+                <a href="{% url 'jobcard_detail' job.pk %}?back={{ request.get_full_path|urlencode }}" class="bd-card-link">
                     <div class="bd-stripe
                         {% if not job.car_color %}stripe-unset
                         {% elif job.car_color == 'White' %}stripe-white

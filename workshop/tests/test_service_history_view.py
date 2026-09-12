@@ -758,14 +758,134 @@ class TheSheetItselfTests(ServiceHistoryPageTestCase):
 
     def test_part_life_stands_apart_from_the_visit_record(self):
         """
-        16.8mm — three times the bill's own gap between its two sections
-        (5.6mm above PART NAME). Twice read as one run under the closing total.
-        Whitespace separates two questions without new ink.
+        A light grey dashed CUT LINE running the full width of the page,
+        with 16.8mm of air either side. The gap alone was three times the
+        bill's own 5.6mm between its two sections and still read as one run
+        under the closing total.
+
+        ⚠ IT BREAKS THE MARGIN ON PURPOSE — the owner's instruction, to
+        "create a cutting feel". `margin: 0 -12mm` cancels the sheet's own
+        padding, so the line spans 210mm against the tables' 186mm and reaches
+        both paper edges. It is the only thing on this document that does, and
+        that is what tells a reader PART LIFE is a different question.
+
+        ⚠ LIGHT GREY IS WHAT MAKES THAT SAFE. Solid navy was tried and
+        competes with the closing total a centimetre above it; the sheet's own
+        two pale blues are FILLS, so a dashed line in either reads as a band
+        that failed to render.
+
+        ⚠ SYMMETRICAL — 16.8mm above and below, or the line is a lid on PART
+        LIFE rather than a boundary between two sections.
         """
         self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
         html = self._render()
+
         start = html.index('.sh-life {')
         self.assertIn('margin-top: 16.8mm', html[start:html.index('}', start)])
+
+        start = html.index('.sh-life::before {')
+        rule = html[start:html.index('}', start)]
+        self.assertIn('border-top: 2px dashed #d0d5dd', rule)
+        # -12mm is `.sheet`'s padding cancelled: full bleed, and the 16.8mm
+        # below matching the 16.8mm above.
+        self.assertIn('margin: 0 -12mm 16.8mm', rule)
+        # Never solid, and never a bar: it is a cue, not an edge.
+        self.assertNotIn('background', rule)
+        self.assertNotIn('solid', rule)
+
+        # The sheet's padding is what the negative margin cancels — if that
+        # ever changes, the line stops reaching the paper edge.
+        start = html.index('.sheet {')
+        self.assertIn('padding: 12mm', html[start:html.index('}', start)])
+
+    def test_part_life_is_printed_on_a_page_of_its_own(self):
+        """
+        The only pagination rule that is right in every scenario, and it was
+        measured rather than argued: every car in the development data
+        rendered to PDF twice, with the rule and without. 60 of 62 are
+        unchanged; 2 gain one page, and both are the largest sheets there.
+
+        It comes out that way because the record already fills a page on
+        almost every car — on the SMALLEST sheet, 2 visits and 38 rows, it is
+        272mm against 285mm of usable page.
+
+        Left to flow, three things could happen and all three were seen on one
+        printout: the cut line alone at the foot of a page with the table
+        overleaf, the repeated column heading over a two-row fragment, and a
+        page opening on the tail of a chain named on the sheet before.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        html = self._render()
+
+        block = html[html.index('@media print'):]
+        start = block.index('.sh-life {')
+        rule = block[start:block.index('}', start)]
+        self.assertIn('break-before: page', rule)
+        # The legacy spelling too — it is what older print engines read.
+        self.assertIn('page-break-before: always', rule)
+
+    def test_a_parts_whole_chain_stays_on_one_page(self):
+        """
+        `.sh-chain-head` binds a part's NAME to its first fitting and nothing
+        bound the rest, so a part with six lives could still be cut across the
+        fold — the one thing this table is read for.
+
+        Each chain is its own `<tbody>`, and every chain in the development
+        data measures 10.4mm to 31.2mm against a 285mm page, so one always
+        fits with room to spare.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        html = self._render()
+
+        block = html[html.index('@media print'):]
+        start = block.index('.sh-life tbody {')
+        rule = block[start:block.index('}', start)]
+        self.assertIn('break-inside: avoid', rule)
+        self.assertIn('page-break-inside: avoid', rule)
+
+    def test_the_line_leaves_with_the_table_it_separates(self):
+        """
+        The tick hides one element, and the line is part of it.
+
+        Padding is ignored on a `border-collapse: collapse` table, so the air
+        under the line cannot sit on the table — hence the wrapper. Drawing
+        the line as a second element beside the table would leave the tick
+        with two things to hide and a rule floating over nothing the day it
+        only hid one.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        sheet = self._sheet()
+
+        # The wrapper carries the class, and it wraps the table rather than
+        # being it — so `hidden` on it takes the line and the table together.
+        self.assertIn('<div class="sh-life">', sheet)
+        self.assertNotIn('inv-table sh-life', sheet)
+
+        block = sheet[sheet.index('<div class="sh-life">'):]
+        self.assertLess(block.index('<table'), block.index('PART LIFE'))
+
+    def test_a_figure_columns_heading_sits_on_its_figures_edge(self):
+        """
+        MILEAGE and DISTANCE RUN were centred over right-aligned figures — the
+        bill's own treatment of UNIT PRICE, which survives there because those
+        columns are 14.5 and 20.3% wide. These two are 24.9 and 22.2%, so the
+        same rule left most of a column of white between each word and the
+        numbers under it, and the owner read the figures as shifted right.
+
+        NOW stays centred, because the chip under it is.
+        """
+        self._visit(date(2026, 1, 1), '60000', parts=['Wheel bearing left'])
+        sheet = self._sheet()
+
+        self.assertIn('<th class="h-right">MILEAGE</th>', sheet)
+        self.assertIn('<th class="h-right">DISTANCE RUN</th>', sheet)
+        self.assertIn('<th>NOW</th>', sheet)
+
+        # The declaration lives in the stylesheet, which _sheet() crops away.
+        html = self._render()
+        start = html.index('.inv-table thead th.h-right {')
+        self.assertIn('text-align: right',
+                      html[start:html.index('}', start)])
 
     def test_the_asterisk_legend_appears_only_when_something_carries_one(self):
         """
@@ -1035,7 +1155,7 @@ class ItIsSetLikeTheBillTests(ServiceHistoryPageTestCase):
         # the PART LIFE column head the same figure, so they take the same
         # word. This is the half that made the rename worth doing rather than
         # trading one inconsistency for another.
-        self.assertIn('<th>MILEAGE</th>', sheet)
+        self.assertIn('>MILEAGE</th>', sheet)
 
         # The name and nothing else. This sheet is handed to a buyer, and the
         # only phone number on it should be the workshop's own.

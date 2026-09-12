@@ -38,10 +38,11 @@
                 label is regular, and the column does the work.
         COLOUR  #1f4e79 navy · #dce6f1 band fill · #bdd7ee total fill ·
                 #2e74b5 accent · white gridlines · black text
-                — plus ONE stated exception, `#6E6E6E` on the notes block
-                  and nowhere else. See `.sh-notes` for why the one
-                  thing on the sheet that is not part of the RECORD is the one
-                  allowed a colour the bill has not got.
+                — plus TWO stated exceptions, both grey and both for one
+                  reason: they are the only things here that are not part
+                  of the RECORD. `#6E6E6E` on the notes block (see
+                  `.sh-notes`), and `#d0d5dd` on the dashed cut line above
+                  PART LIFE, which is a cue and not a fact about the car.
 
     This sheet shipped once wearing the invoice's letterhead over its own
     invented design system — 7.5pt, 8pt, 8.5pt and 9pt type, nine greys and two
@@ -367,6 +368,30 @@
 
         .inv-table thead th.h-left {
             text-align: left;
+        }
+
+        {% comment %}
+        A HEADING OVER A COLUMN OF FIGURES SITS ON THE FIGURES' OWN EDGE
+        (2026-09-12, the owner reporting the MILEAGE and DISTANCE RUN values
+        as "slightly shifted to the right").
+
+        They are not shifted. They are right-aligned, which is what a column
+        of distances has to be for the digits to line up — under a heading
+        that was centred, which is exactly what the bill does to UNIT PRICE.
+        It survives there because those columns are NARROW: 7.7, 14.5 and
+        20.3%, so a centred heading lands close to the figures under it. PART
+        LIFE's two are 24.9 and 22.2% — a third of the sheet between them —
+        and at that width the same treatment leaves most of a column of white
+        between the word and the numbers it names.
+
+        ⚠ ALIGNMENT IS NOT ONE OF THE THREE THINGS THIS SHEET MAY NOT INVENT.
+        That rule governs SIZE, WEIGHT and COLOUR, and `h-left` is already the
+        precedent for a heading the bill does not centre.
+
+        NOW keeps its centre, because the chip under it is centred.
+        {% endcomment %}
+        .inv-table thead th.h-right {
+            text-align: right;
         }
 
         {% comment %}
@@ -805,18 +830,75 @@
            car", which is the question a buyer actually has and which no single
            invoice can answer.
            ================================================================== */
+        {% comment %}
+        THE CUT LINE BETWEEN THE RECORD AND THE DURABILITY TABLE.
+
+        Whitespace did it alone until 2026-09-12 — 16.8mm in TOTAL, three times the
+        bill's own 5.6mm between its two sections, and itself already a second
+        attempt after twice read as one run under the closing total. A gap at
+        this scale turned out not to be a boundary at all: PART LIFE still
+        read as more of the visit record. So it gets a line, AND it keeps the
+        space — the line is added to the gap, never instead of it.
+
+        ⚠ IT IS A CUT LINE ON PURPOSE — the owner's instruction, in their own
+        words: "a horizontal dashed line in light gray across the entire width
+        of the page, ignoring the margins, to create a cutting feel for the
+        user". Nothing on this sheet is meant to be torn; the CUE is the
+        point. A reader who meets a line that runs off both edges knows
+        without being told that what follows is a different document, which is
+        exactly what PART LIFE is — the record answers what was done, this
+        answers how long a part lasts.
+
+        ⚠ SO IT BREAKS THE MARGIN DELIBERATELY, and it is the only thing on
+        this document that does. `margin: 0 -12mm` cancels `.sheet`'s own
+        padding, so the line spans the full 210mm — measured 794px against the
+        tables' 703px. `@page` is 0, so it reaches both paper edges in print
+        too. Every other rule here is the edge of an object and stops at the
+        margin with everything else; this one is not an object.
+
+        ⚠ LIGHT GREY, AND THAT IS WHAT MAKES A FULL-BLEED LINE SAFE. Solid
+        navy was tried and is far too loud for a cue: at the record's own ink
+        it competes with the closing total a centimetre above it. `#d0d5dd`
+        reads as a guide rather than as part of the record. It is the second
+        stated exception to the colour rule, and the same one the notes block
+        earns — this is not part of the RECORD either.
+
+        ⚠ `#dce6f1` AND `#bdd7ee` WERE TRIED FIRST, so that no new colour need
+        be invented, and both are wrong here: they are the sheet's FILLS, so a
+        dashed line in either reads as a band that failed to render. The cue
+        has to be grey, not blue.
+
+        ⚠ THE SPACE IS SYMMETRICAL — 16.8mm above and 16.8mm below, so
+        33.6mm in all, doubled from where the line first went in. Equal
+        either side, or it reads as a lid on PART LIFE rather than as a
+        boundary between two sections.
+
+        ⚠ IT IS A WRAPPER, AND THE WRAPPER IS WHAT THE TICK HIDES. A separate
+        element drawn beside the table would be a second thing the Part life
+        tick has to remember, which is how a line ends up floating over a
+        table that is no longer there. One element goes and the line goes with
+        it. It is a `::before` rather than a border on the table because
+        padding is ignored on a `border-collapse: collapse` table, so the air
+        UNDER the line has nowhere else to live — and a border could not reach
+        past the margin anyway.
+        {% endcomment %}
         .sh-life {
-            /* Three times the bill's own gap between its two sections
-               (5.6mm, above PART NAME). Twice read as one run under the
-               closing total — the owner's verdict, 2026-09-11. The visit
-               record and this table answer two different questions, and
-               whitespace separates them without new ink. */
             margin-top: 16.8mm;
+        }
+
+        .sh-life::before {
+            content: '';
+            display: block;
+            height: 0;
+            /* -12mm cancels `.sheet`'s own padding, so the line reaches
+               both paper edges. Equal air above and below: 16.8mm each. */
+            margin: 0 -12mm 16.8mm;
+            border-top: 2px dashed #d0d5dd;
         }
 
         /* What the toolbar's Part life tick actually does. `.sh-life` declares
            no `display` of its own, so the `hidden` attribute alone would carry
-           it today — stated anyway because the day somebody gives this table a
+           it today — stated anyway because the day somebody gives that block a
            display value the switch stops working silently, and nothing in the
            Django suite executes CSS to notice. */
         [hidden] {
@@ -1181,11 +1263,62 @@
                 page-break-inside: avoid;
             }
 
+            {% comment %}
+            ⚠ PART LIFE TAKES A PAGE OF ITS OWN, AND IT COSTS ALMOST NOTHING.
+
+            The objection to a forced break is that it wastes paper, so it was
+            MEASURED rather than argued: every car in the development data
+            rendered to PDF twice, with the rule and without, and the pages
+            counted. 60 of 62 are unchanged; 2 gain a single page, and both
+            are the largest sheets in the data (76 rows of content).
+
+            It comes out that way because THE RECORD ALREADY FILLS A PAGE ON
+            ALMOST EVERY CAR. On the SMALLEST sheet in the data — 2 visits, 38
+            rows — the record is 272mm against 285mm of usable page, so PART
+            LIFE could not have joined it whatever the rule said.
+
+            ⚠ AND IT IS THE ONLY RULE THAT IS RIGHT IN EVERY SCENARIO, which
+            is what a document handed to a buyer needs. Left to flow, three
+            things could happen and all three were seen on one printout: the
+            cut line landing alone at the foot of a page with the table
+            overleaf, separating nothing; the repeated column heading sitting
+            over a two-row fragment; and a page opening on the tail of a chain
+            whose name is on the sheet before. A page break cannot produce any
+            of them.
+
+            ⚠ IT ALSO SAYS OUT LOUD WHAT THE CUT LINE ALREADY CLAIMS. The line
+            is there because the record and the durability table answer two
+            different questions; on paper a new page is the strongest way to
+            say that, and the line still leads it.
+
+            A card is deliberately NOT given the same treatment — see
+            `.sh-visit` above. It is atomic, and a card measures up to 92.2mm,
+            a third of a page, so a page foot can be left with up to ~91mm of
+            white. That is the price of never cutting a visit in half, and a
+            visit is the unit this document exists to compare.
+            {% endcomment %}
+            .sh-life {
+                break-before: page;
+                page-break-before: always;
+            }
+
             /* A part's name must never sit at the foot of a page with its
                fittings overleaf. */
             .sh-chain-head {
                 break-after: avoid;
                 page-break-after: avoid;
+            }
+
+            /* ⚠ AND THE WHOLE CHAIN TRAVELS WITH IT. `.sh-chain-head` binds
+               the name to its FIRST fitting and nothing bound the rest, so a
+               part with six lives could still be cut across the fold — which
+               is the one thing PART LIFE is read for. Each chain is its own
+               `<tbody>`, and every chain in the development data measures
+               10.4mm to 31.2mm, so one always fits a page with room to
+               spare. */
+            .sh-life tbody {
+                break-inside: avoid;
+                page-break-inside: avoid;
             }
 
             .inv-head,
@@ -1731,8 +1864,9 @@
 
             ⚠ NET, NEVER "PAID". A discount only exists once a bill is settled,
             but this total also counts completed visits nobody has paid for
-            yet, so "TOTAL PAID" would claim that money as well. NET TOTAL is
-            the Car Profile's own "Total billed" to the rupee.
+            yet, so "TOTAL PAID" would claim that money as well. The Car
+            Profile prints TOTAL BILLED and DISCOUNT as these same figures, and
+            NET TOTAL is its Paid + Still owed.
             {% endcomment %}
             {% if show_amount %}
             <table class="inv-table sh-total">
@@ -1823,111 +1957,113 @@
             the name of the column under it.
             {% endcomment %}
             {% if chains %}
-            <table class="inv-table sh-life">
-                <colgroup>
-                    <col style="width:7.7%">
-                    <col style="width:24.9%">
-                    <col style="width:24.9%">
-                    <col style="width:22.2%">
-                    <col style="width:20.3%">
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th class="h-left" colspan="2">PART LIFE</th>
-                        <th>MILEAGE</th>
-                        {% comment %}
-                        "DISTANCE RUN". It read LASTED, which is true of a
-                        fitting that has been replaced and false of the one
-                        still on the car — the row a reader cares most about,
-                        and the row the NOW column then has to contradict.
-                        {% endcomment %}
-                        <th>DISTANCE RUN</th>
-                        <th>NOW</th>
-                    </tr>
-                </thead>
-                {% for chain in chains %}
-                <tbody>
-                    <tr class="sh-chain-head">
-                        <td colspan="3">
-                            <span class="sh-chain-name">{{ chain.name }}</span>
-                        </td>
-                        {% comment %}
-                        ⚠ THE AVERAGE SITS IN THE DISTANCE RUN COLUMN, RIGHT-
-                        ALIGNED OVER THE FIGURES IT AVERAGES (2026-09-11, the
-                        owner's call). It trailed the part's name as "— AVG
-                        24,150 km"; here the eye reads straight down one column
-                        — AVG 24,150, then 3,500, 24,200, 24,100 — and can check
-                        it: the mean of the finished lives, the one still on the
-                        car left out. The name stands alone on the left.
+            <div class="sh-life">
+                <table class="inv-table">
+                    <colgroup>
+                        <col style="width:7.7%">
+                        <col style="width:24.9%">
+                        <col style="width:24.9%">
+                        <col style="width:22.2%">
+                        <col style="width:20.3%">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="h-left" colspan="2">PART LIFE</th>
+                            <th class="h-right">MILEAGE</th>
+                            {% comment %}
+                            "DISTANCE RUN". It read LASTED, which is true of a
+                            fitting that has been replaced and false of the one
+                            still on the car — the row a reader cares most about,
+                            and the row the NOW column then has to contradict.
+                            {% endcomment %}
+                            <th class="h-right">DISTANCE RUN</th>
+                            <th>NOW</th>
+                        </tr>
+                    </thead>
+                    {% for chain in chains %}
+                    <tbody>
+                        <tr class="sh-chain-head">
+                            <td colspan="3">
+                                <span class="sh-chain-name">{{ chain.name }}</span>
+                            </td>
+                            {% comment %}
+                            ⚠ THE AVERAGE SITS IN THE DISTANCE RUN COLUMN, RIGHT-
+                            ALIGNED OVER THE FIGURES IT AVERAGES (2026-09-11, the
+                            owner's call). It trailed the part's name as "— AVG
+                            24,150 km"; here the eye reads straight down one column
+                            — AVG 24,150, then 3,500, 24,200, 24,100 — and can check
+                            it: the mean of the finished lives, the one still on the
+                            car left out. The name stands alone on the left.
 
-                        ⚠ ONLY WHEN THERE IS A REAL AVERAGE — two or more
-                        finished lives. With one, the figure is always the
-                        number printed directly beneath it in row 1, so
-                        "First one 36,900 km" became the same figure twice in
-                        one column the moment it moved here.
+                            ⚠ ONLY WHEN THERE IS A REAL AVERAGE — two or more
+                            finished lives. With one, the figure is always the
+                            number printed directly beneath it in row 1, so
+                            "First one 36,900 km" became the same figure twice in
+                            one column the moment it moved here.
 
-                        ⚠ STILL NO COUNT. The average is over finished lives,
-                        not fittings — six fittings give five — so "over 6"
-                        would have a customer count the rows, find one fewer,
-                        and stop trusting the figure.
-                        {% endcomment %}
-                        <td class="r sh-aside">{% if chain.typical_km and chain.sample_count > 1 %}AVG {{ chain.typical_km|inr }} km{% endif %}</td>
-                        {% comment %}
-                        ⚠ DUE SOON MOVED HERE FROM THE VISIT CARD, and it is
-                        the one thing that had to survive that card losing its
-                        parts detail. It belongs on the chain: it is a
-                        statement about the part CURRENTLY fitted, measured
-                        against this car's own completed lives, and this is the
-                        section a reader is in when they ask what is coming.
+                            ⚠ STILL NO COUNT. The average is over finished lives,
+                            not fittings — six fittings give five — so "over 6"
+                            would have a customer count the rows, find one fewer,
+                            and stop trusting the figure.
+                            {% endcomment %}
+                            <td class="r sh-aside">{% if chain.typical_km and chain.sample_count > 1 %}AVG {{ chain.typical_km|inr }} km{% endif %}</td>
+                            {% comment %}
+                            ⚠ DUE SOON MOVED HERE FROM THE VISIT CARD, and it is
+                            the one thing that had to survive that card losing its
+                            parts detail. It belongs on the chain: it is a
+                            statement about the part CURRENTLY fitted, measured
+                            against this car's own completed lives, and this is the
+                            section a reader is in when they ask what is coming.
 
-                        `_summarise_chains` already sorts a due chain to the
-                        top of the table, so they cluster where they are found.
+                            `_summarise_chains` already sorts a due chain to the
+                            top of the table, so they cluster where they are found.
 
-                        Italic accent blue and nothing louder — the sheet's own
-                        rule that the one line looking FORWARD is not drawn as
-                        another bold navy fact. It lands in the NOW column,
-                        which is the column about the present state.
-                        {% endcomment %}
-                        <td class="c sh-due">{% if chain.due_soon %}due soon{% endif %}</td>
-                    </tr>
-                    {% for part in chain.instances %}
-                    <tr class="sh-fit">
-                        <td class="sh-inst">{{ part.number }}</td>
-                        <td>{{ part.fitted_date|date:"j M Y" }}</td>
-                        <td class="r">{% if part.fitted_km %}{{ part.fitted_km|inr }} km{% endif %}</td>
-                        {% comment %}
-                        ⚠ A RUNNING FITTING WITH NOTHING BEHIND IT PRINTS
-                        NOTHING, NOT "0 km". Every part fitted at the latest
-                        visit reads zero, because the newest reading this
-                        workshop holds IS that visit's — so a well-serviced car
-                        opened with a column of "0 km", once per chain, which
-                        on a document a buyer is checking looks like the sheet
-                        is broken rather than like a part that is new.
+                            Italic accent blue and nothing louder — the sheet's own
+                            rule that the one line looking FORWARD is not drawn as
+                            another bold navy fact. It lands in the NOW column,
+                            which is the column about the present state.
+                            {% endcomment %}
+                            <td class="c sh-due">{% if chain.due_soon %}due soon{% endif %}</td>
+                        </tr>
+                        {% for part in chain.instances %}
+                        <tr class="sh-fit">
+                            <td class="sh-inst">{{ part.number }}</td>
+                            <td>{{ part.fitted_date|date:"j M Y" }}</td>
+                            <td class="r">{% if part.fitted_km %}{{ part.fitted_km|inr }} km{% endif %}</td>
+                            {% comment %}
+                            ⚠ A RUNNING FITTING WITH NOTHING BEHIND IT PRINTS
+                            NOTHING, NOT "0 km". Every part fitted at the latest
+                            visit reads zero, because the newest reading this
+                            workshop holds IS that visit's — so a well-serviced car
+                            opened with a column of "0 km", once per chain, which
+                            on a document a buyer is checking looks like the sheet
+                            is broken rather than like a part that is new.
 
-                        ⚠ A COMPLETED life of 0 km still prints, and the
-                        distinction is real: a part replaced at the same
-                        reading it was fitted at failed immediately, which is a
-                        measurement. Zero on a running fitting is not a
-                        measurement — it means nobody has read the odometer
-                        since. Ask the customer for today's reading and the
-                        whole column fills in.
+                            ⚠ A COMPLETED life of 0 km still prints, and the
+                            distinction is real: a part replaced at the same
+                            reading it was fitted at failed immediately, which is a
+                            measurement. Zero on a running fitting is not a
+                            measurement — it means nobody has read the odometer
+                            since. Ask the customer for today's reading and the
+                            whole column fills in.
 
-                        ⚠ THAT IS THE BILL'S OWN RULE, NOT A NEW ONE. The
-                        invoice prints an EMPTY cell for a part with no price
-                        and `₹0.00` for one given away, on exactly this
-                        distinction — nothing to say is not the same fact as a
-                        measured zero, and `PartLine.priced` exists in
-                        `invoice.py` so a truthiness check cannot collapse the
-                        two. A blank here therefore reads the way a blank reads
-                        on the document beside it.
-                        {% endcomment %}
-                        <td class="r">{% if part.life_km %}{{ part.life_km|inr }} km{% elif part.life_km is not None and not part.running %}0 km{% endif %}</td>
-                        <td class="c">{% if part.running %}<span class="sh-run">ON THE CAR</span>{% endif %}</td>
-                    </tr>
+                            ⚠ THAT IS THE BILL'S OWN RULE, NOT A NEW ONE. The
+                            invoice prints an EMPTY cell for a part with no price
+                            and `₹0.00` for one given away, on exactly this
+                            distinction — nothing to say is not the same fact as a
+                            measured zero, and `PartLine.priced` exists in
+                            `invoice.py` so a truthiness check cannot collapse the
+                            two. A blank here therefore reads the way a blank reads
+                            on the document beside it.
+                            {% endcomment %}
+                            <td class="r">{% if part.life_km %}{{ part.life_km|inr }} km{% elif part.life_km is not None and not part.running %}0 km{% endif %}</td>
+                            <td class="c">{% if part.running %}<span class="sh-run">ON THE CAR</span>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
                     {% endfor %}
-                </tbody>
-                {% endfor %}
-            </table>
+                </table>
+            </div>
             {% endif %}
 
             {% else %}

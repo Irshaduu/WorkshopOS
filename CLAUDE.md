@@ -3732,7 +3732,8 @@ Three things carry it:
   visit PAID would be true — but the closing total also counts completed
   visits nobody has paid for yet, and "TOTAL PAID" would claim that money too.
   `net_total` is `total_billed − total_discount`, both summed from the printed
-  rows, and it equals the Car Profile's own "Total billed" to the rupee.
+  rows. The Car Profile prints TOTAL BILLED and DISCOUNT as these same figures,
+  and NET TOTAL is its **Paid + Still owed** — see Car Profiles.
 
 The branch reads `discount > 0` and nothing else — no payment-status check.
 Checked against every card in the development database on 2026-09-11: no
@@ -3757,11 +3758,104 @@ apart now — structure is drawn in navy on this sheet. It was right-aligned
 against its date for one revision and centred on the owner's call. **The date beside each number is the
 legend** — 1 sits beside the oldest, the top one beside ON THE CAR — so the
 note that explained the brackets went with them, and so did the toolbar hook
-that had to hide it. PART LIFE also now sits **16.8mm** below the record,
-three times the bill's own 5.6mm gap between its two sections — twice was
-tried first and still read as one run under the closing total — so the visit
-record and the durability table read as two questions without a rule drawn
-between them.
+that had to hide it.
+
+**A LIGHT GREY DASHED CUT LINE SEPARATES THE RECORD FROM PART LIFE, RUNNING
+THE FULL WIDTH OF THE PAGE, WITH 16.8mm EITHER SIDE OF IT — and that reverses
+"two questions without a rule drawn between them" (2026-09-12, the owner's
+instruction).** Whitespace did it alone and was widened twice: the bill's own
+5.6mm between its two sections, then twice that, then 16.8mm in total — and
+PART LIFE still read as more of the visit record under the closing total. A
+gap at this scale is not a boundary. The space **stays and is symmetrical**,
+16.8mm above and 16.8mm below — **33.6mm in all**, doubled from where the
+line first went in — so the line is added to the gap rather than replacing
+it; a line with the whole gap above it and none below is a lid on PART LIFE
+rather than a boundary between two sections.
+
+⚠ **THE CUTTING FEEL IS THE POINT, NOT A SIDE EFFECT — the owner's own words:
+"a horizontal dashed line in light gray across the entire width of the page,
+ignoring the margins, to create a cutting feel for the user".** Nothing on this
+sheet is meant to be torn; the **cue** is what is wanted. A reader who meets a
+line running off both edges knows without being told that what follows is a
+different document — which is exactly what PART LIFE is.
+
+⚠ **SO IT BREAKS THE MARGIN, AND IT IS THE ONLY THING ON THIS DOCUMENT THAT
+DOES.** `margin: 0 -12mm` cancels `.sheet`'s own padding, so the line spans the
+full **210mm — measured 794px against the tables' 703px** — and since `@page`
+is 0 it reaches both paper edges in print as well. Every other rule here is the
+edge of an object and stops at the margin with everything else. This one is not
+an object.
+
+⚠ **LIGHT GREY IS WHAT MAKES A FULL-BLEED LINE SAFE, and `#d0d5dd` is the
+SECOND stated exception to the colour rule** — the same exception the notes
+block earns, for the same reason: this is not part of the RECORD. Solid navy
+was tried and is far too loud for a cue, competing with the closing total a
+centimetre above it.
+
+⚠ **`#dce6f1` AND `#bdd7ee` WERE TRIED FIRST so that no new colour need be
+invented, and both are wrong here.** They are the sheet's **fills**, so a
+dashed line in either reads as a band that failed to render. The cue has to be
+grey, not blue.
+
+⚠ **`.sh-life` IS THE WRAPPER, NOT THE TABLE, AND THE TICK HIDES THE WRAPPER.**
+Drawing the line as a second element beside the table would leave the Part life
+tick with two things to hide, and a line floating over nothing the day it only
+hid one. It is a `::before` rather than a border on the table because **padding
+is ignored on a `border-collapse: collapse` table**, so the air UNDER the line
+has nowhere else to live — and a border could not reach past the margin anyway.
+
+### Pagination — what each block is allowed to do at a fold
+
+**Measured at true A4 width with the print stylesheet on, on the development
+data.** Usable page height is **285mm** — 297 less the sheet's own 12mm top
+padding, which pads page 1 and no other (`@page` is 0, for the recorded reason
+that a page margin brings the browser's printed headers back with it).
+
+| block | height |
+|---|---|
+| letterhead | 33.9mm |
+| vehicle + record block | 29.9mm |
+| **one visit card** | **up to 92.2mm** |
+| gap chip | 10.6mm |
+| FIRST VISIT band | 6mm |
+| closing total | 7.2–17.4mm |
+| PART LIFE, whole | 163–248mm |
+| one chain inside it | 10.4–31.2mm |
+| notes + foot | 21.4mm |
+
+**PART LIFE TAKES A PAGE OF ITS OWN (`break-before: page`, print only), AND THE
+COST WAS MEASURED RATHER THAN ARGUED.** Every car in the development data was
+rendered to PDF twice, with the rule and without, and the pages counted:
+**60 of 62 unchanged, 2 gain a single page** — and both of those are the
+largest sheets in the data, at 76 rows of content.
+
+It comes out that way because **the record already fills a page on almost every
+car**. On the SMALLEST sheet — 2 visits, 38 rows — the record measures **272mm
+against 285mm of usable page**, so the table could not have joined it whatever
+the rule said.
+
+⚠ **It is also the only rule that is right in EVERY scenario, which is what a
+document handed to a buyer needs.** Left to flow, three things can happen and
+all three were seen on one printout: the **cut line alone at the foot of a
+page** with the table overleaf, separating nothing; the **repeated column
+heading over a two-row fragment**; and a page **opening on the tail of a chain**
+whose name is on the sheet before. A page break cannot produce any of them.
+
+⚠ **A CHAIN NEVER SPLITS — `.sh-life tbody { break-inside: avoid }`.**
+`.sh-chain-head` binds a part's NAME to its first fitting and **nothing bound
+the rest**, so a part with six lives could be cut across the fold — the one
+thing this table is read for. Every chain measures 10.4–31.2mm, so one always
+fits a page with room to spare.
+
+⚠ **A VISIT CARD IS DELIBERATELY NOT GIVEN THE SAME TREATMENT, AND THE WHITE IT
+LEAVES IS THE PRICE OF THAT.** A card is atomic (`break-inside: avoid`) and
+measures **up to 92.2mm — a third of a page** — so a page foot can be left with
+up to ~91mm of white when the next card will not fit. That was reported as
+clutter and it is not a bug: a visit is the unit this document exists to
+compare, and a card cut across a fold breaks the comparison. **The fix for the
+white, if it is ever wanted, is a SHORTER card, never a splittable one** — the
+92.2mm card lists 5 concerns, 5 job lines and 8 parts, and the two-column block
+is as tall as its taller column.
 
 **A PART'S AVERAGE SITS IN THE DISTANCE RUN COLUMN OF ITS NAME ROW —
 `AVG 24,150 km`, right-aligned over the figures it averages (2026-09-11, the
@@ -3777,6 +3871,22 @@ rows and stop trusting the figure.
 the figure is always the number printed directly beneath it in row 1, so the
 note that read *"First one 36,900 km"* became the same figure twice in one
 column the moment it moved there. It was dropped rather than moved.
+
+**A HEADING OVER A COLUMN OF FIGURES SITS ON THE FIGURES' OWN EDGE — `MILEAGE`
+and `DISTANCE RUN` are right-aligned (2026-09-12).** The owner reported both
+columns' values as *"slightly shifted to the right"*. They are not shifted:
+they are right-aligned, which is what a column of distances has to be for the
+digits to line up, under a heading that was centred — which is exactly what the
+bill does to UNIT PRICE. It survives there because those columns are **narrow**
+(7.7, 14.5 and 20.3%), so a centred heading lands close to its figures; PART
+LIFE's two are **24.9 and 22.2%**, and at that width the same treatment leaves
+most of a column of white between the word and the numbers it names. Measured
+after: the heading and every figure under it share one right edge, AVG
+included. `NOW` keeps its centre, because the chip under it is centred.
+
+⚠ **ALIGNMENT IS NOT ONE OF THE THREE THINGS THIS SHEET MAY NOT INVENT.** The
+design rule below governs SIZE, WEIGHT and COLOUR, and `h-left` was already the
+precedent for a heading the bill does not centre.
 
 **THE LAST COLUMN STAYS `NOW`, NOT `STATUS` (2026-09-11).** Asked and kept, for
 two reasons. A blank under NOW reads as *not on the car now* — replaced — while
@@ -3858,9 +3968,11 @@ NOT ALREADY USE.**
             regular, and the column does the work.
     COLOUR  #1f4e79 navy · #dce6f1 band fill · #bdd7ee total fill ·
             #2e74b5 accent · white gridlines · black text
-            — plus ONE stated exception: `#6E6E6E` on the notes block and
-              nowhere else, because it is the one block on the sheet that
-              is not part of the RECORD. See "The notes".
+            — plus TWO stated exceptions, and both are grey for one
+              reason: they are the only things on the sheet that are not
+              part of the RECORD. `#6E6E6E` on the notes block (see "The
+              notes"), and `#d0d5dd` on the dashed cut line above PART
+              LIFE, which is a cue rather than a fact about the car.
 
 It shipped once wearing the invoice's letterhead over its own invented design
 system — 7.5/8/8.5/9pt type, nine greys and two reds that appear on no Formula
@@ -6179,6 +6291,19 @@ than under it reads as floating rather than as the first thing on the page.
 **A page wrapper's own top padding is now the back control's**, so check for
 one before adding `.pg-back` to a page that has a wrapper.
 
+⚠ **AND THE READ-ONLY JOB CARD HAD NONE AT ALL until 2026-09-11** (the owner's
+report). It is reached from three screens — a car profile's visit row, the Job
+Cards list and a Fleet Account — so its parent is not fixed, and it takes the
+standalone sheets' answer rather than a named destination: each of those links
+hands over `?back=`, `jobcard_detail` validates it with `safe_return`, and the
+label is plain **Back**. A cold arrival falls back to the car's own profile,
+which always lists the card; a card with no registration (which the form
+refuses) falls back to the Job Cards list rather than failing to reverse. The
+delete-refusal page's "Open Job Card" and the create form's conflict "View"
+carry nothing, deliberately: going back to a refusal, or to a create form whose
+typing is already gone, is not a way out.
+→ `TheReadOnlyJobCardHasAWayOutTests`
+
 → `workshop/tests/test_back_navigation.py`. The scan for retired treatments is
 the load-bearing one: nothing in the Django suite executes CSS, and a new page
 pasting a bespoke back link is invisible to every other kind of test. ⚠ **It
@@ -7454,15 +7579,63 @@ reads as a broken list rather than as two different facts.
 
 **The totals come from the DATABASE, not the page.** A single aggregate over the
 whole history — with a pager, anything summed from the page would quietly start
-describing "this page" while labelled "this car". **"Billed to date" is
-`total_bill_amount − discount_amount`, the Profit page's own definition of revenue**,
-because a second definition of "what this customer has paid us" is the one an owner
-would end up quoting at the counter.
+describing "this page" while labelled "this car".
 
-**The headline figure is "Total billed"** — deliberately not "Total spent", which is
-the customer's side of the same number and is wrong on exactly the cars that matter,
-since an unpaid bill has been billed and not spent. When there is an unpaid part the
-"Still owed" tile appears beside it.
+**THE HERO'S MONEY IS ONE EQUATION, OVER COMPLETED VISITS ONLY** (2026-09-11,
+the owners' structure):
+
+    Total billed − Discount = Paid + Still owed
+
+| tile | the figure | shown |
+|---|---|---|
+| **Total billed** | Σ `total_bill_amount` — what the invoices said | always |
+| **Discount** | Σ `discount_amount`, each visit floored at zero | only when there is one |
+| **Paid** | Σ `received_amount` — cash | always |
+| **Still owed** | bill − discount − received on completed PENDING/PARTIAL cards | only when > 0, red |
+| **On the floor** | the open card's bill, "so far" | only while the car is in, amber, added to nothing |
+
+⚠ **THIS REVERSES WHAT THIS FILE SAID UNTIL 2026-09-11.** "Total billed" was
+`total_bill_amount − discount_amount` over EVERY visit — the Profit page's
+revenue — while the service history sheet, a button on this same page, prints
+TOTAL BILLED for the invoices' own totals over completed visits. One word, two
+figures, seconds apart: KL 1 A 1111 read ₹1,85,550 here and ₹1,86,950 there.
+The scope differed as well as the word — 8 of the 9 cars on the floor in the
+development data showed two totals (KL 10 AA 1001: ₹88,000 against ₹66,000),
+because this page counted the open visit and the sheet does not.
+
+Now every word the two screens share names one figure: **Total billed** and
+**Discount** are the sheet's own, and the sheet's **NET TOTAL** is Paid + Still
+owed. The equation held on all 63 cars in the development data when written.
+
+- **"Total billed" is still the owner's word.** "Billed to date" confused them,
+  and "Total spent" is the customer's side and wrong on an unpaid bill. The
+  figure changed, to what the word means on the sheet.
+- **"Paid", not "Settled"** — the visit rows below already say *Paid / Part
+  paid / Unpaid*, and a part-paid fleet bill is not settled.
+- **A car on the floor is in no total**, because its bill is not final — the
+  sheet's rule and Pending Bills'. Its tile wears `.cd-badge-open`'s values, so
+  it and the row's "On the floor" badge are one colour. **Gross profit follows
+  the same cut**, so revenue and parts cost come from the same cards.
+- **No Visits or Last in tile.** The count is beside "Visit history" and on
+  every row's #N, and the last visit is the top row — of page 1, which only a
+  car with more than 45 visits ever leaves.
+- **A discounted visit's ROW says so too** — `−₹1,400 discount` under that
+  visit's amount, in the quiet tier the owner's gross line uses, only when there
+  was one. The sheet prints a visit's AMOUNT and its DISCOUNT the same way, and
+  the Discount tile is the sum of these lines, so the tile can be traced to its
+  visits. Without it a PAID badge beside ₹56,400 read as ₹56,400 paid when
+  ₹55,000 was.
+
+  ⚠ **THE WORD STAYS ON A PHONE, AND THAT COSTS SOMETHING — the owner's call
+  (2026-09-11), made with the cost in front of them.** Unlike the gross line,
+  which drops "gross" below 520px, `discount` is never hidden. Measured at
+  375px: the money column widens 67px → 83px, so a discounted row is **93px
+  against 67px** and its PAID badge drops to a second line (at 1280 it is 82px
+  against 68px, badge in place). Dropping the word would have kept the badge
+  on its line; it was offered and declined, on the sheet's own rule that the
+  gap is always NAMED. **Do not "tidy" it into a `display: none` on phones.**
+→ `OneWordNamesOneFigureOnBothScreensTests`,
+`test_a_discounted_visit_says_so_on_its_row`
 
 **The header is one row from 768px up, two rows below it.** On a phone the title and
 a search box with a five-word placeholder compete for ~360px and both lose; above
@@ -7553,12 +7726,11 @@ see has to look the same on every screen that shows it. One extra rule the Live 
 does not need: the hero's stat tiles sit *on* the wash, so they carry their own
 `rgba(255,255,255,.72)` ground or they take the tint twice.
 
-**Tile widths are PROPORTIONAL, and the two fixed ones are fixed for a reason**: a
-visit count and a date cannot vary in width, so they get fixed widths and stop taking
-a money-sized box for a small fact. The money tiles flex because their width *is* a
-function of the data. Sizing every tile to its contents is the tempting version and
-the wrong one — a car billed ₹500 and one billed ₹1,25,000 would lay the row out
-differently, so the boxes move between cars.
+**Every tile is a money tile, so every tile is one width** (`flex: 1 1 128px`).
+The visit-count and date tiles had fixed, narrower widths because their contents
+could not vary; both went on 2026-09-11. Still one fixed basis rather than sizing
+each box to its contents — a car billed ₹500 and one billed ₹1,25,000 would lay
+the row out differently, so the boxes move between cars.
 
 ⚠ **The list template must read the context name the view actually passes.** It read
 `search_query`, a name this view has never passed — so the search box came back empty

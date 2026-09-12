@@ -695,12 +695,24 @@ visits newest at the top, then the part-durability table:
                           DISCOUNT      −Rs   12,400.00
                           NET TOTAL      Rs 2,51,000.00   ← TOTAL BILLED alone when no visit has a discount
 
-   PART LIFE
+– – – – – – – – – – – – – – – – – – – – – – – – – – – – – – – –  ← edge to edge
+
+   PART LIFE                      MILEAGE    DISTANCE RUN      NOW
    Engine Oil                   AVG 12,075 km   due soon
       5  6 Dec 2025    96,500 km    11,500 km   ON THE CAR
       4  14 Dec 2024   84,100 km    12,400 km
      ...
 ```
+
+**The record and PART LIFE are separated by a cut line, not by space alone.**
+A light grey dashed line running the full width of the page — past the margin
+on both sides, the only thing on the document that does — with 16.8mm of air
+either side of it. Three widenings of the gap alone still left the durability
+table reading as more of the visit record. The cutting feel is deliberate: a
+line that runs off both edges tells a reader that what follows is a different
+question. A heading over a column of figures is right-aligned with them —
+MILEAGE and DISTANCE RUN — so the word sits over the numbers it names rather
+than a third of a column away.
 
 **One question, one place — the visit card and PART LIFE do not repeat each
 other.** The card says what happened that day; PART LIFE says how long a part
@@ -729,7 +741,8 @@ Four things the office should know when a customer queries it:
   The record closes on TOTAL BILLED, DISCOUNT and **NET TOTAL**; with no
   discount anywhere it closes on TOTAL BILLED alone. The closing figure says
   NET, never "paid", because it also counts completed visits nobody has paid
-  for yet. NET TOTAL is the same figure as the profile's "Total billed".
+  for yet. The car's profile shows the same Total billed and Discount, and its
+  Paid plus Still owed is NET TOTAL.
 - **The part numbers are bare** — `5 4 3 2 1`, navy, beside their dates. 1 is
   the first fitting recorded here; the date beside each number says so, so the
   sheet carries no legend for them.
