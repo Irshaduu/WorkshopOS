@@ -5891,23 +5891,74 @@ page's own header. So **the only `{% url 'jobcard_create' %}` in `base.html` is 
 Floor tab**: if that button ever leaves the dashboard header, Owner and Office lose
 every navigation route to a new card.
 
-**On phones (≤640px) that same bar renders at the BOTTOM.** It is the one element,
-repositioned in a media query — not a second nav. The top edge is the hardest place
-on a phone for a thumb. Five things move with it and each is wired to `--nav-h` so
-they cannot drift apart: `.main-content`'s offset (top margin → `body`'s
-`padding-bottom`), the notification panel (opens **upward**), the PWA install
-banner (sits on top of the bar, z-index below it), `--sticky-top` (0 on a phone,
-`--nav-h` elsewhere), and the safe-area inset for the iPhone home indicator.
+**On phones (≤640px) that same bar renders at the BOTTOM, FLOATING.** It is the one
+element, repositioned in a media query — not a second nav. The top edge is the
+hardest place on a phone for a thumb. Five things move with it and each is wired to
+a variable so they cannot drift apart: `.main-content`'s offset (top margin →
+`body`'s `padding-bottom`), the notification panel (opens **upward**), the PWA
+install banner (sits on top of the bar, z-index below it), `--sticky-top` (0 on a
+phone, `--nav-h` elsewhere), and the safe-area inset for the iPhone home indicator.
 
 **`--nav-h` is the single source of truth for bar height; `--sticky-top` for where
 a sticky page header rests.** Change the variables, not the individual margins — a
 hard-coded `top: 60px` on two job-card headers is exactly how they ended up with an
 empty strip above them when the bar moved.
 
+**`--nav-clear` IS THE SINGLE SOURCE OF TRUTH FOR HOW MUCH ROOM THE BAR TAKES AT
+THE BOTTOM** — `--nav-h` plus `--nav-inset` (the home-indicator strip) plus
+`--nav-float` (the gap it floats above). All five consumers used to restate that sum
+themselves, which is five chances to fix four; they read the one variable, so the
+float reaches all of them or none. `--nav-float` and `--nav-inset` are `0px` at
+`:root` and set only in the phone block, which is what keeps the laptop's top bar
+untouched by any of it.
+
+⚠ **THE GAP IS PADDING ON A TRANSPARENT `.navbar-top`; THE PILL IS
+`.navbar-container` INSIDE IT. Never `left`/`right` on a painted bar** — that is
+the `fixed-top` trap below, not tidiness. Bootstrap's scrollbar helper reads the
+computed `padding-right` of every `.fixed-top` and adds the scrollbar width when the
+drawer locks body scroll. As padding on a transparent parent that lands exactly
+right. Measured, by replaying Bootstrap's own operation on the real DOM at 375px
+with a 15px scrollbar: **the shipped structure moves the pill 0.0px, `left/right:
+12px` on the painted element moves it 15.0px** — a pill visibly growing wider on one
+side every time the drawer opens.
+
+**The outer box still swallows taps in the gutter beside the pill, deliberately.**
+`body`'s bottom padding already keeps content out of that strip, and a tappable 12px
+lane immediately beside the navigation is a mis-tap generator on the device with the
+least room. Do not reach for `pointer-events: none`.
+
+**What it costs, measured at 375×812:** a tab goes **71px → 65.4px**, 7.9%. For
+scale, a sixth tab was refused for costing 17% (see "There is NO global back
+button"), so this is under half that. No label is ellipsised at 412, 375, 360 or
+even 320px, and no width scrolls horizontally. The home-indicator strip now shows
+the page ground rather than navy, since the inset moved out of the bar's padding and
+into its offset — normal for a floating design, and the one visible change that is
+not the pill itself.
+
+⚠ **THE TAB CORNERS ARE CONCENTRIC WITH THE PILL, AND THE INSET HAD TO BE MADE
+UNIFORM FIRST.** `.navbar-container`'s phone padding is `0 3px`, not `0 2px`, so 1px
+border + 3px padding puts a tab **4px** inside the pill on the sides — exactly what
+the 62px pill minus the 54px tab already leaves above and below. The tab radius is
+then the pill's 18px less that 4px inset, so **14px, not 12px**. At 12px inside an
+uneven inset the active tab's corner cut across the pill's own curve instead of
+following it. Costs 0.4px per tab.
+
+**The notification sheet reads `--nav-float` for its side inset**, so it and the bar
+it rises from sit on ONE edge — they were 10px and 12px for a few minutes and the
+two-pixel step was plainly visible.
+
+⚠ **No `backdrop-filter` on the pill.** The nav gradient is fully opaque so a blur
+buys nothing visually, and it is a permanent compositing cost on the one element
+that is always on screen — against the rule the job card's "only looping animation"
+note is written for.
+
 ⚠ **The bar must carry Bootstrap's `fixed-top` class even in the phone layout,
 where it paints at the bottom.** Load-bearing, not cosmetic: Bootstrap's scrollbar
 helper only pads elements matching `.fixed-top` when the drawer locks body scroll,
-and without it the bar jumps sideways by the scrollbar width on open. Swapping in
+and without it the bar jumps sideways by the scrollbar width on open. It pads the
+element's `padding-right`, which is also why the phone bar's float gap is padding on
+that same element rather than `left`/`right` on the pill — see the nav section
+above. Swapping in
 `.fixed-bottom` is **not** the fix — Bootstrap's `bottom: 0` would combine with our
 own `top: 0` and stretch the bar down the whole viewport. For the same reason
 `body` uses `overflow-y: scroll` **without** `scrollbar-gutter: stable`; the two
@@ -6116,10 +6167,13 @@ measurements against it, and the first is the one that decides:
 - **THE BAR'S FAR LEFT IS NOT EMPTY.** At every width the first item is
   Home/Admin/Floor. There is no free slot. Measured at 1280: an 800px container
   centred at x=232, five pills with 78px between them; at 768: 753px with 65px
-  gaps; at **375: five equal columns of 71px with 4px gaps**.
+  gaps; at **375: five equal columns with 4px gaps** — 71px each when this was
+  measured, **65.4px** since the bar started floating (which cost 7.9%; see the
+  nav section).
 - **A sixth phone tab costs every existing tab 17%** — probed live, 71px →
   **59px** — on the one device that already has a system back gesture and needs
-  this least.
+  this least. ⚠ That headroom is now smaller than when it was measured: re-probe
+  against the floating pill's 65.4px rather than reasoning from the 71px above.
 - **It would make the owner's actual complaint worse.** The complaint was that
   the back controls were "all different look, different place, different design"
   — about the controls that exist, not a missing one. Add a global button on top

@@ -1135,10 +1135,11 @@
        inside means it is disabled with everything else, for free.
 
        (b) **It clears the phone's nav bar.** On ≤640px that bar renders at the
-       BOTTOM of the screen (see base.html), so a plain `bottom: 24px` would put
-       this button on top of it. Offset by `--nav-h` plus the iPhone home-
-       indicator inset, both of which are already variables, so this follows the
-       bar if it ever changes height.
+       BOTTOM of the screen (see base.html), FLOATING as a pill inset from all
+       three edges. `--nav-clear` is the whole distance from the bottom of the
+       viewport to the top of that pill — its height, the iPhone home-indicator
+       strip and the gap it floats above — so this follows the bar if any of the
+       three ever changes.
 
        (c) **z-index 1020: under the nav (1030) and under the date panel
        (1035).** It must never cover navigation, and it must never cover a
@@ -1185,7 +1186,7 @@
     }
     /* Above the bottom bar on a phone, and above the home indicator with it. */
     @media (max-width: 640px) {
-        .jc-fab { bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 16px); }
+        .jc-fab { bottom: calc(var(--nav-clear) + 16px); }
     }
 
     /* The browser's own grey tap flash fights the `:active` paint above and

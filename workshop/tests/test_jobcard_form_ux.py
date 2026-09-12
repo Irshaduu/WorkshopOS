@@ -1115,18 +1115,26 @@ class TheStickySaveTests(JobCardFormBase):
 
     def test_it_never_covers_the_phone_nav_bar_or_a_date_panel(self):
         """
-        On ≤640px the nav bar renders at the BOTTOM of the screen, so a plain
-        `bottom: 24px` would put this button on top of it. Measured on a 375×812
-        phone: the button sits 15px clear of the bar.
+        On ≤640px the nav bar renders at the BOTTOM of the screen — floating,
+        as a pill inset from all three edges — so a plain `bottom: 24px` would
+        put this button on top of it.
+
+        It clears it through `--nav-clear`, which is the whole distance from
+        the bottom of the viewport to the top of that pill: the bar's height,
+        the iPhone home-indicator strip and the gap it floats above. Reading
+        the composed variable rather than restating that sum is the point of
+        the assertion — the button has to follow the bar when any of the three
+        changes, and the float gap was added by changing exactly one of them.
 
         Stacking: 1020, under the nav (1030) and under the date panel (1035).
         It must never cover navigation, and never cover a popover somebody
         opened deliberately.
         """
         self.assertIn('z-index: 1020', self.css_rule('.jc-fab'))
-        # Offset from the bar's own variable, so it follows if the bar changes.
-        self.assertIn('bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px)',
-                      self.source())
+        self.assertIn('bottom: calc(var(--nav-clear) + 16px)', self.source())
+        # Restating the sum is what this exists to stop: a second copy would
+        # keep the old clearance the next time the bar moves.
+        self.assertNotIn('var(--nav-h) + env(safe-area-inset-bottom', self.source())
 
     def test_it_clears_the_touch_minimum(self):
         rule = self.css_rule('.jc-fab')
