@@ -319,6 +319,11 @@ def car_profile_detail(request, registration):
         # than a negative.
         bill.span = _time_in_workshop(bill)
 
+        # The odometer as a number, so the row can group it like every other
+        # figure on the page. `None` for a value `parse_km` refuses, and the row
+        # then prints what was typed rather than inventing a reading.
+        bill.km = parse_km(bill.mileage)
+
     # ---- gross profit, OWNER ONLY -------------------------------------
     #
     # Not merely hidden from Office in the template: not computed at all, so
@@ -378,6 +383,7 @@ def car_profile_detail(request, registration):
         'has_color': bool(latest.car_color),
         'is_white': latest.car_color == 'White',
         'mileage': latest.mileage,
+        'km': parse_km(latest.mileage),
         # Only one job card per registration can be active at a time, and the
         # newest is it when there is one.
         'on_floor': (not latest.completed) and (not latest.is_deleted),

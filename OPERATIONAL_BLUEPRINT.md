@@ -654,8 +654,8 @@ invoices cannot:
 Office presses Service History
   → a short page asks two things:
 
-      WHAT TO INCLUDE     [x] Amount   [x] Job Performed   [x] Customer Concerns
-      CURRENT READING     [ 1,08,000 ] km      (optional)
+      WHAT TO INCLUDE     [x] Amount   [x] Work done   [x] What was reported
+      CURRENT MILEAGE     [ 1,08,000+ ] km     (optional)
 
   → the sheet opens
 ```

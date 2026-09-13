@@ -7681,13 +7681,15 @@ owed. The equation held on all 63 cars in the development data when written.
   ₹55,000 was.
 
   ⚠ **THE WORD STAYS ON A PHONE, AND THAT COSTS SOMETHING — the owner's call
-  (2026-09-11), made with the cost in front of them.** Unlike the gross line,
-  which drops "gross" below 520px, `discount` is never hidden. Measured at
-  375px: the money column widens 67px → 83px, so a discounted row is **93px
-  against 67px** and its PAID badge drops to a second line (at 1280 it is 82px
-  against 68px, badge in place). Dropping the word would have kept the badge
-  on its line; it was offered and declined, on the sheet's own rule that the
-  gap is always NAMED. **Do not "tidy" it into a `display: none` on phones.**
+  (2026-09-11), made with the cost in front of them.** `discount` is never
+  hidden (and since 2026-09-13 neither is "gross" on the line under it). Measured at
+  375px: the money column widens 67px → 83px, so a discounted row was **93px
+  against 67px** and its PAID badge dropped to a second line. Dropping the word
+  would have kept the badge on its line; it was offered and declined, on the
+  sheet's own rule that the gap is always NAMED. **Do not "tidy" it into a
+  `display: none` on phones.** (Since 2026-09-13 the badge sits in the money
+  column, so the word now costs one more money line instead: 105px against
+  88px.)
 → `OneWordNamesOneFigureOnBothScreensTests`,
 `test_a_discounted_visit_says_so_on_its_row`
 
@@ -7769,9 +7771,60 @@ renders no span for a value it does not have, so a stray separator is not
 expressible either way — but only the trailing form also survives a wrap.
 
 Measured at 390px after the pass: **3 sizes, 2 weights, rows 88px → 68px**, no
-wrap at 375 or above, nothing hidden and nothing removed. A car on the floor is
-the one row that still takes a third line, for its two badges — the exception
-that deserves the space.
+wrap at 375 or above, nothing hidden and nothing removed.
+
+⚠ **THE ROW IS NOW THREE LINES IN TWO COLUMNS BY MEANING, AND EACH LEFT LINE
+SITS LEVEL WITH ITS RIGHT LINE** (2026-09-13, the owner: no clutter, no
+stress). The two-line row above held on a laptop and broke on a phone: date,
+stay and a PAID pill did not fit beside the money column, so the pill dropped
+to a line of its own, and the detail line wrapped wherever it ran out
+("72300 km" alone on a fourth line on one row and not the next). One list, rows
+of three and four lines.
+
+    06 Dec 2025  3 days            ₹50,900
+    96,500 km · Hijaz                 PAID
+    JB-25-002                ₹25,550 · 50%
+
+- **Left is the VISIT, right is the MONEY.** The payment state moved off the
+  date line into the money column, under the amount it describes. "On the
+  floor" stays by the dates, because it is about the car.
+- **The job number is PLACED on its own line** (`flex-basis: 100%`), never left
+  to wrap, so every row has one shape. The dot before it is dropped with
+  `nth-last-child(n+3)`.
+- **One line rhythm on both sides**: 1.4rem for the anchor line, 1.1rem for
+  every line after. Measured at 375px: left and right lines at identical y on
+  every row, rows 88px (105px with a discount), nothing overflowing.
+- **PAID and FLEET PAID are a green word with no pill**; PART PAID and UNPAID
+  keep the pill. Five identical green pills were the loudest thing in the list
+  and said what the reader already expected.
+- ⚠ **PAID COMES AFTER THE DISCOUNT AND NAMES THE CASH** — `₹56,400` /
+  `−₹1,400 discount` / `₹55,000 PAID` (the owner's layout). Directly under the
+  bill, PAID was read as "₹56,400 paid", and nine bills in ten carry a
+  discount. The figure is `received_amount`, printed only when it differs from
+  the bill, so a bill paid in full reads `PAID` rather than its own amount
+  twice. Only the word is green; the figure wears the discount line's grey.
+  → `test_paid_comes_after_the_discount_and_names_the_cash`
+- ⚠ **THE DISCOUNT LINE TAKES PAID'S SHAPE AND NOT ITS COLOUR** —
+  `−₹1,400 DISCOUNT`, the word bold and in capitals, all grey. Red was asked
+  for and declined: nine bills in ten carry a discount and Formula D gives one
+  on purpose, so red on nearly every row would drown the two reds that mean
+  something is wrong — UNPAID and a gross loss.
+- **Mileage goes through `parse_km` and `inr`**, "96,500 km" like every other
+  figure on the page, in the hero chip as well. An unreadable value prints as
+  typed, with no "km" added.
+- **A car on the floor still takes one extra line, for its badge**, and it lands
+  opposite UNPAID: two states side by side.
+- **"gross" is back on a phone.** It came off below 520px only because the
+  wider money column pushed the date line's badges onto a second line; that
+  badge now lives in the money column, and the word is the whole warning that
+  this is not the workshop's profit.
+- ⚠ **ONLY A LOSS IS MARKED on the gross line** — red, a down-trend glyph at
+  1em, and `&minus;₹` rather than the filter's "₹-". A profitable visit stays
+  grey with no mark, on the owner's question and the PAID reasoning: an
+  up-arrow on nearly every row is noise, and green one line under the green
+  PAID would pass a GROSS figure off as profit.
+  → `test_only_a_LOSS_is_marked_on_the_row`,
+  `test_the_word_gross_is_not_hidden_on_a_phone`
 → `EveryVisitSaysHowLongTheCarWasHereTests`
 
 **The car wears its own colour — the SAME wash `.lr-car` uses, at the identical

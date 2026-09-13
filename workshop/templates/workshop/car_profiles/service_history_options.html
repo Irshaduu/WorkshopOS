@@ -85,9 +85,17 @@ It is NEVER STORED. See the view.
         </section>
 
         <section class="sh-opt-card{% if km_error %} sh-opt-card--bad{% endif %}">
-            <h2>Current reading <span class="sh-opt-opt">optional</span></h2>
+            {% comment %}
+            MILEAGE, not "reading" — the workshop's own word, the job card's
+            column and the label the sheet prints this figure under.
+
+            It used to end "Not saved." in bold, which is true (the figure is
+            never stored) and read as an error on a box nobody had typed in yet.
+            Whoever fills this in does not need that fact to do it right.
+            {% endcomment %}
+            <h2>Current mileage <span class="sh-opt-opt">optional</span></h2>
             <p class="sh-opt-note">
-                Ask the customer — it fills in how far each part has run. <b>Not saved.</b>
+                Read it off the car, or ask the customer.
             </p>
             <div class="sh-opt-km">
                 {% comment %}
@@ -97,15 +105,15 @@ It is NEVER STORED. See the view.
                 `mileage.parse_km` either way.
                 {% endcomment %}
                 <input type="text" name="km" value="{{ typed_km }}" inputmode="numeric"
-                       autocomplete="off" aria-label="Current odometer reading in kilometres"
-                       placeholder="{% if summary.latest_reading %}{{ summary.latest_reading|inr }} or more{% else %}e.g. 130000{% endif %}">
+                       autocomplete="off" aria-label="Current mileage in kilometres"
+                       placeholder="{% if summary.latest_reading %}{{ summary.latest_reading|inr }}+{% else %}e.g. 130000{% endif %}">
                 <span>km</span>
             </div>
             {% if km_error %}
             <p class="sh-opt-error">{{ km_error }}</p>
             {% elif summary.latest_reading %}
             <p class="sh-opt-note">
-                Left empty, the sheet measures to {{ summary.latest_reading|inr }} km.
+                Left empty, the sheet stops at {{ summary.latest_reading|inr }} km.
             </p>
             {% endif %}
         </section>
@@ -219,6 +227,15 @@ It is NEVER STORED. See the view.
         font-size: 1rem;
         font-weight: 600;
         font-variant-numeric: tabular-nums;
+    }
+
+    /* A hint, not a value: the box's own 600 weight would make "85,000+" read
+       as a figure already typed in. `opacity: 1` because Firefox fades a
+       placeholder on its own, which would stack on this colour. */
+    .sh-opt-km input::placeholder {
+        color: #a0aec0;
+        font-weight: 400;
+        opacity: 1;
     }
 
     .sh-opt-km span {

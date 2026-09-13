@@ -53,7 +53,7 @@
                     the same fact twice, and it took a slot in a row where every
                     other chip carries something the rail cannot say.
                     {% endcomment %}
-                    {% if car_info.mileage %}<span class="cd-chip">{{ car_info.mileage }} km</span>{% endif %}
+                    {% if car_info.km %}<span class="cd-chip">{{ car_info.km|inr }} km</span>{% elif car_info.mileage %}<span class="cd-chip">{{ car_info.mileage }}</span>{% endif %}
                     {% if car_info.on_floor %}
                     <span class="cd-chip cd-chip-live"><i></i>In the workshop</span>
                     {% endif %}
@@ -144,10 +144,18 @@
             second role check that could fall out of step with the view's.
             {% endcomment %}
             {% if car_info.gross_profit is not None %}
-            <div class="cd-stat cd-stat-gp"
+            {% comment %}
+            A loss is written the way the visit rows write it — minus before the
+            rupee sign, in red — never the filter's own sign after it.
+            {% endcomment %}
+            <div class="cd-stat cd-stat-gp{% if car_info.gross_profit < 0 %} cd-stat-loss{% endif %}"
                  title="Parts and labour margin. Before wages, rent and other overheads — the Profit page is the true figure.">
                 <dt>Gross profit</dt>
+                {% if car_info.gross_profit < 0 %}
+                <dd>&minus;₹{{ car_info.gross_profit|inr|cut:"-" }}{% if car_info.gross_profit_pct %}<span class="cd-pct">&minus;{{ car_info.gross_profit_pct|floatformat:0|cut:"-" }}%</span>{% endif %}</dd>
+                {% else %}
                 <dd>₹{{ car_info.gross_profit|inr }}{% if car_info.gross_profit_pct %}<span class="cd-pct">{{ car_info.gross_profit_pct|floatformat:0 }}%</span>{% endif %}</dd>
+                {% endif %}
             </div>
             {% endif %}
             {% comment %}
@@ -299,36 +307,32 @@
                     {% if bill.span %}<span class="cd-span{% if bill.span.open %} cd-span-live{% endif %}"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zm.75 4a.75.75 0 0 0-1.5 0v4.2c0 .25.13.49.34.63l2.6 1.73a.75.75 0 1 0 .83-1.25L8.75 7.85V4z"/></svg>{{ bill.span.text }}</span>{% endif %}
 
                     {% comment %}
-                    Two facts, two badges, never merged. "On the floor" is about
-                    the car (has it left?), the payment status is about the
-                    money — a completed car can be unpaid and a paid car can
-                    still be on the ramp, and one combined label would have to
-                    lie about one of them.
+                    Two facts, never merged. "On the floor" is about the CAR (has
+                    it left?) and stays here beside its dates; the payment state
+                    is about the MONEY and lives in the money column, under the
+                    amount it describes. A completed car can be unpaid and a paid
+                    car can still be on the ramp.
                     {% endcomment %}
                     {% if not bill.completed %}
                     <span class="cd-badge cd-badge-open">On the floor</span>
                     {% endif %}
-                    {% if bill.payment_status == 'PAID' %}
-                    <span class="cd-badge cd-badge-paid">Paid</span>
-                    {% elif bill.payment_status == 'BULK_PAID' %}
-                    <span class="cd-badge cd-badge-paid">Fleet paid</span>
-                    {% elif bill.payment_status == 'PARTIAL' %}
-                    <span class="cd-badge cd-badge-part">Part paid</span>
-                    {% elif bill.total_bill_amount > 0 %}
-                    <span class="cd-badge cd-badge-due">Unpaid</span>
-                    {% endif %}
                 </div>
 
                 {% comment %}
-                THE DETAIL LINE: which card, who had it, how far it had run.
-                Read after you have found the row, never to find it — so it is
-                one quiet size, one colour, and nothing in it competes with the
-                line above.
+                THE DETAIL LINES: how far it had run and who had it, then which
+                card. The job number takes a line of its own at EVERY width — left
+                in one run it wrapped wherever the phone happened to run out,
+                leaving "72300 km" alone on a third line on some rows and not
+                others. Placed, not wrapped, every row has the same shape.
+
+                The mileage is `parse_km`'s reading, grouped like every other
+                figure on the page ("96,500", not "96500"); a value it cannot
+                read prints exactly as typed and without a "km" it may not be.
                 {% endcomment %}
                 <div class="cd-visit-meta">
-                    <span>{{ bill.bill_number|default:"Not billed yet" }}</span>
+                    {% if bill.km %}<span>{{ bill.km|inr }} km</span>{% elif bill.mileage %}<span>{{ bill.mileage }}</span>{% endif %}
                     {% if bill.lead_mechanic %}<span>{{ bill.lead_mechanic.name }}</span>{% endif %}
-                    {% if bill.mileage %}<span>{{ bill.mileage }} km</span>{% endif %}
+                    <span class="cd-ref">{{ bill.bill_number|default:"Not billed yet" }}</span>
                 </div>
 
                 {% comment %}
@@ -361,16 +365,46 @@
                 had one, and always NAMED. The sheet prints a visit's AMOUNT and
                 then DISCOUNT under it, and the hero's Discount tile is the sum
                 of these lines, so the tile can be traced to the visits behind
-                it. Without it a PAID badge beside the amount read as that whole
-                amount paid, when the discount had come off it. `> 0` is the
-                sheet's own floor.
+                it. `> 0` is the sheet's own floor.
 
-                ⚠ The word is NOT dropped on a phone, unlike the gross line's —
-                the owner's call (2026-09-11), knowing it widens this column and
-                pushes that row's PAID badge onto a second line at 375px.
+                ⚠ The word is NOT dropped on a phone — the owner's call
+                (2026-09-11), knowing it widens this column.
+
+                It is the PAID line's own shape — figure, then a bold capital
+                word — so the two read as a pair. GREY, NOT RED (2026-09-13): nine
+                bills in ten carry a discount and Formula D gives one on purpose,
+                so red on nearly every row would drown the two reds that mean
+                something is wrong, UNPAID and a gross loss.
                 {% endcomment %}
                 {% if bill.discount_amount > 0 %}
-                <div class="cd-disc">&minus;₹{{ bill.discount_amount|inr }} discount</div>
+                <div class="cd-disc">&minus;₹{{ bill.discount_amount|inr }} <span class="cd-disc-word">Discount</span></div>
+                {% endif %}
+
+                {% comment %}
+                WHETHER IT WAS PAID — AFTER the discount, never between it and the
+                bill (2026-09-13, the owner). With PAID directly under ₹56,400 the
+                two were read together as "₹56,400 paid", and the discount below
+                arrived too late to correct it; nine bills in ten carry one. So
+                the column reads like the bill: billed, less discount, paid.
+
+                The paid line names the CASH ("₹55,000 PAID") whenever it differs
+                from the bill above, so nobody does the subtraction. Where it
+                equals the bill it is the same figure twice one line apart, and
+                the word alone says it. `received_amount`, never bill − discount:
+                it is what actually came in, and an edited settled card can hold
+                a different figure.
+
+                Paid is quiet — a green word, no pill, the figure in the discount
+                line's grey — and the two states somebody has to act on keep a
+                pill. Five identical green pills down a history were the loudest
+                thing in it while saying nothing the reader did not expect.
+                {% endcomment %}
+                {% if bill.payment_status == 'PAID' or bill.payment_status == 'BULK_PAID' %}
+                <div class="cd-paid">{% if bill.received_amount != bill.total_bill_amount %}<span class="cd-paid-sum">₹{{ bill.received_amount|inr }}</span> {% endif %}{% if bill.payment_status == 'BULK_PAID' %}Fleet paid{% else %}Paid{% endif %}</div>
+                {% elif bill.payment_status == 'PARTIAL' %}
+                <div class="cd-state"><span class="cd-badge cd-badge-part">Part paid</span></div>
+                {% elif bill.total_bill_amount > 0 %}
+                <div class="cd-state"><span class="cd-badge cd-badge-due">Unpaid</span></div>
                 {% endif %}
 
                 {% comment %}
@@ -383,10 +417,25 @@
                 lines, so this second line sits inside the space the row
                 occupied anyway.
                 {% endcomment %}
+                {% comment %}
+                A LOSS IS THE ONLY STATE THIS LINE MARKS — red, with a down-trend
+                glyph at the text's own size. A profitable visit is nearly every
+                visit, so it stays grey and carries no mark: an up-arrow on every
+                row is the five-green-pills defect again, and green here would sit
+                one line under the green PAID and pass a GROSS figure off as
+                profit. Minus signs are written as `&minus;` before the ₹, never
+                the "₹-5,000" the filter would print.
+                {% endcomment %}
                 {% if show_profit and bill.gross_profit is not None %}
+                {% if bill.gross_profit < 0 %}
+                <div class="cd-gp cd-gp-loss" title="Gross loss — the parts cost more than the bill">
+                    <svg class="cd-gp-down" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 4l4.5 4.5 3-3 5.5 5.5"/><path d="M10 11h4.5V6.5"/></svg>&minus;₹{{ bill.gross_profit|inr|cut:"-" }}<span class="cd-gp-word"> gross</span>{% if bill.gross_profit_pct %} · &minus;{{ bill.gross_profit_pct|floatformat:0|cut:"-" }}%{% endif %}
+                </div>
+                {% else %}
                 <div class="cd-gp" title="Gross profit — before wages and overheads">
                     ₹{{ bill.gross_profit|inr }}<span class="cd-gp-word"> gross</span>{% if bill.gross_profit_pct %} · {{ bill.gross_profit_pct|floatformat:0 }}%{% endif %}
                 </div>
+                {% endif %}
                 {% endif %}
             </div>
         </div>
@@ -784,8 +833,8 @@
         position: relative;
         display: flex;
         align-items: flex-start;
-        gap: 0.7rem;
-        padding: 0.75rem 0.85rem;
+        gap: 0.75rem;
+        padding: 0.85rem 0.9rem;
         border-bottom: 1px solid var(--color-border-light);
         transition: background-color .15s ease;
     }
@@ -837,13 +886,18 @@
 
        ⚠ ADDING A FOURTH SIZE HERE IS HOW THE SIX CAME BACK LAST TIME. If
        something new needs to be on the row, it joins a tier. */
+    /* ONE LINE RHYTHM FOR BOTH COLUMNS. The anchor line is 1.4rem tall and every
+       line under it 1.1rem, on the left AND on the right — so line 2 of the
+       visit sits exactly opposite line 2 of the money, and the row reads across
+       like a table instead of as two stacks that happen to be side by side. */
     .cd-visit-body { flex: 1 1 auto; min-width: 0; }
 
     .cd-visit-top {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 0.35rem;
+        column-gap: 0.4rem;
+        min-height: 1.4rem;
         margin-bottom: 0.15rem;
     }
 
@@ -857,6 +911,7 @@
         text-decoration: none;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
+        line-height: 1.4rem;
     }
 
     /* The row-wide hit area. `::after` covers the whole row at z-index 1; the
@@ -874,13 +929,13 @@
         text-transform: uppercase;
         letter-spacing: .04em;
         border-radius: 999px;
-        padding: 0.1rem 0.45rem;
+        padding: 0 0.45rem;
+        line-height: 1.35;
         white-space: nowrap;
         border: 1px solid transparent;
     }
 
     .cd-badge-open { color: #b45309; background: #fffbeb; border-color: #fde68a; }
-    .cd-badge-paid { color: #15803d; background: #f0fdf4; border-color: #bbf7d0; }
     .cd-badge-part { color: #b45309; background: #fff7ed; border-color: #fed7aa; }
     .cd-badge-due  { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
 
@@ -888,11 +943,15 @@
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 0.25rem;
+        column-gap: 0.28rem;
         font-size: 0.76rem;
         font-weight: 500;
+        line-height: 1.1rem;
         color: var(--color-text-muted);
     }
+
+    /* The job number is always the last span and always starts its own line. */
+    .cd-visit-meta > .cd-ref { flex-basis: 100%; }
 
     /* THE SEPARATOR IS DRAWN AFTER THE FACT IT FOLLOWS, NEVER BEFORE THE NEXT
        ONE — and that is a wrap fix, not a style choice.
@@ -909,8 +968,13 @@
        span for a value it does not have, so a stray separator is not
        expressible either way — but only the trailing form also survives a
        wrap. `margin-left` rather than a space inside `content`, because
-       leading whitespace in a generated string collapses. */
-    .cd-visit-meta > span:not(:last-child)::after {
+       leading whitespace in a generated string collapses.
+
+       `nth-last-child(n+3)`: every span with at least two after it. The job
+       number is always last and on a line of its own, so the fact just before
+       it ends a line and takes no dot — whichever of mileage and mechanic the
+       card actually has. */
+    .cd-visit-meta > span:nth-last-child(n+3)::after {
         content: '·';
         margin-left: 0.28rem;
         opacity: 0.75;
@@ -979,7 +1043,6 @@
         display: flex;
         flex-direction: column;
         align-items: flex-end;
-        justify-content: center;
         text-align: right;
     }
 
@@ -992,6 +1055,8 @@
         color: var(--color-text);
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
+        line-height: 1.4rem;
+        margin-bottom: 0.15rem;
     }
 
     /* "Not priced", never ₹0 — the same distinction the printed sheet makes
@@ -1006,14 +1071,59 @@
        discount. One quiet tier for both: grey, light, small, everything about
        it says "secondary". The bill above stays the number the row is about. */
     .cd-gp,
-    .cd-disc {
-        margin-top: 0.1rem;
+    .cd-disc,
+    .cd-paid,
+    .cd-state {
         font-size: 0.66rem;
         font-weight: 500;
+        line-height: 1.1rem;
         color: var(--color-text-muted);
         white-space: nowrap;
         font-variant-numeric: tabular-nums;
     }
+
+    /* The expected state, said without a pill — the badge's own type, green. */
+    .cd-paid {
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: #15803d;
+    }
+
+    /* The discount's word in PAID's own treatment, left grey. */
+    .cd-disc-word {
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+
+    /* The cash figure in front of PAID wears the discount line's own grey, so
+       only the word is green and the bill above stays the loudest number. */
+    .cd-paid-sum {
+        font-weight: 500;
+        text-transform: none;
+        letter-spacing: 0;
+        color: var(--color-text-muted);
+    }
+
+    .cd-state { display: flex; align-items: center; }
+
+    /* A gross LOSS — red, and the only gross line carrying a mark. The glyph
+       is 1em so it is exactly the text's size and costs the line no height. */
+    .cd-gp-loss {
+        color: #b91c1c;
+        font-weight: 600;
+    }
+
+    .cd-gp-down {
+        width: 1em;
+        height: 1em;
+        margin-right: 0.2em;
+        vertical-align: -0.15em;
+    }
+
+    /* The same loss on the hero tile — the figure red, the label untouched. */
+    .cd-stat-loss dd { color: #b91c1c; }
 
     .cd-empty {
         padding: 2rem 1rem;
@@ -1071,13 +1181,11 @@
         /* A thumb, not a mouse — this is rung from a phone. */
         .cd-owner-tel { min-height: 40px; }
 
-        /* The word "gross" comes off on a phone. The line is `nowrap`, so
-           every character it carries widens the right column and takes that
-           width from the bill number and badges beside it — measured at +24px
-           of row height, because those badges then wrap. The tile above still
-           says "Gross profit" and the title attribute still spells it out, so
-           nothing is lost but 35px. */
-        .cd-gp-word { display: none; }
+        /* The word "gross" STAYS on a phone (2026-09-13). It used to come off
+           because the wider money column pushed the date line's badges onto a
+           second line; the payment badge now lives in the money column, so
+           that cost is gone, and the word is the whole warning that this is
+           not the workshop's profit. */
     }
 </style>
 {% endblock %}

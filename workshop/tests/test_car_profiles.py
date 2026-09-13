@@ -348,6 +348,41 @@ class GrossProfitTests(CarProfileBase):
 
     # ---- how it is named ---------------------------------------------
 
+    def test_only_a_LOSS_is_marked_on_the_row(self):
+        """
+        A profitable visit is nearly every visit, so its gross line stays grey
+        and unmarked — an up-arrow on every row is noise, and green would pass a
+        GROSS figure off as profit. A loss is the rare case worth catching: red,
+        with a down-trend glyph, and a minus written before the ₹.
+
+        Asserted on the markup, never the class name alone — `.cd-gp-loss` is
+        also a rule in this page's stylesheet.
+        """
+        body = self.owner_page().content.decode()
+        self.assertNotIn('class="cd-gp cd-gp-loss"', body)
+        self.assertNotIn('class="cd-gp-down"', body)
+
+        # `.update()` fires no signal, so the bill stays ₹9,000 (₹8,000 after
+        # discount) while the parts now cost ₹9,000 + ₹1,000: a ₹2,000 loss.
+        self.bill.spares.filter(
+            source=JobCardSpareItem.SOURCE_SHOP).update(unit_price=D('9000'))
+        body = self.owner_page().content.decode()
+        self.assertEqual(body.count('class="cd-gp cd-gp-loss"'), 1)
+        self.assertEqual(body.count('class="cd-gp-down"'), 1)
+        self.assertIn('&minus;₹2,000<span class="cd-gp-word"> gross</span>', body)
+        self.assertNotIn('₹-', body)
+
+    def test_the_word_gross_is_not_hidden_on_a_phone(self):
+        """
+        It came off below 520px while the payment badge shared the date line.
+        That badge moved into the money column, and the word is the warning
+        that this is not the workshop's profit. Nothing in this suite executes
+        CSS, so the declaration itself is what is asserted.
+        """
+        body = self.owner_page().content.decode()
+        self.assertIn('<span class="cd-gp-word"> gross</span>', body)
+        self.assertNotRegex(body, r'\.cd-gp-word\s*\{\s*display:\s*none')
+
     def test_it_is_never_called_plain_profit(self):
         """
         Measured against live data it runs ~13 points above the workshop's real
@@ -452,7 +487,27 @@ class OneCarsHistoryTests(CarProfileBase):
         """
         body = self.page().content.decode()
         self.assertEqual(body.count('class="cd-disc"'), 1)
-        self.assertIn('<div class="cd-disc">&minus;₹1,000 discount</div>', body)
+        self.assertIn('<div class="cd-disc">&minus;₹1,000 <span class="cd-disc-word">Discount</span></div>', body)
+
+    def test_paid_comes_after_the_discount_and_names_the_cash(self):
+        """
+        With PAID directly under the bill, "₹10,000 / PAID" read as ₹10,000
+        paid and the discount below came too late to correct it. The column
+        reads like the bill instead — billed, less discount, then the cash that
+        came in — and a bill paid in full says PAID alone rather than printing
+        its own amount twice.
+
+        Asserted on the markup: `.cd-paid-sum` is also a stylesheet rule.
+        """
+        self.visit(self.reg, date(2026, 3, 1),
+                   completed=True, completed_date=date(2026, 3, 2),
+                   total_bill_amount=D('4000'), received_amount=D('4000'),
+                   payment_status='PAID')
+        body = self.page().content.decode()
+        self.assertEqual(body.count('class="cd-paid-sum"'), 1)
+        self.assertIn('<span class="cd-paid-sum">₹9,000</span> Paid', body)
+        self.assertLess(body.index('<div class="cd-disc">'),
+                        body.index('<span class="cd-paid-sum">'))
 
     def test_the_row_hands_the_job_card_its_way_back(self):
         """
@@ -800,8 +855,8 @@ class TheRowIsScannedByDateNotByBillNumberTests(CarProfileBase):
     the quietest. Reading a car's history meant landing on the one string you
     were not looking for, four rows running.
 
-    The anchor line is now WHEN · HOW LONG · WHAT STATE · HOW MUCH, and the
-    bill number drops to the detail line with the mechanic and the mileage —
+    The anchor line is now WHEN · HOW LONG · HOW MUCH, and the bill number
+    drops to the detail lines with the mechanic and the mileage —
     read once you have found the row, never to find it.
     """
 
