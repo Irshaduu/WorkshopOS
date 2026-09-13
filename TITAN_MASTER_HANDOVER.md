@@ -30,7 +30,7 @@ leave days are typed once a month instead of tracked daily, and why performance 
 judged against real volume rather than generic "web scale".
 
 **The standard:** functional integrity across every operation that touches money or
-access. Backed by **69 test files / 2,366 tests** covering security, views, signals,
+access. Backed by **70 test files / 2,417 tests** covering security, views, signals,
 financial logic, cashbook, spare shops, salary settlement, the profit engine, the
 printed documents, photos and the email transport behind password reset.
 
@@ -425,7 +425,7 @@ be built only if the client asks.
 | Not built | Why |
 |---|---|
 | **GST / tax invoicing** | The workshop does not bill under GST. No tax fields, no HSN codes, no GSTIN anywhere in billing. |
-| **Customer-facing notifications** (SMS / WhatsApp / email to car owners) | The app makes two kinds of outbound call, both for the owners' own accounts. Do not add a messaging integration. |
+| **Customer-facing notifications** (SMS / WhatsApp / email to car owners) | The app makes two kinds of outbound call, both for the owners' own accounts. Do not add a messaging integration. *The invoice's WhatsApp icon is not one: it only opens the customer's chat — it calls nothing and sends nothing, and the owner attaches the PDF and presses Send.* |
 | **Attendance tracking** | Leave days are typed once per person at month-end settlement. For seven staff that is less work than maintaining a daily record. |
 | **Multi-mechanic assignment** | A job card has one `lead_mechanic`. Work is assigned verbally on the floor; the card records who owns the job, not everyone who touched it. |
 | **General file attachments** (PDFs, documents on a job card) | Photos are a camera workflow with a fixed shape and a hard count limit. An open attachment store is a different problem with different retention, virus-scanning and naming questions. |

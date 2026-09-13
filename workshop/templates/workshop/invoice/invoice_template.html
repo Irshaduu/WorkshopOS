@@ -174,6 +174,27 @@
             background: #cbd5e1;
         }
 
+        /* The WhatsApp chat door. Icon-only and quiet — white, like Back — so it
+           never reads as a second Print. The glyph is WhatsApp's darker teal,
+           not its bright green: #25D366 computes to 1.98:1 on white, under the
+           3:1 a control's glyph needs; #128C7E computes to 4.14:1. */
+        .btn-whatsapp {
+            width: 44px;
+            padding: 0;
+            background: #fff;
+            border-color: #cbd5e1;
+            color: #128c7e;
+        }
+
+        .btn-whatsapp:hover {
+            background: #f0fdf4;
+        }
+
+        .btn-whatsapp svg {
+            width: 20px;
+            height: 20px;
+        }
+
         .chip {
             display: inline-flex;
             align-items: center;
@@ -659,14 +680,17 @@
            becomes a full-width zero-height line break — which is what it
            already is on a laptop, just made explicit — putting
 
-             row 1   where you came from, and what this bill's state is
-             row 2   the three things you can do, in equal columns
+             row 1   where you came from, this bill's state, and Edit Job
+             row 2   what you do WITH the bill — Settle, Print, WhatsApp
 
-           `flex: 1 1 0` with `min-width: max-content` is what makes them equal
-           when they fit and wrap intact when they do not: no label is ever
-           truncated, which on a row of verbs is the difference between a button
-           and a guess. The fleet card's "Settle on Fleet Account" is the case
-           that needs it — it takes a row of its own and Print drops below.
+           Edit Job on row one is deliberate now, not stranded: it is pinned to
+           the row's right end so it lines up with the end of row two (see the
+           rule below).
+
+           `flex: 1 1 0` with `min-width: max-content` is what makes the row-two
+           actions equal when they fit and wrap intact when they do not: no
+           label is ever truncated, which on a row of verbs is the difference
+           between a button and a guess.
 
            `Print / Save PDF` sheds its second half here: the icon is a printer
            and the sheet is on screen behind it, so "Print" is not ambiguous,
@@ -700,6 +724,33 @@
                size of its word — it is not one of the three actions. */
             .bar > .btn:first-child {
                 flex: 0 0 auto;
+            }
+
+            /* EDIT JOB RIDES ROW ONE, at its right end (the owner's call,
+               2026-09-13). It LEAVES the invoice rather than doing anything to
+               it, so it sits with Back, not with the things done to the bill —
+               and row two had no room left once the WhatsApp icon joined it:
+               with a scrollbar taking its width, the icon wrapped onto a third
+               row. `order` moves it without moving the markup, so the laptop
+               row is untouched; `margin-left: auto` lands its right edge on
+               the same line as the last control on row two. */
+            .bar > .btn:first-child,
+            .bar > .chip {
+                order: -2;
+            }
+
+            .bar .btn-edit {
+                order: -1;
+                flex: 0 0 auto;
+                margin-left: auto;
+            }
+
+            /* The WhatsApp icon keeps its 44px square — it is not a fourth
+               equal column. `padding` is restated because the `.btn` rule above
+               sits later in the file than `.btn-whatsapp` and would win on it. */
+            .bar .btn-whatsapp {
+                flex: 0 0 44px;
+                padding: 0;
             }
 
             .btn-print-long {
@@ -755,7 +806,8 @@
 
         {% comment %}
         Left to right: Edit Job, Settle Bill, Print / Save PDF — weakest action
-        to strongest, ending on the one this page exists for.
+        to strongest, Print being the one this page exists for. An Owner may
+        also get the small WhatsApp icon after it, which is the step after it.
         {% endcomment %}
         <a href="{% url 'jobcard_edit' jobcard.pk %}" class="btn btn-edit">
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.1 1.3a1.1 1.1 0 0 1 1.6 0l1 1a1.1 1.1 0 0 1 0 1.6l-.9.9-2.6-2.6.9-.9zM10.5 2.9l2.6 2.6-7.3 7.3-3.3.7.7-3.3 7.3-7.3z"/></svg>
@@ -788,6 +840,27 @@
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 1h6a1 1 0 0 1 1 1v3H4V2a1 1 0 0 1 1-1zM3 6h10a2 2 0 0 1 2 2v4a1 1 0 0 1-1 1h-2v-2H4v2H2a1 1 0 0 1-1-1V8a2 2 0 0 1 2-2zm2 6h6v3H5v-3z"/></svg>
             Print<span class="btn-print-long"> / Save PDF</span>
         </button>
+
+        {% comment %}
+        WHATSAPP — OPENS THE CUSTOMER'S CHAT, AND NOTHING MORE.
+
+        A chat link can carry text but never a file, so the owner attaches the
+        PDF they just saved with Print and presses Send. It sits AFTER Print
+        because that is the order the two are used in: save, then send.
+
+        Drawn only for an Owner (the owner's call) and only when
+        `invoice.whatsapp_chat_url` could read the number as a mobile — it hands
+        back '' otherwise, so a card with no number, or a landline, shows no
+        icon rather than a chat with a guessed number. The chat opens empty.
+        Inline SVG, because this page loads nothing from anywhere.
+        See CLAUDE.md, "WhatsApp the customer".
+        {% endcomment %}
+        {% if whatsapp_url and request.user|has_group:"Owner" %}
+        <a href="{{ whatsapp_url }}" class="btn btn-whatsapp" target="_blank" rel="noopener"
+            aria-label="Open the customer's WhatsApp chat" title="WhatsApp the customer">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.729.729 0 0 0-.529.247c-.182.198-.691.677-.691 1.654 0 .977.71 1.916.81 2.049.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z"/></svg>
+        </a>
+        {% endif %}
     </div>
 
     {% comment %}

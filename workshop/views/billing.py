@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from ..models import JobCard, JobCardLabourItem, JobCardSpareItem
 from ..decorators import office_required
-from ..invoice import build_invoice
+from ..invoice import build_invoice, whatsapp_chat_url
 from ..notifications import notify
 from ..settlement import settlement_readiness
 from ..money import parse_money
@@ -72,6 +72,9 @@ def invoice_view(request, pk):
         # to mean three different things. Deliberately NOT part of
         # `build_invoice()`: nothing about it reaches paper.
         'high_discount_threshold': JobCard.HIGH_DISCOUNT_AMOUNT,
+        # Screen only — the WhatsApp icon's chat link, or '' when the number on
+        # the card is not a mobile. The template draws it for an Owner only.
+        'whatsapp_url': whatsapp_chat_url(jobcard.customer_contact),
     })
     return render(request, 'workshop/invoice/invoice_template.html', context)
 

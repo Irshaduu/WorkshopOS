@@ -1088,6 +1088,9 @@ INVOICE (Office / Owner)
             are screen-only and sit outside the sheet, so nothing but the bill
             reaches paper. A fleet-billed job shows no Settle control at all —
             that money moves through the Fleet Account cascade.
+            WhatsApp (Owners only, and only when the card carries a mobile
+            number) opens that customer's chat, empty. The owner attaches the
+            PDF saved with Print and presses Send — the app sends nothing.
   Rules in: workshop/invoice.py (all of the above; the view does no arithmetic)
 
 ESTIMATES (Office / Owner)

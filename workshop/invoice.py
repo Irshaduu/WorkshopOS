@@ -226,6 +226,34 @@ def document_title(record, number, fallback):
     return title.translate(_FILENAME_UNSAFE).strip()[:MAX_TITLE_LENGTH]
 
 
+def whatsapp_chat_url(contact):
+    """
+    The link that opens this customer's WhatsApp chat — or '' when the number on
+    the card cannot honestly be read as a mobile.
+
+    A door into the chat and nothing more. A chat link can carry text but never
+    a file, so the owner attaches the PDF they saved with Print and presses Send
+    themselves; the chat opens EMPTY, on the owner's call.
+
+    ⚠ STRICTER THAN `auth_views.normalize_phone`, deliberately. That keeps the
+    last ten digits of anything, which is right for finding an account by a
+    loosely typed number and wrong for choosing who receives a customer's bill —
+    fifteen digits of junk would open a chat with a stranger. So only the three
+    shapes a mobile is written in are read (`9207217978`, `09207217978`,
+    `+91 92072 17978`), and the ten digits left must start 6–9, which every
+    Indian mobile does and a landline does not. Anything else is no button,
+    never a guess.
+    """
+    digits = ''.join(ch for ch in str(contact or '') if ch in '0123456789')
+    if len(digits) == 12 and digits.startswith('91'):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith('0'):
+        digits = digits[1:]
+    if len(digits) != 10 or digits[0] not in '6789':
+        return ''
+    return f'https://wa.me/91{digits}'
+
+
 @dataclass(frozen=True)
 class JobLine:
     """One line of work. Carries no amount — see decision 3 above."""

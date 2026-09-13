@@ -3473,19 +3473,29 @@ wrapper's height to match; `@media print` clears the transform.
 
 **The toolbar breaks into TWO CHOSEN rows on a phone.** `.bar-spacer` becomes
 `flex: 0 0 100%; height: 0` below 640px — a full-width line break — so row 1 is
-*where you came from and what state this bill is in* and row 2 is *the three
-things you can do*, in equal columns. `flex: 1 1 0` with `min-width: max-content`
-makes them equal when they fit and wrap **intact** when they do not: no label is
-ever truncated, which on a row of verbs is the difference between a button and a
-guess. The rule is scoped `.bar .btn`, not `.btn` — the same class is the dialogs'
-button. "Print / Save PDF" sheds its second half into a `.btn-print-long` span.
+*where you came from, what state this bill is in, and Edit Job* and row 2 is
+*what you do with the bill* (Settle, Print, the WhatsApp icon), in equal columns.
+`flex: 1 1 0` with `min-width: max-content` makes them equal when they fit and
+wrap **intact** when they do not: no label is ever truncated, which on a row of
+verbs is the difference between a button and a guess. The rule is scoped
+`.bar .btn`, not `.btn` — the same class is the dialogs' button. "Print / Save
+PDF" sheds its second half into a `.btn-print-long` span.
 → Consequence: the full wording is no longer one contiguous string, so
 `test_the_controls_are_all_marked_no_print` checks that button by its **action**
 (`window.print()`) — "Print" alone also matches `@media print` in the stylesheet.
 
-**`estimate_print.html` carries the identical block**, and that is the point rather
-than a copy-paste slip: the two screens are opened days apart by the same person,
-and a toolbar that rearranges itself between them reads as two different products.
+⚠ **Edit Job moved to row 1 on 2026-09-13, on the owner's instruction**, pinned
+to that row's right end with `order` and `margin-left: auto` inside the phone
+media query, so the markup and the laptop row are unchanged. It leaves the bill
+rather than acting on it, and row 2 had run out of room: with Edit, Settle,
+Print and the WhatsApp icon it had 0px spare at 375px in a scrollbar-less
+preview, and a real window's scrollbar wrapped the icon onto a third row.
+
+**`estimate_print.html` carried the identical block**, and that was the point
+rather than a copy-paste slip: the two screens are opened days apart by the same
+person, and a toolbar that rearranges itself between them reads as two different
+products. ⚠ **Since 2026-09-13 it still puts Edit on row 2** — the move above was
+made on the invoice alone, so the two now differ on a phone.
 
 **The letterhead is the owner's own PNG, inlined as a data URI, from ONE include**
 (`workshop/includes/_brand_mark.html`). Five things are load-bearing:
@@ -3625,6 +3635,54 @@ actually reach customers.
 so a saved copy of a spare shop's report is called "Print - …". That is a
 separate defect in that template's title, not something the clipboard would fix.
 → `TheSavedPdfIsNamedForTheCarTests`
+
+### WhatsApp the customer — a door into the chat, never the file
+
+**The invoice carries a small WhatsApp icon beside Print, and all it does is
+open the customer's chat.** The owner attaches the PDF they saved with Print and
+presses Send. Decided with the owner (2026-09-13) after every richer version was
+weighed:
+
+| considered | why not |
+|---|---|
+| the PDF attached automatically | a chat link carries TEXT, never a file — only the share sheet takes a file, and the share sheet cannot open a chosen chat |
+| a private link to the bill in the message | the first page in the app open without signing in, readable for ever by whoever the customer forwards it to |
+| the server making the PDF, handed to the share sheet | headless Chrome on Railway, and Calibri does not exist on a Linux server — the server-PDF decision recorded above |
+| the WhatsApp API | Meta setup, template approval, a server PDF anyway, and it cannot post into the owners' own group |
+
+Four rules:
+
+- **Drawn only for an Owner, on a card whose number really is a mobile.**
+  `invoice.whatsapp_chat_url()` returns `''` otherwise and the template draws
+  nothing. The Owner gate is the owner's call and is presentation, not a
+  control — Office already reads the number on the job card.
+- ⚠ **STRICTER THAN `auth_views.normalize_phone`, deliberately.** That keeps the
+  last ten digits of anything, which is right for finding an account and wrong
+  for choosing who receives a bill. Three shapes are read (`9207217978`,
+  `09207217978`, `+91 92072 17978`) and the ten digits must start 6–9. Anything
+  else is no icon, never a guess.
+- **The chat opens EMPTY** — nothing pre-typed, on the owner's call.
+- ⚠ **It is a NAVIGATION, not a fetch, so the bill still loads nothing from
+  anywhere** — but `test_the_page_loads_nothing_from_a_third_party` renders as
+  Office on a card with no number and never sees the link.
+  `TheWhatsAppLinkIsNotAFetchTests` renders the owner's page and allows exactly
+  this one absolute URL, on an `<a>`, outside the sheet.
+
+⚠ **It sits AFTER Print and costs the phone toolbar no row.** It is a fixed 44px
+square (`.bar .btn-whatsapp`, `flex: 0 0 44px`), never a fourth equal column.
+It first shared row two with Edit Job, Settle and Print, which measured 0px
+spare at 375px and wrapped the icon onto a third row in a real window with a
+scrollbar — so Edit Job moved to row one (see "The toolbar breaks into TWO
+CHOSEN rows"). Measured after, at 320 / 360 / 639px: two rows every time, row
+two is Settle · Print · the icon, and Edit Job's right edge on row one lands on
+the icon's (310 / 350 / 629). A fleet card at 360px is two rows too; the laptop
+row at 1024px is unchanged. ⚠ **Row one is the tighter row now**: a long Fleet
+account name in the chip will push Edit Job onto a line of its own at narrow
+widths — only "Fleet · Safari" was measured.
+
+It is not the messaging integration the handover's §VII rules out: it calls
+nothing, sends nothing, and a person presses Send.
+→ `workshop/tests/test_whatsapp_button.py`
 
 ## Service history & All Invoices — the third and fourth documents
 
@@ -8837,7 +8895,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 69 files, 2,366 tests. Always SQLite (see below).
+# Full test suite — 70 files, 2,417 tests. Always SQLite (see below).
 # Last full run 2026-09-09: 2,366 tests, ALL GREEN, 5,649s (94 min).
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
@@ -9210,8 +9268,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **69 files, 2,366 tests**,
-re-counted 2026-09-09 and unchanged. (`workshop/tests/` is 63 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **70 files, 2,417 tests**,
+re-counted 2026-09-13. (`workshop/tests/` is 64 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

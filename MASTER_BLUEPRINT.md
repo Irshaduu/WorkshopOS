@@ -834,7 +834,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (69 files · 2,366 tests)
+## 13. TEST SUITE (70 files · 2,417 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -871,6 +871,7 @@ base classes.*
 | `test_notifications.py` | Fan-out, actor exclusion, audience-by-group, retention, feed RBAC, and all **16** event hooks. Plus the rule that a notification's URL is permanent, so every destination is fetched as an owner and the subject's own name asserted to be on the page it reaches — matched case-insensitively, since the Security section renders a username uppercased |
 | `test_push.py` | Service-worker root scope, subscribe/unsubscribe RBAC, CRITICAL-only dispatch, dead-endpoint reaping, and the guarantee that a failing push never breaks the feed |
 | `test_invoice.py` | Every rule in `workshop/invoice.py` a customer would notice: one parts list, category naming for warehouse draws, derived unit price, blank QTY, labour as one subtotal, nothing interactive on the paper |
+| `test_whatsapp_button.py` | The invoice's WhatsApp icon: which typed numbers open a chat (and which give none), Owners only, the chat opens empty, the link sits outside the sheet and is not a fetch |
 | `test_estimate.py` | Estimates: the printed sheet held in step with the invoice, isolation from job cards / stock / ledgers / DeletionLog, `EST-` numbering, the price-hint endpoint, and the screens' RBAC |
 | `test_jobcard_inventory_section.py` | The Job Card's two spare routes as two formsets over one model, scoped by `source` |
 | `test_template_comments.py` | Static scan: no multi-line `{# … #}`, which stops being a comment and renders on the page |
