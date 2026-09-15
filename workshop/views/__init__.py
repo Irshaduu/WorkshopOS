@@ -47,7 +47,7 @@ from .master_lists import (
 from .autocomplete import (
     autocomplete_brands, autocomplete_models,
     autocomplete_spares, autocomplete_concerns,
-    autocomplete_inventory_items, spare_price_hint,
+    autocomplete_inventory_items, spare_price_hint, known_car_lookup,
 )
 from .estimate import (
     estimate_list, estimate_create, estimate_edit,

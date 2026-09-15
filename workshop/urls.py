@@ -116,6 +116,10 @@ urlpatterns = [
     # Suggested selling price for a part, from what it last sold for. Feeds a
     # PLACEHOLDER on the Estimate screen and nothing else — see the view.
     path('api/spare-price-hint/', views.spare_price_hint, name='spare_price_hint'),
+    # What the workshop already knows about a typed plate — the car, its colour,
+    # both codes and (Office/Owner only) the last customer — so the Job Card form
+    # does not retype a car it has seen before. See the view.
+    path('api/known-car/', views.known_car_lookup, name='known_car_lookup'),
 
     # ------------------
     # CAR PROFILES

@@ -230,6 +230,13 @@ the four values removed — see the view.
         font-weight: 700;
     }
     .dv-fact-num { font-variant-numeric: tabular-nums; }
+    /* The chassis code and VIN, in the plate's own monospace so a VIN's 0 and
+       O-shaped characters read apart — the reason a VIN has no O at all. */
+    .dv-vid {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 0.8rem;
+        letter-spacing: 0.04em;
+    }
     /* The mechanic's glyph, taken from the dashboard car card's own
        `.mechanic-tag` — same `bi-person-gear`, same muted slate, same size. It
        is the one fact on this line that is a PERSON, and the board people come
@@ -822,6 +829,21 @@ parent is not fixed, so the label is plain "Back" and the view resolves
             {% if jobcard.brand_name or jobcard.model_name %}<span class="dv-reg">{{ jobcard.registration_number }}</span>{% endif %}
             {% if jobcard.bill_number %}<span class="dv-no">{{ jobcard.bill_number }}</span>{% endif %}
         </p>
+
+        {% comment %}
+        Which car this is beyond the plate — the chassis code, then the VIN —
+        directly under the plate it qualifies. No labels, the page's own rule: a
+        platform code beside the car's name and a seventeen-character VIN are
+        each the only thing of their shape here. The dot is `.dv-fact`'s, so a
+        card carrying only one of the two draws no stray separator, and a card
+        carrying neither draws no line at all.
+        {% endcomment %}
+        {% if jobcard.chassis_code or jobcard.vin %}
+        <p class="dv-line2 dv-vids">{% spaceless %}
+            {% if jobcard.chassis_code %}<span class="dv-fact dv-vid">{{ jobcard.chassis_code }}</span>{% endif %}
+            {% if jobcard.vin %}<span class="dv-fact dv-vid">{{ jobcard.vin }}</span>{% endif %}
+        {% endspaceless %}</p>
+        {% endif %}
 
         {% comment %}
         Each fact is its own element so the dot separator is drawn by CSS — a

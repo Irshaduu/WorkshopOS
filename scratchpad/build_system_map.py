@@ -487,7 +487,7 @@ def build(theme):
     # 7 Modular Bay Cards
     sw = (JW - 28 - 6 * 5) / 7
     for i, (cid, t, sub) in enumerate([
-            ('sec_veh', 'VEHICLE', 'reg - brand - km'),
+            ('sec_veh', 'VEHICLE', 'reg - VIN - km'),
             ('sec_cus', 'CUSTOMER', 'office only'),
             ('sec_con', 'CONCERNS', 'pending to fixed'),
             ('sec_lab', 'JOBS', 'one labour charge'),

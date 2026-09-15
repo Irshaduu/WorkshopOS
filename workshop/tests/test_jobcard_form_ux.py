@@ -629,6 +629,7 @@ class TheFormSaysLessTests(JobCardFormBase):
     #: something the label cannot: the Inventory box's "or type" (above) and the
     #: money boxes' currency.
     NO_PLACEHOLDER_FIELDS = ('brand_name', 'model_name', 'registration_number',
+                             'chassis_code', 'vin',
                              'mileage', 'car_color_other', 'customer_name',
                              'customer_contact', 'notes')
 
@@ -779,9 +780,10 @@ class EverySectionAnnouncesItselfTheSameWayTests(JobCardFormBase):
 
     def test_no_section_still_uses_the_old_hand_rolled_header(self):
         """
-        One shape or it is not a shape. The old `card-header bg-white py-3` is
-        allowed to survive on the "Vehicles in Workshop" panel, which is a list
-        of cars rather than a part of the form being filled in.
+        One shape or it is not a shape. The old `card-header bg-white py-3` once
+        survived above the form on a "Vehicles in Workshop" panel; that panel was
+        never rendered (no job card view passes `active_jobcards`) and was
+        removed on 2026-09-15.
         """
         source = self.source()
         form_part = source.split('<form method="post" id="jobcardForm"', 1)[1]

@@ -118,46 +118,6 @@
 /* WORKSHOP DASHBOARD - VEHICLE BOXES */
 /* ========================================== */
 
-.vehicle-scroll {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    padding-bottom: 1rem;
-    padding-top: 0.5rem;
-}
-
-
-.vehicle-box {
-    width: 100%;
-    /* Full width within container margins */
-    border: 2px solid var(--color-border);
-    border-radius: 12px;
-    padding: 1rem;
-    background-color: var(--color-card);
-    transition: all 0.2s ease;
-}
-
-.vehicle-box:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--color-shadow);
-    border-color: var(--color-primary);
-}
-
-.vehicle-box strong {
-    color: var(--color-text);
-    font-size: 1rem;
-}
-
-
-/* Mobile: Maintain vertical layout */
-@media (max-width: 768px) {
-    .vehicle-scroll {
-        gap: 0.75rem;
-        padding-bottom: 5rem;
-        /* Extra space for bottom nav bar */
-    }
-}
-
 /* Red underline for missing discharge date */
 .discharge-not-set {
     color: var(--color-text-muted);

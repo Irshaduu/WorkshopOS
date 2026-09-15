@@ -126,6 +126,11 @@ Three things about the mechanism, none of them obvious:
             });
         }
 
+        // The Job Card's plate lookup paints a known car's colour through this
+        // same function, so the swatch, the header dot and the rail move exactly
+        // as they do for a tap. The one door in, rather than a second copy.
+        window.carColourSelect = updateColorSelection;
+
         function updateColorSelection(val, hex) {
             hiddenColorInput.value = val;
             if (otherInput) otherInput.value = (val === 'Other') ? hex : '';

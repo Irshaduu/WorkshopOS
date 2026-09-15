@@ -54,6 +54,13 @@
                     other chip carries something the rail cannot say.
                     {% endcomment %}
                     {% if car_info.km %}<span class="cd-chip">{{ car_info.km|inr }} km</span>{% elif car_info.mileage %}<span class="cd-chip">{{ car_info.mileage }}</span>{% endif %}
+                    {% comment %}
+                    The chassis code and the VIN, each from the newest visit that
+                    RECORDED one (`vehicle_ids.latest_recorded`), so a later card
+                    saved without them cannot make them vanish from here.
+                    {% endcomment %}
+                    {% if car_info.chassis_code %}<span class="cd-chip cd-chip-id">{{ car_info.chassis_code }}</span>{% endif %}
+                    {% if car_info.vin %}<span class="cd-chip cd-chip-id">{{ car_info.vin }}</span>{% endif %}
                     {% if car_info.on_floor %}
                     <span class="cd-chip cd-chip-live"><i></i>In the workshop</span>
                     {% endif %}
@@ -568,6 +575,13 @@
         border-radius: 999px;
         padding: 0.15rem 0.5rem;
         white-space: nowrap;
+    }
+
+    /* Chassis code and VIN: the plate's own monospace, so a seventeen-character
+       VIN reads character by character rather than as a word. */
+    .cd-chip-id {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        letter-spacing: .04em;
     }
 
     .cd-chip-live {

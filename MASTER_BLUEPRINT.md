@@ -119,7 +119,7 @@ erDiagram
 | 11 | **SparePart** | name (unique), created_at | Master list for autocomplete |
 | 12 | **ConcernSolution** | concern (text), created_at | Knowledge base for autocomplete |
 | 13 | **SpareShop** | name (unique), phone, address, is_trashed | Master list of spare parts suppliers |
-| 14 | **JobCard** | bill_number, dates, vehicle info, customer, **notes**, financials, status flags | **Core entity** — full lifecycle. `notes` (migration `0069_jobcard_notes`) is an internal line for the workshop, declared field-for-field like `Estimate.notes` and **never printed** on the invoice. |
+| 14 | **JobCard** | bill_number, dates, vehicle info, **chassis_code**, **vin**, customer, **notes**, financials, status flags | **Core entity** — full lifecycle. `notes` (migration `0069_jobcard_notes`) is an internal line for the workshop, declared field-for-field like `Estimate.notes` and **never printed** on the invoice. `chassis_code` (the platform code, e.g. F30 — up to 20 characters) and `vin` (17) arrived with migration `0078_jobcard_estimate_chassis_code_vin`: both optional free text, tidied in `clean()`, refused only by the forms, never printed and never chased at settlement. Every rule is `workshop/vehicle_ids.py`. |
 | 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
 | 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking, **original_vehicle_info** (free-text "Ordered For" note) | Per-job parts, both routes. `source` records which route and is **never inferred** — added with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only. `original_vehicle_info` (since migration 0039) names the car an UNASSIGNED purchase was bought for — stamped automatically when a spare is moved out of a job card, and typed by hand on the Unassigned Hub. Free text with no FK by design: a part is usually ordered before there is a job card to attach it to |
 | 17 | **JobCardLabourItem** | job_card (FK), job_description, ~~amount~~ | What was done. A DESCRIPTION, not a price — the charge for all the work is `JobCard.labour_amount`. `amount` is dormant (the old per-line column, summed into the card by migration 0066, no longer written or read). |
@@ -136,7 +136,7 @@ erDiagram
 | 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
 | 24 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
 | 25 | **SalaryPaymentLine** | payment (FK), staff (FK→Mechanic), salary_used, leave_days, advance_used, net_amount — unique per (payment, staff) | One staff member's **frozen** figures for that month. Written once and never recalculated, so a later pay rise cannot rewrite a month already paid. |
-| 26 | **Estimate** | estimate_number (unique, auto `EST-26-001`), date, customer/vehicle (all free text), **car_color/car_color_other**, labour_amount, total_amount (denormalized), notes, created_by | A **quotation**, connected to nothing — no job card, no stock, no ledger, no report. Migrations (`0067_estimate_estimatejobline_estimatepartline_and_more`, `0068_estimate_car_color_estimate_car_color_other`). Colour uses the shared `CAR_COLOR_CHOICES`/`CAR_COLOR_HEX`, is picked with the shared `_car_color_picker.html`, and is drawn as the stripe on each history row — never printed on the quotation. `total_amount` is written only by `update_totals()`, called explicitly by the views; there are no signals on any of these three models. |
+| 26 | **Estimate** | estimate_number (unique, auto `EST-26-001`), date, customer/vehicle (all free text), **chassis_code/vin**, **car_color/car_color_other**, labour_amount, total_amount (denormalized), notes, created_by | A **quotation**, connected to nothing — no job card, no stock, no ledger, no report. Migrations (`0067_estimate_estimatejobline_estimatepartline_and_more`, `0068_estimate_car_color_estimate_car_color_other`, `0078_jobcard_estimate_chassis_code_vin`). `chassis_code`/`vin` are declared exactly like JobCard's and are never printed on the quotation. Colour uses the shared `CAR_COLOR_CHOICES`/`CAR_COLOR_HEX`, is picked with the shared `_car_color_picker.html`, and is drawn as the stripe on each history row — never printed on the quotation. `total_amount` is written only by `update_totals()`, called explicitly by the views; there are no signals on any of these three models. |
 | 27 | **EstimateJobLine** | estimate (FK), description | One line of work being quoted. **No money column at all** — the charge lives once on `Estimate.labour_amount`, same rule as `JobCard.labour_amount`. |
 | 28 | **EstimatePartLine** | estimate (FK), name, quantity, **customer_rate**, **amount** | One quoted part. Note the naming is the OPPOSITE of `JobCardSpareItem`: an estimate has no cost side, so both figures are customer prices. `amount = customer_rate × quantity` is enforced on save when a rate is set. |
 
@@ -239,7 +239,7 @@ byte-identical.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (169 Total)
+## 4. ALL URL ROUTES — COMPLETE (170 Total)
 
 *Walked from `get_resolver().url_patterns` recursively and
 excluding Django admin (131 of its own) — the method below, not by grepping
@@ -253,7 +253,7 @@ served by the same app.*
 ⚠ **Walk it with `DEBUG=False` or the total is one higher.**
 `formulad_workshop/urls.py` appends `MEDIA_URL` through Django's `static()` helper,
 which returns an **empty list** when `DEBUG=False` — so a development resolver reports
-**170 (137 + 33)** and production reports **169 (136 + 33)**. That one route is the
+**171 (138 + 33)** and production reports **170 (137 + 33)**. That one route is the
 media path, which is not served in production at all (§12, and `AUD-0088`).
 
 ⚠ **And filter for it on `'media/' in pattern`, not `startswith`.** It is a
@@ -261,7 +261,7 @@ media path, which is not served in production at all (§12, and `AUD-0088`).
 check finds nothing and quietly reports the development figure as if it were
 production's. Cost a wrong number on the way into this very entry.
 
-### Workshop App (136 routes)
+### Workshop App (137 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -331,6 +331,7 @@ production's. Cost a wrong number on the way into this very entry.
 | | `/api/autocomplete/concerns/` | `autocomplete_concerns` | Staff |
 | | `/api/autocomplete/inventory-items/` | `autocomplete_inventory_items` | Staff |
 | | `/api/spare-price-hint/` | `spare_price_hint` | **Office** — it returns a price, and Floor sees no prices anywhere |
+| | `/api/known-car/` | `known_car_lookup` | Staff — what the workshop already knows about a typed plate: brand, model, colour, chassis code and VIN, plus the last customer's name and number for **Office/Owner only** (absent from the answer for Floor). The Job Card form fills the car and only OFFERS the customer. Rules in `workshop/known_car.py` |
 | **CAR PROFILES** | `/car-profiles/` | `car_profile_list` | Office |
 | | `/car-profiles/<reg>/` | `car_profile_detail` | Office |
 | | `/car-profiles/<reg>/service-history/` | `car_service_history` | Office — the tick boxes and the current-reading box |
@@ -612,10 +613,10 @@ stateDiagram-v2
 | `SparePartForm` | SparePart | name |
 | `ConcernSolutionForm` | ConcernSolution | concern |
 | `SpareShopForm` | SpareShop | name, phone, address |
-| `JobCardForm` | JobCard | 10 fields (dates, vehicle, customer, mechanic, color). `labour_amount` lives here, not on the labour lines |
+| `JobCardForm` | JobCard | 14 fields (admitted date; brand, model, plate, **chassis code, VIN**, mileage; customer name and contact, note; mechanic; the colour pair; `labour_amount`). `labour_amount` lives here, not on the labour lines. The two vehicle-id boxes come from `VehicleIdsFormMixin`, shared with `EstimateForm` |
 | `ShopSpareRowForm` | JobCardSpareItem (`source=SHOP`) | The row form behind `JobCardSpareFormSet` — validates the ordered/received pair through `workshop/spare_dates.py`, and refuses a row that has content but no name |
 | `InventoryDrawForm` | JobCardSpareItem (`source=INVENTORY`) | The row form behind `JobCardInventoryFormSet` — rejects a started row with no product, and a product with no quantity |
-| `EstimateForm` | Estimate | 9 fields (date, customer, vehicle, labour_amount, notes) |
+| `EstimateForm` | Estimate | 13 fields (date; customer name and contact; brand, model, plate, **chassis code, VIN**, mileage; the colour pair; labour_amount; notes). Same `VehicleIdsFormMixin` as the Job Card, so the two refuse a VIN identically |
 | `EstimateJobLineForm` | EstimateJobLine | description — `required=False`, so an emptied line is deleted rather than erroring |
 | `EstimatePartLineForm` | EstimatePartLine | name, quantity, customer_rate, amount — all optional; a priced row with no name is refused |
 
@@ -834,7 +835,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (70 files · 2,417 tests)
+## 13. TEST SUITE (72 files · 2,480 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -842,7 +843,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (64 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (67 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -897,6 +898,8 @@ base classes.*
 | `test_staff_login_alert.py` | Getting in always pushes — `STAFF_LOGIN` and `LOGIN` both CRITICAL — with the ROLE in the staff alert's `detail` so a lock-screen line says whether that account can see money, the IP deliberately off both (every device here leaves through one connection) and on all four security events, and an account named after its role still reporting that role rather than "No role" |
 | `test_unassigned_spares.py` | The Unassigned Hub: Floor may add and nothing else, a crafted price from Floor writes nothing, an unpriced row stores NULL rather than 0, and an archived shop's rows stay listed and keep their shop |
 | `test_photos.py` | Job card photos: SigV4 pinned to AWS's published known-answer vector, the sign-then-commit ordering that stops a row ever pointing at a missing object, per-subject limits re-checked inside the commit transaction, the settled-card freeze keyed on payment status rather than on the page, Floor being able to take *and* delete on an open card, the box being a `<div>` so the Financial Lock cannot kill viewing, and — the reason the owner asked — that with storage switched off the form still opens, the invoice still prints and settlement never chases a photo |
+| `test_vehicle_ids.py` | `workshop/vehicle_ids.py` — the chassis code and VIN. A VIN is tidied (capitals, no spaces or dashes) and then refused unless it is 17 letters and numbers with no I, O or Q — and a real European VIN passes because there is **no check-digit test**. The VIN box carries no `maxlength`, so a VIN typed in groups is not cut off; both forms answer identically; neither box is `jc-optional`; Floor may record both. All six car searches find a car by either. The Car Profile shows each field's **latest recorded** value, and its search no longer shrinks a car's visit count. Neither is printed on the bill, All Invoices, the service history sheet or the printed estimate, and neither is chased at settlement |
+| `test_known_car.py` | `workshop/known_car.py` — a known plate fills the car. Brand and model come from the newest visit; the colour from the newest visit that recorded one, an 'Other' colour with its own value; the two codes are `latest_recorded()`'s answer. **A group is never stitched from two visits** — a newest visit with only a customer's name answers NO number rather than an older owner's. The customer is ABSENT from the answer unless asked for, and the view asks only for Office and Owner: Floor's JSON carries neither key. The offer is greyed in as the two boxes' placeholders from script — the server sends neither box a placeholder — and its "Use last visit" button ships hidden, is a `type="button"`, and is not on Floor's page |
 | `test_mileage.py` | `workshop/mileage.py` — the allowlist of odometer shapes. What `parse_km` accepts (`50,000`, `1,02,340`, `50k`, `50.5k`, `50000 km`) and what it refuses on purpose: zero, negatives, **miles — never converted**, notes, anything past `MAX_KM`. Plus `normalise()` keeping an unreadable value exactly as typed, because it runs in `clean()` on every save |
 | `test_service_history.py` | The arithmetic behind the sheet: gaps measured from the immediately previous visit and never reaching past one with no reading, part chains numbered from the first fitting, the commonest spelling winning a chain's name, `typical_km` over completed lives only, due-soon at `DUE_AT_FRACTION` of this car's OWN average, and each visit's printed amount being `total_bill_amount` with its **discount carried beside it** (the owners' decision, 2026-09-11) — `total_discount` and `net_total` summed from the same rows, floored so a negative never adds to a bill, and nothing about what was received. Plus **how regularly the car is serviced** (`HowRegularlyTheCarIsServicedTests`): five visits give four gaps, one visit says nothing about regularity, and an implausible gap is left out of the DISTANCE while its DAYS still count — two admission dates are not in question because an odometer was mistyped |
 | `test_service_history_view.py` | The two pages: RBAC on both, what each tick box does, a current reading that cannot be true being refused on the page rather than dropped, the `go`/`edit` split that stopped the Change link redirecting back to the sheet, `?back=` surviving the whole chain, the Part life tick never reaching the paper, the closing TOTAL adding up from the rows above it — and, with a discount on the record, closing on TOTAL BILLED / DISCOUNT / **NET TOTAL** and never on a word claiming payment — part-life numbers printed bare with no legend, a part's average printed over the column it averages and only when there are two finished lives to average, the light grey dashed cut line that separates the record from PART LIFE running past the margin on both sides, and leaving with the table it separates, PART LIFE printing on a page of its own and a part's whole chain never splitting across a fold, a figure column's heading sitting on its figures' own right edge, each tick named for the block it switches, and the toolbar staying one row at 375px. Plus `ItIsSetLikeTheBillTests`, which holds the sheet to the invoice rather than to a description of it: **no label in the vehicle block bold**, nothing on the sheet green (green means MONEY in this system and this document carries no payment state), a still-fitted part marked navy, the card splitting on the bill's own gridline, the record block being the bill's parties block with the bill's labels in the bill's order, the caveats as one middot-separated run that never uses the asterisk, and `test_both_documents_end_the_same_way`, which renders the BILL as well and compares the two signature lines rather than asserting one page against a description of the other |
@@ -960,7 +963,7 @@ WorkshopOS (Titan)/
 │   │                               documents a profile opens — the service-history
 │   │                               options page and sheet, and every bill in one PDF
 │   │   ├── master_lists.py     ← master list views
-│   │   ├── autocomplete.py     ← 5 autocomplete API views + spare_price_hint
+│   │   ├── autocomplete.py     ← 5 autocomplete API views + spare_price_hint + known_car_lookup
 │   │   ├── notifications.py    ← feed, bell panel, open/mark-read (Owner-only)
 │   │   ├── push.py             ← Web Push subscribe / unsubscribe (one row per device)
 │   │   ├── photos.py           ← sign, commit, list, delete + the DEBUG-only blob endpoints
@@ -975,6 +978,8 @@ WorkshopOS (Titan)/
 │   ├── service_history.py      ← Every figure and every name on the service-history sheet — visits, gaps, part chains, due-soon (pure, no views)
 │   ├── settlement.py           ← What is still UNFILLED on a job card — read by the settle dialog and the Live Report's chase list (pure, no views)
 │   ├── spare_dates.py          ← The ordered/received pair rule, shared by the job card and the Unassigned Spares hub (pure, no views)
+│   ├── vehicle_ids.py          ← The chassis code and VIN: tidied, refused with a reason, and each car's latest recorded values (pure, no views)
+│   ├── known_car.py            ← What a typed plate already tells the Job Card form: the car, its colour, both codes, and the last customer for Office/Owner (pure, no views)
 │   ├── rent.py                 ← How much should we hand the rent collector today? Everything derived, nothing stored (pure, no views)
 │   ├── master_data.py          ← The ONE rename/merge rule, shared by Master Lists and Data Cleanup (pure, no views)
 │   ├── money.py                ← Is this typed rupee amount acceptable for its column? Bounds READ from the column (pure, no views)

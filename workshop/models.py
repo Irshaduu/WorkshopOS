@@ -10,6 +10,9 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from .mileage import normalise as normalise_mileage
+from .vehicle_ids import (
+    CHASSIS_CODE_MAX_LENGTH, VIN_LENGTH, normalise_chassis_code, normalise_vin,
+)
 
 # -----------------------------------------------------------------------------
 # 0. AUTHENTICATION & USERS
@@ -945,6 +948,20 @@ class JobCard(CarColourMixin, models.Model):
     registration_number = models.CharField(max_length=50, db_index=True)
     mileage = models.CharField(max_length=20, blank=True, null=True, help_text="e.g. 50000 or 50k")
 
+    # Which car this is beyond the plate — the platform code (F30, W205) that
+    # decides which part fits, and the seventeen-character VIN off the RC book.
+    # Both optional, both free text typed on the floor, both tidied in `clean()`
+    # and refused only by the forms. Every rule is in `workshop/vehicle_ids.py`.
+    # NOT printed on any customer document, and never chased at settlement.
+    chassis_code = models.CharField(
+        'Chassis Code', max_length=CHASSIS_CODE_MAX_LENGTH, blank=True, null=True,
+        help_text="Platform code, e.g. F30 or W205"
+    )
+    vin = models.CharField(
+        'VIN', max_length=VIN_LENGTH, blank=True, null=True,
+        help_text="17-character Vehicle Identification Number (the RC book's Chassis No.)"
+    )
+
     # Car Colour. The list itself is CAR_COLOR_CHOICES above, shared with
     # Estimate; the alias is kept because `jobcard_form.html` renders the picker
     # from `form.fields.car_color.choices` and other code may reference it.
@@ -1083,6 +1100,13 @@ class JobCard(CarColourMixin, models.Model):
         # save, including saves that touched nothing near this box, so it may
         # never discard what somebody wrote.
         self.mileage = normalise_mileage(self.mileage)
+
+        # The chassis code and VIN, tidied to one spelling: capitals, no
+        # spaces (and no dashes in a VIN). Tidy only — whether a VIN is a VIN is
+        # the FORM's question (`vin_problem`), the same split the mileage and the
+        # admitted date keep. A blank box stores NULL: nothing was recorded.
+        self.chassis_code = normalise_chassis_code(self.chassis_code)
+        self.vin = normalise_vin(self.vin)
 
     def save(self, *args, **kwargs):
         """
@@ -2095,6 +2119,18 @@ class Estimate(CarColourMixin, models.Model):
     registration_number = models.CharField(max_length=50, blank=True, null=True, db_index=True)
     mileage = models.CharField(max_length=20, blank=True, null=True)
 
+    # Declared exactly like JobCard's, so the quotation and the bill that
+    # follows it store one car's codes identically. Kept on the estimate and
+    # deliberately NOT printed on the quotation (the owners' call).
+    chassis_code = models.CharField(
+        'Chassis Code', max_length=CHASSIS_CODE_MAX_LENGTH, blank=True, null=True,
+        help_text="Platform code, e.g. F30 or W205"
+    )
+    vin = models.CharField(
+        'VIN', max_length=VIN_LENGTH, blank=True, null=True,
+        help_text="17-character Vehicle Identification Number (the RC book's Chassis No.)"
+    )
+
     # Same palette and the same picker as a Job Card, and it is NOT printed on
     # the sheet: the colour is how staff recognise a car in the history list
     # (the stripe down each row, exactly as on the dashboard), not something a
@@ -2165,6 +2201,10 @@ class Estimate(CarColourMixin, models.Model):
         # '50k km' beside a bill reading '50000 km' is one document
         # contradicting the other about the same car on the same week.
         self.mileage = normalise_mileage(self.mileage)
+
+        # The job card's own tidy-up, for the same reason as the mileage above.
+        self.chassis_code = normalise_chassis_code(self.chassis_code)
+        self.vin = normalise_vin(self.vin)
 
     def save(self, *args, **kwargs):
         self.clean()

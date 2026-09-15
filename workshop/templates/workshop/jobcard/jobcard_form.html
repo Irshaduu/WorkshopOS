@@ -787,6 +787,43 @@
     .jc-fold[open] > summary .jc-fold-chevron { transform: rotate(180deg); color: #0f172a; }
 
     /* ==========================================================
+       THE LAST CUSTOMER, OFFERED
+       ==========================================================
+       Greyed in as the two boxes' placeholders, with one text button on the
+       name's label line — no row of its own. A dashed line with its own button
+       was built first and read as clutter.
+
+       The button sits INLINE straight after the label, not in a flex row and
+       not pushed to the column's right edge. A flex row set the name box 2px
+       lower than the Contact box beside it (its line box is not the label's),
+       and at the right edge the button ended 16px from "Contact Number" and
+       read as that label's. Its hit area is widened by an invisible `::after`
+       rather than by padding, so a finger gets a real target while the label
+       line keeps its height. */
+    .jc-use-last {
+        position: relative;
+        margin-left: 0.5rem;
+        padding: 0;
+        border: 0;
+        background: none;
+        font-size: 0.8rem;
+        font-weight: 600;
+        line-height: 1.2;
+        color: var(--color-primary);
+        white-space: nowrap;
+    }
+    .jc-use-last::after { content: ''; position: absolute; inset: -14px -10px -8px; }
+    .jc-use-last:active { opacity: 0.65; }
+    @media (hover: hover) { .jc-use-last:hover { text-decoration: underline; } }
+    /* Italic and darker than an ordinary placeholder, so an offered name can
+       never be mistaken for one typed in. It fades like any other on focus,
+       when typing is about to start. */
+    .form-control.jc-suggested:not(:focus)::placeholder {
+        color: #64748b;
+        font-style: italic;
+    }
+
+    /* ==========================================================
        THE INTERNAL NOTE GROWS WITH WHAT IS IN IT
        ==========================================================
        One row when it is empty — which is most cards, because this workshop
@@ -1408,79 +1445,6 @@ grey".
         real banner played the tone.
         {% endcomment %}
 
-        <!-- ========================================== -->
-        <!-- ACTIVE VEHICLES DASHBOARD (Show on home only) -->
-        <!-- ========================================== -->
-        {% if not is_edit and active_jobcards %}
-        <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 text-primary fw-bold">
-                    <i class="bi bi-car-front"></i> Vehicles in Workshop ({{ active_jobcards.count }})
-                </h6>
-                <a href="{% url 'completed_list' %}" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-check-circle"></i> View Completed
-                </a>
-            </div>
-            <div class="card-body p-3">
-                <div class="vehicle-scroll">
-                    {% for job in active_jobcards %}
-                    <div class="vehicle-box">
-                        <div class="mb-2">
-                            <strong>{{ job.brand_name }} {{ job.model_name }}</strong>
-                        </div>
-                        <div class="mb-2">
-                            <span class="badge bg-primary">{{ job.registration_number }}</span>
-                        </div>
-                        <div class="mb-1">
-                            <small class="text-muted">
-                                <i class="bi bi-calendar"></i> Admitted: {{ job.admitted_date|date:"d M" }}
-                            </small>
-                        </div>
-                        <div class="mb-2">
-                            <small class="text-muted">
-                                <i class="bi bi-calendar-check"></i> Due: {{ job.completed_date|date:"d
-                                M"|default:"Not
-                                set" }}
-                            </small>
-                        </div>
-                        <div class="d-flex gap-2">
-                            {% comment %}
-                            Office and Owner only, mirroring `jobcard_detail`'s
-                            own decorator — that page became `@office_required`
-                            on 2026-08-18 and this sidebar renders on a screen
-                            Floor uses, so it was the one Floor-visible route to
-                            it. A gate that does not match its view is a door
-                            somebody can see and not open, which is worse than
-                            no door (`InvoiceLinkVisibilityTests`).
-
-                            Floor loses nothing: these same four lists are on
-                            the dashboard car card they work from all day, and
-                            the Completed button beside this one is unchanged.
-                            {% endcomment %}
-                            {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-                            <a href="{% url 'jobcard_detail' job.pk %}" class="btn btn-sm btn-outline-primary flex-fill">
-                                <i class="bi bi-eye"></i> View
-                            </a>
-                            {% endif %}
-                            <form method="post" action="{% url 'mark_completed' job.pk %}" class="flex-fill"
-                                  data-confirm="{{ job.registration_number }} leaves the board and moves to Completed."
-                                  data-confirm-title="Handing this car over?"
-                                  data-confirm-icon="bi-check2-circle"
-                                  data-confirm-theme="success"
-                                  data-confirm-ok="Mark completed">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm btn-success w-100">
-                                    <i class="bi bi-check-lg"></i> Completed
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-        {% endif %}
-
         <form method="post" id="jobcardForm" autocomplete="off" {% if next_url %}action="?next={{ next_url }}"{% endif %}>
             {% csrf_token %}
             <input type="hidden" name="financial_unlock" id="financial_unlock_field" value="false">
@@ -1543,7 +1507,30 @@ grey".
 
                         </div>
 
-                        <!-- Row 2: Color -> Mileage -> Mechanic -> Admitted Date -->
+                        {% comment %}
+                        Row 2: which car this is beyond the plate. Two boxes on a
+                        row of three columns, so they are ONE column and TWO —
+                        the chassis code is a few characters, the VIN is
+                        seventeen — and both edges land on the gridlines the rows
+                        above and below already draw. Neither is `jc-optional`:
+                        an empty one wears the hairline, on the owners'
+                        instruction, and still saves. A known plate fills them in
+                        (the lookup script at the foot of this page). Every rule
+                        about what they may hold is `workshop/vehicle_ids.py`.
+                        {% endcomment %}
+                        <div class="col-12 col-sm-4">
+                            <label for="{{ form.chassis_code.id_for_label }}" class="form-label small text-muted">Chassis Code</label>
+                            {{ form.chassis_code }}
+{% if form.chassis_code.errors %}<div class="text-danger small mt-1">{{ form.chassis_code.errors|join:", " }}</div>{% endif %}
+                        </div>
+
+                        <div class="col-12 col-sm-8">
+                            <label for="{{ form.vin.id_for_label }}" class="form-label small text-muted">VIN</label>
+                            {{ form.vin }}
+{% if form.vin.errors %}<div class="text-danger small mt-1">{{ form.vin.errors|join:", " }}</div>{% endif %}
+                        </div>
+
+                        <!-- Row 3: Color -> Mileage -> Mechanic -> Admitted Date -->
                         <div class="col-12 col-sm-4">
                             <div class="d-flex gap-3">
                                 <div style="flex: 0 0 45px;">
@@ -1676,8 +1663,21 @@ grey".
                 </summary>
                 <div class="card-body">
                     <div class="row g-3">
+                        {% comment %}
+                        THE LAST CUSTOMER, OFFERED — NEVER FILLED. A known plate's
+                        last recorded name and number (`workshop/known_car.py`) are
+                        shown by the lookup script at the foot of this page AS
+                        these two boxes' placeholders, with one "Use last visit"
+                        button on this label line — no row of its own. A
+                        placeholder posts nothing, and cars change hands, so the
+                        offer reaches the card only when a person taps it. The
+                        button ships `hidden`, so a page whose script never ran
+                        shows nothing, and is `type="button"`, because a bare
+                        button in a form submits it.
+                        {% endcomment %}
                         <div class="col-12 col-sm-6">
                             <label for="{{ form.customer_name.id_for_label }}" class="form-label small text-muted">Customer Name</label>
+                            <button type="button" class="jc-use-last" id="jcUseLast" hidden aria-label="Use the last visit's name and number">Use last visit</button>
                             {{ form.customer_name }}
 {% if form.customer_name.errors %}<div class="text-danger small mt-1">{{ form.customer_name.errors|join:", " }}</div>{% endif %}
 
@@ -3597,7 +3597,19 @@ and filled for the guard.
         var detail = e.detail || {};
         var hex = toHex(detail.hex);
         markDirty();
-        if (!colourHost || !hex) return;
+        if (!colourHost) return;
+        // No colour at all — the plate lookup taking a car's colour back off
+        // the card after the plate was corrected. Back to the hatched "nobody
+        // wrote it down" rail, not the previous car's colour left painted.
+        if (!detail.value) {
+            colourHost.style.removeProperty('--jc-accent');
+            if (colourHead) {
+                colourHead.classList.add('jc-head--unset');
+                colourHead.classList.remove('jc-head--white');
+            }
+            return;
+        }
+        if (!hex) return;
         colourHost.style.setProperty('--jc-accent', hex);
         if (colourHead) {
             // A colour has been recorded now, whatever it is — so the hatched
@@ -3835,6 +3847,180 @@ and filled for the guard.
         refreshAll();
         refreshChips();
         refreshRowTotals();
+    });
+}());
+</script>
+
+{% comment %}
+A KNOWN PLATE FILLS THE CAR. Leaving the Registration box asks
+`known_car_lookup` what the workshop already knows about that plate — every
+rule about the ANSWER is `workshop/known_car.py` — and this script decides only
+where it may write.
+
+  * BY THEMSELVES, in groups written whole or not at all: brand with model,
+    colour with its "other" value, the chassis code, the VIN. A box is written
+    only when it is EMPTY or still holds exactly what THIS script put there — so
+    a plate typed wrong and then corrected swaps the first car's details for the
+    second car's, or takes them back off, instead of leaving a stranger's car on
+    the card.
+  * THE CUSTOMER IS OFFERED, NEVER FILLED: greyed in as the two customer boxes'
+    placeholders with a "Use last visit" button on the name's label line, shown
+    only while both boxes are empty, and the fold opens to show it. Cars change hands, and that number is the one the
+    invoice's WhatsApp button opens. Floor's page has no such button, and Floor's
+    answer carries no customer at all.
+
+Anything a person typed is never touched, and emptying a box counts as typing;
+choosing a swatch counts for the colour. A locked (settled) card is left alone,
+and a stale answer is dropped when the plate has changed again since it was
+asked. A value set by script fires no event, so `jcFormTouched()` is called to
+mark the card unsaved and refresh the empty-box hairline. If the lookup fails,
+nothing happens and typing still works.
+{% endcomment %}
+<script>
+(function () {
+    'use strict';
+    var form = document.getElementById('jobcardForm');
+    if (!form) return;
+    var plate = form.querySelector('[name="registration_number"]');
+    if (!plate) return;
+
+    function field(name) { return form.querySelector('[name="' + name + '"]'); }
+
+    // Written whole or not at all, so a card can never end up with one car's
+    // make beside another car's model, or a named colour beside an old hex.
+    var groups = [
+        ['brand_name', 'model_name'],
+        ['car_color', 'car_color_other'],
+        ['chassis_code'],
+        ['vin']
+    ].map(function (names) {
+        return names.map(function (name) { return { name: name, box: field(name) }; });
+    }).filter(function (group) {
+        return group.every(function (item) { return item.box; });
+    });
+
+    var url = "{% url 'known_car_lookup' %}";
+    var asked = 0;
+    var written = new WeakMap();
+    // A box a person has typed in — INCLUDING one they emptied — is theirs for
+    // the rest of this page. `input` fires only for a person's keystrokes, never
+    // for a value this script sets.
+    var typedIn = new WeakSet();
+    var filling = false;
+
+    function claim(box) { typedIn.add(box); written.delete(box); }
+
+    groups.forEach(function (group) {
+        group.forEach(function (item) {
+            item.box.addEventListener('input', function () { claim(item.box); });
+        });
+    });
+    // The colour's fields are hidden and change through the swatch picker,
+    // which fires no `input` — it announces itself instead. A swatch chosen by
+    // a person claims the colour; this script's own call is told apart by
+    // `filling`.
+    document.addEventListener('carcolour:change', function () {
+        if (filling) return;
+        ['car_color', 'car_color_other'].forEach(function (name) {
+            var box = field(name);
+            if (box) claim(box);
+        });
+    });
+
+    function writable(box) {
+        if (box.disabled || box.readOnly || typedIn.has(box)) return false;
+        return !box.value.trim() || box.value === written.get(box);
+    }
+
+    function setColour(answer) {
+        if (typeof window.carColourSelect === 'function') {
+            filling = true;
+            try { window.carColourSelect(answer.car_color || '', answer.car_color_hex || ''); }
+            finally { filling = false; }
+        } else {
+            field('car_color').value = answer.car_color || '';
+        }
+        // After the picker, which blanks this box for a named colour and fills
+        // it with the painted hex for 'Other' — the stored value is the truth.
+        field('car_color_other').value = answer.car_color_other || '';
+    }
+
+    function fill(answer) {
+        var changed = false;
+        groups.forEach(function (group) {
+            if (!group.every(function (item) { return writable(item.box); })) return;
+            var differs = group.some(function (item) {
+                return item.box.value !== (answer[item.name] || '');
+            });
+            if (differs) {
+                if (group[0].name === 'car_color') {
+                    setColour(answer);
+                } else {
+                    group.forEach(function (item) { item.box.value = answer[item.name] || ''; });
+                }
+                changed = true;
+            }
+            group.forEach(function (item) {
+                if (item.box.value) written.set(item.box, item.box.value); else written.delete(item.box);
+            });
+        });
+        if (changed && typeof window.jcFormTouched === 'function') window.jcFormTouched();
+    }
+
+    // ---- The last customer, offered (Office and Owner pages only) ----------
+    // Shown AS the two boxes' placeholders, with one "Use last visit" button on
+    // the name's label line. A placeholder posts nothing, so the offer can never
+    // reach the card unless a person takes it. All or nothing: the moment either
+    // box holds anything, both placeholders go — an old owner's number greyed
+    // under a new owner's typed name would read as that person's number.
+    var useLast = document.getElementById('jcUseLast');
+    var nameBox = field('customer_name');
+    var contactBox = field('customer_contact');
+    var suggestion = null;
+
+    function showOffer() {
+        if (!useLast || !nameBox || !contactBox) return;
+        var on = !!(suggestion &&
+                    !nameBox.value.trim() && !contactBox.value.trim() &&
+                    form.getAttribute('data-locked') !== 'true');
+        [[nameBox, 'customer_name'], [contactBox, 'customer_contact']].forEach(function (pair) {
+            var value = on ? (suggestion[pair[1]] || '') : '';
+            if (value) pair[0].setAttribute('placeholder', value);
+            else pair[0].removeAttribute('placeholder');
+            pair[0].classList.toggle('jc-suggested', !!value);
+        });
+        // Opened when the offer first appears, so it is seen — never re-opened
+        // over a fold somebody closed while it was showing.
+        var fold = useLast.closest('details');
+        if (on && useLast.hidden && fold && !fold.open) fold.open = true;
+        useLast.hidden = !on;
+    }
+
+    if (useLast && nameBox && contactBox) {
+        useLast.addEventListener('click', function () {
+            if (!suggestion) return;
+            nameBox.value = suggestion.customer_name || '';
+            contactBox.value = suggestion.customer_contact || '';
+            showOffer();
+            if (typeof window.jcFormTouched === 'function') window.jcFormTouched();
+        });
+        [nameBox, contactBox].forEach(function (box) { box.addEventListener('input', showOffer); });
+    }
+
+    // An emptied plate is asked about too: it answers blank, which takes back
+    // everything this script filled, through the same path as an unknown plate.
+    plate.addEventListener('change', function () {
+        if (form.getAttribute('data-locked') === 'true') return;
+        var mine = ++asked;
+        fetch(url + '?registration=' + encodeURIComponent(plate.value.trim()), { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (answer) {
+                if (!answer || mine !== asked) return;
+                suggestion = (answer.customer_name || answer.customer_contact) ? answer : null;
+                showOffer();
+                fill(answer);
+            })
+            .catch(function () {});
     });
 }());
 </script>

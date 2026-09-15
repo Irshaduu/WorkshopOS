@@ -93,6 +93,8 @@ def estimate_list(request):
                 Q(customer_name__icontains=word) |
                 Q(brand_name__icontains=word) |
                 Q(model_name__icontains=word) |
+                Q(chassis_code__icontains=word) |
+                Q(vin__icontains=word) |
                 Q(estimate_number__icontains=word)
             )
 

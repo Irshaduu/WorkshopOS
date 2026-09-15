@@ -2361,6 +2361,183 @@ products are a closed set by construction — they exist only because someone
 created them through Supplier → Add Product — so there is no data-entry speed to
 protect, and a great deal of correctness to gain. Spare-shop rows stay free text.
 
+## Chassis code & VIN
+
+**Two optional boxes on the Job Card and the Estimate, and every rule about
+them is `workshop/vehicle_ids.py`** (2026-09, the owners asked for both). They
+are different facts that happen to share the word "chassis":
+
+| | Chassis Code (`chassis_code`) | VIN (`vin`) |
+|---|---|---|
+| what | the platform / generation — F30, W205, 991.2 | the car itself — the RC book's "Chassis No." |
+| why it matters | the model says "320d", and an E90, an F30 and a G20 share almost no parts | proves which car this is |
+| tidied | capitals, spaces removed | capitals, spaces and dashes removed |
+| refused | never for its shape | unless exactly 17 letters and numbers with no I, O or Q |
+
+Both are free text on the card, like the brand and the model — never a master
+list, because one model has several chassis codes. Blank stores NULL. Tidied in
+`clean()` on every save; refused only by the forms (`VehicleIdsFormMixin`,
+shared by `JobCardForm` and `EstimateForm`) — the split the mileage and the
+admitted date already keep.
+
+⚠ **THERE IS NO CHECK-DIGIT TEST, AND ADDING ONE WOULD REFUSE REAL CARS.**
+Position 9 is a mandatory check digit only on cars built for North America and
+China. European makers fill it freely, and they are the brands this workshop
+services. A car too old for a 17-character number gets no VIN at all — the box
+stays blank rather than holding something that is not a VIN. **Exactly 17 was
+confirmed 2026-09-15** over allowing shorter numbers for old cars: a missing or
+extra character is the commonest slip, and the strict length is what catches it.
+
+⚠ **THE VIN BOX HAS NO `maxlength`, AND TAKING IT OFF IS THE WHOLE OF
+`_prepare_vehicle_ids()`.** A `max_length=17` column gives its form field a
+`maxlength="17"` attribute — so the browser stops at the 17th keystroke and a
+VIN typed or pasted in groups ("WBA 8E9C 50GK 123456") is cut off silently —
+and a MaxLengthValidator that runs BEFORE `clean_vin`, refusing the spaced
+version before it can be tidied. Both are removed; `clean_vin` tidies and then
+measures, and the model still holds the column to 17.
+
+⚠ **THE PLATE STAYS THE CAR'S IDENTITY.** A VIN is the better identity in
+principle — plates change on a state transfer — but Car Profiles, the service
+history, All Invoices and the one-active-card rule are all keyed by
+registration. Nothing about that moved, and moving it is its own decision.
+
+**A CAR PROFILE SHOWS EACH FIELD'S LATEST *RECORDED* VALUE, NOT THE LATEST
+VISIT'S.** Both boxes are typed fresh on every card, so a visit where nobody
+filled them in is ordinary, and reading the newest card would make a VIN vanish
+the day a later card was saved without it. `latest_recorded()` reads each field
+separately from the newest visit that has one — the chassis code can come from
+one visit and the VIN from another — and is the ONE answer read by both the
+Car Profile header and the form's lookup.
+
+**A KNOWN PLATE FILLS BOTH BOXES**, as part of filling the whole car — see "A
+known plate fills the car" below. For these two boxes that lookup reads
+`latest_recorded()`, so the form and the Car Profile header cannot name two
+different VINs. Measured in the browser: a known plate filled both and marked
+the card unsaved, a corrected plate cleared both, a VIN typed by hand survived a
+plate change, and a VIN emptied by hand was not put back.
+
+**The empty-box hairline is ON for both — neither widget is `jc-optional` —
+and that is the owners' instruction overriding this file's own rule.** That
+rule says a box blank on most cards should not be marked, because a mark that
+is always on stops being read. Accepted knowingly: on go-live day every card
+wears it on these two, and the point is to get them filled. Neither blocks a
+save, and **neither is chased by `settlement.py`**.
+
+**Floor may record both** — the mechanic reads them off the car, and neither is
+customer information, so they are not in `OFFICE_ONLY_CARD_FIELDS`.
+
+**Where they appear, and where they deliberately do not** (the owners' call):
+
+| on | not on |
+|---|---|
+| the Job Card and Estimate forms | the bill, and All Invoices (the same sheet) |
+| the read-only job card, unlabelled under the plate | the service history sheet |
+| the Car Profile header, as two chips | the printed estimate |
+| all six car searches — Job Cards, Completed, Paid Bills, Pending Bills, Car Profiles, Estimates | the lists' own rows, the board, the Live Report |
+
+**The row sits between the plate row and the colour/mileage row, one column
+and two.** The chassis code is a few characters and the VIN seventeen, so they
+take `col-sm-4` and `col-sm-8` and both edges land on the gridlines the rows
+above and below draw. Measured at 1024px: Chassis Code x=136 w=235 under Car
+Brand; VIN from 387 to 872, Car Model's left edge to Registration's right; rows
+at 234 / 319 / 404. At 375px all stack full width with no sideways scroll. Both
+display surfaces set them in the plate's monospace, so a VIN reads character
+by character.
+
+⚠ **THE CAR PROFILES SEARCH USED TO SHRINK A CAR'S VISIT COUNT, found while
+adding these.** Its words were filtered straight onto the grouped
+`values('registration_number').annotate(...)` query, where they land in the
+WHERE clause that runs BEFORE the grouping — so they also discarded the car's
+other visits. A VIN on the two newest of six cards listed "2 visits", and a
+customer name recorded on one visit did the same. The words now find the
+matching PLATES in a subquery, and each car is counted over all its visits.
+→ `workshop/tests/test_vehicle_ids.py`
+
+## A known plate fills the car
+
+**Typing a number plate the workshop has seen before fills the Job Card from
+that car's earlier visits** (2026-09-15, the owners' request). Three layers,
+each with one job: `workshop/known_car.py` decides every ANSWER;
+`known_car_lookup` (`/api/known-car/`, `@staff_required`) decides WHO gets it;
+the script at the foot of `jobcard_form.html` decides only which boxes it may
+WRITE. The Estimate form does not ask.
+
+| | how | from |
+|---|---|---|
+| brand + model | filled by itself | the newest visit |
+| colour + its "other" value | filled by itself, through the swatch picker | the newest visit that recorded one |
+| chassis code, VIN | filled by themselves | `latest_recorded()`, each on its own |
+| customer name + number | **offered** — greyed in as the boxes' placeholders, with one **Use last visit** button | the newest visit that recorded either |
+
+*Not filled, deliberately:* the mileage, the mechanic and the dates. They are
+facts about this visit, not about the car.
+
+⚠ **A GROUP IS ANSWERED FROM ONE VISIT AND WRITTEN WHOLE, OR NOT AT ALL.** The
+customer is why. A car sold on carries the new owner's name on its newest card
+and the old owner's number on an older one, and stitching them would put a
+stranger's number under the new name — the number the invoice's WhatsApp button
+opens. So a newest visit carrying only a name answers that name and NO number.
+Brand with model, and a colour with its "other" value, follow the same rule: a
+card must never read one car's make beside another car's model.
+
+⚠ **THE CUSTOMER IS OFFERED, NEVER FILLED.** Cars change hands, and the Customer
+section is folded shut, so a previous owner filled in silently would go unseen
+until the bill went to them. So it is shown AS the two boxes' placeholders — a
+placeholder posts nothing — with one **Use last visit** text button on the
+name's label line, which costs the section no row at all. (A dashed line with
+its own button was built first and the owner read it as clutter.) It shows only
+while BOTH boxes are empty, and the moment either holds anything both
+placeholders go: an old owner's number greyed under a new owner's typed name
+would read as that person's number. It opens the fold when it first appears
+(never re-opening one somebody closed while it was showing). It is the estimate
+price hint's rule applied to a person — what a customer's document says must be
+something a person decided — and it is italic and darker than an ordinary
+placeholder, so an offered name cannot be mistaken for one typed in.
+
+⚠ **These are the only placeholders the customer boxes ever carry, and only
+from script.** The "no placeholder" rule for those boxes is about restating the
+label; a previous owner's name is something no label can say. The server still
+sends neither box a placeholder.
+
+⚠ **THE CUSTOMER IS OFFICE AND OWNER ONLY, ENFORCED ON THE SERVER.** Floor opens
+most cards and calls this same lookup, and its form renders no customer boxes.
+When Floor asks, the two keys are ABSENT from the JSON, not blank. The gate is
+`is_office_or_owner` — the same test `_floor_locked_data` pins those fields
+with on a save, so the two cannot disagree. The line itself sits inside
+`{% if can_see_customer %}`, which is presentation; the view is the control.
+
+**What a person did always wins.** A box is written only while EMPTY or still
+holding exactly what the script put there, so a plate typed wrong and then
+corrected swaps the first car's details for the second's, or takes them back
+off. Typing in a box claims it for the rest of the page, and **emptying one
+counts as typing**. A locked card is left alone, a stale answer is dropped, and
+an EMPTIED plate is asked about too — it answers blank, so taking back what was
+filled goes through the same path as an unknown plate. **"Use" makes the
+customer a person's choice**, so a later plate correction leaves it alone.
+
+⚠ **THE COLOUR IS PAINTED THROUGH THE PICKER'S OWN FUNCTION.** Its fields are
+hidden and fire no `input`, so two things carry it. `_car_color_picker.html`
+exposes `window.carColourSelect` — the function a tap calls — so the swatch, the
+header dot and the rail move exactly as they do for a tap. And a swatch chosen
+by a PERSON claims the colour: the script listens for `carcolour:change` and
+tells its own call apart with a `filling` flag. The Job Card's own
+`carcolour:change` listener also handles an EMPTY value now, restoring the
+hatched unset rail instead of leaving the previous car's colour painted.
+`car_color_hex` is answered even when nothing is recorded (the unset grey), for
+that repaint.
+
+Measured in the browser on the development data (2026-09-15): a known plate
+filled brand, model, colour (the header rail turned White) and both codes,
+marked the card unsaved, opened the fold and greyed "issa" / "9567937397" into
+the two boxes in italic slate; typing a name removed BOTH placeholders and the
+button, clearing it brought them back, and **Use last visit** filled both; an
+unknown plate then took the car back off and restored the unset rail while the
+chosen customer stayed; a brand typed first kept the model empty. The two
+customer boxes stay level at 1280 (identical input tops), the button sits 12px
+after its label and is centred on it to 0.5px, and at 375 nothing scrolls
+sideways.
+→ `workshop/tests/test_known_car.py`
+
 ## Owner Analysis & Reports
 
 Two pages. **`/analysis/` — Profit**: `Total Turnover − Total Expenses = Profit`
@@ -8895,8 +9072,8 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 70 files, 2,417 tests. Always SQLite (see below).
-# Last full run 2026-09-09: 2,366 tests, ALL GREEN, 5,649s (94 min).
+# Full test suite — 72 files, 2,480 tests. Always SQLite (see below).
+# Last full run 2026-09-15: 2,480 tests, ALL GREEN, 4,938s (82 min).
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
 # test files running beside it, but the two IDLE runs still differed by 27
@@ -9165,7 +9342,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Thirteen modules hold no views at all** — this is the codebase's main structural idea, and
+**Fifteen modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -9183,6 +9360,8 @@ each exists so that one rule has exactly one implementation:
 | `photos.py` | where do the bytes go, and how is the URL signed? |
 | `mileage.py` | can this hand-typed odometer reading be believed? |
 | `service_history.py` | every figure and every name on the service-history sheet |
+| `vehicle_ids.py` | is this a chassis code and a VIN, and what did this car last have recorded? |
+| `known_car.py` | what does the workshop already know about this number plate? |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
 `SessionTrackingMiddleware`, `NoStoreMiddleware` and `NoIndexMiddleware`.
@@ -9268,8 +9447,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **70 files, 2,417 tests**,
-re-counted 2026-09-13. (`workshop/tests/` is 64 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **72 files, 2,480 tests**,
+re-counted 2026-09-15. (`workshop/tests/` is 66 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

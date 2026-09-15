@@ -565,7 +565,7 @@ def jobcard_create(request):
         initial_data = {'admitted_date': timezone.localdate()}  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
         
         # Pre-fill from GET parameters (Cloning/New Visit feature)
-        for field in ['registration_number', 'brand_name', 'model_name', 'customer_name', 'customer_contact']:
+        for field in ['registration_number', 'brand_name', 'model_name', 'chassis_code', 'vin', 'customer_name', 'customer_contact']:
             val = request.GET.get(field)
             if val:
                 initial_data[field] = val
@@ -616,6 +616,8 @@ def jobcard_list(request):
                 Q(bill_number__icontains=word) |
                 Q(brand_name__icontains=word) |
                 Q(model_name__icontains=word) |
+                Q(chassis_code__icontains=word) |
+                Q(vin__icontains=word) |
                 Q(customer_name__icontains=word) |
                 Q(customer_contact__icontains=word) |
                 Q(lead_mechanic__name__icontains=word)

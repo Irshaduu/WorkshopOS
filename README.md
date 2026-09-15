@@ -192,6 +192,8 @@ WorkshopOS/
 │   ├── analysis_engine.py   # the profit and cash figures
 │   ├── invoice.py           # both customer documents
 │   ├── mileage.py           # can this hand-typed odometer reading be believed
+│   ├── vehicle_ids.py       # the chassis code and VIN: tidied, checked, latest recorded
+│   ├── known_car.py         # what a typed number plate already tells the job card
 │   ├── service_history.py   # visits, gaps, part chains, what is due soon
 │   ├── settlement.py        # what is unfilled before a bill is settled
 │   ├── master_data.py       # renaming and merging a name

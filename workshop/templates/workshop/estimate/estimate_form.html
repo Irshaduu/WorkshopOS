@@ -289,6 +289,23 @@ Two decisions worth not undoing:
                         {% if form.registration_number.errors %}<div class="text-danger small mt-1">{{ form.registration_number.errors.0 }}</div>{% endif %}
                     </div>
 
+                    {% comment %}
+                    The Job Card's own row, in the same place and at the same
+                    widths, so the two documents opened for one car take these
+                    boxes in the same order. Stored on the estimate, never printed
+                    on the quotation. Same rules, from `workshop/vehicle_ids.py`.
+                    {% endcomment %}
+                    <div class="col-12 col-sm-4">
+                        <label for="{{ form.chassis_code.id_for_label }}" class="form-label small text-muted">Chassis Code</label>
+                        {{ form.chassis_code }}
+                        {% if form.chassis_code.errors %}<div class="text-danger small mt-1">{{ form.chassis_code.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 col-sm-8">
+                        <label for="{{ form.vin.id_for_label }}" class="form-label small text-muted">VIN</label>
+                        {{ form.vin }}
+                        {% if form.vin.errors %}<div class="text-danger small mt-1">{{ form.vin.errors.0 }}</div>{% endif %}
+                    </div>
+
                     <div class="col-12 col-sm-4">
                         <div class="d-flex gap-3">
                             <div style="flex: 0 0 45px;">

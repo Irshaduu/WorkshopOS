@@ -18,6 +18,7 @@ from ..return_to import safe_return
 from ..mileage import parse_km
 from ..invoice import build_invoice, document_title
 from ..service_history import build_service_history, current_km_problem
+from ..vehicle_ids import latest_recorded
 # How long a car was here, as one ready phrase. Imported rather than restated:
 # the read-only job card already prints this figure, and the two screens are
 # opened one after the other on the same card — a history row saying "3 days"
@@ -146,14 +147,29 @@ def car_profile_list(request):
     q = request.GET.get('q', '').strip()
 
     # 3. Apply Multi-Field Search (Database Level)
+    #
+    #    ⚠ THE SEARCH PICKS WHICH CARS, NEVER WHICH VISITS. Filtered straight onto
+    #    `cars_query`, every word landed in the WHERE clause of the grouped query
+    #    — which runs BEFORE the grouping — so it also threw away the car's other
+    #    visits: a VIN typed on the two newest of six cards listed the car as
+    #    "2 visits", with its last activity and headline card taken from those
+    #    two alone. Searching by a customer name recorded on one visit did the
+    #    same. So the words find the matching PLATES first, and the car is then
+    #    counted over all of its visits.
     if q:
+        matching = JobCard.objects.all()
         for word in q.split():
-            cars_query = cars_query.filter(
+            matching = matching.filter(
                 Q(registration_number__icontains=word) |
                 Q(customer_name__icontains=word) |
                 Q(brand_name__icontains=word) |
-                Q(model_name__icontains=word)
+                Q(model_name__icontains=word) |
+                Q(chassis_code__icontains=word) |
+                Q(vin__icontains=word)
             )
+        cars_query = cars_query.filter(
+            registration_number__in=matching.values('registration_number')
+        )
 
     # 4. Pagination (Pro-Active Scaling)
     paginator = Paginator(cars_query, 45)
@@ -384,6 +400,10 @@ def car_profile_detail(request, registration):
         'is_white': latest.car_color == 'White',
         'mileage': latest.mileage,
         'km': parse_km(latest.mileage),
+        # NOT from `latest` — each from the newest visit that RECORDED one. See
+        # `vehicle_ids.latest_recorded`, which the Job Card form's lookup reads
+        # too, so the header and the form cannot name two different VINs.
+        **latest_recorded(registration),
         # Only one job card per registration can be active at a time, and the
         # newest is it when there is one.
         'on_floor': (not latest.completed) and (not latest.is_deleted),

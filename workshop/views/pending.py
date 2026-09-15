@@ -51,7 +51,9 @@ def pending_payments_list(request):
                 Q(registration_number__icontains=word) |
                 Q(customer_name__icontains=word) |
                 Q(brand_name__icontains=word) |
-                Q(model_name__icontains=word)
+                Q(model_name__icontains=word) |
+                Q(chassis_code__icontains=word) |
+                Q(vin__icontains=word)
             )
 
     pending_jobs = pending_jobs.annotate(

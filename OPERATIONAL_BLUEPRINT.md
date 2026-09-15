@@ -17,7 +17,7 @@ graph TD
     Q0["📄 (optional) Office writes an ESTIMATE — EST-26-001"] -.->|"customer agrees;<br/>re-entered by hand, nothing carries over"| B
     A["🚗 Customer Arrives with Car"] --> B["📝 Floor/Office Creates Job Card"]
     B --> C["Auto: Bill Number Generated JB-26-001"]
-    C --> D["Vehicle Details Filled"]
+    C --> D["Vehicle Details Filled — plate, make, model, chassis code, VIN"]
     D --> E["Customer Details Recorded"]
     E --> F["Mechanic Assigned from Roster"]
     F --> G["Concerns Listed"]
@@ -144,6 +144,18 @@ Everything in the system connects through the Job Card:
                                        once by Office for all the jobs
            (denormalized for performance)
 ```
+
+**Vehicle Details carries two optional boxes under the plate** — the **chassis code**
+(the platform, e.g. F30 or W205, which decides which part fits) and the **VIN** off the
+RC book. Floor may fill both, since the mechanic reads them off the car. An empty one
+wears the red hairline but never stops a save, and neither is printed on the bill, the
+service history sheet or the quotation. Every search that finds a car finds it by either.
+
+**A plate the workshop has seen before fills the card.** The make, model, colour, chassis
+code and VIN fill in by themselves from that car's earlier visits, and anything typed by
+hand is never overwritten. The last customer's name and number are only *offered* — greyed
+in their own boxes with a **Use last visit** button, for Office and Owner — because the car
+may have been sold since, and that number is the one a bill is sent to.
 
 ---
 
@@ -623,6 +635,7 @@ SPARE SHOP (Supplier)
 
 ```
 Registration: KL-07-AB-1234
+Chassis code: F30    VIN: WBA8E9C50GK123456    (each the latest recorded on any visit)
 
 Visit 1 (Jan 2025):  Oil change, Brake pad         Rs.4,500
 Visit 2 (Apr 2025):  AC repair, Belt replacement    Rs.8,200

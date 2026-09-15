@@ -312,10 +312,11 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
   (`USE_SQLITE=true`) and automatically for `manage.py test`.
 - **Modular views**: the `workshop` app's views live in a `views/` package of **21
   focused modules**, with full backward compatibility via re-exports in `__init__.py`.
-  **Thirteen** further modules hold **no views at all** and exist so that one rule has
+  **Fifteen** further modules hold **no views at all** and exist so that one rule has
   exactly one implementation — `analysis_engine`, `invoice`, `settlement`,
   `master_data`, `money`, `money_dates`, `spare_dates`, `return_to`, `delete_window`,
-  `rent`, `photos`, `mileage`, `service_history`. See `CLAUDE.md` § Architecture.
+  `rent`, `photos`, `mileage`, `service_history`, `vehicle_ids`, `known_car`. See `CLAUDE.md` §
+  Architecture.
 - **One declaration per shared control**: `static/css/style.css` is the CSS side of
   that same rule, linked by `base.html` on every page — the "Record a Payment" card
   (`.rpay-*`), the back control (`.pg-back`), the question card (`.wcf-*`) and the

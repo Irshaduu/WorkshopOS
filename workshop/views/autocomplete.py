@@ -4,8 +4,9 @@ from django.db.models import Q
 from django.http import JsonResponse
 
 from ..models import CarBrand, CarModel, SparePart, ConcernSolution, JobCardSpareItem
-from ..decorators import staff_required, office_required
+from ..decorators import staff_required, office_required, is_office_or_owner
 from ..invoice import effective_quantity
+from ..known_car import known_car
 from ..templatetags.custom_filters import clean_qty
 
 
@@ -204,3 +205,25 @@ def autocomplete_concerns(request):
         return JsonResponse([], safe=False)
     concerns = ConcernSolution.objects.filter(concern__icontains=q).values_list('concern', flat=True)[:10]
     return JsonResponse(list(concerns), safe=False)
+
+
+@staff_required
+def known_car_lookup(request):
+    """
+    What the workshop already knows about a typed plate, for the Job Card form.
+
+    Every rule about the answer is `workshop/known_car.py`. This view decides one
+    thing: WHO is asking. `@staff_required`, like the other lookups the form
+    makes, because Floor opens most job cards — but the customer's name and
+    number go to Office and Owner only. Floor's form renders no customer boxes,
+    and a lookup Floor can call must not hand over what that form hides.
+    `is_office_or_owner` is the same test `_floor_locked_data` uses to pin those
+    two fields when a card is saved, so the two gates cannot disagree.
+
+    An unknown plate answers `found: false` with every value blank, which the
+    form uses to take back what it filled for a plate that was then corrected.
+    """
+    return JsonResponse(known_car(
+        request.GET.get('registration', ''),
+        include_customer=is_office_or_owner(request.user),
+    ))

@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django import forms
+from django.core.validators import MaxLengthValidator
 from django.db.models import Count
 from django.utils import timezone
 from django.forms import inlineformset_factory, BaseInlineFormSet
@@ -23,6 +24,7 @@ from .models import (
 )
 from .money_dates import is_future
 from .spare_dates import pair_problem
+from .vehicle_ids import normalise_chassis_code, normalise_vin, vin_problem
 
 # =============================================================================
 # MIXINS & WIDGETS
@@ -246,7 +248,62 @@ class MechanicChoiceField(forms.ModelChoiceField):
         return obj.name
 
 
-class JobCardForm(BootstrapFormMixin, forms.ModelForm):
+#: The two boxes' widgets, shared by the Job Card and the Estimate so the same
+#: car's two documents take them identically. Capitals as you type, the way the
+#: registration box already behaves; no autocorrect, which would "fix" a VIN.
+VEHICLE_ID_WIDGETS = {
+    field: forms.TextInput(attrs={
+        'autocomplete': 'off',
+        'autocapitalize': 'characters',
+        'spellcheck': 'false',
+        'style': 'text-transform: uppercase;',
+    })
+    for field in ('chassis_code', 'vin')
+}
+
+
+class VehicleIdsFormMixin:
+    """
+    The chassis code and VIN boxes, as ONE implementation for both forms.
+
+    Everything it decides is `workshop/vehicle_ids.py`; this only wires those
+    rules to a form field. Both `JobCardForm` and `EstimateForm` call
+    `_prepare_vehicle_ids()` from `__init__`.
+    """
+
+    def _prepare_vehicle_ids(self):
+        """
+        Let the VIN box take a VIN typed in groups.
+
+        ⚠ THIS IS THE TRAP THE WHOLE METHOD EXISTS FOR. A model `CharField` with
+        `max_length=17` gives its form field TWO length guards: a `maxlength="17"`
+        attribute, which makes the BROWSER stop accepting keystrokes — so
+        "WBA 8E9C 50GK 123456", or the same VIN pasted with its spaces, is cut
+        off silently at the seventeenth character — and a MaxLengthValidator that
+        runs BEFORE `clean_vin`, refusing the spaced version before anything can
+        tidy it. Both go; `clean_vin` tidies and then measures, and the column's
+        own 17 is still enforced by the model when the instance is validated.
+        """
+        field = self.fields.get('vin')
+        if field is None:
+            return
+        field.max_length = None
+        field.validators = [v for v in field.validators if not isinstance(v, MaxLengthValidator)]
+        field.widget.attrs.pop('maxlength', None)
+
+    def clean_chassis_code(self):
+        return normalise_chassis_code(self.cleaned_data.get('chassis_code'))
+
+    def clean_vin(self):
+        """Refused with the rule, never corrected — see `vin_problem`."""
+        raw = self.cleaned_data.get('vin')
+        problem = vin_problem(raw)
+        if problem:
+            raise forms.ValidationError(problem)
+        return normalise_vin(raw)
+
+
+class JobCardForm(VehicleIdsFormMixin, BootstrapFormMixin, forms.ModelForm):
     """
     Main job card form.
     Note: completed_date is auto-filled on completion, not manually entered.
@@ -265,6 +322,8 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
             'brand_name',
             'model_name',
             'registration_number',
+            'chassis_code',
+            'vin',
             'mileage',
             'customer_name',
             'customer_contact',
@@ -349,13 +408,18 @@ class JobCardForm(BootstrapFormMixin, forms.ModelForm):
                 'rows': 1,
             }),
             'car_color_other': forms.TextInput(),
+            # Deliberately NOT `jc-optional`: an empty chassis code or VIN
+            # wears the hairline like the mileage does, on the owners'
+            # instruction, and still saves.
+            **VEHICLE_ID_WIDGETS,
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for f in ('brand_name', 'model_name', 'registration_number', 'mileage', 'car_color_other', 'customer_name', 'customer_contact', 'notes'):
+        for f in ('brand_name', 'model_name', 'registration_number', 'chassis_code', 'vin', 'mileage', 'car_color_other', 'customer_name', 'customer_contact', 'notes'):
             if f in self.fields:
                 self.fields[f].widget.attrs.pop('placeholder', None)
+        self._prepare_vehicle_ids()
         eligible_ids = list(
             Mechanic.objects.filter(
                 is_active=True, role__in=Mechanic.JOBCARD_ELIGIBLE_ROLES
@@ -942,7 +1006,7 @@ def _tidy_money_initial(form, *names):
         else:
             form.initial[name] = f'{value:.2f}'
 
-class EstimateForm(BootstrapFormMixin, forms.ModelForm):
+class EstimateForm(VehicleIdsFormMixin, BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Estimate
         fields = [
@@ -952,6 +1016,8 @@ class EstimateForm(BootstrapFormMixin, forms.ModelForm):
             'brand_name',
             'model_name',
             'registration_number',
+            'chassis_code',
+            'vin',
             'mileage',
             # Chosen through the shared swatch picker, exactly as on a Job Card.
             # The visible control is a <div>; these are what post.
@@ -993,13 +1059,15 @@ class EstimateForm(BootstrapFormMixin, forms.ModelForm):
             }),
             'notes': forms.TextInput(),
             'car_color_other': forms.TextInput(),
+            **VEHICLE_ID_WIDGETS,
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for f in ('brand_name', 'model_name', 'registration_number', 'mileage', 'car_color_other', 'customer_name', 'customer_contact', 'notes'):
+        for f in ('brand_name', 'model_name', 'registration_number', 'chassis_code', 'vin', 'mileage', 'car_color_other', 'customer_name', 'customer_contact', 'notes'):
             if f in self.fields:
                 self.fields[f].widget.attrs.pop('placeholder', None)
+        self._prepare_vehicle_ids()
         # Total Labour is the box Office types into on almost every estimate.
         # Left alone it arrives holding `0` on a new quote and `8500.00` on an
         # edit — both of which have to be deleted before a figure can be typed.

@@ -49,7 +49,9 @@ def completed_list(request):
                 Q(registration_number__icontains=word) |
                 Q(customer_name__icontains=word) |
                 Q(brand_name__icontains=word) |
-                Q(model_name__icontains=word)
+                Q(model_name__icontains=word) |
+                Q(chassis_code__icontains=word) |
+                Q(vin__icontains=word)
             )
 
     # 4. Calendar-aligned date filters (completed_date is a DateField)
