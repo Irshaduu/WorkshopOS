@@ -213,6 +213,17 @@ private network, where TLS may not be offered — `require` then refuses to conn
 at all. (Local development sets `disable`.) `prefer` uses TLS when available and plain when not, and the
 traffic never leaves Railway's network either way.
 
+### Owner identity (read only by `sync_owner_identity`)
+
+| Variable | Value |
+|---|---|
+| `OWNER_1_USERNAME` / `OWNER_1_MOBILE` | The first owner's username, exactly as created with `createsuperuser`, and their business mobile |
+| `OWNER_2_USERNAME` / `OWNER_2_MOBILE` | The same for the second owner |
+
+The app never reads these while serving pages — the database is the authority.
+They only let `sync_owner_identity` close `/admin/`, add the Owner group and store
+the mobiles once the accounts exist (`GO_LIVE_RUNBOOK.md` §3.3).
+
 ### Required for email (password reset)
 
 | Variable | Value |
@@ -381,10 +392,50 @@ git push origin main
 | Change | Why, and what to do |
 |---|---|
 | **Any migration** | Back up first. A migration is the one thing a rollback cannot undo. |
-| **A destructive migration** (dropping a column/table) | The old code cannot run against the new schema. Rolling back needs a database restore too. |
+| **A destructive migration** (dropping or renaming a column/table) | The old code cannot run against the new schema. Ship it in **two deploys** (§5.3b); rolling back needs a database restore too. |
 | **Changing `ALLOWED_HOSTS` / domain** | Get it wrong and every request 400s. |
 | **Anything touching auth** | Keep a signed-in session open in another browser so you are not locked out while testing. |
 | **New environment variable** | Set it in Railway **before** pushing the code that reads it. |
+
+### 5.3b A migration on real data — what can break, and what cannot
+
+**How Railway runs it.** The new version is built, then the Pre-deploy `migrate`
+runs **while the old version is still serving**, then traffic moves to the new
+version. So for a short window the OLD code talks to the NEW schema. That window
+is the only place a correct migration can hurt anything.
+
+| The migration… | During that window | Verdict |
+|---|---|---|
+| **adds a nullable field** (`null=True` — `0078`'s chassis code and VIN are this) | old code never names the column; existing rows get NULL | **safe** |
+| **adds a NOT NULL field with `default=`** | Django writes the default into existing rows and then drops it from the column, so a save by the old code — which does not know the column — is **refused** | a **short failure on saves**. Use `db_default=` (the default stays in Postgres) or make the field nullable |
+| **adds a model, an index or a constraint** | old code ignores it; an index locks writes to its table while it builds | **safe** — but a constraint that existing rows break **fails the migration** (below) |
+| **removes or renames a field or model** | old code still selects the old column, so **every page reading it errors**, and a rollback meets a schema it cannot read | **never in one deploy** — see *two deploys* below |
+| **changes data** (`RunPython`) | runs over the real rows — the only kind that can quietly write wrong figures | **rehearse it on a copy first** |
+
+**A migration that fails does not take the site down.** Postgres runs each
+migration inside a transaction, so a failing one is rolled back, the Pre-deploy
+step fails, Railway never moves traffic, and the old version keeps serving. One
+caveat: in a deploy carrying several migrations, the ones that finished before the
+failure stay applied — harmless when they are additive.
+
+**Removing or renaming always takes two deploys.**
+1. Ship code that no longer reads the field. Keep the column; for a rename, add the
+   new field and write both.
+2. Once that is live, ship the migration that drops the old one.
+
+**Before pushing anything that carries a migration:**
+- ☐ `python manage.py makemigrations --check --dry-run` says **No changes
+  detected**. A model change pushed without its migration file makes every page
+  reading that model fail with `column does not exist`; `test_go_live_safety.py`
+  fails on it too.
+- ☐ `python manage.py sqlmigrate workshop <number>` — read the SQL and place it in
+  the table above.
+- ☐ Full test suite green.
+- ☐ **Back up first** (§6.3).
+- ☐ For a `RunPython`: restore the latest backup into a scratch database, run
+  `migrate` against it, check the figures it touched — **then** push.
+- ☐ Deploy early morning (§5.4) and watch the Pre-deploy log say the migration
+  applied and the container started.
 
 ### 5.4 Best time to deploy
 
@@ -466,7 +517,7 @@ vacuum schedule to run, no index rebuild, no tuning to do.
 
 What is worth watching, monthly:
 
-- **Size.** ~50 job cards a month is tiny; if it ever grows unexpectedly,
+- **Size.** ~30 job cards a month is tiny; if it ever grows unexpectedly,
   something is wrong (a runaway loop, a table filling with junk).
 - **The `Notification` table.** Read rows are swept after 14 days, unread are
   kept forever. Millions of rows here would mean the sweep is not running.
@@ -522,7 +573,7 @@ Railway bills **per second of resource usage**: memory at ~$0.0139/GB-hour and
 CPU at ~$0.0278/vCPU-hour. Hobby is a $5/month subscription that **includes** $5
 of usage — beyond that you pay the difference.
 
-For this workload (4–6 logins, ~50 job cards a month) the cost is driven almost
+For this workload (4–6 logins, ~30 job cards a month) the cost is driven almost
 entirely by **the two containers existing 24/7**, not by anything they do.
 Expect roughly **$5–9/month**.
 
@@ -662,7 +713,7 @@ There is a brief switchover. At this traffic level nobody will see it.
 $env:DJANGO_ENV = "development"        # PowerShell
 python manage.py runserver
 
-# Full test suite (SQLite, 20-80 min — load-dependent)
+# Full test suite (SQLite, 20 min to well over an hour — load-dependent; last run 82 min)
 python manage.py test workshop inventory
 
 # Ship an update

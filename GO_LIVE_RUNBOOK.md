@@ -119,6 +119,8 @@ RESEND_API_KEY=<from Resend, section 2.3>
 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_ADMIN_EMAIL
 DB_NAME / DB_USER / DB_PASSWORD / DB_HOST / DB_PORT
 DB_SSLMODE=prefer
+OWNER_1_USERNAME / OWNER_1_MOBILE   ← each owner's username exactly as you will
+OWNER_2_USERNAME / OWNER_2_MOBILE     create it in §3.3; read only by sync_owner_identity
 
 PHOTO_S3_ACCESS_KEY_ID / PHOTO_S3_SECRET_ACCESS_KEY / PHOTO_S3_BUCKET
 PHOTO_S3_ACCOUNT_ID            ← Cloudflare R2 only; host is derived from it
@@ -320,12 +322,15 @@ python manage.py load_master_data
 - ☐ `migrate` reports no errors
 - ☐ `setup_groups` prints all three roles — Owner, Office, Floor
 
-**`setup_groups` now creates the roles this app's RBAC actually reads**, and it
-is safe to re-run: `get_or_create` touches nothing that already exists, and it
-never removes a group or moves anybody between them.
+**`migrate` already creates all three roles**, through a `post_migrate` hook in
+`workshop/apps.py` — checked on 2026-09-15 by migrating an empty database, which
+came out holding Floor, Office and Owner. **`setup_groups` is the repair**, and it
+is still worth running here: it is safe to re-run (`get_or_create` touches nothing
+that already exists, and it never removes a group or moves anybody between them),
+and it puts the roles back on a database that has lost them.
 
-⚠ **It did not, until 2026-09-06** — worth knowing because it is the shape of
-failure this whole runbook exists to catch. It created `Workers` and `Admins`,
+⚠ **It created the wrong groups until 2026-09-06** — worth knowing because it is the
+shape of failure this whole runbook exists to catch. It created `Workers` and `Admins`,
 two groups nothing in this codebase reads, left over from an RBAC model the app
 has not used in a long time. It failed in the worst possible direction: **this
 runbook's own checklist claimed it created Owner / Office / Floor**, and Control
@@ -334,14 +339,15 @@ tells you to *"Run `manage.py setup_groups` to restore the Owner/Office/Floor
 roles"*. So the documented remedy and the on-screen remedy both pointed at a
 command that reported success in green ticks and changed nothing.
 
-It was found on a rehearsal deployment, **and that is the only place it could
-be found**: an empty database is the one state that reveals it, which is exactly
-what go-live day is and what no development database ever is. `test_setup_groups.py`
-now pins it.
+It was found on a rehearsal deployment whose database had no Office or Floor role.
+`test_setup_groups.py` now pins it.
 
-No migration creates these groups. `sync_owner_identity` does
-`get_or_create(name='Owner')` as a side effect of its own job, which is why Owner
-tends to appear on its own — **Office and Floor are created by nothing else.**
+⚠ **Until 2026-09-15 this section also said no migration creates these groups and
+that Office and Floor are created by nothing else.** The first half is literally
+true — no migration *file* creates them — and the conclusion drawn from it was
+false, because `migrate` runs the hook every time. How the rehearsal database lost
+them was not recorded; `copy_sqlite_to_postgres` replaces `auth.Group` wholesale,
+which is one way it happens (`CLAUDE.md` § Which database am I on?).
 
 ### 3.2 If any demo data reached this database, remove it ☐
 
@@ -397,28 +403,52 @@ python manage.py shell -c "from workshop.cashbook_views import _steers; [print(r
 
 ### 3.3 Owner accounts and real email addresses ☐
 
-The developer test addresses must not survive into production — password reset
-codes go to `User.email`, so a stale address points account recovery at a
-mailbox the owners do not read.
-
-**Since 2026-08-12 that address is also how an owner SIGNS IN.** Owner accounts
-resolve by email only, never by username or mobile (`resolve_login_identifier`).
-So `set_owner_email` is no longer a change to where recovery mail goes — it
-changes the owner's login identifier, and the old one stops working the moment
-it runs. Two consequences: run it *before* handing the app over rather than
-after, and tell each owner the exact address they now type. An owner who types
-their username gets "Invalid credentials", which reads as a wrong password and
-cannot be worded any more helpfully without confirming the account exists.
+**A fresh database has no accounts at all.** Every earlier deployment got its
+logins by copying a database, so this step never existed before. Create both
+owners in the Railway console, one at a time:
 
 ```bash
-python manage.py set_owner_email <username> <real@address>        # dry run
-python manage.py set_owner_email <username> <real@address> --yes
+python manage.py createsuperuser
+```
+
+- **Username** — exactly the `OWNER_1_USERNAME` / `OWNER_2_USERNAME` set in §1.3.
+- **Email** — the owner's **real** address. It is how an owner signs in and where
+  reset codes go, so never a test or placeholder address here.
+- **Password** — a temporary one you hand over in person. The owner replaces it at
+  `/change-password/` the first time they sign in.
+
+Then, **in the same sitting**:
+
+```bash
 python manage.py sync_owner_identity          # dry run
 python manage.py sync_owner_identity --yes
 ```
 
+⚠ **Not optional.** `createsuperuser` sets `is_staff=True`, which opens `/admin/`
+— the one door that bypasses Deletion History, the Financial Lock and
+archive-don't-delete. `sync_owner_identity` closes it, puts both owners in the
+Owner group and stores their mobile numbers. It reads `OWNER_n_*` from Railway's
+variables, and with them unset it changes nothing.
+
+**Office and Floor logins are created afterwards by an owner**, signed in, from
+Control Hub → Accounts — never from the console.
+
+**If an owner's email turns out to be wrong**, correct it with `set_owner_email`
+rather than recreating the account. Owner accounts sign in by email only, never by
+username or mobile (`resolve_login_identifier`), so this changes the owner's login
+identifier and the old one stops working the moment it runs: tell the owner the
+exact address they now type. An owner who types their username gets "Invalid
+credentials", which reads as a wrong password and cannot be worded any more
+helpfully without confirming the account exists.
+
+```bash
+python manage.py set_owner_email <username> <real@address>        # dry run
+python manage.py set_owner_email <username> <real@address> --yes
+```
+
 - ☐ Both owners' emails are their real ones
 - ☐ `sync_owner_identity` reports both in the Owner group, `is_staff=False`
+- ☐ An owner has created the Office and Floor logins from Control Hub
 
 **Then the two things worth more than every control in the codebase.**
 
@@ -497,6 +527,11 @@ For each owner, on their own phone:
 - ☐ Create a job card, add a spare and a labour line, check the total
 - ☐ Print an invoice — confirm it fits one A4 sheet
 - ☐ Take a payment, confirm it appears in Paid Bills
+- ☐ Once that card is completed, start a new card with the same plate: the make, model
+      and colour must fill in by themselves, and the customer only be offered — greyed
+      in, with a **Use last visit** button
+- ☐ As an owner, open a bill whose card carries a real mobile number: the WhatsApp icon
+      beside Print must open that customer's chat, with nothing typed in it
 - ☐ Add a Cashbook entry, confirm the Profit page moves
 - ☐ Record a rent deposit; confirm today's figure on `/rent/` drops by it
 - ☐ Write an Estimate, print it, confirm it carries the same letterhead as the bill

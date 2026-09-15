@@ -3,11 +3,12 @@ Create the three auth groups this app's RBAC is built on.
 
 WHY THIS EXISTS AT ALL
 ----------------------
-`Owner`, `Office` and `Floor` are ordinary `auth.Group` rows and **no migration
-creates them**, so a freshly migrated database has none. `sync_owner_identity`
-does `get_or_create(name='Owner')` as a side effect of its own job, which is why
-Owner tends to appear on its own — but **Office and Floor are created by nothing
-else**, and Control Hub cannot create an Office or Floor login without them.
+`Owner`, `Office` and `Floor` are ordinary `auth.Group` rows. `migrate` already
+creates all three, through the `post_migrate` hook in `workshop/apps.py` — checked
+on 2026-09-15 by migrating an empty database. (This docstring said until then that
+no migration creates them and that Office and Floor are created by nothing else.)
+This command is the repair for a database that has lost them, and Control Hub
+cannot create an Office or Floor login without them.
 
 WHAT THIS COMMAND USED TO DO, AND WHY IT IS RECORDED HERE
 ---------------------------------------------------------
@@ -20,9 +21,7 @@ checklist line "`setup_groups` created Owner / Office / Floor", and
 
 So the documented remedy and the on-screen remedy both pointed here, this ran,
 reported success in green ticks, and changed nothing that mattered. Found on a
-rehearsal deployment on 2026-09-06, on an empty database — which is the only
-place it can be found, because every database that already has the groups hides
-it.
+rehearsal deployment on 2026-09-06 whose database had no Office or Floor role.
 
 Safe to run repeatedly: `get_or_create` touches nothing that already exists, and
 this never removes a group or moves anybody between them.

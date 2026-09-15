@@ -22,6 +22,7 @@ from datetime import date, timedelta
 from decimal import Decimal as D
 
 from django.core.management.base import BaseCommand
+from ._dev_only import refuse_outside_development
 from django.utils import timezone
 
 from workshop.models import RentDeposit, RentRate
@@ -80,6 +81,7 @@ class Command(BaseCommand):
                             help="RNG seed, so a re-run reproduces the same set.")
 
     def handle(self, *args, **options):
+        refuse_outside_development('seed_rent_data')
         rng = random.Random(options['seed'])
         write = options['yes']
 

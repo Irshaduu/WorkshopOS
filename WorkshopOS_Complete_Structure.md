@@ -1,5 +1,5 @@
 *Every screen in the app, as an outline. Re-derived from the nav bar and the
-drawer on 2026-09-09. The drawer's own group labels are the headings in
+drawer on 2026-09-15. The drawer's own group labels are the headings in
 brackets — a section belongs where the app puts it, not where a category would.*
 
 ├── HOME
@@ -8,7 +8,9 @@ brackets — a section belongs where the app puts it, not where a category would
 │
 ├── Job Card
 │   ├── Create, Update
-│   ├── Auto suggetion
+│   ├── Auto suggestion
+│   ├── Chassis Code & VIN
+│   ├── Known plate fills the car (the last customer only offered)
 │   └── Photos
 │
 ├── Live Report
@@ -57,8 +59,8 @@ brackets — a section belongs where the app puts it, not where a category would
 │
 ├── Car Profiles
 │   ├── Car Jobcards
-│   ├── Gross bill
-│   ├── Gross Profit
+│   ├── Total billed, Discount, Paid, Still owed
+│   ├── Gross Profit (Owner only)
 │   └── The two documents a profile hands over
 │       ├── Service History (choices → printed sheet)
 │       └── All Invoices (every bill for one car, one PDF)
@@ -66,7 +68,8 @@ brackets — a section belongs where the app puts it, not where a category would
 ├── Estimates
 │
 ├── Invoice
-│   └── Unfilled tracking
+│   ├── Unfilled tracking
+│   └── WhatsApp the customer (Owner only)
 │
 ├── Salary & Advance
 │

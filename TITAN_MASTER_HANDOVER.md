@@ -1,8 +1,8 @@
 # TITAN MASTER HANDOVER — WorkshopOS
 
 > **Status:** pre-go-live · security hardened · in active development
-> **Version:** 9 · every count in this file re-derived from the working tree on
-> 2026-09-09
+> **Version:** 10 · every count in this file re-derived from the working tree on
+> 2026-09-15
 
 This is the **mission, status and roadmap** doc. The single authoritative "what's
 next" list lives here; other docs link to it rather than keeping their own copy.
@@ -21,7 +21,7 @@ next" list lives here; other docs link to it rather than keeping their own copy.
 ## I. The mission
 
 **WorkshopOS** is built for **one** premium automotive workshop — appointment-driven,
-high-value vehicles, roughly 50 cars a month, seven staff, two owners. Not a
+high-value vehicles, about 30 cars a month, six or seven staff, two owners. Not a
 high-volume chain garage.
 
 That distinction is load-bearing throughout. It is why RBAC needs three tiers and not
@@ -30,7 +30,7 @@ leave days are typed once a month instead of tracked daily, and why performance 
 judged against real volume rather than generic "web scale".
 
 **The standard:** functional integrity across every operation that touches money or
-access. Backed by **70 test files / 2,417 tests** covering security, views, signals,
+access. Backed by **73 test files / 2,486 tests** covering security, views, signals,
 financial logic, cashbook, spare shops, salary settlement, the profit engine, the
 printed documents, photos and the email transport behind password reset.
 
@@ -212,24 +212,29 @@ cashbook, operations, one AJAX-loaded section at a time).
 - **Turnover** = car bills (`total_bill_amount − discount_amount`) + cashbook income.
   A discount is money never earned, so it reduces turnover rather than appearing as an
   expense; for a settled card the result equals `received_amount` to the rupee.
-- **Expenses** are four non-overlapping streams, all on ONE basis — what the work done
-  in this period cost: Spare Shops, Inventory Used, Salary & Advance, General Cashbook.
-  A part is charged when it is **fitted to a car**, whichever shelf it came off.
+- **Expenses** are five non-overlapping streams, all on ONE basis — what the work done
+  in this period cost: Spare Shops, Inventory Used, Salary & Advance, Cashbook Expense
+  and Rent (read from the rate and charged in whole months — never the daily deposits,
+  which are cash). A part is charged when it is **fitted to a car**, whichever shelf it
+  came off.
 - **A Supplies Shop bill is NOT an expense.** Buying stock turns cash into goods on a
   shelf; it raises the payable and the shelf and nothing else. A supplier *payment*
   moves the payable again. Neither touches profit.
 - **The same profit is then stated a second way**, in the owner's own terms: Labour +
-  Spare Parts margin + Inventory margin + Cashbook Income = Gross Earnings, less salary
-  and general cashbook. It closes with **no reconciling line** — which is only true
+  Spare Parts margin + Inventory margin + Cashbook Income = Gross Earnings, less salary,
+  rent and cashbook expense. It closes with **no reconciling line** — which is only true
   because both halves charge stock at the same moment. A bridging row reappearing there
   means the two bases have drifted apart. → `TheProfitIsAlsoSaidTheOwnersWayTests`
 - **Changed 2026-08-25, on the owner's decision.** The bill used to be the expense and
   the draw excluded — which put the two parts routes on two different bases (the spare
   route has always charged on fitting) and made monthly profit lumpy. The trade: profit
   now leans on `avg_cost`, so the uncosted-draw warning is load-bearing.
-- **The double-count rule** — a warehouse-drawn spare is *already* paid for by its
-  restock bill, so its cost is never charged again. Counting all job-spare cost on top
-  would overstate expenses by ~₹9.8M against the seeded data.
+- **The double-count rule** — a part is charged exactly once, when it is fitted. For a
+  warehouse part that is the draw, at the shelf's average cost, so the Supplies Shop
+  bill that filled the shelf must never be added alongside it: that charges one
+  delivery twice (~₹6.9L against the seeded data). *Until 2026-09-15 this bullet still
+  described the rule from before 2026-08-25 — bill charged, draw excluded — directly
+  under the bullet saying that rule had changed.*
   → `DoubleCountRuleTests`
 - **All money math lives in `analysis_engine.py`** as pure functions; views only
   resolve the window and render, so a charting bug can never become a profit bug.
@@ -248,8 +253,9 @@ cashbook, operations, one AJAX-loaded section at a time).
   Accounts, Supplier Shops, Mechanics) are **archived, never hard-deleted**;
   transactions and job cards are **permanently deleted but snapshotted first** to the
   Owner-only `DeletionLog`. A guard blocks deleting a job card that still holds
-  spares, labour or a received payment. The only `on_delete=PROTECT` in the codebase
-  is inventory `Category → Item`.
+  spares, labour or a received payment. `on_delete=PROTECT` appears exactly three
+  times: inventory `Category → Item`, a warehouse draw's `JobCardSpareItem.item`, and
+  `OwnerWithdrawal.owner`.
 - **Dedicated ledgers**: split Pending / Paid Bills with time-range filters and
   enforced RBAC.
 
@@ -350,7 +356,9 @@ copy — is in `CLAUDE.md` § Commands, which is the one place they are document
 | 11b | **Rent became the fifth expense stream** | Delivered 2026-09-04, and the workflow forced it rather than anybody choosing it. The boundary above held on one assumption about PEOPLE — that the office would keep keying the monthly rent bill into the Cashbook. Once they started recording rent in its own section instead, "no figure moves" quietly became **"rent is in the books nowhere"**: September 2026 carried ₹35,000 of real rent and the Profit page charged ₹900 of it, while May–August carried ₹45,000 Cashbook rows against a stored rate of ₹35,000 — two different rents in one system, neither page aware of the other. All Time was worse: it opened on 2026-02-07 against a ledger reaching back to October 2023, hiding **₹10,15,000** of rent while claiming to cover everything.<br><br>The split is now the app's **fourth instance** of a rule it already followed three times: what the month COST is the rate, charged in whole months → the expense; what was HANDED OVER is the deposits, by the day the cash moved → Cash Tracking; the gap → a position tile. The arithmetic lives in `rent.py` and the engine calls it, so the Profit page and the Deposit & Rent page cannot drift. ⚠ Rent is the **only stream that needs a cap**, because it is the only one not summed from rows — a 1 Jan – 31 Dec window would otherwise charge twelve months in September, ₹1,05,000 of expense that has not happened. A Cashbook category named like rent is now a double count and is **flagged, never filtered**, matched on word boundaries because this workshop calls its electricity bill "Current bill".<br><br>The same pass closed a **go-live defect** found on the way: `purge_business_data` — the command the runbook says to run against production — had never cleared `OwnerWithdrawal`, `RentRate` or `RentDeposit`, all three added after it was written. It reported success either way, leaving ₹12,60,000 of fabricated rent and ₹12,32,500 of fabricated cash out on the development data. Setting the rent from the go-live month is now an opening-balance step, because nothing on any screen looks broken without it. |
 
 | 12 | **Service History, and every bill in one PDF** | Delivered 2026-09-06. The two things customers ask for, most often because they are **selling the car**, and both meant opening every job card, printing it one at a time and sending them one at a time. `/car-profiles/<reg>/invoices/` is the simpler half and its whole discipline is that it is **the same bill, not a copy that looks like one** — the markup was extracted into `includes/_invoice_sheet.html` the way the arithmetic already lived in `invoice.py`, and a test renders one card through both routes and asserts the sheets match character for character. A second template would have looked right on the day and drifted on some later one, and the *customer* would have found it holding both documents at once.<br><br>The service history is the one with the work in it: every visit newest-first as its own card, the **distance and days between them drawn in the join** rather than tabulated, and each part carrying `3  Wheel bearing left · 10,000 km · RUNNING` — a chain numbered from the first fitting, so `3` means the same thing whichever end you read from. Two foundations were needed. `mileage.py` reads `JobCard.mileage`, which is free text: an **allowlist of shapes, never a scrub**, because stripping non-digits turns `85000 2` into 850002 and `50000 miles` into a 60%-short interval — and it keeps what it cannot read exactly as typed, because it runs in `clean()` on every save and would otherwise delete a mechanic's note during an unrelated edit. `service_history.py` holds every figure and every name: gaps anchored to the **immediately previous** visit and never reaching past one with no reading, a chain named by its **commonest** spelling (the newest was tempting and wrong — the name is typed fresh every visit), averages over **completed lives only**, and due-soon at 0.9 of *this car's own* average, because the system holds no manufacturer schedules and inventing one would assert something nobody here agreed.<br><br>⚠ **The current reading is never stored.** The office asks "what is it showing now?" on the phone, and that answer makes every fitted part able to say how far it has run — but the workshop did not measure it, so writing it to `mileage` would poison the column every future interval is computed from. It rides in the query string and the sheet says *as told by the customer* on the line itself.<br><br>⚠ **The sheet also answers the buyer's own first question — how regularly the car has been serviced** (`SERVICED EVERY: 12,075 km · 317 days`), which a stack of invoices cannot without arithmetic on a kitchen table. It costs nothing: the gaps were already computed to be drawn in the joins. An implausible gap is left out of the DISTANCE and kept in the DAYS, and that asymmetry is the point — a mistyped odometer says nothing about two admission dates.<br><br>**THREE design passes, all the owner's**, and the third is the one worth reading. The first shipped wearing the invoice's letterhead over an **invented** design system — 7.5/8/8.5/9pt type, nine greys and two reds on no Formula D document — and read as generic; the rule became that nothing may use a size or colour the invoice does not already use, audited live at 0 off-palette of each. The second turned the visit card's body into a real table **on the invoice's own grid**. The third (2026-09-08) is the one that mattered, because **the first two rules were being obeyed and the sheet still looked wrong**. Measuring the two RENDERED documents element by element — rather than reading either stylesheet — found it: **the sheet was set in BOLD and the bill is not**, 166 bold elements against the bill's five, with eleven-point regular painted not once. So the head-of-file rule gained a third clause, WEIGHT, and the green that said "still fitted" thirty times went navy: **green means MONEY** in this system and this document carries no payment state at all. The same pass stopped the visit card saying everything twice (about thirty duplicated rows on a five-visit car), took the record block, its labels, its order and the whole foot from the bill line for line, and moved the notes to 8.5pt grey as the **one stated exception** to the size and colour rules — earned because it is the only block on the page that is not part of the RECORD. 3.20 pages to 2.63. |
-| 13 | **One way out, one way to ask, one press** | Delivered 2026-09-05 → 09. Three UI-consistency defects the owner reported in the same breath as "all different look, different place, different design", each fixed by the rule this codebase already applies to arithmetic: **one declaration, not copies kept in step.**<br><br>**Back navigation** was 17 controls in 7 treatments across 2 placements — six byte-identical round buttons, three rebuilding the same geometry out of Bootstrap utilities, eight text links that agreed on the idea and disagreed on every value, one bare glyph, and four `javascript:history.back()` cancels. All now `.pg-back`, in its own row above the page header, **naming its destination** — because `start_url` is `/`, so on the first tap of a session a history button does nothing at all, and a control that sometimes does nothing is worse than no control. A **global** back button in the nav bar was asked for and deliberately **not built**: measured at 375px the bar is five equal 71px columns with no free slot, a sixth tab costs every existing tab 17%, and ~20 pages would then carry two back affordances. The spare shop's printed report was the app's one true dead end — it rendered **zero** anchors.<br><br>**Asking a question** was 21 native browser dialogs opening with "127.0.0.1:8000 says". All now the shared `.wcf-*` card. A card inherits the visibility rules of the screen it opens on, which caught a real defect on the way in: Mark Completed is pressed mostly from the Floor tablet and its card was explaining that the bill could still be settled afterwards — to somebody shown no money anywhere in this app. The same pass found `jobcard_edit` telling a mechanic to press an Unlock button that is not rendered for Floor.<br><br>**One press, one post** — reported from the shop. On a slow connection the same Confirm was tapped again and again and every tap was another POST: a payment deleted twice, an advance deleted twice. The app-wide guard listens for a submit EVENT and a programmatic `.submit()` fires none, so the nine dialogs posting that way were outside the rule entirely; `HTMLFormElement.prototype.submit` is wrapped in `confirm.js`. And **every dialog is now centred on a phone** — Bootstrap centres one only from 576px up, so each of the twenty carrying its own width sat pinned left, 4px out at 360px and 56px out at 412px, which is the width most of the workshop's handsets report. |
+| 13 | **One way out, one way to ask, one press** | Delivered 2026-09-05 → 09. Three UI-consistency defects the owner reported in the same breath as "all different look, different place, different design", each fixed by the rule this codebase already applies to arithmetic: **one declaration, not copies kept in step.**<br><br>**Back navigation** was 17 controls in 7 treatments across 2 placements — six byte-identical round buttons, three rebuilding the same geometry out of Bootstrap utilities, eight text links that agreed on the idea and disagreed on every value, one bare glyph, and four `javascript:history.back()` cancels. All now `.pg-back`, in its own row above the page header, **naming its destination** — because `start_url` is `/`, so on the first tap of a session a history button does nothing at all, and a control that sometimes does nothing is worse than no control. A **global** back button in the nav bar was asked for and deliberately **not built**: measured at 375px the bar is five equal 71px columns with no free slot, a sixth tab costs every existing tab 17%, and ~20 pages would then carry two back affordances. The spare shop's printed report was the app's one true dead end — it rendered **zero** anchors.<br><br>**Asking a question** was 21 native browser dialogs opening with "127.0.0.1:8000 says". All now the shared `.wcf-*` card. A card inherits the visibility rules of the screen it opens on, which caught a real defect on the way in: Mark Completed is pressed mostly from the Floor tablet and its card was explaining that the bill could still be settled afterwards — to somebody shown no money anywhere in this app. The same pass found `jobcard_edit` telling a mechanic to press an Unlock button that is not rendered for Floor.<br><br>**One press, one post** — reported from the shop. On a slow connection the same Confirm was tapped again and again and every tap was another POST: a payment deleted twice, an advance deleted twice. The app-wide guard listens for a submit EVENT and a programmatic `.submit()` fires none, so the nine dialogs posting that way were outside the rule entirely; `HTMLFormElement.prototype.submit` is wrapped in `confirm.js`. And **every dialog is now centred on a phone** — Bootstrap centres one only from 576px up, so each of the 18 carrying its own width sat pinned left, 4px out at 360px and 56px out at 412px, which is the width most of the workshop's handsets report. |
+| 14 | **Chassis code & VIN, and a known plate fills the car** | Delivered 2026-09-15. Two optional boxes on the Job Card and the Estimate (`0078`): the chassis code says which platform a "320d" really is, the VIN proves which car it is. Every rule is `vehicle_ids.py` — a VIN is refused unless it is 17 letters and numbers with no I, O or Q, and there is deliberately **no check-digit test**, which would refuse the European cars this workshop services. Neither is printed on any customer document or chased at settlement. Typing a plate the workshop has seen fills the make, model, colour and both codes from that car's earlier visits (`known_car.py`); the last customer is only **offered** — greyed in, with a Use last visit button — because cars change hands, and only to Office and Owner, enforced in the lookup's answer rather than on the page. The same pass stopped the Car Profiles search shrinking a car's visit count, and removed a "Vehicles in Workshop" panel the job card form never rendered. |
+| 14b | **WhatsApp the customer from the invoice** | Delivered 2026-09-13. An owner gets a small WhatsApp icon on a bill whose card carries a real Indian mobile number. It opens that customer's chat, empty, and the owner attaches the PDF saved with Print and presses Send. It calls nothing and sends nothing — see §VII. |
 
 ### Open
 
@@ -425,9 +433,9 @@ be built only if the client asks.
 
 | Not built | Why |
 |---|---|
-| **GST / tax invoicing** | The workshop does not bill under GST. No tax fields, no HSN codes, no GSTIN anywhere in billing. |
+| **GST / tax invoicing** — *coming back into scope* | Nothing in billing carries a tax field, an HSN code or a GSTIN today, because the workshop has not billed under GST. ⚠ **That is changing (2026-09-13):** Formula D is registering, and GST will be built once the owners send the details — GSTIN, rates, invoice format. It is planned work waiting on them, no longer out of scope. |
 | **Customer-facing notifications** (SMS / WhatsApp / email to car owners) | The app makes two kinds of outbound call, both for the owners' own accounts. Do not add a messaging integration. *The invoice's WhatsApp icon is not one: it only opens the customer's chat — it calls nothing and sends nothing, and the owner attaches the PDF and presses Send.* |
-| **Attendance tracking** | Leave days are typed once per person at month-end settlement. For seven staff that is less work than maintaining a daily record. |
+| **Attendance tracking** | Leave days are typed once per person at month-end settlement. For six or seven staff that is less work than maintaining a daily record. |
 | **Multi-mechanic assignment** | A job card has one `lead_mechanic`. Work is assigned verbally on the floor; the card records who owns the job, not everyone who touched it. |
 | **General file attachments** (PDFs, documents on a job card) | Photos are a camera workflow with a fixed shape and a hard count limit. An open attachment store is a different problem with different retention, virus-scanning and naming questions. |
 

@@ -35,7 +35,7 @@ graph TB
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 136 URL Patterns"]
+        W_URLS["urls.py — 137 URL Patterns"]
         W_FORMS["forms.py — 11 Forms + 6 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session / NoStore / NoIndex"]
@@ -90,7 +90,7 @@ erDiagram
     JobCard ||--o{ JobCardSpareItem : "has spares"
     JobCard ||--o{ JobCardLabourItem : "has labour"
     JobCard }o--|| Mechanic : "assigned to"
-    JobCard }o--o{ BulkPayer : "M2M via bulk_payers"
+    JobCard }o--o| BulkPayer : "FK bulk_payer"
 
     JobCardSpareItem }o--o| SpareShop : "linked shop (SHOP rows)"
     JobCardSpareItem }o--o| Item : "stock product drawn (INVENTORY rows)"
@@ -125,14 +125,14 @@ erDiagram
 | 17 | **JobCardLabourItem** | job_card (FK), job_description, ~~amount~~ | What was done. A DESCRIPTION, not a price — the charge for all the work is `JobCard.labour_amount`. `amount` is dormant (the old per-line column, summed into the card by migration 0066, no longer written or read). |
 | 17a | **JobCardPhoto** | **id (UUID pk)**, job_card (FK, null), spare (FK→JobCardSpareItem, null), taken_at, taken_by (FK→User), byte_size | A photograph of the car (`job_card` set) or of one part (`spare` set) — exactly one, enforced by `clean()`. Migration `0070_jobcard_photos`. The UUID **is** the storage key (derived by `photos.object_key`, never stored). Bytes live in Cloudflare R2 and never pass through Django. Nothing points AT this table: no column on JobCard, no money, no stock, nothing in `analysis_engine.py` or `invoice.py`. Limits 10 per car / 4 per spare, enforced in the view. |
 | 17b | **OrphanedPhotoBlob** | storage_key (unique), created_at, attempts | Storage keys whose rows are gone, awaiting `sweep_photo_blobs`. Written in the same transaction as a photo delete so a key cannot be lost between the two — a DELETE to R2 is a network call and never runs on the request path. |
-| 18 | **BulkPayer** | customer_name (unique), job_cards (M2M→JobCard), advance_balance, is_trashed | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
-| 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, method, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`) | Audit trail for bulk payments, precise reversal |
+| 18 | **BulkPayer** | customer_name (unique), advance_balance, total_billed_amount, total_paid_amount, is_trashed, created_at — its cards point at it through `JobCard.bulk_payer`, a ForeignKey with `related_name='job_cards'` | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
+| 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, payment_method, **note**, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`), is_trashed, **date**, created_at | Audit trail for bulk payments, precise reversal. `date` (migration `0072`, backfilled from `created_at`) is the day the money moved, typed on the payment form; `note` (`0073`) says what a large receipt covered. Ordering `['-date', '-created_at']`. Cash Tracking reads fleet cash from these rows, one per payment |
 | 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed, **date**, created_at | Ledger payment record. `date` is the day the money MOVED — typed on the payment form, defaulting to today — and is what every date window on the shop page and its print sheet filters and orders by; `created_at` (`auto_now_add`) stays as the audit trail. Added by migration `0071`, which backfills existing rows from `created_at`. Ordering `['-date', '-created_at']`. |
 | 21 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
 | 21a | **OwnerWithdrawal** | owner (FK→User, **PROTECT**), amount, payment_method, note, **date**, created_at, recorded_by (FK→User) | Cash an owner takes out for themselves. Migration `0075`. ⚠ **Not an expense** — it appears in exactly one figure in `analysis_engine.py`, `cash_position()`'s money-out list, and nowhere in `build_profit_report`; profit is what is available to take, so taking it cannot reduce it. Exists because the Cashbook was the likeliest place for this money to land and `cashbook_expense()` feeds the profit equation. `owner` is PROTECT — one of only two in the codebase — because the row's whole job is to say *which* owner took it. `date` is the day the cash moved, typed; `created_at` is the audit trail. CheckConstraint `amount > 0`. |
 | 21b | **RentRate** | effective_from (**unique**, always the 1st), amount, note, created_at, set_by (FK→User) | What the premises cost per month, from a stated month onward. Migration `0076`. **Effective-dated, never edited in place** — a rent change is a new row, so a hike cannot rewrite what an earlier month cost. The figure is **absolute, not an increment**: a delta is a number the person must already know, so a mis-keyed `+5000` is silently ₹40,000 and a run of them makes the current rent unreadable. May be **backdated** (a hike agreed late and applied from an earlier month is ordinary, and refusing it would leave the books wrong for good) and may be **dated ahead** (a rate is not money; `rate_for()` applies it only once its month arrives). Owner-only, and every change raises `RENT_RATE_SET` at CRITICAL. `effective_from` is pinned to the 1st in `save()`. CheckConstraint `amount > 0`. |
 | 21c | **RentDeposit** | amount, **date**, note, created_at, recorded_by (FK→User) | One handover of cash to the rent collector, who comes daily and keeps his own book. Migration `0076`. ⚠ **Not an expense** — what a month COST is the rent; this is how it gets PAID, the same split a supplier payment and a stock draw already have. **No payment method**, deliberately: it is always cash handed to a man with a book, and a select that can only say one thing is a field to leave out. `date` is the day the money moved, typed and back-dateable; `created_at` is the audit trail, is what `delete_window` measures, and is what marks a row **keyed in a later month than it is filed under** on the page. CheckConstraint `amount > 0`. ⚠ **Read by `cash_position()` and by nothing else in the engine** — the same footprint `OwnerWithdrawal` has, and for the same reason: handing cash over is not a cost. What the month cost is the RATE. |
-| 22 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers Job Card, Fleet/Spare-Shop/Supplier payments, Restock Bill, Cashbook Entry and **Inventory Product**. No restore. |
+| 22 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers **fourteen** kinds: Job Card, Fleet / Spare-Shop / Supplier payments, Restock Bill, Cashbook Entry, Inventory Product, Salary Advance, Salary settlement, Unassigned Spare, Owner Withdrawal, Rent Deposit, Rent Rate and Master Data. No restore. |
 | 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
 | 24 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
 | 25 | **SalaryPaymentLine** | payment (FK), staff (FK→Mechanic), salary_used, leave_days, advance_used, net_amount — unique per (payment, staff) | One staff member's **frozen** figures for that month. Written once and never recalculated, so a later pay rise cannot rewrite a month already paid. |
@@ -178,9 +178,9 @@ graph LR
 
 | Decorator | Roles Allowed | Used On |
 |-----------|---------------|---------|
-| `@staff_required` | Floor + Office + Owner | Dashboard, Job Create/Edit, Autocomplete, `concern_edit`, the Unassigned Spares Hub (add-only for Floor), the photo endpoints, and **five inventory routes only** — `inventory_home`, `inventory_list`, `inventory_low_stock`, `consumption_history`, `inventory_history_mechanic` |
-| `@office_required` | Office + Owner | Job List, Job Detail (read-only), Job Delete, **Live Report** (whole page), Completed, Invoices, Estimates, Master Lists (except `concern_edit`), Car Profiles, Cleanup, Cashbook, Pending Payments, Spare Shops (non-destructive), Bulk Payer create/detail/pay, **inventory categories** (manage / add / edit / delete / detail) and **the entire Supplier-Shops module** (bills, payments, catalog) |
-| `@owner_required` | Owner only | Paid Bills (Office gets a 7-day window), Audits (high-discount), **Deletion History** (read-only), Owner Analysis, **the whole Control Hub `/manage/`** (accounts, staff roster, sessions), salary-settlement delete |
+| `@staff_required` | Floor + Office + Owner | Dashboard, Job Create/Edit, Autocomplete, the known-plate lookup (`/api/known-car/`, whose answer leaves the customer out for Floor), `concern_edit`, the Unassigned Spares Hub (add-only for Floor), the photo endpoints, and **five inventory routes only** — `inventory_home`, `inventory_list`, `inventory_low_stock`, `consumption_history`, `inventory_history_mechanic` |
+| `@office_required` | Office + Owner | Job List, Job Detail (read-only), Job Delete, **Live Report** (whole page), Completed, Invoices, Estimates, Master Lists (except `concern_edit`), Car Profiles, Cleanup, Cashbook, Pending Payments, **Paid Bills** (Office sees the last 7 days, enforced in the view), Deposit & Rent (recording deposits), Salary & Advance (except deleting a settlement), Spare Shops, Bulk Payer create/detail/pay, **inventory categories** (manage / add / edit / delete / detail) and **the entire Supplier-Shops module** (bills, payments, catalog) |
+| `@owner_required` | Owner only | Audits (high-discount), **Deletion History** (read-only), Owner Analysis, **the whole Control Hub `/manage/`** (accounts, staff roster, sessions), salary-settlement delete, **setting or deleting the rent rate**, **Owner Withdrawals**, the notification feed and Web Push, and `/about/`. *(Paid Bills was listed here with "Office gets a 7-day window" until 2026-09-15; the view is `@office_required` and the window is the view's own rule.)* |
 
 > Deletion/deactivation actions (job-card delete, Fleet/Shop/Supplier payment delete, shop deactivate/reactivate) are **`@office_required`** (Owner + Office) — Office fixes its own entry mistakes, with the guard + Owner-only Deletion History providing the safety net. Only *reading* the Deletion History is Owner-only. **Login accounts and the staff roster are the exception: those live in Control Hub and are Owner-only.**
 
@@ -206,7 +206,7 @@ Superusers pass every check regardless of group membership. For the human-readab
 
 ```
 Any event → workshop/notifications.py :: notify(event, body, actor=…)
-              ├─→ resolve audience (Owner group, minus the actor)
+              ├─→ resolve audience (every owner — superuser or Owner group — minus the actor)
               └─→ one Notification row per recipient
                     └─→ nav bell → /notifications/
 ```
@@ -504,10 +504,11 @@ overdraw (see CLAUDE.md → Deliberate decisions).
 5. **Job card soft-deleted** → Return all its spares' stock to the warehouse *(dormant — job cards are hard-deleted now, so `is_deleted` never flips; kept for safety)*
 6. **Job card restored** → Deduct that stock again *(dormant, same reason)*
 
-**Group 3 — Supplier Restock (`SupplierRestockItem`, 3 handlers):**
+**Group 3 — Supplier Restock (5 handlers: 3 on `SupplierRestockItem`, a pre/post_save pair on `SupplierRestockBill`):**
 7. **New restock item created** → Increase stock by full qty
 8. **Restock qty changed** → Adjust stock by delta
 9. **Restock item/bill deleted** → Reverse stock increase
+10. **A bill's date or discount changed** → Re-cost that bill's lines, since neither lives on a line
 
 ---
 
@@ -650,7 +651,7 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 | `create_user_groups` | `apps.py` | Auto-creates Owner/Office/Floor groups on migrate |
 | `inventory.signals` | `signals.py` | Auto stock sync — **10 handlers in 3 groups**: 3 for `JobCardSpareItem` (consumption, `source='INVENTORY'` only) + 2 for `JobCard` (soft-delete stock reversal, **dormant**) + 5 for supplier restocking — 3 on `SupplierRestockItem` (stock, and the only mover of `Item.avg_cost`) and a `SupplierRestockBill` pre/post_save pair that re-costs when `bill_date` or `discount_amount` changes. Never clamps stock at zero |
 | `inventory.costing` | `costing.py` | Weighted-average warehouse cost. Pure functions over a date-ordered replay of receipts and draws; holds no view logic and never touches `current_stock`. Receipts move the average, draws do not |
-| Management Commands | `management/commands/` | The ones worth knowing (the demo seeders are deliberately undocumented): `setup_groups` (creates the three RBAC groups; no migration does), `backup_db` (follows the active engine — `pg_dump` for Postgres, file copy for SQLite, keeps 14), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address), `load_master_data` (brands/models/spares), `seed_dummy_data` + `seed_salary_data` (demo data), `purge_business_data` (clears every business table — including the owner withdrawals and the rent ledger, which it silently missed until 2026-09-04; the reversal of seeding, and the thing to run against production before go-live), `copy_sqlite_to_postgres` (seed on SQLite, push up), **`sweep_photo_blobs`** (storage objects whose rows are gone) and **`purge_old_photos`** (the 1-year retention sweep, which always skips an unpaid bill). The last two are dry-run by default, like the other destructive ones |
+| Management Commands | `management/commands/` | The ones worth knowing (the demo seeders are deliberately undocumented): `setup_groups` (puts the three RBAC groups back on a database that lost them — `migrate` already creates them through the `post_migrate` hook in `apps.py`), `backup_db` (follows the active engine — `pg_dump` for Postgres, file copy for SQLite, keeps 14), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address), `load_master_data` (brands/models/spares), `seed_dummy_data` + `seed_salary_data` (demo data — they, `seed_meeting_data` and the two undocumented demo seeders refuse to run unless `DJANGO_ENV=development`, through `commands/_dev_only.py`), `purge_business_data` (clears every business table — including the owner withdrawals and the rent ledger, which it silently missed until 2026-09-04; the reversal of seeding, and the thing to run against production before go-live), `copy_sqlite_to_postgres` (seed on SQLite, push up), **`sweep_photo_blobs`** (storage objects whose rows are gone) and **`purge_old_photos`** (the 1-year retention sweep, which always skips an unpaid bill). The last two are dry-run by default, like the other destructive ones |
 | Custom template filters | `templatetags/custom_filters.py` | **16 filters** — `has_group`, `is_drawer_section` (drives the nav's Manage highlight from one prefix list), `is_tomorrow`, `divide`, `multiply`, `clean_qty`/`qty`, `gt`, `get_range`, `abs_value`, `short_ago` (the feed's compact age — `now` / `12m` / `5h` / `3d` / `17 Aug`, nothing over six characters, because it shares a flex line with the headline), `notification_glyph` (shape is identity, colour is severity; answers an unknown key with a neutral default, since a row is kept a fortnight and `event` is plain text), and the four rupee formatters — `inr` (whole rupees, Indian grouping), `inr_amount` (paise only when there are any), `inr_exact` (paise always, for the printed invoice's money columns), `inr_compact` (`45.2L` / `4.57Cr`, for hero figures on a phone) |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV`, raises `ImproperlyConfigured` if unset |
 | `WhiteNoiseMiddleware` | `settings/base.py` | Serves static assets directly from the application, in **both** environments — it moved out of `production.py` when every third-party asset was vendored, so development renders against the same manifest that ships. Sits directly under `SecurityMiddleware` and above `GZipMiddleware` |
@@ -670,7 +671,7 @@ produced so far:
 | **`.pg-back`** | `static/css/style.css` | One back control on 23 templates, in its own row above the page header, **naming its destination** rather than calling `history.back()` — `start_url` is `/`, so on the first tap of a session a history button does nothing at all. It replaced 17 controls in 7 treatments across 2 placements. The three standalone print sheets cannot use it (they link no stylesheet) and copy the invoice's toolbar instead |
 | **`.wcf-*`** | `static/css/style.css` + `includes/_confirm_dialog.html` + `static/js/confirm.js` | The one question card, included once by `base.html`. It replaced **21 native browser dialogs** — 16 `confirm()`, 4 `alert()`, 1 `prompt()` — which opened with "127.0.0.1:8000 says" and could carry no glyph, colour or field. Two ways in: `data-confirm` on a `<form>` for the plain post-and-go sites (delegated on `document`, so it works on a row that arrived by AJAX) and `wsConfirm(opts)` returning a Promise where the question depends on what was just typed. A variant is **two custom properties**, never a second copy of the card. Two native calls survive, both deliberate fallbacks |
 | **One press, one post** | `static/js/confirm.js` + `static/css/style.css` | A form already on its way refuses the second submit: `data-ws-busy` on the form is the refusal and one CSS rule greys its buttons to say so. It is `pointer-events`, never `disabled` — a disabled control is dropped from the payload, and paint cannot change what is posted. The latch is set in a `setTimeout` and only if nothing refused the submit, because the Cashbook's steer cancels a submit and re-issues it. `HTMLFormElement.prototype.submit` is wrapped for the nine callers that post programmatically, since a programmatic `.submit()` fires no submit event and so was outside the rule entirely |
-| **Dialog centring** | `static/css/style.css` | Bootstrap gives `.modal-dialog` `margin-left/right: auto` only from 576px up, so every dialog carrying its own `max-width` — all twenty of this app's do — sat pinned left on a phone by however much the screen is wider than the box. One media query, not a margin added to twenty dialogs, so a dialog added later is centred with nothing to remember. `modal-dialog-centered` does not help: it centres vertically, and every one of them already had it |
+| **Dialog centring** | `static/css/style.css` | Bootstrap gives `.modal-dialog` `margin-left/right: auto` only from 576px up, so every dialog carrying its own `max-width` — 18 of this app's 37 — sat pinned left on a phone by however much the screen is wider than the box. One media query, not a margin added to each dialog, so a dialog added later is centred with nothing to remember. It sets the width too, so the 19 with no cap of their own keep a gap either side instead of going edge to edge. `modal-dialog-centered` does not help: it centres vertically, and every one of them already had it |
 
 ⚠ **Nothing in the Django suite executes a line of this CSS or JavaScript**, so every
 one of these is guarded by a markup or source assertion — `test_confirmation_card.py`,
@@ -685,16 +686,18 @@ whether or not any of it works.
 graph TB
     BROWSER["🌐 Browser"] --> MW["Middleware Stack"]
     MW --> AUTH_CHECK{"Authenticated?"}
-    AUTH_CHECK -->|No| LOGIN["Login / Admin Login"]
+    AUTH_CHECK -->|No| LOGIN["Login — one door for every role"]
     AUTH_CHECK -->|Yes| SESSION_TRACK["SessionTrackingMiddleware → UserSession"]
     SESSION_TRACK --> RBAC{"Role Check (Decorator)"}
 
     RBAC -->|Floor+| DASH["Dashboard (home)"]
     RBAC -->|Floor+| JC_CREATE["Job Card Create"]
     RBAC -->|Floor+| JC_EDIT["Job Card Edit"]
-    RBAC -->|Floor+| LIVE["Live Report"]
-    RBAC -->|Floor+| API["Autocomplete APIs"]
-    RBAC -->|Floor+| INV_RESTOCK["Inventory Restock"]
+    RBAC -->|Floor+| API["Autocomplete + known-plate APIs"]
+    RBAC -->|Floor+| INV_READ["Inventory — stock, Low Stock, Stock History (read-only)"]
+
+    RBAC -->|Office+| LIVE["Live Report"]
+    RBAC -->|Office+| INV_RESTOCK["Supplies Shops — restock bills, payments"]
 
     RBAC -->|Office+| JC_LIST["Job Card List"]
     RBAC -->|Office+| COMPLETED["Completed List"]
@@ -703,7 +706,7 @@ graph TB
     RBAC -->|Office+| SPARE_SHOPS["Spare Shop Management"]
     RBAC -->|Office+| MASTER["Master Lists (Brands/Models/Spares/Concerns)"]
     RBAC -->|Office+| CAR_PROF["Car Profiles"]
-    RBAC -->|Office+| MANAGE["Management Dashboard"]
+    RBAC -->|Owner| MANAGE["Control Hub (/manage/)"]
     RBAC -->|Office+| CLEANUP["Data Cleanup"]
     RBAC -->|Office+| INV_MANAGE["Inventory Manage"]
     RBAC -->|Office+| CASHBOOK["Cashbook"]
@@ -720,10 +723,12 @@ graph TB
 
     API -->|"brands"| CB["CarBrand"]
     API -->|"models"| CM["CarModel"]
-    API -->|"spares"| SP["SparePart + Inventory.Item"]
+    API -->|"spares"| SP["SparePart"]
+    API -->|"inventory items"| IT["Inventory.Item (by product or category)"]
+    API -->|"known plate"| KC["known_car.py"]
     API -->|"concerns"| CS["ConcernSolution"]
 
-    LOGIN -->|"Success"| ALERTS["notify('LOGIN')"]
+    LOGIN -->|"Success"| ALERTS["notify('LOGIN' or 'STAFF_LOGIN')"]
     ALERTS --> FEED["Notification feed (nav bell)"]
 
     MANAGE --> USERS["Create/Reset/Delete Login Accounts"]
@@ -738,12 +743,13 @@ graph TB
 
 ---
 
-## 11. DJANGO ADMIN REGISTRATIONS (20 Total)
+## 11. DJANGO ADMIN REGISTRATIONS (18 Total)
 
 ### Workshop Admin (10)
 
 | Model | Admin Features |
 |-------|---------------|
+| `DeletionLog` | **read-only** — list: deleted_at, entity_type, entity_label, amount, deleted_by · filter: entity_type, deleted_at · search: label, reason · no add, change or delete |
 | `UserProfile` | list: user, mobile · search: username, mobile |
 | `Mechanic` | list: name, role, active, created · filter: role, active |
 | `CarBrand` | list: name, created · exclude: logo_image |
@@ -755,6 +761,8 @@ graph TB
 | `BulkPaymentHistory` | list: bulk_payer, amount, payment_method, jobs_affected, created · filter: payment_method · search: customer_name |
 
 *Not registered in admin (managed via dedicated UI views only): `FailedAttempt`, `UserSession`, `SpareShop`, `SpareShopPayment`, `CashbookEntry`, and JobCard's child models (`JobCardConcern`/`JobCardSpareItem`/`JobCardLabourItem`, managed as JobCard inlines instead).*
+
+*Nor is anything added since: `AccountLockout`, `PasswordResetOTP`, `Notification`, `PushSubscription`, `JobCardPhoto`, `OrphanedPhotoBlob`, the three salary models, the three estimate models, `OwnerWithdrawal`, `RentRate` and `RentDeposit`. None of it is reachable in practice — no account carries `is_staff`, so `/admin/` admits nobody (see `CLAUDE.md`).*
 
 ### Inventory Admin (8)
 
@@ -835,7 +843,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (72 files · 2,480 tests)
+## 13. TEST SUITE (73 files · 2,486 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -843,7 +851,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (67 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (68 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -892,7 +900,7 @@ base classes.*
 | `test_car_profiles.py` | Car Profiles: totals aggregated in the database rather than summed from the page; the hero's money over COMPLETED visits only — Total billed (the invoices' own totals), Discount, Paid and Still owed, held to `billed − discount == paid + owed` — with a car on the floor as its own tile added to nothing; a discounted visit's row naming its own discount, and every row handing the job card its way back; the profile and the service history sheet rendered for one car and held to one figure per word; the search box held identical to Completed's; and the Owner-only gross-margin figure, cut from the same completed visits |
 | `test_floor_board.py` | What Floor may press on the board: hold and mark-completed are Floor's, undoing a completion is not (it can put a second active card on the floor for one registration) |
 | `test_jobcard_form_ux.py` | The form's own marks: an empty box hairlined unless it carries `jc-optional`, the amber unsaved-changes state, a date pair marked as one gap, an inventory quantity still marked when a spare one is not, and the blank-row DELETE flags recomputed rather than latched |
-| `test_paid_bills_rbac.py` | Paid Bills as Office-visible with a 7-day window enforced **in the view**, not by hiding the filter — `?filter=all` is one URL edit away — while the grand total and the high-discount audit stay Owner-only |
+| `test_paid_bills_rbac.py` | Paid Bills as Office-visible with a 7-day window enforced **in the view**, not by hiding the filter — `?filter=all` is one URL edit away — with no money total on the page for either role, while the high-discount audit stays Owner-only |
 | `test_settlement_preflight.py` | `workshop/settlement.py` read by both surfaces: one gap one box, the phrases derived from the chip labels, a warehouse draw never chased for a shop's fields, no labour nag on a parts-only card, and no way to settle while leaving the car on the board |
 | `test_owner_withdrawals.py` | Owner withdrawals — never an expense, cash out once |
 | `test_staff_login_alert.py` | Getting in always pushes — `STAFF_LOGIN` and `LOGIN` both CRITICAL — with the ROLE in the staff alert's `detail` so a lock-screen line says whether that account can see money, the IP deliberately off both (every device here leaves through one connection) and on all four security events, and an account named after its role still reporting that role rather than "No role" |
@@ -913,6 +921,7 @@ base classes.*
 | `test_dashboard_crew_filter.py` | The board narrowed to one mechanic. The rules pinned are the ones that would break silently: the "IN WORKSHOP" heading reading `floor_count` and never the pager (filtered, it would print "3" while ten cars are in the workshop), the counts summing to All with the unassigned group included, and a key naming no chip falling back to All rather than rendering an empty board |
 | `test_about.py` | The About page: Owner-only, **no links at all** (scoped to the page's own `<section>` blocks so `base.html`'s nav is not counted), its map the GENERATED partial rather than a pasted copy, every area the map draws described somewhere on the page, and the owner's own names for the system — WorkshopOS, Titan — appearing nowhere in its prose |
 | `test_setup_groups.py` | `setup_groups` creating the roles RBAC actually reads. It used to create `Workers` and `Admins`, two groups nothing here has ever looked at, while the runbook's checklist claimed Owner / Office / Floor and Control Hub told anyone with a missing role to run it — both remedies pointing at a command that reported success and fixed nothing. **Only reproducible on an empty database, which is exactly what go-live day is and what no development database ever is** |
+| `test_go_live_safety.py` | What keeps the live database safe from the tooling built while exploring hosts: every demo seeder refuses to run outside `DJANGO_ENV=development` and writes nothing, `DJANGO_ENV=render_demo` now refuses to start instead of booting on a SQLite file, no Render file is left in the repository, and `makemigrations --check` finds no model change missing its migration |
 
 *JavaScript: `workshop/tests/js/photos-core.test.js` runs under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. It covers the photo upload queue's failure paths and the gallery's index arithmetic. It is the only JavaScript in this repo with tests, and it adds no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
@@ -943,7 +952,7 @@ WorkshopOS (Titan)/
 │   ├── urls.py                 ← Root: admin + workshop + inventory
 │   ├── wsgi.py / asgi.py
 │
-├── workshop/                   ← Core App (136 URL routes)
+├── workshop/                   ← Core App (137 URL routes)
 │   ├── models.py               ← 33 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
@@ -994,7 +1003,7 @@ WorkshopOS (Titan)/
 │   ├── management_views.py     ← Management views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook views (standalone ledger)
 │   ├── cleanup_views.py        ← 5 Cleanup views
-│   ├── urls.py                 ← 136 URL patterns
+│   ├── urls.py                 ← 137 URL patterns
 │   ├── forms.py                ← 11 Forms + 6 Formsets (every formset extra=0)
 │   ├── decorators.py           ← 3 RBAC decorators
 │   ├── middleware.py           ← SessionTracking / NoStore / NoIndex
@@ -1002,7 +1011,7 @@ WorkshopOS (Titan)/
 │   ├── apps.py                 ← Auto-create groups on migrate
 │   ├── templatetags/
 │   │   └── custom_filters.py   ← 16 template filters (incl. inr / inr_exact / inr_compact / short_ago / notification_glyph)
-│   ├── management/commands/    ← 14 commands (12 below + two demo seeders, deliberately undocumented)
+│   ├── management/commands/    ← 14 commands (12 below + two demo seeders, deliberately undocumented) + `_dev_only.py`, the guard every demo seeder calls first
 │   │   ├── setup_groups.py     ← Creates the Owner/Office/Floor groups RBAC reads
 │   │   ├── sync_owner_identity.py ← Owner group/mobile/admin-access: .env → DB (dry run)
 │   │   ├── set_owner_email.py  ← Set an account's reset-code address (dry run by default)
@@ -1022,8 +1031,8 @@ WorkshopOS (Titan)/
 │   │                             .submit()), photos.js + photos-core.js
 │   │                             (camera / upload). notifications.js and
 │   │                             style.css live in the project-level static/
-│   ├── migrations/             ← 77 migrations
-│   └── tests/                  ← 64 test files (package) + tests/js/ (node --test)
+│   ├── migrations/             ← 78 migrations
+│   └── tests/                  ← 68 test files (67 test_*.py + tests.py) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)
@@ -1069,4 +1078,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-09)*: 2 Django Apps · **41 Models** (33 workshop + 8 inventory) · **169 URL Routes** (136 + 33, excluding Django admin; 170 under `DEBUG=True`, which adds the media path) · **118 Templates** (95 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **69 Test Files / 2,366 tests** · **85 Migrations** (77 workshop + 8 inventory)
+> **Total** *(re-measured 2026-09-15)*: 2 Django Apps · **41 Models** (33 workshop + 8 inventory) · **170 URL Routes** (137 + 33, excluding Django admin; 171 under `DEBUG=True`, which adds the media path) · **118 Templates** (95 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **73 Test Files / 2,486 tests** · **86 Migrations** (78 workshop + 8 inventory)

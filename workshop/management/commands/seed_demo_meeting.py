@@ -9,6 +9,7 @@ from decimal import Decimal
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
+from ._dev_only import refuse_outside_development
 from django.db import transaction
 from django.utils import timezone
 
@@ -23,6 +24,7 @@ class Command(BaseCommand):
     help = 'Seed demo data for the client meeting (inventory + 16 job cards)'
 
     def handle(self, *args, **options):
+        refuse_outside_development('seed_demo_meeting')
         self.stdout.write('\n=== PART 1: Resetting Inventory ===')
         created_items = self._seed_inventory()
         self.stdout.write(f'  Total: {len(created_items)} inventory products created')

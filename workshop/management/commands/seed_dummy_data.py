@@ -41,6 +41,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
+from ._dev_only import refuse_outside_development
 from django.db import transaction
 from django.utils import timezone
 from django.db.models import F, ExpressionWrapper, DecimalField, Sum
@@ -208,6 +209,7 @@ class Command(BaseCommand):
 
     # ------------------------------------------------------------------
     def handle(self, *args, **options):
+        refuse_outside_development('seed_dummy_data')
         try:
             start = date.fromisoformat(options['start'])
             end = date.fromisoformat(options['end'])

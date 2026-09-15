@@ -48,6 +48,7 @@ from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
+from ._dev_only import refuse_outside_development
 from django.db import transaction
 from django.utils import timezone
 
@@ -161,6 +162,7 @@ class Command(BaseCommand):
 
     # ------------------------------------------------------------------
     def handle(self, *args, **opts):
+        refuse_outside_development('seed_meeting_data')
         from django.db import connection
         self.today = timezone.localdate()
         self.start = self.today - timedelta(days=DAYS - 1)

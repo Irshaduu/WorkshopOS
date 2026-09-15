@@ -10,7 +10,7 @@ estimates, photos and owner analytics. Two apps — `workshop` (core business
 logic) and `inventory` (stock + supplier shops).
 
 Built for a **low-volume, high-value** workshop — appointment-driven premium
-servicing, roughly 50 cars a month, seven staff, two owners. That is why RBAC
+servicing, about 30 cars a month, six or seven staff, two owners. That is why RBAC
 needs only three tiers, and why performance work is judged against realistic
 load rather than generic "web scale" assumptions.
 
@@ -5831,7 +5831,7 @@ no view changed and no migration was needed.
 is already stronger than a required box: `DeletionLog.record()` stores who, when,
 what, how much and a full `snapshot`, and raises **`RECORD_DELETED` (CRITICAL)**,
 which pushes to both owners' phones within seconds and links straight to the
-record. In a seven-person workshop with two owners who deal with customers
+record. In a workshop of six or seven people, with two owners who deal with customers
 personally, *ask them* beats a text box that a required field turns into "a" or
 "." — and a required field people defeat is worse than an optional one, because
 the log then contains noise that looks like signal. It is the settle dialog's own
@@ -8982,8 +8982,8 @@ reason it is being shown.
 and there is no build step.** Every outside review reaches the same suggestion, so the
 reasoning is recorded here rather than re-argued.
 
-Roughly 254 KB of inline JS across 42 templates, and ~690 KB of inline CSS across 67
-of the 118 (most templates carry their own `<style>`). Eight shared JS files exist —
+Roughly 264 KB of inline JS across 42 templates, and ~723 KB of inline CSS across 67
+of the 118 (most templates carry their own `<style>`; measured 2026-09-15). Eight shared JS files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
 `photos-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
 is **used on more than one page**; what stays inline is genuinely page-specific.
@@ -9000,7 +9000,7 @@ than one page, put it here rather than pasting it a second time.
 
 The usual arguments do not apply here:
 - **There is no CSP**, so no hardening is unlocked today.
-- The largest page — the job card form — carries ~52 KB of inline script and ~62 KB of
+- The largest page — the job card form — carries ~63 KB of inline script and ~66 KB of
   inline CSS, read by four devices on one shop's LAN, so caching is a rounding error.
   It is re-sent on every navigation anyway, because `no-store` makes a signed-in page
   uncacheable; that is what `GZipMiddleware` is for, not a bundler.
@@ -9072,8 +9072,9 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 72 files, 2,480 tests. Always SQLite (see below).
-# Last full run 2026-09-15: 2,480 tests, ALL GREEN, 4,938s (82 min).
+# Full test suite — 73 files, 2,486 tests. Always SQLite (see below).
+# Last full run 2026-09-15: 2,486 tests, ALL GREEN, 4,648s (77 min).
+# (The run before it, the same day: 2,480 tests, 4,938s / 82 min.)
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
 # test files running beside it, but the two IDLE runs still differed by 27
@@ -9109,6 +9110,14 @@ python manage.py makemigrations
 python manage.py migrate
 ```
 
+**Once real books are in Railway, a migration is written for the window where the
+OLD code meets the NEW schema** — the Pre-deploy `migrate` runs before traffic
+moves. Three rules, with the reasoning and the checklist in
+`RAILWAY_OPERATIONS.md` §5.3b: a new field is **nullable or carries `db_default`**,
+never a bare `default=`; a field is **removed or renamed across two deploys**,
+never one; and a `RunPython` is **rehearsed on a restored backup** first.
+`test_go_live_safety.py` fails on a model change pushed without its migration.
+
 ## Management commands
 
 | Command | What it does |
@@ -9116,7 +9125,7 @@ python manage.py migrate
 | `backup_db` | rotated backup of whichever DB is active, keeps last 14 in `/backups` |
 | `sweep_photo_blobs` | DRY RUN — photo objects whose rows are gone (`--yes` to delete) |
 | `purge_old_photos` | DRY RUN — photos past the 1-year window (`--yes`; always skips unpaid bills) |
-| `setup_groups` | creates the Owner/Office/Floor auth groups — no migration does, and Office/Floor are created by nothing else. Safe to re-run. Part of go-live §3.1 |
+| `setup_groups` | puts the Owner/Office/Floor auth groups back on a database that has lost them. `migrate` already creates all three through a `post_migrate` hook in `workshop/apps.py` — checked 2026-09-15 on an empty database; this row said until then that nothing did. Safe to re-run. Part of go-live §3.1 |
 | `sync_owner_identity` | DRY RUN — owner group / mobile / admin-access: `.env` → DB (`--yes`) |
 | `set_owner_email <user> <email>` | DRY RUN — preview (`--yes` to apply) |
 | `load_master_data` | brands / models / spare parts — **prerequisite for seeding** |
@@ -9126,7 +9135,13 @@ python manage.py migrate
 | `purge_business_data` | DRY RUN — prints what it would delete (`--yes`) |
 | `copy_sqlite_to_postgres` | DRY RUN — prints the plan (`--yes` to replace Postgres) |
 
-⚠ **`management/commands/` holds 14 files and this table describes 12.** The two
+⚠ **`management/commands/` holds 14 commands (plus the `_dev_only.py` helper) and this table describes 12.**
+**All five demo seeders refuse to run unless `DJANGO_ENV=development`** —
+`seed_dummy_data`, `seed_meeting_data`, `seed_salary_data` and the two the table
+leaves out —
+because several have no dry run and one mistyped command in the Railway console
+would put fake money into the real books. `copy_sqlite_to_postgres` already
+refused outside development. The two
 missing are one-shot demo seeders, and they are left undocumented **on purpose**
 — seed tooling gets short code comments and nothing here, so that a demo fixture
 can never be mistaken for part of the system. The count is stated so the gap
@@ -9205,8 +9220,8 @@ real numeric types, case sensitivity, sequences — surfaces while it is cheap t
 
 **Tests always use SQLite, whatever `USE_SQLITE` says.** The runner CREATEs and DROPs a
 whole database, which is not something to point at a database holding anything you
-want. SQLite's test database is also in-memory, which is most of why a 2,000-test run
-is ~64 minutes rather than considerably worse. There is deliberately no flag to
+want. SQLite's test database is also in-memory, which is most of why a 2,480-test run
+took 82 minutes (2026-09-15) rather than considerably longer. There is deliberately no flag to
 remember and no way to run the suite against live data by accident
 (`development.py` keys off `sys.argv[1] == 'test'`).
 
@@ -9421,9 +9436,11 @@ gets fixed in one and left broken in the other.
 - **The completion field is `JobCard.completed`** (boolean) with `completed_date`, served
   at `/completed/`. Renamed from `delivered`/`discharged_date` — the whole stack uses
   `completed` now; don't reintroduce "delivered" naming.
-- **Most FKs use `CASCADE`/`SET_NULL`.** There are exactly **two**
-  `on_delete=PROTECT` in the codebase: inventory `Category → Item`, and
-  `OwnerWithdrawal.owner`. The second exists because that row's whole job is to
+- **Most FKs use `CASCADE`/`SET_NULL`.** There are exactly **three**
+  `on_delete=PROTECT` in the codebase: inventory `Category → Item`, a warehouse
+  draw's `JobCardSpareItem.item`, and `OwnerWithdrawal.owner` *(this said "two" until
+  2026-09-15 and missed the draw)*. The draw's stops a product being deleted out from
+  under the job cards that used it. The owner's exists because that row's whole job is to
   say WHICH owner took the money, so one cascaded free would be a rupee figure
   attributed to nobody. It can never fire — Control Hub refuses to delete an
   owner account — so it is a backstop, not a workflow.
@@ -9447,8 +9464,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **72 files, 2,480 tests**,
-re-counted 2026-09-15. (`workshop/tests/` is 66 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **73 files, 2,486 tests**,
+re-counted 2026-09-15. (`workshop/tests/` is 67 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 
@@ -9463,7 +9480,8 @@ python -c "import django,os,sys; os.environ.setdefault('DJANGO_SETTINGS_MODULE',
 
 Grepping `def test_` **cannot see tests inherited from shared base classes**.
 
-**Expect 20–80 minutes.** The spread is load-dependent rather than meaningful — a run at
+**Expect anything from 20 minutes to well over an hour** — the slowest measured run took
+82 minutes (2026-09-15). The spread is load-dependent rather than meaningful — a run at
 40 minutes has not hung.
 
 **Running two suites at once is safe.** SQLite's test database is in-memory by default
@@ -9650,10 +9668,12 @@ stores before describing how somebody signs in.
 `TECH_DEBT.md` says what we know is wrong. Re-verify an item before acting on it — it
 goes stale like anything else.
 
-**Product scope deliberately left out** — GST, customer-facing notifications, attendance,
+**Product scope deliberately left out** — customer-facing notifications, attendance,
 multi-mechanic assignment, general file attachments — is recorded in
 `TITAN_MASTER_HANDOVER.md` §VII. **Proposing one of those is proposing scope, not
-reporting a defect.**
+reporting a defect.** ⚠ **GST left that list on 2026-09-13**: the workshop is
+registering, so it is planned work waiting on the owners' details (GSTIN, rates,
+invoice format), not something to refuse as scope.
 
 The two operational docs state no rules of their own, so a decision recorded here or in
 the handover is never restated in either.

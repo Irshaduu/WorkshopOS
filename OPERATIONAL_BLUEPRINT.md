@@ -17,7 +17,7 @@ graph TD
     Q0["📄 (optional) Office writes an ESTIMATE — EST-26-001"] -.->|"customer agrees;<br/>re-entered by hand, nothing carries over"| B
     A["🚗 Customer Arrives with Car"] --> B["📝 Floor/Office Creates Job Card"]
     B --> C["Auto: Bill Number Generated JB-26-001"]
-    C --> D["Vehicle Details Filled — plate, make, model, chassis code, VIN"]
+    C --> D["Vehicle Details Filled — a known plate fills make, model, colour, chassis code, VIN"]
     D --> E["Customer Details Recorded"]
     E --> F["Mechanic Assigned from Roster"]
     F --> G["Concerns Listed"]
@@ -27,7 +27,7 @@ graph TD
     I -->|"Yes"| J["Stock Auto-Deducted from Inventory"]
     I -->|"No"| K["Part Ordered from Shop"]
     K --> L["Status: PENDING to ORDERED to RECEIVED"]
-    L --> J
+    L --> M
 
     J --> M["Mechanic Works on Concerns"]
     M --> N["Concern Status: PENDING to WORKING to FIXED"]
@@ -35,7 +35,7 @@ graph TD
     O --> P["Completion % Updates Automatically"]
 
     P --> Q{"All Concerns Fixed?"}
-    Q -->|"Yes"| R["Office Marks as COMPLETED"]
+    Q -->|"Yes"| R["Floor or Office Marks as COMPLETED"]
     Q -->|"No"| S["Continue Work or Put ON HOLD"]
     S --> M
 
@@ -43,7 +43,7 @@ graph TD
     T --> U["Car Moves to Completed Section"]
     U --> V["Invoice Generated"]
     V --> W["Payment Collected"]
-    W --> X["Payment Status: PENDING to PARTIAL to PAID / BULK_PAID"]
+    W --> X["Payment Status: PENDING to PAID for a walk-in, PENDING to PARTIAL to BULK_PAID for a fleet"]
     X --> Y["Job Complete"]
 ```
 
@@ -59,6 +59,8 @@ graph TD
    - View the Paid Bills Dashboard over ANY period (Office sees the last 7 days). Neither role sees a money total on it any more — the grand Total Collected was removed because it summed a fleet card's whole cumulative receipt on the day it happened to close; what replaced it is Cash Tracking on the Profit page. The row COUNT stays, since how many bills are in the list is a fact about the list
    - Set the **rent** in Deposit & Rent — what the premises cost per month, from a stated month onward. A rise agreed late can be dated back to the month it started, which re-prices those months; the other owner is told, and so is anyone reading the section. Office records the daily deposits but never decides the rent
    - Record **Owner Withdrawals** — cash taken out of the business for the owners. Owner-only end to end: Office and Floor cannot open the page or reach any of its three addresses. Not a business expense, so the profit figure never moves because of it
+   - **WhatsApp a customer from the invoice** — a small icon beside Print, on a card carrying a real mobile number. It only opens that customer's chat; the owner attaches the saved PDF and presses Send
+   - Read the **About** page — the system map, and what every section does
    - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
    - View the **Deletion History** — read-only log of every permanent deletion (no restore)
    - Monitor all active login sessions, and remotely revoke any staff access
@@ -93,7 +95,7 @@ graph TD
  FLOOR (Mechanics / Floor Manager)
    - View Dashboard (active cars on floor), including each car's live details — the same four lists (Customer Concerns, Job Performed, Inventory Items, Spare Parts) the read-only job card shows. **This is where Floor reads a card**: the Live Report and the read-only card view at `/jobcards/<pk>/` are both Office/Owner
    - Narrow that board to one mechanic from the chip row above the cards (`All 10 · Amlah 3 · Hijaz 3 · Unassigned 1`). Only names actually holding a car are listed, the counts always add up to All, and the choice rides in the URL so it survives a refresh. The "IN WORKSHOP" figure above it keeps counting the whole floor whatever is selected. **This is the only place Floor can see who is holding what** — the Live Report's own mechanic board is Office/Owner
-   - Create new Job Cards
+   - Create new Job Cards. A plate the workshop has seen before fills the make, model, colour, chassis code and VIN; Floor's form has no customer boxes, and the lookup's answer carries no customer for Floor at all
    - Edit existing Job Cards (add concerns, spares, jobs done — but no prices: every money field on the card, the Total Labour included, is Office/Owner only and is enforced on the server)
    - Use Autocomplete (search brands, models, spares, concerns)
    - View Inventory (stock levels), Low Stock, and Stock History — all **read-only** (no stock editing, no supplier-shop access)
@@ -200,9 +202,9 @@ And two things deliberately do NOT, because a bill records work that happened
 while an estimate describes work that has not:
 
 * **QTY prints only what was typed.** A blank stays blank, though it still
-  counts as 1 in the arithmetic. The bill does the opposite and prints 1 —
-  because a fitted part really was one, while an unquoted count is simply not
-  decided yet.
+  counts as 1 in the arithmetic, and a typed 1 prints — somebody chose to put
+  it in front of the customer. The bill hides a quantity of one altogether:
+  on a bill, one is the figure this workshop never writes down.
 * **UNIT PRICE prints only when a rate was entered.** It is never derived from
   the total, which would present the workshop's own arithmetic to the customer
   as a quoted rate.
@@ -338,10 +340,15 @@ TRANSFER = Bank Transfer
 ### Spare Part Pricing (Two-Price System)
 
 ```
-Shop Price (Unit Price)  = What YOU paid to the parts shop
-Customer Price (Total)   = What the CUSTOMER pays (with your markup)
-Profit per part = Customer Price - (Shop Price x Quantity)
+Shop Price      = What the parts shop BILLED for the line — a line total, copied
+                  off the shop's own bill, never multiplied by the quantity
+Customer Price  = What the CUSTOMER pays for the line (with your markup)
+Margin per line = Customer Price - Shop Price
 ```
+
+A shop row's quantity moves no money; it describes what was bought and still prints
+on the bill. A warehouse draw is the other way round: its cost is per unit — the
+shelf's average — times the quantity.
 
 ### Bulk/Fleet Payment (Cascade Algorithm)
 
@@ -377,7 +384,7 @@ If a payment fully covers every pending/partial job and money is left over, the 
 ```
 Same oldest-first cascade logic applies to shop payments.
 Lump sum distributed across unpaid items chronologically.
-Payment history is recorded; Owner can reverse any payment.
+Payment history is recorded; Office can reverse a payment within seven days of keying it, an owner any time.
 ```
 
 **Each payment is dated by the day the money moved.** The shop's collector comes at
@@ -415,8 +422,10 @@ still write one table (`JobCardSpareItem`), told apart by a stored `source`.
 **On an Inventory row, "Unit Price" is what the CUSTOMER pays per unit** — enter it
 and Customer Price fills in (× qty); or skip it, as staff usually do, and type the
 total straight in. What the part *cost* the workshop is never typed: it is taken from
-stock automatically (a weighted average of what was actually paid for it) and frozen
-onto the line, so a later price change cannot rewrite an old job's margin.
+stock automatically — a weighted average of what the shelf paid, worked out from the
+supplier bills dated before that draw. A bill dated later cannot reach back and change
+it. Only a bill back-dated to before the draw, or a correction to an earlier bill, moves
+it, because that is the workshop learning what those goods really cost.
 
 ### Taking more than the shelf says you have
 This is **allowed**, and the count may go **negative**. A job card records a part the
@@ -488,13 +497,13 @@ SUPPLIES SHOP (Inventory Supplier)
    │     Optional discount per bill
    │
    ├── Financial Ledger:
-   │     Total Billed = SUM(bill total_amount - discount_amount)
+   │     Total Billed = SUM(bill total_amount - discount_amount), each bill floored at zero
    │     Total Paid = SUM(payments where is_trashed=False)
    │     Pending Balance = Total Billed - Total Paid
    │
    ├── Payment Options:
    │     Quick payment form (amount + method + note)
-   │     Payments soft-deletable (Owner can reverse)
+   │     A payment is deleted permanently and logged (Office within seven days, an owner any time)
    │
    ├── Bill Status Tracking:
    │     Each bill shows Covered / Partial / Unpaid status
@@ -541,7 +550,8 @@ spelling the day out the moment it is back-dated. This side matters more, not le
 the collector here comes round weekly or monthly, so a bill settled at month end is
 routinely keyed the following week. That date is what the shop page's date filters
 and its printed history read. Paying a supplier never touches the Profit page — it
-settles a debt the restock bill already expensed.
+settles a debt. The cost reached the Profit page when the parts were drawn onto a car;
+the bill itself only filled the shelf.
 
 The control is a full-width field rather than the spare shop's compact calendar
 glyph, because Record Payment is its own page of stacked full-width boxes while the
@@ -558,9 +568,9 @@ Linked To:          Inventory Items (FK)        Job Card Spare Items (FK)
 Stock Effect:       Increases stock             N/A (tracked separately)
 Bill Structure:     Restock Bills + Line Items  Per-job spare items
 Payment System:     Running balance; delete     Cascade waterfall; delete
-                    reverses + logs             reverses + logs (JSON snapshot)
-Access:             Office+ (all 23 views)      Office+ for most; Owner-only
-                                                for delete/reverse/permanent-delete
+                    reverses + logs             reverses + logs
+Access:             Office+ (all 23 views)      Office+ (a money delete older than
+                                                seven days is an owner's)
 ```
 
 > **The two modules now agree, and they did not always.** Every Supplies-Shop view —
@@ -591,7 +601,9 @@ ConcernSolution: Brake noise     <->  Concern field (autocomplete)
 
 **AUTO-LEARN**: When you type a NEW spare part or concern that doesn't exist in the master list, the system AUTOMATICALLY adds it for future use (case-insensitive, whitespace-normalized).
 
-**INVENTORY PRIORITY**: When searching spares, items found in the Warehouse show FIRST (highlighted in yellow), then master list items.
+**TWO SEARCHES, ONE PER ROUTE**: the Spare Parts section suggests master-list names only. Warehouse products have their own picker in the Inventory Items section, searchable by product or by category (typing "Engine Oil" lists the products inside it), and a product is *picked*, never typed. The two used to share one list with warehouse items highlighted yellow, which was the only hint that picking that name would deduct stock.
+
+**A KNOWN PLATE**: typing a registration the workshop has seen before fills the make, model, colour, chassis code and VIN from that car's earlier visits — see §3.
 
 ---
 
@@ -602,7 +614,8 @@ SPARE SHOP (Supplier)
    ├── Name, Phone, Address
    ├── Linked Spare Items (via FK on JobCardSpareItem)
    ├── Financial Ledger:
-   │     Total Purchases = Sum(unit_price × quantity) for linked items
+   │     Total Purchases = Sum(unit_price) for linked items — a shop line's
+   │       price is the LINE TOTAL off the shop's bill; quantity moves no money
    │     Total Paid = Sum of all payments
    │     Balance = Total Purchases - Total Paid
    │
@@ -612,7 +625,7 @@ SPARE SHOP (Supplier)
    │
    ├── Payment History:
    │     Each payment is stored as a ledger record
-   │     Owner can reverse any payment
+   │     Office can reverse one within seven days, an owner any time (logged)
    │
    ├── Unassigned Spares Hub  (FLOOR can reach this one — add only):
    │     Add legacy stock/balances not linked to any job card
@@ -637,15 +650,18 @@ SPARE SHOP (Supplier)
 Registration: KL-07-AB-1234
 Chassis code: F30    VIN: WBA8E9C50GK123456    (each the latest recorded on any visit)
 
-Visit 1 (Jan 2025):  Oil change, Brake pad         Rs.4,500
-Visit 2 (Apr 2025):  AC repair, Belt replacement    Rs.8,200
-Visit 3 (Sep 2025):  Full service, Tire rotation     Rs.12,000
-Visit 4 (Feb 2026):  Engine check, Battery           Rs.6,800
-                                                --------
-                                     Total:     Rs.31,500
-                                     Visits:    4
+Total billed Rs.26,700  −  Discount Rs.1,500  =  Paid Rs.23,200  +  Still owed Rs.2,000
+(completed visits only; a car on the floor gets its own tile, added to nothing)
 
-One click: "New Visit" pre-fills all customer and vehicle details
+#4  06 Feb 2026 · Same day                          Rs.2,000   UNPAID
+#3  14 Sep 2025 · 2 days                           Rs.12,000
+                                           −Rs.1,500 DISCOUNT
+                                                Rs.10,500 PAID
+#2  03 Apr 2025 · 1 day                             Rs.8,200   PAID
+#1  11 Jan 2025 · Same day                          Rs.4,500   PAID
+
+Type this plate into a new job card and the make, model, colour and both codes
+fill in by themselves; the last customer is only offered.
 ```
 
 ### 8B. THE TWO DOCUMENTS A PROFILE HANDS OVER
@@ -790,26 +806,24 @@ the next print starts from the full record.
 ## 9. SECURITY — COMPLETE PROTECTION CHAIN
 
 ```
-SOMEONE TRIES TO LOGIN
+SOMEONE TRIES TO SIGN IN — at /login/, the one door for every role
         |
         v
- IP LOCKOUT CHECK
- 5+ failed attempts within 15 min? --> BLOCKED
+ LOCKOUT CHECKS
+ This ACCOUNT: 5 failures --> locked 15 minutes (an owner can lift a staff lock)
+ This NETWORK: 20 failures --> blocked (a backstop; every workshop device shares it)
         |
         | Passed
         v
  AUTHENTICATE
- Username + Password (or Mobile + Password for Owners)
+ Office / Floor: username + password
+ Owner: EMAIL ADDRESS + password — never a username or a mobile number
         |
         | Success
         v
- ROLE CHECK
- Staff portal blocks Owners (privacy)
- Owner portal blocks Staff (security)
-        |
-        | Correct portal
-        v
  SESSION CREATED
+ (what each role may open is decided per page by the RBAC decorators;
+  a signed-in user without the role gets 403, not a sign-in form)
  Track: Device, IP, Browser, Last Activity
  (updates on every request via SessionTrackingMiddleware)
         |
@@ -898,7 +912,9 @@ ACCOUNTS (Spare Shops, Fleet Accounts, Supplier Shops, Mechanics)
     (Never hard-deleted — that would CASCADE-destroy their ledgers.)
 
 TRANSACTIONS & RECORDS (Job Cards, Fleet/Shop/Supplier payments,
-                        Restock bills, Cashbook entries)
+                        Restock bills, Cashbook entries, salary advances
+                        and settlements, owner withdrawals, rent deposits
+                        and rates, unassigned spares, master-list entries)
   → DELETE (permanent). Every delete first snapshots the record to the
     Owner-only DeletionLog, then hard-deletes. Financial deletes reverse
     their effect (restore balances/stock) first, atomically.
@@ -908,7 +924,8 @@ TRANSACTIONS & RECORDS (Job Cards, Fleet/Shop/Supplier payments,
 
 DELETION HISTORY (/deletion-history/) — Owner only, READ-ONLY
   - One unified list of all deletions, filterable by type, click to read the snapshot.
-  - Also mirrored read-only in Django Admin (DeletionLog).
+  - Also registered read-only in Django Admin — which nobody can enter, since no
+    account carries is_staff (see CLAUDE.md).
 
 HOW OLD A RECORD MAY BE — Office corrects, an owner takes anything older
   Six money deletes are Office's: a fleet payment, a spare-shop payment, a
@@ -928,7 +945,7 @@ EVERY REASON BOX IS OPTIONAL, AND THAT IS DELIBERATE
   All the logged deletes take a free-text reason and none requires it. The
   compensating control is already stronger: the log stores who, when, what, how
   much and a full snapshot, and raises a CRITICAL alert to both owners' phones
-  within seconds. In a seven-person workshop with two owners who deal with
+  within seconds. In a workshop of six or seven, with two owners who deal with
   customers personally, ASKING them beats a required box that people defeat
   with "a" or "." — a log full of noise that looks like signal is worse than
   one with blanks in it.
@@ -961,7 +978,7 @@ What that changes for the people using it:
   a slow connection the same control was tapped again and again and every tap
   was another POST — a shop payment deleted twice, an advance deleted twice.
 - **Every dialog is centred on a phone.** Bootstrap centres one only from 576px
-  up, so each of the twenty carrying its own width sat pinned left by however
+  up, so each of the 18 carrying its own width sat pinned left by however
   much the screen is wider than the box — 4px out at 360px and 56px out at
   412px, the width most of the workshop's handsets report.
 
@@ -985,7 +1002,7 @@ JOB LIST (Office / Owner)
   Searchable, Paginated (45 per page), AJAX live search
 
 LIVE REPORT — Office / Owner only, WHOLE PAGE
-  Shows: The live state of the workshop, read on a phone. Two stacked parts.
+  Shows: The live state of the workshop, read on a phone, as one operations board.
          Floor gets none of it: every box on the page is supplier names,
          ordering state or a money-side gap, none of which Floor is shown
          anywhere else. Floor reads a card from the dashboard car card's own
@@ -1056,21 +1073,11 @@ LIVE REPORT — Office / Owner only, WHOLE PAGE
                     first screen, so the two lists that are *scanned* sat below
                     the one that is *read*.
 
-  Live Jobs
-    The detailed card per active car: make, model, registration, the mechanic
-    on it, how long it has been in, whether it is on hold, and progress across
-    the customer's concerns — then FOUR sections, in the order the work
-    happens:
-       CUSTOMER CONCERNS  what the customer complained of, each with its state
-       JOB PERFORMED      what was done (descriptions only; no money here)
-       INVENTORY ITEMS    parts drawn off our own shelf
-       SPARE PARTS        parts bought in, each with its ordering state
-    Each section shows ten rows and then counts the remainder; an empty
-    section is left out. The STATUS badge leads the row in the two sections
-    that have one, so the states read as a single column.
-
-  Search + status filter narrow Live Jobs only; the board always reports the
-  whole workshop.
+  There is no "Live Jobs" list here any more: the home page's car cards, and
+  the live details that open inside them, do that job and are where Floor
+  already works. The page ignores every query parameter — it answers "what is
+  the state of the workshop right now", and a half-filtered answer to that is
+  worse than none.
   Rules in: workshop/views/dashboard.py — see CLAUDE.md "Deliberate decisions"
 
 COMPLETED LIST
@@ -1082,7 +1089,7 @@ COMPLETED LIST
          is `-id`, never `-updated_at`: that is `auto_now` and would jump an old
          card to the top of today the moment it was edited for an unrelated
          reason, the same defect `paid_date` exists to keep off Paid Bills.
-  Filters: Today / Week / Month / Year / Custom range / All
+  Filters: the standard set in §13 — Today through Last Year, plus a custom range
   Actions: Undo completion, View invoice
 
 INVOICE (Office / Owner)
@@ -1096,7 +1103,9 @@ INVOICE (Office / Owner)
             ("Engine Oil"), never the branded product ("Castrol Edge 5W-30").
             The unit price shown is always the customer total ÷ quantity — the
             workshop's own cost never appears on the bill.
-  Quantity: a blank QTY means one, and prints as 1.
+  Quantity: a blank QTY counts as one. A row of one prints NEITHER a quantity nor
+            a unit price — the unit price IS the amount — while a row of more
+            than one prints both, and they multiply back to the amount.
   Actions:  Print / Save PDF, Settle Bill (non-fleet only), Edit Job. All three
             are screen-only and sit outside the sheet, so nothing but the bill
             reaches paper. A fleet-billed job shows no Settle control at all —
@@ -1162,7 +1171,7 @@ PAID BILLS (Office and Owner)
          on `paid_date` — never `updated_at`, which is `auto_now` and would
          resurface an old paid bill under "Today" the moment somebody edited it
          for an unrelated reason.
-  Filters: Time ranges (Today, 1 Week, 1 Month, 1 Year, Custom) and Payment Methods
+  Filters: the standard time ranges in §13, and Payment Methods
   Access: Office sees it with a **7-day window enforced in the view**, not by
          hiding the filter — `?filter=all` is one URL edit away. Office settles
          bills, so it needs to look one up.
@@ -1328,8 +1337,12 @@ DELETION HISTORY (Owner only, read-only)
    If you are looking for that, it is gone on purpose — see §11.)
 
 CAR PROFILES
-  Shows: Unique vehicles grouped by registration
-  Drill-down: Full visit history with chronological numbering
+  Shows: One card per registration, the car with the most recent activity —
+         admitted, completed or settled — first. The search finds a car by its
+         plate, make, model, customer, chassis code or VIN.
+  Drill-down: Every visit, newest first, and the money as one equation over
+         completed visits: Total billed − Discount = Paid + Still owed. It also
+         opens the two customer documents in §8B.
 
 INVENTORY
   Stock list: All stock levels with health bars (Floor+, read-only)
@@ -1411,6 +1424,9 @@ graph TD
         SS["SPARE SHOPS<br/>(Workshop App: Local Purchases)"]:::finance
         SUP["SUPPLIER SHOPS<br/>(Inventory App: Bulk Restock)"]:::finance
         CB["CASHBOOK<br/>(Daily Expense/Income Ledger)"]:::finance
+        SAL["SALARY & ADVANCE<br/>(Wages, by salary month)"]:::finance
+        RENT["DEPOSIT & RENT<br/>(Rate = cost · Deposits = cash)"]:::finance
+        WD["OWNER WITHDRAWALS<br/>(Cash out, never an expense)"]:::finance
     end
 
     subgraph SECURITY ["🛡️ Security & Access Control"]
@@ -1449,10 +1465,16 @@ graph TD
     SS -->|"Feeds Vendor Data"| ANALYTICS
     SUP -->|"Feeds Supplier Data"| ANALYTICS
     CB -->|"Feeds Cashflow"| ANALYTICS
+    SAL -->|"Feeds Wage Cost"| ANALYTICS
+    RENT -->|"Feeds Rent Cost + Cash Out"| ANALYTICS
+    WD -->|"Feeds Cash Out only"| ANALYTICS
 
     %% 7. Security
     STAFF -->|"Protected By"| SYS
     SYS -->|"Guards System Access"| JC
+
+    %% 8. A known plate
+    CAR -->|"Known Plate Fills the Car"| JC
 
     linkStyle 0 stroke:#10b981,stroke-width:2px;
     linkStyle 1 stroke:#8b5cf6,stroke-width:2px;
@@ -1474,8 +1496,12 @@ graph TD
     linkStyle 17 stroke:#db2777,stroke-width:2px;
     linkStyle 18 stroke:#db2777,stroke-width:2px;
     linkStyle 19 stroke:#db2777,stroke-width:2px;
-    linkStyle 20 stroke:#ef4444,stroke-width:2px;
-    linkStyle 21 stroke:#ef4444,stroke-width:2px;
+    linkStyle 20 stroke:#db2777,stroke-width:2px;
+    linkStyle 21 stroke:#db2777,stroke-width:2px;
+    linkStyle 22 stroke:#db2777,stroke-width:2px;
+    linkStyle 23 stroke:#ef4444,stroke-width:2px;
+    linkStyle 24 stroke:#ef4444,stroke-width:2px;
+    linkStyle 25 stroke:#8b5cf6,stroke-width:2px;
 ```
 
 ---

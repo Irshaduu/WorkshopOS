@@ -29,6 +29,7 @@ from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.management.base import BaseCommand, CommandError
+from ._dev_only import refuse_outside_development
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -79,6 +80,7 @@ class Command(BaseCommand):
         parser.add_argument('--seed', type=int, default=2026, help="Random seed for reproducible output")
 
     def handle(self, *args, **options):
+        refuse_outside_development('seed_salary_data')
         random.seed(options['seed'])
         years = options['years']
         if years < 1:

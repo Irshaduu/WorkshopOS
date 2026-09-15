@@ -24,6 +24,9 @@ payroll, evidence photos and owner analytics, in one Django application.
 - Autocomplete for brands, models, spares and concerns, learning new entries as they
   are typed and matching case-insensitively.
 - One active job card per registration number at a time.
+- An optional chassis code and VIN on every card and estimate. Type a number plate the
+  workshop has seen before and the make, model, colour and both codes fill in by
+  themselves; the last customer is only offered, never filled, because cars change hands.
 - A settled card locks; changing one takes an explicit unlock, and the bill is
   reconciled afterwards.
 
@@ -85,6 +88,8 @@ payroll, evidence photos and owner analytics, in one Django application.
 - **Every bill for one car as a single PDF**, one per page. It renders through the same
   template and the same arithmetic as the single invoice, so a customer holding both
   cannot find them differing.
+- A WhatsApp button on the bill, for the owners, that opens the customer's chat. The
+  owner attaches the saved PDF and presses Send; the application sends nothing itself.
 - Warehouse parts are billed under their category rather than the branded product, so
   a customer's bill does not name the workshop's suppliers.
 
@@ -218,9 +223,10 @@ WorkshopOS/
 python manage.py test workshop inventory
 ```
 
-2,417 tests covering the financial rules, access control, stock signals, the printed
+2,486 tests covering the financial rules, access control, stock signals, the printed
 documents, and the supplier, fleet and salary flows. The suite runs on SQLite, so it
-never touches a live database. A full run takes 20 to 80 minutes.
+never touches a live database. A full run takes anything from 20 minutes to well over an
+hour; the most recent one took 82.
 
 JavaScript tests run separately, on Node's built-in runner:
 
