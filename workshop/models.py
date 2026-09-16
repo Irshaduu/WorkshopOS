@@ -1377,6 +1377,16 @@ class JobCardSpareItem(models.Model):
         if self.spare_part_name:
             self.spare_part_name = self.spare_part_name.strip()
 
+        # What this row was BEFORE this save — its shop (both ledgers need
+        # refreshing when that changes, below) and its product (a draw corrected
+        # to a different product needs that product's cost, next). One query for
+        # both, and none at all for a row that does not exist yet.
+        previous = None
+        if self.pk:
+            previous = (JobCardSpareItem.objects
+                        .filter(pk=self.pk)
+                        .values('shop_id', 'item_id').first())
+
         if self.source == self.SOURCE_INVENTORY and self.item_id:
             # Read the product straight from the database rather than through
             # `self.item`. `recompute_average_cost` writes avg_cost with
@@ -1391,8 +1401,13 @@ class JobCardSpareItem(models.Model):
                 # part by a name the warehouse no longer knows.
                 if not self.spare_part_name:
                     self.spare_part_name = product['name']
-                # Snapshot the warehouse cost once, at draw time. Never recomputed:
-                # a price change next month must not rewrite last month's margin.
+                # Take the warehouse cost from the product when the draw is made.
+                # This is only the STARTING figure: `inventory/costing.py`'s
+                # date-ordered replay rewrites it whenever a restock bill for the
+                # product is entered, edited or backdated, so a draw ends up priced
+                # by the receipts that precede its own date. (This comment used to
+                # say "never recomputed", which stopped being true when the replay
+                # started re-deriving draw costs.)
                 #
                 # A zero average means the cost is genuinely UNKNOWN, not free —
                 # opening stock counted onto the shelf before any supplier bill
@@ -1401,10 +1416,20 @@ class JobCardSpareItem(models.Model):
                 # `unit_price` NULL keeps "nobody knows" distinguishable from
                 # "it cost nothing", and analysis_engine counts such draws so they
                 # can be seen instead of silently understating cost.
-                if self.pk is None and self.unit_price is None:
+                #
+                # A draw CORRECTED to a different product (the mechanic picked the
+                # wrong oil) is costed as if it were new. It used to keep the FIRST
+                # product's cost, because the snapshot only ran on create and no
+                # replay runs on a job-card save — so the Profit page charged the
+                # wrong oil's price until the right oil's next supplier bill, and
+                # the job card's Cost / Unit column and markup badge read against
+                # it. An unknown cost clears to NULL here rather than keeping the
+                # old figure: the old figure belongs to a product this row no
+                # longer draws.
+                swapped = previous is not None and previous['item_id'] != self.item_id
+                if (self.pk is None and self.unit_price is None) or swapped:
                     avg = product['avg_cost']
-                    if avg and avg > 0:
-                        self.unit_price = avg
+                    self.unit_price = avg if (avg and avg > 0) else None
 
         # A rate that was deliberately entered is authoritative over the typed
         # total, so editing 7 L down to 4 L recomputes the bill instead of
@@ -1418,11 +1443,7 @@ class JobCardSpareItem(models.Model):
         # owns, so ₹1,000 spent showed as ₹1,000 owed to A *and* ₹1,000 owed to B.
         # It never self-corrected, and clearing the dropdown stranded the debt on a
         # shop with no matching row at all.
-        previous_shop_id = None
-        if self.pk:
-            previous_shop_id = (JobCardSpareItem.objects
-                                .filter(pk=self.pk)
-                                .values_list('shop_id', flat=True).first())
+        previous_shop_id = previous['shop_id'] if previous else None
 
         super().save(*args, **kwargs)
         if self.job_card:

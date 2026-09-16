@@ -334,7 +334,10 @@ class AWarehouseDrawIsNotChasedTests(PreflightBase):
         drawn = unfilled(card).inventory
         self.assertEqual(len(drawn), 1)
         self.assertEqual(drawn[0].name, 'Liqui Moly 5W-30')
-        self.assertEqual(drawn[0].tags, ('Customer Price',))
+        # Named "Total Price" — the Inventory section's own column heading
+        # since 2026-09-16. A spare's gap keeps "Customer Price", its column.
+        self.assertEqual(drawn[0].tags, ('Total Price',))
+        self.assertEqual(drawn[0].missing, 'no total price')
 
     def test_a_priced_draw_is_not_reported_at_all(self):
         self.assertFalse(unfilled(self.draw_card(status='PENDING')))

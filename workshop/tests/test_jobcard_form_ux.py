@@ -1255,8 +1255,7 @@ class AnEmptyBoxWearsAHairlineTests(JobCardFormBase):
         paint inside the box the browser has already laid out, so a marked
         control is exactly the same size as an unmarked one. A border WIDTH or a
         margin here would shift every row as you typed — the form is a table on
-        a tablet, and that is the trap `.inventory-stock-hint` already exists to
-        avoid.
+        a tablet, where a row that moves moves the box a finger is heading for.
         """
         source = self.source()
         rule = source.split('.jc-empty,', 1)[1].split('}', 1)[0]
@@ -1710,8 +1709,8 @@ class BothPriceBoxesAreLineTotalsTests(JobCardFormBase):
         Absolutely positioned inside their boxes, so a row cannot change height
         as a quantity is typed. This table is worked on the Floor tablet, where
         anything that moves a row moves the box a finger is already heading
-        for — the reason `.inventory-stock-hint` reserves its space rather than
-        appearing. Measured at 2, 0.5, 1, blank and 3: row 60.7px, page 1972px,
+        for, and this mark changes on every keystroke of the Qty box.
+        Measured at 2, 0.5, 1, blank and 3: row 60.7px, page 1972px,
         identical throughout, with both marks appearing together.
         """
         self.assertIn('position: absolute', self.css_rule('.jc-total'))

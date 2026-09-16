@@ -78,6 +78,36 @@ PRICE_FIELDS = ('unit_price', 'total_price', 'customer_rate')
 OFFICE_ONLY_CARD_FIELDS = ('customer_name', 'customer_contact')
 
 
+def _pricing_context(request, jobcard):
+    """
+    What the job card's price suggestions need in the browser — or None.
+
+    **None for Floor**, and the template draws no cost, no markup badge and no
+    config at all when it is None. Floor is shown no price anywhere, and a
+    markup badge would give the cost away. The gate is `is_office_or_owner`,
+    the same test `_floor_locked_data` pins prices with, so the screen and the
+    lock cannot disagree about who sets a price.
+
+    It carries NUMBERS AND ONE PERMISSION, never a price. The suggestion is
+    worked out in the browser and reaches the database only when a person saves
+    it — see `workshop/pricing.py` for why the server holds no copy.
+
+    `fill` is False on a SETTLED card (Paid or Fleet Paid), even after the
+    Financial Lock is released. Unlocking exists to correct a settled card, and
+    a price filled in there would change a bill the customer has already paid —
+    so on those cards the badges still read, and nothing is ever filled.
+    """
+    if not is_office_or_owner(request.user):
+        return None
+    from .. import pricing
+    settled = jobcard is not None and jobcard.payment_status in ('PAID', 'BULK_PAID')
+    return {
+        'spare_markup': pricing.DEFAULT_MARKUP_PERCENT,
+        'low_markup': pricing.LOW_MARKUP_PERCENT,
+        'fill': not settled,
+    }
+
+
 def _row_where(section_name, row_form, position):
     """
     How one failing row is named at the top of the page.
@@ -265,6 +295,9 @@ def _form_context(request, *, form, concern_formset, spare_formset,
         # template asking the question its own way is how a hidden box and an
         # unprotected field come to disagree.
         'can_see_customer': is_office_or_owner(request.user),
+        # Suggested prices and markup badges — None for Floor. See
+        # `_pricing_context`.
+        'pricing': _pricing_context(request, jobcard),
         'next_url': request.GET.get('next'),
         'spare_shops': _shop_options(jobcard),
         **_photo_context(jobcard),

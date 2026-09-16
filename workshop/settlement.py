@@ -32,7 +32,9 @@ from the supplier bills, and its `status` column is meaningless. Chasing a draw
 for a received date would report a problem that cannot exist and cannot be
 fixed, which is how a checklist teaches people to click past it. The one check
 spanning both routes is the customer price, because that is the figure that
-bills whichever shelf the part came off.
+bills whichever shelf the part came off. It is one check under two NAMES — "no
+customer price" on a spare, "no total price" on a draw — because each section's
+column is headed that way.
 """
 
 from dataclasses import dataclass
@@ -60,6 +62,14 @@ SHOP = 'Shop'
 DATES = 'Dates'
 SHOP_PRICE = 'Shop Price'
 CUSTOMER_PRICE = 'Customer Price'
+#: The same missing figure on an INVENTORY row, named the way that section's
+#: column is. The job card calls it "Total Price" there (2026-09-16, the owners'
+#: decision): three money columns sit side by side — Cost / Unit, Unit Price and
+#: this one — and "Customer Price" beside "Unit Price" did not say which was the
+#: other times the quantity. Spare Parts keeps "Customer Price", because there it
+#: sits beside Shop Price and both are line totals. Two words for two screens,
+#: each matching the heading above the box somebody is sent to fill.
+TOTAL_PRICE = 'Total Price'
 
 #: The same gap said as a PHRASE, and the phrase is what both screens now print.
 #:
@@ -83,6 +93,7 @@ MISSING = {
     DATES: 'no dates',
     SHOP_PRICE: 'no shop price',
     CUSTOMER_PRICE: 'no customer price',
+    TOTAL_PRICE: 'no total price',
 }
 
 #: A concern has exactly one thing wrong with it and this is it.
@@ -148,7 +159,7 @@ class Unfilled:
     """
     card: tuple = ()          # MILEAGE / MECHANIC / JOB_AMOUNT
     concerns: tuple = ()      # ConcernGap
-    inventory: tuple = ()     # PartGap — customer price only, see the module docstring
+    inventory: tuple = ()     # PartGap — the total price only, see the module docstring
     spares: tuple = ()        # PartGap
 
     def __bool__(self):
@@ -173,7 +184,7 @@ class Unfilled:
         A spare missing a shop, both dates and both prices is four problems, not
         one, and the headline number is what tells an owner whether this is a
         typo or a card nobody filled in at all. Inventory rows carry exactly one
-        chip each (the customer price), so counting them by row is the same
+        chip each (the total price), so counting them by row is the same
         number either way.
         """
         return (
@@ -231,9 +242,10 @@ def unfilled(jobcard):
 
         if spare.source == JobCardSpareItem.SOURCE_INVENTORY:
             # A draw has no shop, no order and no arrival. Only the figure that
-            # bills the customer is chased.
+            # bills the customer is chased — named TOTAL_PRICE, the word on the
+            # Inventory section's own column, so the phrase names the box.
             if spare.total_price is None:
-                inventory.append(PartGap(name=name, tags=(CUSTOMER_PRICE,)))
+                inventory.append(PartGap(name=name, tags=(TOTAL_PRICE,)))
             continue
 
         tags = []

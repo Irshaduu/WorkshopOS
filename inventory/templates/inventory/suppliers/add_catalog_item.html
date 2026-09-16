@@ -84,6 +84,9 @@
                     by every shop stocking it. Change it from the shop catalog if it&rsquo;s wrong.
                 </span>
                 {% endif %}
+                <span class="note">
+                    Its markup stays at {{ existing_item.markup_percent }}%, which is also shared by every shop stocking it.
+                </span>
             </div>
 
             <form method="post" action="">
@@ -126,6 +129,21 @@
                            value="{{ average_stock|default:'' }}" placeholder="10"
                            step="0.5" min="0.5" inputmode="decimal" required autocomplete="off">
                     <span class="hint">How many you normally keep in the workshop. Low Stock warns below a quarter of it.</span>
+                </div>
+
+                {% comment %}
+                MARKUP, not margin: 40 turns a ₹1,000 cost into a ₹1,400 price.
+                The hint shows that worked example rather than defining the
+                word, because the example is what stops "40%" being read as
+                ₹1,667. It only SUGGESTS the customer price on a job card —
+                nothing is ever priced without somebody saving it.
+                {% endcomment %}
+                <div class="fld">
+                    <label for="markup_percent">Markup %</label>
+                    <input type="number" id="markup_percent" name="markup_percent"
+                           value="{{ markup_percent }}" placeholder="40"
+                           step="1" min="0" max="999" inputmode="numeric" required autocomplete="off">
+                    <span class="hint">Suggests the customer price on a job card. 40 turns a ₹1,000 cost into ₹1,400.</span>
                 </div>
 
                 <button type="submit" class="btn-primary-full">Add product</button>

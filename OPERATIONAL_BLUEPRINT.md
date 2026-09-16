@@ -405,7 +405,7 @@ A Job Card records parts in **two separate sections**:
 | | **Inventory Items** | **Spare Parts** |
 |---|---|---|
 | Where it came from | the workshop's own shelf | ordered from a spare shop for this job |
-| Columns | Item, Qty, Unit Price, Customer Price | Part Name, Qty, Status, Ordered, Received, Shop, Shop Price, Customer Price |
+| Columns | Item, Qty, Cost / Unit, Unit Price, Total Price | Part Name, Qty, Status, Ordered, Received, Shop, Shop Price, Customer Price |
 | How the part is chosen | **picked** from stock (search, then select) | typed freely |
 | Moves warehouse stock? | **yes** | never |
 | Who supplied it | a Supplies Shop restock bill, earlier | the spare shop, per this job |
@@ -420,12 +420,42 @@ still write one table (`JobCardSpareItem`), told apart by a stored `source`.
 **Prices are Office/Owner only in both sections.** Floor sees name and quantity.
 
 **On an Inventory row, "Unit Price" is what the CUSTOMER pays per unit** — enter it
-and Customer Price fills in (× qty); or skip it, as staff usually do, and type the
-total straight in. What the part *cost* the workshop is never typed: it is taken from
+and Total Price fills in (× qty); or skip it, as staff usually do, and type the
+total straight in. A typed total shows its unit price in **grey** in the Unit Price
+box — the same figure the printed bill shows — but only the total is saved, because
+a divided unit price would change the bill by a paisa or two (₹1,000 for 7 would
+save as ₹1,000.02). Type a unit price yourself and it turns black and the total
+follows it. What the part *cost* the workshop is never typed: it is taken from
 stock automatically — a weighted average of what the shelf paid, worked out from the
 supplier bills dated before that draw. A bill dated later cannot reach back and change
 it. Only a bill back-dated to before the draw, or a correction to an earlier bill, moves
-it, because that is the workshop learning what those goods really cost.
+it, because that is the workshop learning what those goods really cost. Correcting a
+draw to a different product takes that product's cost.
+
+### Suggested prices and the markup badge
+Office and Owner see a **suggested customer price** as they fill a row in:
+
+| | they type or pick | the page fills |
+|---|---|---|
+| **Spare Parts** | Shop Price ₹1,000 | Customer Price ₹1,400 — every spare at 40% |
+| **Inventory** | the product (its Cost / Unit shows, read-only) | Unit Price at that product's own markup, and the total from the quantity |
+
+The filled price is an ordinary box: change it and the change stands. A small round
+badge at the end of the row, after the total, says what markup the line really
+carries — **green** from 20%,
+**yellow** below 20%, **red** below cost. It is a **markup** (₹1,000 → ₹1,400 is 40%),
+which is why the Deep Analysis "Margin %" for the same part reads lower.
+
+- A price is only suggested while someone is filling that row. Opening a card changes
+  nothing; a part Floor recorded with no price is filled when Office taps its box.
+- A price someone typed is never overwritten, and a saved price never follows a later
+  change of shop price, product markup or supplier bill — only the badge moves.
+- A settled (Paid or Fleet Paid) card is never filled, even after unlocking it.
+- A product no Supplies Shop bill has costed yet shows a dash and gets no suggestion.
+- Suggested prices are rounded **up** to the whole rupee.
+- Each product's markup is set on **Add Product** (40 by default) and changed in
+  **Edit Product**. Changing it affects the next suggestion, never a saved price.
+- Floor sees none of this: no cost, no markup, no badge.
 
 ### Taking more than the shelf says you have
 This is **allowed**, and the count may go **negative**. A job card records a part the

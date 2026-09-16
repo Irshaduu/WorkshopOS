@@ -30,7 +30,7 @@ leave days are typed once a month instead of tracked daily, and why performance 
 judged against real volume rather than generic "web scale".
 
 **The standard:** functional integrity across every operation that touches money or
-access. Backed by **73 test files / 2,486 tests** covering security, views, signals,
+access. Backed by **74 test files / 2,530 tests** covering security, views, signals,
 financial logic, cashbook, spare shops, salary settlement, the profit engine, the
 printed documents, photos and the email transport behind password reset.
 

@@ -105,8 +105,19 @@ def autocomplete_inventory_items(request):
         .distinct()
         .order_by('-usage_count', 'name')[:10]
     )
-    return JsonResponse([
-        {
+
+    # COST AND MARKUP GO TO OFFICE AND OWNER ONLY — the keys are ABSENT for
+    # Floor, never blank. Floor opens most job cards and uses this same picker,
+    # and it is shown no cost anywhere else in the app. This endpoint used to
+    # send `cost` to every role: nothing drew it, but it sat in the response for
+    # anyone who opened the browser's network tab. A markup is just as private,
+    # since cost is one division away from it. Same gate `_floor_locked_data`
+    # pins prices with, so the two cannot disagree about who is a price-setter.
+    show_pricing = is_office_or_owner(request.user)
+
+    rows = []
+    for it in items:
+        row = {
             "id": it.pk,
             "name": it.name,
             "category": it.category.name,
@@ -115,10 +126,15 @@ def autocomplete_inventory_items(request):
             # `qty` template filter applies everywhere else a quantity is shown
             # — imported rather than restated, so the two cannot drift.
             "stock": str(clean_qty(it.current_stock)),
-            "cost": str(it.avg_cost),
         }
-        for it in items
-    ], safe=False)
+        if show_pricing:
+            # What the shelf paid per unit ("0.00" means UNKNOWN, not free) and
+            # this product's own markup — the two figures the job card's
+            # suggested price is worked out from, in the browser.
+            row["cost"] = str(it.avg_cost)
+            row["markup"] = it.markup_percent
+        rows.append(row)
+    return JsonResponse(rows, safe=False)
 
 
 # How many past sales the hint averages over. Five is the number the owner

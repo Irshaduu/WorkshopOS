@@ -34,7 +34,7 @@ describe either as live production data. Deployment: `GO_LIVE_RUNBOOK.md`
 1. **Fix the code, not the tests.** A failing test — especially a financial or
    security one — means the implementation regressed. Never bypass one.
 2. **Every new rule gets a test.** One honest gap: the Django suite executes no
-   JavaScript. `node --test "workshop/tests/js/*.test.js"` covers one DOM-free module.
+   JavaScript. `node --test "workshop/tests/js/*.test.js"` covers two DOM-free modules.
    Everything else in the frontend must be verified by hand in a browser.
 3. **Keep docs in sync in the same session.** New model/field, new route, new
    workflow, roadmap item completed → update the owning doc (see the ownership
@@ -231,18 +231,47 @@ preceding *its own date* and a later-dated bill cannot reach back. Freezing brok
 the workshop's actual rhythm — a Supplies Shop delivers, keeps its own book, and
 the bill is only keyed when the collector comes at month end, so a month of draws
 recorded no cost at all. `recompute_average_cost` rewrites any draw whose stored
-cost disagrees with the replay. Only two things move a past draw and both should:
-a bill **backdated to before it**, or an existing bill **corrected**. Nothing
-customer-facing moves — that is `total_price`, never touched here.
+cost disagrees with the replay. Only three things move a past draw's cost and all
+should: a bill **backdated to before it**, an existing bill **corrected**, or the
+draw itself **corrected to a different product**. Nothing customer-facing moves —
+that is `total_price`, never touched here.
 → `test_a_later_dated_bill_never_disturbs_an_earlier_draw`
+
+⚠ **A DRAW CORRECTED TO ANOTHER PRODUCT TAKES THAT PRODUCT'S COST — it kept the
+first product's until 2026-09-16.** `JobCardSpareItem.save()` only snapshotted
+`avg_cost` on create, and no replay runs on a job-card save, so a mechanic who
+picked the wrong oil left the Profit page charging the wrong oil's price until the
+right oil's next supplier bill. `save()` now re-snapshots whenever `item_id`
+changes, and an unknown cost clears to NULL rather than keeping a figure that
+belongs to a product the row no longer draws. It surfaced because the job card's
+new Cost / Unit column would otherwise print it.
+→ `ADrawCorrectedToAnotherProductIsRecostedTests`
 
 **`JobCardSpareItem.customer_rate` is INPUT ONLY.** It backs the optional "Unit
 Price" box on an inventory row (customer price per unit) and is never back-filled
 from `total_price ÷ quantity`, so a null honestly means "nobody entered a rate".
 When it *is* set, `total_price = customer_rate × quantity` is enforced on save, so
 editing 7 L down to 4 L recomputes the bill. Staff usually skip the box and type
-the total, so it must never be required. "Customer Price" is the UI label for
-`total_price`, not a third field.
+the total, so it must never be required. "Customer Price" (Spare Parts) and
+"Total Price" (Inventory, since 2026-09-16) are the UI labels for `total_price`,
+not a third field.
+
+Since 2026-09-16 the box can also be **filled by the suggested price** (see
+"Suggested prices & markup" below). That is not a back-fill: it is worked out
+from cost × markup in the browser, it posts only when a person saves it, and
+typing a total by hand still clears the rate so the typed total wins.
+
+⚠ **A TYPED TOTAL SHOWS ITS UNIT PRICE IN GREY, AND THAT GREY FIGURE IS NEVER
+SAVED — which is this rule kept, not reversed** (the owners asked for the unit
+price to fill from the total, 2026-09-16). The box's PLACEHOLDER becomes total ÷
+quantity (italic `#5b6b82`, `.jc-derived`), rounded half-up — exactly the figure
+`invoice.derive_unit_price` prints in the bill's UNIT PRICE column — and the box
+posts EMPTY, verified by reading the form's own `FormData`. Saving that figure
+is the defect it avoids: `save()` rebuilds the total from a set rate, and a
+division rarely survives the trip — ₹1,000 for 3 is 333.33 → saved ₹999.99, for
+7 is 142.86 → saved **₹1,000.02**, a customer overcharged with nothing on screen.
+Typing in the box makes a real, black unit price that the total then follows.
+→ `test_a_divided_unit_price_WOULD_move_the_bill_which_is_why_it_is_never_posted`
 
 **A spare's shop can change, so BOTH ledgers must be refreshed.**
 `JobCardSpareItem.save()` snapshots the previous `shop_id` and refreshes both — it
@@ -576,6 +605,134 @@ between 0deg and 360deg, which render identically, so the jump is invisible.
 Both → the angle interpolates. **Without that `0deg` fallback the whole
 `background` is invalid at computed-value time**, and since the `@supports`
 block clears the static shadow the card would end up with no ring at all.
+
+
+## Suggested prices & markup
+
+The job card suggests a customer price (2026-09-16, the owners' request):
+
+| row | cost | suggestion | the badge |
+|---|---|---|---|
+| **Spare Parts** | Shop Price (a line total) | Customer Price = shop price × 1.40, every spare | after Customer Price |
+| **Inventory** | Cost / Unit — read-only, the shelf's weighted average | customer Unit Price = cost × (1 + the product's own markup); the Total Price follows | after Total Price |
+
+**THE INVENTORY TOTAL IS HEADED "TOTAL PRICE"; SPARE PARTS KEEPS "CUSTOMER
+PRICE"** (the owners' call). The inventory row has three money columns — Cost /
+Unit, Unit Price and the total — and "Customer Price" beside "Unit Price" did not
+say which was the other times the quantity. On Spare Parts the total sits beside
+Shop Price and both are line totals, so "Total Price" would describe both boxes.
+`settlement.py` follows the screen: a draw's gap is `TOTAL_PRICE` ("no total
+price"), a spare's is still `CUSTOMER_PRICE` ("no customer price") — one check,
+named by the heading above the box somebody is sent to fill.
+
+⚠ **THE BADGE CLOSES THE LINE IN BOTH SECTIONS** (the owner's instruction, the
+same day it shipped). On an inventory row it first sat beside the Unit Price —
+and a row whose total was typed by hand has an EMPTY unit price, so a "66%"
+badge sat beside a blank box describing a figure two columns away. It is the
+markup of the whole line.
+
+**COST / UNIT IS A FIGURE, DRAWN IN THE BOXES' OWN SHAPE.** Same height, 8px
+corner and 12px inset as the inputs beside it, but no fill and a dashed outline
+where every input is filled and solid — so it lines up with the row and still
+reads as something you cannot type into. It is sized the way an input sizes
+itself (`content-box`, 1.5 line, 6px padding, a 1px border on top): a fixed
+`calc` height measured 0.7px taller than the boxes on a 1.5x screen, where a 1px
+border paints at 0.67px. **Not the locked-card palette**, which means "this card
+is settled" and would make one column of every open card look locked.
+
+**MARKUP, NEVER MARGIN.** ₹1,000 → ₹1,400 is 40% on cost. As a margin it is
+28.6%, and Deep Analysis prints "Margin %" as profit ÷ price — so a part marked
+up 40% reads 28.6% there. Both are true; the badge says "Markup" so the two
+screens are not read as disagreeing.
+
+⚠ **THE SERVER NEVER WORKS OUT A PRICE, AND THAT IS THE WHOLE SAFETY OF IT.**
+The suggestion is arithmetic in the browser (`static/js/pricing-core.js`) written
+into ordinary boxes, and it reaches a bill only when a person presses Save with
+it on screen. A price computed in `JobCardSpareItem.save()` was the obvious build
+and would have moved money four ways nobody decided: it would bill the parts
+**Floor adds with no price**, silence **`settlement.py`'s "no customer price"**
+("no total price" on a draw)
+check, reprice parts on an **unlocked settled card**, and — if price followed
+cost — move old bills when **the costing replay** rewrites a draw's cost.
+`workshop/pricing.py` holds the three numbers (40, 20, 999) and `parse_markup`,
+and deliberately no price function.
+→ `TheServerNeverPricesAPartTests` — if it fails, move the arithmetic back out.
+
+**WHEN A BOX MAY BE FILLED** — all in the job card template's pricing script:
+
+1. **Only in answer to a person**: typing a Shop Price, picking a product,
+   importing an unassigned spare, or tapping into an empty customer price
+   (which also selects it, so typing a different figure replaces it). Opening a
+   card fills nothing.
+2. **Only a box EMPTY AS THE SERVER SENT IT (`defaultValue`), or one the script
+   filled and nobody touched.** Not `value`: `clearZeroInputs()` blanks a stored
+   ₹0 on load, and a part given away free must never be priced because its box
+   now looks empty.
+3. **A person's figure always wins.** Typing in a customer price — emptying it
+   counts — claims it for the rest of the page, the known-plate script's rule.
+4. **Never on a settled card**, even unlocked: `_pricing_context` sends
+   `fill: false` for PAID and BULK_PAID.
+5. **A saved price never follows a later change** — a corrected shop price, a
+   changed product markup or a late supplier bill moves only the badge.
+6. **No usable cost, no suggestion**, and a suggestion already made is taken
+   back. A zero warehouse cost is UNKNOWN (dash in Cost / Unit), and a comma is
+   refused: `parseFloat("1,000")` is 1, which would have filled ₹1.40.
+
+**THE MATHS IS WHOLE NUMBERS — BigInt paise.** `700 * 1.1` is
+`770.0000000000001` in JavaScript, so rounding up gave ₹771; measured before the
+core was written. The price is **always rounded up to the rupee** (the owners'
+rule: 10.1 → 11), which is why a markup is a whole percent. The badge rounds
+**down** and takes its colour from the number it shows — red below cost, yellow
+0–19, green from 20 — so a price rounded up never reads under its own markup
+and a "20%" badge is never yellow. An inventory total is unit × quantity rounded
+**half-even**, exactly as `Decimal.quantize` does on save, so the total on screen
+is the total saved; `script.js`'s `recalcRow` uses the core for that too.
+→ `workshop/tests/js/pricing-core.test.js` — every rounding expectation there was
+produced by Python first.
+
+**A PRODUCT'S MARKUP** is `Item.markup_percent` (`0009`, whole 0–999, default 40,
+`db_default` too), set on Add Product and in Edit Product's dialog. Refused, never
+defaulted, when unreadable — the box arrives holding 40, so a blank or "40.5" is
+somebody's edit. Linking an existing product from a second shop **never changes
+its markup** (one Item, shared). An edit with a bad markup changes nothing, not
+even the rename.
+
+⚠ **A POST WITH NO MARKUP KEY AT ALL IS NOT A BAD MARKUP, on both screens** — it
+is a form that never had the box (a page opened before the field existed and
+submitted after the deploy). Edit Product leaves the markup alone; Add Product
+gives the new product the default 40. It shipped refusing that on Add Product,
+and the full suite caught it: eight existing inventory tests post the form
+without the field, exactly as an old page would, and all eight broke. The fix
+was the view, not the tests.
+→ `test_a_form_with_NO_markup_box_gets_the_default_40` Edit Product now saves with `update_fields`,
+because a plain `save()` wrote back `current_stock` and `avg_cost` from a stale
+read. **Spare parts are fixed at 40** in `pricing.py`, on the owners' decision —
+no settings screen.
+
+⚠ **COST AND MARKUP ARE OFFICE AND OWNER ONLY, and the product search used to
+leak cost.** `autocomplete_inventory_items` is `@staff_required` and sent
+`cost` to every role; Floor never drew it, but it sat in the response. The keys
+are now ABSENT for Floor. `_pricing_context` returns None for Floor, so the page
+carries no config, no Cost / Unit column, no `data-cost`, no badge. The hidden
+price inputs Floor must still post are unchanged.
+
+⚠ **A ROW TOO LARGE FOR ITS COLUMN IS REFUSED.** Unit price × quantity was never
+checked as a product, so ₹1,40,000 × 1,000 passed both boxes and overflowed
+`numeric(10,2)` in `save()` — a 500 on PostgreSQL. `InventoryDrawForm.clean`
+refuses it with the bound read from the column; the core never suggests a figure
+the column cannot hold.
+→ `test_price_markup.py`, `ALineTooLargeForItsColumnIsRefusedTests`
+
+Measured in the browser on the development data (2026-09-16): Shop Price 1000 →
+1400 green; `1,000` → blank; 700 → 980; a hand-typed 1500 survived a new shop
+price and re-measured 87%; 960 on 800 read 20% green, 959 read 19% yellow, 700
+read −13% red; a Floor-added blank price filled 1400 on tap, a stored ₹0 did not;
+a pick of ₹500 oil filled ₹700 and the total followed quantity 10 → 7,000 and
+1.5 → 1,050; a hand-typed total survived a re-pick; an unknown cost took the
+suggestion back and drew a dash; the settled card filled nothing after unlocking.
+At 1280, 768 and 375px the badge and the cost figure sit on the boxes' centre
+line to the pixel, no row grew, and no page scrolls sideways — see the
+`visually-hidden` trap below for the one that did.
 
 
 ## Warehouse stock & costing
@@ -6963,10 +7120,14 @@ It is the only place that rule is now stated to the person typing.
 other quantity goes through, so one product cannot read "38" on one screen and
 "38.00" on another.
 
-**The stock line under the box reserves its height whether or not it has text.** It
-was an empty `div`, so choosing a product wrote a line into it and the row — with
-everything below it — jumped, which on a tablet means the box you were aiming at has
-moved by the time your finger lands.
+**The stock line under the box takes room ONLY while it says something — this
+REVERSES a reserved-space rule (2026-09-16, the owner's instruction).** It carried
+`min-height` so that choosing a product could not make the row jump. Two things
+changed underneath it: a saved row never shows the line (below), so every row of an
+ordinary card carried ~18px of nothing; and the row's cells are top-aligned (further
+below), so when the line appears while picking, that row's own Qty and price boxes
+— the next thing tapped — stay put, and only the rows beneath shift, once.
+→ `test_the_stock_line_takes_room_only_while_it_says_something`
 
 **"38 in stock" is shown while PICKING and not afterwards.** The count answers one
 question — is there enough on the shelf to take — asked at the moment of choosing
@@ -8613,6 +8774,20 @@ content block"), never by quoting it.
 
 ## CSS & Bootstrap
 
+**BOOTSTRAP'S `visually-hidden` IS `position: absolute`, SO INSIDE A SIDEWAYS
+SCROLLER IT CAN ESCAPE THE SCROLLER AND WIDEN THE WHOLE PAGE.** An absolutely
+positioned element is clipped by an `overflow` box only when that box sits
+inside its containing block. The markup badge's hidden "Markup " label had no
+positioned ancestor nearer than the job card's `.card`, which is OUTSIDE
+`.table-responsive` — so the label was laid out at its static position, ~900px
+to the right, and the job card measured 1,273px wide on a 375px phone. It showed
+nowhere on a laptop, where the pane is wide enough to hide it. The fix is
+`position: relative` on the badge itself. Found by comparing the page against
+the committed template at 375px: that page was 375 wide, the new one was not.
+→ `test_the_badge_is_positioned_so_its_hidden_label_stays_in_the_scroller`.
+**Anything carrying `visually-hidden` inside a table scroller needs a positioned
+ancestor inside that scroller.**
+
 **A running CSS TRANSITION outranks `!important` — it is the highest origin in the
 cascade, above important-author.** `.form-control` transitions `background-color`
 and `border-color`, so inspecting a locked card anywhere that is not painting
@@ -8983,10 +9158,12 @@ and there is no build step.** Every outside review reaches the same suggestion, 
 reasoning is recorded here rather than re-argued.
 
 Roughly 264 KB of inline JS across 42 templates, and ~723 KB of inline CSS across 67
-of the 118 (most templates carry their own `<style>`; measured 2026-09-15). Eight shared JS files exist —
+of the 118 (most templates carry their own `<style>`; measured 2026-09-15). Nine JS files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
-`photos-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
-is **used on more than one page**; what stays inline is genuinely page-specific.
+`photos-core.js`, `pricing-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
+is **used on more than one page**; what stays inline is genuinely page-specific. The
+two `-core.js` files are the stated exception: they are separate to be **testable**,
+not because they are shared.
 
 ⚠ **`static/css/style.css` is the CSS side of that same rule, and it is easy to
 miss because most of this app's CSS is inline.** `base.html` links it on every
@@ -9014,9 +9191,10 @@ inline JS.**
 
 **There IS a JS test runner, and it cost nothing.** `node --test "workshop/tests/js/*.test.js"`
 uses Node's built-in runner — still no npm, no `package.json`, no `node_modules`, no
-bundler, no linter. It covers exactly one file, `photos-core.js`, because that file was
-*written* to be coverable: pure functions, no DOM, no fetch, a `module.exports` guard at
-the bottom.
+bundler, no linter. It covers two files, `photos-core.js` and `pricing-core.js`, because
+both were *written* to be coverable: pure functions, no DOM, no fetch, a `module.exports`
+guard at the bottom. `pricing-core.js` was the second, and the reason is the rule below —
+a price rounded wrongly by a float is a failure nobody sees.
 
 ⚠ **This does not reopen the extraction argument for the other ~3,700 lines.** Inline
 page JS is entangled with the DOM and would have to be **rewritten, not moved**, to be
@@ -9072,9 +9250,12 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 73 files, 2,486 tests. Always SQLite (see below).
-# Last full run 2026-09-15: 2,486 tests, ALL GREEN, 4,648s (77 min).
-# (The run before it, the same day: 2,480 tests, 4,938s / 82 min.)
+# Full test suite — 74 files, 2,530 tests (counted 2026-09-16). Always SQLite (see below).
+# Last full run 2026-09-16: 2,529 tests, 4,196s (70 min) — NOT all green in one
+# pass: 8 inventory tests failed on one defect (Add Product refused a form with no
+# markup box), fixed in the view; the 4 affected files re-run green (189 tests),
+# plus the one new test, making 2,530.
+# (2026-09-15: 2,486 tests, ALL GREEN, 4,648s / 77 min.)
 # ⚠ RUN IT ALONE, and expect a wide spread. Four runs the same day measured
 # 4,236s / 2,521s / 4,546s / 4,138s — the slowest was contended with five other
 # test files running beside it, but the two IDLE runs still differed by 27
@@ -9357,7 +9538,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Fifteen modules hold no views at all** — this is the codebase's main structural idea, and
+**Sixteen modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -9377,6 +9558,7 @@ each exists so that one rule has exactly one implementation:
 | `service_history.py` | every figure and every name on the service-history sheet |
 | `vehicle_ids.py` | is this a chassis code and a VIN, and what did this car last have recorded? |
 | `known_car.py` | what does the workshop already know about this number plate? |
+| `pricing.py` | what markup is suggested, and is this typed markup usable? — never a price (that is the browser's) |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
 `SessionTrackingMiddleware`, `NoStoreMiddleware` and `NoIndexMiddleware`.
@@ -9464,8 +9646,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **73 files, 2,486 tests**,
-re-counted 2026-09-15. (`workshop/tests/` is 67 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **74 files, 2,530 tests**,
+re-counted 2026-09-16. (`workshop/tests/` is 68 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

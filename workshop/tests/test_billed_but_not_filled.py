@@ -207,7 +207,9 @@ class BilledButNotFilledTests(LiveReportTestCase):
         box = self._box(self._page(self.owner))
 
         self.assertIn('Liqui Moly 5W-30', box)
-        self.assertIn('no customer price', box)
+        # The Inventory column's own word since 2026-09-16.
+        self.assertIn('no total price', box)
+        self.assertNotIn('no customer price', box)
         self.assertNotIn('no shop', box)      # covers "no shop price" too
         self.assertNotIn('no dates', box)
 

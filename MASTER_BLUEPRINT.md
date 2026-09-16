@@ -149,7 +149,7 @@ Salary models (migration `0054_mechanic_current_salary_and_more`, which also add
 | # | Model | Key Fields | Purpose |
 |---|-------|--------|---------|
 | 1 | **Category** | name | Groups inventory items |
-| 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count, **avg_cost** | Warehouse part with stock levels. `current_stock` may be **negative** (an overdraw awaiting its supplier bill — deliberate, see CLAUDE.md). `avg_cost` is the weighted-average purchase cost per unit, (migration `inventory/0008_item_avg_cost`), maintained only by restock receipts via a full replay in `inventory/costing.py` |
+| 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count, **avg_cost**, **markup_percent** | Warehouse part with stock levels. `current_stock` may be **negative** (an overdraw awaiting its supplier bill — deliberate, see CLAUDE.md). `avg_cost` is the weighted-average purchase cost per unit, (migration `inventory/0008_item_avg_cost`), maintained only by restock receipts via a full replay in `inventory/costing.py`. `markup_percent` (`inventory/0009_item_markup_percent`, `PositiveSmallIntegerField`, default and `db_default` 40, CheckConstraint ≤ 999) is the markup on cost the job card suggests for this product's customer unit price — a suggestion only, set on Add Product and Edit Product; the server prices nothing from it |
 | 3 | **ConsumptionRecord** | user (FK→User), item (FK→Item), quantity, date, timestamp | **Dormant** — superseded by Stock History, which reads `JobCardSpareItem` live. Nothing writes this model; kept only to avoid a needless migration |
 | 4 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, is_active | Supplier / Supplies Shop master record |
 | 5 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), is_active, unique_together(shop,item) | Links a supplier to the items they stock; `is_active=False` = deactivated (listed but excluded from restock bills) |
@@ -329,7 +329,7 @@ production's. Cost a wrong number on the way into this very entry.
 | | `/api/autocomplete/models/` | `autocomplete_models` | Staff |
 | | `/api/autocomplete/spares/` | `autocomplete_spares` | Staff |
 | | `/api/autocomplete/concerns/` | `autocomplete_concerns` | Staff |
-| | `/api/autocomplete/inventory-items/` | `autocomplete_inventory_items` | Staff |
+| | `/api/autocomplete/inventory-items/` | `autocomplete_inventory_items` | Staff — stock products for the job card picker. `cost` and `markup` are sent to **Office/Owner only** (absent for Floor) |
 | | `/api/spare-price-hint/` | `spare_price_hint` | **Office** — it returns a price, and Floor sees no prices anywhere |
 | | `/api/known-car/` | `known_car_lookup` | Staff — what the workshop already knows about a typed plate: brand, model, colour, chassis code and VIN, plus the last customer's name and number for **Office/Owner only** (absent from the answer for Floor). The Job Card form fills the car and only OFFERS the customer. Rules in `workshop/known_car.py` |
 | **CAR PROFILES** | `/car-profiles/` | `car_profile_list` | Office |
@@ -843,7 +843,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (73 files · 2,486 tests)
+## 13. TEST SUITE (74 files · 2,530 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -851,7 +851,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (68 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (69 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -922,8 +922,9 @@ base classes.*
 | `test_about.py` | The About page: Owner-only, **no links at all** (scoped to the page's own `<section>` blocks so `base.html`'s nav is not counted), its map the GENERATED partial rather than a pasted copy, every area the map draws described somewhere on the page, and the owner's own names for the system — WorkshopOS, Titan — appearing nowhere in its prose |
 | `test_setup_groups.py` | `setup_groups` creating the roles RBAC actually reads. It used to create `Workers` and `Admins`, two groups nothing here has ever looked at, while the runbook's checklist claimed Owner / Office / Floor and Control Hub told anyone with a missing role to run it — both remedies pointing at a command that reported success and fixed nothing. **Only reproducible on an empty database, which is exactly what go-live day is and what no development database ever is** |
 | `test_go_live_safety.py` | What keeps the live database safe from the tooling built while exploring hosts: every demo seeder refuses to run outside `DJANGO_ENV=development` and writes nothing, `DJANGO_ENV=render_demo` now refuses to start instead of booting on a SQLite file, no Render file is left in the repository, and `makemigrations --check` finds no model change missing its migration |
+| `test_price_markup.py` | Suggested customer prices on the job card. **`TheServerNeverPricesAPartTests` is the one that matters**: a shop price or a costed draw saved with no customer price stores none, so the settle check still chases it and `workshop/pricing.py` holds no price function. Cost and markup reach Office and Owner only — the product search sends Floor neither key and Floor's page carries no config, column or badge. A settled card is never filled. A saved draw shows its OWN cost, an unknown cost a dash, and a draw corrected to another product takes that product's cost. Unit price × quantity too large for the column is refused rather than a 500. Add Product / Edit Product store a whole markup 0–999, refuse anything else changing nothing, never change a linked product's markup, and save only their own three fields. The badge's `position: relative`, which stops its hidden label widening the page on a phone, is asserted directly. The inventory total is headed **Total Price** (Spare Parts keeps Customer Price, and the settle check names a draw's gap "no total price"); a typed total saves exactly with no unit price, and the class beside it proves why the grey unit price is never posted — 142.86 × 7 saves ₹1,000.02 |
 
-*JavaScript: `workshop/tests/js/photos-core.test.js` runs under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. It covers the photo upload queue's failure paths and the gallery's index arithmetic. It is the only JavaScript in this repo with tests, and it adds no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
+*JavaScript: `workshop/tests/js/photos-core.test.js` and `workshop/tests/js/pricing-core.test.js` run under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. The first covers the photo upload queue's failure paths and the gallery's index arithmetic; the second the suggested price — strict parsing (a comma is refused), rounding up to the rupee in whole paise, the badge rounding down, and the line total rounding half-even exactly as the server does, every expectation produced by Python first. They are the only JavaScript in this repo with tests, and they add no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
 ### Inventory Tests (5 files)
 
@@ -989,6 +990,7 @@ WorkshopOS (Titan)/
 │   ├── spare_dates.py          ← The ordered/received pair rule, shared by the job card and the Unassigned Spares hub (pure, no views)
 │   ├── vehicle_ids.py          ← The chassis code and VIN: tidied, refused with a reason, and each car's latest recorded values (pure, no views)
 │   ├── known_car.py            ← What a typed plate already tells the Job Card form: the car, its colour, both codes, and the last customer for Office/Owner (pure, no views)
+│   ├── pricing.py              ← The markup numbers (40 / 20 / 999) and the one markup parser — deliberately NO price function; the suggestion is the browser's (pure, no views)
 │   ├── rent.py                 ← How much should we hand the rent collector today? Everything derived, nothing stored (pure, no views)
 │   ├── master_data.py          ← The ONE rename/merge rule, shared by Master Lists and Data Cleanup (pure, no views)
 │   ├── money.py                ← Is this typed rupee amount acceptable for its column? Bounds READ from the column (pure, no views)
@@ -1029,10 +1031,12 @@ WorkshopOS (Titan)/
 │   │                             confirm.js (the shared question card, and the
 │   │                             prototype wrapper that latches a programmatic
 │   │                             .submit()), photos.js + photos-core.js
-│   │                             (camera / upload). notifications.js and
+│   │                             (camera / upload), pricing-core.js (the
+│   │                             job card's suggested price, BigInt paise).
+│   │                             notifications.js and
 │   │                             style.css live in the project-level static/
 │   ├── migrations/             ← 78 migrations
-│   └── tests/                  ← 68 test files (67 test_*.py + tests.py) + tests/js/ (node --test)
+│   └── tests/                  ← 69 test files (68 test_*.py + tests.py) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)
@@ -1044,7 +1048,7 @@ WorkshopOS (Titan)/
 │   ├── admin.py                ← 8 admin registrations
 │   ├── apps.py                 ← Signal registration
 │   ├── templates/inventory/    ← 20 templates
-│   ├── migrations/             ← 8 migrations
+│   ├── migrations/             ← 9 migrations
 │   └── tests.py, tests_suppliers.py, test_signals.py,
 │       test_costing.py, test_supplier_costing.py ← 5 test files
 │
@@ -1078,4 +1082,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-15)*: 2 Django Apps · **41 Models** (33 workshop + 8 inventory) · **170 URL Routes** (137 + 33, excluding Django admin; 171 under `DEBUG=True`, which adds the media path) · **118 Templates** (95 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **73 Test Files / 2,486 tests** · **86 Migrations** (78 workshop + 8 inventory)
+> **Total** *(re-measured 2026-09-15)*: 2 Django Apps · **41 Models** (33 workshop + 8 inventory) · **170 URL Routes** (137 + 33, excluding Django admin; 171 under `DEBUG=True`, which adds the media path) · **118 Templates** (95 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **74 Test Files / 2,530 tests** · **87 Migrations** (78 workshop + 9 inventory)

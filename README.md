@@ -223,7 +223,7 @@ WorkshopOS/
 python manage.py test workshop inventory
 ```
 
-2,486 tests covering the financial rules, access control, stock signals, the printed
+2,530 tests covering the financial rules, access control, stock signals, the printed
 documents, and the supplier, fleet and salary flows. The suite runs on SQLite, so it
 never touches a live database. A full run takes anything from 20 minutes to well over an
 hour; the most recent one took 82.

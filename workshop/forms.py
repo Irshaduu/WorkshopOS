@@ -609,7 +609,8 @@ class InventoryDrawForm(forms.ModelForm):
             }),
             'total_price': forms.TextInput(attrs={
                 'class': 'form-control text-end fw-bold inventory-total',
-                'placeholder': 'Customer Price (₹)',
+                # The column is headed "Total Price" on an inventory row.
+                'placeholder': 'Total Price (₹)',
             }),
         }
 
@@ -686,9 +687,10 @@ class InventoryDrawForm(forms.ModelForm):
         line the instant a product is chosen, on a new row or when an existing
         row's product is changed, so nothing is lost at the moment it matters.
 
-        The empty line still reserves its height — see `.inventory-stock-hint`.
-        A div that appears when the picker writes into it is a row that jumps
-        under the finger aiming at it.
+        The empty div still renders, because the picker writes into it — but
+        since 2026-09-16 it takes NO height while empty (see
+        `.inventory-stock-hint`), so a saved row is not padded by a line it
+        never shows.
         """
         from .templatetags.custom_filters import clean_qty
 
@@ -725,6 +727,45 @@ class InventoryDrawForm(forms.ModelForm):
         item = self.picked_item()
         return item is not None and item.current_stock <= 0
 
+    @property
+    def cost_per_unit(self):
+        """
+        What one unit of this draw cost the workshop — for the read-only Cost /
+        Unit column and the markup badge, Office and Owner only (the template
+        gates it). A Decimal, or None when nobody knows.
+
+        A SAVED draw of the same product shows its OWN stored `unit_price`, not
+        today's shelf average: that is the figure the Profit page charges, kept
+        true by the costing replay as at the draw's date. A new row, or a saved
+        row being corrected to a different product, shows the product's current
+        average — exactly what `JobCardSpareItem.save()` will take when it saves.
+
+        A zero average is UNKNOWN, not free (no Supplies Shop bill has costed
+        the product yet), so it comes back as None rather than 0.
+        """
+        item = self.picked_item()
+        if item is None:
+            return None
+        instance = self.instance
+        if instance is not None and instance.pk and instance.item_id == item.pk:
+            return instance.unit_price
+        return item.avg_cost if item.avg_cost and item.avg_cost > 0 else None
+
+    @property
+    def cost_attr(self):
+        """`cost_per_unit` as plain text for a data attribute — "" when unknown.
+
+        `str()` of the Decimal rather than the template rendering it, so no
+        localisation can ever put a comma in a figure the browser parses."""
+        cost = self.cost_per_unit
+        return '' if cost is None else str(cost)
+
+    @property
+    def markup_attr(self):
+        """The picked product's own markup as text, or "" with no product."""
+        item = self.picked_item()
+        return '' if item is None else str(item.markup_percent)
+
     def clean(self):
         cleaned = super().clean()
         item = cleaned.get('item')
@@ -745,6 +786,26 @@ class InventoryDrawForm(forms.ModelForm):
                 f"How many {item.name} were taken? This is the number that comes "
                 f"off the shelf, so it cannot be left empty.",
             )
+
+        # A unit price × quantity too big for the TOTAL column. Each box is
+        # checked on its own by its field, but `JobCardSpareItem.save()`
+        # multiplies them — so ₹1,40,000 × 1,000 passed every check and then
+        # overflowed `numeric(10,2)` on the write, which PostgreSQL answers with
+        # a 500 rather than a message (SQLite, the test database, would simply
+        # have stored it). Refused here instead, with the bound READ from the
+        # column the way `money.parse_money` reads it, so it cannot drift from
+        # the schema. The browser's line total refuses the same figure.
+        rate = cleaned.get('customer_rate')
+        qty = cleaned.get('quantity')
+        if rate is not None and qty is not None and not self.has_error('customer_rate'):
+            column = JobCardSpareItem._meta.get_field('total_price')
+            ceiling = Decimal(10) ** (column.max_digits - column.decimal_places)
+            if (rate * qty).quantize(Decimal('0.01')) >= ceiling:
+                self.add_error(
+                    'customer_rate',
+                    "Unit price × quantity is too large for one line. "
+                    "Check the unit price and the quantity.",
+                )
         return cleaned
 
     def row_label(self):

@@ -12,6 +12,7 @@ from workshop.models import DeletionLog, JobCardSpareItem
 from workshop.notifications import notify
 from workshop.money import parse_money, fit_text
 from workshop.money_dates import posted_date, is_future, too_far_back, backdate_floor
+from workshop.pricing import DEFAULT_MARKUP_PERCENT, MAX_MARKUP_PERCENT, parse_markup
 from workshop.decorators import is_owner
 from workshop import delete_window
 from django.urls import reverse
@@ -397,6 +398,12 @@ def add_shop_catalog_item(request, shop_id):
         item_name = request.POST.get('item_name', '').strip()
         category_name = request.POST.get('category_name', '').strip()
         avg_stock = _dec(request.POST.get('average_stock'))
+        # Kept as typed, so a refused form comes back showing what was entered
+        # rather than a reformatted guess at it. None when the form carried NO
+        # markup box at all — see the split below.
+        markup_raw = request.POST.get('markup_percent')
+        if markup_raw is not None:
+            markup_raw = markup_raw.strip()
         confirm_existing = request.POST.get('confirm_existing') == '1'
 
         if item_name and category_name:
@@ -423,6 +430,13 @@ def add_shop_catalog_item(request, shop_id):
                         'existing_item': existing_item
                     })
                 else:
+                    # The markup typed on the first form is NOT applied here, and
+                    # that is deliberate rather than an omission. One product is
+                    # one Item shared by every shop stocking it, so its markup is
+                    # already set — overwriting it from a second shop's Add
+                    # Product would silently change the suggested price on every
+                    # job card that draws it. The confirmation page says which
+                    # markup it keeps; Edit changes it on purpose.
                     ShopCatalogItem.objects.create(shop=shop, item=existing_item)
                     # The Average Stock typed on the form is otherwise thrown away here.
                     # Only apply it when the shared product has none yet (legacy rows
@@ -437,8 +451,35 @@ def add_shop_catalog_item(request, shop_id):
                 # New product — Average Stock (how many are normally kept in stock) is
                 # REQUIRED because Low Stock is computed as a fraction of it; at 0 the
                 # product is filtered out of the alert list entirely and never warns.
+                #
+                # The markup, split the way Edit Product splits it:
+                #   * NO markup key at all — a form that never had the box, such
+                #     as an Add Product page opened before the field existed and
+                #     submitted after the deploy — takes the default 40, exactly
+                #     what the column gives any product created without one.
+                #     Refusing it would bounce somebody for a box they were never
+                #     shown.
+                #   * A key that is there but unreadable is REFUSED, not
+                #     defaulted: the box arrives holding 40, so a blank or a
+                #     "40.5" is somebody's edit, and saving 40 in its place would
+                #     be a number nobody typed.
+                # Both problems are checked before returning, so a form wrong in
+                # two places is fixed in one pass.
+                if markup_raw is None:
+                    markup = DEFAULT_MARKUP_PERCENT
+                else:
+                    markup = parse_markup(markup_raw)
+                problems = []
                 if avg_stock <= 0:
-                    messages.error(request, "Average Stock is required and must be greater than 0.")
+                    problems.append("Average Stock is required and must be greater than 0.")
+                if markup is None:
+                    problems.append(
+                        f"Markup must be a whole number from 0 to {MAX_MARKUP_PERCENT} "
+                        f"(for example {DEFAULT_MARKUP_PERCENT})."
+                    )
+                if problems:
+                    for problem in problems:
+                        messages.error(request, problem)
                     categories = Category.objects.all().order_by('name')
                     return render(request, 'inventory/suppliers/add_catalog_item.html', {
                         'shop': shop,
@@ -446,21 +487,25 @@ def add_shop_catalog_item(request, shop_id):
                         'item_name': item_name,
                         'category_name': category_name,
                         'average_stock': avg_stock,
+                        'markup_percent': markup_raw if markup_raw is not None else DEFAULT_MARKUP_PERCENT,
                     })
                 # Item doesn't exist at all. Create category if needed, then item.
                 # Atomic so a product can never be left with no catalog link — an
                 # Item with no shop has no edit/remove path anywhere in the UI.
                 with transaction.atomic():
                     category, _ = Category.objects.get_or_create(name__iexact=category_name, defaults={'name': category_name})
-                    new_item = Item.objects.create(category=category, name=item_name, average_stock=avg_stock)
+                    new_item = Item.objects.create(
+                        category=category, name=item_name, average_stock=avg_stock,
+                        markup_percent=markup)
                     ShopCatalogItem.objects.create(shop=shop, item=new_item)
                 messages.success(request, f"New item '{new_item.name}' created and added to catalog.")
                 return redirect('supplier_shop_detail', shop_id=shop.id)
-                
+
     categories = Category.objects.all().order_by('name')
     return render(request, 'inventory/suppliers/add_catalog_item.html', {
         'shop': shop,
-        'categories': categories
+        'categories': categories,
+        'markup_percent': DEFAULT_MARKUP_PERCENT,
     })
 
 @office_required
@@ -564,6 +609,27 @@ def edit_catalog_item(request, shop_id, catalog_item_id):
         avg_stock = _dec(request.POST.get('average_stock'))
         item = catalog_item.item
 
+        # The markup, checked BEFORE anything is changed, so a refused figure
+        # cannot leave a half-applied edit behind (a rename saved, a markup not).
+        #
+        # Two cases, and the split is load-bearing. An ABSENT key means the form
+        # that posted carried no markup box at all — a page opened before this
+        # field existed — so the stored markup is left exactly as it is. A key
+        # that is present but unreadable (blank, "40.5", "1000") is somebody's
+        # edit, and it is refused rather than replaced with a number nobody typed.
+        # Changing a markup moves no saved price on any job card: it only changes
+        # what the NEXT suggestion is worked out from.
+        new_markup = None
+        if 'markup_percent' in request.POST:
+            new_markup = parse_markup(request.POST.get('markup_percent'))
+            if new_markup is None:
+                messages.error(
+                    request,
+                    f"Markup must be a whole number from 0 to {MAX_MARKUP_PERCENT}. "
+                    f"Nothing was changed."
+                )
+                return redirect('supplier_shop_detail', shop_id=shop_id)
+
         if new_name and new_name.lower() != item.name.lower():
             clash = Item.objects.filter(
                 category=item.category, name__iexact=new_name
@@ -580,8 +646,16 @@ def edit_catalog_item(request, shop_id, catalog_item_id):
             item.name = new_name
         if avg_stock > 0:
             item.average_stock = avg_stock
+        if new_markup is not None:
+            item.markup_percent = new_markup
         try:
-            item.save()
+            # ONLY the three fields this form edits. A plain save() writes every
+            # column, including `current_stock` and `avg_cost` as they were read
+            # a moment ago — and both are maintained by `.update()` from the
+            # stock signals and the costing replay, so a draw landing between the
+            # read and this save would be overwritten by the stale count. Nothing
+            # listens to Item saves, so narrowing it changes nothing else.
+            item.save(update_fields=['name', 'average_stock', 'markup_percent'])
         except IntegrityError:
             # Backstop for a race between the check above and the save.
             messages.error(request, f"Couldn't rename to '{new_name}' — that name is already taken.")

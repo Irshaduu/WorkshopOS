@@ -483,7 +483,7 @@
       <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius:10px; font-size:0.82rem; min-width:150px;">
         <li>
           <button class="dropdown-item py-2"
-                  onclick="openEditItemModal({{ cat_item.id }}, '{{ cat_item.item.name|escapejs }}', '{{ cat_item.item.average_stock|floatformat:"-1" }}')">
+                  onclick="openEditItemModal({{ cat_item.id }}, '{{ cat_item.item.name|escapejs }}', '{{ cat_item.item.average_stock|floatformat:"-1" }}', '{{ cat_item.item.markup_percent }}')">
             <i class="bi bi-pencil me-2 text-primary"></i>Edit
           </button>
         </li>
@@ -605,9 +605,15 @@
           <input type="text" name="item_name" id="editItemName" class="form-control mb-3" required>
           <label class="form-label small text-muted fw-bold">Average Stock *</label>
           <input type="number" name="average_stock" id="editItemAvg" class="form-control" step="0.5" min="0.5" required>
-          <small class="text-muted d-block mt-1">
+          <small class="text-muted d-block mt-1 mb-3">
             How many of this product you normally keep in the workshop; Low Stock warns below a quarter of it.
-            Name &amp; Average Stock apply to this product across the whole system.
+          </small>
+          <label class="form-label small text-muted fw-bold" for="editItemMarkup">Markup % *</label>
+          <input type="number" name="markup_percent" id="editItemMarkup" class="form-control" step="1" min="0" max="999" inputmode="numeric" required>
+          <small class="text-muted d-block mt-1">
+            Suggests the customer price on a job card: 40 turns a ₹1,000 cost into ₹1,400.
+            Prices already on job cards do not change.
+            Name, Average Stock &amp; Markup apply to this product across the whole system.
           </small>
         </div>
         <div class="modal-footer border-0 pt-0">
@@ -808,11 +814,12 @@
   }
 
   // Open the edit catalog item modal
-  function openEditItemModal(catalogItemId, currentName, currentAvg) {
+  function openEditItemModal(catalogItemId, currentName, currentAvg, currentMarkup) {
     const baseUrl = '{% url "edit_catalog_item" shop.id 0 %}'.replace('/0/', '/' + catalogItemId + '/');
     document.getElementById('editItemForm').action = baseUrl;
     document.getElementById('editItemName').value = currentName;
     document.getElementById('editItemAvg').value = currentAvg;
+    document.getElementById('editItemMarkup').value = currentMarkup;
     new bootstrap.Modal(document.getElementById('editItemModal')).show();
   }
 

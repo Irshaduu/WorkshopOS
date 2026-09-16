@@ -289,7 +289,8 @@ class FloorSeesNoPricesTests(InventorySectionBase):
         # inputs carry the same text as a placeholder, so a looser check would
         # pass or fail for the wrong reason.
         self.assertNotIn('>Unit Price (₹)</th>', body)
-        self.assertNotIn('>Customer Price (₹)</th>', body)
+        self.assertNotIn('>Total Price (₹)</th>', body)
+        self.assertNotIn('>Cost / Unit (₹)</th>', body)
 
     def test_the_hidden_price_cell_is_actually_hidden(self):
         body = self.floor_client.get(reverse('jobcard_edit', args=[self.job.pk])).content.decode()
@@ -300,8 +301,12 @@ class FloorSeesNoPricesTests(InventorySectionBase):
 
     def test_office_does_see_the_price_headers(self):
         resp = self.client.get(reverse('jobcard_edit', args=[self.job.pk]))
+        self.assertContains(resp, '>Cost / Unit (₹)</th>')
         self.assertContains(resp, '>Unit Price (₹)</th>')
-        self.assertContains(resp, '>Customer Price (₹)</th>')
+        # "Total Price" on Inventory since 2026-09-16; Spare Parts keeps
+        # "Customer Price", so the page carries each exactly once.
+        self.assertContains(resp, '>Total Price (₹)</th>', count=1)
+        self.assertContains(resp, '>Customer Price (₹)</th>', count=1)
 
 
 class ARefusedSaveSaysWhatIsWrongTests(InventorySectionBase):
@@ -370,16 +375,21 @@ class ARefusedSaveSaysWhatIsWrongTests(InventorySectionBase):
         }).content.decode()
         self.assertIn('Inventory item · row 1', body)
 
-    def test_the_stock_line_reserves_its_space_whether_or_not_it_has_text(self):
+    def test_the_stock_line_takes_room_only_while_it_says_something(self):
         """
-        Choosing a product wrote a line of text into an empty div, so the row —
-        and everything under it — jumped. On a tablet the box you were aiming at
-        has moved by the time your finger lands. The text still comes and goes;
-        the space it occupies must not.
+        INVERTED on 2026-09-16, on the owner's instruction. This asserted the
+        opposite — a `min-height` so the line kept its space empty or not, so
+        picking a product could not make the row jump.
+
+        A saved row never shows the line, so every row of an ordinary card
+        carried ~18px of nothing. The row's cells are top-aligned, so when the
+        line appears while a product is picked, that row's own Qty and price
+        boxes do not move; only the rows beneath shift, once.
         """
-        body = self.client.get(reverse('jobcard_edit', args=[self.job.pk])).content.decode()
-        self.assertIn('.inventory-stock-hint', body)
-        self.assertIn('min-height', body[body.index('.inventory-stock-hint'):][:400])
+        from workshop.tests.test_jobcard_form_ux import JobCardFormBase
+        rule = JobCardFormBase.css_rule('.inventory-stock-hint')
+        self.assertNotIn('min-height', rule)
+        self.assertNotIn('height:', rule.replace('line-height:', ''))
 
     def test_a_SAVED_draw_no_longer_carries_a_stock_line(self):
         """
@@ -402,12 +412,12 @@ class ARefusedSaveSaysWhatIsWrongTests(InventorySectionBase):
         body = self.client.get(reverse('jobcard_edit', args=[self.job.pk])).content.decode()
         self.assertNotIn('in stock', body)
 
-    def test_the_empty_line_still_reserves_its_height_on_a_saved_row(self):
+    def test_the_empty_line_is_still_rendered_on_a_saved_row(self):
         """
-        The half that must NOT change with it. The div stays, empty, because the
-        picker writes into it the moment a product is chosen — and a div that
-        appears when it is written to is a row that jumps under the finger
-        aiming at it.
+        The div stays, empty, because the picker writes into it the moment a
+        product is chosen — correcting a saved draw to a different product
+        shows the new product's count. Empty, it takes no height (see
+        `test_the_stock_line_takes_room_only_while_it_says_something`).
         """
         JobCardSpareItem.objects.create(
             job_card=self.job, source=INVENTORY, item=self.item,

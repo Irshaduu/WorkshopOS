@@ -5,6 +5,10 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 
+# A plain module holding three numbers and a parser — it imports no model, so
+# importing it here at module level cannot create a cycle with workshop.models.
+from workshop.pricing import DEFAULT_MARKUP_PERCENT, MAX_MARKUP_PERCENT
+
 class Category(models.Model):
     """
     Groups Inventory Items (e.g., Engine Parts, Fluids, Electrical).
@@ -46,13 +50,31 @@ class Item(models.Model):
     # receipts (issuing stock at the average leaves the average unchanged), and
     # always by full replay — see inventory/costing.py. Never edited by hand.
     avg_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Weighted-average purchase cost per unit, derived from restock bills")
+    # How much the job card suggests adding on top of `avg_cost` for the
+    # customer's unit price — a MARKUP (₹1,000 → ₹1,400 at 40), never a margin.
+    # A SUGGESTION ONLY: nothing on the server reads this to price anything (see
+    # workshop/pricing.py), and changing it moves no saved price on any card.
+    #
+    # Whole numbers only, 0 to 999, set on Add Product and Edit Product.
+    # `db_default` as well as `default`, per the migration rule: a row inserted
+    # by code that predates this column still gets 40 rather than failing.
+    markup_percent = models.PositiveSmallIntegerField(
+        default=DEFAULT_MARKUP_PERCENT, db_default=DEFAULT_MARKUP_PERCENT,
+        help_text="Markup on cost suggested for the customer unit price on a job card (whole %, 0–999)")
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['category', 'name'], 
+                fields=['category', 'name'],
                 name='unique_category_item_idx'
-            )
+            ),
+            # The views refuse anything outside 0–999; this is the last line of
+            # defence for a row written some other way. PositiveSmallIntegerField
+            # already refuses a negative on PostgreSQL.
+            models.CheckConstraint(
+                condition=models.Q(markup_percent__lte=MAX_MARKUP_PERCENT),
+                name='inventory_item_markup_percent_max',
+            ),
         ]
         ordering = ['-usage_count', 'name']
 

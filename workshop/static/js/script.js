@@ -337,6 +337,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 stockHint.classList.remove('text-danger');
                 stockHint.classList.add('text-muted');
             }
+            // The pick is gone, so the cost and markup that came with it go
+            // too — and the job card's price script is told, so a price it
+            // suggested for that product is taken back. Only Office and Owner
+            // rows carry these attributes; on Floor's page nothing listens.
+            if (row && row.hasAttribute('data-cost')) {
+                row.setAttribute('data-cost', '');
+                row.setAttribute('data-markup', '');
+                row.dispatchEvent(new CustomEvent('inventory:cleared', { bubbles: true }));
+            }
 
             const query = this.value;
             if (timeout) clearTimeout(timeout);
@@ -416,6 +425,18 @@ document.addEventListener('DOMContentLoaded', function () {
                                 stockHint.classList.toggle('text-muted', stock > 0);
                             }
                             suggestionsBox.innerHTML = '';
+                            // Cost per unit and the product's markup, for the
+                            // suggested price. The server sends both keys to
+                            // Office and Owner only, and only their rows carry
+                            // the attributes — so on Floor's page this writes
+                            // nothing and nobody listens. The event is raised
+                            // BEFORE recalcRow, so a unit price suggested for
+                            // this product is multiplied into the total below.
+                            if (row && row.hasAttribute('data-cost')) {
+                                row.setAttribute('data-cost', item.cost != null ? String(item.cost) : '');
+                                row.setAttribute('data-markup', item.markup != null ? String(item.markup) : '');
+                                row.dispatchEvent(new CustomEvent('inventory:picked', { bubbles: true }));
+                            }
                             recalcRow(row);
                             // Picking a product fills the search box, the hidden
                             // id and (via recalcRow) possibly the price — all by
@@ -461,6 +482,20 @@ document.addEventListener('DOMContentLoaded', function () {
         const total = row.querySelector('.inventory-total');
         const qty = row.querySelector('input[name$="-quantity"]');
         if (!rate || !total) return;
+
+        // Exact, and rounded the way the SERVER rounds, whenever the job card
+        // has loaded pricing-core.js — which it always does. A float total
+        // could show ₹2,100.07 for a line the server saves as ₹2,100.08, and
+        // `parseFloat("1,400")` is 1. Strict parsing leaves the total alone for
+        // anything that is not a plain number; the server refuses that figure
+        // with a message on save. The float path below is only a fallback for
+        // a page where the core did not arrive.
+        const P = window.PricingCore;
+        if (P) {
+            const exact = P.lineTotalPaise(P.parseMoney(rate.value), P.parseQty(qty ? qty.value : ''));
+            if (exact !== null) total.value = P.inputValue(exact);
+            return;
+        }
 
         const r = parseFloat(rate.value);
         const q = parseFloat(qty ? qty.value : '');

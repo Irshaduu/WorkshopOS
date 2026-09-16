@@ -109,22 +109,24 @@
     }
 
     /* ==========================================================
-       THE STOCK LINE RESERVES ITS SPACE, EMPTY OR NOT
+       THE STOCK LINE TAKES ROOM ONLY WHILE IT SAYS SOMETHING
        ==========================================================
        It sits under the Inventory product box and is written by the picker the
-       moment a product is chosen. It used to be an empty div — zero height with
-       nothing in it, one line high with something — so choosing a product made
-       that row, and everything below it, jump. On a tablet mid-job-card the box
-       you were aiming at has moved by the time your finger lands.
+       moment a product is chosen. An empty div has no line box, so with nothing
+       in it this is zero high — which is the rule now.
 
-       Height only. The text still appears and disappears; what does not change
-       is how much room it occupies, which is the whole fix. Same reasoning as
-       any reserved-space rule: a layout must not depend on whether a value has
-       arrived yet. */
+       ⚠ THIS REVERSES A RESERVED-SPACE RULE (2026-09-16, the owner's
+       instruction). It used to keep a minimum height of one line, so the row
+       would not jump when a product was picked. Two things changed underneath it:
+       a SAVED row never shows the line at all (`stock_display` is '' once a
+       draw has a pk), so on an ordinary card every row carried ~18px of
+       nothing; and the row's cells are TOP-aligned now (the rule below), so
+       when the line does appear the Qty and price boxes of that same row —
+       the next thing anyone taps — stay exactly where they were. Only the rows
+       underneath move, once, at the moment of picking. */
     .inventory-stock-hint {
         font-size: 0.72rem;
         line-height: 1.15rem;
-        min-height: 1.15rem;
     }
 
     /* ==========================================================
@@ -187,6 +189,141 @@
     /* A locked card's marks must not stay louder than the boxes they sit in. */
     .jc-total-wrap input:disabled + .jc-total,
     .jc-total-wrap input[readonly] + .jc-total { background: #dbe2ea; color: #6b7480; }
+
+    /* ==========================================================
+       THE MARKUP BADGE — what a customer price carries over its cost
+       ==========================================================
+       At the END of the row, after the line's total — Customer Price on a
+       spare, Total Price on a draw — in BOTH sections. Office
+       and Owner only: Floor is shown no price, and a markup gives the cost
+       away. MARKUP, never margin — ₹1,000 → ₹1,400 is 40% (see
+       workshop/pricing.py).
+
+       On an inventory row it sat beside the Unit Price for one revision and
+       moved on the owner's instruction, for a reason worth keeping: a row
+       whose total was typed by hand has an EMPTY unit price, so the badge sat
+       beside a blank box describing a figure two columns away. It is the
+       markup of the whole LINE, so it closes the line — and both sections now
+       end the same way.
+
+         red     below cost      yellow  0% to under 20%      green  20% and up
+
+       Rounded DOWN, and coloured from the number it shows, so a "20%" badge is
+       never yellow and the badge never claims more than the price carries.
+
+       ITS WIDTH IS RESERVED WHEN IT IS EMPTY (`visibility`, never `display`).
+       A badge that appeared as a price was typed would widen the cell and
+       shift every column to its right under the finger aiming at one, on a
+       row that is being typed into at that very moment. Its height is under
+       the box's, so no row grows.
+
+       Its colour never animates: the colour IS the state, and a transition in
+       flight reads as the old one (the rule recorded for the status colours).
+       White on #15803d is 5.02:1 and on #b91c1c 6.47:1; the yellow's text is
+       6.96:1. The yellow gets a border because the pill alone is 1.25:1
+       against a white card — and it is a pill with dark text, not an edge, so
+       it cannot be mistaken for the amber "you changed this" edge. */
+    .jc-mk-wrap { display: flex; align-items: center; gap: 6px; }
+    .jc-mk-wrap > .jc-total-wrap,
+    .jc-mk-wrap > input { flex: 1 1 auto; min-width: 0; }
+    /* ⚠ `position: relative` IS LOAD-BEARING, not tidying. The badge carries a
+       Bootstrap `visually-hidden` label ("Markup "), and that class is
+       `position: absolute`. With nothing positioned between it and the card,
+       the label is laid out against the CARD — outside `.table-responsive` —
+       so it escapes the table's sideways scroller at its static position,
+       ~900px to the right, and widens the whole job card on a phone. Measured
+       before the fix at 375px: the page grew to 1,273px wide while the same
+       page without badges stayed at 375. Positioning the badge keeps the label
+       inside the scroller with it. */
+    .jc-mk {
+        position: relative;
+        flex: 0 0 auto;
+        min-width: 46px;
+        height: 22px;
+        padding: 0 7px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        line-height: 20px;
+        text-align: center;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        transition: none;
+    }
+    .jc-mk.is-empty { visibility: hidden; }
+    .jc-mk--ok   { background: #15803d; border-color: #15803d; color: #fff; }
+    .jc-mk--low  { background: #fde68a; border-color: #eab308; color: #713f12; }
+    .jc-mk--loss { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+    /* THE GREY UNIT PRICE — what a hand-typed Total Price works out to.
+       A PLACEHOLDER, never a value: it posts nothing, so the typed total stays
+       the bill. Saved, a divided unit price would make the server rebuild a
+       different total (₹1,000 for 7 → 142.86 → ₹1,000.02). It is the figure
+       the printed bill prints in its UNIT PRICE column (see
+       `pricing-core.unitFromTotalPaise`), and typing in the box makes a real,
+       black unit price that the total then follows.
+
+       The `.jc-suggested` pattern the known-plate offer already uses — italic
+       and darker than an ordinary placeholder, so it reads as a figure and can
+       never be mistaken for one typed in — at the value's own size and weight
+       rather than the smaller hint size, because it IS a number. #5b6b82 is
+       4.95:1 on the box's #f1f5f9 (the offer's #64748b is 4.34:1). It fades
+       like any placeholder once the box is focused, when typing is about to
+       start. */
+    .form-control.jc-derived:not(:focus)::placeholder {
+        color: #5b6b82;
+        font-style: italic;
+        font-size: 1em;
+        font-weight: 500;
+    }
+
+    /* The customer price cell carries the badge, so it is wider than the
+       shared 145px `.col-price` by exactly the badge and its gap. */
+    .col-price.col-price-mk { min-width: 197px; width: 197px; }
+
+    /* Cost / Unit on an inventory row: a figure to READ, never a box to type
+       in. It is what the shelf paid (the weighted average from Supplies Shop
+       bills) and it cannot be typed — a typed cost would break the average,
+       and the next bill would overwrite it anyway.
+
+       SAME SHAPE AS THE BOXES, OPPOSITE SURFACE. It takes the inputs' own
+       height, their 8px corner and their 12px inset, so it sits in the row as
+       one of them. What says "you cannot type here" is the surface: no fill
+       where every input is filled, and a DASHED outline where every input is
+       solid. It carried no frame for one revision — plain grey text floating
+       between two boxes — and the owner's verdict was that the column needed
+       design.
+
+       Sized the way an input sizes ITSELF — a 1.5 line, 6px padding and a 1px
+       border added on top (`content-box`) — not by a fixed height. A fixed
+       `calc(… + 2px)` measured 0.7px TALLER than the boxes beside it on a
+       1.5x screen, where a 1px border paints at 0.67px; built from the same
+       parts, the two round identically on every screen. `min-height` holds
+       the line when the box is empty.
+
+       Deliberately NOT the locked-card palette (cooler fill, not-allowed
+       cursor): that palette means "this card is settled", and reusing it here
+       would make one column of every open card look locked. The frame shows
+       even before a product is picked, so picking one fills a box that was
+       already there rather than making one appear. */
+    .inventory-cost-val {
+        box-sizing: content-box;
+        min-height: 1.5em;
+        line-height: 1.5;
+        padding: 6px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        font-size: 1rem;
+        font-weight: 500;
+        color: #475569;
+        background: transparent;
+        border: 1px dashed #cbd5e1;
+        border-radius: 8px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        cursor: default;
+    }
 
     /* Every box in an Inventory row starts at the same y.
        The Item cell is the tall one — it carries the stock line underneath —
@@ -1972,8 +2109,19 @@ grey".
                                     <th class="ps-3" style="min-width: 240px;">Item</th>
                                     <th class="text-center {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}" style="min-width: 90px;">Qty</th>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                                    <th class="text-nowrap text-end" style="min-width: 110px;">Cost / Unit (₹)</th>
                                     <th class="text-nowrap" style="min-width: 130px;">Unit Price (₹)</th>
-                                    <th class="pe-4 text-nowrap" style="min-width: 150px;">Customer Price (₹)</th>
+                                    {% comment %}
+                                    "Total Price", not "Customer Price" — the owners'
+                                    call (2026-09-16). Three money columns sit side
+                                    by side here, and "Customer Price" beside "Unit
+                                    Price" did not say which one was the other times
+                                    the quantity. Spare Parts keeps "Customer Price",
+                                    where it sits beside Shop Price and both are line
+                                    totals. The settle check names this gap "no total
+                                    price" to match (`settlement.TOTAL_PRICE`).
+                                    {% endcomment %}
+                                    <th class="pe-4 text-nowrap" style="min-width: 202px;">Total Price (₹)</th>
                                     {% endif %}
                                 </tr>
                             </thead>
@@ -1993,8 +2141,18 @@ grey".
                                 chosen, so a row filled in this session is
                                 covered too.
                                 {% endcomment %}
+                                {% comment %}
+                                `data-cost` / `data-markup` are what the suggested
+                                price is worked out from — the draw's cost per unit
+                                and its product's markup. Rendered for Office and
+                                Owner ONLY (`pricing` is None for Floor), and
+                                rewritten by the picker when a product is chosen.
+                                Like `data-category`, the picker overwrites them on
+                                every pick, so a cloned row cannot inherit them.
+                                {% endcomment %}
                                 <tr class="inventory-row border-bottom{% if i_form.errors %} jc-row-invalid{% endif %}"
-                                    data-category="{{ i_form.part_category }}">
+                                    data-category="{{ i_form.part_category }}"{% if pricing %}
+                                    data-cost="{{ i_form.cost_attr }}" data-markup="{{ i_form.markup_attr }}"{% endif %}>
                                     <td class="col-idx">{{ forloop.counter }}</td>
                                     <td class="ps-3">
                                         {{ i_form.id }}
@@ -2021,8 +2179,23 @@ grey".
                                         {% if i_form.quantity.errors %}<div class="text-danger" style="font-size: 0.72rem;">{{ i_form.quantity.errors.0 }}</div>{% endif %}
                                     </td>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                                    {% comment %}
+                                    Cost / Unit — text, never an input, so it posts
+                                    nothing. A dash means a product whose cost is
+                                    UNKNOWN (no Supplies Shop bill yet), which is
+                                    also why no price is suggested for it.
+                                    {% endcomment %}
+                                    <td class="text-end">
+                                        <div class="inventory-cost-val"{% if i_form.picked_item and i_form.cost_per_unit is None %} title="No Supplies Shop bill has costed this product yet"{% endif %}>{% if i_form.picked_item %}{% if i_form.cost_per_unit is None %}—{% else %}{{ i_form.cost_per_unit|inr_amount }}{% endif %}{% endif %}</div>
+                                    </td>
                                     <td>{{ i_form.customer_rate }}</td>
-                                    <td class="pe-4">{{ i_form.total_price }}</td>
+                                    {# The markup badge closes the line, after the total — see `.jc-mk`. #}
+                                    <td class="pe-4">
+                                        <div class="jc-mk-wrap">
+                                            {{ i_form.total_price }}
+                                            <span class="jc-mk is-empty"><span class="visually-hidden">Markup </span><span class="jc-mk-n"></span></span>
+                                        </div>
+                                    </td>
                                     {% else %}
                                     {% comment %}
                                     Floor sees no prices, but the values must still post or
@@ -2134,7 +2307,7 @@ grey".
                                     <th class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}" style="min-width: 138px;">Dates</th>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <th class="col-price text-nowrap">Shop Price (₹)</th>
-                                    <th class="col-price pe-4 text-nowrap">Customer Price (₹)</th>
+                                    <th class="col-price col-price-mk pe-4 text-nowrap">Customer Price (₹)</th>
                                     {% endif %}
                                 </tr>
                             </thead>
@@ -2274,10 +2447,14 @@ grey".
                                             <span class="jc-total" hidden>total</span>
                                         </div>
                                     </td>
-                                    <td class="col-price pe-4">
-                                        <div class="jc-total-wrap">
-                                            {{ s_form.total_price }}
-                                            <span class="jc-total" hidden>total</span>
+                                    <td class="col-price col-price-mk pe-4">
+                                        {# The markup badge sits after the box — see `.jc-mk`. #}
+                                        <div class="jc-mk-wrap">
+                                            <div class="jc-total-wrap">
+                                                {{ s_form.total_price }}
+                                                <span class="jc-total" hidden>total</span>
+                                            </div>
+                                            <span class="jc-mk is-empty"><span class="visually-hidden">Markup </span><span class="jc-mk-n"></span></span>
                                         </div>
                                     </td>
                                     {% else %}
@@ -2392,7 +2569,7 @@ is now true, and the column width is unchanged at every breakpoint.
             a clone can inherit; an attribute the picker overwrites on every
             pick is safe, one that means "already wired" is not.)
             {% endcomment %}
-            <tr class="inventory-row border-bottom" data-category="">
+            <tr class="inventory-row border-bottom" data-category=""{% if pricing %} data-cost="" data-markup=""{% endif %}>
                 {# Empty here and filled by `renumberRows()` — a template cannot #}
                 {# know what position the row it becomes will be added at. #}
                 <td class="col-idx"></td>
@@ -2409,8 +2586,15 @@ is now true, and the column width is unchanged at every breakpoint.
                     {{ inventory_formset.empty_form.quantity }}
                 </td>
                 {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                {# Same cells as the live rows: Cost / Unit, the rate, then the total with its badge. #}
+                <td class="text-end"><div class="inventory-cost-val"></div></td>
                 <td>{{ inventory_formset.empty_form.customer_rate }}</td>
-                <td class="pe-4">{{ inventory_formset.empty_form.total_price }}</td>
+                <td class="pe-4">
+                    <div class="jc-mk-wrap">
+                        {{ inventory_formset.empty_form.total_price }}
+                        <span class="jc-mk is-empty"><span class="visually-hidden">Markup </span><span class="jc-mk-n"></span></span>
+                    </div>
+                </td>
                 {% else %}
                 <td class="d-none">
                     {{ inventory_formset.empty_form.customer_rate }}
@@ -2513,10 +2697,13 @@ is now true, and the column width is unchanged at every breakpoint.
                         <span class="jc-total" hidden>total</span>
                     </div>
                 </td>
-                <td class="col-price pe-4">
-                    <div class="jc-total-wrap">
-                        {{ spare_formset.empty_form.total_price }}
-                        <span class="jc-total" hidden>total</span>
+                <td class="col-price col-price-mk pe-4">
+                    <div class="jc-mk-wrap">
+                        <div class="jc-total-wrap">
+                            {{ spare_formset.empty_form.total_price }}
+                            <span class="jc-total" hidden>total</span>
+                        </div>
+                        <span class="jc-mk is-empty"><span class="visually-hidden">Markup </span><span class="jc-mk-n"></span></span>
                     </div>
                 </td>
                 {% else %}
@@ -3196,6 +3383,10 @@ is now true, and the column width is unchanged at every breakpoint.
 
     const priceInput = targetSpareRow.querySelector('input[name$="-unit_price"]');
     if (priceInput && price) priceInput.value = price;
+    // An imported shop price suggests the customer price exactly as a typed one
+    // does — it is filled by assigning `.value`, which fires no event, so the
+    // price script has to be told. Absent for Floor, who has no price boxes.
+    if (window.jcPriceFill) window.jcPriceFill(targetSpareRow);
 
     const shopSelect = targetSpareRow.querySelector('select.shop-name-select');
     if (shopSelect && shopName) {
@@ -3391,12 +3582,16 @@ and filled for the guard.
         refreshChips();
     });
 
-    // A value written by script fires no event, so the two places that fill
-    // boxes for you say so themselves: the colour picker (below) and
-    // `importSpare()`, which calls this. Import fills both dates, so the chip
-    // has to be relabelled with them.
-    window.jcFormTouched = function () {
-        markDirty();
+    // A value written by script fires no event, so the places that fill boxes
+    // for you say so themselves: the colour picker (below), `importSpare()`,
+    // and the suggested prices. Import fills both dates, so the chip has to be
+    // relabelled with them.
+    //
+    // `el` is optional: the box that was filled. Passing it gives that box the
+    // same amber "you changed this" edge a typed value gets — a suggested price
+    // is a change to the card like any other, and it must read as one.
+    window.jcFormTouched = function (el) {
+        markDirty(el);
         refreshAll();
         refreshChips();
         // `importSpare()` fills a Qty as well as the two dates.
@@ -4024,6 +4219,367 @@ nothing happens and typing still works.
     });
 }());
 </script>
+
+{% comment %}
+================================================================================
+SUGGESTED PRICES AND THE MARKUP BADGE
+================================================================================
+The arithmetic is `pricing-core.js`, loaded for every role because script.js's
+inventory line total uses it too (exact, rounded the way the server rounds).
+The config and the script below it are Office and Owner only — `pricing` is
+None for Floor — so Floor's page carries no cost, no markup and no fill.
+
+THE SERVER NEVER PRICES A PART. Everything here writes into ordinary boxes that
+post like typed ones, and a suggestion reaches a bill only when somebody presses
+Save with it on screen. `workshop/pricing.py` records why.
+
+WHEN A BOX MAY BE FILLED — every rule, in one place:
+
+  1. Only in answer to a person: typing a Shop Price, picking a product,
+     importing an unassigned spare, or tapping into an empty customer price.
+     Opening a card fills nothing, so an old card cannot change by being looked
+     at.
+  2. Only a box that is EMPTY AS THE SERVER SENT IT, or one this script filled
+     and nobody has touched since. "As the server sent it" is `defaultValue`,
+     not `value` — `clearZeroInputs()` blanks a stored ₹0 on load, and a part
+     given away free must never be priced because its box now looks empty.
+  3. Once a person types in a customer price (emptying it counts), this script
+     never writes there again on this page. What a person did always wins — the
+     known-plate script's own rule.
+  4. Never on a SETTLED card, even unlocked (`fill` is false): a filled price
+     there would change a bill the customer has already paid.
+  5. A saved price never follows a later change. A shop price corrected next
+     week leaves the customer price alone; only the badge moves, to show the
+     real markup.
+  6. No usable cost (blank, "1,000", a zero warehouse cost that means UNKNOWN)
+     means no suggestion — and a suggestion this script made is taken back, so
+     a stale price cannot sit under a cost it no longer matches.
+{% endcomment %}
+<script src="{% static 'js/pricing-core.js' %}?v=2"></script>
+{% if pricing %}
+{{ pricing|json_script:"jcPricing" }}
+<script>
+(function () {
+    'use strict';
+
+    var core = window.PricingCore;
+    var form = document.getElementById('jobcardForm');
+    var cfgEl = document.getElementById('jcPricing');
+    if (!core || !form || !cfgEl) return;
+
+    var cfg;
+    try { cfg = JSON.parse(cfgEl.textContent); } catch (e) { return; }
+    var SPARE_MARKUP = core.parseMarkup(cfg.spare_markup);
+    var LOW = Number(cfg.low_markup);
+    var UNKNOWN_COST = 'No Supplies Shop bill has costed this product yet';
+
+    // Element identity, never a data-* attribute — a clone of the row template
+    // would inherit an attribute (the first of script.js's cloning traps).
+    var wrote = new WeakMap();     // box -> the exact text this script put there
+    var claimed = new WeakSet();   // boxes a person has typed into
+
+    function fillAllowed() {
+        return cfg.fill === true && form.getAttribute('data-locked') !== 'true';
+    }
+
+    function blankAsServed(box) {
+        return box.defaultValue.trim() === '' && box.value.trim() === '';
+    }
+
+    function mayWrite(box) {
+        if (!box || box.disabled || box.readOnly || claimed.has(box)) return false;
+        if (wrote.has(box)) return wrote.get(box) === box.value;
+        return blankAsServed(box);
+    }
+
+    function write(box, text) {
+        box.value = text;
+        wrote.set(box, text);
+    }
+
+    // Undo a suggestion — only one this script made and nobody has touched.
+    function takeBack(box) {
+        if (box && !claimed.has(box) && wrote.has(box) && wrote.get(box) === box.value) {
+            box.value = '';
+            wrote.delete(box);
+            return true;
+        }
+        return false;
+    }
+
+    function touched(box) {
+        if (window.jcFormTouched) window.jcFormTouched(box);
+    }
+
+    function paint(badge, percent) {
+        if (!badge) return;
+        var band = core.band(percent, LOW);
+        var n = badge.querySelector('.jc-mk-n');
+        badge.classList.remove('jc-mk--ok', 'jc-mk--low', 'jc-mk--loss');
+        if (band === null) {
+            badge.classList.add('is-empty');
+            if (n) n.textContent = '';
+            badge.removeAttribute('title');
+            return;
+        }
+        badge.classList.remove('is-empty');
+        badge.classList.add('jc-mk--' + band);
+        if (n) n.textContent = core.badgeText(percent);
+        badge.title = band === 'loss' ? 'Markup on cost: below cost' : 'Markup on cost';
+    }
+
+    // ---------------------------------------------------------------- spares
+    // Shop Price and Customer Price are both LINE totals, so the quantity plays
+    // no part here.
+    function spareBoxes(row) {
+        return {
+            cost: row.querySelector('input[name^="spares-"][name$="-unit_price"]'),
+            price: row.querySelector('input[name^="spares-"][name$="-total_price"]'),
+            badge: row.querySelector('.jc-mk')
+        };
+    }
+
+    function spareBadge(row) {
+        var b = spareBoxes(row);
+        if (!b.cost || !b.price) return;
+        paint(b.badge, core.markupPercent(core.parseMoney(b.price.value),
+                                          core.parseMoney(b.cost.value)));
+    }
+
+    // Returns true when the customer price box changed.
+    function fillSpare(row) {
+        var b = spareBoxes(row);
+        if (!b.cost || !b.price || !fillAllowed() || !mayWrite(b.price)) return false;
+        var paise = core.suggestPaise(core.parseMoney(b.cost.value), SPARE_MARKUP);
+        if (paise === null) return takeBack(b.price);
+        var text = core.inputValue(paise);
+        if (b.price.value === text) { wrote.set(b.price, text); return false; }
+        write(b.price, text);
+        return true;
+    }
+
+    // ------------------------------------------------------------- inventory
+    // The suggestion is the customer UNIT price; the total is unit x quantity.
+    function invBoxes(row) {
+        return {
+            rate: row.querySelector('input[name^="inventory-"][name$="-customer_rate"]'),
+            total: row.querySelector('input[name^="inventory-"][name$="-total_price"]'),
+            qty: row.querySelector('input[name^="inventory-"][name$="-quantity"]'),
+            badge: row.querySelector('.jc-mk'),
+            costOut: row.querySelector('.inventory-cost-val'),
+            item: row.querySelector('.inventory-item-id')
+        };
+    }
+
+    function invCost(row) {
+        return core.parseMoney(row.getAttribute('data-cost') || '');
+    }
+
+    function invBadge(row) {
+        var b = invBoxes(row);
+        if (!b.rate || !b.total) return;
+        var cost = invCost(row);
+        var percent;
+        if (b.rate.value.trim() !== '') {
+            // A rate that is there but unreadable gives no badge — it never
+            // falls back to a total that may be stale beside it.
+            percent = core.markupPercent(core.parseMoney(b.rate.value), cost);
+        } else {
+            percent = core.lineMarkupPercent(core.parseMoney(b.total.value), cost,
+                                             b.qty ? core.parseQty(b.qty.value) : null);
+        }
+        paint(b.badge, percent);
+        showDerivedRate(b);
+    }
+
+    // THE GREY UNIT PRICE. When the Unit Price box is empty and a Total Price
+    // and a quantity are there, the box shows total ÷ quantity as its
+    // PLACEHOLDER — the figure the printed bill will print — and posts nothing,
+    // so the typed total stays the bill (see `.jc-derived`). Anything else puts
+    // the box's own placeholder back. Called wherever the badge is repainted,
+    // because the same three boxes decide both.
+    var ownPlaceholder = new WeakMap();   // box -> the placeholder the server gave it
+    var DERIVED_TITLE = 'Worked out from the Total Price. Type here to set a unit price instead.';
+
+    function showDerivedRate(b) {
+        var rate = b.rate;
+        if (!ownPlaceholder.has(rate)) ownPlaceholder.set(rate, rate.getAttribute('placeholder') || '');
+        var unit = null;
+        if (rate.value.trim() === '') {
+            unit = core.unitFromTotalPaise(core.parseMoney(b.total.value),
+                                           b.qty ? core.parseQty(b.qty.value) : null);
+        }
+        if (unit === null) {
+            rate.setAttribute('placeholder', ownPlaceholder.get(rate));
+            rate.classList.remove('jc-derived');
+            rate.removeAttribute('title');
+        } else {
+            rate.setAttribute('placeholder', core.inputValue(unit));
+            rate.classList.add('jc-derived');
+            rate.setAttribute('title', DERIVED_TITLE);
+        }
+    }
+
+    // The read-only Cost / Unit figure, rewritten when a product is picked.
+    function showCost(row) {
+        var b = invBoxes(row);
+        if (!b.costOut) return;
+        if (!b.item || !b.item.value) {
+            b.costOut.textContent = '';
+            b.costOut.removeAttribute('title');
+            return;
+        }
+        var cost = invCost(row);
+        if (cost === null || cost <= 0n) {
+            b.costOut.textContent = '—';
+            b.costOut.title = UNKNOWN_COST;
+            return;
+        }
+        b.costOut.textContent = core.displayRupees(cost);
+        b.costOut.removeAttribute('title');
+    }
+
+    function totalFromRate(b) {
+        var total = core.lineTotalPaise(core.parseMoney(b.rate.value),
+                                        b.qty ? core.parseQty(b.qty.value) : null);
+        if (total !== null) b.total.value = core.inputValue(total);
+    }
+
+    // Returns true when the unit price box changed.
+    function fillInventory(row) {
+        var b = invBoxes(row);
+        if (!b.rate || !b.total || !fillAllowed()) return false;
+        // A total typed by hand is the person's figure (typing it clears the
+        // rate — script.js), so nothing here writes over it.
+        if (claimed.has(b.total)) return false;
+        if (!mayWrite(b.rate)) return false;
+        // The total has to be one this script can speak for: blank as served,
+        // or worked out from a rate this script wrote.
+        if (!wrote.has(b.rate) && !blankAsServed(b.total)) return false;
+
+        var paise = core.suggestPaise(invCost(row),
+                                      core.parseMarkup(row.getAttribute('data-markup') || ''));
+        if (paise === null) {
+            if (takeBack(b.rate)) { b.total.value = ''; return true; }
+            return false;
+        }
+        var text = core.inputValue(paise);
+        if (b.rate.value === text) { wrote.set(b.rate, text); return false; }
+        write(b.rate, text);
+        totalFromRate(b);
+        return true;
+    }
+
+    // ---------------------------------------------------------------- events
+    // Delegated on `document`, so a row added by "+ Add" works with nothing to
+    // re-initialise. Listeners on the boxes themselves (script.js) run first, in
+    // the target phase: by the time these run, a typed total has already
+    // cleared the rate and a typed quantity has already moved the total.
+    var SPARE_COST = /^spares-\d+-unit_price$/;
+    var SPARE_PRICE = /^spares-\d+-total_price$/;
+    var INV_RATE = /^inventory-\d+-customer_rate$/;
+    var INV_TOTAL = /^inventory-\d+-total_price$/;
+    var INV_QTY = /^inventory-\d+-quantity$/;
+
+    document.addEventListener('input', function (e) {
+        var t = e.target;
+        if (!t || !t.name || !t.closest) return;
+        var row;
+        if (SPARE_COST.test(t.name)) {
+            row = t.closest('.spare-row');
+            if (!row) return;
+            if (fillSpare(row)) touched(spareBoxes(row).price);
+            spareBadge(row);
+        } else if (SPARE_PRICE.test(t.name)) {
+            claimed.add(t);
+            wrote.delete(t);
+            row = t.closest('.spare-row');
+            if (row) spareBadge(row);
+        } else if (INV_RATE.test(t.name)) {
+            claimed.add(t);
+            wrote.delete(t);
+            row = t.closest('.inventory-row');
+            if (row) invBadge(row);
+        } else if (INV_TOTAL.test(t.name)) {
+            claimed.add(t);
+            row = t.closest('.inventory-row');
+            if (row) {
+                wrote.delete(invBoxes(row).rate);
+                invBadge(row);
+            }
+        } else if (INV_QTY.test(t.name)) {
+            row = t.closest('.inventory-row');
+            if (row) invBadge(row);
+        }
+    });
+
+    // Tapping into an EMPTY customer price fills the suggestion and selects it,
+    // so typing a different figure simply replaces it. This is what prices a
+    // part Floor recorded, on the owners' instruction — never on page load.
+    document.addEventListener('focusin', function (e) {
+        var t = e.target;
+        if (!t || !t.name || !t.closest) return;
+        var row, b;
+        if (SPARE_PRICE.test(t.name)) {
+            if (t.value.trim() !== '') return;
+            row = t.closest('.spare-row');
+            if (row && fillSpare(row)) {
+                touched(t);
+                spareBadge(row);
+                t.select();
+            }
+        } else if (INV_RATE.test(t.name) || INV_TOTAL.test(t.name)) {
+            row = t.closest('.inventory-row');
+            if (!row) return;
+            b = invBoxes(row);
+            if (!b.rate || !b.total || b.rate.value.trim() !== '' || b.total.value.trim() !== '') return;
+            if (fillInventory(row)) {
+                touched(b.rate);
+                invBadge(row);
+                t.select();
+            }
+        }
+    });
+
+    // script.js raises these from the product picker.
+    document.addEventListener('inventory:picked', function (e) {
+        var row = e.target;
+        if (!row || !row.classList || !row.classList.contains('inventory-row')) return;
+        showCost(row);
+        if (fillInventory(row)) touched(invBoxes(row).rate);
+        invBadge(row);
+    });
+
+    document.addEventListener('inventory:cleared', function (e) {
+        var row = e.target;
+        if (!row || !row.classList || !row.classList.contains('inventory-row')) return;
+        var b = invBoxes(row);
+        showCost(row);
+        // The pick is gone, so a suggestion made for it goes too.
+        if (b.rate && takeBack(b.rate)) {
+            if (b.total && !claimed.has(b.total)) b.total.value = '';
+            touched(b.rate);
+        }
+        invBadge(row);
+    });
+
+    // `importSpare()` fills a Shop Price by script and says so through this.
+    window.jcPriceFill = function (row) {
+        if (!row) return;
+        if (fillSpare(row)) touched(spareBoxes(row).price);
+        spareBadge(row);
+    };
+
+    // First paint of every badge. On DOMContentLoaded, and registered after the
+    // blocks above, so it runs AFTER `clearZeroInputs()` — a badge must describe
+    // the box as it is actually shown.
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('#spare-list .spare-row').forEach(spareBadge);
+        document.querySelectorAll('#inventory-list .inventory-row').forEach(invBadge);
+    });
+}());
+</script>
+{% endif %}
 
 {% if problems %}
 <script>
