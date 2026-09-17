@@ -74,6 +74,10 @@ if RUNNING_TESTS:
     PHOTO_S3_ACCOUNT_ID = ''
     PHOTO_S3_ENDPOINT = ''
     PHOTO_LOCAL_FALLBACK = False
+    # Same rule for the last Excel bill number: a value in someone's .env would
+    # shift every job card number the suite creates. Tests that need one set it
+    # with `override_settings`.
+    LAST_EXCEL_BILL_NUMBER = ''
 
 # No SSL in dev
 SECURE_SSL_REDIRECT = False

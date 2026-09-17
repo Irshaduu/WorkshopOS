@@ -323,6 +323,32 @@ def derive_unit_price(total_price, quantity):
     return (total_price / quantity).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+def _part_line(name, raw_quantity, amount):
+    """
+    One PART NAME row, with QTY and UNIT PRICE decided once — shared by the bill
+    of a job card and the bill of an old bill, so the two cannot print one part
+    two ways.
+
+    QTY and UNIT PRICE are the BREAKDOWN of the amount, and one unit has no
+    breakdown: the unit price would be the amount, printed twice, in the column
+    beside it. So the two cells travel together — either the row reads
+    "qty x unit = amount" or it reads just the amount.
+
+    Compared numerically, so 1.00 is one too. Anything else itemises, 0.5
+    included: half a litre is not a single anything, and there the per-unit
+    figure is the whole point of the row.
+    """
+    quantity = effective_quantity(raw_quantity)
+    itemised = quantity != ONE
+    return PartLine(
+        name=name,
+        quantity=quantity,
+        display_quantity=quantity if itemised else None,
+        unit_price=derive_unit_price(amount, quantity) if itemised else None,
+        amount=amount,
+    )
+
+
 def build_invoice(jobcard):
     """
     Everything the invoice template renders, derived from one job card.
@@ -344,24 +370,7 @@ def build_invoice(jobcard):
     part_lines = []
     part_subtotal = Decimal('0')
     for spare in jobcard.spares.all():
-        quantity = effective_quantity(spare.quantity)
-        # QTY and UNIT PRICE are the BREAKDOWN of the amount, and one unit has
-        # no breakdown: the unit price would be the amount, printed twice, in
-        # the column beside it. So the two cells travel together — either the
-        # row reads "qty x unit = amount" or it reads just the amount, and it
-        # is decided once here rather than twice.
-        #
-        # Compared numerically, so 1.00 is one too. Anything else itemises,
-        # 0.5 included: half a litre is not a single anything, and there the
-        # per-unit figure is the whole point of the row.
-        itemised = quantity != ONE
-        part_lines.append(PartLine(
-            name=part_display_name(spare),
-            quantity=quantity,
-            display_quantity=quantity if itemised else None,
-            unit_price=derive_unit_price(spare.total_price, quantity) if itemised else None,
-            amount=spare.total_price,
-        ))
+        part_lines.append(_part_line(part_display_name(spare), spare.quantity, spare.total_price))
         part_subtotal += spare.total_price or Decimal('0')
 
     return {
@@ -385,6 +394,42 @@ def build_invoice(jobcard):
         'settlement': settlement(jobcard),
 
         'document_title': document_title(jobcard, jobcard.bill_number, 'Invoice'),
+
+        # The DATE the sheet prints. Read from here rather than from the job
+        # card by the template, because an old bill's date is not an admitted
+        # date — it is the one date its paper carries.
+        'date': jobcard.admitted_date,
+    }
+
+
+def build_old_bill(bill):
+    """
+    The bill of an OLD BILL — one typed in from the Excel years — for the same
+    printed sheet a job card's bill uses.
+
+    Same keys as `build_invoice`, from the same row helper, so an old bill
+    reprints exactly the way a live one prints: labour as one SUBTOTAL, one
+    PART NAME list, QTY and UNIT PRICE only where there is more than one of
+    something, an unpriced part left blank. Two things differ, and both come
+    from the paper: there is no PAID stamp, because the Excel bill never
+    carried one and nobody recorded what was paid, and the date is the one
+    date the paper shows.
+    """
+    job_lines = [JobLine(description=line.description or '') for line in bill.job_lines.all()]
+    part_lines = [_part_line(line.name or '', line.quantity, line.amount) for line in bill.part_lines.all()]
+    return {
+        'job_lines': job_lines,
+        'job_pad': range(max(0, MIN_JOB_ROWS - len(job_lines))),
+        'job_subtotal': bill.labour_amount or Decimal('0'),
+
+        'part_lines': part_lines,
+        'part_pad': range(max(0, MIN_PART_ROWS - len(part_lines))),
+        'part_subtotal': sum((line.amount or Decimal('0') for line in part_lines), Decimal('0')),
+
+        'grand_total': bill.total_amount or Decimal('0'),
+        'settlement': None,
+        'document_title': document_title(bill, bill.bill_number, 'Invoice'),
+        'date': bill.bill_date,
     }
 
 

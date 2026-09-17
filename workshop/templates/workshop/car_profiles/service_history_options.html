@@ -50,7 +50,7 @@ It is NEVER STORED. See the view.
         phone whether this is the car they think it is.
         {% endcomment %}
         <p class="sh-opt-facts">
-            {{ summary.visits }} completed visit{{ summary.visits|pluralize }}{% if summary.last_date %} ·
+            {% if summary.visits or not summary.old_bills %}{{ summary.visits }} completed visit{{ summary.visits|pluralize }}{% if summary.old_bills %} · {% endif %}{% endif %}{% if summary.old_bills %}{{ summary.old_bills }} old bill{{ summary.old_bills|pluralize }}{% endif %}{% if summary.last_date %} ·
             last in {{ summary.last_date|date:"j M Y" }}{% endif %}{% if summary.latest_reading %} at
             {{ summary.latest_reading|inr }} km{% endif %}
         </p>

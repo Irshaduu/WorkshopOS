@@ -126,6 +126,8 @@ PHOTO_S3_ACCESS_KEY_ID / PHOTO_S3_SECRET_ACCESS_KEY / PHOTO_S3_BUCKET
 PHOTO_S3_ACCOUNT_ID            ← Cloudflare R2 only; host is derived from it
                                  (for any other provider use PHOTO_S3_ENDPOINT
                                   + PHOTO_S3_REGION + PHOTO_S3_PATH_PREFIX)
+
+LAST_EXCEL_BILL_NUMBER         ← leave blank until §3.5b, on the day itself
 ```
 
 Generate the secret key:
@@ -361,7 +363,7 @@ python manage.py purge_business_data --yes
 
 This clears every business table — job cards, both kinds of shop, the fleet
 accounts, inventory, the cashbook, the staff roster, **the owner withdrawals
-and the rent ledger**, and Deletion History. It does not touch logins, groups
+and the rent ledger**, **the old bills**, and Deletion History. It does not touch logins, groups
 or the master lists.
 
 ⚠ **Those last two were missing from the command until 2026-09-04**, and both
@@ -508,6 +510,31 @@ is history between the workshop and the landlord, the same answer opening stock
 gets. A window reaching back further says so on the Rent line rather than
 pretending the premises were free.
 
+### 3.5b The last Excel bill number — BEFORE the first live job card ☐
+
+⚠ **Do this before anybody creates a job card, and do not skip it.** The Excel
+bills were numbered JB-26-001, JB-26-002 … — the same shape the system uses. If
+this is not set, the first live job card of 2026 is **JB-26-001**, a number a
+customer from January already holds on paper.
+
+1. ☐ Open the Excel sheet and find the **last bill written there** (e.g. JB-26-245).
+   Excel billing stops today.
+2. ☐ Railway → Variables → set `LAST_EXCEL_BILL_NUMBER=JB-26-245` (that exact
+   shape). Railway redeploys on its own.
+3. ☐ Open **Old Bills** in the app. It must read *"The last Excel bill is
+   JB-26-245 — the system's own numbers start after it."* An owner who sees an
+   amber "not set yet" warning there instead has not got the variable in.
+4. ☐ Create the first live job card and confirm its number is **JB-26-246**.
+
+⚠ A value that is set but not in the `JB-YY-NNN` shape **stops the app from
+starting** — on purpose. If the deploy fails straight after setting it, check
+the spelling first.
+
+**Typing in the old bills comes after this, on the live system** — never on a
+laptop copy, and never before the purge in §3.2 (it clears them). Split the
+Excel years by month between the people typing; the Old Bills page shows each
+month's count and, once few are left, the exact JB numbers not typed yet.
+
 ### 3.6 Owner devices ☐
 
 Do this **last**, and only once the URL is final. A PWA install and its push
@@ -534,6 +561,10 @@ For each owner, on their own phone:
       beside Print must open that customer's chat, with nothing typed in it
 - ☐ Add a Cashbook entry, confirm the Profit page moves
 - ☐ Record a rent deposit; confirm today's figure on `/rent/` drops by it
+- ☐ Type one real **Old Bill** off the Excel sheet: the date spelled out under the
+      three boxes must be right, the TOTAL must match the XL bill, and the car's profile
+      must show it in the yellow Old bills section. Then confirm the Profit page did
+      **not** move
 - ☐ Write an Estimate, print it, confirm it carries the same letterhead as the bill
 - ☐ Open a car profile → **Service History** → print; confirm the letterhead, the
       type and the foot match the bill you printed above. Then **All Invoices** on

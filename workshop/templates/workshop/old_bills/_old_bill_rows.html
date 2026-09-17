@@ -1,0 +1,13 @@
+{% load custom_filters %}
+<div class="obl-list">
+    {% for bill in rows %}
+    <a class="obl-row" href="{% url 'old_bill_edit' bill.pk %}?back={{ here|urlencode }}">
+        <span class="obl-num">{{ bill.bill_number }}</span>
+        <span class="obl-main">
+            <span class="obl-car">{% if bill.brand_name or bill.model_name %}{{ bill.brand_name }} {{ bill.model_name }}{% else %}{{ bill.registration_number }}{% endif %}</span>
+            <span class="obl-meta">{{ bill.registration_number }} · {{ bill.bill_date|date:"j M Y" }}{% if bill.customer_name %} · {{ bill.customer_name }}{% endif %}</span>
+        </span>
+        <span class="obl-amt">₹{{ bill.total_amount|inr_amount }}</span>
+    </a>
+    {% endfor %}
+</div>

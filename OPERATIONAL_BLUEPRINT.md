@@ -304,6 +304,72 @@ plus a warning if you try to leave the page. **A photo never disappears silently
 
 ---
 
+## 3D. OLD BILLS — THE EXCEL YEARS, TYPED IN FOR HISTORY
+
+Before WorkshopOS the workshop wrote every bill in **Excel** — about 800 of them.
+**Old Bills** is where they are typed in, so each car's Profile, All Invoices and
+Service History reach back to its first visit. Like an Estimate, an old bill is
+**connected to nothing**: no profit, no cash, no stock, no shop or fleet ledger.
+
+```
+Drawer -> Records -> Old Bills -> + Add Old Bill
+   DATE  [10] [apr] [26]          -> "Fri 10 Apr 2026" spelled out underneath
+   # JB- [26] [097]                (the year fills itself from the date)
+   REG NO / MAKE / MODEL / MILEAGE    (no customer name — not needed here)
+   JOB PERFORMED  + SUBTOTAL          <- the paper's own order; one open row,
+   PART NAME  qty  amount                the next opens as you type
+   TOTAL ₹ 16,200.00   (worked out, nothing to type) -> "Verify this total with the XL bill"
+        |
+        v
+Save & add next  ->  same month and year kept, cursor back on Day
+```
+
+**What it holds is what the paper shows.** One date, the bill number, the car, the
+jobs with one labour subtotal, one mixed list of parts, and the total. There is **no
+discount and no payment**: the Excel total was sent on WhatsApp and the final figure
+was agreed at the counter and never written down, so an old bill's figure is what
+was *billed*. Commas and ₹ may be typed in amounts exactly as the paper prints them.
+The TOTAL is not typed: it is worked out as the amounts go in, and the typist checks
+it against the XL bill — a total that disagrees means a line above was misread, and
+that line is what gets fixed.
+
+A plate typed before fills MAKE and MODEL, exactly as on a new job card, and both
+offer the Job Card's own suggestions. JOB PERFORMED and PART NAME use the same
+dropdown under the box, on a phone too. A job line offers the Job Card's own
+lines ("Coolant replaced"); PART NAME offers the jobs already typed with their
+verb taken off — "Coolant replaced" offers "Coolant" — then the inventory
+category names ("Engine Oil", the way a bill prints it) and the spare parts list.
+Nothing typed here is added to either list.
+
+**Enter never saves** — it moves to the next box, and on the empty part row it brings
+the TOTAL into view. A bill with an amount that cannot be read, a
+number already typed, or a number whose year does not match its date is refused,
+with every problem named at the top and everything typed kept.
+
+**One JB number sequence, paper and system together.** Excel numbered bills
+JB-YY-NNN from 001 each January — the system's own shape. On go-live day the last
+Excel number is set (`LAST_EXCEL_BILL_NUMBER`), and the system's own numbers start
+after it; an old bill can never take a number after it.
+
+**Splitting the pile between people.** The Old Bills page shows every month of every
+year with its count. Excel never skipped a number, so once only a few are left the
+page names the exact JB numbers not typed yet.
+
+**Where they appear:**
+
+| Screen | How |
+|---|---|
+| Car Profiles | a car known only from old bills is listed and searchable |
+| Car Profile | a **yellow** Old bills section under the visits, numbered #1 (oldest) on its own; one line "Old bills: N · ₹X billed". The money tiles never include them |
+| All Invoices | after the job-card bills, on the same printed sheet, with no PAID stamp |
+| Service History | as **OLD BILL n**; counted in the car's history (first visit, serviced every, part life) but **not** in TOTAL BILLED / NET TOTAL |
+| New job card | a plate from the Excel years fills its make and model, and offers the name |
+
+Office and Owner; Floor never sees the section. Deleting an old bill is permanent
+and, like an estimate, not written to Deletion History — it moves no money.
+
+---
+
 ## 4. BILLING & FINANCIAL FLOW
 
 ### Cost Accumulation
@@ -1178,6 +1244,20 @@ ESTIMATES (Office / Owner)
   Deleting: permanent, and deliberately NOT recorded in Deletion History — see
             §3B and workshop/views/estimate.py.
   Rules in: workshop/invoice.py (build_estimate — shared with the bill)
+
+OLD BILLS (Office / Owner)
+  Shows: Year blocks of twelve month chips, each with its count, and the chosen
+         month's bills in DATE and NUMBER order — the paper file's own order.
+         Once 12 or fewer are left in a year, the JB numbers not typed yet are
+         named. Once the last Excel bill number is set, one line says where
+         the system's own numbers start.
+  Search:  plate, bill number, name or car, across every month (paged 45).
+  Rows:    yellow; bill number, car, plate, date, name, the billed total. A row
+           opens the bill for editing.
+  The form: see §3D — the paper's order, three date boxes, one open row at a time,
+            the worked-out total, Enter never saves, Save & add next.
+  One bill: /old-bills/<pk>/ reprints it on the invoice's own sheet, with Edit.
+  Rules in: workshop/old_bills.py
 
 PENDING BILLS
   Shows: Unpaid and part-paid jobs for cars that have been HANDED OVER — the

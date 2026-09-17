@@ -106,6 +106,12 @@
         There is no Visits or Last in tile. The count is beside "Visit history"
         and on every row's number, and the last visit is the top row.
         {% endcomment %}
+        {% comment %}
+        A car known only from its OLD BILLS has no money tiles: every figure in
+        them is what the system recorded, and it recorded nothing for this car.
+        The one line below says what there is instead.
+        {% endcomment %}
+        {% if car_info.visits %}
         <dl class="cd-stats">
             <div class="cd-stat">
                 <dt>Total billed</dt>
@@ -179,6 +185,19 @@
             </div>
             {% endif %}
         </dl>
+        {% endif %}
+
+        {% comment %}
+        OLD BILLS, counted apart from the money above and added to nothing. The
+        figure is what the Excel bills SAID — the final amount was agreed at the
+        counter and never written down, so it is "billed", never "paid".
+        {% endcomment %}
+        {% if car_info.old_bills %}
+        <p class="cd-oldline">
+            <i class="bi bi-receipt" aria-hidden="true"></i>
+            Old bills: {{ car_info.old_bills }} · ₹{{ car_info.old_bills_total|inr }} billed before the system
+        </p>
+        {% endif %}
 
         {% comment %}
         The one way the figure above can be wrong without looking wrong.
@@ -256,6 +275,7 @@
     row and split the grid four ways. Django renders the markup verbatim, so
     nothing server-side notices and the page looks almost right.
     ================================================================== {% endcomment %}
+    {% if car_info.visits %}
     <h2 class="cd-section">
         Visit history
         <span class="cd-section-count">{{ car_info.visits }}</span>
@@ -461,6 +481,47 @@
         <a href="?page={{ page_obj.next_page_number }}" rel="next">Older &raquo;</a>
         {% endif %}
     </nav>
+    {% endif %}
+    {% endif %}
+
+    {% comment %}
+    ==================================================================
+    OLD BILLS — the bills from the Excel years
+    ==================================================================
+    Yellow, under the visits, and numbered on their own from 1 (the oldest), so
+    no visit number above ever moves. They are all older than any visit, so
+    "at the end" is also the true order of the car's history. Each row opens
+    that bill as it was printed.
+    ================================================================== {% endcomment %}
+    {% if old_bills %}
+    <h2 class="cd-section">
+        Old bills
+        <span class="cd-section-count cd-count-old">{{ car_info.old_bills }}</span>
+    </h2>
+
+    <div class="cd-list cd-list-old">
+        {% for old in old_bills %}
+        <div class="cd-visit cd-visit-old">
+            <div class="cd-visit-no">#{{ old.old_number }}</div>
+            <div class="cd-visit-body">
+                <div class="cd-visit-top">
+                    <a class="cd-visit-link stretched-link"
+                       href="{% url 'old_bill_invoice' old.pk %}?back={{ request.get_full_path|urlencode }}"
+                       aria-label="Old bill {{ old.old_number }}, {{ old.bill_date|date:"d M Y" }}, {{ old.bill_number }}">
+                        {{ old.bill_date|date:"d M Y" }}
+                    </a>
+                </div>
+                <div class="cd-visit-meta">
+                    {% if old.km %}<span>{{ old.km|inr }} km</span>{% elif old.mileage %}<span>{{ old.mileage }}</span>{% endif %}
+                    <span class="cd-ref">{{ old.bill_number }}</span>
+                </div>
+            </div>
+            <div class="cd-visit-right">
+                <div class="cd-amount">₹{{ old.total_amount|inr }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
     {% endif %}
 </div>
 
@@ -855,6 +916,25 @@
 
     .cd-visit:last-child { border-bottom: none; }
     .cd-visit:hover { background: var(--color-hover); }
+
+    /* OLD BILLS — yellow, so they can never be read as visits the system
+       recorded. The number tile stays yellow on the first row too: the blue
+       "most recent" tile belongs to the live visits only.
+       ⚠ The tile rule carries FOUR classes on purpose. `:first-child` counts as
+       a class, so `.cd-visit:first-child .cd-visit-no` is three — the same as a
+       three-class rule here — and, being later in the file, it won: measured,
+       the first old bill's tile painted blue. */
+    .cd-list-old { background: #fefce8; border-color: #fde68a; margin-top: 0; }
+    .cd-visit-old { border-bottom-color: #fef3c7; }
+    .cd-visit-old:hover { background: #fef9c3; }
+    .cd-list-old .cd-visit.cd-visit-old .cd-visit-no { color: #78350f; background: #fde68a; }
+    .cd-count-old { color: #92400e; background: #fef3c7; }
+    .cd-list + .cd-pager + .cd-section,
+    .cd-list + .cd-section { margin-top: 1.4rem; }
+    .cd-oldline {
+        display: flex; align-items: center; gap: 0.4rem;
+        margin: 0.55rem 0 0; font-size: 0.8rem; font-weight: 600; color: #92400e;
+    }
 
     .cd-visit-no {
         flex: none;

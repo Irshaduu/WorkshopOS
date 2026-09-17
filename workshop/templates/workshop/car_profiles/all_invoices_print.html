@@ -232,7 +232,15 @@
             Back
         </a>
 
-        <span class="chip">{{ count }} invoice{{ count|pluralize }}</span>
+        <span class="chip">{% if chip_label %}{{ chip_label }}{% else %}{{ count }} invoice{{ count|pluralize }}{% endif %}</span>
+
+        {% comment %}
+        Only when one OLD BILL is printed on its own: that is where it is opened
+        from its Car Profile, so it is where a typing slip gets noticed.
+        {% endcomment %}
+        {% if edit_url %}
+        <a href="{{ edit_url }}" class="btn btn-ghost">Edit</a>
+        {% endif %}
 
         <span class="bar-spacer"></span>
 

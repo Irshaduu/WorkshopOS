@@ -1,0 +1,283 @@
+{
+  "_about": "Shared by workshop/tests/test_old_bills.py and workshop/tests/js/old-bill-core.test.js, so the browser and the server read the Old Bill form's typing the same way. Expected answers are written by hand.",
+  "today": "2026-09-17",
+  "dates": [
+    {
+      "day": "10",
+      "month": "4",
+      "year": "26",
+      "iso": "2026-04-10",
+      "label": "Fri 10 Apr 2026"
+    },
+    {
+      "day": "22",
+      "month": "12",
+      "year": "24",
+      "iso": "2024-12-22",
+      "label": "Sun 22 Dec 2024"
+    },
+    {
+      "day": "1",
+      "month": "6",
+      "year": "25",
+      "iso": "2025-06-01",
+      "label": "Sun 1 Jun 2025"
+    },
+    {
+      "day": "01",
+      "month": "06",
+      "year": "25",
+      "iso": "2025-06-01",
+      "label": "Sun 1 Jun 2025"
+    },
+    {
+      "day": " 07 ",
+      "month": "08",
+      "year": "2025",
+      "iso": "2025-08-07",
+      "label": "Thu 7 Aug 2025"
+    },
+    {
+      "day": "10",
+      "month": "apr",
+      "year": "2026",
+      "iso": "2026-04-10",
+      "label": "Fri 10 Apr 2026"
+    },
+    {
+      "day": "10",
+      "month": "April",
+      "year": "26",
+      "iso": "2026-04-10",
+      "label": "Fri 10 Apr 2026"
+    },
+    {
+      "day": "10",
+      "month": "mar",
+      "year": "26",
+      "iso": "2026-03-10",
+      "label": "Tue 10 Mar 2026"
+    },
+    {
+      "day": "10",
+      "month": "sept",
+      "year": "26",
+      "iso": "2026-09-10",
+      "label": "Thu 10 Sep 2026"
+    },
+    {
+      "day": "29",
+      "month": "2",
+      "year": "24",
+      "iso": "2024-02-29",
+      "label": "Thu 29 Feb 2024"
+    },
+    {
+      "day": "17",
+      "month": "9",
+      "year": "26",
+      "iso": "2026-09-17",
+      "label": "Thu 17 Sep 2026"
+    },
+    {
+      "day": "",
+      "month": "",
+      "year": "",
+      "error": "Enter the date on the bill."
+    },
+    {
+      "day": "10",
+      "month": "",
+      "year": "26",
+      "error": "Enter the day, month and year."
+    },
+    {
+      "day": "0",
+      "month": "1",
+      "year": "26",
+      "error": "The day must be 1 to 31."
+    },
+    {
+      "day": "32",
+      "month": "1",
+      "year": "26",
+      "error": "The day must be 1 to 31."
+    },
+    {
+      "day": "123",
+      "month": "1",
+      "year": "26",
+      "error": "The day must be 1 to 31."
+    },
+    {
+      "day": "１０",
+      "month": "4",
+      "year": "26",
+      "error": "The day must be 1 to 31."
+    },
+    {
+      "day": "10",
+      "month": "13",
+      "year": "26",
+      "error": "The month must be 1 to 12, or its name."
+    },
+    {
+      "day": "10",
+      "month": "0",
+      "year": "26",
+      "error": "The month must be 1 to 12, or its name."
+    },
+    {
+      "day": "10",
+      "month": "ma",
+      "year": "26",
+      "error": "The month must be 1 to 12, or its name."
+    },
+    {
+      "day": "10",
+      "month": "ju",
+      "year": "26",
+      "error": "The month must be 1 to 12, or its name."
+    },
+    {
+      "day": "10",
+      "month": "aprx",
+      "year": "26",
+      "error": "The month must be 1 to 12, or its name."
+    },
+    {
+      "day": "10",
+      "month": "4",
+      "year": "6",
+      "error": "The year must be like 26 or 2026."
+    },
+    {
+      "day": "10",
+      "month": "4",
+      "year": "1926",
+      "error": "The year must be like 26 or 2026."
+    },
+    {
+      "day": "10",
+      "month": "4",
+      "year": "026",
+      "error": "The year must be like 26 or 2026."
+    },
+    {
+      "day": "31",
+      "month": "2",
+      "year": "26",
+      "error": "There is no 31 Feb 2026."
+    },
+    {
+      "day": "29",
+      "month": "2",
+      "year": "25",
+      "error": "There is no 29 Feb 2025."
+    },
+    {
+      "day": "31",
+      "month": "4",
+      "year": "26",
+      "error": "There is no 31 Apr 2026."
+    },
+    {
+      "day": "18",
+      "month": "9",
+      "year": "26",
+      "error": "That date is in the future."
+    }
+  ],
+  "amounts": [
+    {
+      "text": "22,300.00",
+      "kind": "labour",
+      "paise": "2230000"
+    },
+    {
+      "text": "1,02,340",
+      "kind": "labour",
+      "paise": "10234000"
+    },
+    {
+      "text": "₹ 75",
+      "kind": "part",
+      "paise": "7500"
+    },
+    {
+      "text": "11880",
+      "kind": "part",
+      "paise": "1188000"
+    },
+    {
+      "text": "75.5",
+      "kind": "part",
+      "paise": "7550"
+    },
+    {
+      "text": ".5",
+      "kind": "part",
+      "paise": "50"
+    },
+    {
+      "text": "1400.",
+      "kind": "part",
+      "paise": "140000"
+    },
+    {
+      "text": "0",
+      "kind": "part",
+      "paise": "0"
+    },
+    {
+      "text": "99999999.99",
+      "kind": "part",
+      "paise": "9999999999"
+    },
+    {
+      "text": "100000000",
+      "kind": "labour",
+      "paise": "10000000000"
+    },
+    {
+      "text": "",
+      "kind": "part",
+      "blank": true
+    },
+    {
+      "text": "   ",
+      "kind": "total",
+      "blank": true
+    },
+    {
+      "text": "100000000",
+      "kind": "part",
+      "error": "too large"
+    },
+    {
+      "text": "12.345",
+      "kind": "part",
+      "error": "not a number"
+    },
+    {
+      "text": "abc",
+      "kind": "part",
+      "error": "not a number"
+    },
+    {
+      "text": "-5",
+      "kind": "part",
+      "error": "not a number"
+    },
+    {
+      "text": "1e3",
+      "kind": "part",
+      "error": "not a number"
+    },
+    {
+      "text": ".",
+      "kind": "part",
+      "error": "not a number"
+    }
+  ]
+}

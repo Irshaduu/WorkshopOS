@@ -5,6 +5,7 @@ Extracted from the original settings.py for production readiness.
 
 from pathlib import Path
 import os
+import re
 from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -228,6 +229,26 @@ LOGIN_URL = 'login'
 # setting rather than a literal because this codebase is intended to serve other
 # workshops later; one env var beats hunting for the hardcoded name.
 BUSINESS_NAME = config('BUSINESS_NAME', default='Formula D')
+
+# ---------------------------------------------------------------------------
+# THE LAST BILL WRITTEN IN EXCEL — e.g. JB-26-245
+# ---------------------------------------------------------------------------
+# Before this system the workshop numbered its Excel bills JB-YY-NNN, restarting
+# at 001 every January — the same shape the system uses. So the system's own
+# numbers for that year must start AFTER the last Excel one, or a customer holds
+# two different bills called JB-26-001. Every rule that reads this lives in
+# `workshop/old_bills.py`.
+#
+# ⚠ SET IT BEFORE THE FIRST LIVE JOB CARD. Blank means "no Excel years" and the
+# numbering behaves exactly as it always has. A value that is set but not in the
+# JB-YY-NNN shape stops the app at startup, on purpose: a floor silently ignored
+# is two customers holding one bill number.
+LAST_EXCEL_BILL_NUMBER = ''.join(config('LAST_EXCEL_BILL_NUMBER', default='').split()).upper()
+if LAST_EXCEL_BILL_NUMBER and not re.fullmatch(r'JB-\d{2}-0*[1-9]\d{0,4}', LAST_EXCEL_BILL_NUMBER):
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        f"LAST_EXCEL_BILL_NUMBER must look like JB-26-245, not {LAST_EXCEL_BILL_NUMBER!r}."
+    )
 
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)

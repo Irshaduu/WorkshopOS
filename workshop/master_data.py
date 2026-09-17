@@ -198,6 +198,25 @@ def brand_merge_model_split(brand, survivor):
     return sorted(absorbed), sorted(dropped)
 
 
+def _relabel_old_bills(what, old_name, final_name, brand_name=None):
+    """
+    Carry a master-list rename onto the OLD BILLS too, exactly as it is carried
+    onto the job cards — so one car's Profile, Service History and bills never
+    spell one make, model or part two ways. Text only: an old bill moves no
+    money and no stock, and nothing points at it.
+    """
+    from .models import OldBill, OldBillPartLine
+
+    if what == 'part':
+        OldBillPartLine.objects.filter(name__iexact=old_name).update(name=final_name)
+    elif what == 'brand':
+        OldBill.objects.filter(brand_name__iexact=old_name).update(brand_name=final_name)
+    elif what == 'model':
+        OldBill.objects.filter(
+            brand_name__iexact=brand_name, model_name__iexact=old_name,
+        ).update(model_name=final_name)
+
+
 def _collapse(text):
     """Trim and collapse runs of whitespace, without touching case.
 
@@ -239,6 +258,10 @@ def rename_spare(spare, new_name, user=None):
         source=JobCardSpareItem.SOURCE_SHOP,
         spare_part_name__iexact=old_name,
     ).update(spare_part_name=final_name)
+    # OLD BILLS follow the same spelling, so a part's life on one car is one
+    # chain on its Service History rather than two. Free text, no stock link —
+    # the same reason the shop rows above are safe to relabel with `.update()`.
+    _relabel_old_bills('part', old_name, final_name)
 
     if existing:
         # A merge removes a master row, so it is logged like any other permanent
@@ -282,6 +305,7 @@ def rename_brand(brand, new_name, user=None):
     final_name, existing = brand_rename_target(brand, new_name)
 
     moved = JobCard.objects.filter(brand_name__iexact=old_name).update(brand_name=final_name)
+    _relabel_old_bills('brand', old_name, final_name)
 
     if existing:
         # Split by the same helper the confirmation page reads, so the models
@@ -323,6 +347,7 @@ def rename_model(model, new_name, user=None):
     moved = JobCard.objects.filter(
         brand_name__iexact=brand_name, model_name__iexact=old_name,
     ).update(model_name=final_name)
+    _relabel_old_bills('model', old_name, final_name, brand_name=brand_name)
 
     if existing:
         DeletionLog.record(

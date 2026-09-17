@@ -1655,7 +1655,7 @@
                         workshop has known the car is the second thing a buyer
                         asks after how many times it came in.
                         {% endcomment %}
-                        <td>VISITS: {{ summary.visits }}
+                        <td>{% if summary.visits or not summary.old_bills %}VISITS: {{ summary.visits }}{% if summary.old_bills %}<br>OLD BILLS: {{ summary.old_bills }}{% endif %}{% else %}OLD BILLS: {{ summary.old_bills }}{% endif %}{% if summary.old_bills and show_amount %} · &#8377;{{ summary.old_bills_total|inr }}{% endif %}
                             {% if summary.span_label %}<br>OVER: {{ summary.span_label }}{% endif %}
                             {% if summary.first_date %}<br>FIRST VISIT: {{ summary.first_date|date:"j M Y" }}{% endif %}
                             {% if summary.last_date %}<br>LATEST VISIT: {{ summary.last_date|date:"j M Y" }}{% endif %}
@@ -1680,7 +1680,7 @@
                 {% for visit in visits %}
                 <section class="sh-visit">
                     <div class="sh-band">
-                        <span>VISIT {{ visit.number }}&nbsp; ·&nbsp; {{ visit.date|date:"j M Y" }}{% if visit.bill_number %}&nbsp; ·&nbsp; {{ visit.bill_number }}{% endif %}</span>
+                        <span>{% if visit.is_old_bill %}OLD BILL{% else %}VISIT{% endif %} {{ visit.number }}&nbsp; ·&nbsp; {{ visit.date|date:"j M Y" }}{% if visit.bill_number %}&nbsp; ·&nbsp; {{ visit.bill_number }}{% endif %}</span>
                         <span class="sh-band-r">
                             {% if visit.reading %}{{ visit.reading|inr }} km{% elif visit.reading_text %}{{ visit.reading_text }}{% endif %}
                         </span>
@@ -1867,8 +1867,14 @@
             yet, so "TOTAL PAID" would claim that money as well. The Car
             Profile prints TOTAL BILLED and DISCOUNT as these same figures, and
             NET TOTAL is its Paid + Still owed.
+
+            ⚠ OLD BILLS ARE NOT IN IT. Their discounts were never recorded, so
+            they have no honest place in a NET TOTAL, and this block stays the
+            figure the Car Profile prints; the record block gives their own
+            billed total. A car known only from old bills has NO block at all —
+            "TOTAL BILLED ₹0.00" would read as a car that cost nothing.
             {% endcomment %}
-            {% if show_amount %}
+            {% if show_amount and summary.visits or show_amount and not summary.old_bills %}
             <table class="inv-table sh-total">
                 <colgroup>
                     <col style="width:57.5%">
@@ -2108,7 +2114,8 @@
             <p class="sh-notes">Every visit listed above has an invoice held by Formula D&nbsp;&middot;
                 Odometer readings are as recorded when the vehicle was admitted{% if summary.current_km %}&nbsp;&middot;
                 Today's reading was supplied by the customer{% endif %}{% if has_flagged_reading %}&nbsp;&middot;
-                A distance marked * is unusually large and worth confirming{% endif %}&nbsp;&middot;
+                A distance marked * is unusually large and worth confirming{% endif %}{% if summary.old_bills %}&nbsp;&middot;
+                Old bills are from the workshop's earlier Excel records{% if show_amount %}; their discounts were not recorded, so they are not in the total{% endif %}{% endif %}&nbsp;&middot;
                 Work carried out elsewhere does not appear</p>
 
             {% comment %}

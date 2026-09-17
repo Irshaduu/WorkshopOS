@@ -158,6 +158,15 @@ urlpatterns = [
     path('estimates/<int:pk>/delete/', views.estimate_delete, name='estimate_delete'),
 
     # ------------------
+    # OLD BILLS (bills written in Excel before the system — history only)
+    # ------------------
+    path('old-bills/', views.old_bill_list, name='old_bill_list'),
+    path('old-bills/add/', views.old_bill_add, name='old_bill_add'),
+    path('old-bills/<int:pk>/', views.old_bill_invoice, name='old_bill_invoice'),
+    path('old-bills/<int:pk>/edit/', views.old_bill_edit, name='old_bill_edit'),
+    path('old-bills/<int:pk>/delete/', views.old_bill_delete, name='old_bill_delete'),
+
+    # ------------------
     # AUTH: LOGIN/LOGOUT
     # ------------------
     # ONE door. `/admin-login/` used to be a second face on the same view — same

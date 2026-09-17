@@ -1,0 +1,199 @@
+{% extends 'workshop/base.html' %}
+{% load custom_filters %}
+
+{% block title %}Old Bills{% endblock %}
+
+{% comment %}
+================================================================================
+OLD BILLS — the page three people split the paper pile on
+================================================================================
+A year is a row of twelve month chips, each carrying how many bills are in, and
+a line naming the numbers of that year not in yet. Excel numbered every bill
+from 001 each January without skipping, so a gap below the highest number typed
+is a paper bill nobody has typed — that is how eight hundred bills can be split
+between three people and still end with none missed.
+
+Pick a month and its bills list in DATE and NUMBER order, the order the paper
+file is kept in, so the screen can be ticked off against it. A search reaches
+across every month.
+================================================================================
+{% endcomment %}
+
+{% block extra_css %}
+<style>
+    .obl-page { --obl-accent: #d97706; }
+
+    .obl-header {
+        margin: .5rem 0 1rem; padding-bottom: .9rem; position: relative;
+        border-bottom: 2px solid var(--color-border);
+    }
+    .obl-header::after {
+        content: ''; position: absolute; bottom: -2px; left: 0;
+        width: 48px; height: 2px; background: var(--obl-accent);
+    }
+    .obl-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .obl-title {
+        display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0;
+        font-size: 1.6rem; font-weight: 800; letter-spacing: -.3px; line-height: 1; color: var(--color-text);
+    }
+    .obl-title i { color: var(--obl-accent); flex: 0 0 auto; }
+    .obl-title-word { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .obl-pill {
+        flex: 0 0 auto; white-space: nowrap;
+        font-size: .62rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+        padding: 2px 8px; border-radius: 20px;
+        background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+    }
+    .obl-new {
+        display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+        min-height: 44px; padding: 0 16px; border-radius: 999px;
+        background: #f59e0b; color: #1e293b; font-size: .82rem; font-weight: 800;
+        text-decoration: none; white-space: nowrap;
+    }
+    .obl-new:hover { color: #1e293b; filter: brightness(.95); }
+    .obl-sub { margin: 0; font-size: .8rem; line-height: 1.45; color: var(--color-text-muted); }
+    .obl-note { margin: 6px 0 0; font-size: .78rem; color: #475569; }
+
+    .obl-search { position: relative; display: flex; align-items: center; gap: 8px; margin-bottom: 1rem; }
+    .obl-search i { position: absolute; left: 14px; color: #94a3b8; }
+    .obl-search input {
+        flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 0 14px 0 38px;
+        border: 1px solid var(--color-border); border-radius: 999px; background: #fff;
+    }
+    .obl-search a { font-size: .82rem; font-weight: 700; white-space: nowrap; }
+
+    .obl-year {
+        background: #fff; border: 1px solid var(--color-border); border-radius: 12px;
+        padding: 12px 14px; margin-bottom: 12px;
+    }
+    .obl-year-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 8px; }
+    .obl-year-name { font-size: 1.1rem; font-weight: 800; color: #0f172a; }
+    .obl-year-sum { font-size: .8rem; color: #475569; }
+    .obl-year-sum b { color: #92400e; }
+    .obl-missing { margin: -2px 0 8px; font-size: .78rem; color: #92400e; }
+    .obl-missing code { color: inherit; font-size: inherit; }
+
+    .obl-months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+    .obl-month {
+        display: flex; justify-content: space-between; align-items: center; gap: 4px;
+        min-height: 38px; padding: 0 9px; border-radius: 8px;
+        border: 1px solid var(--color-border); background: #fff;
+        font-size: .8rem; font-weight: 600; color: #334155; text-decoration: none;
+    }
+    .obl-month b { font-variant-numeric: tabular-nums; color: #0f172a; }
+    .obl-month.is-empty { color: #94a3b8; background: #f8fafc; }
+    .obl-month.is-empty b { color: #cbd5e1; font-weight: 600; }
+    .obl-month.is-on { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
+    .obl-month.is-on b { color: #78350f; }
+    @media (hover: hover) { .obl-month:hover { border-color: #f59e0b; color: #78350f; } }
+
+    .obl-h2 {
+        scroll-margin-top: calc(var(--sticky-top, 0px) + 12px);
+        margin: 18px 0 8px; font-size: .78rem; font-weight: 800;
+        letter-spacing: .06em; text-transform: uppercase; color: #475569;
+    }
+
+    .obl-list { display: flex; flex-direction: column; gap: 6px; }
+    .obl-row {
+        display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 12px;
+        padding: 10px 14px 10px 16px; position: relative;
+        background: #fefce8; border: 1px solid #fde68a; border-radius: 10px;
+        text-decoration: none; color: inherit;
+    }
+    .obl-row::before {
+        content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px;
+        border-radius: 0 3px 3px 0; background: #f59e0b;
+    }
+    @media (hover: hover) { .obl-row:hover { border-color: #f59e0b; } }
+    .obl-num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; font-weight: 700; color: #78350f; }
+    .obl-main { min-width: 0; }
+    .obl-car { display: block; font-weight: 700; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .obl-meta { display: block; font-size: .76rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .obl-amt { font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .obl-empty { padding: 18px; text-align: center; color: #64748b; font-size: .88rem; }
+
+    @media (max-width: 575.98px) {
+        .obl-title { font-size: 1.4rem; }
+        /* The button gives up its WORD before the page gives up its NAME —
+           the Job Card's own rule for an Add beside a heading. With the words
+           it squeezed the title to "Old B…" on a 375px phone. */
+        .obl-new { width: 44px; min-height: 44px; padding: 0; justify-content: center; font-size: 1.05rem; }
+        .obl-new span { display: none; }
+        .obl-months { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .obl-month { min-height: 44px; }
+        .obl-row { grid-template-columns: minmax(0, 1fr) auto; }
+        .obl-num { grid-column: 1 / -1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="obl-page">
+
+    <div class="obl-header">
+        <div class="obl-top">
+            <h1 class="obl-title">
+                <i class="bi bi-receipt"></i>
+                <span class="obl-title-word">Old Bills</span>
+                <span class="obl-pill">Total {{ total_count }}</span>
+            </h1>
+            <a href="{% url 'old_bill_add' %}" class="obl-new" aria-label="Add Old Bill" title="Add Old Bill"><i class="bi bi-plus-lg"></i><span>Add Old Bill</span></a>
+        </div>
+        <p class="obl-sub">Bills from the Excel years, typed in for each car's history. Never counted in any figure.</p>
+        {% if last_excel %}
+        <p class="obl-note">The last Excel bill is {{ last_excel }} — the system's own numbers start after it.</p>
+        {% endif %}
+    </div>
+
+    <form class="obl-search" method="get" role="search">
+        <i class="bi bi-search"></i>
+        <input type="text" name="q" value="{{ q }}" placeholder="Plate, bill number, name or car" autocomplete="off" aria-label="Search old bills">
+        {% if q %}<a href="{% url 'old_bill_list' %}">Clear</a>{% endif %}
+    </form>
+
+    {% if q %}
+        <h2 class="obl-h2">{{ page_obj.paginator.count }} found</h2>
+        {% include 'workshop/old_bills/_old_bill_rows.html' %}
+        {% if page_obj.has_other_pages %}
+        <nav class="d-flex justify-content-between align-items-center mt-3" aria-label="Pages">
+            {% if page_obj.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?q={{ q|urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a>{% else %}<span></span>{% endif %}
+            <span class="small text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            {% if page_obj.has_next %}<a class="btn btn-outline-secondary btn-sm" href="?q={{ q|urlencode }}&page={{ page_obj.next_page_number }}">Next</a>{% else %}<span></span>{% endif %}
+        </nav>
+        {% endif %}
+    {% else %}
+        {% for year in years %}
+        <section class="obl-year" aria-label="{{ year.year }}">
+            <div class="obl-year-head">
+                <span class="obl-year-name">{{ year.year }}</span>
+                <span class="obl-year-sum">
+                    {{ year.typed }} typed{% if year.up_to %} · numbers up to {{ year.up_to }}{% endif %}
+                    · {% if year.missing_count %}<b>{{ year.missing_count }} not in yet</b>{% else %}none missing{% endif %}
+                </span>
+            </div>
+            {% if year.missing_named %}
+            <div class="obl-missing">Not in yet: {{ year.missing_named|join:", " }}</div>
+            {% endif %}
+            <div class="obl-months">
+                {% for month in year.months %}
+                <a class="obl-month{% if month.selected %} is-on{% endif %}{% if not month.count %} is-empty{% endif %}"
+                   href="?month={{ month.key }}#oblBills"{% if month.selected %} aria-current="true"{% endif %}>
+                    <span>{{ month.label }}</span><b>{{ month.count }}</b>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endfor %}
+
+        <h2 class="obl-h2" id="oblBills">{{ month_label }} · {{ rows|length }} bill{{ rows|length|pluralize }}</h2>
+        {% if rows %}
+            {% include 'workshop/old_bills/_old_bill_rows.html' %}
+        {% elif total_count %}
+            <div class="obl-empty">No old bills typed for {{ month_label }} yet.</div>
+        {% else %}
+            <div class="obl-empty">No old bills yet. Start with <a href="{% url 'old_bill_add' %}">Add Old Bill</a>.</div>
+        {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

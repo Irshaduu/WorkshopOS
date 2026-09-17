@@ -10,6 +10,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from .mileage import normalise as normalise_mileage
+from .old_bills import live_numbering_floor
 from .vehicle_ids import (
     CHASSIS_CODE_MAX_LENGTH, VIN_LENGTH, normalise_chassis_code, normalise_vin,
 )
@@ -1139,14 +1140,28 @@ class JobCard(CarColourMixin, models.Model):
                 # select_for_update() locks the year's rows so two job cards created
                 # concurrently can't be assigned the same number (effective on
                 # PostgreSQL; a harmless no-op on SQLite).
-                max_num = 0
-                for existing_bill in (
-                    JobCard.objects.select_for_update()
+                #
+                # ⚠ It starts from the LAST EXCEL BILL, not from 0, in the year
+                # the system went live — the Excel bills used this same JB-YY-NNN
+                # sequence, and a customer must never hold two different bills
+                # with one number. And it also skips numbers an OLD BILL holds.
+                # Both rules live in `workshop/old_bills.py`.
+                max_num = live_numbering_floor(year)
+                existing_numbers = [
+                    existing_bill.bill_number
+                    for existing_bill in (
+                        JobCard.objects.select_for_update()
+                        .filter(bill_number__startswith=prefix)
+                        .only('bill_number')
+                    )
+                ] + list(
+                    OldBill.objects
                     .filter(bill_number__startswith=prefix)
-                    .only('bill_number')
-                ):
+                    .values_list('bill_number', flat=True)
+                )
+                for existing_number in existing_numbers:
                     try:
-                        n = int(existing_bill.bill_number.rsplit('-', 1)[-1])
+                        n = int(existing_number.rsplit('-', 1)[-1])
                     except (ValueError, IndexError):
                         # Skip any bill whose suffix isn't a plain integer.
                         continue
@@ -2342,6 +2357,168 @@ class EstimatePartLine(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.quantity})"
+
+
+# -----------------------------------------------------------------------------
+# OLD BILLS (bills written in Excel before the system existed — history only)
+# -----------------------------------------------------------------------------
+class OldBill(models.Model):
+    """
+    One bill the workshop wrote in Excel before this system existed, typed in
+    so a car's history is complete.
+
+    ⚠ CONNECTED TO NOTHING, AND THAT IS THE WHOLE SAFETY OF IT — the Estimate
+    rule applied to the past. No job card, no stock, no shop or supplier ledger,
+    no fleet account, no cashbook, and no line in `analysis_engine.py`. Those
+    months already happened outside the system; counting them now would rewrite
+    profit, cash and balances for periods nobody can check any more.
+
+    It holds what the paper bill shows and nothing else:
+
+    * ONE date — the DATE printed on the bill. Admitted and settled were never
+      recorded, so there are no columns pretending to hold them.
+    * The bill NUMBER exactly as printed (JB-26-097). Typed, never generated:
+      the customer already holds a bill with that number on it.
+    * No payment state and no discount. The Excel total went to the customer,
+      the final figure was agreed verbally, and nothing wrote it down — so
+      `total_amount` is what was BILLED, never what was paid.
+    * No cost side. Every amount here is a customer price.
+    """
+
+    bill_number = models.CharField(
+        max_length=20, unique=True,
+        help_text="As printed on the paper bill, e.g. JB-26-097"
+    )
+    bill_date = models.DateField(db_index=True, help_text="The DATE printed on the bill")
+
+    # Free text, tidied in clean() exactly as a job card tidies them, so an old
+    # bill and a live job card for one car land on one Car Profile.
+    registration_number = models.CharField(max_length=50, db_index=True)
+    brand_name = models.CharField(max_length=100, blank=True)
+    model_name = models.CharField(max_length=100, blank=True)
+    mileage = models.CharField(max_length=20, blank=True)
+    customer_name = models.CharField(max_length=150, blank=True)
+
+    # One figure for all the work, as on the paper's JOB PERFORMED subtotal and
+    # as on a job card — the job lines carry no money.
+    labour_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, blank=True)
+
+    # Labour + every part amount. Written only by update_totals(); never typed.
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='old_bills'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Old Bill"
+        verbose_name_plural = "Old Bills"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(labour_amount__gte=0),
+                name='workshop_oldbill_labour_not_negative',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total_amount__gte=0),
+                name='workshop_oldbill_total_not_negative',
+            ),
+        ]
+
+    def clean(self):
+        """
+        The job card's own tidy-up, so both kinds of record spell one car the
+        same way. Kept identical to `JobCard.clean()` — brand snapped to the
+        master list, model snapped when that brand has it — and a test compares
+        the two, so they cannot drift apart silently.
+        """
+        if self.bill_number:
+            self.bill_number = ''.join(self.bill_number.split()).upper()
+        if self.registration_number:
+            self.registration_number = self.registration_number.strip().upper()
+        if self.brand_name:
+            self.brand_name = ' '.join(self.brand_name.split()).title()
+            canonical_brand = (
+                CarBrand.objects
+                .filter(name__iexact=self.brand_name)
+                .values_list('name', flat=True)
+                .first()
+            )
+            if canonical_brand:
+                self.brand_name = canonical_brand
+        if self.model_name:
+            self.model_name = ' '.join(self.model_name.split())
+        if self.model_name and self.brand_name:
+            canonical = (
+                CarModel.objects
+                .filter(brand__name__iexact=self.brand_name, name__iexact=self.model_name)
+                .values_list('name', flat=True)
+                .first()
+            )
+            if canonical:
+                self.model_name = canonical
+        self.mileage = normalise_mileage(self.mileage or '')
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def update_totals(self):
+        """Labour + part amounts. Called by the views after the lines save."""
+        from django.db.models import Sum
+        from django.db.models.functions import Coalesce
+
+        part_total = self.part_lines.aggregate(
+            total=Coalesce(Sum('amount'), Decimal('0'), output_field=models.DecimalField())
+        )['total']
+        new_total = part_total + (self.labour_amount or Decimal('0'))
+        if self.total_amount != new_total:
+            self.total_amount = new_total
+            OldBill.objects.filter(pk=self.pk).update(total_amount=new_total)
+
+    def __str__(self):
+        return self.bill_number
+
+
+class OldBillJobLine(models.Model):
+    """One JOB PERFORMED line. A description — the charge is on the bill."""
+    old_bill = models.ForeignKey(OldBill, on_delete=models.CASCADE, related_name='job_lines')
+    # Same width as JobCardLabourItem.job_description.
+    description = models.CharField(max_length=150)
+
+    def __str__(self):
+        return self.description
+
+
+class OldBillPartLine(models.Model):
+    """
+    One PART NAME line. The paper bill never split warehouse stock from shop
+    parts, so this doesn't either — and nothing here is linked to stock.
+
+    Quantity and amount are both optional, as on the paper: several parts
+    print with no amount at all. A blank amount prints blank, never ₹0.
+    """
+    old_bill = models.ForeignKey(OldBill, on_delete=models.CASCADE, related_name='part_lines')
+    # Same widths as JobCardSpareItem.spare_part_name / quantity / total_price.
+    name = models.CharField(max_length=100)
+    quantity = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity__isnull=True) | models.Q(quantity__gt=0),
+                name='workshop_oldbillpartline_quantity_positive',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__isnull=True) | models.Q(amount__gte=0),
+                name='workshop_oldbillpartline_amount_not_negative',
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
 
 
 # -----------------------------------------------------------------------------

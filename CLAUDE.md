@@ -34,7 +34,7 @@ describe either as live production data. Deployment: `GO_LIVE_RUNBOOK.md`
 1. **Fix the code, not the tests.** A failing test — especially a financial or
    security one — means the implementation regressed. Never bypass one.
 2. **Every new rule gets a test.** One honest gap: the Django suite executes no
-   JavaScript. `node --test "workshop/tests/js/*.test.js"` covers two DOM-free modules.
+   JavaScript. `node --test "workshop/tests/js/*.test.js"` covers three DOM-free modules.
    Everything else in the frontend must be verified by hand in a browser.
 3. **Keep docs in sync in the same session.** New model/field, new route, new
    workflow, roadmap item completed → update the owning doc (see the ownership
@@ -4945,6 +4945,242 @@ description sits **outside** that flex row.
 there the action is a short fixed button against a title the page controls; there
 it is a variable count badge against a name the customer chose.
 
+## Old Bills — the Excel years, typed in for history
+
+**The workshop billed in Excel before this system existed — about 800 bills —
+and OLD BILLS is where they are typed in, so a car's Profile, All Invoices and
+Service History reach back to its first visit.** `OldBill` / `OldBillJobLine` /
+`OldBillPartLine` (migration `0079`); every rule is `workshop/old_bills.py`; the
+screens are `/old-bills/` (drawer → Records, Office and Owner).
+
+⚠ **CONNECTED TO NOTHING, AND THAT IS THE WHOLE SAFETY OF IT — the Estimate rule
+applied to the past.** No job card, no stock, no shop or supplier ledger, no
+fleet, no cashbook, no line in `analysis_engine.py`. Those months happened
+outside the system; counting them now would rewrite profit, cash and balances
+for periods nobody can check. `OldBillsAreConnectedToNothingTests` holds an
+**allow-list of the only application files that may mention the model** — the
+model, its rules module, its views, `car_profiles.py`, `known_car.py`,
+`master_data.py` and the purge command — and fails the moment any other file
+does. **Adding a file to that list is a decision, never a fix for a red test.**
+Adding the real sample bill moves no Profit, Cash Tracking or Position figure
+and no stock, asserted.
+
+**IT HOLDS WHAT THE PAPER SHOWS, AND NOTHING ELSE** (the owners' sample,
+`Running Invoice.pdf`, JB-26-097): one DATE, the `#`, MAKE, REG NO, MODEL,
+MILEAGE, job lines with one labour SUBTOTAL, part lines (name, optional
+quantity, optional amount), and the TOTAL. The paper's NAME is not taken — see
+below.
+
+- **One date, and it is `bill_date`, never `admitted_date`.** Admitted and
+  settled were never recorded, so no column pretends to hold them.
+- **No discount and no payment.** The Excel total went to the customer on
+  WhatsApp and the final figure was agreed verbally and never written down, so
+  `total_amount` is what was BILLED — never "paid". No phone, no colour, no cost.
+- **One mixed part list.** The paper never split warehouse stock from shop
+  parts, and there is no stock link. A blank amount stays blank (never ₹0), and
+  the unit price is derived on reprint, never typed.
+
+### One JB sequence — `LAST_EXCEL_BILL_NUMBER`
+
+⚠ **THE EXCEL BILLS USED THE SYSTEM'S OWN NUMBER SHAPE.** JB-YY-NNN, from 001
+every January, YY always the bill's own year. Unchecked, the first live job card
+of the go-live year would be JB-26-001 — a number a customer from January
+already holds on paper. So a JB number exists **once** across both tables:
+
+- **`LAST_EXCEL_BILL_NUMBER`** (env, e.g. `JB-26-245`): live job cards of that
+  year start after it (`JobCard.save()` reads `live_numbering_floor`), and an old
+  bill numbered after it is refused — those numbers belong to the system.
+  ⚠ **SET IT BEFORE THE FIRST LIVE JOB CARD** (go-live runbook). Blank means no
+  Excel years and numbering behaves exactly as before; a value that is set but
+  not in the JB-YY-NNN shape **stops the app at startup**, because a floor
+  silently ignored is two customers holding one bill number. Forced blank under
+  `manage.py test`, like the photo settings.
+- **A live job card also skips any number an old bill holds** — the cover for a
+  card mistyped into an Excel year, and for a system where the setting was
+  never filled in.
+- An old bill's number must be **the date's own year** (a slip in either box is
+  caught), must not be a job card's, and must not already be in.
+
+### Typing about 800 bills without losing your place
+
+**The form reads in the paper's own order, under the paper's navy bands.** Three
+things make it fast, and each is a rule:
+
+- **THE DATE IS THREE TYPED BOXES, never a calendar.** `1` and `01` are one day;
+  the month takes `apr` because the paper prints "10-Apr-2026"; the year takes
+  `26` or `2026`. The cursor moves on when a box cannot take another character
+  (two digits, a day of 4–9, a month of 2–9 — and a year of `20` waits, since it
+  is always the start of 2024–2026). The date is **spelled out underneath** so
+  the typist sees what was understood. The number's year box fills from the
+  date until somebody types in it.
+- ⚠ **THE TOTAL IS WORKED OUT, NEVER TYPED — this REVERSES the typed check it
+  shipped with** (the owners' call, 2026-09-17). It was typed off the paper only
+  as a check: a misread figure stopped adding up and the server refused the
+  bill. Put to the owner with both sides, and the owner chose the eye: the form
+  shows labour + every part amount in a dashed read-only figure on the right,
+  with **"Verify this total with the XL bill."** under it, and a wrong figure is
+  fixed in its own line. **The cost is stated rather than hidden:** a figure
+  misread off the paper is no longer caught by the system — only by the typist
+  comparing the figure with the XL bill. Accepted because an old bill moves no
+  figure anywhere; a wrong amount reaches that car's reprinted bill and its
+  service history, nothing else. The server still refuses a total too large for
+  its column (the SQLite-accepts / Postgres-500s split). The running "Adds up to
+  ₹… so far" sentence went too.
+  → `test_the_total_is_worked_out_and_nothing_typed_can_change_it`
+- ⚠ **COMMAS AND ₹ ARE ACCEPTED IN AMOUNTS HERE, AND NOWHERE ELSE IN THE APP.**
+  Everywhere else a comma is refused because `parseFloat("1,000")` is 1. This
+  form's reader can only DROP a comma ("2,820.00" is 2820.00), and a figure with
+  more than two decimals ("2.820") is refused rather than read as 2.82 — so a
+  comma cannot shrink a figure. It was ALSO backed by the typed total until
+  2026-09-17; since then a misread figure is the typist's to catch against the
+  XL bill.
+- ⚠ **ENTER NEVER SAVES.** It moves to the next box, so half a bill cannot be
+  saved by a reflex. **Save & add next** keeps the month and year and names the
+  bill just saved with a way back into it.
+
+**The rest of the form is the Job Card's own behaviour, on the owners' second
+look at it (2026-09-17):**
+
+- **ONE OPEN ROW, NEVER A PAGE OF EMPTY ONES.** Jobs and parts each start with
+  one open row, and the next opens the moment the last one is typed into. It was
+  the paper's 9 job rows and 11 part rows, which was scrolling past empty boxes on
+  every bill. A refusal or an edit comes back with its own lines plus exactly one
+  open row (`_open_rows` drops blank rows left at the end). **Enter on the empty
+  part row brings the TOTAL into view** — the parts are done, there is nothing
+  left to type, and the cursor stays put rather than moving on to Save. The
+  empty job row needs no rule: the box after it is already the labour subtotal.
+- ⚠ **THERE IS NO CUSTOMER NAME BOX** (the owners' call, 2026-09-17: not needed
+  here). It first sat behind a "+ Customer name" button on the Vehicle band,
+  then went entirely. The form neither reads nor writes `customer_name`, so an
+  edit leaves a stored name alone rather than wiping it. **The column stays**,
+  and so do its readers (the Car Profiles search, `known_car`, the reprinted
+  sheet's NAME) — they simply find no name on a bill typed from now on.
+  → `test_the_form_takes_no_customer_name`
+- **ON A PHONE THE PART ROWS SCROLL SIDEWAYS** (the owners' call, 2026-09-17).
+  One squeezed line left the name 114px ("Engine Co"). Two lines per part — the
+  name, then QTY and AMOUNT — was built first and reversed within the hour:
+  every other row of boxes in this app scrolls sideways on a phone (the Job
+  Card's parts tables, Unassigned Spares, Record a Payment), and one list shaped
+  differently read as a different control. The name keeps 240px (the Job Card's
+  Item column), the headings scroll with their columns, and the row number is
+  sticky. **Accepted cost:** on a phone the row slides across to AMOUNT and back
+  to the next name on Enter — the same as the Job Card.
+  → `test_on_a_phone_the_part_rows_scroll_sideways_like_the_job_cards`
+- **REG NO, MAKE, MODEL, MILEAGE are one row from 768px**, two by two on a phone.
+  The plate types in capitals (`text-transform` + `autocapitalize`, as on the Job
+  Card; `clean()` stores it upper).
+- **MAKE and MODEL are the Job Card's own dropdown** (`autocomplete-brand` /
+  `autocomplete-model` in `script.js`), and **a known plate fills both when the
+  plate box is left**, under the Job Card's rules: written whole or not at all,
+  only into boxes that are empty or still hold what the script put there, and
+  typing in either claims it. ⚠ One difference: here the plate comes BEFORE Make,
+  so the answer lands in the box the cursor just moved into, and setting a value
+  drops its selection — the script selects it again, or the next keystroke is
+  appended ("Mercedes-BenzPor").
+- ⚠ **JOB PERFORMED AND PART NAME SUGGEST THROUGH THE JOB CARD'S OWN DROPDOWN,
+  NEVER A `<datalist>`** (the owner's instruction, 2026-09-17). A phone or tablet
+  shows a datalist as a strip ABOVE THE KEYBOARD, not under the box, so it read
+  as a different control from every other suggestion in the app. The markup is
+  script.js's — the box, then an empty `list-group autocomplete-suggestions`
+  filled with `a.list-group-item.list-group-item-action.py-2`, up to ten, picked
+  with a tap or a click. The filling is the page's own and **delegated**, because
+  rows are added after load and script.js wires its classes only on load; so the
+  inputs deliberately do NOT carry `autocomplete-spare`. Three differences, each
+  for a reason: a press keeps the cursor in the box (`mousedown` is prevented, or
+  the phone keyboard drops between press and pick); a pick fires `input`, so it
+  opens the next row and re-checks the totals like typing; and **a part's list
+  opens under the whole row** (name, qty and amount) — `.ob-ac` is
+  `display: contents` there and every piece is placed on the grid, because the
+  name box alone is 114px on a phone. A match needs every typed word in the
+  suggestion (the Job Card's "contains"), with those where each word STARTS a word
+  first — typing "c" otherwise lists the c in every "replaced".
+  → `test_job_and_part_suggestions_drop_down_under_the_box_like_the_job_cards`
+- **JOB PERFORMED offers the Job Card's lines** (`jobOptions`): every verb in its
+  order over every part — this bill's typed part names first, then categories,
+  then the master list, because on the paper the jobs are usually typed before
+  the parts.
+- **PART NAME suggests three things, in this order** (`partOptions` in
+  `old-bill-core.js`): this bill's job lines with their verb taken off
+  ("Coolant replaced" offers "Coolant"), then the warehouse **CATEGORY** names,
+  then the **Spare Parts master list** — once each, compared without case, and a
+  name the lists already hold keeps THEIR spelling. The job lines turn the Job
+  Card's suggestion round (part + verb there), because on the paper JOB PERFORMED
+  comes first; the verbs are the Job Card's `VERBS`, word for word, and
+  `test_the_part_suggestions_strip_the_job_cards_own_verbs` fails if the two
+  lists part company. **Categories, not products, because a live bill prints a
+  stock part under its category** ("Engine Oil", never "Castrol Edge 5W-30") and
+  the Excel bills were written the same way. The names are sent once as
+  `json_script` and matched in the browser, so no request is made per keystroke.
+  ⚠ **READ ONLY — an old bill never adds a name to either list**, unlike the Job
+  Card's auto-learn: eight hundred bills of Excel typing would fill the master
+  list with every slip in them.
+  → `test_saving_an_old_bill_adds_nothing_to_either_list`
+
+⚠ **THE BROWSER AND THE SERVER READ TYPING FROM ONE CASE FILE.**
+`static/js/old-bill-core.js` shows what was understood; `old_bills.py` decides.
+Both suites read `workshop/tests/js/old-bill-cases.json` (hand-written
+expectations), so a date or an amount can never be ✓ on screen and refused on
+save. Change a rule in one and the other suite fails.
+
+⚠ **THE ROWS ARE PLAIN PARALLEL LISTS, NOT A DJANGO FORMSET** — `job`,
+`part_name`, `part_qty`, `part_amount`. Formsets carry the contiguous-index and
+blank-row traps this file records, and none of their machinery is needed: an
+edit **replaces** the lines in one transaction, which is safe here and only here
+because nothing points at an old bill's line, no signal listens and no money
+moves. A row with a quantity or amount but no name is **refused, never dropped**
+(the job card's rule).
+
+**A refusal keeps everything typed**, and every problem is named at the top in
+paper order. **Delete writes no DeletionLog** — the Estimate's reasoning: it
+moves no money, and `RECORD_DELETED` is CRITICAL on both owners' phones.
+**Delete lives in the ⋮ at the top of the edit page**, never beside the Save
+buttons, where a hand reaching for Save could land on it — and it still asks
+first in the shared card.
+→ `test_the_delete_waits_in_the_menu_and_asks_first`
+
+**The Old Bills page is the pile's checklist.** Year blocks of twelve month
+chips with counts; a month lists in DATE then NUMBER order, the paper file's own
+order. A year names the JB numbers **not in yet** — Excel never skipped a
+number, so a gap is a paper bill nobody has typed — but only once 12 or fewer
+are left; while most of a year is untyped the count says enough. In the go-live
+year the gap runs up to the last Excel bill. Once `LAST_EXCEL_BILL_NUMBER` is
+set, one quiet line says where the system's own numbers start.
+
+⚠ **NOTHING ON THE PAGE WARNS WHILE THE SETTING IS BLANK — the Owner banner was
+removed on the owner's call (2026-09-17).** It named a code setting to people
+who cannot set it (it is a Railway variable), on every visit, and in
+development it could never go away. The protection is the go-live runbook's
+§3.5b, done before the first live job card; nothing in the app replaces it.
+→ `test_nobody_is_shown_the_unset_setting`
+
+### Where they show, and the rules each place keeps
+
+| | |
+|---|---|
+| **Car Profiles list** | a car known only from old bills is listed and searchable (its old bills' name, make and model); counts read "6 visits · 2 old bills". Every existing car keeps exactly the order it had — measured on the development data, 63 of 63 |
+| **Car Profile** | a **yellow** "Old bills" section under the visits, numbered **#1 = oldest on its own**, so no visit number moves; one line under the money tiles, "Old bills: N · ₹X billed before the system". The money tiles and gross profit are untouched. A car known only from old bills gets **no money tiles at all** |
+| **All Invoices** | old bills follow the job cards, newest first, on the **same `_invoice_sheet.html`** via `invoice.build_old_bill` — same keys as `build_invoice`, same `_part_line`. **No PAID stamp**: the paper had none. The sheet's DATE reads `doc.date` |
+| **One old bill** | `/old-bills/<pk>/` — `all_invoices_print.html` with one sheet, an "Old bill" chip and Edit. A profile row opens this |
+| **Service History** | bands read **OLD BILL n** beside VISIT n. History facts use every record — FIRST VISIT, OVER, SERVICED EVERY, DISTANCE, part life. ⚠ **TOTAL BILLED / DISCOUNT / NET TOTAL stay the system's visits only**, so they still equal the Car Profile's tiles; the record block adds "OLD BILLS: N · ₹X" and the notes say why they are not in the total. A car known only from old bills prints no closing block — "TOTAL BILLED ₹0.00" would read as a car that cost nothing |
+| **Known plate** | `known_car` reads old bills for the make, model and name — never a phone or colour, which the paper does not have — merged by date |
+| **Master Lists** | renaming a spare, brand or model relabels old bills too, so one car is never spelled two ways |
+
+⚠ **THE SHEET CHANGES WERE PROVED BYTE-IDENTICAL FOR EVERY CAR WITHOUT OLD
+BILLS** — 164 bills, one All Invoices page and 186 service-history pages
+rendered before and after. One trap it caught: a one-line `{% comment %}` on
+its own line still emits that line's indentation, so the "identical" page was
+not; notes go inside an existing comment block.
+
+⚠ **`:first-child` COUNTS AS A CLASS.** `.cd-visit:first-child .cd-visit-no`
+(the blue "latest visit" tile) is three classes, the same as a three-class
+old-bill rule, and being later in the file it won — the first old bill's tile
+painted blue. The old-bill rule carries four.
+
+**Real old bills are entered on the live system AFTER the go-live purge.**
+`purge_business_data` clears these tables, so anything in them at purge time is
+test typing.
+→ `workshop/tests/test_old_bills.py`, `workshop/tests/js/old-bill-core.test.js`
+
 ## Settling — "what is still unfilled"
 
 **`workshop/settlement.py` is the one implementation, read at two moments** — "you
@@ -9158,11 +9394,11 @@ and there is no build step.** Every outside review reaches the same suggestion, 
 reasoning is recorded here rather than re-argued.
 
 Roughly 264 KB of inline JS across 42 templates, and ~723 KB of inline CSS across 67
-of the 118 (most templates carry their own `<style>`; measured 2026-09-15). Nine JS files exist —
+of the 118 (most templates carry their own `<style>`; measured 2026-09-15). Ten JS files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
-`photos-core.js`, `pricing-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
+`photos-core.js`, `pricing-core.js`, `old-bill-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
 is **used on more than one page**; what stays inline is genuinely page-specific. The
-two `-core.js` files are the stated exception: they are separate to be **testable**,
+three `-core.js` files are the stated exception: they are separate to be **testable**,
 not because they are shared.
 
 ⚠ **`static/css/style.css` is the CSS side of that same rule, and it is easy to
@@ -9191,8 +9427,8 @@ inline JS.**
 
 **There IS a JS test runner, and it cost nothing.** `node --test "workshop/tests/js/*.test.js"`
 uses Node's built-in runner — still no npm, no `package.json`, no `node_modules`, no
-bundler, no linter. It covers two files, `photos-core.js` and `pricing-core.js`, because
-both were *written* to be coverable: pure functions, no DOM, no fetch, a `module.exports`
+bundler, no linter. It covers three files, `photos-core.js`, `pricing-core.js` and
+`old-bill-core.js`, because all three were *written* to be coverable: pure functions, no DOM, no fetch, a `module.exports`
 guard at the bottom. `pricing-core.js` was the second, and the reason is the rule below —
 a price rounded wrongly by a float is a failure nobody sees.
 
@@ -9250,7 +9486,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 74 files, 2,530 tests (counted 2026-09-16). Always SQLite (see below).
+# Full test suite — 75 files, 2,625 tests (counted 2026-09-17). Always SQLite (see below).
 # Last full run 2026-09-16: 2,529 tests, 4,196s (70 min) — NOT all green in one
 # pass: 8 inventory tests failed on one defect (Add Product refused a form with no
 # markup box), fixed in the view; the 4 affected files re-run green (189 tests),
@@ -9341,7 +9577,7 @@ once the folder filled, evict a good backup to keep itself. Requires the Postgre
 client tools on PATH.
 
 **`purge_business_data` clears ALL business tables** — job cards, shops, fleet accounts,
-inventory, cashbook, staff roster, owner withdrawals, the rent ledger, deletion history.
+inventory, cashbook, staff roster, owner withdrawals, the rent ledger, old bills, deletion history.
 It deliberately does *not* try to distinguish "dummy" rows from real ones, because
 nothing in the schema marks them and a command claiming otherwise would be lying. It
 never touches login accounts, groups, or the master lists. **It is the thing to run
@@ -9499,6 +9735,10 @@ loses them on the next push.
 unavailable at go-live: it speaks the same S3 protocol, so it is three settings and no
 code change (`test_a_supabase_endpoint_needs_no_code_change`).
 
+**`LAST_EXCEL_BILL_NUMBER`** (set on go-live day, e.g. `JB-26-245`): the last bill
+written in Excel. Live job cards of that year start after it — see "Old Bills". Blank is
+valid and changes nothing; a malformed value stops the app at startup, on purpose.
+
 **Web Push** (optional): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL`.
 Generated once — **regenerating them invalidates every existing subscription**, so treat
 them as permanent. The public key ships to the browser and is not a secret. They must
@@ -9525,11 +9765,11 @@ unless `EMAIL_REAL=true`; `manage.py test` uses locmem regardless.
 ## App boundaries
 
 **`workshop/`** — job cards, billing, fleet accounts, spare shops, cashbook, estimates,
-photos, auth, owner analytics, deletion history, master data.
+old bills, photos, auth, owner analytics, deletion history, master data.
 
-`views/` is a package of **21 modules**: `about`, `audits`, `autocomplete`,
+`views/` is a package of **22 modules**: `about`, `audits`, `autocomplete`,
 `billing`, `bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`,
-`estimate`, `jobcard`, `master_lists`, `notifications`, `paid`, `pending`, `photos`,
+`estimate`, `jobcard`, `master_lists`, `notifications`, `old_bills`, `paid`, `pending`, `photos`,
 `push`, `rent`, `salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
 `from . import views; views.some_function` and existing URL wiring keep working — when
 adding a view, add it to both its module and the re-export list.
@@ -9538,13 +9778,13 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Sixteen modules hold no views at all** — this is the codebase's main structural idea, and
+**Seventeen modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
 |---|---|
 | `analysis_engine.py` | the money math behind Analysis (pure functions over a date window) |
-| `invoice.py` | what does the customer see? — owns **both** documents |
+| `invoice.py` | what does the customer see? — owns every bill and the estimate |
 | `settlement.py` | what is still unfilled before this bill should be settled? |
 | `master_data.py` | the rename/merge rule, shared by Master Lists and Data Cleanup |
 | `money.py` | is this typed rupee amount acceptable for its column? |
@@ -9559,6 +9799,7 @@ each exists so that one rule has exactly one implementation:
 | `vehicle_ids.py` | is this a chassis code and a VIN, and what did this car last have recorded? |
 | `known_car.py` | what does the workshop already know about this number plate? |
 | `pricing.py` | what markup is suggested, and is this typed markup usable? — never a price (that is the browser's) |
+| `old_bills.py` | is this Excel bill's number, date and money acceptable — and where does the live JB sequence start? |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
 `SessionTrackingMiddleware`, `NoStoreMiddleware` and `NoIndexMiddleware`.
@@ -9646,8 +9887,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **74 files, 2,530 tests**,
-re-counted 2026-09-16. (`workshop/tests/` is 68 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **75 files, 2,625 tests**,
+re-counted 2026-09-17. (`workshop/tests/` is 69 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

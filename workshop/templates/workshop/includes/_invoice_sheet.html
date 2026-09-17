@@ -58,7 +58,7 @@ is decided in that module; there is no arithmetic here.
                 <div class="inv-doc">
                     <div class="inv-title">INVOICE</div>
                     <div class="inv-meta">
-                        <span>DATE:&nbsp; {{ jobcard.admitted_date|date:"j-M-Y" }}</span>
+                        <span>DATE:&nbsp; {{ doc.date|date:"j-M-Y" }}</span>
                         <span>#: {{ jobcard.bill_number|default:"" }}</span>
                     </div>
                 </div>

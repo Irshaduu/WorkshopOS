@@ -11,12 +11,13 @@ from django.core.paginator import Paginator
 
 from ..analysis_engine import MONEY, SPARE_COST
 from ..models import (
-    JobCard, JobCardConcern, JobCardLabourItem, JobCardSpareItem,
+    JobCard, JobCardConcern, JobCardLabourItem, JobCardSpareItem, OldBill,
+    OldBillJobLine, OldBillPartLine, car_color_hex,
 )
 from ..decorators import office_required, is_owner
 from ..return_to import safe_return
 from ..mileage import parse_km
-from ..invoice import build_invoice, document_title
+from ..invoice import build_invoice, build_old_bill, document_title
 from ..service_history import build_service_history, current_km_problem
 from ..vehicle_ids import latest_recorded
 # How long a car was here, as one ready phrase. Imported rather than restated:
@@ -146,6 +147,14 @@ def car_profile_list(request):
     is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
     q = request.GET.get('q', '').strip()
 
+    # OLD BILLS — a car the workshop knows only from its Excel years is still a
+    # car. One row per plate, like the job cards above; merged below. Counted
+    # separately from visits and never mixed into them.
+    old_query = OldBill.objects.values('registration_number').annotate(
+        old_bills=Count('id'),
+        last_old=Max('bill_date'),
+    ).order_by()
+
     # 3. Apply Multi-Field Search (Database Level)
     #
     #    ⚠ THE SEARCH PICKS WHICH CARS, NEVER WHICH VISITS. Filtered straight onto
@@ -167,28 +176,92 @@ def car_profile_list(request):
                 Q(chassis_code__icontains=word) |
                 Q(vin__icontains=word)
             )
-        cars_query = cars_query.filter(
-            registration_number__in=matching.values('registration_number')
+        # Old bills are searched too, so a car known only from its Excel
+        # bills is found by its owner's name or its make like any other.
+        matching_old = OldBill.objects.all()
+        for word in q.split():
+            matching_old = matching_old.filter(
+                Q(registration_number__icontains=word) |
+                Q(customer_name__icontains=word) |
+                Q(brand_name__icontains=word) |
+                Q(model_name__icontains=word)
+            )
+        plates = (
+            Q(registration_number__in=matching.values('registration_number')) |
+            Q(registration_number__in=matching_old.values('registration_number'))
         )
+        cars_query = cars_query.filter(plates)
+        old_query = old_query.filter(plates)
 
-    # 4. Pagination (Pro-Active Scaling)
-    paginator = Paginator(cars_query, 45)
+    # 4. One row per car across BOTH tables, then the page.
+    #
+    #    Merged in Python rather than by a database UNION: the two groupings
+    #    carry different columns, and at this workshop's size (about a thousand
+    #    plates) two grouped queries and a sort cost nothing. The ordering is the
+    #    one the job-card list always had — most recent activity, then the
+    #    newest card — with an old bill's date counting as activity, and a car
+    #    known only from old bills sorting after any car on the same date that
+    #    has a job card.
+    cars = {}
+    for row in cars_query:
+        cars[row['registration_number']] = dict(row, old_bills=0, last_old=None)
+    for row in old_query:
+        car = cars.setdefault(row['registration_number'], {
+            'registration_number': row['registration_number'],
+            'total_visits': 0, 'last_activity': None, 'latest_id': 0,
+        })
+        car.update(old_bills=row['old_bills'], last_old=row['last_old'])
+    for car in cars.values():
+        car['last_activity'] = max(d for d in (car['last_activity'], car['last_old']) if d)
+    ordered = sorted(
+        cars.values(),
+        key=lambda car: (car['last_activity'], car['latest_id'] or 0),
+        reverse=True,
+    )
+
+    paginator = Paginator(ordered, 45)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
     # 5. Fetch Full Details for the current page only (N+1 Resolution)
     # We get the full JobCard objects for the latest_ids on this page
-    latest_ids = [car['latest_id'] for car in page_obj]
-    
+    latest_ids = [car['latest_id'] for car in page_obj if car['latest_id']]
+
     # Materialize the data into a list of dicts for the template
     # (Using a dict for fast lookup)
     details_map = {
         jc.id: jc for jc in JobCard.objects.filter(id__in=latest_ids)
     }
-    
+
+    # A car with no job card is described by its newest OLD bill.
+    newest_old = {}
+    old_only = [car['registration_number'] for car in page_obj if not car['latest_id']]
+    for bill in OldBill.objects.filter(registration_number__in=old_only).order_by('-bill_date', '-pk'):
+        newest_old.setdefault(bill.registration_number, bill)
+
     car_profiles = []
     for car in page_obj:
         jc = details_map.get(car['latest_id'])
+        if not jc:
+            bill = newest_old.get(car['registration_number'])
+            if bill:
+                car_profiles.append({
+                    'registration': car['registration_number'],
+                    'brand': bill.brand_name,
+                    'model': bill.model_name,
+                    'customer': bill.customer_name,
+                    'total_visits': 0,
+                    'old_bills': car['old_bills'],
+                    'last_activity': car['last_activity'],
+                    # No colour is written on a paper bill, so the card gets the
+                    # hatched "nothing recorded" rail — never a guessed colour.
+                    'color_hex': car_color_hex(None),
+                    'color_name': '',
+                    'has_color': False,
+                    'is_white': False,
+                    'on_floor': False,
+                })
+            continue
         if jc:
             car_profiles.append({
                 'registration': car['registration_number'],
@@ -196,6 +269,7 @@ def car_profile_list(request):
                 'model': jc.model_name,
                 'customer': jc.customer_name,
                 'total_visits': car['total_visits'],
+                'old_bills': car['old_bills'],
                 # The card prints what the list is SORTED by. Printing the
                 # admitted date beside an activity ordering would put the dates
                 # on screen out of order, which reads as a broken list rather
@@ -296,8 +370,17 @@ def car_profile_detail(request, registration):
         ),
     )
 
-    if not money['visits']:
+    # OLD BILLS — this car's bills from the Excel years. Listed on their own,
+    # yellow, under the visits, with their own numbering; never in the money
+    # tiles above, which describe what the system recorded and nothing else.
+    old_bills = list(
+        OldBill.objects.filter(registration_number=registration).order_by('-bill_date', '-pk')
+    )
+    if not money['visits'] and not old_bills:
         raise Http404("Car not found")
+    for index, old in enumerate(old_bills):
+        old.old_number = len(old_bills) - index      # 1 is the oldest
+        old.km = parse_km(old.mileage)
 
     bills = (
         all_visits
@@ -384,30 +467,35 @@ def car_profile_detail(request, registration):
     latest = (page_obj.object_list[0]
               if page_obj.number == 1 and page_obj.object_list
               else bills.first())
+    # A car known only from old bills is described by the newest of them. It
+    # carries no colour, no phone number and is never on the floor.
+    newest = latest or old_bills[0]
 
     car_info = {
         'registration': registration,
-        'brand': latest.brand_name,
-        'model': latest.model_name,
-        'customer': latest.customer_name,
-        'contact': latest.customer_contact,
+        'brand': newest.brand_name,
+        'model': newest.model_name,
+        'customer': newest.customer_name,
+        'contact': latest.customer_contact if latest else '',
         # The colour is the rail down the left edge of the hero plus a wash
         # across it, and is deliberately not ALSO spelled out as a chip — "Red"
         # printed beside a red bar is the same fact twice. `has_color` /
         # `is_white` carry the two exceptions the wash needs; see the list view.
-        'color_hex': latest.get_car_color_hex,
-        'has_color': bool(latest.car_color),
-        'is_white': latest.car_color == 'White',
-        'mileage': latest.mileage,
-        'km': parse_km(latest.mileage),
+        'color_hex': latest.get_car_color_hex if latest else car_color_hex(None),
+        'has_color': bool(latest and latest.car_color),
+        'is_white': bool(latest) and latest.car_color == 'White',
+        'mileage': newest.mileage,
+        'km': parse_km(newest.mileage),
         # NOT from `latest` — each from the newest visit that RECORDED one. See
         # `vehicle_ids.latest_recorded`, which the Job Card form's lookup reads
         # too, so the header and the form cannot name two different VINs.
         **latest_recorded(registration),
         # Only one job card per registration can be active at a time, and the
         # newest is it when there is one.
-        'on_floor': (not latest.completed) and (not latest.is_deleted),
+        'on_floor': bool(latest) and (not latest.completed) and (not latest.is_deleted),
         'visits': total_visits,
+        'old_bills': len(old_bills),
+        'old_bills_total': sum((old.total_amount for old in old_bills), ZERO),
         # Completed visits only — see the aggregate above.
         'billed': money['billed'],
         'discount': money['discount'],
@@ -426,6 +514,8 @@ def car_profile_detail(request, registration):
         'bills': visits,
         'page_obj': page_obj,
         'show_profit': show_profit,
+        # Under the LAST page of visits, where the history continues backwards.
+        'old_bills': old_bills if not page_obj.has_next() else [],
     })
 
 
@@ -484,13 +574,42 @@ def _history_cards(registration):
             ),
         )
     )
-    # The same 404 the profile page gives — a registration with no cards at all
-    # is not a car this workshop knows. A car whose only visit is still in
-    # progress is a different thing and renders normally, with the sheet saying
-    # so.
-    if not cards:
-        raise Http404("Car not found")
     return cards
+
+
+def _history_records(registration):
+    """
+    The car's job cards AND its old bills — the whole history the two documents
+    below are built from.
+
+    The same 404 the profile page gives, and on the same rule: a registration
+    with neither a job card nor an old bill is not a car this workshop knows. A
+    car whose only visit is still in progress, or that is known only from its
+    Excel bills, is a different thing and renders normally.
+    """
+    cards = _history_cards(registration)
+    old_bills = list(
+        OldBill.objects
+        .filter(registration_number=registration)
+        .prefetch_related(
+            Prefetch('job_lines', queryset=OldBillJobLine.objects.order_by('pk')),
+            Prefetch('part_lines', queryset=OldBillPartLine.objects.order_by('pk')),
+        )
+    )
+    if not cards and not old_bills:
+        raise Http404("Car not found")
+    return cards, old_bills
+
+
+def _newest_record(cards, old_bills):
+    """What describes the car on a document: its newest job card, or — for a car
+    known only from old bills — its newest old bill. Old bills are older by
+    definition, so on a shared day the job card wins."""
+    return max(
+        [((card.admitted_date, 1, card.pk), card) for card in cards]
+        + [((bill.bill_date, 0, bill.pk), bill) for bill in old_bills],
+        key=lambda pair: pair[0],
+    )[1]
 
 
 #: What the sheet can be asked to include. PARTS are not on this list because
@@ -534,8 +653,8 @@ def car_service_history(request, registration):
     person had just left. One 302, nothing on screen, a button that looked
     dead. `edit` says *read literally and stop here*; only `go` says *leave*.
     """
-    cards = _history_cards(registration)
-    history = build_service_history(cards)
+    cards, old_bills = _history_records(registration)
+    history = build_service_history(cards, old_bills=old_bills)
     summary = history['summary']
 
     submitted = 'go' in request.GET
@@ -576,7 +695,7 @@ def car_service_history(request, registration):
         return redirect(f'{target}?{query}' if query else target)
 
     return render(request, 'workshop/car_profiles/service_history_options.html', {
-        'car': max(cards, key=lambda card: (card.admitted_date, card.pk)),
+        'car': _newest_record(cards, old_bills),
         'registration': registration,
         'summary': summary,
         # Resolved here rather than looked up in the template. Django has no
@@ -606,16 +725,16 @@ def car_service_history_sheet(request, registration):
     same division of labour `invoice_view` follows. If a figure looks wrong,
     that module is where it is decided.
     """
-    cards = _history_cards(registration)
+    cards, old_bills = _history_records(registration)
 
     # A hand-edited URL reaches here without passing the options page, so the
     # reading is parsed here too. `build_service_history` DROPS one that cannot
     # be true rather than clamping it — a single bad figure would otherwise
     # poison every RUNNING row on the page at once.
     current_km = parse_km(request.GET.get('km') or '')
-    context = build_service_history(cards, current_km=current_km)
+    context = build_service_history(cards, current_km=current_km, old_bills=old_bills)
 
-    newest = max(cards, key=lambda card: (card.admitted_date, card.pk))
+    newest = _newest_record(cards, old_bills)
 
     # Where Back goes. Resolved to a single value HERE rather than left to the
     # template to choose between two, because a document must never be able to
@@ -700,26 +819,29 @@ def car_all_invoices(request, registration):
     Completed visits only, again matching the service history — a car still on
     the floor has a total that is not final, so its bill is not a bill yet.
     """
-    cards = [
-        card for card in _history_cards(registration)
-        if card.completed and not card.is_deleted
-    ]
+    all_cards, old_bills = _history_records(registration)
+    cards = [card for card in all_cards if card.completed and not card.is_deleted]
     cards.sort(key=lambda card: (card.admitted_date, card.pk), reverse=True)
 
-    newest = max(
-        _history_cards(registration),
-        key=lambda card: (card.admitted_date, card.pk),
-    )
+    # The car's OLD BILLS follow, newest first — all older than any job card, so
+    # the document still runs newest to oldest. Same shared sheet, built by
+    # `build_old_bill`, which gives the same keys `build_invoice` does.
+    old_bills.sort(key=lambda bill: (bill.bill_date, bill.pk), reverse=True)
+
+    newest = _newest_record(all_cards, old_bills)
     profile_url = reverse('car_profile_detail', args=[registration])
 
     return render(request, 'workshop/car_profiles/all_invoices_print.html', {
         # One entry per bill. `build_invoice` is called per card and its result
         # handed to the shared partial, so every sheet here is built by exactly
         # the code that builds the single invoice.
-        'sheets': [{'doc': build_invoice(card), 'jobcard': card} for card in cards],
+        'sheets': (
+            [{'doc': build_invoice(card), 'jobcard': card} for card in cards]
+            + [{'doc': build_old_bill(bill), 'jobcard': bill} for bill in old_bills]
+        ),
         'car': newest,
         'registration': registration,
-        'count': len(cards),
+        'count': len(cards) + len(old_bills),
         # Named like the invoices it contains, so it files beside them:
         #     Audi A4 KL11 AJ 2266 (JB-26-037).pdf
         #     Audi A4 KL11 AJ 2266 (All Invoices).pdf

@@ -35,7 +35,7 @@ cards rendered, which is the page size.
 
         <div class="cp-meta">
             <span class="cp-plate">{{ car.registration }}</span>
-            <span class="cp-visits">{{ car.total_visits }} visit{{ car.total_visits|pluralize }}</span>
+            <span class="cp-visits">{% if car.total_visits %}{{ car.total_visits }} visit{{ car.total_visits|pluralize }}{% endif %}{% if car.total_visits and car.old_bills %} · {% endif %}{% if car.old_bills %}<span class="cp-old">{{ car.old_bills }} old bill{{ car.old_bills|pluralize }}</span>{% endif %}</span>
         </div>
 
         <div class="cp-foot">
@@ -85,7 +85,7 @@ workshop, which looks like results rather than like a bug.
     {% else %}
         <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.2 4.6A1.5 1.5 0 0 1 4.6 3.6h6.8a1.5 1.5 0 0 1 1.4 1l.9 2.5h.3a1 1 0 0 1 1 1v1.3a1 1 0 0 1-1 1H13v.9a1 1 0 0 1-1 1h-.6a1 1 0 0 1-1-1v-.9H5.6v.9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-.9h-.9a1 1 0 0 1-1-1V8.1a1 1 0 0 1 1-1h.3l.8-2.5z"/></svg>
         <h2>No cars yet</h2>
-        <p>A car appears here the first time a job card is created for it.</p>
+        <p>A car appears here the first time a job card or an old bill is recorded for it.</p>
     {% endif %}
 </div>
 {% endif %}

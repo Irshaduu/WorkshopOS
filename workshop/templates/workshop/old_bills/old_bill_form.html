@@ -1,0 +1,733 @@
+{% extends 'workshop/base.html' %}
+{% load static custom_filters %}
+
+{% block title %}{% if is_new %}Add Old Bill{% else %}Edit {{ bill.bill_number }}{% endif %}{% endblock %}
+
+{% comment %}
+================================================================================
+THE OLD BILL FORM — typing in a bill written in Excel before the system
+================================================================================
+Built for a person copying about eight hundred paper bills in a row, so every
+choice here is about not losing their place:
+
+* THE SCREEN READS IN THE PAPER'S ORDER, under the paper's own navy bands —
+  DATE and #, then BILL TO / VEHICLE INFO, then JOB PERFORMED, then PART NAME,
+  then TOTAL — so the eye goes from a line on the paper to the same line here.
+* THE DATE IS THREE BOXES, typed, never a calendar. 1 and 01 are the same day,
+  the month takes "apr" because the paper prints "10-Apr-2026", and the cursor
+  moves on by itself once a box cannot take another character. What was
+  understood is spelled out underneath ("Fri 10 Apr 2026").
+* THE TOTAL IS WORKED OUT, NEVER TYPED — labour plus every part amount, the
+  figure the server saves — and sits on the right with one line under it asking
+  for it to be checked against the XL bill. A wrong figure is fixed in its own
+  line. (It was typed as a check until the owners chose the eye, 2026-09-17.)
+* ENTER NEVER SAVES. It moves to the next box, so half a bill cannot be saved by
+  a reflex.
+* SAVE & ADD NEXT keeps the month and year, and starts again on Day.
+* ONE OPEN ROW for jobs and for parts. Typing into it opens the next, so there is
+  always exactly one waiting and never a screen of empty boxes to scroll past.
+* THE JOB CARD'S OWN HABITS: the plate turns to capitals as it is typed, a known
+  plate fills MAKE and MODEL when the box is left, and MAKE and MODEL suggest
+  through the same dropdown (`script.js`). There is NO customer name box — not
+  needed on these bills (the owners' call, 2026-09-17).
+* DELETE WAITS IN THE ⋮ AT THE TOP of an edit, never beside the Save buttons
+  where a hand reaching for Save could land on it, and outside the bill's form.
+* JOB PERFORMED and PART NAME suggest through the Job Card's own dropdown — a
+  list under the box, never a <datalist>, which a phone or tablet shows as a
+  strip above the keyboard instead. JOB PERFORMED offers the Job Card's lines
+  (a part + "replaced" …); PART NAME offers this bill's job lines with the verb
+  taken off, then the warehouse CATEGORY names (a bill prints "Engine Oil",
+  never the brand), then the Spare Parts master list. Read only: nothing typed
+  here is added to either list.
+
+Every rule is decided in `workshop/old_bills.py`; the browser copy in
+`old-bill-core.js` only says what the server will say, a round trip sooner.
+================================================================================
+{% endcomment %}
+
+{% block extra_css %}
+<style>
+    .ob-page { --ob-navy: #1f4e79; --ob-band-text: #ffffff; --ob-field: #dce6f1; }
+
+    .ob-head { margin-bottom: 14px; }
+    .ob-title {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 1.35rem; font-weight: 800; color: #0f172a; margin: 0;
+    }
+    .ob-title i { color: #d97706; }
+    .ob-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    /* The ⋮ holding Delete — the read-only job card's own trigger and menu
+       values. `display: flex` + `line-height: 0` keep the button off the line
+       box's baseline, or the wrapper grows taller than the button. */
+    .ob-menu-wrap { flex: 0 0 auto; display: flex; line-height: 0; }
+    .ob-dots {
+        width: 32px; height: 32px; padding: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid var(--color-border, #e2e8f0); border-radius: 9px;
+        background: #fff; color: #94a3b8; font-size: 1rem; line-height: 1;
+    }
+    .ob-dots:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+    @media (hover: hover) { .ob-dots:hover { background: #f1f5f9; color: #0f172a; border-color: #cbd5e1; } }
+    @media (hover: none) { .ob-dots { width: 34px; height: 34px; } }
+    .ob-dots:active { background: #e2e8f0; }
+    .ob-menu { --bs-dropdown-min-width: 12rem; border-radius: 12px; padding: 6px; }
+    .ob-menu .dropdown-item {
+        display: flex; align-items: center; gap: 10px;
+        min-height: 44px; padding: 0 .75rem; border-radius: 8px; font-size: .92rem;
+    }
+    .ob-menu .dropdown-item.is-danger { color: #b91c1c; }
+    .ob-sub { margin: 4px 0 0; font-size: .85rem; color: #64748b; }
+
+    .ob-saved {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+        padding: 9px 12px; margin-bottom: 14px;
+        background: #fefce8; border: 1px solid #fde68a; border-radius: 10px;
+        font-size: .86rem; color: #713f12;
+    }
+    .ob-saved a { font-weight: 700; color: #92400e; }
+
+    .ob-problems {
+        padding: 12px 14px; margin-bottom: 14px;
+        background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px;
+        color: #991b1b; font-size: .88rem;
+    }
+    .ob-problems-title { font-weight: 800; margin-bottom: 4px; }
+    .ob-problems ul { margin: 0; padding-left: 1.1rem; }
+
+    .ob-card {
+        background: #fff; border: 1px solid var(--color-border, #e2e8f0);
+        border-radius: 12px; margin-bottom: 14px; overflow: hidden;
+    }
+    .ob-band {
+        display: flex; justify-content: space-between; gap: 10px;
+        background: var(--ob-navy); color: var(--ob-band-text);
+        font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+        padding: 7px 14px;
+    }
+    .ob-body { padding: 14px; }
+    .ob-label {
+        display: block; font-size: .72rem; font-weight: 700; letter-spacing: .05em;
+        text-transform: uppercase; color: #475569; margin-bottom: 4px;
+    }
+    .ob-page .form-control { min-height: 42px; }
+
+    /* DATE and # — one line on anything wider than a phone. */
+    .ob-top { display: flex; flex-wrap: wrap; gap: 14px 28px; }
+    .ob-inline { display: flex; align-items: center; gap: 6px; }
+    .ob-inline .form-control { text-align: center; padding-inline: 4px; }
+    .ob-w2 { width: 52px; }
+    .ob-w3 { width: 64px; }
+    .ob-w4 { width: 70px; }
+    .ob-w5 { width: 84px; }
+    .ob-sep, .ob-prefix { color: #64748b; font-weight: 700; }
+    .ob-said { min-height: 20px; margin-top: 5px; font-size: .84rem; font-weight: 600; }
+    .ob-said.is-ok { color: #1f4e79; }
+    .ob-said.is-bad { color: #b91c1c; }
+
+    /* The plate shows in capitals as it is typed, as on the Job Card; the model
+       stores it that way whatever was typed. */
+    #obReg { text-transform: uppercase; }
+
+    /* JOB PERFORMED and PART NAME rows */
+    .ob-rows { padding: 6px 14px; }
+    .ob-row {
+        display: grid; align-items: start; gap: 8px;
+        grid-template-columns: 24px minmax(0, 1fr);
+        padding: 4px 0;
+    }
+    .ob-row--part { grid-template-columns: 24px minmax(0, 1fr) 76px 128px; }
+    .ob-row--head {
+        font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+        color: #64748b; padding-top: 6px;
+    }
+    .ob-n { font-size: .76rem; font-weight: 700; color: #94a3b8; text-align: right; line-height: 42px; }
+    .ob-row--head > span { line-height: normal; }
+    /* A box and its suggestion list, as one grid cell. The list is the Job
+       Card's: in the flow under the box, so it opens the row rather than
+       covering the next one, and the card's rounded clip can never cut it off. */
+    .ob-ac { min-width: 0; }
+    /* A PART's list opens under the whole row — name, qty and amount — not
+       just under the name box, which is 114px wide on a phone. The wrapper
+       steps aside (display: contents) and every piece gets its own place, so
+       the list is a second line of the row and an empty one takes no room. */
+    .ob-row--part { row-gap: 0; }
+    .ob-row--part > .ob-ac { display: contents; }
+    .ob-row--part > .ob-n { grid-row: 1; grid-column: 1; }
+    .ob-row--part input[name="part_name"] { grid-row: 1; grid-column: 2; min-width: 0; }
+    .ob-row--part input[name="part_qty"] { grid-row: 1; grid-column: 3; }
+    .ob-row--part input[name="part_amount"] { grid-row: 1; grid-column: 4; }
+    .ob-row--part .autocomplete-suggestions { grid-row: 2; grid-column: 2 / -1; }
+    .ob-num { text-align: right; }
+    .ob-note { margin: 0 14px 10px 46px; font-size: .68rem; color: #64748b; }
+
+    .ob-subtotal {
+        display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+        padding: 10px 14px; background: var(--ob-field);
+        font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #1f4e79;
+    }
+    .ob-subtotal .form-control { width: 160px; text-align: right; }
+    .ob-subtotal output { min-width: 120px; text-align: right; font-size: 1rem; letter-spacing: 0; color: #0f172a; }
+
+    /* TOTAL — worked out, never typed, so it is a FIGURE drawn in a box's
+       shape: the inputs' height and corner, a dashed outline and no fill, the
+       way the Job Card draws its read-only Cost / Unit. On the right, under
+       the two subtotals it adds up. */
+    .ob-total .ob-body { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .ob-total-row { display: flex; align-items: center; gap: 12px; }
+    .ob-total-figure {
+        display: flex; align-items: center; justify-content: flex-end;
+        min-width: 190px; min-height: 42px; padding: 6px 12px;
+        border: 1px dashed #94a3b8; border-radius: 6px;
+        font-size: 1.15rem; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums;
+    }
+    /* The reminder is small — it is read once and then known. A problem is
+       not a reminder, so it keeps the larger size. */
+    .ob-check { font-size: .68rem; color: #64748b; text-align: right; }
+    .ob-check.is-bad { font-size: .8rem; color: #b91c1c; font-weight: 700; }
+
+    .ob-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+    .ob-save { background: #f59e0b; border-color: #f59e0b; color: #1e293b; font-weight: 800; }
+    @media (hover: hover) { .ob-save:hover { filter: brightness(.95); background: #f59e0b; color: #1e293b; } }
+
+    @media (max-width: 575.98px) {
+        /* ON A PHONE THE PART ROWS SCROLL SIDEWAYS, like the Job Card's own
+           parts tables and every row of boxes in this app (the owners' call,
+           2026-09-17 — two lines per part was tried first, and a part list
+           shaped differently from the rest of the app read as a different
+           control). The name keeps 240px, the Job Card's Item column, so a
+           name reads whole; the headings scroll with their columns; the row
+           number stays pinned, so row 3 is still row 3 with its name off
+           screen. The heading row's first cell is pinned the same way. Two
+           white shadows cover the strips either side of it — the rows' own
+           14px padding on the left and the 6px gap on the right — or a name
+           sliding under the number shows through both. `scroll-padding-left`
+           is the rows' own padding + the number + the gap (14 + 20 + 6): without
+           it, moving back to the next name scrolls only far enough to bring the
+           box in, and its first letters sit under the pinned number. */
+        #obParts { overflow-x: auto; scroll-padding-left: 40px; }
+        .ob-row--part { grid-template-columns: 20px 240px 64px 120px; gap: 0 6px; width: max-content; }
+        .ob-row--part > :first-child {
+            position: sticky; left: 0; z-index: 1; align-self: stretch;
+            background: #fff; box-shadow: -14px 0 0 #fff, 6px 0 0 #fff;
+        }
+        .ob-note { margin-left: 40px; }
+        /* The number always takes its own line on a phone, straight under the
+           date, so the empty spacer that levels it with the date's boxes on a
+           wider screen would only leave a gap. */
+        .ob-numgroup { flex-basis: 100%; }
+        .ob-spacer { display: none; }
+        .ob-subtotal .form-control { width: 140px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ob-page">
+
+    <a href="{{ back_url }}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>{{ back_label }}</span>
+    </a>
+
+    <div class="ob-head">
+        <div class="ob-head-row">
+            <h1 class="ob-title"><i class="bi bi-receipt"></i>{% if is_new %}Add Old Bill{% else %}Edit {{ bill.bill_number }}{% endif %}</h1>
+            {% if not is_new %}
+            <div class="dropdown ob-menu-wrap">
+                <button class="ob-dots" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
+                    <i class="bi bi-three-dots-vertical"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end ob-menu">
+                    <li>
+                        <form method="post" action="{% url 'old_bill_delete' bill.pk %}"
+                              data-confirm="{{ bill.bill_number }} will be removed from this car's history. This cannot be undone."
+                              data-confirm-title="Delete this old bill?"
+                              data-confirm-icon="bi-trash3"
+                              data-confirm-theme="danger"
+                              data-confirm-ok="Delete">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item is-danger"><i class="bi bi-trash3"></i> Delete bill</button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+        <p class="ob-sub">Type it exactly as the paper shows. History only — never counted in any figure.</p>
+    </div>
+
+    {% if saved %}
+    <div class="ob-saved">
+        <span>Last saved: <strong>{{ saved.bill_number }}</strong> · {{ saved.registration_number }} · ₹{{ saved.total_amount|inr_amount }}</span>
+        <a href="{% url 'old_bill_edit' saved.pk %}?back={{ request.get_full_path|urlencode }}">Edit it</a>
+    </div>
+    {% endif %}
+
+    {% if problems %}
+    <div class="ob-problems" role="alert">
+        <div class="ob-problems-title">Not saved yet — please fix:</div>
+        <ul>{% for problem in problems %}<li>{{ problem }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <form method="post" id="obForm" autocomplete="off" novalidate>
+        {% csrf_token %}
+
+        {# ── DATE and # ── #}
+        <section class="ob-card">
+            <div class="ob-body ob-top">
+                <div>
+                    <label class="ob-label" for="obDay">Date</label>
+                    <div class="ob-inline">
+                        <input id="obDay" name="day" value="{{ f.day }}" class="form-control ob-w2" data-box="day"
+                               inputmode="numeric" maxlength="2" placeholder="D" aria-label="Day"{% if is_new %} autofocus{% endif %}>
+                        <span class="ob-sep">/</span>
+                        <input id="obMonth" name="month" value="{{ f.month }}" class="form-control ob-w3" data-box="month"
+                               maxlength="9" placeholder="M" aria-label="Month">
+                        <span class="ob-sep">/</span>
+                        <input id="obYear" name="year" value="{{ f.year }}" class="form-control ob-w4" data-box="year"
+                               inputmode="numeric" maxlength="4" placeholder="Y" aria-label="Year">
+                    </div>
+                    <div class="ob-said" id="obDateSaid" aria-live="polite"></div>
+                </div>
+                <div class="ob-numgroup">
+                    {# Empty, only so the number's boxes sit level with the date's. #}
+                    <span class="ob-label ob-spacer" aria-hidden="true">&nbsp;</span>
+                    <div class="ob-inline">
+                        <label class="ob-prefix mb-0" for="obNumYear"># JB-</label>
+                        <input id="obNumYear" name="num_year" value="{{ f.num_year }}" class="form-control ob-w2"
+                               inputmode="numeric" maxlength="2" placeholder="YY" aria-label="Year in the bill number">
+                        <span class="ob-sep">-</span>
+                        <input id="obNumSeq" name="num_seq" value="{{ f.num_seq }}" class="form-control ob-w5"
+                               inputmode="numeric" maxlength="5" placeholder="NNN" aria-label="Bill number">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {# ── VEHICLE INFO ── #}
+        <section class="ob-card">
+            <div class="ob-band"><span>Vehicle info</span></div>
+            <div class="ob-body">
+                <div class="row g-3">
+                    <div class="col-6 col-md-3">
+                        <label class="ob-label" for="obReg">Reg no</label>
+                        <input id="obReg" name="registration_number" value="{{ f.registration_number }}" class="form-control" maxlength="50" autocapitalize="characters">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="ob-label" for="obMake">Make</label>
+                        <input id="obMake" name="brand_name" value="{{ f.brand_name }}" class="form-control autocomplete-brand" maxlength="100">
+                        <div class="list-group autocomplete-suggestions"></div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="ob-label" for="obModel">Model</label>
+                        <input id="obModel" name="model_name" value="{{ f.model_name }}" class="form-control autocomplete-model" maxlength="100">
+                        <div class="list-group autocomplete-suggestions"></div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="ob-label" for="obMileage">Mileage</label>
+                        <input id="obMileage" name="mileage" value="{{ f.mileage }}" class="form-control" maxlength="20" inputmode="numeric">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {# ── JOB PERFORMED ── #}
+        <section class="ob-card">
+            <div class="ob-band"><span>Job performed</span></div>
+            <div class="ob-rows" id="obJobs">
+                {% for row in jobs %}
+                <div class="ob-row">
+                    <span class="ob-n">{{ forloop.counter }}</span>
+                    <div class="ob-ac">
+                        <input name="job" value="{{ row.text }}" class="form-control" maxlength="150" aria-label="Job line {{ forloop.counter }}">
+                        <div class="list-group autocomplete-suggestions"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="ob-subtotal">
+                <label for="obLabour" class="mb-0">Subtotal ₹</label>
+                <input id="obLabour" name="labour_amount" value="{{ f.labour_amount }}" class="form-control" inputmode="decimal" maxlength="16">
+            </div>
+        </section>
+
+        {# ── PART NAME ── #}
+        <section class="ob-card">
+            <div class="ob-band"><span>Part name</span></div>
+            <div class="ob-rows" id="obParts">
+                <div class="ob-row ob-row--part ob-row--head" aria-hidden="true">
+                    <span></span><span>Part name</span><span class="ob-num">Qty</span><span class="ob-num">Amount ₹</span>
+                </div>
+                {% for row in parts %}
+                <div class="ob-row ob-row--part">
+                    <span class="ob-n">{{ forloop.counter }}</span>
+                    <div class="ob-ac">
+                        <input name="part_name" value="{{ row.name }}" class="form-control" maxlength="100" aria-label="Part name, row {{ forloop.counter }}">
+                        <div class="list-group autocomplete-suggestions"></div>
+                    </div>
+                    <input name="part_qty" value="{{ row.qty }}" class="form-control ob-num" inputmode="decimal" maxlength="9" aria-label="Quantity, row {{ forloop.counter }}">
+                    <input name="part_amount" value="{{ row.amount }}" class="form-control ob-num" inputmode="decimal" maxlength="14" aria-label="Amount, row {{ forloop.counter }}">
+                </div>
+                {% endfor %}
+            </div>
+            <p class="ob-note">No unit price — the bill works it out from the amount.</p>
+            <div class="ob-subtotal">
+                <span>Subtotal ₹</span>
+                <output id="obPartsSum" aria-live="polite">0.00</output>
+            </div>
+        </section>
+
+        {# ── TOTAL — worked out as the amounts are typed, never typed itself ── #}
+        <section class="ob-card ob-total">
+            <div class="ob-band"><span>Total</span></div>
+            <div class="ob-body">
+                <div class="ob-total-row">
+                    <label for="obTotal" class="ob-label mb-0">Total ₹</label>
+                    <output id="obTotal" class="ob-total-figure">0.00</output>
+                </div>
+                <div class="ob-check" id="obCheck" aria-live="polite">Verify this total with the XL bill.</div>
+            </div>
+        </section>
+
+        <div class="ob-actions">
+            {% if is_new %}
+            <button type="submit" name="after" value="close" class="btn btn-outline-secondary">Save &amp; close</button>
+            <button type="submit" name="after" value="next" class="btn ob-save">Save &amp; add next</button>
+            {% else %}
+            <a href="{{ back_url }}" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn ob-save">Save changes</button>
+            {% endif %}
+        </div>
+    </form>
+
+
+    {# The category and master-list names both suggestion lists draw on. #}
+    {{ known_parts|json_script:"obKnownParts" }}
+
+    <template id="obJobRow">
+        <div class="ob-row">
+            <span class="ob-n"></span>
+            <div class="ob-ac">
+                <input name="job" class="form-control" maxlength="150" aria-label="Job line">
+                <div class="list-group autocomplete-suggestions"></div>
+            </div>
+        </div>
+    </template>
+    <template id="obPartRow">
+        <div class="ob-row ob-row--part">
+            <span class="ob-n"></span>
+            <div class="ob-ac">
+                <input name="part_name" class="form-control" maxlength="100" aria-label="Part name">
+                <div class="list-group autocomplete-suggestions"></div>
+            </div>
+            <input name="part_qty" class="form-control ob-num" inputmode="decimal" maxlength="9" aria-label="Quantity">
+            <input name="part_amount" class="form-control ob-num" inputmode="decimal" maxlength="14" aria-label="Amount">
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/old-bill-core.js' %}?v=5"></script>
+<script>
+(function () {
+    'use strict';
+    var C = window.OldBillCore;
+    var form = document.getElementById('obForm');
+    if (!form || !C) { return; }
+
+    function el(id) { return document.getElementById(id); }
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+    var day = el('obDay'), month = el('obMonth'), year = el('obYear');
+    var numYear = el('obNumYear'), numSeq = el('obNumSeq');
+    var dirty = false;
+
+    // Today from LOCAL parts — never toISOString(), which is UTC and would
+    // call an IST morning "yesterday".
+    var now = new Date();
+    var todayISO = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+
+    // Only boxes a person can actually reach. A box that is not rendered is
+    // still in the form, and focusing it silently fails — the cursor would stop
+    // dead on Enter instead of moving on.
+    function fields() {
+        return Array.prototype.filter.call(
+            form.querySelectorAll('input:not([type=hidden])'),
+            function (input) { return !input.disabled && input.offsetParent !== null; }
+        );
+    }
+
+    function focusNext(input) {
+        var all = fields();
+        var next = all[all.indexOf(input) + 1];
+        if (next) { next.focus(); next.select(); }
+    }
+
+    /* ---- the date, spelled out ---------------------------------------- */
+
+    // The year in the bill number follows the date's year — until somebody
+    // types in that box themselves, which claims it.
+    var numYearByScript = null;
+    numYear.addEventListener('input', function () { numYearByScript = null; });
+    // "Save & add next" arrives with both years already filled from the last
+    // bill; that is the script's own filling, so a changed year still follows.
+    if (numYear.value && numYear.value === year.value.slice(-2)) { numYearByScript = numYear.value; }
+
+    function readTheDate() {
+        var said = el('obDateSaid');
+        said.className = 'ob-said';
+        said.textContent = '';
+        if (!day.value.trim() || !month.value.trim() || !year.value.trim()) { return; }
+        var got = C.readDate(day.value, month.value, year.value, todayISO);
+        if (got.error) {
+            said.classList.add('is-bad');
+            said.textContent = got.error;
+            return;
+        }
+        said.classList.add('is-ok');
+        said.textContent = got.label;
+        var yy = got.iso.slice(2, 4);
+        if (numYear.value === '' || numYear.value === numYearByScript) {
+            numYear.value = yy;
+            numYearByScript = yy;
+        }
+    }
+
+    [day, month, year].forEach(function (box) {
+        box.addEventListener('input', function () {
+            readTheDate();
+            if (C.boxIsFull(box.dataset.box, box.value)) {
+                // After the year, skip the number's year when it just filled itself.
+                if (box === year && numYear.value === numYearByScript) { numSeq.focus(); numSeq.select(); }
+                else { focusNext(box); }
+            }
+        });
+        // "/", ".", "-" and space move on, the way a date is naturally typed.
+        box.addEventListener('keydown', function (e) {
+            if (['/', '.', '-', ' '].indexOf(e.key) !== -1) {
+                e.preventDefault();
+                if (box.value.trim()) { focusNext(box); }
+            }
+        });
+    });
+    numYear.addEventListener('input', function () {
+        if (/^[0-9]{2}$/.test(numYear.value)) { focusNext(numYear); }
+    });
+
+    /* ---- Enter moves on; it never saves ------------------------------- */
+
+    form.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' || e.target.nodeName !== 'INPUT') { return; }
+        e.preventDefault();
+        // Enter on the EMPTY open part row means the parts are done. There is
+        // nothing left to type, so the cursor stays and the TOTAL is brought
+        // into view to be checked against the XL bill — never on to Save.
+        // (The empty open job row needs no rule — the box after it is already
+        // the job SUBTOTAL.)
+        if (e.target.name === 'part_name' && !rowHasContent(e.target.closest('.ob-row'))) {
+            el('obCheck').scrollIntoView({ block: 'center', behavior: 'smooth' });
+            return;
+        }
+        focusNext(e.target);
+    });
+
+    /* ---- the subtotal and the TOTAL, as the amounts are typed ---------- */
+    //
+    // The TOTAL is labour + every part amount — what the server saves. Nothing
+    // types it; the line under it asks for it to be checked against the XL
+    // bill, and a wrong figure is fixed in its own line.
+
+    function values(name) {
+        return Array.prototype.map.call(form.querySelectorAll('input[name="' + name + '"]'),
+                                        function (input) { return input.value; });
+    }
+
+    function showTheTotal() {
+        var parts = values('part_amount');
+        var sum = 0n, readable = true;
+        parts.forEach(function (text) {
+            var got = C.readAmount(text, 'part');
+            if (got.error) { readable = false; } else if (got.paise !== undefined) { sum += got.paise; }
+        });
+        el('obPartsSum').textContent = readable ? C.formatPaise(sum) : '—';
+
+        var total = C.billTotal(el('obLabour').value, parts);
+        var check = el('obCheck');
+        el('obTotal').textContent = total.error ? '—' : C.formatPaise(total.paise);
+        check.className = 'ob-check' + (total.error ? ' is-bad' : '');
+        check.textContent = total.error === 'too large' ? '✗ The total is too large.'
+                          : total.error ? '✗ An amount above cannot be read.'
+                          : 'Verify this total with the XL bill.';
+    }
+
+    /* ---- a known plate fills MAKE and MODEL — the Job Card's own rules -- */
+    //
+    // Asked when the plate box is LEFT, as on the Job Card. Make and model are
+    // one group, written whole or not at all, and only into boxes that are
+    // EMPTY or still hold exactly what this script put there — so a plate typed
+    // wrong and corrected swaps one car for the other instead of leaving a
+    // stranger's make behind. Typing in either box (emptying it included) makes
+    // it the typist's for the rest of the page. Every rule about the ANSWER is
+    // `workshop/known_car.py`.
+
+    var reg = el('obReg'), make = el('obMake'), model = el('obModel');
+    var carBoxes = [[make, 'brand_name'], [model, 'model_name']];
+    var written = new WeakMap(), typedIn = new WeakSet(), asked = 0;
+
+    carBoxes.forEach(function (pair) {
+        pair[0].addEventListener('input', function () { typedIn.add(pair[0]); written.delete(pair[0]); });
+    });
+
+    function writable(box) {
+        return !typedIn.has(box) && (!box.value.trim() || box.value === written.get(box));
+    }
+
+    reg.addEventListener('change', function () {
+        var mine = ++asked;
+        fetch('{% url "known_car_lookup" %}?registration=' + encodeURIComponent(reg.value.trim()),
+              { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (answer) {
+                if (!answer || mine !== asked) { return; }   // a newer question is on its way
+                if (!carBoxes.every(function (pair) { return writable(pair[0]); })) { return; }
+                carBoxes.forEach(function (pair) {
+                    pair[0].value = answer[pair[1]] || '';
+                    if (pair[0].value) { written.set(pair[0], pair[0].value); } else { written.delete(pair[0]); }
+                });
+                // Here the plate comes BEFORE Make (the Job Card has it after),
+                // so the answer usually lands in the box the cursor has just
+                // moved into — and setting a value drops its selection. Select
+                // it again, or the next keystroke is appended to the filled make
+                // ("Mercedes-BenzPor") instead of replacing it.
+                if (document.activeElement === make || document.activeElement === model) {
+                    document.activeElement.select();
+                }
+            })
+            .catch(function () {});
+    });
+
+    /* ---- suggestion dropdowns close when the cursor moves on ----------- */
+    // `script.js` closes them on a click elsewhere; the keyboard moves on with
+    // Enter, so a dropdown left open under the next box is closed here.
+    form.addEventListener('focusin', function (e) {
+        form.querySelectorAll('.autocomplete-suggestions').forEach(function (box) {
+            if (box.previousElementSibling !== e.target) { box.innerHTML = ''; }
+        });
+    });
+
+    /* ---- one open row, always ------------------------------------------ */
+
+    function rowHasContent(row) {
+        return !!row && Array.prototype.some.call(row.querySelectorAll('input'), function (input) {
+            return input.value.trim() !== '';
+        });
+    }
+
+    function renumber(list) {
+        var n = 0;
+        list.querySelectorAll('.ob-row:not(.ob-row--head) .ob-n').forEach(function (cell) {
+            n += 1;
+            cell.textContent = n;
+        });
+    }
+
+    // The moment the open row is typed into, the next one opens under it.
+    [['obJobs', 'obJobRow'], ['obParts', 'obPartRow']].forEach(function (pair) {
+        var list = el(pair[0]);
+        list.addEventListener('input', function (e) {
+            var rows = list.querySelectorAll('.ob-row:not(.ob-row--head)');
+            var row = e.target.closest('.ob-row');
+            if (row !== rows[rows.length - 1] || !rowHasContent(row)) { return; }
+            list.appendChild(el(pair[1]).content.firstElementChild.cloneNode(true));
+            renumber(list);
+        });
+    });
+
+    /* ---- JOB PERFORMED and PART NAME suggestions ---------------------- */
+    //
+    // Drawn EXACTLY like the Job Card's own dropdowns in script.js — the same
+    // Bootstrap list-group under the box, the same items, up to ten, picked
+    // with a tap or a click — and never a native data list, which a phone or tablet
+    // shows as a strip above the keyboard instead of under the box.
+    //
+    // What is offered is old-bill-core.js: jobOptions for a job line (the Job
+    // Card's "part + verb"), partOptions for a part name (this bill's job lines
+    // with the verb taken off, then categories, then the master list). Rows are
+    // added as the last one is typed into, so all of this is delegated —
+    // nothing is wired per box.
+    var knownParts = JSON.parse(el('obKnownParts').textContent);
+    var SUGGEST_LIMIT = 10;
+    var picking = false;
+
+    function isSuggestBox(input) {
+        return !!input && (input.name === 'job' || input.name === 'part_name');
+    }
+
+    function offer(input) {
+        var box = input.nextElementSibling;
+        if (!box || !box.classList.contains('autocomplete-suggestions')) { return; }
+        var options = input.name === 'job'
+            ? C.jobOptions(values('part_name'), knownParts.categories, knownParts.spares)
+            : C.partOptions(values('job'), knownParts.categories, knownParts.spares);
+        box.innerHTML = '';
+        C.matchOptions(options, input.value, SUGGEST_LIMIT).forEach(function (name) {
+            var item = document.createElement('a');
+            item.classList.add('list-group-item', 'list-group-item-action', 'py-2');
+            item.style.cursor = 'pointer';
+            item.textContent = name;
+            box.appendChild(item);
+        });
+    }
+
+    form.addEventListener('input', function (e) {
+        if (!picking && isSuggestBox(e.target)) { offer(e.target); }
+    });
+
+    // Pressing a suggestion must not take the cursor out of the box first, or
+    // on a phone the keyboard drops away between the press and the pick.
+    form.addEventListener('mousedown', function (e) {
+        if (e.target.closest('.ob-ac .autocomplete-suggestions a')) { e.preventDefault(); }
+    });
+
+    form.addEventListener('click', function (e) {
+        var item = e.target.closest('.ob-ac .autocomplete-suggestions a');
+        if (!item) { return; }
+        e.preventDefault();
+        var box = item.parentElement, input = box.previousElementSibling;
+        box.innerHTML = '';
+        input.value = item.textContent;
+        // A pick is typing: it opens the next row, marks the page unsaved and
+        // re-checks the totals, all of which listen for 'input'. `picking`
+        // stops that same event reopening the list it has just closed.
+        picking = true;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        picking = false;
+        input.focus();
+    });
+
+    // A tap anywhere else closes them, as script.js does for its own.
+    document.addEventListener('click', function (e) {
+        form.querySelectorAll('.ob-ac .autocomplete-suggestions').forEach(function (box) {
+            if (!box.contains(e.target) && box.previousElementSibling !== e.target) { box.innerHTML = ''; }
+        });
+    });
+
+    /* ---- typing is never lost by accident ----------------------------- */
+
+    form.addEventListener('input', function (e) {
+        dirty = true;
+        if (e.target.name === 'part_amount' || e.target.id === 'obLabour') {
+            showTheTotal();
+        }
+    });
+    form.addEventListener('submit', function () { dirty = false; });
+    window.addEventListener('beforeunload', function (e) {
+        if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    readTheDate();
+    showTheTotal();
+})();
+</script>
+{% endblock %}

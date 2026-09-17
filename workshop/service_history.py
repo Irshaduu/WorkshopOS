@@ -61,6 +61,14 @@ and nothing here reads `received_amount` or `payment_status`.
 
 Nothing here is a money source of truth; every amount is the job card's own
 denormalized column, read the way every other screen reads it.
+
+**OLD BILLS — the Excel bills from before the system — are part of the car's
+HISTORY and not of its money.** They join the chain in date order, so part life,
+the gaps, SERVICED EVERY, the distance and the first visit all see the car's
+whole life here. They print as OLD BILL 1, 2, 3 — numbered on their own, so no
+VISIT number moves — and they are kept OUT of TOTAL BILLED, DISCOUNT and NET
+TOTAL, which stay the figures the Car Profile prints. Their billed total is its
+own figure: their discounts were agreed at the counter and never recorded.
 """
 
 import re
@@ -202,6 +210,9 @@ class Visit:
     #: Printed under the amount by the owners' decision — see the module
     #: docstring for why it is shown and why it is always named.
     discount: Decimal
+    #: An Excel bill from before the system. `number` then counts old bills
+    #: only, so it prints as OLD BILL n and no VISIT number moves.
+    is_old_bill: bool = False
 
 
 @dataclass(frozen=True)
@@ -239,6 +250,84 @@ class Summary:
     #: has a basis even when nobody was asked.
     current_km: Optional[int]
     reference_km: Optional[int]
+    #: The Excel bills in the history, and what they were billed. `visits` and
+    #: the three money totals above count the system's own visits only.
+    old_bills: int = 0
+    old_bills_total: Decimal = ZERO
+
+
+@dataclass(frozen=True)
+class _Record:
+    """
+    One visit as this module reads it, whichever kind of record it came from.
+
+    A job card and an old bill are built into this one shape first, so every
+    rule below — the chains, the gaps, the numbering — is written once and
+    cannot treat the two differently by accident.
+    """
+    date: date
+    pk: int
+    is_old_bill: bool
+    mileage: Optional[str]
+    bill_number: str
+    concerns: tuple
+    jobs: tuple
+    parts: tuple
+    amount: Decimal
+    discount: Decimal
+    #: Old bills sort before job cards on a shared day — they are older by
+    #: definition — so a live card's `pk` never has to be compared with one.
+    order: tuple
+
+
+def _record_from_card(card):
+    return _Record(
+        date=card.admitted_date,
+        pk=card.pk,
+        is_old_bill=False,
+        mileage=card.mileage,
+        bill_number=card.bill_number or '',
+        concerns=tuple(
+            concern.concern_text for concern in card.concerns.all()
+            if concern.concern_text
+        ),
+        jobs=tuple(
+            labour.job_description for labour in card.labours.all()
+            if labour.job_description
+        ),
+        parts=tuple(_raw_parts(card)),
+        # See the module docstring: what the invoice totalled, never revenue
+        # and never what was received.
+        amount=card.total_bill_amount or ZERO,
+        # Floored, so a mistyped negative could never ADD to a bill on a
+        # document handed to a buyer. Zero prints nothing at all.
+        discount=max(card.discount_amount or ZERO, ZERO),
+        order=(card.admitted_date, 1, card.pk),
+    )
+
+
+def _record_from_old_bill(bill):
+    """An Excel bill: what its paper shows. No concerns, and no discount — none
+    was ever written down."""
+    parts = []
+    for line in bill.part_lines.all():
+        if not line.name:
+            continue
+        quantity = effective_quantity(line.quantity)
+        parts.append((line.name, quantity if quantity != ONE else None))
+    return _Record(
+        date=bill.bill_date,
+        pk=bill.pk,
+        is_old_bill=True,
+        mileage=bill.mileage,
+        bill_number=bill.bill_number or '',
+        concerns=(),
+        jobs=tuple(line.description for line in bill.job_lines.all() if line.description),
+        parts=tuple(parts),
+        amount=bill.total_amount or ZERO,
+        discount=ZERO,
+        order=(bill.bill_date, 0, bill.pk),
+    )
 
 
 def current_km_problem(current_km, latest_reading):
@@ -450,7 +539,7 @@ def _build_chains(ordered, reference_km):
     return chains
 
 
-def build_service_history(jobcards, current_km=None):
+def build_service_history(jobcards, current_km=None, old_bills=()):
     """
     Everything the service history sheet renders, derived from a car's cards.
 
@@ -484,14 +573,19 @@ def build_service_history(jobcards, current_km=None):
       `pk` breaks a same-day tie — `admitted_date` is a DateField and several
       cars share a date, so without it the order inside a day is whatever the
       database returns, which differs between PostgreSQL and SQLite.
+
+    `old_bills` are the car's Excel bills (prefetched `job_lines` and
+    `part_lines`). They join the history in date order and stay out of the
+    money totals — see the module docstring.
     """
     live = [card for card in jobcards if not card.is_deleted]
     completed = sorted(
-        (card for card in live if card.completed),
-        key=lambda card: (card.admitted_date, card.pk),
+        [_record_from_card(card) for card in live if card.completed]
+        + [_record_from_old_bill(bill) for bill in old_bills],
+        key=lambda record: record.order,
     )
 
-    readings = [parse_km(card.mileage) for card in completed]
+    readings = [parse_km(record.mileage) for record in completed]
     known = [km for km in readings if km is not None]
     latest_reading = known[-1] if known else None
 
@@ -503,8 +597,8 @@ def build_service_history(jobcards, current_km=None):
     reference_km = current_km if current_km is not None else latest_reading
 
     chains = _build_chains(
-        [(card.admitted_date, readings[index], _raw_parts(card))
-         for index, card in enumerate(completed)],
+        [(record.date, readings[index], record.parts)
+         for index, record in enumerate(completed)],
         reference_km,
     )
     # Handed out in the order each visit fitted them, so a card's parts print
@@ -513,8 +607,11 @@ def build_service_history(jobcards, current_km=None):
 
     visits = []
     previous = None
-    for index, card in enumerate(completed):
+    # VISIT n and OLD BILL n are counted apart, each from the oldest.
+    numbers = {False: 0, True: 0}
+    for index, record in enumerate(completed):
         reading = readings[index]
+        numbers[record.is_old_bill] += 1
 
         # ⚠ ONE ANCHOR. Both gaps are measured against the IMMEDIATELY previous
         # visit — never against "the last visit that happened to have a
@@ -524,7 +621,7 @@ def build_service_history(jobcards, current_km=None):
         gap_km = gap_days = None
         dropped = False
         if previous is not None:
-            gap_days = (card.admitted_date - previous.date).days
+            gap_days = (record.date - previous.date).days
             if reading is not None and previous.reading is not None:
                 difference = reading - previous.reading
                 # A reading below the one before it is an odometer that was
@@ -537,39 +634,30 @@ def build_service_history(jobcards, current_km=None):
                     gap_km = difference
 
         parts = []
-        for name, _quantity in _raw_parts(card):
+        for name, _quantity in record.parts:
             key = part_key(name)
             parts.append(chains[key][taken[key]])
             taken[key] += 1
 
         visits.append(Visit(
-            number=index + 1,
-            date=card.admitted_date,
-            bill_number=card.bill_number or '',
+            number=numbers[record.is_old_bill],
+            date=record.date,
+            bill_number=record.bill_number,
             reading=reading,
             # The text is still shown when it is not a number: 'cluster not
             # working' is a fact about that visit, and blanking it would look
             # like nobody recorded one.
-            reading_text=(card.mileage or '').strip(),
+            reading_text=(record.mileage or '').strip(),
             gap_km=gap_km,
             gap_days=gap_days,
             reading_dropped=dropped,
             rate_implausible=_rate_is_implausible(gap_km, gap_days),
-            concerns=tuple(
-                concern.concern_text for concern in card.concerns.all()
-                if concern.concern_text
-            ),
-            jobs=tuple(
-                labour.job_description for labour in card.labours.all()
-                if labour.job_description
-            ),
+            concerns=record.concerns,
+            jobs=record.jobs,
             parts=tuple(parts),
-            # See the module docstring: what the invoice totalled, never
-            # revenue and never what was received.
-            amount=card.total_bill_amount or ZERO,
-            # Floored, so a mistyped negative could never ADD to a bill on a
-            # document handed to a buyer. Zero prints nothing at all.
-            discount=max(card.discount_amount or ZERO, ZERO),
+            amount=record.amount,
+            discount=record.discount,
+            is_old_bill=record.is_old_bill,
         ))
         previous = visits[-1]
 
@@ -584,7 +672,7 @@ def build_service_history(jobcards, current_km=None):
         'visits': tuple(reversed(visits)),
         'summary': summary,
         'chains': _summarise_chains(chains),
-        'document_title': _title(live, completed),
+        'document_title': _title(live, old_bills),
     }
 
 
@@ -685,12 +773,16 @@ def _summarise(visits, in_progress, current_km, reference_km):
     gaps_days = [visit.gap_days for visit in visits if visit.gap_days]
 
     # Both sums of the rows printed above them, so the closing block can be
-    # checked against the page it closes.
-    total_billed = sum((visit.amount for visit in visits), ZERO)
-    total_discount = sum((visit.discount for visit in visits), ZERO)
+    # checked against the page it closes. The system's own visits only: an old
+    # bill's discount was never recorded, so it has no honest place in a NET
+    # TOTAL, and these are the figures the Car Profile prints.
+    system = [visit for visit in visits if not visit.is_old_bill]
+    old = [visit for visit in visits if visit.is_old_bill]
+    total_billed = sum((visit.amount for visit in system), ZERO)
+    total_discount = sum((visit.discount for visit in system), ZERO)
 
     return Summary(
-        visits=len(visits),
+        visits=len(system),
         first_date=visits[0].date,
         last_date=visits[-1].date,
         span_label=span_label(visits[0].date, visits[-1].date),
@@ -709,10 +801,12 @@ def _summarise(visits, in_progress, current_km, reference_km):
         in_progress=in_progress,
         current_km=current_km,
         reference_km=reference_km,
+        old_bills=len(old),
+        old_bills_total=sum((visit.amount for visit in old), ZERO),
     )
 
 
-def _title(live, completed):
+def _title(live, old_bills=()):
     """
     What the browser tab says, and therefore what the saved PDF is called.
 
@@ -724,13 +818,15 @@ def _title(live, completed):
 
     The car is described by the NEWEST card there is — including one still on
     the floor, which is the most current record of what the car is called even
-    though its visit is not listed.
+    though its visit is not listed. A car known only from its old bills is
+    described by the newest of those.
     """
     newest = max(
-        live or completed,
-        key=lambda card: (card.admitted_date, card.pk),
-        default=None,
-    )
+        [((card.admitted_date, 1, card.pk), card) for card in live]
+        + [((bill.bill_date, 0, bill.pk), bill) for bill in old_bills],
+        key=lambda pair: pair[0],
+        default=(None, None),
+    )[1]
     if newest is None:
         return 'Service History'
     return document_title(newest, 'Service History', 'Service History')

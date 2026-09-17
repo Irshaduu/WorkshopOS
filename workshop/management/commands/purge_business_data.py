@@ -21,6 +21,7 @@ REMOVED:
   - CashbookEntry
   - OwnerWithdrawal
   - RentRate, RentDeposit
+  - OldBill (+ job lines, part lines via CASCADE)
   - DeletionLog
 
 ⚠ THREE TABLES WERE MISSING FROM THIS LIST UNTIL 2026-09-04, all three added
@@ -50,6 +51,7 @@ from workshop.models import (
     Mechanic, CashbookEntry, DeletionLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
     OwnerWithdrawal, RentRate, RentDeposit,
+    OldBill, OldBillJobLine, OldBillPartLine,
 )
 from inventory.models import (
     Category, Item, ShopCatalogItem, SupplierShop,
@@ -96,6 +98,11 @@ class Command(BaseCommand):
             # in the same shape as every other pair here.
             ("Rent deposits", RentDeposit),
             ("Rent rates", RentRate),
+            # Typed-in history of pre-system bills. Real bills are entered AFTER
+            # go-live, so anything here at purge time is test typing.
+            ("Old bill part lines", OldBillPartLine),
+            ("Old bill job lines", OldBillJobLine),
+            ("Old bills", OldBill),
             ("Deletion history", DeletionLog),
         ]
 

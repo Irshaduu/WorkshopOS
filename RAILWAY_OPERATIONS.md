@@ -224,6 +224,20 @@ The app never reads these while serving pages — the database is the authority.
 They only let `sync_owner_identity` close `/admin/`, add the Owner group and store
 the mobiles once the accounts exist (`GO_LIVE_RUNBOOK.md` §3.3).
 
+### The last Excel bill (set once, on go-live day)
+
+| Variable | Value |
+|---|---|
+| `LAST_EXCEL_BILL_NUMBER` | The last bill the workshop wrote in Excel, e.g. `JB-26-245` — **set before the first live job card** |
+
+The Excel bills used the system's own JB-YY-NNN numbers, so live job cards of
+that year start after this one and an old bill cannot take a number after it.
+Blank is valid and changes nothing. **A value in any other shape stops the app
+from starting** — a failed deploy right after setting it is almost always a
+typo in this value. Once real job cards exist, **never change it**: raising it
+leaves a gap, and lowering it lets an old bill claim a number a live card may
+already need. Procedure: `GO_LIVE_RUNBOOK.md` §3.5b.
+
 ### Required for email (password reset)
 
 | Variable | Value |

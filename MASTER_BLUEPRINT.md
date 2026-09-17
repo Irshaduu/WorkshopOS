@@ -42,7 +42,7 @@ graph TB
         W_TAGS["templatetags — 16 Filters"]
         W_ADMIN["admin.py — 10 Registered"]
         W_CMD["Commands — 14 management commands"]
-        W_TPL["Templates — 95 HTML Files"]
+        W_TPL["Templates — 98 HTML Files"]
     end
 
     subgraph INVENTORY["Inventory App (Warehouse + Supplier Shops)"]
@@ -78,7 +78,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (33)
+### Workshop App Models (36)
 
 ```mermaid
 erDiagram
@@ -139,6 +139,9 @@ erDiagram
 | 26 | **Estimate** | estimate_number (unique, auto `EST-26-001`), date, customer/vehicle (all free text), **chassis_code/vin**, **car_color/car_color_other**, labour_amount, total_amount (denormalized), notes, created_by | A **quotation**, connected to nothing — no job card, no stock, no ledger, no report. Migrations (`0067_estimate_estimatejobline_estimatepartline_and_more`, `0068_estimate_car_color_estimate_car_color_other`, `0078_jobcard_estimate_chassis_code_vin`). `chassis_code`/`vin` are declared exactly like JobCard's and are never printed on the quotation. Colour uses the shared `CAR_COLOR_CHOICES`/`CAR_COLOR_HEX`, is picked with the shared `_car_color_picker.html`, and is drawn as the stripe on each history row — never printed on the quotation. `total_amount` is written only by `update_totals()`, called explicitly by the views; there are no signals on any of these three models. |
 | 27 | **EstimateJobLine** | estimate (FK), description | One line of work being quoted. **No money column at all** — the charge lives once on `Estimate.labour_amount`, same rule as `JobCard.labour_amount`. |
 | 28 | **EstimatePartLine** | estimate (FK), name, quantity, **customer_rate**, **amount** | One quoted part. Note the naming is the OPPOSITE of `JobCardSpareItem`: an estimate has no cost side, so both figures are customer prices. `amount = customer_rate × quantity` is enforced on save when a rate is set. |
+| 28a | **OldBill** | **bill_number** (unique, typed as printed, e.g. `JB-26-097`), **bill_date**, registration_number, brand_name, model_name, mileage, customer_name, labour_amount, total_amount (labour + part amounts, written only by `update_totals()`), created_by, created_at, updated_at | A bill the workshop wrote in **Excel before the system existed**, typed in for a car's history. Migration `0079_old_bills`. ⚠ **Connected to nothing** — no job card, no stock, no ledger, no line in `analysis_engine.py`; `test_old_bills.py` fails if any file outside a short allow-list starts reading it. Holds only what the paper shows: **one date**, no admitted/settled dates, **no discount and no payment** (the final figure was agreed verbally and never written down, so `total_amount` is what was BILLED), no phone, no colour, no cost. Brand/model/plate/mileage are tidied in `clean()` exactly as `JobCard.clean()` tidies them, so both land on one Car Profile. CheckConstraints: labour and total `>= 0`. Every rule is `workshop/old_bills.py` |
+| 28b | **OldBillJobLine** | old_bill (FK, CASCADE), description | A JOB PERFORMED line — a description; the charge is `OldBill.labour_amount`, as on a job card |
+| 28c | **OldBillPartLine** | old_bill (FK, CASCADE), name, quantity (optional), amount (optional) | A PART NAME line. One mixed list — the paper never split warehouse stock from shop parts — with **no stock link**. A blank amount prints blank, never ₹0; the unit price is derived on reprint, never typed. CheckConstraints: quantity `> 0`, amount `>= 0` |
 
 Salary models (migration `0054_mechanic_current_salary_and_more`, which also added `Mechanic.current_salary`). Wage cost for a settled month is `net_amount + advance_used` — the advance already left the drawer and the settlement pays the remainder.
 
@@ -239,7 +242,7 @@ byte-identical.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (170 Total)
+## 4. ALL URL ROUTES — COMPLETE (175 Total)
 
 *Walked from `get_resolver().url_patterns` recursively and
 excluding Django admin (131 of its own) — the method below, not by grepping
@@ -253,7 +256,7 @@ served by the same app.*
 ⚠ **Walk it with `DEBUG=False` or the total is one higher.**
 `formulad_workshop/urls.py` appends `MEDIA_URL` through Django's `static()` helper,
 which returns an **empty list** when `DEBUG=False` — so a development resolver reports
-**171 (138 + 33)** and production reports **170 (137 + 33)**. That one route is the
+**176 (143 + 33)** and production reports **175 (142 + 33)**. That one route is the
 media path, which is not served in production at all (§12, and `AUD-0088`).
 
 ⚠ **And filter for it on `'media/' in pattern`, not `startswith`.** It is a
@@ -343,6 +346,11 @@ production's. Cost a wrong number on the way into this very entry.
 | | `/estimates/<pk>/` | `estimate_print` | Office |
 | | `/estimates/<pk>/edit/` | `estimate_edit` | Office |
 | | `/estimates/<pk>/delete/` | `estimate_delete` | Office |
+| **OLD BILLS** | `/old-bills/` | `old_bill_list` | Office — month by month with counts, and the JB numbers of each year not typed yet |
+| | `/old-bills/add/` | `old_bill_add` | Office — the typing form; POST refused with every problem named, Save & add next keeps the month and year |
+| | `/old-bills/<pk>/` | `old_bill_invoice` | Office — one old bill reprinted on the invoice's own sheet, with Edit |
+| | `/old-bills/<pk>/edit/` | `old_bill_edit` | Office |
+| | `/old-bills/<pk>/delete/` | `old_bill_delete` | Office — POST only, from the ⋮ on the edit page; no DeletionLog (moves no money, the Estimate's reasoning) |
 | **AUTH** | `/login/` | `login_view` | Public |
 | | `/admin-login/` | `RedirectView` → `login` | Public |
 | | `/change-password/` | `change_password_view` | Owner |
@@ -541,7 +549,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (118 HTML Files)
+## 7. TEMPLATE STRUCTURE (121 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -551,7 +559,7 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 95 files
+### Workshop Templates (`workshop/templates/workshop/`) — 98 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -568,6 +576,7 @@ stateDiagram-v2
 | `/car_profiles/` | 6 files: `car_profile_list.html`, `car_profile_detail.html`, `car_list_partial.html`, `service_history_options.html`, `service_history_print.html`, `all_invoices_print.html` | The three car-profile screens, plus the two customer documents a profile opens. The last two are **standalone** — they extend no base, load nothing from any origin, and carry their stylesheet inline, exactly like the invoice and the estimate |
 | `/invoice/` | `invoice_template.html` | The printed bill. Standalone (does **not** extend `base.html`) and fully self-contained — no Bootstrap, no icon font, no CDN of any kind, so nothing external can move a column on a customer's invoice. Screen controls live outside the `.sheet` element entirely, not merely behind `display:none`. |
 | `/estimate/` | `estimate_print.html`, `estimate_form.html`, `estimate_list.html`, `estimate_list_partial.html`, `estimate_confirm_delete.html` | The quotation. `estimate_print.html` is a deliberate near-twin of `invoice_template.html` — same letterhead, bands, column grid and totals block, standalone and self-contained on the same terms. It differs in what the document *is* — title `ESTIMATE`, heading `JOB NEEDS TO BE PERFORMED`, no payment chip, no settle control — and in exactly two columns: **QTY prints only what was typed** (blank stays blank, though it still counts as 1 in the maths) and **UNIT PRICE prints only when a rate was entered** (never derived). Both follow from a bill recording work that happened while an estimate describes work that has not; see `build_estimate`. **Restyle one and you must restyle both**, or the customer gets two documents that look like different businesses. |
+| `/old_bills/` | `old_bill_form.html`, `old_bill_list.html`, `_old_bill_rows.html` | Old Bills. The form reads in the **paper's own order under its navy bands**: the date as three typed boxes (`1` and `01` alike, `apr` for the month, the day spelled out underneath), `# JB- [YY] [NNN]` (its own line on a phone), then **one open job row and one open part row** (the next opens as each is typed into; on a phone the part rows scroll sideways like the Job Card's, with the row number pinned), then the TOTAL **worked out, never typed** — a read-only figure on the right with "Verify this total with the XL bill." under it. **Enter never saves.** No customer name box; Delete sits in the ⋮ at the top of an edit, away from Save. MAKE and MODEL use the Job Card's `script.js` dropdown and a known plate fills them; JOB PERFORMED and PART NAME suggest through the Job Card's own dropdown under the box (never a `<datalist>`): a job offers part + verb, a part offers the job lines with their verb taken off, then the inventory category names and the Spare Parts master list (read only, never added to). The list is year blocks of month chips with counts and a month's bills in date and number order. A single old bill prints through `car_profiles/all_invoices_print.html` with one sheet and an Edit |
 | `/spare_shops/` | 5 files: `shop_list.html`, `shop_detail.html`, `shop_archived.html`, `shop_print.html`, `unassigned_hub.html` | Spare shop screens. `shop_archived` is the reactivate list — archiving must never hide what is owed |
 | `/manage/` | 4 files: `manage_dashboard.html` (Owner-only Control Hub), `data_cleanup.html`, `master_confirm_delete.html`, `master_confirm_merge.html` | Control Hub + Data Cleanup, plus the two confirmations shared with Master Lists so a rename that *collides* is gated identically from both screens |
 | `/deletion_history/` | `deletion_history_list.html`, `deletion_history_detail.html` | 2 files — the Owner-only, read-only audit log of every permanent delete. No restore |
@@ -575,7 +584,7 @@ stateDiagram-v2
 | `/rent/` | `rent/rent_home.html` | 1 file — Deposit & Rent, the whole section on one page: today's figure with its working printed beside it, this month against the months already finished, the shared `.rpay-*` record card, **one month's** deposit log, and the history as **collapsed year blocks** so twenty years is twenty lines. No cap and no pager anywhere. Setting the rent is behind a ⋮ in the hero, Owner-only, because it changes about once a year. |
 | `/withdrawals/` | `withdrawal_home.html` | 1 file — Owner Withdrawals, the whole section on one page: what each owner took in the window, the shared `.rpay-*` record card, and the history narrowed by a chip row. No per-owner drill-down (with two owners the comparison *is* the question) and no edit (Owner-only end to end, so delete and re-add is one line and lands in Deletion History rather than overwriting silently). |
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
-| `/includes/` | 10 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_confirm_dialog.html`, `_invoice_sheet.html`, `_invoice_sheet_style.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by every printed document; the ONE confirmation card (`.wcf-*`), included by `base.html`; **the ONE printed bill — `_invoice_sheet.html` + its stylesheet, rendered by both `invoice_view` and `car_all_invoices` so the two can never differ by a column width or a rounding** (it carries no `id`, since several sheets share one page, and it must `{% load custom_filters %}` itself because an include inherits nothing); and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
+| `/includes/` | 10 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_confirm_dialog.html`, `_invoice_sheet.html`, `_invoice_sheet_style.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by every printed document; the ONE confirmation card (`.wcf-*`), included by `base.html`; **the ONE printed bill — `_invoice_sheet.html` + its stylesheet, rendered by `invoice_view`, `car_all_invoices` and `old_bill_invoice` so they can never differ by a column width or a rounding** (it carries no `id`, since several sheets share one page, and it must `{% load custom_filters %}` itself because an include inherits nothing); and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
 
 ### Inventory Templates (`inventory/templates/inventory/`) — 20 files
 
@@ -762,7 +771,7 @@ graph TB
 
 *Not registered in admin (managed via dedicated UI views only): `FailedAttempt`, `UserSession`, `SpareShop`, `SpareShopPayment`, `CashbookEntry`, and JobCard's child models (`JobCardConcern`/`JobCardSpareItem`/`JobCardLabourItem`, managed as JobCard inlines instead).*
 
-*Nor is anything added since: `AccountLockout`, `PasswordResetOTP`, `Notification`, `PushSubscription`, `JobCardPhoto`, `OrphanedPhotoBlob`, the three salary models, the three estimate models, `OwnerWithdrawal`, `RentRate` and `RentDeposit`. None of it is reachable in practice — no account carries `is_staff`, so `/admin/` admits nobody (see `CLAUDE.md`).*
+*Nor is anything added since: `AccountLockout`, `PasswordResetOTP`, `Notification`, `PushSubscription`, `JobCardPhoto`, `OrphanedPhotoBlob`, the three salary models, the three estimate models, `OwnerWithdrawal`, `RentRate`, `RentDeposit` and the three old bill models. None of it is reachable in practice — no account carries `is_staff`, so `/admin/` admits nobody (see `CLAUDE.md`).*
 
 ### Inventory Admin (8)
 
@@ -824,6 +833,7 @@ graph TB
 | `BUSINESS_NAME` | The name owners know the workshop by (default `Formula D`). Used in the reset email's subject and body — **not** "WorkshopOS", which is the project's internal name and appears nowhere in the UI. A setting rather than a literal so the codebase can serve another workshop without a hunt |
 | `EMAIL_REAL` | Development only. False (default) prints mail to the console instead of sending |
 | `DJANGO_ENV` | Environment selector (development/production) |
+| `LAST_EXCEL_BILL_NUMBER` | The last bill the workshop wrote in **Excel**, e.g. `JB-26-245`. ⚠ **Set it before the first live job card.** Excel numbered bills JB-YY-NNN from 001 each January — the system's own shape — so live job cards of that year start after it, and an old bill cannot take a number after it. Blank (the default) means no Excel years: numbering behaves exactly as before. A value set but not in the `JB-YY-NNN` shape stops the app at startup. Forced blank under `manage.py test` |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL config |
 | `DB_SSLMODE` | `require` by default — a leftover from a hosted database over the public internet, wrong for every environment in use now. Local development sets `disable`; Railway's private network needs `prefer` |
 | `USE_SQLITE` | Development only. Switches `default` to the SQLite file for bulk seeding. **Ignored by `manage.py test`, which always uses SQLite anyway** |
@@ -843,7 +853,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (74 files · 2,530 tests)
+## 13. TEST SUITE (75 files · 2,625 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -851,7 +861,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (69 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (70 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -881,6 +891,7 @@ base classes.*
 | `test_push.py` | Service-worker root scope, subscribe/unsubscribe RBAC, CRITICAL-only dispatch, dead-endpoint reaping, and the guarantee that a failing push never breaks the feed |
 | `test_invoice.py` | Every rule in `workshop/invoice.py` a customer would notice: one parts list, category naming for warehouse draws, derived unit price, blank QTY, labour as one subtotal, nothing interactive on the paper |
 | `test_whatsapp_button.py` | The invoice's WhatsApp icon: which typed numbers open a chat (and which give none), Owners only, the chat opens empty, the link sits outside the sheet and is not a fetch |
+| `test_old_bills.py` | Old Bills end to end. **The isolation**: a scan fails if any file outside a short allow-list mentions the model, and adding the real sample bill moves no Profit, Cash Tracking or Position figure and no stock. The model's tidy-up matches `JobCard.clean()`; the database refuses a duplicate number and negative amounts. **One JB sequence**: live cards start after `LAST_EXCEL_BILL_NUMBER` and skip an old bill's number; an old bill's number must match its date's year and cannot be one the system owns. **Typing**: the date and amount cases shared with the JS test through `tests/js/old-bill-cases.json`. The form (refusals keep what was typed, Save & add next, edit, delete, Floor refused), the month page, the Car Profile (money tiles and visit numbers unchanged), the three documents, the known-plate lookup and Master Lists renames |
 | `test_estimate.py` | Estimates: the printed sheet held in step with the invoice, isolation from job cards / stock / ledgers / DeletionLog, `EST-` numbering, the price-hint endpoint, and the screens' RBAC |
 | `test_jobcard_inventory_section.py` | The Job Card's two spare routes as two formsets over one model, scoped by `source` |
 | `test_template_comments.py` | Static scan: no multi-line `{# … #}`, which stops being a comment and renders on the page |
@@ -924,7 +935,7 @@ base classes.*
 | `test_go_live_safety.py` | What keeps the live database safe from the tooling built while exploring hosts: every demo seeder refuses to run outside `DJANGO_ENV=development` and writes nothing, `DJANGO_ENV=render_demo` now refuses to start instead of booting on a SQLite file, no Render file is left in the repository, and `makemigrations --check` finds no model change missing its migration |
 | `test_price_markup.py` | Suggested customer prices on the job card. **`TheServerNeverPricesAPartTests` is the one that matters**: a shop price or a costed draw saved with no customer price stores none, so the settle check still chases it and `workshop/pricing.py` holds no price function. Cost and markup reach Office and Owner only — the product search sends Floor neither key and Floor's page carries no config, column or badge. A settled card is never filled. A saved draw shows its OWN cost, an unknown cost a dash, and a draw corrected to another product takes that product's cost. Unit price × quantity too large for the column is refused rather than a 500. Add Product / Edit Product store a whole markup 0–999, refuse anything else changing nothing, never change a linked product's markup, and save only their own three fields. The badge's `position: relative`, which stops its hidden label widening the page on a phone, is asserted directly. The inventory total is headed **Total Price** (Spare Parts keeps Customer Price, and the settle check names a draw's gap "no total price"); a typed total saves exactly with no unit price, and the class beside it proves why the grey unit price is never posted — 142.86 × 7 saves ₹1,000.02 |
 
-*JavaScript: `workshop/tests/js/photos-core.test.js` and `workshop/tests/js/pricing-core.test.js` run under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. The first covers the photo upload queue's failure paths and the gallery's index arithmetic; the second the suggested price — strict parsing (a comma is refused), rounding up to the rupee in whole paise, the badge rounding down, and the line total rounding half-even exactly as the server does, every expectation produced by Python first. They are the only JavaScript in this repo with tests, and they add no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
+*JavaScript: `workshop/tests/js/photos-core.test.js`, `workshop/tests/js/pricing-core.test.js` and `workshop/tests/js/old-bill-core.test.js` run under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. The first covers the photo upload queue's failure paths and the gallery's index arithmetic; the second the suggested price — strict parsing (a comma is refused), rounding up to the rupee in whole paise, the badge rounding down, and the line total rounding half-even exactly as the server does, every expectation produced by Python first; the third what the Old Bill form understood while typing, read against `old-bill-cases.json` — the same file the Django suite reads, so the browser and the server answer every listed date and amount identically. They are the only JavaScript in this repo with tests, and they add no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
 ### Inventory Tests (5 files)
 
@@ -953,8 +964,8 @@ WorkshopOS (Titan)/
 │   ├── urls.py                 ← Root: admin + workshop + inventory
 │   ├── wsgi.py / asgi.py
 │
-├── workshop/                   ← Core App (137 URL routes)
-│   ├── models.py               ← 33 Models
+├── workshop/                   ← Core App (142 URL routes)
+│   ├── models.py               ← 36 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
 │   │   ├── dashboard.py        ← home, live_report
@@ -963,6 +974,7 @@ WorkshopOS (Titan)/
 │   │   ├── deletion_history.py ← deletion_history_list/detail (Owner-only, read-only)
 │   │   ├── billing.py          ← invoice_view, update_bill_status
 │   │   ├── estimate.py         ← Estimates: list, create, edit, print, delete (connected to nothing)
+│   │   ├── old_bills.py        ← Old Bills: list, add, edit, print one, delete (connected to nothing)
 │   │   ├── bulk_payer.py       ← bulk payer / "Fleet Account" views incl. advance-balance cascade
 │   │   ├── spare_shop.py       ← spare shop views
 │   │   ├── pending.py          ← pending_payments_list
@@ -983,7 +995,7 @@ WorkshopOS (Titan)/
 │   │   └── about.py            ← The static tour of what exists (Owner-only)
 │   ├── analysis_views.py       ← Owner Profit + Insights views
 │   ├── analysis_engine.py      ← All Analysis money math (pure functions, no HTML)
-│   ├── invoice.py              ← What BOTH customer documents show — build_invoice + build_estimate (pure functions, no views)
+│   ├── invoice.py              ← What the customer documents show — build_invoice + build_old_bill + build_estimate (pure functions, no views)
 │   ├── mileage.py              ← Can this hand-typed odometer reading be believed? An ALLOWLIST of shapes, never a scrub (pure, no views)
 │   ├── service_history.py      ← Every figure and every name on the service-history sheet — visits, gaps, part chains, due-soon (pure, no views)
 │   ├── settlement.py           ← What is still UNFILLED on a job card — read by the settle dialog and the Live Report's chase list (pure, no views)
@@ -992,6 +1004,7 @@ WorkshopOS (Titan)/
 │   ├── known_car.py            ← What a typed plate already tells the Job Card form: the car, its colour, both codes, and the last customer for Office/Owner (pure, no views)
 │   ├── pricing.py              ← The markup numbers (40 / 20 / 999) and the one markup parser — deliberately NO price function; the suggestion is the browser's (pure, no views)
 │   ├── rent.py                 ← How much should we hand the rent collector today? Everything derived, nothing stored (pure, no views)
+│   ├── old_bills.py            ← Every rule about an Excel bill: the one JB sequence, the three-box date, amounts off the paper, the whole form (pure, no views)
 │   ├── master_data.py          ← The ONE rename/merge rule, shared by Master Lists and Data Cleanup (pure, no views)
 │   ├── money.py                ← Is this typed rupee amount acceptable for its column? Bounds READ from the column (pure, no views)
 │   ├── money_dates.py          ← What day did this money move, and how far back may it be filed? Shared by all six money-date forms (pure, no views)
@@ -1005,7 +1018,7 @@ WorkshopOS (Titan)/
 │   ├── management_views.py     ← Management views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook views (standalone ledger)
 │   ├── cleanup_views.py        ← 5 Cleanup views
-│   ├── urls.py                 ← 137 URL patterns
+│   ├── urls.py                 ← 142 URL patterns
 │   ├── forms.py                ← 11 Forms + 6 Formsets (every formset extra=0)
 │   ├── decorators.py           ← 3 RBAC decorators
 │   ├── middleware.py           ← SessionTracking / NoStore / NoIndex
@@ -1025,18 +1038,20 @@ WorkshopOS (Titan)/
 │   │   ├── sweep_photo_blobs.py       ← Storage objects whose rows are gone (dry run by default)
 │   │   ├── purge_old_photos.py        ← 1-year retention sweep; always skips an unpaid bill (dry run)
 │   │   └── copy_sqlite_to_postgres.py ← Push a seeded SQLite file up to PostgreSQL
-│   ├── templates/workshop/     ← 95 HTML files
+│   ├── templates/workshop/     ← 98 HTML files
 │   ├── static/js/              ← script.js (formsets + service-worker registration),
 │   │                             estimate.js, spare_autofill.js, sound.js,
 │   │                             confirm.js (the shared question card, and the
 │   │                             prototype wrapper that latches a programmatic
 │   │                             .submit()), photos.js + photos-core.js
 │   │                             (camera / upload), pricing-core.js (the
-│   │                             job card's suggested price, BigInt paise).
+│   │                             job card's suggested price, BigInt paise),
+│   │                             old-bill-core.js (what the Old Bill form
+│   │                             understood while typing).
 │   │                             notifications.js and
 │   │                             style.css live in the project-level static/
-│   ├── migrations/             ← 78 migrations
-│   └── tests/                  ← 69 test files (68 test_*.py + tests.py) + tests/js/ (node --test)
+│   ├── migrations/             ← 79 migrations
+│   └── tests/                  ← 70 test files (69 test_*.py + tests.py) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 8 Models (3 core + 5 supplier)
@@ -1082,4 +1097,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-15)*: 2 Django Apps · **41 Models** (33 workshop + 8 inventory) · **170 URL Routes** (137 + 33, excluding Django admin; 171 under `DEBUG=True`, which adds the media path) · **118 Templates** (95 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **74 Test Files / 2,530 tests** · **87 Migrations** (78 workshop + 9 inventory)
+> **Total** *(re-measured 2026-09-17)*: 2 Django Apps · **44 Models** (36 workshop + 8 inventory) · **175 URL Routes** (142 + 33, excluding Django admin; 176 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **75 Test Files / 2,625 tests** · **88 Migrations** (79 workshop + 9 inventory)

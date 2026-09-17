@@ -78,6 +78,9 @@ payroll, evidence photos and owner analytics, in one Django application.
 - Print-ready A4 invoices on the workshop's own letterhead, rendered the same on
   screen as on paper.
 - Estimates on the same letterhead, with a searchable history (`EST-26-001`).
+- **Old Bills**: the bills written in Excel before the system, typed in so a car's
+  profile, its invoices and its service history reach back to its first visit — and
+  counted in no figure anywhere.
 - A **service history** for one car: every visit, the distance and the days between
   them, how regularly the car has been serviced, and each part numbered across its own
   replacements with how far that fitting has run. The office can type the reading the
@@ -223,7 +226,7 @@ WorkshopOS/
 python manage.py test workshop inventory
 ```
 
-2,530 tests covering the financial rules, access control, stock signals, the printed
+2,625 tests covering the financial rules, access control, stock signals, the printed
 documents, and the supplier, fleet and salary flows. The suite runs on SQLite, so it
 never touches a live database. A full run takes anything from 20 minutes to well over an
 hour; the most recent one took 82.

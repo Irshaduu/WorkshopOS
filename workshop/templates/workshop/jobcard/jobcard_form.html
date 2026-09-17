@@ -2811,8 +2811,10 @@ is now true, and the column width is unchanged at every breakpoint.
             // part, all "replaced", before any variant of anything.
             //
             // Lower case, matching how the workshop writes them ("Engine Oil
-            // replaced"). Reword them here and every row follows; this is the
-            // only place they exist.
+            // replaced"). Reword them here and every row follows. The Old Bill
+            // form strips these same verbs off its job lines to suggest part
+            // names (JOB_VERBS in old-bill-core.js) — a test fails if the two
+            // lists part company, so reword both.
             const VERBS = [
                 'replaced',
                 'removed and installed',

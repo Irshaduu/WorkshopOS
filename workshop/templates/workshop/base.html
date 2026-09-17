@@ -1671,9 +1671,19 @@ widen this and the audience together.
                 </a>
 
                 <div class="drawer-label">Records</div>
-                <a class="drawer-link accent-sky drawer-group-end{% if p|slice:':14' == '/car-profiles/' %} active{% endif %}" href="{% url 'car_profile_list' %}">
+                <a class="drawer-link accent-sky{% if p|slice:':14' == '/car-profiles/' %} active{% endif %}" href="{% url 'car_profile_list' %}">
                     <span class="drawer-ico"><i class="bi bi-car-front"></i></span>
                     Car Profiles
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% comment %}
+                Old Bills sits with the car histories it completes, and wears the
+                same yellow as its cards on a Car Profile. Office/Owner, matching
+                `@office_required` on every view in workshop/views/old_bills.py.
+                {% endcomment %}
+                <a class="drawer-link accent-amber drawer-group-end{% if p|slice:':11' == '/old-bills/' %} active{% endif %}" href="{% url 'old_bill_list' %}">
+                    <span class="drawer-ico"><i class="bi bi-receipt"></i></span>
+                    Old Bills
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 {% comment %}

@@ -32,6 +32,13 @@ and this must not hand it what that form hides. With `include_customer` off the
 two keys are ABSENT from the answer, not blank, so nothing in a Floor response
 can carry them.
 
+⚠ **OLD BILLS ANSWER TOO, FOR WHAT THEIR PAPER CARRIES** — the make, the model
+and the customer's name. Never a colour or a phone number: an Excel bill has
+neither, so it can only ever answer those groups with blanks, and a group is
+taken from the newest visit that RECORDED it, so it simply falls through to a
+job card that did. They are merged in by date, so a returning customer from
+the Excel years is recognised the first time they come back.
+
 ⚠ **THE CUSTOMER IS OFFERED, NEVER FILLED.** Cars change hands, so the form shows
 the answer greyed in as the two boxes' placeholders, with one "Use last visit"
 button. Only the car, its colour and the two codes go into their boxes by
@@ -73,20 +80,31 @@ def known_car(registration, include_customer=False):
     The typed plate is tidied the way `JobCard.clean()` stores one (trimmed,
     capitals), so 'kl 10 aa 1000' finds 'KL 10 AA 1000'.
     """
-    from .models import JobCard, car_color_hex
+    from .models import JobCard, OldBill, car_color_hex
 
     groups = (CAR, COLOUR) + ((CUSTOMER,) if include_customer else ())
-    answer = {field: '' for group in groups for field in group}
+    fields = [field for group in groups for field in group]
+    answer = {field: '' for field in fields}
     answer.update(car_color_hex='', chassis_code='', vin='')
 
     plate = (registration or '').strip().upper()
     visits = []
     if plate:
-        visits = list(
-            JobCard.objects.filter(registration_number=plate)
-            .order_by('-admitted_date', '-pk')
-            .values(*(field for group in groups for field in group))
-        )
+        cards = [
+            ((row.pop('admitted_date'), 1, row.pop('pk')), row)
+            for row in JobCard.objects.filter(registration_number=plate)
+            .values(*fields, 'admitted_date', 'pk')
+        ]
+        # An old bill carries only the make, the model and a name; every other
+        # field reads blank, so it never answers a group it did not record.
+        old_bills = [
+            ((row.pop('bill_date'), 0, row.pop('pk')), {field: row.get(field, '') for field in fields})
+            for row in OldBill.objects.filter(registration_number=plate)
+            .values('brand_name', 'model_name', 'customer_name', 'bill_date', 'pk')
+        ]
+        # Newest first. On a shared day the job card wins — old bills are older
+        # by definition.
+        visits = [row for _key, row in sorted(cards + old_bills, key=lambda pair: pair[0], reverse=True)]
 
     if visits:
         for group in groups:
