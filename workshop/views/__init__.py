@@ -55,6 +55,7 @@ from .estimate import (
 )
 from .old_bills import (
     old_bill_list, old_bill_add, old_bill_edit, old_bill_delete, old_bill_invoice,
+    old_bill_from_pdf,
 )
 from .salary_advance import (
     salary_advance_home, salary_advance_add, salary_advance_delete,

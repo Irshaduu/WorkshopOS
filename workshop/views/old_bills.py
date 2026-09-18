@@ -26,8 +26,9 @@ from django.views.decorators.http import require_POST
 from ..decorators import office_required
 from ..invoice import build_old_bill
 from ..models import OldBill, OldBillJobLine, OldBillPartLine, SparePart
+from ..old_bill_pdf import UnreadablePdf, fit_to_master_list, read_bill_pdf
 from ..old_bills import (
-    bill_number_problem, format_bill_number, last_excel_bill, read_old_bill,
+    bill_number_problem, format_bill_number, last_excel_bill, read_date, read_old_bill,
     split_bill_number,
 )
 from ..return_to import safe_return
@@ -70,6 +71,9 @@ def _form_from_post(post):
         'day', 'month', 'year', 'num_year', 'num_seq',
         'registration_number', 'brand_name', 'model_name', 'mileage',
         'labour_amount',
+        # The TOTAL printed on a PDF the form was filled from, so a refusal
+        # keeps comparing against it. Shown, never read by any rule.
+        'pdf_total',
     )}
     return fields, jobs, parts
 
@@ -149,10 +153,12 @@ def _known_part_names():
     }
 
 
-def _render_form(request, bill, fields, jobs, parts, problems, back_url):
+def _render_form(request, bill, fields, jobs, parts, problems, back_url, from_pdf=False):
     return render(request, 'workshop/old_bills/old_bill_form.html', {
         'bill': bill,
         'is_new': bill is None,
+        # Drawn at the Fill-from-PDF address, so Save must name the Add page.
+        'from_pdf': from_pdf,
         'f': fields,
         'jobs': _open_rows(jobs, {'text': ''}),
         'parts': _open_rows(parts, {'name': '', 'qty': '', 'amount': ''}),
@@ -210,6 +216,47 @@ def old_bill_add(request):
     }
     fields['num_year'] = fields['year']
     return _render_form(request, None, fields, [], [], [], list_url)
+
+
+@office_required
+@require_POST
+def old_bill_from_pdf(request):
+    """
+    FILL FROM PDF — the Add form, drawn filled from the bill's own PDF.
+
+    Saves nothing and keeps no file: the PDF is read in memory and dropped, and
+    the page is the ordinary Add form with its boxes filled. The person checks
+    it against the PDF and presses Save, and `old_bill_add` then applies every
+    rule exactly as for a typed bill. What the PDF could not give is named, and
+    a number already in is said now rather than after the checking is done.
+    """
+    list_url = reverse('old_bill_list')
+    add_url = reverse('old_bill_add')
+    upload = request.FILES.get('pdf')
+    if upload is None:
+        messages.error(request, "Choose the bill's PDF first.")
+        return redirect(add_url)
+    try:
+        got = read_bill_pdf(upload)
+    except UnreadablePdf:
+        messages.error(request, f"Could not read {upload.name} — type this bill in by hand.")
+        return redirect(add_url)
+
+    fields = got['fields']
+    fields['brand_name'], fields['model_name'] = fit_to_master_list(fields['brand_name'], fields['model_name'])
+    fields['pdf_total'] = got['total']
+
+    messages.success(request, f"Filled from {upload.name}. Check every line against the PDF, then save.")
+    if got['missing']:
+        messages.warning(request, f"Not found in the PDF: {', '.join(got['missing'])} — type it in.")
+    if fields['num_year'] and fields['num_seq']:
+        bill_date, _ = read_date(fields['day'], fields['month'], fields['year'], timezone.localdate())
+        taken = bill_number_problem(format_bill_number(fields['num_year'], fields['num_seq']), bill_date)
+        if taken:
+            messages.warning(request, taken)
+
+    return _render_form(request, None, fields, [{'text': t} for t in got['jobs']], got['parts'],
+                        [], list_url, from_pdf=True)
 
 
 @office_required

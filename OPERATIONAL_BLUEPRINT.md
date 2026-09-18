@@ -341,6 +341,17 @@ verb taken off — "Coolant replaced" offers "Coolant" — then the inventory
 category names ("Engine Oil", the way a bill prints it) and the spare parts list.
 Nothing typed here is added to either list.
 
+**Fill from PDF.** The owners kept every Excel bill as a PDF, so the Add page carries
+a **Fill from PDF** button at the top. Choose the bill's PDF and the form comes back
+filled — date, number, plate, make and model (in the master list's spelling, so
+"Mercedes Benz" arrives as Mercedes-Benz), mileage, every job line, every part with
+its qty and amount, and the labour subtotal. **Nothing is saved and the file is not
+kept.** Under the TOTAL the form compares its worked-out figure with the TOTAL printed
+on the PDF: "✓ Matches the PDF's total", or red naming the PDF's figure. The typist
+checks the lines against the PDF and presses Save as usual. A number already in is
+said the moment the form comes back; a PDF that cannot be read leaves the form empty
+to type by hand. Bills of any number of pages are read.
+
 **Enter never saves** — it moves to the next box, and on the empty part row it brings
 the TOTAL into view. A bill with an amount that cannot be read, a
 number already typed, or a number whose year does not match its date is refused,
@@ -1256,8 +1267,10 @@ OLD BILLS (Office / Owner)
            opens the bill for editing.
   The form: see §3D — the paper's order, three date boxes, one open row at a time,
             the worked-out total, Enter never saves, Save & add next.
+            Fill from PDF (Add page only) draws it filled from the bill's PDF;
+            nothing is saved until Save.
   One bill: /old-bills/<pk>/ reprints it on the invoice's own sheet, with Edit.
-  Rules in: workshop/old_bills.py
+  Rules in: workshop/old_bills.py; reading a PDF: workshop/old_bill_pdf.py
 
 PENDING BILLS
   Shows: Unpaid and part-paid jobs for cars that have been HANDED OVER — the

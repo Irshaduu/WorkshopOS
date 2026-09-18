@@ -5153,6 +5153,80 @@ development it could never go away. The protection is the go-live runbook's
 §3.5b, done before the first live job card; nothing in the app replaces it.
 → `test_nobody_is_shown_the_unset_setting`
 
+### Fill from PDF — the bill's own PDF fills the form
+
+**The owners saved every Excel bill as a PDF ("Microsoft Print To PDF") and sent
+that to the customer, so the PDF is the record.** The Add page carries a **Fill from
+PDF** button (top right, Add only): choosing a file posts it to
+`old_bill_from_pdf`, which reads it with **`workshop/old_bill_pdf.py`** and draws the
+ordinary Add form filled. Built 2026-09-18 on the owner's request, against four real
+samples — one of them two pages — all read exactly, every total matching.
+
+⚠ **IT FILLS BOXES AND NOTHING ELSE, AND THAT IS THE WHOLE SAFETY OF IT.** The view
+saves nothing and keeps no file (the PDF is read in memory and dropped). The form it
+draws posts to `old_bill_add` (`from_pdf` sets the form's `action`, since the page
+was drawn at the Fill address), so a filled bill passes every rule a typed one does
+— the number, the date, duplicates, the column bounds. A PDF it cannot read leaves
+the form empty to type by hand. Nothing it produces is ever saved without a person
+looking at it and pressing Save.
+→ `test_a_pdf_fills_the_form_and_saves_nothing`,
+`test_the_filled_form_saves_through_the_ordinary_add`
+
+**THE PDF'S OWN PRINTED TOTAL IS THE CHECK.** It rides in a hidden `pdf_total`
+field (kept through a refusal, read by no rule) and the form compares it with the
+total it works out: "✓ Matches the PDF's total" in the date line's navy, or red
+naming the PDF's figure. That restores the misread-figure check the typed TOTAL
+used to give, for PDF bills only; a bill typed by hand still says "Verify this
+total with the XL bill."
+
+⚠ **LAYOUT MODE, NEVER PLAIN TEXT.** pypdf's plain extraction runs a row's cells
+together — "Spark plugs · 6 · 1,980.00" came out as `Spark plugs61,980.00`, which
+reads as a ₹61,980 part. `extraction_mode='layout'` keeps runs of spaces between
+columns, and the reader splits on those. **Which figure is which is told by its
+SHAPE, not by its column position**, because layout mode's character positions
+differ between page one and page two: money always carries exactly two decimals
+(Excel's format on those columns), a quantity is printed as typed ("8", "1.5"). So
+qty + unit + amount, qty + amount, and unit + amount with no qty all read right.
+The UNIT PRICE is skipped — the form never types it.
+
+**What it was built to, from the samples:** any number of pages (a page break mid-
+parts carries on with no heading); both heading spellings ("JOB PERFOMED" became
+"JOB PERFORMED" — the owner's word is that this is the only change the template
+ever had, so no heading is matched by its exact wording); labour left blank; a part
+with no amount stays blank, never ₹0; Indian commas; ₹ on either side of an amount;
+a double space inside a job line is not two columns. **The paper's NAME is not
+taken** — the form has no name box. What the PDF did not give is named in a warning,
+and a number already in (or a job card's) is said the moment the form comes back,
+not after the checking is done.
+
+**MAKE and MODEL take the master list's spelling** when the list holds them,
+compared without spaces, hyphens or capitals — the bills print "Mercedes Benz", the
+list says "Mercedes-Benz". Anything the list does not hold arrives exactly as
+printed ("E 220" stays "E 220"). Only in the fill; typing by hand is unchanged.
+
+⚠ **`pypdf` IS A NEW RUNTIME DEPENDENCY, AND IT IS THE OWNER'S CALL, NOT AN
+EXCEPTION TO FORGET.** The rule above says no dependency without a defect it is the
+only fix for; this was put to the owner with that rule stated and approved
+(2026-09-18). Pure Python, no system packages, pinned `~=6.19` because the parser
+relies on layout mode's spacing. Imported inside `pdf_text()`, so nothing else loads
+it. Its logger is set to ERROR: every quirk it tolerates would otherwise be a line
+in `errors.log`. **When the pile of Excel bills is typed in, the button, the module
+and the dependency can all be removed** — nothing else reads them.
+
+⚠ **THE TESTS BUILD THEIR OWN PDFs.** The owners' samples are customers' bills, so
+none is committed; `test_old_bill_pdf.py` writes real PDFs (Helvetica, on the Excel
+template's lines) in the samples' shape and reads them through pypdf, so a pypdf
+upgrade that changed layout mode's spacing fails here rather than on go-live day.
+
+⚠ **THE WORDS "Fill from PDF" ARE ON THE EDIT PAGE TOO**, in the page script's own
+comment and confirmation card — the inline-script trap. A test asking whether a page
+offers the control looks for `id="obPdfForm"`.
+
+**Anything typed is asked about first.** Choosing a file with the form already
+touched opens the app's own card ("Replace what is typed?"); a fresh page posts at
+once. The button reads "Reading…" while the file goes up.
+→ `workshop/tests/test_old_bill_pdf.py`
+
 ### Where they show, and the rules each place keeps
 
 | | |
@@ -9486,7 +9560,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 75 files, 2,625 tests (counted 2026-09-17). Always SQLite (see below).
+# Full test suite — 76 files, 2,645 tests (counted 2026-09-18). Always SQLite (see below).
 # Last full run 2026-09-16: 2,529 tests, 4,196s (70 min) — NOT all green in one
 # pass: 8 inventory tests failed on one defect (Add Product refused a form with no
 # markup box), fixed in the view; the 4 affected files re-run green (189 tests),
@@ -9778,7 +9852,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Seventeen modules hold no views at all** — this is the codebase's main structural idea, and
+**Eighteen modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -9800,6 +9874,7 @@ each exists so that one rule has exactly one implementation:
 | `known_car.py` | what does the workshop already know about this number plate? |
 | `pricing.py` | what markup is suggested, and is this typed markup usable? — never a price (that is the browser's) |
 | `old_bills.py` | is this Excel bill's number, date and money acceptable — and where does the live JB sequence start? |
+| `old_bill_pdf.py` | what does this Excel bill's PDF say, box by box? — fills the form, never saves |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
 `SessionTrackingMiddleware`, `NoStoreMiddleware` and `NoIndexMiddleware`.
@@ -9887,8 +9962,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **75 files, 2,625 tests**,
-re-counted 2026-09-17. (`workshop/tests/` is 69 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **76 files, 2,645 tests**,
+re-counted 2026-09-18. (`workshop/tests/` is 70 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

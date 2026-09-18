@@ -162,6 +162,7 @@ urlpatterns = [
     # ------------------
     path('old-bills/', views.old_bill_list, name='old_bill_list'),
     path('old-bills/add/', views.old_bill_add, name='old_bill_add'),
+    path('old-bills/add/from-pdf/', views.old_bill_from_pdf, name='old_bill_from_pdf'),
     path('old-bills/<int:pk>/', views.old_bill_invoice, name='old_bill_invoice'),
     path('old-bills/<int:pk>/edit/', views.old_bill_edit, name='old_bill_edit'),
     path('old-bills/<int:pk>/delete/', views.old_bill_delete, name='old_bill_delete'),

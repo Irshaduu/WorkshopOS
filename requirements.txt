@@ -6,3 +6,4 @@ whitenoise>=6.6.0
 gunicorn>=21.2.0
 coverage>=7.0.0
 pywebpush>=2.0
+pypdf~=6.19

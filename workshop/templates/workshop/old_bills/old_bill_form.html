@@ -39,6 +39,9 @@ choice here is about not losing their place:
   taken off, then the warehouse CATEGORY names (a bill prints "Engine Oil",
   never the brand), then the Spare Parts master list. Read only: nothing typed
   here is added to either list.
+* FILL FROM PDF (Add page only) posts the bill's own PDF to `old_bill_from_pdf`,
+  which draws this form filled (`workshop/old_bill_pdf.py`) and saves nothing;
+  the PDF's printed TOTAL rides in `pdf_total` and is compared under the TOTAL.
 
 Every rule is decided in `workshop/old_bills.py`; the browser copy in
 `old-bill-core.js` only says what the server will say, a round trip sooner.
@@ -77,6 +80,17 @@ Every rule is decided in `workshop/old_bills.py`; the browser copy in
     }
     .ob-menu .dropdown-item.is-danger { color: #b91c1c; }
     .ob-sub { margin: 4px 0 0; font-size: .85rem; color: #64748b; }
+    /* FILL FROM PDF — on the Add page only, where the title row has room. */
+    .ob-pdf-btn {
+        flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+        min-height: 38px; padding: 0 12px; border-radius: 10px;
+        border: 1px solid #cbd5e1; background: #fff; color: #1f4e79;
+        font-size: .86rem; font-weight: 700; white-space: nowrap;
+    }
+    .ob-pdf-btn i { color: #b91c1c; font-size: 1rem; }
+    @media (hover: hover) { .ob-pdf-btn:hover { background: #f1f5f9; border-color: #94a3b8; } }
+    @media (hover: none) { .ob-pdf-btn { min-height: 44px; } }
+    .ob-pdf-btn:active { background: #e2e8f0; }
 
     .ob-saved {
         display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
@@ -184,6 +198,8 @@ Every rule is decided in `workshop/old_bills.py`; the browser copy in
        not a reminder, so it keeps the larger size. */
     .ob-check { font-size: .68rem; color: #64748b; text-align: right; }
     .ob-check.is-bad { font-size: .8rem; color: #b91c1c; font-weight: 700; }
+    /* Matched against a PDF's own printed TOTAL — the date line's navy. */
+    .ob-check.is-ok { font-size: .8rem; color: #1f4e79; font-weight: 700; }
 
     .ob-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
     .ob-save { background: #f59e0b; border-color: #f59e0b; color: #1e293b; font-weight: 800; }
@@ -231,7 +247,14 @@ Every rule is decided in `workshop/old_bills.py`; the browser copy in
     <div class="ob-head">
         <div class="ob-head-row">
             <h1 class="ob-title"><i class="bi bi-receipt"></i>{% if is_new %}Add Old Bill{% else %}Edit {{ bill.bill_number }}{% endif %}</h1>
-            {% if not is_new %}
+            {% if is_new %}
+            {# Its own form, outside the bill's: choosing a file posts it at once, and the Add form comes back filled. Nothing is saved. #}
+            <form method="post" action="{% url 'old_bill_from_pdf' %}" enctype="multipart/form-data" id="obPdfForm">
+                {% csrf_token %}
+                <input type="file" name="pdf" id="obPdfFile" accept="application/pdf,.pdf" hidden>
+                <button type="button" class="ob-pdf-btn" id="obPdfBtn"><i class="bi bi-file-earmark-pdf"></i>Fill from PDF</button>
+            </form>
+            {% else %}
             <div class="dropdown ob-menu-wrap">
                 <button class="ob-dots" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
                     <i class="bi bi-three-dots-vertical"></i>
@@ -269,8 +292,9 @@ Every rule is decided in `workshop/old_bills.py`; the browser copy in
     </div>
     {% endif %}
 
-    <form method="post" id="obForm" autocomplete="off" novalidate>
+    <form method="post" id="obForm" autocomplete="off" novalidate{% if from_pdf %} action="{% url 'old_bill_add' %}"{% endif %}>
         {% csrf_token %}
+        <input type="hidden" name="pdf_total" id="obPdfTotal" value="{{ f.pdf_total }}">
 
         {# ── DATE and # ── #}
         <section class="ob-card">
@@ -559,6 +583,16 @@ Every rule is decided in `workshop/old_bills.py`; the browser copy in
         check.textContent = total.error === 'too large' ? '✗ The total is too large.'
                           : total.error ? '✗ An amount above cannot be read.'
                           : 'Verify this total with the XL bill.';
+
+        // Filled from a PDF: its own printed TOTAL is the check, so a line
+        // read or corrected wrongly shows red before anybody saves.
+        var printed = C.readAmount(el('obPdfTotal').value, 'total');
+        if (!total.error && printed.paise !== undefined) {
+            var same = printed.paise === total.paise;
+            check.className = 'ob-check ' + (same ? 'is-ok' : 'is-bad');
+            check.textContent = same ? '✓ Matches the PDF’s total.'
+                                     : '✗ The PDF says ₹' + C.formatPaise(printed.paise) + ' — a line above differs.';
+        }
     }
 
     /* ---- a known plate fills MAKE and MODEL — the Job Card's own rules -- */
@@ -725,6 +759,33 @@ Every rule is decided in `workshop/old_bills.py`; the browser copy in
     window.addEventListener('beforeunload', function (e) {
         if (dirty) { e.preventDefault(); e.returnValue = ''; }
     });
+
+    /* ---- Fill from PDF (Add page only) --------------------------------- */
+    //
+    // Choosing a file posts it straight away; the Add form comes back filled
+    // and nothing is saved. Anything already typed would be replaced, so that
+    // is asked first — in the app's own card, never the browser's.
+    var pdfForm = el('obPdfForm'), pdfFile = el('obPdfFile'), pdfBtn = el('obPdfBtn');
+    if (pdfForm) {
+        pdfBtn.addEventListener('click', function () { pdfFile.click(); });
+        pdfFile.addEventListener('change', function () {
+            if (!pdfFile.files.length) { return; }
+            function go() {
+                dirty = false;
+                pdfBtn.disabled = true;
+                pdfBtn.lastChild.textContent = 'Reading…';
+                pdfForm.submit();
+            }
+            if (!dirty) { go(); return; }
+            window.wsConfirm({
+                title: 'Replace what is typed?',
+                text: 'The form will be filled from the PDF instead.',
+                icon: 'bi-file-earmark-pdf', theme: 'warning', ok: 'Fill from PDF',
+            }).then(function (answer) {
+                if (answer.ok) { go(); } else { pdfFile.value = ''; }
+            });
+        });
+    }
 
     readTheDate();
     showTheTotal();
