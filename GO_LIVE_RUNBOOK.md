@@ -128,6 +128,8 @@ PHOTO_S3_ACCOUNT_ID            ← Cloudflare R2 only; host is derived from it
                                   + PHOTO_S3_REGION + PHOTO_S3_PATH_PREFIX)
 
 LAST_EXCEL_BILL_NUMBER         ← leave blank until §3.5b, on the day itself
+LEGACY_DATA_LOCKED             ← optional spare lock; the lock owners press lives
+                                 in the database (§3.5 step 6)
 ```
 
 Generate the secret key:
@@ -490,11 +492,49 @@ Enter the workshop's real starting position. This is the one step nobody else
 can do for you and it is worth doing unhurried.
 
 - ☐ Staff roster and current salaries
-- ☐ Opening warehouse stock
-- ☐ Outstanding spare-shop / supplier balances
 - ☐ Any unpaid customer or fleet balances
 - ☐ **The monthly rent, dated to the go-live month** (Deposit & Rent → ⋮ →
   Update Rent)
+
+**Stock and shop balances — in this order** (Manage → **Legacy Data**, Owner only):
+
+1. ☐ Create every spare shop and Supplies Shop, and every product
+   (Supplies Shops → a shop → Add Product), on the existing screens.
+2. ☐ **Opening Stock** — count the shelf. For every product: how many are on the
+   shelf and the **cost of one** (the last price paid). The cost is required: a
+   blank cost would charge every part fitted before the next bill as ₹0 on the
+   Profit page, for good. Check the total worth at the bottom against the count.
+3. ☐ **Unassigned Spares** — add the one or two bought-in parts still waiting for
+   a car (Spare Shops → Unassigned Spares), each against the shop it came from.
+4. ☐ **Opening Balances** — for every shop, type what that shop's own book says
+   is owed, **minus the price of any unassigned spares from that shop** entered in
+   step 3 (book says ₹2,50,000, a ₹5,000 bearing is already in → type 2,45,000).
+   The screen saves exactly what is typed; "owed now" under each name should then
+   match the shop's book.
+5. ☐ Start work.
+6. ☐ **Lock it, at the end of go-live day**, once every figure matches the count
+   and the shops' books: Manage → **Legacy Data** → **Lock Legacy Data**, then
+   three red confirmations. The last one states the figures being frozen — read
+   them. Afterwards both screens show their figures with no boxes and refuse any
+   change, owners included, and the page says when it was locked and by whom.
+   Old Bills stays open.
+   ⚠ **The lock is stored in the DATABASE, so it travels**: a backup restored
+   anywhere, or the whole system moved to another host, is still locked.
+   *To correct a figure found wrong later:* `python manage.py unlock_legacy_data
+   --yes` on the server, correct it on the screen, then press Lock again.
+   *(`LEGACY_DATA_LOCKED=true` on Railway is a spare that locks without anybody
+   pressing anything. It cannot unlock, and it does not travel with the data.)*
+
+⚠ **Two things NOT to do on go-live day:**
+- **Never enter an old (pre-go-live) Supplies Shop bill.** The opening balance
+  already covers the debt and the shelf count already covers the goods — the bill
+  would count both twice.
+- **Never count a delivery on the shelf and then also enter its bill.** Count the
+  shelf first; only deliveries that arrive after the count get a bill.
+
+Payments to a shop pay its opening balance off first, and the shop page says how
+much of it is left until it reaches zero. None of this moves a profit or cash
+figure.
 
 ⚠ **The rent one is not optional and it is easy to skip**, because unlike the
 others nothing on any screen looks broken without it. Rent is a real expense

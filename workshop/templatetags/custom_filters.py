@@ -34,6 +34,7 @@ DRAWER_SECTION_PREFIXES = (
     '/estimates/',
     '/car-profiles/',
     '/old-bills/',
+    '/legacy/',
     '/master-lists/',
     '/deletion-history/',
     '/manage/',

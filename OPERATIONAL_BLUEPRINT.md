@@ -312,7 +312,7 @@ Service History reach back to its first visit. Like an Estimate, an old bill is
 **connected to nothing**: no profit, no cash, no stock, no shop or fleet ledger.
 
 ```
-Drawer -> Records -> Old Bills -> + Add Old Bill
+Drawer -> Legacy Data -> Old Bills -> + Add Old Bill
    DATE  [10] [apr] [26]          -> "Fri 10 Apr 2026" spelled out underneath
    # JB- [26] [097]                (the year fills itself from the date)
    REG NO / MAKE / MODEL / MILEAGE    (no customer name — not needed here)
@@ -378,6 +378,54 @@ page names the exact JB numbers not typed yet.
 
 Office and Owner; Floor never sees the section. Deleting an old bill is permanent
 and, like an estimate, not written to Deletion History — it moves no money.
+
+---
+
+## 3E. LEGACY DATA — THE GO-LIVE STARTING POSITION
+
+The system goes live in a **running** workshop: parts are already on the shelf and
+money is already owed to every shop. Two Owner-only screens type that starting
+position once, on go-live day, and the everyday workflow carries on from it.
+
+The menu carries **one** Legacy Data row (in Records). It opens a page with the
+three screens as the menu's own rows — Old Bills, Opening Stock, Opening
+Balances; Office sees Old Bills alone — and each screen has a "Legacy Data" way
+back.
+
+```
+Drawer -> Legacy Data -> Opening Stock
+   every product:   On shelf [ 38 ]   Cost / unit [ 500 ]   (the last price paid)
+   Save -> shelf = 38, cost ₹500 — NO shop balance is created
+
+Drawer -> Legacy Data -> Opening Balances
+   every shop:      [ 2,45,000 ]   what the shop's own book says, minus any
+                                   unassigned spares already entered for it
+   Save -> saved exactly as typed; the shop's balance includes it
+```
+
+**The shelf and the balances are separate on purpose** — on go-live day nobody can
+say which goods an old debt paid for. After that:
+
+| | |
+|---|---|
+| a part used from opening stock | costed at the typed cost, like any warehouse draw — even one used before the count was typed |
+| the next Supplies Shop bill | blends with what is left (10 L at ₹500 + 20 L at ₹520 → ₹513.33) and is a normal debt |
+| a payment to a shop | pays the opening balance first; the shop page says "Opening balance from before the system: ₹X left" until it reaches zero, then the line goes |
+| the whole-ledger printed report | keeps an Opening Balance line for ever, so its totals add up |
+| profit and cash | untouched — the old debt is not an expense; paying it is cash out on the day it is paid |
+
+Go-live order and the two "never do" rules (never enter an old Supplies Shop bill;
+never count a delivery and also bill it) are in `GO_LIVE_RUNBOOK.md` §3.5.
+
+**At the end of go-live day an owner LOCKS both screens** — Legacy Data → Lock
+Legacy Data, behind three red confirmations, the last one naming the figures
+being frozen. From then on they show the figures the system started from, with no
+boxes and no Save, and refuse any change for everyone, owners included; the page
+says when it was locked and by whom. The lock is kept in the database, so a
+backup restored anywhere, or the whole system moved, is still locked. Nothing
+inside the app can unlock it — correcting a figure needs
+`manage.py unlock_legacy_data --yes` on the server, and then pressing Lock again.
+Old Bills stays open.
 
 ---
 
@@ -1271,6 +1319,23 @@ OLD BILLS (Office / Owner)
             nothing is saved until Save.
   One bill: /old-bills/<pk>/ reprints it on the invoice's own sheet, with Edit.
   Rules in: workshop/old_bills.py; reading a PDF: workshop/old_bill_pdf.py
+
+OPENING STOCK (Owner) — Legacy Data, go-live day
+  Shows: every product, grouped by category, with two boxes — on shelf, and cost
+         of one. "worth ₹X" under each counted product; the Save row at
+         the end of the list carries "N of M counted · worth ₹X".
+  Saving: all or nothing — one bad box and nothing is saved, every box coming
+          back as typed with the reason under it. The cost is required. Enter
+          moves to the next box and never saves. A round Save appears in the
+          bottom-right corner at the first keystroke (the Job Card's own), and
+          leaving the page with something unsaved asks first.
+  Rules in: workshop/views/legacy.py
+
+OPENING BALANCES (Owner) — Legacy Data, go-live day
+  Shows: every active spare shop and Supplies Shop, one box each, "owed now"
+         under the name, a total per list and overall.
+  Saving: exactly as typed; an empty box is nothing owed; all or nothing.
+  Rules in: workshop/views/legacy.py
 
 PENDING BILLS
   Shows: Unpaid and part-paid jobs for cars that have been HANDED OVER — the

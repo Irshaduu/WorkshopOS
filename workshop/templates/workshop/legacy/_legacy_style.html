@@ -1,0 +1,206 @@
+{% comment %}
+The two go-live screens, Opening Stock and Opening Balances, are one kind of
+page — a list of boxes typed once, saved all at once — so they share ONE
+declaration here rather than two copies kept in step by hand. Included from
+each page's extra_css block.
+{% endcomment %}
+<style>
+    .lg-page { --lg-accent: #d97706; }
+
+    .lg-header {
+        margin: .5rem 0 1rem; padding-bottom: .9rem; position: relative;
+        border-bottom: 2px solid var(--color-border);
+    }
+    .lg-header::after {
+        content: ''; position: absolute; bottom: -2px; left: 0;
+        width: 48px; height: 2px; background: var(--lg-accent);
+    }
+    .lg-title {
+        display: flex; align-items: center; gap: 8px; margin: 0 0 6px;
+        font-size: 1.6rem; font-weight: 800; letter-spacing: -.3px; line-height: 1.1; color: var(--color-text);
+    }
+    .lg-title i { color: var(--lg-accent); }
+    .lg-sub { margin: 0; font-size: .82rem; line-height: 1.45; color: var(--color-text-muted); }
+
+    .lg-card {
+        background: #fff; border: 1px solid var(--color-border); border-radius: 12px;
+        padding: 4px 14px 6px; margin-bottom: 12px;
+    }
+    .lg-card-head {
+        display: flex; align-items: center; gap: 8px; padding: 10px 0 8px;
+        border-bottom: 1px solid var(--color-border-light, #f1f5f9);
+        font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #64748b;
+    }
+    .lg-card-head .lg-cols { margin-left: auto; display: flex; gap: 10px; }
+    .lg-card-head .lg-cols span { text-align: right; }
+
+    .lg-row {
+        display: grid; align-items: center; gap: 4px 10px; padding: 8px 0;
+        border-bottom: 1px solid var(--color-border-light, #f1f5f9);
+    }
+    .lg-row:last-child { border-bottom: 0; }
+    .lg-name { min-width: 0; }
+    .lg-name b { display: block; font-size: .92rem; font-weight: 600; line-height: 1.3; color: #0f172a; overflow-wrap: anywhere; }
+    .lg-meta { display: block; font-size: .74rem; color: #64748b; font-variant-numeric: tabular-nums; }
+
+    .lg-in {
+        width: 100%; min-height: 40px; padding: 6px 10px; text-align: right;
+        border: 1px solid var(--color-border); border-radius: 8px; background: #fff;
+        font-size: .95rem; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a;
+    }
+    .lg-in:focus { outline: none; border-color: var(--lg-accent); background: #fff; box-shadow: 0 0 0 3px rgba(217, 119, 6, .15); }
+    @media (hover: none) { .lg-in { min-height: 44px; } }
+
+    .lg-row.is-bad .lg-in { border-color: #dc2626; background: #fef2f2; }
+    .lg-problem { grid-column: 1 / -1; font-size: .76rem; font-weight: 600; color: #b91c1c; }
+
+    .lg-foot {
+        display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+        padding: 10px 0 6px; border-top: 1px solid var(--color-border);
+        font-size: .82rem; color: #475569;
+    }
+    .lg-foot b { color: #0f172a; font-variant-numeric: tabular-nums; }
+
+    /* Save sits at the END of the list, in the page's own flow. It was a dark
+       bar stuck above the phone's floating nav for one revision, and the two
+       dark slabs stacked there took a quarter of the screen with the list
+       showing through the gaps between them — the owner's word was clutter.
+       Enter hops box to box and hands over to Save from the last one. */
+    .lg-save {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        margin-top: 14px; padding: 10px 12px 10px 16px;
+        background: #fff; border: 1px solid var(--color-border); border-radius: 12px;
+        color: #475569; font-size: .82rem;
+    }
+    .lg-save b { color: #0f172a; font-variant-numeric: tabular-nums; }
+    .lg-save-btn {
+        flex: 0 0 auto; min-height: 44px; padding: 0 22px; border: 0; border-radius: 999px;
+        background: #f59e0b; color: #1e293b; font-weight: 800; font-size: .88rem;
+    }
+    @media (hover: hover) { .lg-save-btn:hover { filter: brightness(.95); } }
+
+    .lg-empty { padding: 18px; text-align: center; color: #64748b; font-size: .88rem; }
+
+    /* LOCKED (`LEGACY_DATA_LOCKED` on Railway): the figures are shown, never
+       boxes, and there is no Save. The banner says why, once, at the top. */
+    .lg-locked {
+        display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; padding: 10px 14px;
+        background: #f1f5f9; border: 1px solid var(--color-border); border-radius: 12px;
+        font-size: .82rem; line-height: 1.4; color: #334155;
+    }
+    .lg-locked i { flex: 0 0 auto; color: #64748b; }
+    .lg-fig { text-align: right; font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; color: #0f172a; }
+    .lg-fig.is-none { color: #94a3b8; font-weight: 500; }
+
+    /* THE ROUND SAVE, the Job Card's `.jc-fab` — values copied, not chosen, so
+       the two read as one control. It exists because this list is long: a
+       refresh or a closed tab with forty products typed and nothing saved loses
+       the lot, and the Save row is at the very bottom.
+
+       Three things travel with it:
+       (a) it is INSIDE the form, so it submits it;
+       (b) it appears only once something has been typed (`.lg-dirty` on the
+           body), so a page nobody has touched carries no floating button;
+       (c) z-index 1020 — under the nav (1030), like the Job Card's, because it
+           must never cover navigation. */
+    .lg-fab {
+        display: none;
+        position: fixed;
+        right: 18px;
+        bottom: 24px;
+        z-index: 1020;
+        width: 58px;
+        height: 58px;
+        border: 0;
+        border-radius: 50%;
+        background: #f59e0b;            /* amber, with DARK ink: white on it is 2.2:1 */
+        color: #1e293b;
+        font-size: 1.5rem;
+        align-items: center;
+        justify-content: center;
+        box-shadow: none;
+        transition: transform .12s ease, background-color .12s ease;
+    }
+    .lg-dirty .lg-fab { display: inline-flex; animation: lg-fab-in .18s ease-out; }
+    .lg-fab:active { transform: scale(.92); }
+    @media (hover: hover) {
+        .lg-fab:hover { transform: translateY(-2px); background: #d97706; }
+    }
+    @keyframes lg-fab-in {
+        from { transform: scale(.6); opacity: 0; }
+        to   { transform: scale(1); opacity: 1; }
+    }
+    /* Above the bottom bar on a phone, and above the home indicator with it. */
+    @media (max-width: 640px) {
+        .lg-fab { bottom: calc(var(--nav-clear) + 16px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .lg-dirty .lg-fab { animation: none; }
+        .lg-fab, .lg-fab:hover { transition: none; transform: none; }
+    }
+
+    /* The two pages' own columns: the boxes line up under their headings. */
+    .lg-stock .lg-row { grid-template-columns: minmax(0, 1fr) 84px 100px; }
+    .lg-stock .lg-cols span:nth-child(1) { width: 84px; }
+    .lg-stock .lg-cols span:nth-child(2) { width: 100px; }
+    .lg-bal .lg-row { grid-template-columns: minmax(0, 1fr) 150px; }
+    .lg-bal .lg-cols span { width: 150px; }
+
+    @media (max-width: 575.98px) {
+        .lg-title { font-size: 1.4rem; }
+        .lg-stock .lg-row { grid-template-columns: minmax(0, 1fr) 62px 80px; }
+        .lg-stock .lg-cols span:nth-child(1) { width: 62px; }
+        .lg-stock .lg-cols span:nth-child(2) { width: 80px; }
+        .lg-bal .lg-row { grid-template-columns: minmax(0, 1fr) 128px; }
+        .lg-bal .lg-cols span { width: 128px; }
+    }
+</style>
+<script>
+/* Enter moves to the next box and never saves, so a reflex cannot send half a
+   page — the Old Bills form's own rule. The last box hands over to Save.
+   Delegated on the document, so it needs no wiring after the page loads. */
+document.addEventListener('keydown', function (e) {
+    var box = e.target;
+    if (e.key !== 'Enter' || !box.classList || !box.classList.contains('lg-in') || !box.form) return;
+    e.preventDefault();
+    var boxes = Array.prototype.slice.call(box.form.querySelectorAll('.lg-in'));
+    var next = boxes[boxes.indexOf(box) + 1];
+    if (next) { next.focus(); next.select(); }
+    else { box.form.querySelector('.lg-save-btn').focus(); }
+});
+
+/* UNSAVED WORK — the Job Card's own pair, for the same reason it has them:
+   these lists are long, and everything typed lives in the browser until Save.
+   The first keystroke shows the round save and arms the browser's own "leave
+   site?" prompt; a submit that was NOT refused clears both. Delegated on the
+   document, so it needs no wiring and works on either screen. */
+(function () {
+    var dirty = false;
+
+    document.addEventListener('input', function (e) {
+        if (dirty || !e.target.classList || !e.target.classList.contains('lg-in')) return;
+        dirty = true;
+        document.body.classList.add('lg-dirty');
+    });
+
+    window.addEventListener('beforeunload', function (e) {
+        if (!dirty) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+
+    document.addEventListener('submit', function (e) {
+        // Read after the event settles, so a listener that refused the submit
+        // (nothing does here today) cannot have the warning dropped on it.
+        if (e.target.classList && e.target.classList.contains('lg-form') && !e.defaultPrevented) {
+            dirty = false;
+            document.body.classList.remove('lg-dirty');
+        }
+    });
+
+    // A page restored from the browser's back/forward cache starts clean.
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) { dirty = false; document.body.classList.remove('lg-dirty'); }
+    });
+}());
+</script>

@@ -250,6 +250,17 @@ if LAST_EXCEL_BILL_NUMBER and not re.fullmatch(r'JB-\d{2}-0*[1-9]\d{0,4}', LAST_
         f"LAST_EXCEL_BILL_NUMBER must look like JB-26-245, not {LAST_EXCEL_BILL_NUMBER!r}."
     )
 
+# THE GO-LIVE LOCK on Legacy Data → Opening Stock and Opening Balances. Once the
+# starting position has been typed and checked against the shops' books, set
+# `LEGACY_DATA_LOCKED=true` on Railway: both screens turn READ-ONLY FOR EVERYONE,
+# owners included, and nothing inside the app can undo it — this variable is the
+# only door, and only whoever holds the Railway account has it. Unset (the
+# default) keeps them open, which is what go-live day needs. Old Bills is not
+# covered: the Excel pile is typed in for weeks after go-live.
+# decouple's bool cast refuses a value it cannot read, so a typo stops the app at
+# startup rather than leaving the screens silently open.
+LEGACY_DATA_LOCKED = config('LEGACY_DATA_LOCKED', default=False, cast=bool)
+
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)

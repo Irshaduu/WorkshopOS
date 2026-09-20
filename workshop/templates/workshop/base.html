@@ -35,7 +35,7 @@
     owners' installed PWA (never fully quit) meant a shipped fix could simply not
     arrive. Bump this number whenever you change any file under static/.
     {% endcomment %}
-    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=15">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=17">
 
     <style>
         /* ========================================== */
@@ -1671,19 +1671,9 @@ widen this and the audience together.
                 </a>
 
                 <div class="drawer-label">Records</div>
-                <a class="drawer-link accent-sky{% if p|slice:':14' == '/car-profiles/' %} active{% endif %}" href="{% url 'car_profile_list' %}">
+                <a class="drawer-link accent-sky drawer-group-end{% if p|slice:':14' == '/car-profiles/' %} active{% endif %}" href="{% url 'car_profile_list' %}">
                     <span class="drawer-ico"><i class="bi bi-car-front"></i></span>
                     Car Profiles
-                    <i class="bi bi-chevron-right drawer-chevron"></i>
-                </a>
-                {% comment %}
-                Old Bills sits with the car histories it completes, and wears the
-                same yellow as its cards on a Car Profile. Office/Owner, matching
-                `@office_required` on every view in workshop/views/old_bills.py.
-                {% endcomment %}
-                <a class="drawer-link accent-amber drawer-group-end{% if p|slice:':11' == '/old-bills/' %} active{% endif %}" href="{% url 'old_bill_list' %}">
-                    <span class="drawer-ico"><i class="bi bi-receipt"></i></span>
-                    Old Bills
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 {% comment %}
@@ -1699,6 +1689,22 @@ widen this and the audience together.
                 <a class="drawer-link accent-teal{% if p|slice:':14' == '/master-lists/' %} active{% endif %}" href="{% url 'master_lists_home' %}">
                     <span class="drawer-ico"><i class="bi bi-collection"></i></span>
                     Master Data
+                    <i class="bi bi-chevron-right drawer-chevron"></i>
+                </a>
+                {% comment %}
+                LEGACY DATA — ONE row, on the owner's instruction (2026-09-20): the
+                screens behind it are about the go-live starting position and
+                should not cost the menu four lines for ever. It opens a page
+                holding Old Bills and, for an owner, Opening Stock and Opening
+                Balances. Office/Owner, matching `@office_required` on
+                `legacy_home`; it lights for the three screens behind it too.
+                The glyph is `bi-database-down` — data brought INTO the system —
+                and deliberately not `bi-archive`, which already means "Archived"
+                (a deactivated shop or account) on five screens.
+                {% endcomment %}
+                <a class="drawer-link accent-amber{% if p|slice:':8' == '/legacy/' or p|slice:':11' == '/old-bills/' %} active{% endif %}" href="{% url 'legacy_home' %}">
+                    <span class="drawer-ico"><i class="bi bi-database-down"></i></span>
+                    Legacy Data
                     <i class="bi bi-chevron-right drawer-chevron"></i>
                 </a>
                 {% if is_owner %}

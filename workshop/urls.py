@@ -168,6 +168,14 @@ urlpatterns = [
     path('old-bills/<int:pk>/delete/', views.old_bill_delete, name='old_bill_delete'),
 
     # ------------------
+    # LEGACY DATA (the go-live starting position — Owner only)
+    # ------------------
+    path('legacy/', views.legacy_home, name='legacy_home'),
+    path('legacy/lock/', views.legacy_lock, name='legacy_lock'),
+    path('legacy/opening-stock/', views.opening_stock, name='opening_stock'),
+    path('legacy/opening-balances/', views.opening_balances, name='opening_balances'),
+
+    # ------------------
     # AUTH: LOGIN/LOGOUT
     # ------------------
     # ONE door. `/admin-login/` used to be a second face on the same view — same

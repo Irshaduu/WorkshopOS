@@ -392,12 +392,18 @@
   </div>
   {% endif %}
 
-  {% if items %}
+  {% if items or opening_balance %}
   <div class="totals-box">
     <div class="totals-row">
       <span>Total Purchases:</span>
       <span>₹{{ total_purchases|floatformat:0 }}</span>
     </div>
+    {% if opening_balance %}
+    <div class="totals-row">
+      <span>Opening Balance (before the system):</span>
+      <span>₹{{ opening_balance|floatformat:0 }}</span>
+    </div>
+    {% endif %}
     <div class="totals-row">
       <span>Total Paid:</span>
       <span>₹{{ total_paid|floatformat:0 }}</span>

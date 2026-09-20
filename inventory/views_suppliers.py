@@ -255,11 +255,14 @@ def supplier_shop_detail(request, shop_id):
     payments_list = list(payments_qs[:30])
 
     # ── Absolute Ledger Waterfall Calculation ──
-    total_paid = shop.total_paid_amount
+    # The pool is what the payments leave AFTER the go-live opening balance:
+    # that debt is the oldest this shop has, so it is paid off first, and a
+    # bill is only marked covered once the money has actually reached it.
+    paid_to_bills = shop.paid_beyond_opening
     for bill in bills_list:
         effective_amt = bill.get_effective_amount
         older_sum = bill.absolute_running_sum - effective_amt
-        bulk_pool = total_paid - older_sum
+        bulk_pool = paid_to_bills - older_sum
         
         if bulk_pool >= effective_amt:
             bill.covered_status = 'COVERED'
@@ -1162,11 +1165,14 @@ def ajax_supplier_bills(request, shop_id):
     page_bills = list(bills_qs[start:end])
 
     # ── Absolute Ledger Waterfall Calculation ──
-    total_paid = shop.total_paid_amount
+    # The pool is what the payments leave AFTER the go-live opening balance:
+    # that debt is the oldest this shop has, so it is paid off first, and a
+    # bill is only marked covered once the money has actually reached it.
+    paid_to_bills = shop.paid_beyond_opening
     for bill in page_bills:
         effective_amt = bill.get_effective_amount
         older_sum = bill.absolute_running_sum - effective_amt
-        bulk_pool = total_paid - older_sum
+        bulk_pool = paid_to_bills - older_sum
         
         if bulk_pool >= effective_amt:
             bill.covered_status = 'COVERED'

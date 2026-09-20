@@ -771,8 +771,9 @@ means the cost is *unknown* — opening stock counted onto the shelf before any
 supplier bill exists, or a product whose only restock bill was deleted — not that
 the part was free. Storing 0 reported those parts as pure profit.
 `analysis_engine.uncosted_draw_count()` counts such draws so the Profit page can
-say so out loud. **Expect this on go-live day** until the first restock bill for
-each product is entered.
+say so out loud. Go-live **Opening Stock carries a cost for exactly this reason**
+(see "Legacy Data"), so expect it only for a product nobody counted, until its
+first restock bill is entered.
 
 **A Supplies Shop bill's DISCOUNT is part of what the stock cost, and its DATE
 changes the average.** Four rules, all in `inventory/`:
@@ -793,7 +794,8 @@ changes the average.** Four rules, all in `inventory/`:
   `discount_amount` changes**, since neither lives on a line.
 → `inventory/test_supplier_costing.py`
 
-**Stock moves only via signals.** Restock bills add, job-card draws remove. There
+**Stock moves only via signals.** Restock bills and the go-live Opening Stock add,
+job-card draws remove. There
 is **no manual stock-number editing anywhere** — Low Stock is read-only. Keep any
 new stock-affecting change signal-driven rather than mutating `Item.current_stock`
 in a view.
@@ -2745,7 +2747,7 @@ was the expense and the draw was excluded. Two things were wrong with that:
 The trade, accepted knowingly: profit now leans on `avg_cost` being right, so
 **`uncosted_draw_count()` is load-bearing rather than decorative** — a draw with
 no cost is charged ₹0 and pushes profit UP. It is drawn as a warning on the page
-for that reason. Expect it on go-live day.
+for that reason. Go-live Opening Stock requires a cost so that it is not.
 → `DoubleCountRuleTests` — if it fails, the workshop is being charged twice.
 
 **A SUPPLIES SHOP BILL IS FLOORED AT ZERO, and the expression is
@@ -2876,8 +2878,9 @@ columns still leaves a card that looks perfectly correct.
 null=False`), so an `isnull` filter matches nothing and would value opening
 stock that has never had a supplier bill at ₹0 — worthless rather than unknown.
 Those products are excluded and **counted on the tile**, because a shelf that
-reads low with nothing saying why is worse than either. **Expect a count on
-go-live day.** Negative stock is left negative: it means a bill is missing.
+reads low with nothing saying why is worse than either. A product counted on
+Opening Stock carries its cost and never lands in this count. Negative stock is
+left negative: it means a bill is missing.
 `warehouse_stock_value()` is in the engine and read by both the tile and the
 Inventory section, so one shelf cannot have two values.
 → `WhatWeOweAndWhatWeHoldSitTogetherTests`
@@ -3290,9 +3293,9 @@ helped earn.
 draft read "not counted as an expense in any period", which says the money
 vanished and would send somebody hunting a bug that is not there.
 
-*Not to be confused with go-live opening balances* — those are a separate
-one-time exercise for Supplies Shops and warehouse stock, done on go-live day,
-and they do not come through this table.
+*Not to be confused with go-live opening balances* — those are Legacy Data →
+Opening Balances and Opening Stock (see "Legacy Data"), and they do not come
+through this table.
 → `UnassignedShopPurchasesAreDisclosedTests`
 
 **THE "VS PREVIOUS" CHIP COMPARES LIKE WITH LIKE, and `comparison_window()` is
@@ -4951,7 +4954,7 @@ it is a variable count badge against a name the customer chose.
 and OLD BILLS is where they are typed in, so a car's Profile, All Invoices and
 Service History reach back to its first visit.** `OldBill` / `OldBillJobLine` /
 `OldBillPartLine` (migration `0079`); every rule is `workshop/old_bills.py`; the
-screens are `/old-bills/` (drawer → Records, Office and Owner).
+screens are `/old-bills/` (drawer → Legacy Data → Old Bills, Office and Owner).
 
 ⚠ **CONNECTED TO NOTHING, AND THAT IS THE WHOLE SAFETY OF IT — the Estimate rule
 applied to the past.** No job card, no stock, no shop or supplier ledger, no
@@ -5254,6 +5257,186 @@ painted blue. The old-bill rule carries four.
 `purge_business_data` clears these tables, so anything in them at purge time is
 test typing.
 → `workshop/tests/test_old_bills.py`, `workshop/tests/js/old-bill-core.test.js`
+
+## Legacy Data — the go-live starting position
+
+**The system goes live in a RUNNING workshop: parts are already on the shelf and
+money is already owed to every spare shop and Supplies Shop.** Neither can come in
+through the daily screens — stock only moves through a Supplies Shop bill, and a
+shop's balance is built from its bills and parts — so two go-live screens type the
+starting position once, and the everyday workflow runs on from it. Built
+2026-09-19 on the owner's request; `workshop/views/legacy.py`.
+
+⚠ **THE MENU CARRIES ONE "LEGACY DATA" ROW, NOT THREE** (the owner's call,
+2026-09-20 — it shipped for a day as a drawer group of three). These screens are
+about the go-live position and should not cost the menu four lines for ever. The
+row sits in Records and opens **`/legacy/`** (`legacy_home`, `@office_required`),
+a page that draws the three screens with the drawer's **own row classes**
+(`.drawer-link`, declared in `base.html` for every page), so they look exactly as
+they did in the menu: Old Bills (same address, Office and Owner), **Opening
+Stock** and **Opening Balances** (both `@owner_required` — Office sees Old Bills
+alone, because a door somebody can see but not open is worse than no door). The
+row lights for all three screens behind it, and each carries a `.pg-back` reading
+"Legacy Data", since their parent is now fixed. An expand-in-place menu row was
+offered and not chosen: no other row works that way, and Master Data already
+opens a page.
+
+**Its glyph is `bi-database-down` — data brought INTO the system — never
+`bi-archive`.** It shipped with the archive box for a day, and in this app
+"Archived" already means a deactivated shop or account, on five screens: a
+Legacy Data row wearing that glyph reads as the place archived things go.
+
+⚠ **THE SHELF AND THE BALANCES ARE ENTERED SEPARATELY, AND THAT IS THE DESIGN.**
+On go-live day they have no connection: instalments and usage had long gone their
+own ways, so which goods an old debt paid for is unknowable. The shelf is counted;
+each shop's balance is read off its own book.
+
+### Opening Stock — `inventory.OpeningStock`
+
+One row per product (`OneToOne` to `Item`): quantity on the shelf and the cost of
+ONE (the last price paid). It is a **receipt, like a line of a Supplies Shop bill,
+that belongs to no shop** — it raises the shelf and creates **no balance**.
+
+- **Stock moves through the signals**, never the view (a fourth group in
+  `inventory/signals.py`), so "stock moves only via signals" still holds. A
+  corrected count moves the shelf by the DIFFERENCE; a cleared count takes it back.
+- ⚠ **THE COST IS REQUIRED.** Without it every part fitted before that product's
+  next Supplies Shop bill is charged ₹0 on the Profit page **for good**: the
+  replay only backfills a draw when an average exists at the draw's date, and a
+  later-dated bill never reaches back. The owner first read the cost as optional;
+  this is why it is not.
+- ⚠ **IT IS ALWAYS THE FIRST EVENT IN THE COSTING REPLAY** — `cost_events` dates
+  it `date.min`, whatever day it was typed. It is the position the system started
+  from, so a part a job card drew before the count was finished is still costed
+  from it, and no bill can be averaged in ahead of it. A later bill then blends
+  normally: 10 L left at ₹500 plus 20 L at ₹520 is ₹513.33.
+- **A corrected cost re-prices parts already used** — the same as correcting a
+  Supplies Shop bill, one of the recorded things that should move a past draw.
+- ⚠ **THE ROUND SAVE AND THE LEAVE WARNING ARE THE JOB CARD'S OWN PAIR, and the
+  reason is the LIST'S LENGTH** (the owner's request, 2026-09-20: *"after user
+  adding a lot and refresh or close not saves datas all will lose, right?"*).
+  Everything typed lives in the browser until Save, and Save is at the far end
+  of a list of every product — so `.lg-fab` (`.jc-fab`'s values, copied) appears
+  at the first keystroke, and `beforeunload` guards a refresh or a closed tab.
+  Both are cleared by a submit that was not refused. The button is **inside the
+  form** (outside it submits nothing) and z-index 1020, under the nav, like the
+  Job Card's. A locked page has neither: there is nothing to save.
+- **The save is all or nothing**, and a refused save hands back every box as
+  typed. More than two decimals is **refused, never rounded**; a comma is refused
+  as everywhere else. A product with **no boxes in the payload** (added after the
+  page was opened) is left alone, not cleared. Quantity 0 means no row.
+
+### Opening Balances — `opening_balance` on `SpareShop` and `SupplierShop`
+
+One figure per active shop, what its own book says, **stored exactly as typed**.
+
+- ⚠ **THE SCREEN COMPUTES NOTHING, ON THE OWNER'S DECISION.** Unassigned spares
+  already recorded against a shop are in its balance, so the person typing enters
+  those first and takes their price off the book figure **by hand** (book says
+  ₹2,50,000, a ₹5,000 bearing is already in → type ₹2,45,000). Automatic
+  subtraction was built into the plan and removed: *"any human can understand
+  this"*. The quiet "owed now" under each name is there to check the result.
+- **It joins the cached total in `update_totals()`**, so every reader follows with
+  no change: both shop pages, the shop lists, the Profit page's payable tiles, Deep
+  Analysis and the archive guards (a shop still owing it cannot be archived).
+- ⚠ **IT IS THE OLDEST DEBT, SO PAYMENTS PAY IT FIRST — in all three waterfalls**:
+  the spare shop page, the Supplies Shop page and `ajax_supplier_bills`. Each
+  allocates `paid_beyond_opening` (paid − opening) instead of `total_paid_amount`,
+  or a payment against the opening balance would mark a real bill COVERED.
+- **The shop page names it only while some is unpaid** — "Opening balance from
+  before the system: ₹X left" (`opening_balance_left`, `.opening-left` in
+  style.css), under the four stat boxes. It falls with every instalment and
+  disappears for good at zero; the figure stays in the data for ever, because the
+  balance is built from it. Shown as a line, not a table row, because both shop
+  pages open on **This Year** and a row would be hidden by default.
+- ⚠ **THE WHOLE-LEDGER PRINT KEEPS ITS LINE FOR EVER.** `spare_shop_print` adds
+  its totals up from the rows, not the cached column, and some of those payments
+  paid the opening balance — so without the line the printed balance comes out
+  short. A dated print never carries it. Custom counts as dated only once both
+  dates parse, the filter's own test.
+- **Zero or more.** A shop paid in advance at go-live is not supported: the
+  screen refuses a negative and a `CheckConstraint` backs it.
+
+### What neither one touches
+
+**No profit and no cash figure moves.** `analysis_engine.py` reads neither. The
+old debt is an Excel-era expense, not this system's; a part from opening stock is
+charged when it is fitted, at the typed cost, which is the rule for every draw;
+and paying an opening balance is an ordinary Record a Payment — cash out on the
+day it is paid, as it should be.
+
+**Two go-live rules, in the runbook §3.5:** never enter a pre-go-live Supplies
+Shop bill (the opening balance and the shelf count already cover it — it would
+count twice), and count the shelf before billing any new delivery.
+
+**Both purges know about it**: `purge_business_data` lists `OpeningStock` (the
+balance goes with the shop), and `seed_meeting_data`, which keeps products and
+shops, deletes the rows and zeroes `opening_balance`, or the next `update_totals()`
+would bring an old figure back.
+
+### The go-live lock — a ROW, pressed by an owner
+
+⚠ **AFTER GO-LIVE DAY BOTH SCREENS ARE LOCKED, AND NOTHING INSIDE THE APP CAN
+UNLOCK THEM** (the owner's call, 2026-09-20: *"give simple access always will
+make data correction threat"*). An owner presses **Lock Legacy Data** at the foot
+of `/legacy/` once the figures match the books (runbook §3.5, step 6).
+
+⚠ **THE LOCK IS `LegacyDataLock` — ONE ROW — RATHER THAN THE HOST SWITCH IT
+SHIPPED AS, AND THE OWNER'S REASONING IS WHY.** A Railway variable lives on the
+hosting account, so moving the system — a new host, a backup restored somewhere
+fresh — leaves the section silently OPEN: *"even system migrate in to some other
+place in the future this section should not be an loop hole"*. A row travels with
+the data, in every `pg_dump` and every restore; and if it ever did come back open,
+the same button locks it again. `LEGACY_DATA_LOCKED` is kept as a **spare** —
+either one locks, and it cannot unlock anything.
+
+- **Three confirmations that get LOUDER** (the owner's shape, 2026-09-20): the
+  ordinary white card, then **full amber**, then **full red** — see the two solid
+  themes under "Asking a question". What it does, that it cannot be undone here,
+  then the figures about to be frozen, read from the screens so the owner checks
+  numbers rather than a promise. Zero on both is allowed and the card SAYS SO: a
+  workshop can genuinely owe nothing and hold no stock, and refusing to lock
+  would trap it.
+- ⚠ **THE BUTTON IS AN OUTLINE, ON ITS OWN LINE, AND NEVER WRAPS.** It shipped as
+  a filled red slab beside the sentence, where it squeezed "Lock Legacy Data"
+  onto two lines and became the loudest object on a page whose three rows are the
+  way IN — the owner's verdict was that it looked wrong. The weight belongs on
+  the three cards, not on a control nobody presses until the very end.
+- ⚠ **ONE CARD MUST BE FULLY GONE BEFORE THE NEXT OPENS — 400ms, measured.**
+  See the trap under "Asking a question"; chaining them straight from the answer
+  does not work.
+- **`legacy_lock` is POST-only, Owner-only and idempotent** — pressing it on a
+  locked section changes nothing rather than restamping who locked it. There is
+  no unlock view, deliberately.
+- **Unlocking is `manage.py unlock_legacy_data --yes`**, on the server: a
+  deliberate act by whoever holds the deployment, not a tap. It reports who
+  locked it and when, warns when the host switch is also on (which it cannot
+  lift), and says to press Lock again after the correction.
+- **`purge_business_data` clears the row**, because it runs BEFORE go-live: a
+  purged system must be ready to type its starting position again.
+
+Once locked:
+
+- **Both screens render the record, not a form** — the figures as text, a banner
+  ("Locked since go-live…"), no boxes, no Save, no round save. Opening Stock lists
+  only what was counted. The Legacy Data page marks both rows with a lock and says
+  **when it was locked and by whom**, in place of the button.
+- ⚠ **THE REFUSAL IS IN THE VIEW, FOR EVERY ROLE, OWNERS INCLUDED.** A POST is
+  refused before anything is read, so a crafted POST meets it too — verified in the
+  browser with a valid CSRF token, both screens.
+- **Old Bills is not covered**: the Excel pile is typed in for weeks after go-live.
+- Chosen over **locking on first save**, which leaves a go-live typo needing the
+  developer.
+- The spare switch: `decouple`'s `bool` cast refuses a value it cannot read, so a
+  typo stops the app at startup rather than leaving the screens silently open.
+  **Forced `False` under `manage.py test`**, like `LAST_EXCEL_BILL_NUMBER`; those
+  tests use `override_settings`.
+
+*Known and left alone:* Deep Analysis → Shops lists only shops with purchases in
+the window, so a shop owed only its opening balance is not on that list. Its own
+page and the Profit page's tile both carry it. That is how the section already
+treats any quiet shop, not something this added.
+→ `workshop/tests/test_legacy_data.py`
 
 ## Settling — "what is still unfilled"
 
@@ -7145,6 +7328,24 @@ spare-date panel, so at Bootstrap's own 1055 the card asking "delete this
 photo?" opened **behind** it: invisible, with the page apparently frozen. A
 dialog that can be covered is worse than no dialog, because the act still
 happens the moment somebody finds the Confirm they cannot see.
+
+⚠ **TWO SOLID THEMES EXIST FOR A QUESTION THAT GETS LOUDER — `solid-warning`
+(full amber) and `solid-danger` (full red), in style.css.** The Legacy Data lock
+asks three times, and a card that only changes its words reads as the same
+question repeated. They carry the Cashbook steer's rule with them: a solid fill
+is for a dialog that STOPS somebody, never for "did you mean this?", so do not
+spend them elsewhere. The ink is measured — white on `#f59e0b` is 2.2:1, so the
+amber card is dark-inked (6.81:1), and `#b91c1c` carries white at 6.47:1.
+
+⚠ **TWO CARDS IN A ROW NEED A GAP BETWEEN THEM — 400ms, measured on the Legacy
+Data lock, which asks three times.** Opening the next card straight from the
+previous one's answer fails two ways at once, both silently: Bootstrap ignores the
+`show()` while the same modal is still transitioning out (the `_isTransitioning`
+refusal recorded just below for `hide()`), so the card sets its text and never
+appears — and the closing card's own `hidden.bs.modal` then settles the NEW
+question as "no", so the chain dies with nothing on screen to say why. **Waiting on
+`hidden` is not the fix**: that event is the one that answers the wrong question.
+A plain `setTimeout` past the fade is.
 
 ⚠ **OPENING OVER ANOTHER MODAL HANDS OFF; IT NEVER STACKS.** A shown modal or
 offcanvas runs a document-wide focus trap, so a reason box inside a card over
@@ -9560,8 +9761,11 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 76 files, 2,645 tests (counted 2026-09-18). Always SQLite (see below).
-# Last full run 2026-09-16: 2,529 tests, 4,196s (70 min) — NOT all green in one
+# Full test suite — 77 files, 2,692 tests (counted 2026-09-20). Always SQLite (see below).
+# Last full run 2026-09-20: 2,691 tests, 8,987s (2h30m), ALL GREEN — the slowest
+# run recorded here, on a machine also running the dev server and a browser;
+# measured mid-run at 35 tests/min. Before it: 2026-09-16, 2,529 tests, 4,196s
+# (70 min) — NOT all green in one
 # pass: 8 inventory tests failed on one defect (Add Product refused a form with no
 # markup box), fixed in the view; the 4 affected files re-run green (189 tests),
 # plus the one new test, making 2,530.
@@ -9624,6 +9828,7 @@ never one; and a `RunPython` is **rehearsed on a restored backup** first.
 | `seed_meeting_data` | DRY RUN — wipes every financial record and rebuilds a **uniform** 100-day set (`--yes`). Keeps the inventory catalog, shops, staff roster, master lists and logins |
 | `seed_salary_data` | salary months + advances only |
 | `purge_business_data` | DRY RUN — prints what it would delete (`--yes`) |
+| `unlock_legacy_data` | DRY RUN — clears the go-live lock so Opening Stock / Opening Balances can be corrected (`--yes`). The ONLY way back; press Lock again afterwards |
 | `copy_sqlite_to_postgres` | DRY RUN — prints the plan (`--yes` to replace Postgres) |
 
 ⚠ **`management/commands/` holds 14 commands (plus the `_dev_only.py` helper) and this table describes 12.**
@@ -9651,7 +9856,8 @@ once the folder filled, evict a good backup to keep itself. Requires the Postgre
 client tools on PATH.
 
 **`purge_business_data` clears ALL business tables** — job cards, shops, fleet accounts,
-inventory, cashbook, staff roster, owner withdrawals, the rent ledger, old bills, deletion history.
+inventory (opening stock included), cashbook, staff roster, owner withdrawals, the rent ledger,
+old bills, deletion history. A shop's go-live opening balance is a column on the shop and goes with it.
 It deliberately does *not* try to distinguish "dummy" rows from real ones, because
 nothing in the schema marks them and a command claiming otherwise would be lying. It
 never touches login accounts, groups, or the master lists. **It is the thing to run
@@ -9813,6 +10019,11 @@ code change (`test_a_supabase_endpoint_needs_no_code_change`).
 written in Excel. Live job cards of that year start after it — see "Old Bills". Blank is
 valid and changes nothing; a malformed value stops the app at startup, on purpose.
 
+**`LEGACY_DATA_LOCKED`** (optional): a SPARE lock for Legacy Data → Opening Stock and
+Opening Balances. The lock owners actually use is a row they set from the page — see
+"The go-live lock". Either one locks; this one cannot unlock anything, and an
+unreadable value stops the app at startup.
+
 **Web Push** (optional): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL`.
 Generated once — **regenerating them invalidates every existing subscription**, so treat
 them as permanent. The public key ships to the browser and is not a secret. They must
@@ -9841,9 +10052,9 @@ unless `EMAIL_REAL=true`; `manage.py test` uses locmem regardless.
 **`workshop/`** — job cards, billing, fleet accounts, spare shops, cashbook, estimates,
 old bills, photos, auth, owner analytics, deletion history, master data.
 
-`views/` is a package of **22 modules**: `about`, `audits`, `autocomplete`,
+`views/` is a package of **23 modules**: `about`, `audits`, `autocomplete`,
 `billing`, `bulk_payer`, `car_profiles`, `completed`, `dashboard`, `deletion_history`,
-`estimate`, `jobcard`, `master_lists`, `notifications`, `old_bills`, `paid`, `pending`, `photos`,
+`estimate`, `jobcard`, `legacy`, `master_lists`, `notifications`, `old_bills`, `paid`, `pending`, `photos`,
 `push`, `rent`, `salary_advance`, `spare_shop`, `withdrawal`. **`views/__init__.py` re-exports everything**, so
 `from . import views; views.some_function` and existing URL wiring keep working — when
 adding a view, add it to both its module and the re-export list.
@@ -9886,7 +10097,7 @@ view-to-view coupling between the two apps for stock changes.
 
 ## Signals-driven stock sync
 
-`inventory/signals.py` has three independent groups (**10 handlers**) on
+`inventory/signals.py` has four independent groups (**13 handlers**) on
 `pre_save`/`post_save`/`post_delete`:
 
 1. **Workshop consumption** (`JobCardSpareItem`, 3 handlers) — deducts stock for
@@ -9902,8 +10113,12 @@ view-to-view coupling between the two apps for stock changes.
    `Item.avg_cost` (via `recompute_average_cost`, a full replay); plus a
    `SupplierRestockBill` **pre/post_save pair** that re-costs the bill's items when
    `bill_date` or `discount_amount` changes, since neither of those lives on a line.
+4. **Opening stock** (`OpeningStock`, 3 handlers) — the go-live shelf count, moved the
+   same snapshot+delta way as a restock line and re-costed on every change. It
+   belongs to no shop, so it touches no balance. See "Legacy Data".
 
-⚠ **Count them before quoting the number.** This group grew from 3 handlers to 5 when
+⚠ **Count them before quoting the number.** The total went 10 → 13 with opening
+stock (2026-09-19). The restock group grew from 3 handlers to 5 when
 the bill-terms pair was added, and every doc went on saying "8 handlers" for months —
 the grouping stayed right while the total went stale.
 
@@ -9962,8 +10177,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **76 files, 2,645 tests**,
-re-counted 2026-09-18. (`workshop/tests/` is 70 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **77 files, 2,692 tests**,
+re-counted 2026-09-20. (`workshop/tests/` is 71 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

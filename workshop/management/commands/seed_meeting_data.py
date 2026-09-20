@@ -53,7 +53,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from inventory.models import (
-    Category, Item, ShopCatalogItem, SupplierShop,
+    Category, Item, OpeningStock, ShopCatalogItem, SupplierShop,
     SupplierRestockBill, SupplierRestockItem, SupplierPayment,
 )
 from workshop.models import (
@@ -207,6 +207,7 @@ class Command(BaseCommand):
             ("fleet accounts", BulkPayer.objects.all()),
             ("spare shop payments", SpareShopPayment.objects.all()),
             ("supplier restock items", SupplierRestockItem.objects.all()),
+            ("opening stock", OpeningStock.objects.all()),
             ("supplier restock bills", SupplierRestockBill.objects.all()),
             ("supplier payments", SupplierPayment.objects.all()),
             ("cashbook entries", CashbookEntry.objects.all()),
@@ -233,8 +234,10 @@ class Command(BaseCommand):
         # back, and a leftover balance would make every count on the Low Stock
         # page wrong from the first minute.
         Item.objects.update(current_stock=0, avg_cost=0)
-        SpareShop.objects.update(total_purchased_amount=0, total_paid_amount=0)
-        SupplierShop.objects.update(total_billed_amount=0, total_paid_amount=0)
+        # Shops are kept, so their go-live opening balance is zeroed too — or
+        # the next update_totals() would bring it straight back.
+        SpareShop.objects.update(total_purchased_amount=0, total_paid_amount=0, opening_balance=0)
+        SupplierShop.objects.update(total_billed_amount=0, total_paid_amount=0, opening_balance=0)
         self.stdout.write("      stock, cost and shop ledgers reset to zero")
 
     # ------------------------------------------------------------------

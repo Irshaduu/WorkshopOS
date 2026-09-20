@@ -1,0 +1,85 @@
+{% extends 'workshop/base.html' %}
+{% load humanize %}
+
+{% block title %}Opening Balances{% endblock %}
+
+{% comment %}
+================================================================================
+OPENING BALANCES — what each shop was already owed on go-live day
+================================================================================
+One box per active spare shop and Supplies Shop: the figure the shop's own book
+says, saved EXACTLY AS TYPED. Unassigned spares already recorded against a shop
+are taken off that figure by the person typing it, by hand — the screen
+computes nothing, on the owner's decision. "Owed now" under each name is the
+shop's balance as it stands, so the result can be checked against the book.
+
+Payments pay this debt off first, and it never reaches profit or cash. The
+rules are in workshop/views/legacy.py; the look is shared with Opening Stock.
+Once `LEGACY_DATA_LOCKED` is set on Railway every figure is shown read-only and
+the view refuses a POST whatever this template draws.
+================================================================================
+{% endcomment %}
+
+{% block extra_css %}{% include 'workshop/legacy/_legacy_style.html' %}{% endblock %}
+
+{% block content %}
+<div class="lg-page lg-bal">
+    <a href="{% url 'legacy_home' %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>Legacy Data</span>
+    </a>
+
+    <header class="lg-header">
+        <h1 class="lg-title"><i class="bi bi-journal-text" aria-hidden="true"></i>Opening Balances</h1>
+        <p class="lg-sub">What each shop's own book says you owe on go-live day.</p>
+    </header>
+
+    {% if locked %}
+    <p class="lg-locked"><i class="bi bi-lock-fill" aria-hidden="true"></i><span>Locked since go-live. These are the figures the system started from.</span></p>
+    {% for block in blocks %}
+    <section class="lg-card">
+        <div class="lg-card-head"><i class="bi {{ block.icon }}" aria-hidden="true"></i><span>{{ block.label }}</span><span class="lg-cols"><span>On go-live day</span></span></div>
+        {% for row in block.rows %}
+        <div class="lg-row">
+            <div class="lg-name"><b>{{ row.shop.name }}</b><span class="lg-meta">{% if row.in_credit %}in credit{% else %}owed now{% endif %} &#8377;{{ row.owed_now|floatformat:0|intcomma }}</span></div>
+            {% if row.shop.opening_balance %}<span class="lg-fig">&#8377;{{ row.shop.opening_balance|floatformat:0|intcomma }}</span>{% else %}<span class="lg-fig is-none">&mdash;</span>{% endif %}
+        </div>
+        {% empty %}
+        <div class="lg-empty">No {{ block.label|lower }} yet.</div>
+        {% endfor %}
+        <div class="lg-foot"><span>Opening balances</span><b>&#8377;{{ block.total|floatformat:0|intcomma }}</b></div>
+    </section>
+    {% endfor %}
+    <div class="lg-save"><span>From before the system &middot; <b>&#8377;{{ grand_total|floatformat:0|intcomma }}</b></span></div>
+    {% else %}
+    <form method="post" class="lg-form" autocomplete="off" novalidate>
+        {% csrf_token %}
+        {% for block in blocks %}
+        <section class="lg-card">
+            <div class="lg-card-head"><i class="bi {{ block.icon }}" aria-hidden="true"></i><span>{{ block.label }}</span><span class="lg-cols"><span>On go-live day</span></span></div>
+            {% for row in block.rows %}
+            <div class="lg-row{% if row.problem %} is-bad{% endif %}">
+                <div class="lg-name"><b>{{ row.shop.name }}</b><span class="lg-meta">{% if row.in_credit %}in credit{% else %}owed now{% endif %} &#8377;{{ row.owed_now|floatformat:0|intcomma }}</span></div>
+                <input class="lg-in" type="text" name="{{ row.box }}" value="{{ row.value }}" inputmode="decimal" aria-label="Owed on go-live day, in rupees: {{ row.shop.name }}">
+                {% if row.problem %}<div class="lg-problem">{{ row.problem }}</div>{% endif %}
+            </div>
+            {% empty %}
+            <div class="lg-empty">No {{ block.label|lower }} yet.</div>
+            {% endfor %}
+            <div class="lg-foot"><span>Opening balances</span><b>&#8377;{{ block.total|floatformat:0|intcomma }}</b></div>
+        </section>
+        {% endfor %}
+
+        <div class="lg-save">
+            <span>From before the system &middot; <b>&#8377;{{ grand_total|floatformat:0|intcomma }}</b></span>
+            <button type="submit" class="lg-save-btn">Save</button>
+        </div>
+        {% comment %}
+        The round save, the Job Card's own control. Inside the form so it
+        submits it, and drawn only once something has been typed — see
+        `.lg-fab` in the shared style for why both of those matter.
+        {% endcomment %}
+        <button type="submit" class="lg-fab" aria-label="Save" title="Save"><i class="bi bi-check-lg"></i></button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

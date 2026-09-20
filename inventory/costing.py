@@ -42,6 +42,7 @@ the average unchanged). Draws are replayed anyway, because the *stock level* at
 the moment of a receipt decides which rule below applies.
 """
 
+from datetime import date
 from decimal import Decimal
 
 MONEY = Decimal('0.01')
@@ -92,8 +93,19 @@ def cost_events(item):
     engine follows.
     """
     from workshop.models import JobCardSpareItem
+    from .models import OpeningStock
 
     events = []
+
+    # OPENING STOCK — what was on the shelf when the system started. ALWAYS the
+    # first event, whatever day it was typed (`date.min` sorts before every real
+    # date): it is the position the system began from, so a part a job card
+    # drew before somebody finished typing the count is still costed from it,
+    # and no later bill can ever be averaged in ahead of it.
+    opening = OpeningStock.objects.filter(item=item).values_list('quantity', 'unit_cost').first()
+    if opening:
+        events.append((date.min, 0, Decimal(str(opening[0] or 0)),
+                       Decimal(str(opening[1] or 0)), None))
 
     for ri in item.restock_items.select_related('bill'):
         # `effective_unit_price`, not `per_unit_price`: a bill-level discount is

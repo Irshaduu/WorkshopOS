@@ -78,6 +78,9 @@ if RUNNING_TESTS:
     # shift every job card number the suite creates. Tests that need one set it
     # with `override_settings`.
     LAST_EXCEL_BILL_NUMBER = ''
+    # And the go-live lock: a value in someone's .env would make every Legacy
+    # Data test meet a read-only screen. Tests that need it locked say so.
+    LEGACY_DATA_LOCKED = False
 
 # No SSL in dev
 SECURE_SSL_REDIRECT = False

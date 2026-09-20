@@ -49,7 +49,7 @@ graph TB
         I_MODELS["models.py — 8 Models"]
         I_VIEWS["views.py + views_suppliers.py — 33 Views"]
         I_URLS["urls.py — 33 URL Patterns"]
-        I_SIGNALS["signals.py — 10 Signal Handlers (3 groups)"]
+        I_SIGNALS["signals.py — 13 Signal Handlers (4 groups)"]
         I_ADMIN["admin.py — 8 Registered"]
         I_TPL["Templates — 20 HTML Files"]
     end
@@ -118,7 +118,7 @@ erDiagram
 | 10 | **CarModel** | brand (FK→CarBrand), name, created_at | Master list, unique_together(brand,name) |
 | 11 | **SparePart** | name (unique), created_at | Master list for autocomplete |
 | 12 | **ConcernSolution** | concern (text), created_at | Knowledge base for autocomplete |
-| 13 | **SpareShop** | name (unique), phone, address, is_trashed | Master list of spare parts suppliers |
+| 13 | **SpareShop** | name (unique), phone, address, total_purchased_amount, total_paid_amount, **opening_balance**, is_trashed | Master list of spare parts suppliers. `opening_balance` (migration `0080`, default and `db_default` 0, CheckConstraint `>= 0`) is what the shop was owed on go-live day, typed on Legacy Data → Opening Balances exactly as typed; `update_totals()` adds it to the purchased side and the payment waterfall pays it first |
 | 14 | **JobCard** | bill_number, dates, vehicle info, **chassis_code**, **vin**, customer, **notes**, financials, status flags | **Core entity** — full lifecycle. `notes` (migration `0069_jobcard_notes`) is an internal line for the workshop, declared field-for-field like `Estimate.notes` and **never printed** on the invoice. `chassis_code` (the platform code, e.g. F30 — up to 20 characters) and `vin` (17) arrived with migration `0078_jobcard_estimate_chassis_code_vin`: both optional free text, tidied in `clean()`, refused only by the forms, never printed and never chased at settlement. Every rule is `workshop/vehicle_ids.py`. |
 | 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
 | 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking, **original_vehicle_info** (free-text "Ordered For" note) | Per-job parts, both routes. `source` records which route and is **never inferred** — added with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only. `original_vehicle_info` (since migration 0039) names the car an UNASSIGNED purchase was bought for — stamped automatically when a spare is moved out of a job card, and typed by hand on the Unassigned Hub. Free text with no FK by design: a part is usually ordered before there is a job card to attach it to |
@@ -139,6 +139,7 @@ erDiagram
 | 26 | **Estimate** | estimate_number (unique, auto `EST-26-001`), date, customer/vehicle (all free text), **chassis_code/vin**, **car_color/car_color_other**, labour_amount, total_amount (denormalized), notes, created_by | A **quotation**, connected to nothing — no job card, no stock, no ledger, no report. Migrations (`0067_estimate_estimatejobline_estimatepartline_and_more`, `0068_estimate_car_color_estimate_car_color_other`, `0078_jobcard_estimate_chassis_code_vin`). `chassis_code`/`vin` are declared exactly like JobCard's and are never printed on the quotation. Colour uses the shared `CAR_COLOR_CHOICES`/`CAR_COLOR_HEX`, is picked with the shared `_car_color_picker.html`, and is drawn as the stripe on each history row — never printed on the quotation. `total_amount` is written only by `update_totals()`, called explicitly by the views; there are no signals on any of these three models. |
 | 27 | **EstimateJobLine** | estimate (FK), description | One line of work being quoted. **No money column at all** — the charge lives once on `Estimate.labour_amount`, same rule as `JobCard.labour_amount`. |
 | 28 | **EstimatePartLine** | estimate (FK), name, quantity, **customer_rate**, **amount** | One quoted part. Note the naming is the OPPOSITE of `JobCardSpareItem`: an estimate has no cost side, so both figures are customer prices. `amount = customer_rate × quantity` is enforced on save when a rate is set. |
+| 27z | **LegacyDataLock** | locked_at, locked_by (FK→User, SET_NULL) | ONE ROW MEANS LOCKED (migration `0081`): Legacy Data → Opening Stock and Opening Balances are read-only and every POST is refused. Set by an owner from `/legacy/` behind three confirmations; there is **no unlock view**, only `manage.py unlock_legacy_data --yes` on the server. A ROW rather than a host setting so it **travels with the data** — a backup restored anywhere, or the system moved, is still locked. `purge_business_data` clears it |
 | 28a | **OldBill** | **bill_number** (unique, typed as printed, e.g. `JB-26-097`), **bill_date**, registration_number, brand_name, model_name, mileage, customer_name, labour_amount, total_amount (labour + part amounts, written only by `update_totals()`), created_by, created_at, updated_at | A bill the workshop wrote in **Excel before the system existed**, typed in for a car's history. Migration `0079_old_bills`. ⚠ **Connected to nothing** — no job card, no stock, no ledger, no line in `analysis_engine.py`; `test_old_bills.py` fails if any file outside a short allow-list starts reading it. Holds only what the paper shows: **one date**, no admitted/settled dates, **no discount and no payment** (the final figure was agreed verbally and never written down, so `total_amount` is what was BILLED), no phone, no colour, no cost. Brand/model/plate/mileage are tidied in `clean()` exactly as `JobCard.clean()` tidies them, so both land on one Car Profile. CheckConstraints: labour and total `>= 0`. Every rule is `workshop/old_bills.py` |
 | 28b | **OldBillJobLine** | old_bill (FK, CASCADE), description | A JOB PERFORMED line — a description; the charge is `OldBill.labour_amount`, as on a job card |
 | 28c | **OldBillPartLine** | old_bill (FK, CASCADE), name, quantity (optional), amount (optional) | A PART NAME line. One mixed list — the paper never split warehouse stock from shop parts — with **no stock link**. A blank amount prints blank, never ₹0; the unit price is derived on reprint, never typed. CheckConstraints: quantity `> 0`, amount `>= 0` |
@@ -154,11 +155,12 @@ Salary models (migration `0054_mechanic_current_salary_and_more`, which also add
 | 1 | **Category** | name | Groups inventory items |
 | 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count, **avg_cost**, **markup_percent** | Warehouse part with stock levels. `current_stock` may be **negative** (an overdraw awaiting its supplier bill — deliberate, see CLAUDE.md). `avg_cost` is the weighted-average purchase cost per unit, (migration `inventory/0008_item_avg_cost`), maintained only by restock receipts via a full replay in `inventory/costing.py`. `markup_percent` (`inventory/0009_item_markup_percent`, `PositiveSmallIntegerField`, default and `db_default` 40, CheckConstraint ≤ 999) is the markup on cost the job card suggests for this product's customer unit price — a suggestion only, set on Add Product and Edit Product; the server prices nothing from it |
 | 3 | **ConsumptionRecord** | user (FK→User), item (FK→Item), quantity, date, timestamp | **Dormant** — superseded by Stock History, which reads `JobCardSpareItem` live. Nothing writes this model; kept only to avoid a needless migration |
-| 4 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, is_active | Supplier / Supplies Shop master record |
+| 4 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, **opening_balance**, is_active | Supplier / Supplies Shop master record. `opening_balance` (migration `inventory/0010`) is the spare shop's column, identically: go-live debt, added to the billed side, paid off first |
 | 5 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), is_active, unique_together(shop,item) | Links a supplier to the items they stock; `is_active=False` = deactivated (listed but excluded from restock bills) |
 | 6 | **SupplierRestockBill** | supplier (FK→SupplierShop), bill_date, total_amount, discount_amount, note | Individual restock purchase from a supplier |
 | 7 | **SupplierRestockItem** | bill (FK→SupplierRestockBill), item (FK→Item), quantity, total_price (+ `per_unit_price` property) | Line item on a restock bill. There is no `unit_price` **column** — per-unit cost is derived as `total_price / quantity`. This is the per-batch cost record that makes a future FIFO reconstruction possible |
 | 8 | **SupplierPayment** | supplier (FK→SupplierShop), amount, payment_method, date, note, is_trashed | Payment record for supplier accounts |
+| 9 | **OpeningStock** | item (OneToOne→Item, CASCADE), quantity, unit_cost, created_at, updated_at | What was on the shelf on go-live day (migration `inventory/0010`), typed on Legacy Data → Opening Stock. A receipt that belongs to **no shop**: raises the shelf through the signals and creates no balance. Always the FIRST event in the costing replay. CheckConstraints: quantity and unit_cost `> 0` — the cost is required |
 
 ---
 
@@ -242,7 +244,7 @@ byte-identical.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (176 Total)
+## 4. ALL URL ROUTES — COMPLETE (180 Total)
 
 *Walked from `get_resolver().url_patterns` recursively and
 excluding Django admin (131 of its own) — the method below, not by grepping
@@ -256,7 +258,7 @@ served by the same app.*
 ⚠ **Walk it with `DEBUG=False` or the total is one higher.**
 `formulad_workshop/urls.py` appends `MEDIA_URL` through Django's `static()` helper,
 which returns an **empty list** when `DEBUG=False` — so a development resolver reports
-**177 (144 + 33)** and production reports **176 (143 + 33)**. That one route is the
+**181 (148 + 33)** and production reports **180 (147 + 33)**. That one route is the
 media path, which is not served in production at all (§12, and `AUD-0088`).
 
 ⚠ **And filter for it on `'media/' in pattern`, not `startswith`.** It is a
@@ -352,6 +354,10 @@ production's. Cost a wrong number on the way into this very entry.
 | | `/old-bills/<pk>/` | `old_bill_invoice` | Office — one old bill reprinted on the invoice's own sheet, with Edit |
 | | `/old-bills/<pk>/edit/` | `old_bill_edit` | Office |
 | | `/old-bills/<pk>/delete/` | `old_bill_delete` | Office — POST only, from the ⋮ on the edit page; no DeletionLog (moves no money, the Estimate's reasoning) |
+| **LEGACY DATA** | `/legacy/lock/` | `legacy_lock` | **Owner** — POST only: locks Opening Stock and Opening Balances for good. Idempotent; no unlock route exists |
+| | `/legacy/` | `legacy_home` | Office — the one menu row's page: Old Bills, and for an owner Opening Stock and Opening Balances, drawn as the menu's own rows |
+| | `/legacy/opening-stock/` | `opening_stock` | **Owner** — the go-live shelf count: quantity and cost of one per product; all or nothing on save; raises the shelf, creates no balance |
+| | `/legacy/opening-balances/` | `opening_balances` | **Owner** — what each spare shop and Supplies Shop was owed on go-live day, saved exactly as typed |
 | **AUTH** | `/login/` | `login_view` | Public |
 | | `/admin-login/` | `RedirectView` → `login` | Public |
 | | `/change-password/` | `change_password_view` | Owner |
@@ -494,7 +500,7 @@ graph LR
     RI -->|"on save/delete"| SIG
 ```
 
-Stock is synced by **10 signal handlers in 3 groups** (`inventory/signals.py`):
+Stock is synced by **13 signal handlers in 4 groups** (`inventory/signals.py`):
 
 **Group 1 — Workshop Consumption (`JobCardSpareItem`, 3 handlers):**
 Applies to **`source='INVENTORY'` rows only**, resolved by the `item` FK. A `source='SHOP'`
@@ -518,6 +524,11 @@ overdraw (see CLAUDE.md → Deliberate decisions).
 8. **Restock qty changed** → Adjust stock by delta
 9. **Restock item/bill deleted** → Reverse stock increase
 10. **A bill's date or discount changed** → Re-cost that bill's lines, since neither lives on a line
+
+**Group 4 — Opening Stock (`OpeningStock`, 3 handlers):** the go-live shelf count.
+11. **Count entered** → Increase stock by the full qty, re-cost
+12. **Count or cost corrected** → Adjust stock by the delta, re-cost (a corrected cost re-prices parts already used)
+13. **Count cleared** → Take that stock back off the shelf, re-cost
 
 ---
 
@@ -577,6 +588,7 @@ stateDiagram-v2
 | `/car_profiles/` | 6 files: `car_profile_list.html`, `car_profile_detail.html`, `car_list_partial.html`, `service_history_options.html`, `service_history_print.html`, `all_invoices_print.html` | The three car-profile screens, plus the two customer documents a profile opens. The last two are **standalone** — they extend no base, load nothing from any origin, and carry their stylesheet inline, exactly like the invoice and the estimate |
 | `/invoice/` | `invoice_template.html` | The printed bill. Standalone (does **not** extend `base.html`) and fully self-contained — no Bootstrap, no icon font, no CDN of any kind, so nothing external can move a column on a customer's invoice. Screen controls live outside the `.sheet` element entirely, not merely behind `display:none`. |
 | `/estimate/` | `estimate_print.html`, `estimate_form.html`, `estimate_list.html`, `estimate_list_partial.html`, `estimate_confirm_delete.html` | The quotation. `estimate_print.html` is a deliberate near-twin of `invoice_template.html` — same letterhead, bands, column grid and totals block, standalone and self-contained on the same terms. It differs in what the document *is* — title `ESTIMATE`, heading `JOB NEEDS TO BE PERFORMED`, no payment chip, no settle control — and in exactly two columns: **QTY prints only what was typed** (blank stays blank, though it still counts as 1 in the maths) and **UNIT PRICE prints only when a rate was entered** (never derived). Both follow from a bill recording work that happened while an estimate describes work that has not; see `build_estimate`. **Restyle one and you must restyle both**, or the customer gets two documents that look like different businesses. |
+| `/legacy/` | `legacy_home.html`, `opening_stock.html`, `opening_balances.html`, `_legacy_style.html` | `legacy_home` is the menu's one Legacy Data row's page — the three screens drawn with the drawer's own `.drawer-link` rows (Office sees Old Bills alone). The two go-live screens, Owner only: a list of boxes typed once and saved together (Opening Stock grouped by category, two boxes a row; Opening Balances one box per shop with "owed now" under the name). One shared include holds the look, the "Enter moves to the next box, never saves" script, and the Job Card's own pair for a long list: the round `.lg-fab` save (inside the form, from the first keystroke) and a `beforeunload` warning. Save also sits at the end of the list, in the page's flow |
 | `/old_bills/` | `old_bill_form.html`, `old_bill_list.html`, `_old_bill_rows.html` | Old Bills. The form reads in the **paper's own order under its navy bands**: the date as three typed boxes (`1` and `01` alike, `apr` for the month, the day spelled out underneath), `# JB- [YY] [NNN]` (its own line on a phone), then **one open job row and one open part row** (the next opens as each is typed into; on a phone the part rows scroll sideways like the Job Card's, with the row number pinned), then the TOTAL **worked out, never typed** — a read-only figure on the right with "Verify this total with the XL bill." under it. **Enter never saves.** No customer name box; Delete sits in the ⋮ at the top of an edit, away from Save. MAKE and MODEL use the Job Card's `script.js` dropdown and a known plate fills them; JOB PERFORMED and PART NAME suggest through the Job Card's own dropdown under the box (never a `<datalist>`): a job offers part + verb, a part offers the job lines with their verb taken off, then the inventory category names and the Spare Parts master list (read only, never added to). **Fill from PDF** (Add page only, top right) posts the bill's PDF and the form comes back filled, with the PDF's own printed TOTAL compared against the worked-out one ("✓ Matches the PDF's total" or red). The list is year blocks of month chips with counts and a month's bills in date and number order. A single old bill prints through `car_profiles/all_invoices_print.html` with one sheet and an Edit |
 | `/spare_shops/` | 5 files: `shop_list.html`, `shop_detail.html`, `shop_archived.html`, `shop_print.html`, `unassigned_hub.html` | Spare shop screens. `shop_archived` is the reactivate list — archiving must never hide what is owed |
 | `/manage/` | 4 files: `manage_dashboard.html` (Owner-only Control Hub), `data_cleanup.html`, `master_confirm_delete.html`, `master_confirm_merge.html` | Control Hub + Data Cleanup, plus the two confirmations shared with Master Lists so a rename that *collides* is gated identically from both screens |
@@ -659,9 +671,9 @@ All forms use `BootstrapFormMixin` to auto-apply Bootstrap classes.
 | `GZipMiddleware` | Django built-in, `settings/base.py` | Compresses responses. Sits **below** WhiteNoise, which short-circuits static requests and already serves its own pre-compressed `.gz`/`.br`. Earns its place because `NoStoreMiddleware` makes every signed-in page uncacheable, so the whole document is re-sent per navigation and Railway's proxy does not compress: the job card form is 211 KB → 55 KB (26%), cashbook 22%, dashboard 24%. BREACH is covered by Django's per-render CSRF masking plus `max_random_bytes = 100`, both verified |
 | `ResendEmailBackend` | `email_backend.py` | `EMAIL_BACKEND` in production. Sends via Resend's HTTPS API using stdlib `urllib` — Railway blocks outbound SMTP below the Pro plan. Only the transport differs; the reset flow is unchanged |
 | `create_user_groups` | `apps.py` | Auto-creates Owner/Office/Floor groups on migrate |
-| `inventory.signals` | `signals.py` | Auto stock sync — **10 handlers in 3 groups**: 3 for `JobCardSpareItem` (consumption, `source='INVENTORY'` only) + 2 for `JobCard` (soft-delete stock reversal, **dormant**) + 5 for supplier restocking — 3 on `SupplierRestockItem` (stock, and the only mover of `Item.avg_cost`) and a `SupplierRestockBill` pre/post_save pair that re-costs when `bill_date` or `discount_amount` changes. Never clamps stock at zero |
-| `inventory.costing` | `costing.py` | Weighted-average warehouse cost. Pure functions over a date-ordered replay of receipts and draws; holds no view logic and never touches `current_stock`. Receipts move the average, draws do not |
-| Management Commands | `management/commands/` | The ones worth knowing (the demo seeders are deliberately undocumented): `setup_groups` (puts the three RBAC groups back on a database that lost them — `migrate` already creates them through the `post_migrate` hook in `apps.py`), `backup_db` (follows the active engine — `pg_dump` for Postgres, file copy for SQLite, keeps 14), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address), `load_master_data` (brands/models/spares), `seed_dummy_data` + `seed_salary_data` (demo data — they, `seed_meeting_data` and the two undocumented demo seeders refuse to run unless `DJANGO_ENV=development`, through `commands/_dev_only.py`), `purge_business_data` (clears every business table — including the owner withdrawals and the rent ledger, which it silently missed until 2026-09-04; the reversal of seeding, and the thing to run against production before go-live), `copy_sqlite_to_postgres` (seed on SQLite, push up), **`sweep_photo_blobs`** (storage objects whose rows are gone) and **`purge_old_photos`** (the 1-year retention sweep, which always skips an unpaid bill). The last two are dry-run by default, like the other destructive ones |
+| `inventory.signals` | `signals.py` | Auto stock sync — **13 handlers in 4 groups**: 3 for `JobCardSpareItem` (consumption, `source='INVENTORY'` only) + 2 for `JobCard` (soft-delete stock reversal, **dormant**) + 5 for supplier restocking — 3 on `SupplierRestockItem` (stock, and with opening stock the only mover of `Item.avg_cost`) and a `SupplierRestockBill` pre/post_save pair that re-costs when `bill_date` or `discount_amount` changes — + 3 for `OpeningStock` (the go-live shelf count, no shop). Never clamps stock at zero |
+| `inventory.costing` | `costing.py` | Weighted-average warehouse cost. Pure functions over a date-ordered replay of receipts and draws; holds no view logic and never touches `current_stock`. Receipts move the average, draws do not. Go-live opening stock is always the first receipt |
+| Management Commands | `management/commands/` | The ones worth knowing (the demo seeders are deliberately undocumented): `setup_groups` (puts the three RBAC groups back on a database that lost them — `migrate` already creates them through the `post_migrate` hook in `apps.py`), `backup_db` (follows the active engine — `pg_dump` for Postgres, file copy for SQLite, keeps 14), `sync_owner_identity` (owner group/mobile/admin-access from .env into the DB), `set_owner_email` (reset-code address), `load_master_data` (brands/models/spares), `seed_dummy_data` + `seed_salary_data` (demo data — they, `seed_meeting_data` and the two undocumented demo seeders refuse to run unless `DJANGO_ENV=development`, through `commands/_dev_only.py`), `unlock_legacy_data` (dry run; `--yes` clears the go-live lock on Opening Stock and Opening Balances — the only way back, and the section must be locked again afterwards), `purge_business_data` (clears every business table — including the owner withdrawals and the rent ledger, which it silently missed until 2026-09-04; the reversal of seeding, and the thing to run against production before go-live), `copy_sqlite_to_postgres` (seed on SQLite, push up), **`sweep_photo_blobs`** (storage objects whose rows are gone) and **`purge_old_photos`** (the 1-year retention sweep, which always skips an unpaid bill). The last two are dry-run by default, like the other destructive ones |
 | Custom template filters | `templatetags/custom_filters.py` | **16 filters** — `has_group`, `is_drawer_section` (drives the nav's Manage highlight from one prefix list), `is_tomorrow`, `divide`, `multiply`, `clean_qty`/`qty`, `gt`, `get_range`, `abs_value`, `short_ago` (the feed's compact age — `now` / `12m` / `5h` / `3d` / `17 Aug`, nothing over six characters, because it shares a flex line with the headline), `notification_glyph` (shape is identity, colour is severity; answers an unknown key with a neutral default, since a row is kept a fortnight and `event` is plain text), and the four rupee formatters — `inr` (whole rupees, Indian grouping), `inr_amount` (paise only when there are any), `inr_exact` (paise always, for the printed invoice's money columns), `inr_compact` (`45.2L` / `4.57Cr`, for hero figures on a phone) |
 | Settings package | `settings/__init__.py` | Auto-selects dev/prod via `DJANGO_ENV`, raises `ImproperlyConfigured` if unset |
 | `WhiteNoiseMiddleware` | `settings/base.py` | Serves static assets directly from the application, in **both** environments — it moved out of `production.py` when every third-party asset was vendored, so development renders against the same manifest that ships. Sits directly under `SecurityMiddleware` and above `GZipMiddleware` |
@@ -834,6 +846,7 @@ graph TB
 | `BUSINESS_NAME` | The name owners know the workshop by (default `Formula D`). Used in the reset email's subject and body — **not** "WorkshopOS", which is the project's internal name and appears nowhere in the UI. A setting rather than a literal so the codebase can serve another workshop without a hunt |
 | `EMAIL_REAL` | Development only. False (default) prints mail to the console instead of sending |
 | `DJANGO_ENV` | Environment selector (development/production) |
+| `LEGACY_DATA_LOCKED` | `true` once go-live day's Opening Stock and Opening Balances match the books. Both screens then show their figures read-only and **refuse every POST, owners included** — nothing inside the app can unlock them. Unset (the default) keeps them open. Old Bills is not covered. An unreadable value stops the app at startup; forced `False` under `manage.py test` |
 | `LAST_EXCEL_BILL_NUMBER` | The last bill the workshop wrote in **Excel**, e.g. `JB-26-245`. ⚠ **Set it before the first live job card.** Excel numbered bills JB-YY-NNN from 001 each January — the system's own shape — so live job cards of that year start after it, and an old bill cannot take a number after it. Blank (the default) means no Excel years: numbering behaves exactly as before. A value set but not in the `JB-YY-NNN` shape stops the app at startup. Forced blank under `manage.py test` |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL config |
 | `DB_SSLMODE` | `require` by default — a leftover from a hosted database over the public internet, wrong for every environment in use now. Local development sets `disable`; Railway's private network needs `prefer` |
@@ -854,7 +867,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (76 files · 2,645 tests)
+## 13. TEST SUITE (77 files · 2,692 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -921,6 +934,7 @@ base classes.*
 | `test_photos.py` | Job card photos: SigV4 pinned to AWS's published known-answer vector, the sign-then-commit ordering that stops a row ever pointing at a missing object, per-subject limits re-checked inside the commit transaction, the settled-card freeze keyed on payment status rather than on the page, Floor being able to take *and* delete on an open card, the box being a `<div>` so the Financial Lock cannot kill viewing, and — the reason the owner asked — that with storage switched off the form still opens, the invoice still prints and settlement never chases a photo |
 | `test_vehicle_ids.py` | `workshop/vehicle_ids.py` — the chassis code and VIN. A VIN is tidied (capitals, no spaces or dashes) and then refused unless it is 17 letters and numbers with no I, O or Q — and a real European VIN passes because there is **no check-digit test**. The VIN box carries no `maxlength`, so a VIN typed in groups is not cut off; both forms answer identically; neither box is `jc-optional`; Floor may record both. All six car searches find a car by either. The Car Profile shows each field's **latest recorded** value, and its search no longer shrinks a car's visit count. Neither is printed on the bill, All Invoices, the service history sheet or the printed estimate, and neither is chased at settlement |
 | `test_known_car.py` | `workshop/known_car.py` — a known plate fills the car. Brand and model come from the newest visit; the colour from the newest visit that recorded one, an 'Other' colour with its own value; the two codes are `latest_recorded()`'s answer. **A group is never stitched from two visits** — a newest visit with only a customer's name answers NO number rather than an older owner's. The customer is ABSENT from the answer unless asked for, and the view asks only for Office and Owner: Floor's JSON carries neither key. The offer is greyed in as the two boxes' placeholders from script — the server sends neither box a placeholder — and its "Use last visit" button ships hidden, is a `type="button"`, and is not on Floor's page |
+| `test_legacy_data.py` | Legacy Data — the go-live starting position. **The lock**: an owner locks it from the page and both screens go read-only, a second press changes nothing, only an owner can press it and only by POST, the page offers it while unlocked and names who locked it after, the host switch locks on its own, and only `unlock_legacy_data --yes` lifts the row. **Opening Stock** raises the shelf, sets the cost and creates no shop balance; a part fitted from it is costed at the typed cost, and so is one fitted BEFORE the count was typed (opening stock is always the first receipt); a later bill blends with what is left; a corrected count moves the shelf by the difference, a corrected cost re-prices parts used, a cleared count takes the stock back; the cost is required, one bad row saves nothing, a figure is refused rather than rounded. **Opening Balances** are saved exactly as typed (the screen takes nothing off for unassigned spares — the owner's rule), every balance and the Profit page's payable tiles follow, payments pay it before any part or bill in all three waterfalls, the shop page's "left" line shows only while unpaid, the whole-ledger print keeps it for ever and a dated print never has it, a shop still owing it cannot be archived. **Neither moves a profit or cash figure.** Owner only on the server; the menu carries ONE Legacy Data row whose page offers each role what it can open, and each screen leads back to it; the purge clears it. The round save is inside the form on both screens. **The go-live lock** (`LEGACY_DATA_LOCKED`): both screens show figures only and refuse a POST even from an owner, the page marks both locked, Old Bills stays open, and it is off unless set |
 | `test_mileage.py` | `workshop/mileage.py` — the allowlist of odometer shapes. What `parse_km` accepts (`50,000`, `1,02,340`, `50k`, `50.5k`, `50000 km`) and what it refuses on purpose: zero, negatives, **miles — never converted**, notes, anything past `MAX_KM`. Plus `normalise()` keeping an unreadable value exactly as typed, because it runs in `clean()` on every save |
 | `test_service_history.py` | The arithmetic behind the sheet: gaps measured from the immediately previous visit and never reaching past one with no reading, part chains numbered from the first fitting, the commonest spelling winning a chain's name, `typical_km` over completed lives only, due-soon at `DUE_AT_FRACTION` of this car's OWN average, and each visit's printed amount being `total_bill_amount` with its **discount carried beside it** (the owners' decision, 2026-09-11) — `total_discount` and `net_total` summed from the same rows, floored so a negative never adds to a bill, and nothing about what was received. Plus **how regularly the car is serviced** (`HowRegularlyTheCarIsServicedTests`): five visits give four gaps, one visit says nothing about regularity, and an implausible gap is left out of the DISTANCE while its DAYS still count — two admission dates are not in question because an odometer was mistyped |
 | `test_service_history_view.py` | The two pages: RBAC on both, what each tick box does, a current reading that cannot be true being refused on the page rather than dropped, the `go`/`edit` split that stopped the Change link redirecting back to the sheet, `?back=` surviving the whole chain, the Part life tick never reaching the paper, the closing TOTAL adding up from the rows above it — and, with a discount on the record, closing on TOTAL BILLED / DISCOUNT / **NET TOTAL** and never on a word claiming payment — part-life numbers printed bare with no legend, a part's average printed over the column it averages and only when there are two finished lives to average, the light grey dashed cut line that separates the record from PART LIFE running past the margin on both sides, and leaving with the table it separates, PART LIFE printing on a page of its own and a part's whole chain never splitting across a fold, a figure column's heading sitting on its figures' own right edge, each tick named for the block it switches, and the toolbar staying one row at 375px. Plus `ItIsSetLikeTheBillTests`, which holds the sheet to the invoice rather than to a description of it: **no label in the vehicle block bold**, nothing on the sheet green (green means MONEY in this system and this document carries no payment state), a still-fitted part marked navy, the card splitting on the bill's own gridline, the record block being the bill's parties block with the bill's labels in the bill's order, the caveats as one middot-separated run that never uses the asterisk, and `test_both_documents_end_the_same_way`, which renders the BILL as well and compares the two signature lines rather than asserting one page against a description of the other |
@@ -977,6 +991,7 @@ WorkshopOS (Titan)/
 │   │   ├── billing.py          ← invoice_view, update_bill_status
 │   │   ├── estimate.py         ← Estimates: list, create, edit, print, delete (connected to nothing)
 │   │   ├── old_bills.py        ← Old Bills: list, add, edit, print one, delete (connected to nothing)
+│   │   ├── legacy.py           ← Legacy Data: Opening Stock and Opening Balances, the go-live starting position (Owner)
 │   │   ├── bulk_payer.py       ← bulk payer / "Fleet Account" views incl. advance-balance cascade
 │   │   ├── spare_shop.py       ← spare shop views
 │   │   ├── pending.py          ← pending_payments_list
@@ -1041,7 +1056,7 @@ WorkshopOS (Titan)/
 │   │   ├── sweep_photo_blobs.py       ← Storage objects whose rows are gone (dry run by default)
 │   │   ├── purge_old_photos.py        ← 1-year retention sweep; always skips an unpaid bill (dry run)
 │   │   └── copy_sqlite_to_postgres.py ← Push a seeded SQLite file up to PostgreSQL
-│   ├── templates/workshop/     ← 98 HTML files
+│   ├── templates/workshop/     ← 102 HTML files
 │   ├── static/js/              ← script.js (formsets + service-worker registration),
 │   │                             estimate.js, spare_autofill.js, sound.js,
 │   │                             confirm.js (the shared question card, and the
@@ -1053,20 +1068,20 @@ WorkshopOS (Titan)/
 │   │                             understood while typing).
 │   │                             notifications.js and
 │   │                             style.css live in the project-level static/
-│   ├── migrations/             ← 79 migrations
-│   └── tests/                  ← 70 test files (69 test_*.py + tests.py) + tests/js/ (node --test)
+│   ├── migrations/             ← 81 migrations
+│   └── tests/                  ← 72 test files (71 test_*.py + tests.py) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
-│   ├── models.py               ← 8 Models (3 core + 5 supplier)
+│   ├── models.py               ← 9 Models (3 core + 5 supplier + OpeningStock)
 │   ├── views.py                ← core inventory views
 │   ├── views_suppliers.py      ← supplier shops module views
 │   ├── urls.py                 ← 33 URL patterns (10 core + 23 supplier)
 │   ├── costing.py              ← Weighted-average replay, date-ordered (pure, no views)
-│   ├── signals.py              ← 10 signal handlers, 3 groups (3 consumption + 2 jobcard soft-delete reversal + 5 supplier: 3 restock-item + a bill-terms pre/post_save pair)
+│   ├── signals.py              ← 13 signal handlers, 4 groups (3 consumption + 2 jobcard soft-delete reversal + 5 supplier: 3 restock-item + a bill-terms pre/post_save pair + 3 opening stock)
 │   ├── admin.py                ← 8 admin registrations
 │   ├── apps.py                 ← Signal registration
 │   ├── templates/inventory/    ← 20 templates
-│   ├── migrations/             ← 9 migrations
+│   ├── migrations/             ← 10 migrations
 │   └── tests.py, tests_suppliers.py, test_signals.py,
 │       test_costing.py, test_supplier_costing.py ← 5 test files
 │
@@ -1100,4 +1115,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-18)*: 2 Django Apps · **44 Models** (36 workshop + 8 inventory) · **176 URL Routes** (143 + 33, excluding Django admin; 177 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **10 Signal Handlers** (3 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **76 Test Files / 2,645 tests** · **88 Migrations** (79 workshop + 9 inventory)
+> **Total** *(re-measured 2026-09-20)*: 2 Django Apps · **46 Models** (37 workshop + 9 inventory) · **180 URL Routes** (147 + 33, excluding Django admin; 181 under `DEBUG=True`, which adds the media path) · **125 Templates** (102 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **77 Test Files / 2,684 tests** · **91 Migrations** (81 workshop + 10 inventory)

@@ -1,0 +1,177 @@
+{% extends 'workshop/base.html' %}
+
+{% block title %}Legacy Data{% endblock %}
+
+{% comment %}
+================================================================================
+LEGACY DATA — the one drawer row's page
+================================================================================
+What the workshop brought with it from before the system. The drawer carries a
+single "Legacy Data" row (the owner's call, 2026-09-20) and this page holds the
+three screens behind it, drawn with the drawer's OWN row classes
+(`.drawer-link`, `.drawer-ico`, `.drawer-chevron`, declared in base.html for
+every page) so they look exactly as they did in the menu.
+
+Office sees Old Bills alone; the two go-live screens are Owner only, matching
+`@owner_required` in workshop/views/legacy.py.
+
+It also carries the LOCK — the one place the go-live figures are frozen. An
+owner presses it once everything matches the books, behind THREE confirmations
+because there is no way back inside the app: what it says, that it cannot be
+undone here, and finally the figures it is about to freeze. See
+`workshop.models.LegacyDataLock` for why the lock is a row rather than a
+host-side switch.
+================================================================================
+{% endcomment %}
+
+{% block extra_css %}{% include 'workshop/legacy/_legacy_style.html' %}
+<style>
+    .lg-hub { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+    /* The lock mark takes the row's free space so the chevron stays at the edge. */
+    .lg-hub .lg-lock { margin-left: auto; font-size: .9rem; color: #94a3b8; }
+    .lg-hub .lg-lock + .drawer-chevron { margin-left: 0; }
+
+    /* THE LOCK, at the foot of the page — never beside the three rows, which are
+       the way IN. Red, because it is the one control here that cannot be undone;
+       the app's own danger colour, and white on it measures 4.83:1. */
+    /* ⚠ THE BUTTON SITS ON ITS OWN LINE AND NEVER WRAPS. Beside the sentence it
+       was squeezed into a two-line red slab — the widest, loudest object on a
+       page whose three rows are the way IN, for the one control nobody presses
+       until the very end. On its own line it can be compact, and the words stay
+       on one line at every width. */
+    .lg-lockbar {
+        margin-top: 14px; padding: 14px 16px;
+        background: #fff; border: 1px solid var(--color-border); border-radius: 12px;
+    }
+    .lg-lock-head {
+        display: flex; align-items: center; gap: 9px;
+        font-size: .88rem; font-weight: 700; color: #0f172a;
+    }
+    .lg-lock-head i { color: #dc2626; }
+    .lg-lock-say { margin: 4px 0 0 29px; font-size: .8rem; line-height: 1.45; color: #64748b; }
+    .lg-lock-act { display: flex; justify-content: flex-end; margin-top: 12px; }
+    .lg-lock-btn {
+        display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+        min-height: 40px; padding: 0 16px; border: 1px solid #dc2626; border-radius: 999px;
+        background: #fff; color: #b91c1c; font-weight: 700; font-size: .82rem;
+    }
+    @media (hover: none) { .lg-lock-btn { min-height: 44px; } }
+    @media (hover: hover) { .lg-lock-btn:hover { background: #dc2626; color: #fff; } }
+    .lg-locked-note {
+        display: flex; align-items: baseline; gap: 8px;
+        margin-top: 14px; padding: 12px 14px;
+        background: #f1f5f9; border: 1px solid var(--color-border); border-radius: 12px;
+        font-size: .82rem; line-height: 1.45; color: #334155;
+    }
+    .lg-locked-note i { color: #64748b; }
+    @media (max-width: 575.98px) {
+        .lg-lock-act { justify-content: stretch; }
+        .lg-lock-act form, .lg-lock-btn { width: 100%; justify-content: center; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lg-page">
+    <header class="lg-header">
+        <h1 class="lg-title"><i class="bi bi-database-down" aria-hidden="true"></i>Legacy Data</h1>
+        <p class="lg-sub">What the workshop brought with it from before the system.</p>
+    </header>
+
+    <nav class="lg-card lg-hub" aria-label="Legacy Data">
+        <a class="drawer-link accent-amber" href="{% url 'old_bill_list' %}">
+            <span class="drawer-ico"><i class="bi bi-receipt"></i></span>
+            Old Bills
+            <i class="bi bi-chevron-right drawer-chevron"></i>
+        </a>
+        {% if can_open_go_live %}
+        <a class="drawer-link accent-blue" href="{% url 'opening_stock' %}">
+            <span class="drawer-ico"><i class="bi bi-boxes"></i></span>
+            Opening Stock
+            {% if locked %}<i class="bi bi-lock-fill lg-lock" role="img" aria-label="Locked"></i>{% endif %}
+            <i class="bi bi-chevron-right drawer-chevron"></i>
+        </a>
+        <a class="drawer-link accent-red" href="{% url 'opening_balances' %}">
+            <span class="drawer-ico"><i class="bi bi-journal-text"></i></span>
+            Opening Balances
+            {% if locked %}<i class="bi bi-lock-fill lg-lock" role="img" aria-label="Locked"></i>{% endif %}
+            <i class="bi bi-chevron-right drawer-chevron"></i>
+        </a>
+        {% endif %}
+    </nav>
+
+    {% if can_open_go_live %}
+        {% if locked %}
+        <p class="lg-locked-note"><i class="bi bi-lock-fill" aria-hidden="true"></i><span>Opening Stock and Opening Balances are <b>locked</b>{% if lock_row %} &mdash; {{ lock_row.locked_at|date:"j M Y" }}{% if lock_row.locked_by %}, by {{ lock_row.locked_by.get_full_name|default:lock_row.locked_by.username }}{% endif %}{% endif %}. They can still be read. Changing them again needs the system's own administrator.</span></p>
+        {% else %}
+        <div class="lg-lockbar">
+            <p class="lg-lock-head"><i class="bi bi-shield-lock" aria-hidden="true"></i>Finished with the go-live figures?</p>
+            <p class="lg-lock-say">Once Opening Stock and Opening Balances match the count and the shops' books, lock them. They stay readable; nothing in the app can change them afterwards.</p>
+            <div class="lg-lock-act">
+                <form method="post" action="{% url 'legacy_lock' %}" id="lgLockForm">
+                    {% csrf_token %}
+                    <button type="button" class="lg-lock-btn" id="lgLockBtn"><i class="bi bi-lock-fill" aria-hidden="true"></i>Lock Legacy Data</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+</div>
+
+{% if can_open_go_live and not locked %}
+<script>
+/* THREE confirmations, each red, and only the third one presses anything: what
+   it does, that it cannot be undone here, then the figures being frozen. The
+   shared card (`window.wsConfirm`) returns a Promise, so they simply chain.
+   `submit()` is the form's own, which confirm.js latches against a double
+   press. */
+(function () {
+    var btn = document.getElementById('lgLockBtn');
+    var form = document.getElementById('lgLockForm');
+    if (!btn || !form) return;
+
+    var FROZEN = {{ counted }} + ' product{{ counted|pluralize }} counted, worth ₹{{ worth|floatformat:0 }}'
+               + ' · ₹{{ owed|floatformat:0 }} owed to shops';
+    var NOTHING = 'Nothing has been entered on either screen yet. Locking now freezes them empty.';
+
+    /* The same question three times, louder each time: the ordinary card, then
+       full amber, then full red. The themes are in style.css. */
+    var CARDS = [
+        {title: 'Lock Legacy Data?', ok: 'Yes, continue', theme: 'danger',
+         text: 'Opening Stock and Opening Balances become read-only for everyone, owners included. They can still be read.'},
+        {title: 'This cannot be undone here', ok: 'I understand', theme: 'solid-warning',
+         text: 'No button, page or account in the app can unlock it afterwards. Only the system\u2019s own administrator can, from the server.'},
+        {title: 'Last check', ok: 'Lock it', theme: 'solid-danger',
+         text: {% if nothing_entered %}NOTHING{% else %}'These figures are about to be frozen: ' + FROZEN + '.'{% endif %}}
+    ];
+
+    /* ⚠ ONE CARD MUST BE FULLY GONE BEFORE THE NEXT OPENS — 400ms, and the
+       number is measured rather than picked. Asked straight from the answer,
+       the second card is swallowed: Bootstrap ignores a `show()` while the same
+       modal is still transitioning out (the `_isTransitioning` refusal
+       confirm.js records for `hide()`), and the closing card's own
+       `hidden.bs.modal` then answers the NEW question "no". Both were seen
+       here: card two set its text and never appeared, and card three came back
+       answered before anybody pressed anything. Waiting on `hidden` is not
+       enough either — that event IS the one that settles the wrong question.
+       At 400ms, comfortably past the 150ms fade and Bootstrap's own cleanup,
+       all three cards open and the chain reaches the form. */
+    var GAP_MS = 400;
+
+    btn.addEventListener('click', function () {
+        var step = 0;
+        (function next() {
+            if (step === CARDS.length) { form.submit(); return; }
+            var card = CARDS[step++];
+            window.wsConfirm({
+                title: card.title, text: card.text, ok: card.ok,
+                icon: 'bi-lock-fill', theme: card.theme, cancel: 'Cancel'
+            }).then(function (answer) {
+                if (answer.ok) { window.setTimeout(next, GAP_MS); }
+            });
+        }());
+    });
+}());
+</script>
+{% endif %}
+{% endblock %}

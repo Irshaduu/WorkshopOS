@@ -362,6 +362,16 @@
       </div>
     </div>
   </div>
+  {% if shop.opening_balance_left %}
+  {% comment %}
+    The go-live opening balance, said ONLY while some of it is unpaid. Payments
+    pay it off first (it is the oldest debt), so the figure falls with every
+    instalment and the line disappears for good at zero — after that this page
+    reads exactly like any other shop's. `.opening-left` is in style.css,
+    shared with the other kind of shop's page.
+  {% endcomment %}
+  <p class="opening-left"><i class="bi bi-hourglass-split" aria-hidden="true"></i><span>Opening balance from before the system: <b>&#8377;{{ shop.opening_balance_left|floatformat:0|intcomma }}</b>&nbsp;left</span></p>
+  {% endif %}
 </div>
 
 <!-- ── QUICK PAYMENT ── -->

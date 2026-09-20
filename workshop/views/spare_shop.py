@@ -246,6 +246,10 @@ def spare_shop_detail(request, pk):
     page_obj = paginator.get_page(request.GET.get('page'))
     
     # ── Absolute Ledger Waterfall Calculation ──
+    # The pool is what the payments leave AFTER the go-live opening balance:
+    # that debt is the oldest this shop has, so it is paid off first, and a part
+    # is only marked covered once the money has actually reached it.
+    paid_to_parts = shop.paid_beyond_opening
     page_items = list(page_obj)
     for row_no, item in enumerate(page_items, start=1):
         # The sticky row number, same handle the Job Card's Spare Parts table
@@ -260,7 +264,7 @@ def spare_shop_detail(request, pk):
 
         item_cost = item.item_cost
         older_sum = item.absolute_running_sum - item_cost
-        bulk_pool = total_paid - older_sum
+        bulk_pool = paid_to_parts - older_sum
         
         if bulk_pool >= item_cost:
             item.covered_status = 'COVERED'
@@ -488,6 +492,13 @@ def spare_shop_print(request, pk):
     start_date_str = ''
     end_date_str = ''
     today = timezone.localdate()  # IST-aware — respects TIME_ZONE = 'Asia/Kolkata'
+    # Whether this print covers the WHOLE ledger — no date window at all. Only
+    # then does it carry the go-live opening balance (below). Custom counts as
+    # a window only once both of its dates actually parse, the same test the
+    # filter itself applies.
+    whole_ledger = filter_type not in (
+        'today', 'this_week', 'this_month', 'this_year',
+        'last_week', 'last_month', 'last_year', 'custom', 'month', 'year')
     null_key = f'{group_field}__isnull'
 
     from django.db.models import Q as _Q
@@ -556,6 +567,8 @@ def spare_shop_print(request, pk):
                     date__gte=sd,
                     date__lte=ed,
                 )
+        if not (start_date_str and end_date_str) or not (sd and ed):
+            whole_ledger = True
     # Legacy aliases for any old bookmarked print URLs
     elif filter_type == 'month':
         sd = today - timedelta(days=30)
@@ -580,7 +593,15 @@ def spare_shop_print(request, pk):
         total_paid=Coalesce(Sum('amount'), Value(Decimal('0')), output_field=DecimalField())
     )['total_paid']
     
-    total_balance = total_purchases - total_paid
+    # ⚠ THE WHOLE-LEDGER PRINT CARRIES THE GO-LIVE OPENING BALANCE, FOR EVER.
+    # These totals are re-added from the rows rather than read from the cached
+    # column, and some of the payments in them paid off the opening balance —
+    # so without its own line the printed balance would come out short by
+    # exactly that debt. A dated print is a statement of one window, where it
+    # has no place. Unlike the shop page's line, this one never disappears once
+    # the debt is paid: it is arithmetic here, not a reminder.
+    opening_balance = shop.opening_balance if whole_ledger else Decimal('0')
+    total_balance = total_purchases + opening_balance - total_paid
 
     start_date_obj = None
     end_date_obj = None
@@ -605,6 +626,7 @@ def spare_shop_print(request, pk):
         'start_date_obj': start_date_obj,
         'end_date_obj': end_date_obj,
         'total_purchases': total_purchases,
+        'opening_balance': opening_balance,
         'total_paid': total_paid,
         'total_balance': total_balance,
         'item_count': items_qs.count()

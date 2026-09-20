@@ -1,0 +1,85 @@
+{% extends 'workshop/base.html' %}
+{% load humanize %}
+
+{% block title %}Opening Stock{% endblock %}
+
+{% comment %}
+================================================================================
+OPENING STOCK — what was already on the shelf on go-live day
+================================================================================
+Every product, grouped by category, with two boxes: how many are on the shelf
+and what ONE cost (the last price paid). Typed once, on go-live day, by an
+owner. Saving raises the shelf through the stock signals and creates NO shop
+balance — what was owed for those goods is Opening Balances, a separate screen.
+
+The cost is required: without it a part fitted before the next Supplies Shop
+bill is charged ₹0 on the Profit page for good. Once `LEGACY_DATA_LOCKED` is set
+on Railway the page is the go-live RECORD: what was counted, as figures, with no
+boxes and no Save — and the view refuses a POST whatever this template draws. The rules are in
+workshop/views/legacy.py; the look is shared with Opening Balances.
+================================================================================
+{% endcomment %}
+
+{% block extra_css %}{% include 'workshop/legacy/_legacy_style.html' %}{% endblock %}
+
+{% block content %}
+<div class="lg-page lg-stock">
+    <a href="{% url 'legacy_home' %}" class="pg-back">
+        <i class="bi bi-arrow-left"></i><span>Legacy Data</span>
+    </a>
+
+    <header class="lg-header">
+        <h1 class="lg-title"><i class="bi bi-boxes" aria-hidden="true"></i>Opening Stock</h1>
+        <p class="lg-sub">What is on the shelf on go-live day, and the last price you paid for one.</p>
+    </header>
+
+    {% if locked %}
+    <p class="lg-locked"><i class="bi bi-lock-fill" aria-hidden="true"></i><span>Locked since go-live. These are the figures the system started from.</span></p>
+    {% for group in groups %}
+    <section class="lg-card">
+        <div class="lg-card-head"><span>{{ group.name }}</span><span class="lg-cols"><span>On shelf</span><span>Cost / unit</span></span></div>
+        {% for row in group.rows %}
+        <div class="lg-row">
+            <div class="lg-name"><b>{{ row.item.name }}</b>{% if row.worth is not None %}<span class="lg-meta">worth &#8377;{{ row.worth|floatformat:0|intcomma }}</span>{% endif %}</div>
+            <span class="lg-fig">{{ row.qty }}</span>
+            <span class="lg-fig">&#8377;{{ row.cost|intcomma }}</span>
+        </div>
+        {% endfor %}
+    </section>
+    {% empty %}
+    <div class="lg-card lg-empty">Nothing was counted on go-live day.</div>
+    {% endfor %}
+    {% if groups %}<div class="lg-save"><span><b>{{ counted }}</b> product{{ counted|pluralize }} counted &middot; worth <b>&#8377;{{ worth|floatformat:0|intcomma }}</b></span></div>{% endif %}
+    {% elif groups %}
+    <form method="post" class="lg-form" autocomplete="off" novalidate>
+        {% csrf_token %}
+        {% for group in groups %}
+        <section class="lg-card">
+            <div class="lg-card-head"><span>{{ group.name }}</span><span class="lg-cols"><span>On shelf</span><span>Cost / unit</span></span></div>
+            {% for row in group.rows %}
+            <div class="lg-row{% if row.problem %} is-bad{% endif %}">
+                <div class="lg-name"><b>{{ row.item.name }}</b>{% if row.worth is not None %}<span class="lg-meta">worth &#8377;{{ row.worth|floatformat:0|intcomma }}</span>{% endif %}</div>
+                <input class="lg-in" type="text" name="qty_{{ row.item.pk }}" value="{{ row.qty }}" inputmode="decimal" aria-label="On shelf: {{ row.item.name }}">
+                <input class="lg-in" type="text" name="cost_{{ row.item.pk }}" value="{{ row.cost }}" inputmode="decimal" aria-label="Cost per unit in rupees: {{ row.item.name }}">
+                {% if row.problem %}<div class="lg-problem">{{ row.problem }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </section>
+        {% endfor %}
+
+        <div class="lg-save">
+            <span><b>{{ counted }}</b> of {{ product_count }} counted &middot; worth <b>&#8377;{{ worth|floatformat:0|intcomma }}</b></span>
+            <button type="submit" class="lg-save-btn">Save</button>
+        </div>
+        {% comment %}
+        The round save, the Job Card's own control. Inside the form so it
+        submits it, and drawn only once something has been typed — see
+        `.lg-fab` in the shared style for why both of those matter.
+        {% endcomment %}
+        <button type="submit" class="lg-fab" aria-label="Save" title="Save"><i class="bi bi-check-lg"></i></button>
+    </form>
+    {% else %}
+    <div class="lg-card lg-empty">No products yet. Add them from <a href="{% url 'supplier_shop_list' %}">Supplies Shops</a> &rarr; Add Product, then count the shelf here.</div>
+    {% endif %}
+</div>
+{% endblock %}

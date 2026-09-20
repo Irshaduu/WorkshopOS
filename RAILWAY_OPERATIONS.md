@@ -229,6 +229,7 @@ the mobiles once the accounts exist (`GO_LIVE_RUNBOOK.md` §3.3).
 | Variable | Value |
 |---|---|
 | `LAST_EXCEL_BILL_NUMBER` | The last bill the workshop wrote in Excel, e.g. `JB-26-245` — **set before the first live job card** |
+| `LEGACY_DATA_LOCKED` | Optional **spare** lock for Opening Stock and Opening Balances. The lock owners use is a button on `/legacy/`, stored in the database so it travels with a restore or a move; this variable locks as well and can never unlock. Correcting a locked figure: `python manage.py unlock_legacy_data --yes` on the server, then press Lock again |
 
 The Excel bills used the system's own JB-YY-NNN numbers, so live job cards of
 that year start after this one and an old bill cannot take a number after it.

@@ -1083,6 +1083,63 @@ select.status-fixed {
 .wcf-card[data-theme="success"] { --wcf-tint: #f0fdf4; --wcf-ink: #15803d; }
 .wcf-card[data-theme="info"]    { --wcf-tint: #eff6ff; --wcf-ink: #1d4ed8; }
 
+/* -------------------------------------------------------------------------
+   TWO SOLID CARDS  —  for a question that gets louder as it is repeated
+   -------------------------------------------------------------------------
+   The Legacy Data lock asks three times (the owner's shape, 2026-09-20): the
+   ordinary white card, then FULL AMBER, then FULL RED. A card that only
+   changes its words reads as the same question asked again; one that changes
+   colour says the stakes are rising.
+
+   It is the Cashbook steer's reasoning — the app's one other solid card — that
+   makes these safe: a solid fill is for a dialog that STOPS somebody, never for
+   "did you mean this?". Do not spend them anywhere else.
+
+   ⚠ THE INK IS MEASURED, NOT PICKED. White on #f59e0b is 2.2:1 and unreadable,
+   so the amber card is dark-inked (#1e293b on it, 6.81:1); #b91c1c carries white
+   at 6.47:1 and body white at .92 at 5.66:1 — the same pair the Cashbook steer
+   measured. The confirm button inverts to the card's own colour on white, which
+   keeps the one control that commits the act the brightest thing on the card.
+   ------------------------------------------------------------------------- */
+.wcf-card[data-theme="solid-warning"],
+.wcf-card[data-theme="solid-danger"] {
+    border-color: transparent;
+}
+.wcf-card[data-theme="solid-warning"] {
+    background: #f59e0b;
+    --wcf-tint: rgba(255, 255, 255, 0.3);
+    --wcf-ink: #1e293b;
+}
+.wcf-card[data-theme="solid-danger"] {
+    background: #b91c1c;
+    --wcf-tint: rgba(255, 255, 255, 0.16);
+    --wcf-ink: #fff;
+}
+.wcf-card[data-theme="solid-warning"] .wcf-title { color: #1e293b; }
+.wcf-card[data-theme="solid-warning"] .wcf-text  { color: rgba(30, 41, 59, 0.92); }
+.wcf-card[data-theme="solid-danger"] .wcf-title  { color: #fff; }
+.wcf-card[data-theme="solid-danger"] .wcf-text   { color: rgba(255, 255, 255, 0.92); }
+
+.wcf-card[data-theme="solid-warning"] .wcf-btn--yes {
+    background: #1e293b; border-color: #1e293b; color: #fff;
+}
+.wcf-card[data-theme="solid-danger"] .wcf-btn--yes {
+    background: #fff; border-color: #fff; color: #b91c1c;
+}
+/* The way out stays legible on both grounds: a filled white pill on amber, and
+   on red a white ring — the Cashbook steer's own finding that a control's
+   SHAPE has to separate from the fill, not only its label. */
+.wcf-card[data-theme="solid-warning"] .wcf-btn--no {
+    background: #fff; border-color: #fff; color: #1e293b;
+}
+.wcf-card[data-theme="solid-danger"] .wcf-btn--no {
+    background: transparent; border-color: rgba(255, 255, 255, 0.85); color: #fff;
+}
+@media (hover: hover) {
+    .wcf-card[data-theme="solid-danger"] .wcf-btn--no:hover { background: rgba(255, 255, 255, 0.14); }
+    .wcf-card[data-theme="solid-warning"] .wcf-btn--no:hover { filter: brightness(0.95); background: #fff; }
+}
+
 .wcf-icon {
     width: 52px; height: 52px;
     margin: 0 auto 14px;
@@ -1188,3 +1245,26 @@ form[data-ws-busy="1"] .js-ws-submit {
     opacity: 0.55;
     cursor: progress;
 }
+
+/* -------------------------------------------------------------------------
+   THE GO-LIVE OPENING BALANCE LINE  —  both shop headers
+   -------------------------------------------------------------------------
+   One quiet line under the four stat boxes of a spare shop and a Supplies
+   Shop, inside the dark header slab, drawn only while part of the go-live
+   opening balance is unpaid. Here rather than in either template because both
+   draw it — the `.rpay-*` rule.
+
+   `.72` white, not the slab labels' `.55`: this is a sentence to be read, and
+   at `.55` it measured too faint for body text on the lightest slab stop.
+   ------------------------------------------------------------------------- */
+.opening-left {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    margin: 10px 2px 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.72);
+}
+.opening-left i { flex: 0 0 auto; }
+.opening-left b { color: #fff; font-weight: 700; }

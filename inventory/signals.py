@@ -31,7 +31,7 @@ from django.dispatch import receiver
 from django.db.models import F
 from workshop.models import JobCardSpareItem, JobCard
 from .costing import recompute_average_cost
-from .models import Item, SupplierRestockBill, SupplierRestockItem
+from .models import Item, OpeningStock, SupplierRestockBill, SupplierRestockItem
 
 INVENTORY = JobCardSpareItem.SOURCE_INVENTORY
 
@@ -226,6 +226,43 @@ def recost_on_bill_terms_change(sender, instance, created, **kwargs):
 
     _recost(SupplierRestockItem.objects.filter(bill=instance)
             .values_list('item_id', flat=True))
+
+
+# -----------------------------------------------------------------------------
+# Opening stock — what was on the shelf on go-live day
+# -----------------------------------------------------------------------------
+# A receipt like a Supplies Shop bill line, and moved the same way, so the rule
+# that stock moves ONLY through these handlers holds for the go-live count too.
+# It belongs to no shop, so it raises the shelf and touches no balance.
+@receiver(pre_save, sender=OpeningStock)
+def track_old_opening_stock(sender, instance, **kwargs):
+    old = None
+    if instance.pk:
+        old = OpeningStock.objects.filter(pk=instance.pk).values('item_id', 'quantity').first()
+    instance._old_item_id = old['item_id'] if old else None
+    instance._old_quantity = _as_decimal(old['quantity']) if old else Decimal('0')
+
+
+@receiver(post_save, sender=OpeningStock)
+def update_stock_on_opening_save(sender, instance, created, **kwargs):
+    """A corrected count moves the shelf by the DIFFERENCE, never by the whole
+    figure again; a corrected cost re-runs the replay, which re-prices every
+    part already used from it — the same as correcting a Supplies Shop bill."""
+    deltas = defaultdict(Decimal)
+    old_item_id = getattr(instance, '_old_item_id', None)
+    if old_item_id:
+        deltas[old_item_id] -= _as_decimal(instance._old_quantity)
+    deltas[instance.item_id] += _as_decimal(instance.quantity)
+    _apply(deltas)
+    _recost({instance.item_id, old_item_id})
+
+
+@receiver(post_delete, sender=OpeningStock)
+def remove_stock_on_opening_delete(sender, instance, **kwargs):
+    """Clearing a product's opening count takes that stock back off the shelf —
+    unclamped, like every other removal here."""
+    _apply({instance.item_id: -_as_decimal(instance.quantity)})
+    _recost({instance.item_id})
 
 
 @receiver(post_delete, sender=SupplierRestockItem)

@@ -676,9 +676,13 @@ class TheOldBillScreensTests(TestCase):
         add = self.client.get(reverse('old_bill_add')).content.decode()
         self.assertNotIn('ob-menu"', add)
 
-    def test_the_drawer_offers_old_bills_to_office(self):
+    def test_office_reaches_old_bills_through_legacy_data(self):
+        # The menu carries ONE Legacy Data row (the owner's call, 2026-09-20),
+        # and its page holds Old Bills for Office.
         html = self.client.get(reverse('old_bill_list')).content.decode()
-        self.assertIn(f'href="{reverse("old_bill_list")}"', html)
+        self.assertIn(f'href="{reverse("legacy_home")}"', html)
+        page = self.client.get(reverse('legacy_home')).content.decode()
+        self.assertIn(f'href="{reverse("old_bill_list")}"', page)
 
 
 class TheOldBillsPageTests(TestCase):

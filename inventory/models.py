@@ -114,11 +114,29 @@ class SupplierShop(models.Model):
     address = models.CharField(max_length=300, blank=True, null=True)
     total_billed_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # WHAT THE WORKSHOP ALREADY OWED THIS SHOP ON GO-LIVE DAY, typed once on
+    # Legacy Data → Opening Balances, exactly as the shop's own book says. It
+    # is a debt from the Excel years and nothing else: no bill, no stock, no
+    # expense and no cash. `update_totals()` adds it to the billed side, so the
+    # balance on every screen follows it, and the payment waterfall treats it
+    # as the OLDEST debt — see `paid_beyond_opening`.
+    # `db_default` as well as `default`, per the migration rule.
+    opening_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'), db_default=Decimal('0'),
+        help_text="Owed to this shop on go-live day, from before the system")
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['name']
+        constraints = [
+            # A shop the workshop had paid AHEAD is not supported: the screen
+            # refuses a negative, and this is the last line of defence.
+            models.CheckConstraint(
+                condition=models.Q(opening_balance__gte=0),
+                name='inventory_suppliershop_opening_balance_non_negative'
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -126,6 +144,27 @@ class SupplierShop(models.Model):
     @property
     def get_pending_balance(self):
         return self.total_billed_amount - self.total_paid_amount
+
+    @property
+    def opening_balance_left(self):
+        """How much of the go-live opening balance is still unpaid.
+
+        Payments pay the oldest debt first and the opening balance IS the
+        oldest, so every rupee paid comes off it before it reaches a bill. The
+        shop page shows the line only while this is above zero.
+        """
+        left = self.opening_balance - self.total_paid_amount
+        return left if left > 0 else Decimal('0')
+
+    @property
+    def paid_beyond_opening(self):
+        """What the payments leave for the BILLS once the opening balance is paid.
+
+        The payment waterfall allocates this, not `total_paid_amount`, oldest
+        bill first. Negative while the opening balance is still being paid off,
+        which correctly leaves every bill UNPAID.
+        """
+        return self.total_paid_amount - self.opening_balance
 
     def update_totals(self):
         """
@@ -163,6 +202,10 @@ class SupplierShop(models.Model):
         billed = self.bills.aggregate(
             total=Coalesce(Sum(SUPPLIER_BILL_COST), 0, output_field=models.DecimalField())
         )['total']
+        # The go-live debt joins the billed side HERE, so every reader of the
+        # cached total — this shop's pages, the Profit page's payable tile,
+        # Deep Analysis and the archive guard — follows it with no change.
+        billed += self.opening_balance or Decimal('0')
 
         # Paid amount = Sum(amount) where is_trashed=False
         paid = self.payments.filter(is_trashed=False).aggregate(
@@ -311,6 +354,42 @@ class SupplierRestockItem(models.Model):
         bill = self.bill
         super().delete(*args, **kwargs)
         bill.update_totals()
+
+
+class OpeningStock(models.Model):
+    """
+    What was already on the shelf on go-live day — one row per product, typed
+    once on Legacy Data → Opening Stock.
+
+    It is a RECEIPT, like a line of a Supplies Shop bill, with one difference
+    that is the whole point: it belongs to no shop, so it raises the shelf and
+    creates NO balance. What the workshop owed for those goods is typed
+    separately as a shop's `opening_balance` — on go-live day the two have no
+    connection, because instalments and usage had long gone their own ways.
+
+    Stock moves through the signals in `inventory/signals.py`, never from a
+    view. The cost is REQUIRED: without it every part fitted before the next
+    Supplies Shop bill would be charged ₹0 on the Profit page, permanently,
+    because a later-dated bill never reaches back in the costing replay. In
+    that replay this row is ALWAYS the first event, whatever day it was typed —
+    it is the position the system started from.
+    """
+    item = models.OneToOneField(Item, on_delete=models.CASCADE, related_name='opening_stock')
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity__gt=0),
+                                   name='inventory_openingstock_quantity_positive'),
+            models.CheckConstraint(condition=models.Q(unit_cost__gt=0),
+                                   name='inventory_openingstock_unit_cost_positive'),
+        ]
+
+    def __str__(self):
+        return f"Opening stock: {self.item.name} x {self.quantity}"
 
 
 class SupplierPayment(models.Model):

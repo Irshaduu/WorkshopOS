@@ -746,11 +746,29 @@ class SpareShop(models.Model):
     address = models.CharField(max_length=300, blank=True, null=True)
     total_purchased_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # WHAT THE WORKSHOP ALREADY OWED THIS SHOP ON GO-LIVE DAY, typed once on
+    # Legacy Data → Opening Balances, exactly as typed — the person entering it
+    # takes off any unassigned spares already recorded against this shop, by
+    # hand, so nothing is counted twice. A debt from the Excel years and
+    # nothing else: no part, no expense, no cash. `update_totals()` adds it to
+    # the purchased side and the payment waterfall treats it as the OLDEST
+    # debt. The Supplies Shop carries the identical column.
+    opening_balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'), db_default=Decimal('0'),
+        help_text="Owed to this shop on go-live day, from before the system")
     is_trashed = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['name']
+        constraints = [
+            # A shop the workshop had paid AHEAD is not supported: the screen
+            # refuses a negative, and this is the last line of defence.
+            models.CheckConstraint(
+                condition=models.Q(opening_balance__gte=0),
+                name='workshop_spareshop_opening_balance_non_negative'
+            ),
+        ]
 
     def update_totals(self):
         """
@@ -782,13 +800,37 @@ class SpareShop(models.Model):
             total=Coalesce(Sum('amount'), Value(Decimal('0'), output_field=DecimalField()), output_field=DecimalField())
         )['total']
 
-        self.total_purchased_amount = purchases
+        # The go-live debt joins the purchased side HERE, so every reader of the
+        # cached total — this shop's pages, the Profit page's payable tile,
+        # Deep Analysis and the archive guard — follows it with no change.
+        self.total_purchased_amount = purchases + (self.opening_balance or Decimal('0'))
         self.total_paid_amount = payments
         self.save(update_fields=['total_purchased_amount', 'total_paid_amount'])
 
     @property
     def get_pending_balance(self):
         return self.total_purchased_amount - self.total_paid_amount
+
+    @property
+    def opening_balance_left(self):
+        """How much of the go-live opening balance is still unpaid.
+
+        Payments pay the oldest debt first and the opening balance IS the
+        oldest, so every rupee paid comes off it before it reaches a part. The
+        shop page shows the line only while this is above zero.
+        """
+        left = self.opening_balance - self.total_paid_amount
+        return left if left > 0 else Decimal('0')
+
+    @property
+    def paid_beyond_opening(self):
+        """What the payments leave for the PARTS once the opening balance is paid.
+
+        The payment waterfall allocates this, not `total_paid_amount`, oldest
+        part first. Negative while the opening balance is still being paid off,
+        which correctly leaves every part UNPAID.
+        """
+        return self.total_paid_amount - self.opening_balance
 
     def __str__(self):
         return self.name
@@ -2715,3 +2757,41 @@ def queue_photo_blob_for_collection(sender, instance, **kwargs):
     disappearing from the app.
     """
     OrphanedPhotoBlob.objects.get_or_create(storage_key=instance.storage_key)
+
+
+class LegacyDataLock(models.Model):
+    """
+    THE GO-LIVE LOCK on Legacy Data → Opening Stock and Opening Balances.
+
+    ONE ROW MEANS LOCKED; no row means open. It is a stored FACT rather than a
+    setting, and that is the whole reason it exists in this shape (the owner's
+    call, 2026-09-20): a host-side switch lives on the hosting account, so
+    moving the system — a new host, a backup restored somewhere fresh — leaves
+    the section silently OPEN. A row travels with the data: every `pg_dump`,
+    every restore, every migration carries it, and if it ever did come back
+    open an owner simply presses Lock again.
+
+    Set by an owner from the Legacy Data page, behind three confirmations.
+    There is deliberately NO WAY BACK INSIDE THE APP — no button, no page, no
+    role — because "somebody can always undo it" is exactly the correction
+    threat the lock exists to remove. A genuine mistake is corrected from the
+    server with `manage.py unlock_legacy_data --yes`, which is a deliberate act
+    by whoever holds the deployment, not a tap.
+
+    `purge_business_data` clears it, because that runs BEFORE go-live and a
+    purged system must be ready to type its starting position again.
+    """
+    locked_at = models.DateTimeField(default=timezone.now)
+    # SET_NULL, never CASCADE: deleting a login must not unlock the section.
+    locked_by = models.ForeignKey(User, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        verbose_name = "Legacy data lock"
+
+    def __str__(self):
+        return f"Legacy Data locked on {self.locked_at:%d %b %Y}"
+
+    @classmethod
+    def is_locked(cls):
+        return cls.objects.exists()

@@ -23,6 +23,7 @@ REMOVED:
   - RentRate, RentDeposit
   - OldBill (+ job lines, part lines via CASCADE)
   - DeletionLog
+  - LegacyDataLock (the go-live lock — a purged system starts unlocked)
 
 ⚠ THREE TABLES WERE MISSING FROM THIS LIST UNTIL 2026-09-04, all three added
 to the app after this command was written, and all three real money. This is
@@ -34,7 +35,9 @@ PROFIT EQUATION: on the development data that was ₹12,60,000 of fabricated ren
 and ₹12,32,500 of fabricated cash out, left behind by a purge that reported
 success.
   - inventory: SupplierShop, SupplierRestockBill/Item, SupplierPayment,
-               ShopCatalogItem, Item, Category
+               OpeningStock, ShopCatalogItem, Item, Category
+  (a shop's go-live `opening_balance` is a column on the shop, so it goes with
+   the shop; `OpeningStock` is listed on its own so the report counts it)
 
 Usage:
     python manage.py purge_business_data            # dry run — shows counts only
@@ -46,7 +49,7 @@ from django.db import transaction
 
 from workshop.models import (
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
-    JobCardPhoto,
+    JobCardPhoto, LegacyDataLock,
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
     Mechanic, CashbookEntry, DeletionLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
@@ -54,7 +57,7 @@ from workshop.models import (
     OldBill, OldBillJobLine, OldBillPartLine,
 )
 from inventory.models import (
-    Category, Item, ShopCatalogItem, SupplierShop,
+    Category, Item, OpeningStock, ShopCatalogItem, SupplierShop,
     SupplierRestockBill, SupplierRestockItem, SupplierPayment,
 )
 
@@ -83,6 +86,9 @@ class Command(BaseCommand):
             ("Supplier restock items", SupplierRestockItem),
             ("Supplier restock bills", SupplierRestockBill),
             ("Supplier payments", SupplierPayment),
+            # The go-live shelf count. Typed on the live system AFTER this
+            # purge, so anything here at purge time is test typing.
+            ("Opening stock", OpeningStock),
             ("Shop catalog entries", ShopCatalogItem),
             ("Supplier shops", SupplierShop),
             ("Inventory items", Item),
@@ -104,6 +110,10 @@ class Command(BaseCommand):
             ("Old bill job lines", OldBillJobLine),
             ("Old bills", OldBill),
             ("Deletion history", DeletionLog),
+            # The go-live lock. This command runs BEFORE go-live, so a purged
+            # system must be ready to type its starting position again — and
+            # then lock it.
+            ("Legacy data lock", LegacyDataLock),
         ]
 
         counts = [(label, model, model.objects.count()) for label, model in targets]
