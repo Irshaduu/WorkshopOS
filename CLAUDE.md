@@ -2402,15 +2402,79 @@ this rent?"**, one question for both halves.
 **On the map**: the card had NO connector, and the absence was the statement —
 its second chip read "not in profit yet". It now drops straight into **PROFIT**,
 and the chip says the thing the line cannot: **"the deposit is not the cost"**.
-⚠ **ONE line, not two, and the second is refused by the drawing rather than
-forgotten**: reaching CASH TRACKING means routing outside x=1040–1388 and both
-margins are full (x=1006 is the expense trunk, 1013/1024/1030 carry the fleet
-and photos runs, x=1404 is the owner withdrawal's own rail — a second coral run
-there sits 0px from it for 166px, which is what check 5 exists to refuse). It
-is also consistent: **no expense card on that sheet gets a cash line.** Rent
-does not tap the expense trunk either, for geometry rather than meaning — the
-rail's horizontal leg ends at x=1006 and this card sits at x≥1108, so every tap
-would be a diagonal on a sheet built entirely on right angles.
+⚠⚠ **AND SINCE 2026-09-20 IT ALSO REACHES CASH TRACKING, ON A SHARED RAIL —
+this REVERSES "one line, not two", which was a GEOMETRY problem wearing a
+design argument's clothes** (the owner spotted it by reading the card's chips
+against the drawing: "daily deposits" with a single arrow into PROFIT says the
+deposit *is* the cost, which is the one thing this section exists to deny).
+
+The old refusal was all true and none of it was the point: reaching CASH
+TRACKING means routing outside x=1040–1388, both inner margins are full
+(x=1006 is the expense trunk, 1013/1024/1030 carry the fleet and photos runs),
+and a **second** coral run beside the owner withdrawal's rail at x=1404 sits
+~0px from it for 166px, which is what check 5 exists to refuse. What it missed
+is that this sheet already has an idiom for several cards reaching one place
+down one lane: **a rail with taps**, which is what the expense trunk is. So
+x=1404 became the **CASH RAIL** — one line, tapped by OWNER WITHDRAWALS and by
+DEPOSIT & RENT, arriving once at CASH TRACKING's right edge. Nothing runs
+parallel to anything. ⚠ **Three cards on the sheet have cash as their only
+figure, not two** — OWNER WITHDRAWALS, DEPOSIT & RENT's deposit half, and
+SHOP PAYMENTS. The first two tap the rail; the third cannot be routed to it at
+all, for the reason measured below.
+
+⚠ **`FLEET ACCOUNTS` was the precedent all along, and citing it would have
+settled this sooner.** It carries a line to PROFIT *and* a line to CASH
+TRACKING, both in the same colour — the revenue is one fact and
+`BulkPaymentHistory` is another that only cash reads. A card with both is an
+established shape here. (Added in `f32d0ad`, the About-page rework, **not** in
+the sheet's first draft `aa26a40` — checked with `git log -S` rather than
+assumed, because "it has always been like that" is the kind of claim this file
+exists to stop.)
+
+⚠ **What still holds: no EXPENSE card gets a cash line.** SPARE SHOPS,
+WAREHOUSE, CASHBOOK and SALARY all move real cash and all get exactly one line,
+to the expense trunk, because the day the cash leaves is not the day the cost
+lands — the "THREE DATES" rule drawn. That never governed this card, which is
+not an expense card but the only one that is *both*. Rent still does not tap
+the expense trunk, for geometry rather than meaning — the rail's horizontal leg
+ends at x=1006 and this card sits at x≥1108, so every tap would be a diagonal
+on a sheet built entirely on right angles.
+
+⚠ **`SHOP PAYMENTS` MEETS THE SAME TEST AND CANNOT BE DRAWN — this was
+measured, and the answer is a CHIP.** A spare-shop or Supplies Shop payment is
+read by `cash_position()` and by no profit figure, so cash genuinely is the
+only figure it reaches and by the rule above it ought to tap the rail. Two
+things stop it, and neither is crowding:
+
+- **CASH TRACKING (y 549.6–594.2) sits entirely inside the expense trunk's
+  vertical leg (x=1006, y 449–690).** So *every* eastward run from that card
+  crosses the trunk **in the same coral**, which reads as tapping it — the
+  claim that paying a shop is an expense, which is the exact falsehood the
+  card's two existing lines are drawn to prevent. A colour change cannot dodge
+  it either: coral IS money out.
+- **The one route that dodges the trunk** — down past y=690, east, then north
+  at x=1035 — runs **5px from the photos run at x=1030 for 130px**, which
+  check 5 refuses.
+
+So the second chip was changed to **"cash out - never a cost"**, which is the
+half no line can carry. *"Settles debt"* was dropped rather than shortened,
+because the two arrows into the shops already say it. This is the OWNER
+WITHDRAWALS precedent exactly — that card read *"not a cost - cash out only"*
+for months before a rail existed to put it on.
+
+⚠ **`LEGACY DATA` → the two shop ledgers is refused the same way.** An opening
+balance joins `update_totals()` on both shops, and both westward lanes out of
+that card are taken: **y=649** by `spay→supp` (coral, sharing 275px) and
+**y=713** by `sig→cost` (sharing 179px), each at 0–6px separation. SPARE SHOPS
+is three rows up behind two cards in its own column and is unreachable at any
+y. Moving the card to sit under SUPPLIES SHOPS would buy that one line and
+**cost the costing line plus two re-routes** — a swap, not a gain. The chip's
+word **"balances"** carries it.
+
+**The general rule this pass established:** when a true flow cannot be drawn,
+say it in a chip and write down the measurement that refused it. A missing
+line with no note reads as an oversight; a chip plus a recorded refusal is a
+decision.
 → `TheRentIsAnExpenseAndTheDepositIsCashTests`,
 `ACashbookRowNamedLikeRentIsFlaggedNotFilteredTests`. The invariant that used
 to BE the boundary is still asserted and is the most important test in the
@@ -2779,8 +2843,18 @@ the stock down throughout — so one delivery carries three different dates:
 
 The last row is the one that looks wrong and is right: paying a supplier turns a
 liability into cash out. It changes what you owe, not what you earned.
-**`SupplierPayment` appears nowhere in `analysis_engine.py`, and it must stay
-that way**; the same holds for spare-shop payments.
+**`SupplierPayment` appears in no PROFIT figure, and it must stay that way**;
+the same holds for spare-shop payments.
+
+⚠ **That used to read "appears nowhere in `analysis_engine.py`", and it went
+false the day Cash Tracking landed** (corrected 2026-09-20). Both payment
+models are read by **`cash_position()`**, which lives in that file — as *cash
+out on the day it moved*, which is the whole point of the row above. The
+sentence was true when written, when the engine was only the profit equation,
+and it is exactly the shape of claim this file warns about: a confident,
+checkable statement that nothing re-checks. **The rule it was protecting is
+unchanged** — `build_profit_report` and every expense line, margin and
+per-shop "spend" figure must never read a payment.
 
 **Both parts lines NAME their basis** — "Parts taken off the warehouse shelf"
 and "Parts bought per job, not payments" — because both shops are paid in
@@ -6908,8 +6982,16 @@ Four things about it, each a decision rather than a default:
   likely to be reading it and least likely to think of zooming a page.
 
   It is ONE string at all widths rather than a phone copy and a laptop copy to
-  keep in step, and it names the gesture only where there is one: *"Zoom in on
-  any part of the map — pinch on a phone."* One line at 375px, measured.
+  keep in step.
+
+  ⚠ **AND THAT STRING IS NOW THE SINGLE WORD "Zoom"** (the owner's
+  instruction, 2026-09-20). It read *"Zoom in on any part of the map — pinch on
+  a phone."*, which named the gesture and the target and the reason — a
+  sentence of instruction under a drawing, for a control every reader already
+  owns. The **glyph carries it**: `bi-arrows-fullscreen` beside one word is the
+  app's own rule that a caption never restates what a symbol already says. The
+  paragraph above is untouched and still governs — the hint shows at **every**
+  width, because the map is never full size anywhere.
 - **The page is FULLY DARK, and it is the only one.** It shipped as a dark map
   on the app's light surface, and the seam was the loudest edge on screen —
   the eye landed on the join rather than on the drawing. The whole page now
@@ -6948,7 +7030,11 @@ Four things about it, each a decision rather than a default:
   → `test_it_does_not_use_the_owner_s_own_names_for_the_system`
 - **Every card on the map is described somewhere on the page.** The map is the
   page in a drawing, so a box on the sheet with nothing said about it is a
-  gap. Nine families, ~43 cards.
+  gap. ⚠ **The count of families and cards is deliberately not written
+  down here** — it was "Nine families, ~43 cards" and was wrong within
+  weeks, which is the same rule the map's own revision stamp was deleted
+  for. `build_system_map.py` prints the card and connector counts on every
+  run; the About page's families are one `grep -c 'class="ab-fam"'`.
   → `test_it_covers_every_area_the_map_draws`
 
   ⚠ A reflowing HTML version was built first and rejected. Measured: the A4
@@ -9762,6 +9848,22 @@ python manage.py runserver
 
 ```bash
 # Full test suite — 77 files, 2,692 tests (counted 2026-09-20). Always SQLite (see below).
+# ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
+# 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
+# quietly comes to mean "never". FULL suite: any model, migration, form, signal,
+# view or analysis_engine change; anything on a money path; settings, URLs or a
+# NEW STATIC FILE (manifest storage 500s every page); a feature, or more than a
+# handful of app files. TARGETED files are enough for: docs, the system map and
+# its generated outputs, one page's template plus its own tests, and anything in
+# scratchpad/ (never imported by the app).
+# ⚠ PROVE THE RADIUS, do not feel it: grep for what imports or renders each
+# changed file, then run every test file that reads templates off disk —
+# test_about, test_template_comments, test_back_navigation, test_confirmation_card,
+# test_ui_regressions, test_owner_withdrawals (127 tests). Those are the only ones
+# that notice a template edit anywhere. Then say which ran and what the radius was.
+# The cheap checks run regardless, every time: scratchpad/check_system_map.py and
+# the node tests below. A full run may also happen AFTER a commit rather than
+# before it — it need not block landing work whose radius is proven.
 # Last full run 2026-09-20: 2,691 tests, 8,987s (2h30m), ALL GREEN — the slowest
 # run recorded here, on a machine also running the dev server and a browser;
 # measured mid-run at 35 tests/min. Before it: 2026-09-16, 2,529 tests, 4,196s
@@ -9831,7 +9933,7 @@ never one; and a `RunPython` is **rehearsed on a restored backup** first.
 | `unlock_legacy_data` | DRY RUN — clears the go-live lock so Opening Stock / Opening Balances can be corrected (`--yes`). The ONLY way back; press Lock again afterwards |
 | `copy_sqlite_to_postgres` | DRY RUN — prints the plan (`--yes` to replace Postgres) |
 
-⚠ **`management/commands/` holds 14 commands (plus the `_dev_only.py` helper) and this table describes 12.**
+⚠ **`management/commands/` holds 15 commands (plus the `_dev_only.py` helper) and this table describes 13.**
 **All five demo seeders refuse to run unless `DJANGO_ENV=development`** —
 `seed_dummy_data`, `seed_meeting_data`, `seed_salary_data` and the two the table
 leaves out —
@@ -10307,8 +10409,26 @@ exactly what this file exists to make unnecessary. `trunk()` now appends, and
 the bug and watching it fail). The checker is only ever as good as what it is
 shown.
 
+⚠ **AN EMPTY SLOT IN A ZONE MAY BE CARRYING A ROUTE, AND NOTHING SAYS SO.**
+LOG.04 is a 3×4 grid that held eleven cards, so the bottom-right slot read as
+spare room — and `sig → cost` hopped east through it into AVERAGE COST's
+bottom edge. Dropping LEGACY DATA there in 2026-09-20 broke that line, and
+**check 1 refused it rather than shipping a connector through a card**, which
+is exactly what that check is for. The line now leaves from below (y=713, the
+corridor between the row's foot at 703.6 and the zone's at 728), runs east to
+the zone's own right pad and comes up into COST's **right** edge.
+
+**So: run the checker before believing a slot is free**, and when a route
+depends on an empty cell, say so where the cell is — FIN.05 carried a comment
+claiming a deliberate empty slot at row 4 col 2 long after STAFF ROSTER and
+SALARY filled that row, which is the same failure from the other side.
+
 ⚠ **A CHIP GOES STALE THE WAY A COUNT DOES, AND THE CHECKER CANNOT SEE IT
-EITHER.** All six checks are geometric; none of them reads a word. CAR
+EITHER.** All six checks are geometric; none of them reads a word. STOCK
+SIGNALS said **`10 handlers`** from the day it was drawn until 2026-09-20,
+when opening stock's fourth group took it to 13 — a number on the sheet that
+was simply false, on the page that heads the owners' own tour. It is
+`grep -c '^@receiver' inventory/signals.py`. CAR
 PROFILES carried `history by registration` from the day it was drawn, which
 was true and had quietly stopped being the whole card — the **service-history
 sheet and every bill for one car in a single PDF are both handed to a customer

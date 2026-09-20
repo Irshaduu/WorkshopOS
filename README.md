@@ -210,6 +210,9 @@ WorkshopOS/
 │   ├── settlement.py        # what is unfilled before a bill is settled
 │   ├── master_data.py       # renaming and merging a name
 │   ├── rent.py              # what to hand the rent collector today
+│   ├── old_bills.py         # is this pre-system bill's number, date and money usable
+│   ├── old_bill_pdf.py      # what that bill's own saved PDF says, box by box
+│   ├── pricing.py           # what markup to suggest — and deliberately no price
 │   ├── delete_window.py     # how old a record may be for Office to delete it
 │   ├── money.py             # is this typed amount usable
 │   ├── money_dates.py       # which day did this money move

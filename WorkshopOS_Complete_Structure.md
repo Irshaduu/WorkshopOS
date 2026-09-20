@@ -1,5 +1,5 @@
 *Every screen in the app, as an outline. Re-derived from the nav bar and the
-drawer on 2026-09-15. The drawer's own group labels are the headings in
+drawer on 2026-09-20. The drawer's own group labels are the headings in
 brackets — a section belongs where the app puts it, not where a category would.*
 
 ├── HOME
@@ -113,6 +113,16 @@ brackets — a section belongs where the app puts it, not where a category would
 │       ├── Used Concerns
 │       └── Used Spare Parts
 │           └── Edit, Delete, Merge
+│
+├── Legacy Data   (the go-live starting position — one day, then locked)
+│   ├── Old Bills   (Office and Owner — the Excel years, typed in for history)
+│   │   ├── Year blocks → month chips → the bills in a month
+│   │   ├── Add / Edit a bill
+│   │   └── Fill from PDF (reads the bill's own saved PDF into the form)
+│   ├── Opening Stock   (Owner only — what is on the shelf, and what one cost)
+│   ├── Opening Balances   (Owner only — what each shop's own book says)
+│   └── Lock Legacy Data   (Owner only — three confirmations, then read-only
+│       for everyone; only `manage.py unlock_legacy_data` on the server reopens it)
 │
 ├── About   (Owner only — the system map, and what every section does)
 │

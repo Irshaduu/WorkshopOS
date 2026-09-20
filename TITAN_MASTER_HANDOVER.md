@@ -187,17 +187,21 @@ can remotely terminate any of them from the management dashboard.
 
 ### 8. The warehouse pulse — stock delta engine
 
-Django signals in `inventory/signals.py` orchestrate stock across **three independent
-groups (10 handlers)**, all using the same pre_save-snapshot + post_save-delta pattern:
+Django signals in `inventory/signals.py` orchestrate stock across **four independent
+groups (13 handlers)**, all using the same pre_save-snapshot + post_save-delta pattern:
 
 1. **Workshop consumption** (3) — replacement, quantity adjustment, deletion. Deducts
    for `source='INVENTORY'` rows only, resolved through the `item` FK.
 2. **JobCard soft-delete reversal** (2) — **dormant.** Job cards are hard-deleted and
    the delete guard forbids deleting a card that still holds spares.
 3. **Supplier restocking** (5) — three on `SupplierRestockItem` (creation, edit,
-   deletion), the **only** thing that moves `Item.avg_cost`; plus a
-   `SupplierRestockBill` pre/post_save pair that re-costs the bill's lines when its
-   **date** or its **discount** changes, since neither of those lives on a line.
+   deletion), which with group 4 are the **only** things that move `Item.avg_cost`;
+   plus a `SupplierRestockBill` pre/post_save pair that re-costs the bill's lines when
+   its **date** or its **discount** changes, since neither of those lives on a line.
+4. **Opening stock** (3) — the go-live shelf count, added 2026-09-19. It belongs to no
+   shop, so it moves the shelf without touching any balance, and it is why the count
+   is a signal rather than a view writing `current_stock`: that would have been the
+   system's first exception to its own rule.
 
 **Warehouse stock is allowed to go negative**, deliberately — a negative balance is
 self-healing and is the signal that a Supplies Shop bill is missing. See `CLAUDE.md`.

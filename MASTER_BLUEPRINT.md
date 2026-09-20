@@ -28,25 +28,25 @@ graph TB
     end
 
     subgraph WORKSHOP["Workshop App (Core)"]
-        W_MODELS["models.py — 33 Models"]
-        W_VIEWS["views/ — 21 Module Package"]
+        W_MODELS["models.py — 37 Models"]
+        W_VIEWS["views/ — 23 Module Package"]
         W_ANALYSIS["analysis_views.py + analysis_engine.py — Owner Profit & Insights"]
         W_AUTH["auth_views.py — Auth Views"]
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 137 URL Patterns"]
-        W_FORMS["forms.py — 11 Forms + 6 Formsets"]
+        W_URLS["urls.py — 147 URL Patterns"]
+        W_FORMS["forms.py — 14 Forms + 6 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session / NoStore / NoIndex"]
-        W_TAGS["templatetags — 16 Filters"]
+        W_TAGS["templatetags — 15 Filters"]
         W_ADMIN["admin.py — 10 Registered"]
-        W_CMD["Commands — 14 management commands"]
-        W_TPL["Templates — 98 HTML Files"]
+        W_CMD["Commands — 15 management commands"]
+        W_TPL["Templates — 102 HTML Files"]
     end
 
     subgraph INVENTORY["Inventory App (Warehouse + Supplier Shops)"]
-        I_MODELS["models.py — 8 Models"]
+        I_MODELS["models.py — 9 Models"]
         I_VIEWS["views.py + views_suppliers.py — 33 Views"]
         I_URLS["urls.py — 33 URL Patterns"]
         I_SIGNALS["signals.py — 13 Signal Handlers (4 groups)"]
@@ -78,7 +78,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (36)
+### Workshop App Models (37)
 
 ```mermaid
 erDiagram
@@ -148,7 +148,7 @@ Salary models (migration `0054_mechanic_current_salary_and_more`, which also add
 
 `advance_balance` (added migration `0047_bulkpayer_advance_balance`) tracks credit carried forward when a lump-sum Fleet Account payment exceeds the total currently owed; `total_balance` can legitimately go negative once this credit exists.
 
-### Inventory App Models (8)
+### Inventory App Models (9)
 
 | # | Model | Key Fields | Purpose |
 |---|-------|--------|---------|
@@ -266,7 +266,7 @@ media path, which is not served in production at all (§12, and `AUD-0088`).
 check finds nothing and quietly reports the development figure as if it were
 production's. Cost a wrong number on the way into this very entry.
 
-### Workshop App (137 routes)
+### Workshop App (147 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -561,7 +561,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (121 HTML Files)
+## 7. TEMPLATE STRUCTURE (125 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -571,7 +571,7 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 98 files
+### Workshop Templates (`workshop/templates/workshop/`) — 102 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -875,7 +875,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (70 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (72 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -1043,16 +1043,18 @@ WorkshopOS (Titan)/
 │   ├── admin.py                ← 10 admin registrations
 │   ├── apps.py                 ← Auto-create groups on migrate
 │   ├── templatetags/
-│   │   └── custom_filters.py   ← 16 template filters (incl. inr / inr_exact / inr_compact / short_ago / notification_glyph)
-│   ├── management/commands/    ← 14 commands (12 below + two demo seeders, deliberately undocumented) + `_dev_only.py`, the guard every demo seeder calls first
+│   │   └── custom_filters.py   ← 15 template filters (incl. inr / inr_exact / inr_compact / short_ago / notification_glyph)
+│   ├── management/commands/    ← 15 commands (13 below + two demo seeders, deliberately undocumented) + `_dev_only.py`, the guard every demo seeder calls first
 │   │   ├── setup_groups.py     ← Creates the Owner/Office/Floor groups RBAC reads
 │   │   ├── sync_owner_identity.py ← Owner group/mobile/admin-access: .env → DB (dry run)
 │   │   ├── set_owner_email.py  ← Set an account's reset-code address (dry run by default)
 │   │   ├── backup_db.py        ← Rotated backup of the ACTIVE engine — pg_dump for Postgres, file copy for SQLite; keeps 14
 │   │   ├── load_master_data.py ← Brands/models/spares — prerequisite for seeding
 │   │   ├── seed_dummy_data.py  ← Multi-year demo data (run against SQLite)
+│   │   ├── seed_meeting_data.py ← A uniform 100-day set, every card identical, so any figure can be checked by multiplying one card
 │   │   ├── seed_salary_data.py ← Demo salaries/advances/settlements
-│   │   ├── purge_business_data.py     ← Clears all business tables (dry run by default)
+│   │   ├── purge_business_data.py     ← Clears all business tables, the Legacy Data lock included (dry run by default)
+│   │   ├── unlock_legacy_data.py      ← The ONLY way to reopen Opening Stock / Opening Balances after go-live (dry run by default)
 │   │   ├── sweep_photo_blobs.py       ← Storage objects whose rows are gone (dry run by default)
 │   │   ├── purge_old_photos.py        ← 1-year retention sweep; always skips an unpaid bill (dry run)
 │   │   └── copy_sqlite_to_postgres.py ← Push a seeded SQLite file up to PostgreSQL
@@ -1115,4 +1117,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-20)*: 2 Django Apps · **46 Models** (37 workshop + 9 inventory) · **180 URL Routes** (147 + 33, excluding Django admin; 181 under `DEBUG=True`, which adds the media path) · **125 Templates** (102 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **77 Test Files / 2,684 tests** · **91 Migrations** (81 workshop + 10 inventory)
+> **Total** *(re-measured 2026-09-20)*: 2 Django Apps · **46 Models** (37 workshop + 9 inventory) · **180 URL Routes** (147 + 33, excluding Django admin; 181 under `DEBUG=True`, which adds the media path) · **125 Templates** (102 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **16 Notification Events** (13 CRITICAL, 3 INFO) · **77 Test Files / 2,692 tests** · **91 Migrations** (81 workshop + 10 inventory)

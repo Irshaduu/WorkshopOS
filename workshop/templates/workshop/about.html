@@ -161,7 +161,7 @@ disagree. Do not paste an <svg> here.
 <div class="ab-map">{% include 'workshop/includes/_system_map_svg.html' %}</div>
 <div class="ab-zoom">
     <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
-    <span>Zoom in on any part of the map &mdash; pinch on a phone.</span>
+    <span>Zoom</span>
 </div>
 
 <div class="ab-intro">
@@ -193,6 +193,8 @@ disagree. Do not paste an <svg> here.
                 <li>Vehicle Details takes the <strong>chassis code</strong> (like F30 or W205 &mdash; the thing that decides which part fits) and the <strong>VIN</strong> from the RC book. Both are optional</li>
                 <li>Type a number plate the workshop has seen before and the make, model, colour and both codes fill in by themselves. The last customer&rsquo;s name and number are only shown greyed in their boxes, with a <strong>Use last visit</strong> button, because a car may have been sold since</li>
                 <li>Labour is one figure for the whole job, not a price per line</li>
+                <li><strong>A customer price is suggested for every part</strong>, worked out from what it cost you plus a markup &mdash; 40% on anything bought in for the car, and whatever you set on the product itself for anything off the shelf. Beside each line it shows the markup that line is really carrying, so a price you typed over the top is never a mystery</li>
+                <li>A suggestion is only ever dropped into the box for you to look at. Nothing is priced because the system decided to &mdash; a part is only charged what somebody saved, and a figure you typed yourself is never quietly replaced</li>
                 <li>The floor fills it in and never sees a price. It isn&rsquo;t only kept off their screen &mdash; the system won&rsquo;t take a price from a floor login at all</li>
             </ul>
         </div>
@@ -607,6 +609,74 @@ disagree. Do not paste an <svg> here.
                 <li>Rename or merge from here and the old cards follow, so both spellings become one line everywhere they are counted</li>
                 <li>Merging is confirmed first, and shows exactly what carries over and what is dropped</li>
                 <li>It moves no money and no stock &mdash; only names</li>
+            </ul>
+        </div>
+
+    </div>
+</section>
+
+
+<!-- ══════════════════ STARTING IT UP ══════════════════ -->
+<section class="ab-fam" style="--fam: var(--ab-stock);">
+    <div class="ab-fam-head">
+        <span class="ab-fam-bar"></span>
+        <h2>Where it started</h2>
+        <span>The first day, once</span>
+    </div>
+    <div class="ab-grid">
+
+        <div class="ab-card ab-card--key ab-card--wide">
+            <h3>The workshop was already running</h3>
+            <p>On the day this starts, parts are on the shelf and money is owed to shops. None of it can come in the ordinary way.</p>
+            <ul>
+                <li>Stock only ever moves through a supplies bill, and what you owe a shop is built up from the purchases recorded against it &mdash; so neither has a door for &ldquo;this was already true before you arrived&rdquo;</li>
+                <li><strong>Legacy Data</strong> is that door. Two screens filled in once, on the first day, and everything afterwards carries on from those figures</li>
+                <li>The shelf and the shop balances are typed <strong>separately, and have nothing to do with each other</strong>. Which goods an old debt paid for is nobody&rsquo;s business by then, and pretending to know would be inventing it</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Opening Stock</h3>
+            <p>The shelf as you counted it.</p>
+            <ul>
+                <li>For each product: how many are there, and what <strong>one</strong> of them cost you</li>
+                <li><strong>The cost is not optional, and this is why.</strong> Any of those parts used before that product&rsquo;s next supplies bill would otherwise count as having cost nothing &mdash; and it would stay that way, because a bill dated later never reaches back that far</li>
+                <li>It goes onto the shelf exactly the way a delivery does. Nobody types a stock number, here or anywhere else</li>
+                <li>It belongs to no shop, so it puts nothing on anybody&rsquo;s balance</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Opening Balances</h3>
+            <p>One figure per shop &mdash; whatever their own book says you owe.</p>
+            <ul>
+                <li>Typed exactly as the book says. The screen works nothing out for you</li>
+                <li><strong>One thing to do by hand.</strong> If a part from that shop is already recorded as an unassigned spare, take its price off before you type &mdash; otherwise it is counted twice. If the book says ₹2,50,000 and a ₹5,000 bearing is already in, type ₹2,45,000</li>
+                <li>After that it behaves like any other debt: it is part of what you owe, payments clear it first because it is the oldest, and the shop&rsquo;s own page says how much of it is left until it reaches zero and stops saying it</li>
+                <li>A shop you owe nothing is simply left blank</li>
+            </ul>
+        </div>
+
+        <div class="ab-card">
+            <h3>Old Bills</h3>
+            <p>The bills written before this system, typed in for history.</p>
+            <ul>
+                <li>A car&rsquo;s profile, its service history and its All Invoices PDF all reach back to its first visit instead of starting the day you switched over</li>
+                <li><strong>They are joined to nothing</strong> &mdash; no profit, no cash, no stock, no shop balance. Those months happened outside the system, and counting them now would rewrite figures nobody can check</li>
+                <li>If the bill was saved as a PDF, <strong>Fill from PDF</strong> reads it and fills the form in for you. It saves nothing on its own; you check it against the total printed on the PDF and press Save</li>
+                <li>Bill numbers carry on from the last one written by hand, so no customer can end up holding the same number twice</li>
+                <li>This one is <strong>not</strong> locked with the other two &mdash; a pile of old bills takes weeks, not a day</li>
+            </ul>
+        </div>
+
+        <div class="ab-card ab-card--wide">
+            <h3>Locking it</h3>
+            <p>When the figures match the count and the shops&rsquo; books, an owner shuts the door.</p>
+            <ul>
+                <li>One button, then three confirmations that get louder as you go. The last one states the figures about to be frozen, so you are agreeing to numbers rather than to a promise</li>
+                <li>After that both screens still <strong>show</strong> their figures and accept no change from anybody, owners included. They were only ever needed for a day, and leaving them open is a standing invitation to &ldquo;correct&rdquo; the position the whole business is measured from</li>
+                <li><strong>Nothing in the app can undo it.</strong> If something really is wrong, it takes whoever looks after the system on the server &mdash; a deliberate act by a named person, not a tap</li>
+                <li>The lock is kept with the data, not with the hosting. Restore a backup somewhere else, or move the whole system, and it is still locked</li>
             </ul>
         </div>
 

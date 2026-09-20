@@ -314,7 +314,9 @@ def build(theme):
         y+16, the chips start at y+28 and step by 9.6. So n chips end at
         y + 28 + 9.6*(n-1), and 7px below that closes the box. Anything taller
         is empty space inside a card - which, on a sheet whose connectors have
-        to find their way between 56 of them, is space taken from the routing.
+        to find their way between every one of them, is space taken from the
+        routing. (This said "between 56 of them" and went stale the way every
+        written-down count on this sheet has; the build prints the real one.)
         """
         return 35.0 + 9.6 * (max(1, n_chips) - 1)
 
@@ -605,11 +607,36 @@ def build(theme):
         ('cost',  'AVERAGE COST',   ['weighted - full replay'],     FLOW['stock']),
 
         ('shist', 'STOCK HISTORY',  ['who drew what'],              FLOW['stock']),
-        ('sig',   'STOCK SIGNALS',  ['10 handlers - automatic'],    FLOW['stock']),
+        # 13 handlers, not 10 - the count this chip carried from the day it was
+        # drawn until 2026-09-20, when opening stock added a fourth group. It is
+        # `grep -c '^@receiver' inventory/signals.py`, so re-count it here
+        # rather than trusting the chip.
+        ('sig',   'STOCK SIGNALS',  ['13 handlers - automatic'],    FLOW['stock']),
+        # The go-live starting position, in the zone that holds three of its
+        # four targets - the shelf and both shop ledgers. It takes the slot the
+        # 11-card list already left empty at row 4 col 3, so no card on the
+        # sheet moves to make room for it; the row grows 9.6px for the second
+        # chip and the zone still keeps 24px of corridor at its foot.
+        #
+        # ⚠ ONE LINE, UP INTO AVERAGE COST, and the other two are carried by
+        # the chips rather than drawn. The count IS a receipt - it raises the
+        # shelf through the same signals a restock bill uses - but WAREHOUSE
+        # sits three cards up this same column, so a line to it would cut
+        # through LOW STOCK and AVERAGE COST, and every way round is a lane
+        # something else already runs in (x=377 into the shelf's left edge is
+        # STOCK SIGNALS' own run; 566/576/578 east of the zone are the two shop
+        # payments and the discount audit). What is drawn is the statement that
+        # decides the screen's one hard rule: this count is ALWAYS the first
+        # event in the costing replay, whatever day it was typed, which is why
+        # a cost is required on it and cannot be left blank.
+        ('legacy', 'LEGACY DATA',   ['opening stock - balances',
+                                     'old bills - then locked'],    FLOW['stock']),
     ]
+    # The 3x4 grid is full now that LEGACY DATA has taken the twelfth slot, so
+    # the trailing [1] that used to stand in for the empty one is gone.
     for (cid, t, ch, ac), cell in zip(_log, grid(
             16, B2Y, 544, B2H, 3, 4, top=32, gy=20,
-            chips=[len(i[2]) for i in _log] + [1])):
+            chips=[len(i[2]) for i in _log])):
         card(cid, *cell, t, ch, accent=ac)
 
     # =========================================================================
@@ -617,15 +644,37 @@ def build(theme):
     # =========================================================================
     zone(580, B2Y, 420, B2H, 'FIN.05 // CASHLINK', 'Financial Flow Manifold', FLOW['in'])
     # Right-hand column is everything that has to reach OUT of this zone -
-    # PAID and FLEET east into PROFIT, CASHBOOK east onto the expense trunk.
-    # The empty slot at row 4 col 2 is deliberate: it is the lane SALARY uses
-    # to reach the trunk without crossing the card beside it.
+    # PAID and FLEET east into PROFIT, CASHBOOK east onto the expense trunk,
+    # SALARY east onto it as well. (This carried a note about a deliberate
+    # empty slot at row 4 col 2 long after STAFF ROSTER and SALARY filled that
+    # row; the grid is 2x4 and all eight slots are used.)
     _fin = [
         ('pend',  'PENDING BILLS',    ['unpaid - part paid'],        FLOW['in']),
         ('paid',  'PAID BILLS',       ['settled - by date'],         FLOW['in']),
 
+        # ⚠ THE SECOND CHIP NAMES CASH BECAUSE NO LINE CAN. Both payment models
+        # are read by `cash_position()` and by no profit figure, so by the rule
+        # the cash rail follows - a line where cash is the ONLY figure a card
+        # reaches - this card qualifies and OUGHT to tap it. It cannot, and the
+        # reason is worth keeping so nobody re-opens it:
+        #
+        #   * CASH TRACKING sits at y 549.6..594.2, entirely inside the expense
+        #     trunk's vertical leg (x=1006, y 449..690). So EVERY eastward run
+        #     from this card crosses the trunk - in the SAME CORAL - which reads
+        #     as tapping it, i.e. "paying a shop is an expense". That is the
+        #     exact falsehood the two lines below are drawn to prevent.
+        #   * The one route that dodges the trunk (down past y=690, east, then
+        #     north at x=1035) runs 5px from the photos run at x=1030 for 130px,
+        #     and check 5 refuses it. Measured, not guessed.
+        #
+        # So the chip carries the half the drawing cannot - which is the
+        # OWNER WITHDRAWALS precedent exactly, that card having said "not a cost
+        # - cash out only" for months before a rail existed to put it on.
+        # "Settles debt" was dropped rather than shortened: the two arrows into
+        # the shops below already say it, and a chip that repeats what a line
+        # says is a wasted line of the only two this card has.
         ('spay',  'SHOP PAYMENTS',    ['clears oldest bills first',
-                               'settles debt - not a cost'], FLOW['out']),
+                               'cash out - never a cost'], FLOW['out']),
         ('fleet', 'FLEET ACCOUNTS',   ['cascade - advance credit'],  FLOW['in']),
 
         ('disc',  'DISCOUNT AUDIT',   ['over ₹3,500'],               FLOW['alert']),
@@ -736,7 +785,17 @@ def build(theme):
     link('rest', 'ware', 'stock', 't', 'b', bend=535, tb=0.7)
     link('rest', 'cost', 'stock', 'b', 't', bend=590)
     link('ware', 'low', 'stock', 'b', 't', ta=0.3, tb=0.3)
-    link('sig', 'cost', 'stock', 'r', 'b')
+    # ⚠ THIS USED TO BE A TWO-LEG HOP EAST FROM SIG INTO COST'S BOTTOM EDGE,
+    # AND THE EMPTY SLOT UNDER COST WAS WHAT MADE THAT LEGAL. Nothing said so,
+    # so the slot read as spare room; the moment LEGACY DATA took it,
+    # `check_system_map.py` refused this line for crossing it, which is exactly
+    # what check 1 is for. It now drops into the corridor below the cards
+    # (y=713, clear - the row ends at 703.6 and the zone's foot is 728), runs
+    # east to the zone's own right pad and comes up into COST's right edge.
+    # x=555 is 11px from the SHOP PAYMENTS run at 566, so their y-spans must
+    # never come to overlap by more than 120px or check 5 will refuse it.
+    link('sig', 'cost', 'stock', 'b', 'r',
+         via=[('y', 713), ('x', 555), ('y', 621.5)])
     # Stock moves ONLY via signals - so the signal handlers, not the bill and
     # not the job card, are what actually write Item.current_stock.
     # (This replaced a sig -> shist line, which was simply untrue: Stock
@@ -745,6 +804,8 @@ def build(theme):
     # nothing else. The real source of Stock History is job -> shist, below.)
     link('sig', 'ware', 'stock', 'r', 'l', via=[('x', 377), ('y', 511)])
     link('unass', 'sshop', 'out', 'l', 'r')
+    # The go-live count is the first receipt the replay ever sees. See the card.
+    link('legacy', 'cost', 'stock', 't', 'b', ta=0.5, tb=0.5)
 
     # Paying a shop settles that ledger and NOTHING else - it never reaches
     # PROFIT. Drawn deliberately: these two lines stop at the shops.
@@ -803,40 +864,78 @@ def build(theme):
     # comes from BulkPaymentHistory, one row per payment.
     link('fleet', 'cashpos', 'in', 'r', 'l', bend=1013, ta=0.7)
 
-    # An owner withdrawal reaches exactly ONE figure in the whole engine, and
-    # this is it - `cash_position()`'s money-out list, dated by the day the
-    # cash was taken. It is in no expense line, no margin and nowhere inside
-    # build_profit_report, which is why the arrow points here and at nothing
-    # else on the sheet.
+    # THE CASH RAIL - the sheet's SECOND bus. THREE cards reach
+    # `cash_position()` and no profit figure: OWNER WITHDRAWALS, this card's
+    # deposit half, and SHOP PAYMENTS. The first two tap the rail; the third
+    # cannot be routed to it at all - see its own card for the measurement.
     #
-    # DOWN THE OUTER MARGIN, not the 1000-1030 lane between CASHLINK and
-    # AUDIT. A straight drop from the card is impossible - PROFIT sits
-    # directly above the target - and that inner lane already carries the
-    # EXPENSE TRUNK, which is the same coral: check 5 measured the two running
-    # 7px apart for 122px, which is exactly the "three red lines side by side"
-    # this drawing was rebuilt once to get rid of. x=1404 is outside both zone
-    # boxes and carries nothing else, so the line reads as its own run and
-    # arrives at CASH TRACKING's right edge.
-    link('wdraw', 'cashpos', 'out', 'r', 'r', via=[('x', 1404), ('y', 571.9)])
+    # An owner withdrawal reaches exactly ONE figure in the whole engine, and a
+    # rent DEPOSIT reaches the same one: they sit next to each other in that
+    # function's money-out list ("Rent deposits", "Owner withdrawals"), on the
+    # same basis, dated by the day the cash moved. Neither is anywhere inside
+    # build_profit_report.
+    #
+    # ⚠ THE DEPOSIT'S LINE WAS MISSING UNTIL 2026-09-20, and the reason it was
+    # missing is worth keeping, because it was a GEOMETRY problem wearing a
+    # design argument's clothes. It had been refused as "one line, not two" -
+    # reaching CASH TRACKING means routing outside x=1040..1388, both inner
+    # margins are full (x=1006 is the expense trunk, 1013/1024/1030 carry the
+    # fleet and photos runs), and a second coral run beside the withdrawal's
+    # own rail at x=1404 would sit ~0px from it for 166px, which is exactly the
+    # "three red lines side by side" check 5 exists to refuse. All of that is
+    # still true. What it missed is that the sheet already has an idiom for
+    # several cards reaching one place down one lane: **a rail with taps**, the
+    # expense trunk. One line, two taps, nothing running parallel to anything.
+    #
+    # The owner spotted the gap by reading the card's own chips against the
+    # drawing: "daily deposits - monthly rent" with a single arrow into PROFIT
+    # said the deposit was the cost, which is the one thing that section exists
+    # to deny.
+    #
+    # x=1404 is outside both zone boxes and carries nothing else. Every y comes
+    # from `side()` rather than being typed, so a card that moves takes its own
+    # tap with it.
+    CX = 1404
+    _wd_y = side('wdraw', 'r', 0.5)[1]
+    _rt_y = side('rent', 'r', 0.5)[1]
+    _cp = side('cashpos', 'r', 0.5)
+    trunk([(CX, _wd_y), (CX, _cp[1])], 'out')
+    tap('wdraw', 'r', 0.5, (CX, _wd_y), 'out')
+    tap('rent', 'r', 0.5, (CX, _rt_y), 'out')
+    # Node where the rail turns in, matching the expense trunk's own arrival.
+    add('<rect x="%.1f" y="%.1f" width="6" height="6" fill="%s" opacity=".35"/>'
+        % (CX - 3, _cp[1] - 3, FLOW['out']))
+    add('<rect x="%.1f" y="%.1f" width="4" height="4" fill="%s"/>'
+        % (CX - 2, _cp[1] - 2, FLOW['out']))
+    add('<rect x="%.1f" y="%.1f" width="1.6" height="1.6" fill="%s"/>'
+        % (CX - 0.8, _cp[1] - 0.8, INK))
+    draw([(CX, _cp[1]), _cp], 'out')
 
     # RENT IS AN EXPENSE, and this is the line that says so. What the premises
     # COST is the rate, charged in whole months and capped at the month in
-    # progress; the daily handovers are cash and are read by CASH TRACKING.
+    # progress. The other half - the daily handovers - leaves this card on the
+    # CASH RAIL above. Two lines out of one card, to PROFIT and to CASH
+    # TRACKING, is the section's whole rule drawn rather than written: the
+    # month's COST and how it got PAID are two different numbers and must never
+    # become one. The chip "the deposit is not the cost" stays as their legend.
     #
-    # ⚠ ONE LINE, NOT TWO, and the second one is refused by the drawing rather
-    # than forgotten. Reaching CASH TRACKING from here means routing outside
-    # x=1040..1388, and both margins are full: x=1006 is the expense trunk,
-    # 1013/1024/1030 carry the fleet and photos runs, and x=1404 is the owner
-    # withdrawal's own rail - a second coral run there would sit 0px from it
-    # for 166px, which is exactly the "three red lines side by side" check 5
-    # exists to refuse.
+    # ⚠ FLEET ACCOUNTS IS THE PRECEDENT, not this card - it has carried a line
+    # to PROFIT and a line to CASH TRACKING, both in the same colour, since the
+    # sheet was drawn, for the identical reason: the revenue is one fact and
+    # `BulkPaymentHistory` (one row per payment, dated by the day the money
+    # moved) is another that only cash reads. So a card with both is an
+    # established shape here, and rent's absence from it was the odd one.
     #
-    # It is also the consistent answer. No expense card on this sheet gets a
-    # cash line: SPARE SHOPS, WAREHOUSE, CASHBOOK and SALARY all move real
-    # cash and all get exactly one line, to the expense trunk. OWNER
-    # WITHDRAWALS is the exception because cash is the ONLY figure it reaches.
-    # Rent's only-reach is the equation, so that is what is drawn, and the
-    # card's second chip carries the cash half in words.
+    # ⚠ THIS USED TO BE THE ONLY LINE, refused as "one line, not two" - see the
+    # cash rail above for why that was a geometry problem rather than a design
+    # one, and for the idiom that solved it.
+    #
+    # ⚠ The old note also said "no expense card on this sheet gets a cash
+    # line", which is still true of SPARE SHOPS, WAREHOUSE, CASHBOOK and
+    # SALARY - they all move real cash and all get exactly one line, to the
+    # expense trunk, because the day the cash leaves is not the day the cost
+    # lands. It never applied here: this card is not an expense card. It is the
+    # only card that is BOTH, and it now says so.
     link('rent', 'profit', 'out', 'b', 't', ta=0.5, tb=0.5977,
          via=[('y', 461.1)])
 
