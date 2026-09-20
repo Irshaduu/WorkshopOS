@@ -23,8 +23,105 @@ from django.core.exceptions import PermissionDenied
 # -----------------------------------------------------------------------------
 
 
+# -----------------------------------------------------------------------------
+# WHAT ROLE IS THIS USER? — ONE ANSWER, READ ONCE PER REQUEST
+# -----------------------------------------------------------------------------
+
+OFFICE_OR_OWNER = frozenset({'Office', 'Owner'})
+EVERY_ROLE = frozenset({'Floor', 'Office', 'Owner'})
+
+
+def role_names(user):
+    """
+    Every group name this account belongs to.
+
+    **THE ONE PLACE THAT ASKS THE DATABASE WHAT SOMEBODY'S ROLE IS.** Both
+    halves of the RBAC system read it — the decorators below, and the
+    `has_group` template filter — so a page can never enforce one rule and draw
+    another. They were two separate implementations of one rule, and it is the
+    rule that decides who sees money.
+
+    ⚠ **IT IS CACHED ON THE USER INSTANCE, AND THAT IS THE WHOLE POINT.**
+    `user.groups.filter(...).exists()` and `user.groups.all()` are BOTH a fresh
+    query on every call — the second looks cached and is not. A related
+    manager's `.all()` builds a new queryset each time and only reuses a result
+    when `prefetch_related` put one there, and nothing prefetches
+    `request.user`. Measured before this existed: ten calls, ten queries, by
+    either route; and **32 of the job card form's 48 queries were this one
+    question**, because that template alone calls `has_group` 19 times.
+
+    `request.user` is ONE object for the whole request, so caching on it makes
+    the answer cost one query however many times it is asked. Measured after: 1.
+
+    ⚠ **A SUPERUSER COSTS NOTHING AT ALL** — every caller tests `is_superuser`
+    first and never reaches here. Both owner accounts in this workshop are
+    superusers, which is the case that actually matters.
+
+    ⚠ **THE CACHE CLEARS ITSELF WHEN MEMBERSHIP MOVES** — `_forget_roles`
+    below, wired in `WorkshopConfig.ready()`. Without it, code that adds a group
+    and then re-asks on the SAME instance reads the old answer. Not
+    hypothetical: `test_has_group_filter` does exactly that, and it is the one
+    thing that makes an instance cache safe rather than merely fast.
+
+    Management commands are deliberately NOT routed through this. They run once,
+    outside any request, against accounts they have just loaded — there is
+    nothing to amortise, and `sync_owner_identity` is go-live tooling that gains
+    nothing from being coupled to a cache.
+    """
+    if not getattr(user, 'is_authenticated', False):
+        return frozenset()
+    names = getattr(user, '_role_names', None)
+    if names is None:
+        names = frozenset(user.groups.values_list('name', flat=True))
+        user._role_names = names
+    return names
+
+
+def _forget_roles(sender, instance, action, reverse=False, **kwargs):
+    """Drop the cached answer the moment somebody's group membership changes.
+
+    Only the FORWARD direction (`user.groups.add(...)`) is handled, because that
+    is the one that hands us the very instance the answer was cached on — and it
+    is the only direction this codebase writes. A reverse write
+    (`group.user_set.add(...)`) reaches us with the Group instead, and the user
+    objects it touched are not ours to reach; if one is ever added, cache-bust it
+    there or write it forwards.
+    """
+    if reverse or action not in ('post_add', 'post_remove', 'post_clear'):
+        return
+    try:
+        del instance._role_names
+    except AttributeError:
+        pass
+
+
+ROLE_ORDER = ('Owner', 'Office', 'Floor')
+
+
+def role_of(user):
+    """This account's role as ONE WORD, highest first, or empty for none.
+
+    Not an access check — it is what a notification body prints, so an owner
+    reading "'floor2' login deleted" on a phone knows what was taken away
+    without opening Control Hub. It was written twice, once in `auth_views` for
+    the sign-in alert and once in `management_views` for the account alerts,
+    and the second took whichever group the database happened to return first.
+
+    ⚠ It answers about the ACCOUNT, so it deliberately does NOT read
+    `is_superuser`: an owner who is only a superuser is in no named role, and
+    "Owner" would be an invention. `is_owner` is the access question, and that
+    one does read the flag.
+    """
+    names = role_names(user)
+    for role in ROLE_ORDER:
+        if role in names:
+            return role
+    return ''
+
+
 def is_owner(user):
-    return user.groups.filter(name='Owner').exists() or user.is_superuser
+    """Owner, or a superuser."""
+    return user.is_superuser or 'Owner' in role_names(user)
 
 
 def owner_accounts():
@@ -52,11 +149,13 @@ def owner_accounts():
 
 
 def is_office_or_owner(user):
-    return user.groups.filter(name__in=['Office', 'Owner']).exists() or user.is_superuser
+    """Office staff and Owners — the financial and invoicing surfaces."""
+    return user.is_superuser or bool(role_names(user) & OFFICE_OR_OWNER)
 
 
 def is_floor_office_owner(user):
-    return user.groups.filter(name__in=['Floor', 'Office', 'Owner']).exists() or user.is_superuser
+    """Anybody with a role at all."""
+    return user.is_superuser or bool(role_names(user) & EVERY_ROLE)
 
 
 def _role_required(test_func, login_url):

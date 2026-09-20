@@ -120,10 +120,12 @@ def rent_home(request):
     # ordinary case and marking it would make the mark meaningless by the
     # second row.
     # ⚠ `is_owner` ONCE, THE AGE RULE PER ROW. `refusal()` calls `is_owner`,
-    # which is `user.groups.filter(...)` — a fresh query every time, uncached —
-    # so asking it per row put one extra query on every deposit in the list.
-    # Sixty rows, sixty queries, found by a test asserting the cost does not
-    # grow with the data.
+    # which was a fresh `user.groups.filter(...)` on every call — so asking it
+    # per row put one extra query on every deposit in the list. Sixty rows,
+    # sixty queries, found by a test asserting the cost does not grow with the
+    # data. `role_names` caches per request now, so the query is no longer the
+    # reason; the shape is kept because the age rule genuinely does not need a
+    # user, and that test still holds it to that.
     viewer_is_owner = is_owner(request.user)
     for row in rows:
         row.locked = not viewer_is_owner and is_past_window(row.created_at)

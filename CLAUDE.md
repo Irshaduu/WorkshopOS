@@ -5913,6 +5913,79 @@ account behind that connection.
 → `test_a_locked_out_owner_can_sign_in_straight_after_resetting`,
 `test_the_reset_does_not_wipe_the_network_wide_failure_count`
 
+**"WHAT ROLE IS THIS USER?" IS ONE FUNCTION, AND IT IS ASKED ONCE PER REQUEST
+— `decorators.role_names`.** Every RBAC surface reads it: the three decorators,
+the `has_group` template filter, the context processor's bell gate, and
+`role_of`, which is what a notification body prints. It had been **nine**
+hand-rolled copies of "is this user an Owner?" plus two of "name their role" —
+in the decorators, the filter, the context processor, the salary views, twice in
+auth and three times in Control Hub, where it is the guard that stops one owner
+resetting or deleting another owner's account. Every one was correct on the day
+it was written, which is the whole problem: this is the rule that decides who
+sees money.
+
+⚠ **BOTH OLD SHAPES QUERIED ON EVERY CALL, AND THE COMMENT SAID OTHERWISE.**
+`user.groups.filter(...).exists()` obviously does. `user.groups.all()` looks
+cached and is not — a related manager's `.all()` builds a new queryset each time
+and only reuses a result when `prefetch_related` put one there, and **nothing
+prefetches `request.user`**. `custom_filters.py` carried a comment claiming
+Django cached it and citing AUD-0046 as closed, so anybody who read it concluded
+the N+1 had already been dealt with. Measured: ten calls, ten queries, by either
+route.
+
+Measured on the pages themselves, before and after:
+
+| | role queries | page total |
+|---|---|---|
+| **job card form** (Owner) | **32 → 1** | 48 → **17** |
+| job card form (Office) | 20 → 1 | 35 → 16 |
+| Cashbook | 8 → 2 | 27 → 21 |
+| Job Cards list | 7 → 1 | 21 → 15 |
+
+`jobcard_form.html` calls `has_group` **19 times**, which is why it was the
+worst: two thirds of that page's entire database traffic was one question asked
+over and over.
+
+⚠ **The Cashbook's remaining 2 is not a repeat.** One is `role_names`; the other
+is `owner_accounts()` — the table-wide "who are the owners?" the Cashbook steer
+needs to name an owner by their own name. A different question, correctly asked
+once.
+
+⚠ **A SUPERUSER COSTS NOTHING AT ALL**, because every caller tests
+`is_superuser` before reaching `role_names`. Both owner accounts in this
+workshop are superusers, so the commonest reader of the heaviest pages pays for
+no lookup whatever.
+
+⚠ **THE CACHE IS ON THE USER INSTANCE, AND IT CLEARS ITSELF.**
+`WorkshopConfig.ready()` wires `_forget_roles` to `User.groups` through
+`m2m_changed`, so adding or removing a group throws the cached answer away.
+Without it, code that promotes somebody and then re-asks on the SAME object
+reads the old answer — which `test_has_group_filter` does, and which is what
+makes an instance cache **safe** rather than merely fast. Only the FORWARD
+direction (`user.groups.add(...)`) can be cleared, because that is the one that
+hands the receiver the very instance the answer was cached on; nothing here
+writes `group.user_set.add(...)`, and anything that ever does must bust the
+cache itself. Per request the cache is thrown away for free — `request.user` is
+rebuilt from the session every time.
+
+⚠ **MANAGEMENT COMMANDS KEEP THEIR OWN GROUP QUERIES, deliberately.**
+`sync_owner_identity` and `set_owner_email` run once, outside any request,
+against an account they have just loaded: there is nothing to amortise, and
+go-live tooling should not be coupled to a request-scoped cache.
+
+⚠ **`is_owner` READS `is_superuser` AND `role_of` DOES NOT.** They answer
+different questions. `is_owner` is *may this person do the thing*, where the
+flag is authority — and the either-or is the load-bearing one `owner_accounts()`
+already records, because a reseeded database leaves both owners superuser with
+an empty Owner group. `role_of` is *what is this account called*, where an owner
+who is only a superuser is in no named group and printing "Owner" would be an
+invention.
+→ `workshop/tests/test_role_rule.py`. The load-bearing test is the **scan**: a
+tenth copy of this rule is invisible to every other kind of test, so it walks
+every app file from `BASE_DIR` and allows `decorators.py` and the two management
+commands and nothing else. It carries a floor test, because a scan that reads no
+files reports no offenders and passes for the wrong reason.
+
 **RBAC decorators return 403, not a login redirect, for signed-in users.**
 Anonymous visitors still get the sign-in page with `?next=`, validated by
 `_safe_next` against open redirects. A signed-in user who simply lacks the role
@@ -9878,7 +9951,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 77 files, 2,711 tests (counted 2026-09-20). Always SQLite (see below).
+# Full test suite — 78 files, 2,723 tests (counted 2026-09-21). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10331,8 +10404,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **77 files, 2,711 tests**,
-re-counted 2026-09-20. (`workshop/tests/` is 71 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **78 files, 2,723 tests**,
+re-counted 2026-09-21. (`workshop/tests/` is 72 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

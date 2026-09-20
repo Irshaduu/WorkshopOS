@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login as auth_login, update_session_auth_hash
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib import messages
-from .decorators import owner_required, is_owner
+from .decorators import owner_required, is_owner, role_of
 from django.contrib.auth.models import User
 from datetime import timedelta
 from django.utils import timezone
@@ -41,11 +41,7 @@ def _role_name(user):
     duplication to avoid and suppressing it reported the real Office and Floor
     accounts as having no role at all.
     """
-    names = set(user.groups.values_list('name', flat=True))
-    for role in ('Owner', 'Office', 'Floor'):
-        if role in names:
-            return role
-    return ""
+    return role_of(user)
 
 
 def normalize_phone(phone_str):
@@ -167,8 +163,12 @@ def resolve_user_by_identifier(identifier):
 
 
 def is_owner_account(user):
-    """Owner by group or by superuser flag — the same pair every RBAC check uses."""
-    return user.is_superuser or user.groups.filter(name='Owner').exists()
+    """Owner by group or by superuser flag — the same pair every RBAC check uses.
+
+    Kept under its own name because the sign-in flow reads better for it; the
+    rule itself is `decorators.is_owner` and is not restated here.
+    """
+    return is_owner(user)
 
 
 def resolve_login_identifier(identifier):
@@ -229,7 +229,7 @@ def can_reset_password(user):
         return False
     if not (user.email or '').strip():
         return False
-    return user.is_superuser or user.groups.filter(name='Owner').exists()
+    return is_owner(user)
 
 
 # ============================================================
@@ -455,10 +455,7 @@ def login_view(request):
                 # contain the account, did not mention a lockout, and offered
                 # nothing to press. Security at least answers the question an
                 # owner lockout actually raises: whose devices are signed in?
-                locked_owner = (
-                    account.is_superuser
-                    or account.groups.filter(name='Owner').exists()
-                )
+                locked_owner = is_owner(account)
                 if locked_owner:
                     target = reverse('manage_dashboard') + '?section=security'
                     remedy = (

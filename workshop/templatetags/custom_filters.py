@@ -1,8 +1,10 @@
-from django import template
-from django.contrib.auth.models import Group
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+from django import template
 from django.utils import timezone
+
+from workshop.decorators import role_names
 
 register = template.Library()
 
@@ -59,19 +61,28 @@ def is_tomorrow(value):
 @register.filter(name='has_group')
 def has_group(user, group_name):
     """
-    Checks if a user belongs to a specific group.
-    Usage in template: {% if request.user|has_group:"Owner" %}
+    Is this user in this group? — `{% if request.user|has_group:"Owner" %}`.
+
+    ⚠ **IT READS `decorators.role_names`, SO A TEMPLATE AND A DECORATOR CANNOT
+    DISAGREE.** This filter and `owner_required` are the two halves of the RBAC
+    system and they were two separate implementations of one rule: a
+    `.filter(...).exists()` there, an `any(...)` over `.all()` here.
+
+    ⚠ **THE COMMENT THAT USED TO SIT HERE WAS FALSE, AND IT IS WHY THIS WENT
+    UNFIXED FOR SO LONG.** It read *"user.groups.all() is cached on the user
+    instance after the first call"* and cited AUD-0046 as closed — so anybody
+    reading it concluded the N+1 had already been dealt with. A related
+    manager's `.all()` only reuses a result when `prefetch_related` put one
+    there, and nothing prefetches `request.user`. Measured: ten calls, ten
+    queries. The caching is real now, and it lives in `role_names`.
+
+    A superuser is every role, and answering that costs no query at all.
     """
     if not user.is_authenticated:
         return False
-        
-    # Handling superusers (treat them as having all roles for convenience)
     if user.is_superuser:
         return True
-        
-    # AUD-0046: Avoid N+1 Group.objects.get queries.
-    # user.groups.all() is cached on the user instance after the first call.
-    return any(g.name == group_name for g in user.groups.all())
+    return group_name in role_names(user)
 
 @register.filter
 def divide(value, arg):

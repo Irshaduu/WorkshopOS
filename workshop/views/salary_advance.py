@@ -9,7 +9,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 
-from ..decorators import office_required, owner_required
+from ..decorators import is_owner, office_required, owner_required
 from ..models import Mechanic, SalaryAdvance, SalaryPayment, SalaryPaymentLine, DeletionLog
 from ..money import parse_money, fit_text
 from .. import delete_window
@@ -146,17 +146,6 @@ def _settled_month_for(advance_date):
     if not advance_date:
         return None
     return SalaryPayment.objects.filter(month=advance_date.replace(day=1)).first()
-
-
-def _is_owner(user):
-    """
-    The same either-or `owner_required` and `has_group` use everywhere else.
-
-    Read wherever a refusal has to name a route the person can actually take:
-    deleting a settlement is Owner-only, so telling Office to "delete it first"
-    points them at a button they cannot see.
-    """
-    return user.is_superuser or user.groups.filter(name='Owner').exists()
 
 
 def _mark_locked(advances):
@@ -338,7 +327,7 @@ def salary_advance_add(request):
             # offer depends on who is asking: deleting a settlement is
             # Owner-only, so telling Office to "delete it first" would send them
             # at a button they cannot see.
-            if _is_owner(request.user):
+            if is_owner(request.user):
                 messages.error(
                     request,
                     f"{settled.month:%B %Y} is already settled. Delete that settlement "
@@ -439,7 +428,7 @@ def salary_advance_delete(request, pk):
                     f"was recorded in error, correct it in "
                     f"{timezone.localdate():%B} with a note saying what it was for."
                 )
-            elif _is_owner(request.user):
+            elif is_owner(request.user):
                 messages.error(
                     request,
                     f"{when} is already settled, and this {money} advance was "

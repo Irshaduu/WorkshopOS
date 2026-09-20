@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.contrib.auth.models import User, Group
 from django.contrib.sessions.models import Session
 from django.db import models, transaction
-from .decorators import owner_required
+from .decorators import is_owner, owner_required, role_of
 from .models import Mechanic, UserSession, AccountLockout
 from .notifications import notify
 
@@ -34,9 +34,13 @@ def _unsettled_advance_total(mechanic):
 
 def _role_of(user):
     """'Office' / 'Floor' / 'staff' — for notification copy, so an owner reading
-    the alert on a phone knows what was taken away without opening the panel."""
-    name = user.groups.values_list('name', flat=True).first()
-    return name or 'staff'
+    the alert on a phone knows what was taken away without opening the panel.
+
+    `decorators.role_of` is the rule; only the fallback word is this
+    module's. This used to take whichever group the database returned
+    FIRST, which is arbitrary on an account in more than one.
+    """
+    return role_of(user) or 'staff'
 
 
 @owner_required
@@ -187,7 +191,7 @@ def manage_reset_password(request, user_id):
         user = get_object_or_404(User, pk=user_id)
         
         # Safety: prevent owners from editing other owner/superuser accounts here
-        if user.groups.filter(name='Owner').exists() or user.is_superuser:
+        if is_owner(user):
             messages.error(request, "Cannot modify Owner accounts from this panel.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
@@ -224,7 +228,7 @@ def manage_delete_user(request, user_id):
     if request.method == 'POST':
         user = get_object_or_404(User, pk=user_id)
         
-        if user.groups.filter(name='Owner').exists() or user.is_superuser:
+        if is_owner(user):
             messages.error(request, "Cannot delete Owner accounts from this panel.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
         
@@ -261,7 +265,7 @@ def manage_unlock_account(request, user_id):
     if request.method == 'POST':
         user = get_object_or_404(User, pk=user_id)
 
-        if user.groups.filter(name='Owner').exists() or user.is_superuser:
+        if is_owner(user):
             messages.error(request, "Cannot modify Owner accounts from this panel.")
             return redirect(reverse('manage_dashboard') + '?section=accounts')
 

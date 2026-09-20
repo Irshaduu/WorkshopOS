@@ -8,6 +8,7 @@ anything added here is paid for on every page load by every user.
 
 from django.conf import settings
 
+from .decorators import is_owner
 from .models import Notification
 
 
@@ -19,17 +20,19 @@ def notifications(request):
     receive notifications, so only owners are charged the count query — Floor
     and Office short-circuit before it runs.
 
-    Group membership is read through `user.groups.all()` rather than a filtered
-    query, because Django caches that on the user instance and `base.html` is
-    about to call `has_group` anyway; a `.filter(...).exists()` here would be a
-    second round trip for the same fact.
+    ⚠ Group membership goes through `decorators.is_owner` — the one answer the
+    RBAC decorators and the `has_group` filter also read, cached on the user
+    instance for the life of the request. This used to be a hand-rolled
+    `any(g.name == 'Owner' for g in user.groups.all())` under a comment claiming
+    Django cached that. **It does not**, so this ran a query of its own and then
+    `base.html`'s own `has_group` calls paid for the same fact over again. Being
+    the first thing to ask, this now warms the cache for the whole page.
     """
     user = getattr(request, 'user', None)
     if user is None or not user.is_authenticated:
         return {}
 
-    is_owner = user.is_superuser or any(g.name == 'Owner' for g in user.groups.all())
-    if not is_owner:
+    if not is_owner(user):
         return {}
 
     return {

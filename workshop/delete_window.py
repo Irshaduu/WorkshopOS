@@ -90,12 +90,14 @@ def is_past_window(created_at):
     """
     Is this row older than Office may delete? — the age rule, with no user.
 
-    ⚠ SPLIT OUT SO A LIST CAN ASK IT PER ROW WITHOUT A QUERY PER ROW.
-    `refusal()` below calls `is_owner()`, and that is `user.groups.filter(...)`
-    — a fresh query every time, uncached. A view annotating "may this be
-    deleted?" onto sixty rows was therefore issuing sixty extra queries; the
-    caller now asks `is_owner` ONCE and this per row. One implementation of the
-    age rule either way, which is the point of it living here.
+    ⚠ SPLIT OUT SO A LIST CAN ASK IT PER ROW WITHOUT HOLDING A USER.
+    `refusal()` below calls `is_owner()`, which used to be a fresh
+    `user.groups.filter(...)` every time — so a view annotating "may this be
+    deleted?" onto sixty rows issued sixty extra queries. `role_names` caches
+    per request now, so that particular bill is gone; **the split stays**,
+    because the age of a row is not a question about a person and a list should
+    not need one to ask it. One implementation of the age rule either way, which
+    is the point of it living here.
     """
     return created_at is not None and age_in_days(created_at) > OFFICE_DELETE_WINDOW_DAYS
 
