@@ -11,6 +11,7 @@ Convention reminder (TITAN_MASTER_HANDOVER.md): when one of these fails, fix
 the code, not the test.
 """
 
+import calendar
 import io
 from datetime import date, timedelta
 from decimal import Decimal
@@ -944,23 +945,67 @@ class AnIncompletePeriodIsComparedLikeForLikeTests(AnalysisBase):
     """
 
     def test_a_part_year_is_compared_against_the_same_part_of_last_year(self):
+        """On 31 December the year is FINISHED — see the month test below, which
+        is the same rule one period down and fails twelve times more often."""
+        today = timezone.localdate()
         s, e, _k, _l = engine.resolve_period('this_year')
         prev_start, prev_end, read_to, label, partial = engine.comparison_window(s, e)
-        today = timezone.localdate()
-        self.assertTrue(partial)
-        self.assertEqual(read_to, today,
-                         "an unfinished year is only measured as far as it has data")
+
+        if today == e:
+            self.assertFalse(partial)
+            self.assertEqual(read_to, e)
+            self.assertEqual(label, 'vs previous')
+            self.assertEqual(prev_end, e.replace(year=e.year - 1))
+        else:
+            self.assertTrue(partial)
+            self.assertEqual(read_to, today,
+                             "an unfinished year is only measured as far as it has data")
+            self.assertEqual(label, 'vs same period last year')
+            # The same calendar day a year back, with the day-of-month CLAMPED
+            # where it does not exist there: 29 Feb reaches back to 28 Feb.
+            # `today.replace(year=today.year - 1)` was the expected value here
+            # and raises ValueError on a leap day — the test's own arithmetic
+            # was the bug, not the engine's.
+            last = calendar.monthrange(today.year - 1, today.month)[1]
+            self.assertEqual(prev_end,
+                             date(today.year - 1, today.month, min(today.day, last)))
+
+        # True either way: a whole year back, landing on 1 January.
         self.assertEqual(prev_start, s.replace(year=s.year - 1))
-        self.assertEqual(prev_end, today.replace(year=today.year - 1))
-        self.assertEqual(label, 'vs same period last year')
 
     def test_a_part_month_is_compared_against_the_same_days_last_month(self):
+        """
+        ⚠ ON THE LAST DAY OF A MONTH THIS PERIOD IS FINISHED, NOT PARTIAL — and
+        asserting otherwise is what made this test red one day in thirty, on
+        exactly the days somebody is most likely to be committing.
+
+        `is_partial` is `start <= today < end`, strict at the top, so on 30
+        September `this_month` is a complete calendar month: nothing is trimmed
+        (`read_to` is the month's own end, not today), and it is compared against
+        the WHOLE of August rather than against 1-30 August. That is correct —
+        the trimming exists for a window whose end is still in the future.
+
+        Both branches are asserted rather than freezing the clock, so the real
+        behaviour on that one day stays covered instead of being hidden.
+        """
+        today = timezone.localdate()
         s, e, _k, _l = engine.resolve_period('this_month')
         prev_start, prev_end, read_to, label, partial = engine.comparison_window(s, e)
-        self.assertTrue(partial)
-        self.assertEqual(read_to, timezone.localdate())
+
+        if today == e:
+            self.assertFalse(partial)
+            self.assertEqual(read_to, e,
+                             "nothing is trimmed - the data reaches the window's end")
+            self.assertEqual(label, 'vs previous')
+            self.assertEqual(prev_end, s - timedelta(days=1))
+        else:
+            self.assertTrue(partial)
+            self.assertEqual(read_to, today)
+            self.assertEqual(label, 'vs same days last month')
+
+        # True either way: one whole calendar month back, and the comparison
+        # window never straddles two months.
         self.assertEqual(prev_start.day, 1)
-        self.assertEqual(label, 'vs same days last month')
         self.assertEqual((prev_end.year, prev_end.month),
                          (prev_start.year, prev_start.month))
 
@@ -991,16 +1036,38 @@ class AnIncompletePeriodIsComparedLikeForLikeTests(AnalysisBase):
 
     def test_a_mistyped_year_does_not_500_the_page(self):
         """
-        `prev_start = prev_end - span` raised OverflowError off the bottom of
-        the calendar. A mis-keyed year in a date box is enough, and a 500 on the
-        profit page is not an acceptable answer to a typo.
+        A mis-keyed year in a date box is enough, and a 500 on the profit page
+        is not an acceptable answer to a typo.
+
+        BOTH BRANCHES, AND THE FINISHED ONE IS THE BRANCH THAT WAS BROKEN.
+        This test passed for months while the bug was live, because it only
+        ever passed an `end` in the FUTURE - which makes the range partial,
+        and the partial branch steps back with `_add_months`, which clamps
+        inside itself. The finished branch steps back by DAYS, and
+        `date.min - timedelta(days=1)` raises OverflowError before `_clamp` is
+        handed anything to clamp.
+
+        So the end has to be in the PAST, in both shapes: month-aligned (one
+        step back) and not (two, the second starting from a date the first may
+        already have floored).
         """
-        for bad in ('0001-01-01', '1000-01-01'):
-            s, e, _k, _l = engine.resolve_period('custom', bad, '2026-12-31')
-            engine.comparison_window(s, e)          # must not raise
-            r = self.client.get(reverse('analysis_dashboard'),
-                                {'range': 'custom', 'start': bad, 'end': '2026-12-31'})
-            self.assertEqual(r.status_code, 200, f"{bad} 500'd the profit page")
+        future = timezone.localdate() + timedelta(days=365)
+        ends = [
+            ('2020-12-31', 'finished, month-aligned'),
+            ('2020-12-15', 'finished, not aligned - steps back twice'),
+            (future.isoformat(), 'partial'),
+        ]
+        # '0001-01-02' is the compounding case: the first step back lands
+        # exactly on date.min, and the second has to survive starting there.
+        for bad in ('0001-01-01', '0001-01-02', '1000-01-01'):
+            for end, shape in ends:
+                s, e, _k, _l = engine.resolve_period('custom', bad, end)
+                engine.comparison_window(s, e)      # must not raise
+                r = self.client.get(reverse('analysis_dashboard'),
+                                    {'range': 'custom', 'start': bad, 'end': end})
+                self.assertEqual(
+                    r.status_code, 200,
+                    f"{bad} to {end} ({shape}) 500'd the profit page")
 
 
 class UnsettledWagesAreNamedNotHiddenTests(AnalysisBase):

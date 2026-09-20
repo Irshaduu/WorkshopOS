@@ -14,14 +14,36 @@ from django.core.paginator import Paginator
 from django.urls import reverse
 
 from ..models import (
-    JobCard, JobCardSpareItem,
+    JobCard,
     BulkPayer, BulkPaymentHistory, DeletionLog,
+    FLEET_UNSETTLED, FLEET_OWED,
 )
 from ..decorators import office_required, owner_required, is_owner
 from ..notifications import notify
 from ..money import parse_money, fit_text
 from ..money_dates import posted_date, is_future, too_far_back, backdate_floor
 from .. import delete_window
+
+
+def _owed_subquery():
+    """`FLEET_OWED` per account, as a correlated subquery for a LIST.
+
+    `FLEET_OWED` names columns on JobCard, so it can only be summed in a query
+    ROOTED at JobCard - hence a subquery rather than an aggregate with a filter
+    over the reverse relation. Both fleet lists call this, so neither can grow
+    its own idea of what an account owes.
+    """
+    return Subquery(
+        JobCard.objects
+        .filter(
+            bulk_payer=OuterRef('pk'),
+            payment_status__in=FLEET_UNSETTLED,
+        )
+        .values('bulk_payer')
+        .annotate(s=Sum(FLEET_OWED, output_field=DecimalField()))
+        .values('s'),
+        output_field=DecimalField(),
+    )
 
 
 @office_required
@@ -31,71 +53,31 @@ def bulk_payer_list(request):
     Called from the Pending Bills page.
     Million-data safe: all aggregation done in SQL, zero Python loops.
     """
-    # SQL subquery: count of PENDING/PARTIAL job cards per payer
+    # SQL subquery: count of open job cards per payer
     pending_count_sq = (
         JobCard.objects
         .filter(
             bulk_payer=OuterRef('pk'),
-            payment_status__in=['PENDING', 'PARTIAL'],
+            payment_status__in=FLEET_UNSETTLED,
         )
         .values('bulk_payer')
         .annotate(n=Count('pk'))
         .values('n')
     )
 
-    # SQL subquery: sum of received_amount for PENDING/PARTIAL job cards
-    received_sq = (
-        JobCard.objects
-        .filter(
-            bulk_payer=OuterRef('pk'),
-            payment_status__in=['PENDING', 'PARTIAL'],
-        )
-        .values('bulk_payer')
-        .annotate(s=Sum('received_amount'))
-        .values('s')
-    )
-
-    # SQL subquery: sum of spares for PENDING/PARTIAL job cards
-    spares_sq = (
-        JobCardSpareItem.objects
-        .filter(
-            job_card__bulk_payer=OuterRef('pk'),
-            job_card__payment_status__in=['PENDING', 'PARTIAL'],
-        )
-        .values('job_card__bulk_payer')
-        .annotate(s=Sum('total_price'))
-        .values('s')
-    )
-
-    # SQL subquery: sum of labour for PENDING/PARTIAL job cards.
-    # Off the CARDS — `labour_amount` is one charge per card, and the dormant
-    # per-line column it replaced would report zero labour for everything raised
-    # since 2026-08-04, understating what each fleet still owes.
-    labour_sq = (
-        JobCard.objects
-        .filter(
-            bulk_payer=OuterRef('pk'),
-            payment_status__in=['PENDING', 'PARTIAL'],
-        )
-        .values('bulk_payer')
-        .annotate(s=Sum('labour_amount'))
-        .values('s')
-    )
+    # WHAT EACH ACCOUNT STILL OWES - `FLEET_OWED` over its open cards, so this
+    # panel, the account page and `BulkPayer.get_pending_balance` cannot give
+    # one account three answers. It was three subqueries (spares, labour,
+    # received) rebuilding each card's bill from its parts; `total_bill_amount`
+    # IS that sum, written by `JobCard.update_totals()`.
 
     bulk_payers = (
         BulkPayer.objects
         .filter(is_trashed=False)
         .annotate(
             card_count=Coalesce(Subquery(pending_count_sq, output_field=IntegerField()), Value(0)),
-            total_spares=Coalesce(Subquery(spares_sq, output_field=DecimalField()), Value(0, output_field=DecimalField())),
-            total_labour=Coalesce(Subquery(labour_sq, output_field=DecimalField()), Value(0, output_field=DecimalField())),
-            total_received=Coalesce(Subquery(received_sq, output_field=DecimalField()), Value(0, output_field=DecimalField())),
-        )
-        .annotate(
-            total_balance=ExpressionWrapper(
-                F('total_spares') + F('total_labour') - F('total_received'),
-                output_field=DecimalField()
-            )
+            total_balance=Coalesce(_owed_subquery(),
+                                   Value(Decimal('0'), output_field=DecimalField())),
         )
         .order_by('customer_name')
     )
@@ -118,12 +100,12 @@ def bulk_payer_create(request):
             return redirect('pending_payments_list')
         
         if BulkPayer.objects.filter(customer_name__iexact=customer_name).exists():
-            messages.error(request, f"Bulk payer '{customer_name}' already exists.")
+            messages.error(request, f"Fleet Account '{customer_name}' already exists.")
             return redirect('pending_payments_list')
         
         bulk_payer = BulkPayer.objects.create(customer_name=customer_name)
         
-        messages.success(request, f"Bulk payer '{customer_name}' created successfully. You can now add job cards manually.")
+        messages.success(request, f"Fleet Account '{customer_name}' created. You can now add job cards to it.")
         return redirect('bulk_payer_detail', pk=bulk_payer.pk)
     
     return redirect('pending_payments_list')
@@ -163,11 +145,11 @@ def bulk_payer_edit(request, pk):
                         BulkPayer, 'customer_name')
 
         if not name:
-            messages.error(request, "Fleet account name cannot be empty.")
+            messages.error(request, "Fleet Account name cannot be empty.")
             return redirect('bulk_payer_detail', pk=pk)
 
         if BulkPayer.objects.filter(customer_name__iexact=name).exclude(pk=pk).exists():
-            messages.error(request, f"Another fleet account named '{name}' already exists.")
+            messages.error(request, f"Another Fleet Account named '{name}' already exists.")
             return redirect('bulk_payer_detail', pk=pk)
 
         was = payer.customer_name
@@ -202,17 +184,21 @@ def bulk_payer_detail(request, pk):
     # 1. Grand totals (Calculated efficiently in SQL without Python loops)
     #    Totals are always calculated from pending/partial only.
     # -------------------------------------------------------------------------
-    total_received_all = base_cards_query.aggregate(s=Sum('received_amount'))['s'] or Decimal('0.0')
-    total_spares = JobCardSpareItem.objects.filter(job_card__in=base_cards_query).aggregate(s=Sum('total_price'))['s'] or Decimal('0.0')
-    # Off the cards, not off their job lines. This summed
-    # `JobCardLabourItem.amount` until 2026-08-04; that column is dormant now, so
-    # the fleet's outstanding balance would have silently shed all the labour on
-    # every card raised since.
-    total_labour = base_cards_query.aggregate(s=Sum('labour_amount'))['s'] or Decimal('0.0')
-
-    total_bill_all = total_spares + total_labour
-    total_balance_all = total_bill_all - total_received_all  # Can be negative (fully settled)
-    card_count = base_cards_query.count()
+    # ONE aggregate, and the balance comes from `FLEET_OWED` rather than being
+    # rebuilt here - see the note on that constant in models.py. It used to sum
+    # spares and labour separately to rebuild each card's own bill, which is
+    # what let this page and `get_pending_balance` drift apart.
+    _zero = Value(Decimal('0'), output_field=DecimalField())
+    totals = base_cards_query.aggregate(
+        bill=Coalesce(Sum('total_bill_amount', output_field=DecimalField()), _zero),
+        received=Coalesce(Sum('received_amount', output_field=DecimalField()), _zero),
+        owed=Coalesce(Sum(FLEET_OWED, output_field=DecimalField()), _zero),
+        n=Count('pk'),
+    )
+    total_bill_all = totals['bill']
+    total_received_all = totals['received']
+    total_balance_all = totals['owed']   # Can be negative (fully settled)
+    card_count = totals['n']
 
     # -------------------------------------------------------------------------
     # 2. Per-row Financial Annotations
@@ -298,7 +284,7 @@ def move_jobcard_to_bulk(request):
         bulk_payer_id = request.POST.get('bulk_payer_id', '').strip()
         
         if not job_card_id or not bulk_payer_id:
-            messages.error(request, "Missing job card or bulk payer selection.")
+            messages.error(request, "Missing job card or Fleet Account selection.")
             return redirect('pending_payments_list')
             
         try:
@@ -324,7 +310,7 @@ def move_jobcard_to_bulk(request):
 
             # Prevent moving already fully paid cards or cards already assigned
             if job_card.payment_status not in ['PENDING', 'PARTIAL'] or job_card.bulk_payer:
-                messages.error(request, "This job card cannot be assigned to a bulk payer.")
+                messages.error(request, "This job card cannot be assigned to a Fleet Account.")
                 return redirect('pending_payments_list')
 
             bulk_payer.job_cards.add(job_card)
@@ -332,7 +318,7 @@ def move_jobcard_to_bulk(request):
             
             messages.success(request, f"Moved {job_card.registration_number} to {bulk_payer.customer_name}.")
         except (JobCard.DoesNotExist, BulkPayer.DoesNotExist, ValueError):
-            messages.error(request, "Invalid job card or bulk payer selected.")
+            messages.error(request, "Invalid job card or Fleet Account selected.")
             
     return redirect('pending_payments_list')
 
@@ -587,7 +573,20 @@ def bulk_payer_delete(request, pk):
 @office_required
 def bulk_payer_archived(request):
     """List archived (deactivated) Fleet Accounts, each with a Reactivate action."""
-    payers = BulkPayer.objects.filter(is_trashed=True).order_by('customer_name')
+    # Annotated, never `get_pending_balance` per row - same expression, one
+    # query instead of one per account. An archived account cannot hold an open
+    # card (`bulk_payer_delete` refuses while it does), so this reads Rs 0
+    # unless something predating that guard is still on the books - which is
+    # exactly what it is worth showing.
+    payers = (
+        BulkPayer.objects
+        .filter(is_trashed=True)
+        .annotate(
+            total_balance=Coalesce(_owed_subquery(),
+                                   Value(Decimal('0'), output_field=DecimalField()))
+        )
+        .order_by('customer_name')
+    )
     page_obj = Paginator(payers, 45).get_page(request.GET.get('page'))
     return render(request, 'workshop/jobcard/bulk_payer_archived.html', {
         'page_obj': page_obj,

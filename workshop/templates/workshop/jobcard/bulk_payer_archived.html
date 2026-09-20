@@ -28,7 +28,7 @@
                     {% for payer in page_obj %}
                     <tr>
                         <td>{{ payer.customer_name }}</td>
-                        <td class="text-end">&#8377;{{ payer.get_pending_balance|floatformat:0 }}</td>
+                        <td class="text-end">&#8377;{{ payer.total_balance|floatformat:0 }}</td>
                         <td class="text-end">
                             <form method="post" action="{% url 'bulk_payer_restore' payer.pk %}"
                                   data-confirm="{{ payer.customer_name }} goes back into the Fleet Accounts list and can take new job cards and payments again."

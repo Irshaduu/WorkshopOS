@@ -164,6 +164,20 @@ EVENTS = {
     'ACCOUNT_ARCHIVED': Event("Account archived",    INFO,     AUDIENCE_OWNERS, 'bi-archive-fill'),
     'SALARY_ADVANCE':   Event("Salary advance",      INFO,     AUDIENCE_OWNERS, 'bi-cash-coin'),
     'SALARY_SETTLED':   Event("Salary settled",      INFO,     AUDIENCE_OWNERS, 'bi-cash-stack'),
+
+    # THE DELETE BESIDE IT HAS BEEN LOGGED SINCE DAY ONE AND THE EDIT WAS
+    # SILENT. `edit_cashbook_entry` can retype a Rs 50,000 expense as Rs 5, or
+    # move it into a month the Profit page has already been read against, and
+    # nothing said so - the Cashbook is the one place a free-text amount
+    # reaches owner reporting with no second pair of eyes.
+    #
+    # INFO, DELIBERATELY. This is the most frequently keyed money screen in the
+    # app, and a phone that buzzes for routine bookkeeping is how the thirteen
+    # CRITICAL events stop being read. It lands in the feed, where an owner
+    # meets it next time they look - and unlike the rent case, the actor here
+    # is OFFICE and the audience is OWNERS, so excluding the actor costs this
+    # event nothing.
+    'CASHBOOK_EDITED':  Event("Cashbook entry changed", INFO,   AUDIENCE_OWNERS, 'bi-pencil-square'),
 }
 
 # Fallback for a row written before its event was renamed, or by a key that has

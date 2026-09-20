@@ -433,6 +433,23 @@ def _clamp(day):
     return max(date.min, min(day, date.max))
 
 
+def _back(day, days):
+    """`day` minus `days`, stopping at the start of the calendar.
+
+    NOT `_clamp(day - timedelta(days))` - THE SUBTRACTION RAISES FIRST.
+    `date.min - timedelta(days=1)` is an OverflowError, so by the time
+    `_clamp` is handed the result there is nothing left to clamp and the 500
+    reaches the browser. A mis-keyed year in the custom date box is enough to
+    get there, and only on a range whose end is in the PAST: that takes the
+    FINISHED branch below, where both steps back are day-based. The partial
+    branch was always safe because `_add_months` clamps inside itself - this
+    is that same guarantee for the day-based steps.
+    """
+    if (day - date.min).days <= days:
+        return date.min
+    return day - timedelta(days=days)
+
+
 def comparison_window(start, end):
     """
     The window to compare this one against, and what to CALL that comparison.
@@ -486,11 +503,11 @@ def comparison_window(start, end):
     if start.day == 1 and end == _month_end(end):
         months = (end.year - start.year) * 12 + (end.month - start.month) + 1
         prev_start = _clamp(_add_months(start, -months))
-        return prev_start, _clamp(start - timedelta(days=1)), end, 'vs previous', False
+        return prev_start, _back(start, 1), end, 'vs previous', False
 
     span = (end - start).days + 1
-    prev_end = _clamp(start - timedelta(days=1))
-    prev_start = _clamp(prev_end - timedelta(days=span - 1))
+    prev_end = _back(start, 1)
+    prev_start = _back(prev_end, span - 1)
     return prev_start, prev_end, end, 'vs previous', False
 
 

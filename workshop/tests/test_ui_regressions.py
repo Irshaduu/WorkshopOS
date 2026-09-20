@@ -6,6 +6,9 @@ page still renders, every functional test still passes, and the thing is simply
 unusable or gone. A rendered-markup assertion is the only thing that notices.
 """
 
+import ast
+import pathlib
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -573,3 +576,168 @@ class AConfirmationMakesItselfHeardTests(TestCase):
 
         self.assertIn('function play(kind, blocking)', script)
         self.assertIn("play('prompt', true)", script)
+
+
+class TheUICallsItAFleetAccountEverywhereTests(TestCase):
+    """
+    THE MODEL IS `BulkPayer` AND THAT IS DELIBERATE. CLAUDE.md's "Naming that
+    must not be tidied" covers the model, its fields and its URLs, because job
+    cards and payment history point AT them by name. What the USER reads is a
+    different question, and the rename was done by hand, so it left strings
+    behind: the fleet panel's empty state, the assign-a-car note on Pending
+    Bills, and five flash messages - including the first one anybody ever
+    meets. You pressed a button labelled Fleet Account and a green banner
+    answered "Bulk payer 'Acme' created successfully."
+
+    Two of them were only half wrong: the rename screen said "Fleet account"
+    where the app's own name for it is "Fleet Account".
+
+    Nothing functional notices any of this - every view returns 200, every
+    ledger balances - which is exactly why it survived the rename. A scan is
+    the only thing that sees it.
+    """
+
+    # The word, wherever a person can read it. Not `bulk_payer`, not
+    # `BULK_PAID`, not `.pp-bulk-btn` - those are the code's own name for the
+    # thing and are protected.
+    WORD = re.compile(r'\bbulk\b', re.I)
+
+    # `bulk_payments.html` and its partial say "Bulk Payments" and are allowed
+    # to: no view renders them, no URL names them, nothing includes them, and
+    # their own `{% url %}` tags point at route names that no longer exist, so
+    # reviving one raises NoReverseMatch before it could show anybody the word.
+    # `test_the_dead_bulk_payment_templates_are_still_dead` is what holds that
+    # excuse to account.
+    DEAD = {'bulk_payments.html', 'bulk_payments_partial.html'}
+
+    def _app_files(self, suffix):
+        from django.conf import settings
+        # BASE_DIR, never a relative path: `manage.py test` can be run from
+        # anywhere, and a scanner that walks nothing reports nothing and
+        # passes. `test_the_scan_actually_reads_the_codebase` is the floor
+        # under that.
+        base = pathlib.Path(settings.BASE_DIR)
+        roots = (base / 'workshop', base / 'inventory')
+        for root in roots:
+            for p in root.rglob('*' + suffix):
+                parts = set(p.parts)
+                if 'migrations' in parts or 'tests' in parts:
+                    continue
+                if p.name.startswith('test'):
+                    continue
+                yield p
+
+    # ---- the floor under both scans --------------------------------------
+
+    def test_the_scan_actually_reads_the_codebase(self):
+        """
+        A scanner that walks the wrong directory finds no files, collects no
+        offenders and PASSES. That is green for the wrong reason, which is
+        worse than red, so the counts are pinned at an order of magnitude -
+        loose enough never to need touching, tight enough that an empty walk
+        cannot slip through.
+        """
+        self.assertGreater(len(list(self._app_files('.py'))), 40)
+        self.assertGreater(len(list(self._app_files('.html'))), 80)
+
+    # ---- what the server says -------------------------------------------
+
+    def test_no_message_shown_to_a_user_says_bulk(self):
+        """
+        Every `messages.*` string in the app, read out of the AST rather than
+        by grepping - so an f-string, a multi-line one and a plain one are all
+        caught the same way.
+        """
+        offenders = []
+        for path in self._app_files('.py'):
+            tree = ast.parse(path.read_text(encoding='utf-8'))
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == 'messages'):
+                    continue
+                for arg in node.args:
+                    for sub in ast.walk(arg):
+                        if (isinstance(sub, ast.Constant)
+                                and isinstance(sub.value, str)
+                                and self.WORD.search(sub.value)):
+                            offenders.append(
+                                '%s:%d  %r' % (path.as_posix(), node.lineno,
+                                               sub.value[:70]))
+        self.assertEqual(
+            offenders, [],
+            'the UI calls it a Fleet Account - these messages still say bulk:'
+            '\n  ' + '\n  '.join(offenders))
+
+    # ---- what the page says ----------------------------------------------
+
+    # A `>...<` match also catches everything inside <script>, <style> and
+    # {% comment %}, because those sit between a > and a < like any text node.
+    # They are stripped first: this test is about what a PERSON READS. A stale
+    # name in a script comment is a developer's problem, not a customer's, and
+    # folding the two together makes the scan noisy enough to be switched off.
+    NOT_READ = re.compile(
+        r'<script\b.*?</script>|<style\b.*?</style>'
+        r'|\{%\s*comment\s*%\}.*?\{%\s*endcomment\s*%\}',
+        re.S | re.I)
+
+    def test_no_rendered_template_text_says_bulk(self):
+        """
+        Text nodes and the attributes a person can read, never class names,
+        ids, `{% url %}` names or context variables.
+        """
+        node = re.compile(r'>([^<>]*)<')
+        attr = re.compile(
+            r'(?:placeholder|title|aria-label|alt)\s*=\s*"([^"]*)"', re.I)
+        offenders = []
+        for path in self._app_files('.html'):
+            if path.name in self.DEAD:
+                continue
+            body = self.NOT_READ.sub(' ', path.read_text(encoding='utf-8',
+                                                         errors='ignore'))
+            for rx in (node, attr):
+                for raw in rx.findall(body):
+                    text = ' '.join(raw.split())
+                    if not self.WORD.search(text):
+                        continue
+                    # `{{ bulk_payer.customer_name }}` and friends are the
+                    # context variable, not copy.
+                    stripped = re.sub(r'\{\{.*?\}\}|\{%.*?%\}', '', text)
+                    if not self.WORD.search(stripped):
+                        continue
+                    offenders.append('%s  %r' % (path.as_posix(), text[:70]))
+        self.assertEqual(
+            offenders, [],
+            'the UI calls it a Fleet Account - these rendered strings still '
+            'say bulk:\n  ' + '\n  '.join(offenders))
+
+    # ---- and the excuse the scan leans on --------------------------------
+
+    def test_the_dead_bulk_payment_templates_are_still_dead(self):
+        """
+        The scan above skips two templates because nothing can reach them.
+        That is only an acceptable excuse for as long as it stays true - so if
+        somebody wires one up, this fails first and they fix the copy before
+        anybody reads it.
+        """
+        from django.conf import settings
+        for name in self.DEAD:
+            matches = list(
+                (pathlib.Path(settings.BASE_DIR) / 'workshop').rglob(name))
+            self.assertTrue(matches, '%s has been deleted - drop it from DEAD '
+                                     'and from this test' % name)
+
+        referrers = []
+        for path in list(self._app_files('.py')) + list(self._app_files('.html')):
+            if path.name in self.DEAD:
+                continue
+            body = path.read_text(encoding='utf-8', errors='ignore')
+            for name in self.DEAD:
+                if name in body:
+                    referrers.append('%s names %s' % (path.as_posix(), name))
+        self.assertEqual(
+            referrers, [],
+            'a dead Bulk Payments template is being reached again - it still '
+            'says "Bulk Payments" to a user, and its own {% url %} tags name '
+            'routes that no longer exist:\n  ' + '\n  '.join(referrers))

@@ -1071,6 +1071,37 @@ settled month forever.
 The UI says **"Fleet Account"**; the model, fields and URLs all say `BulkPayer`.
 Don't rename them to match the copy. `BULK_PAID` displays as **"Fleet Paid"**.
 
+⚠ **THAT SPLIT IS ONLY SAFE WHILE THE USER-FACING HALF IS COMPLETE, AND IT WAS
+NOT.** The rename was done by hand and left the old word on screen in nine
+places — the fleet panel's empty state, the assign-a-car note on Pending Bills,
+and seven flash messages, including the first one anybody ever meets: you
+pressed **Add Fleet Account** and a green banner answered *"Bulk payer 'Acme'
+created successfully."* Two more said "Fleet account" where the app's own name
+is **"Fleet Account"**. Every view still returned 200 and every ledger still
+balanced, which is exactly why it survived — nothing functional notices a word.
+
+⚠ **A SCAN IS THE ONLY THING THAT SEES IT, and it reads what a PERSON READS.**
+`messages.*` strings are pulled out of the **AST**, not grepped, so an f-string,
+a multi-line one and a plain one are all caught the same way. Templates are read
+as text nodes and the attributes somebody can read, with `<script>`, `<style>`
+and `{% comment %}` stripped first: a stale name in a script comment is a
+developer's problem, not a customer's, and folding the two together makes the
+scan noisy enough that somebody switches it off.
+
+⚠ **`bulk_payments.html` AND `bulk_payments_partial.html` STILL SAY "BULK
+PAYMENTS" AND ARE ALLOWED TO** — no view renders them, no URL names them,
+nothing includes them, and their own `{% url %}` tags name routes that no
+longer exist, so reviving one raises `NoReverseMatch` before it could show
+anybody the word. The scan skips them and a **third test holds that excuse to
+account**: the day one is wired up again, it fails first.
+
+⚠ **`bulk_pool` in `views_suppliers.py` and `views/spare_shop.py` IS NOT THIS.**
+It is a local variable in the payment waterfall — the pool of money paid in bulk
+against a shop's bills — and has nothing to do with `BulkPayer`. It is never
+rendered. **Leave it alone**: renaming it is churn on a money path for no
+reader's benefit.
+→ `TheUICallsItAFleetAccountEverywhereTests`
+
 **A FLEET ACCOUNT CAN BE RENAMED, AND THAT IS SAFE FOR A REASON WORTH KNOWING
 BEFORE COPYING IT ANYWHERE ELSE.** `bulk_payer_edit` is one `UPDATE` with no
 propagation step, because **everything points AT the account by ForeignKey** —
@@ -9847,7 +9878,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 77 files, 2,692 tests (counted 2026-09-20). Always SQLite (see below).
+# Full test suite — 77 files, 2,711 tests (counted 2026-09-20). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -9864,7 +9895,28 @@ python manage.py runserver
 # The cheap checks run regardless, every time: scratchpad/check_system_map.py and
 # the node tests below. A full run may also happen AFTER a commit rather than
 # before it — it need not block landing work whose radius is proven.
-# Last full run 2026-09-20: 2,691 tests, 8,987s (2h30m), ALL GREEN — the slowest
+# ⚠ `--parallel` CUTS IT TO A THIRD, AND IT IS SAFE HERE. Measured 2026-09-20 on
+# a 2-physical-core laptop: `--parallel 4` ran 2,711 tests in 2,637s (44 min)
+# ALL GREEN, against 8,987s (2h30m) serial — 3.4x. The test database is
+# in-memory SQLite, which Django clones per worker, so there is no file to
+# collide over.
+#   • THE BINDING CONSTRAINT IS MEMORY, NOT CORES. Each worker carries its own
+#     Django instance plus its own in-memory database. Measured: 4 workers cost
+#     ~500 MB. With a browser open there was 1.16 GB free and `--parallel 4`
+#     would have swapped, which is slower AND less stable; with everything
+#     closed there was 2.25 GB and it ran clean. CHECK AVAILABLE MEMORY BEFORE
+#     CHOOSING THE NUMBER — `Get-Counter '\Memory\Available MBytes'`.
+#   • THE TELL THAT IT IS HEALTHY is the workers' CPU seconds being nearly
+#     EQUAL (measured 913/913/913/912 at 16 minutes). A stalled worker shows as
+#     a flat count while the others climb.
+#   • A GREEN PARALLEL RUN IS TRUSTWORTHY; A RED ONE NEEDS A SECOND LOOK.
+#     Isolation problems cause spurious FAILURES, not spurious passes — so
+#     re-run only the failing files SERIALLY before calling one a bug.
+#   • ⚠ Do not pipe it through `tail`: that buffers the whole run, so there is
+#     no progress to watch until it exits.
+# Last full run 2026-09-20: 2,711 tests, 2,637s (44 min) on `--parallel 4`, ALL
+# GREEN, verifying commit ff93dda on an otherwise idle machine.
+# Before it: 2,691 tests, 8,987s (2h30m) serial, ALL GREEN — the slowest
 # run recorded here, on a machine also running the dev server and a browser;
 # measured mid-run at 35 tests/min. Before it: 2026-09-16, 2,529 tests, 4,196s
 # (70 min) — NOT all green in one
@@ -10279,7 +10331,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **77 files, 2,692 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **77 files, 2,711 tests**,
 re-counted 2026-09-20. (`workshop/tests/` is 71 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)

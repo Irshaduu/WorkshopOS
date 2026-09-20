@@ -1727,6 +1727,42 @@ class OrphanedPhotoBlob(models.Model):
         return self.storage_key
 
 
+# WHAT A FLEET STILL OWES - ONE DEFINITION, READ BY EVERY SCREEN.
+#
+# There were two, and they agreed in ordinary use, which is why nothing caught
+# them. `get_pending_balance` was the stored columns
+# (`total_billed_amount - total_paid_amount`): EVERY card ever raised, GROSS of
+# discount, against the payment LEDGER. The fleet panel and the account page
+# asked a different question - what is unpaid on the cards still OPEN. They
+# part company on two states the workshop really reaches:
+#
+#   - a settled card carrying a DISCOUNT leaves that discount sitting in the
+#     stored balance for ever, so an account that owes nothing reads as still
+#     owing it. Worst on the ARCHIVED list, which by construction holds only
+#     accounts with no open cards at all;
+#   - an overpayment banked as `advance_balance` is money in the payment ledger
+#     that is on no card, so the stored balance swings into credit while the
+#     open cards correctly say nothing is owed.
+#
+# The stored columns STAY. They are honest facts - what was billed, what was
+# paid - and the audit reads them directly. What changed is that the BALANCE is
+# no longer one of them: every screen now asks the job cards, through these.
+#
+# `total_bill_amount` is `spares + labour_amount`, written by
+# `JobCard.update_totals()`, so re-deriving a card's bill from its parts here
+# would be the same figure by a second route - the thing this rule exists to
+# stop. Verified against the development data: 0 of 14 fleet cards disagree.
+#
+# It also closes a trap the fleet panel used to carry a hand-written warning
+# about. Rebuilding the bill meant summing the labour separately, and the
+# obvious column to sum is `JobCardLabourItem.amount` - DORMANT since
+# 2026-08-04, never written, so every card raised since would have reported
+# ZERO labour and understated what the fleet owes. Reading the card's own total
+# cannot make that mistake, because there is no labour column here to pick.
+FLEET_UNSETTLED = ('PENDING', 'PARTIAL')
+FLEET_OWED = models.F('total_bill_amount') - models.F('received_amount')
+
+
 class BulkPayer(models.Model):
     """
     Persistent Bulk Payment group for fleet/repeat customers.
@@ -1768,9 +1804,24 @@ class BulkPayer(models.Model):
         self.total_paid_amount = payments
         self.save(update_fields=['total_billed_amount', 'total_paid_amount'])
 
+    def open_cards(self):
+        """The cards this account can still be billed for."""
+        return self.job_cards.filter(payment_status__in=FLEET_UNSETTLED)
+
     @property
     def get_pending_balance(self):
-        return self.total_billed_amount - self.total_paid_amount
+        """What this account still owes - see FLEET_OWED above.
+
+        One row's answer. A LIST annotates with the same expression instead,
+        or this is a query per row.
+        """
+        from django.db.models import Sum, DecimalField, Value
+        from django.db.models.functions import Coalesce
+        return self.open_cards().aggregate(
+            s=Coalesce(Sum(FLEET_OWED, output_field=DecimalField()),
+                       Value(Decimal('0'), output_field=DecimalField()),
+                       output_field=DecimalField())
+        )['s']
 
     def __str__(self):
         return self.customer_name

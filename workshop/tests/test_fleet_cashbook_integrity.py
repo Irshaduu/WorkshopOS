@@ -1122,3 +1122,156 @@ class AFleetPaymentCanCarryANoteTests(FleetLedgerTestCase):
         }
 
         self.assertEqual(len(set(widths.values())), 1, widths)
+
+
+class OneAccountGivesOneBalanceTests(FleetLedgerTestCase):
+    """
+    AUD-0084. `BulkPayer` carried two definitions of what a fleet owes.
+
+    `get_pending_balance` was the stored columns - EVERY card ever raised,
+    GROSS of discount, against the payment LEDGER. The fleet panel and the
+    account page asked what is unpaid on the cards still OPEN. They agree in
+    ordinary use, which is why nothing caught it for so long, so these tests
+    build the two states that pull them apart.
+
+    Both now read `FLEET_OWED` over the open cards. The stored columns stay
+    exactly as they were - they are honest facts (what was billed, what was
+    paid) and `test_the_balance_ignores_the_date_entirely` reads them directly.
+    """
+
+    def _screens(self, payer):
+        """What each of the three surfaces says this account owes."""
+        payer.refresh_from_db()
+        panel = self.client.get(reverse('bulk_payer_list'))
+        listed = {p.customer_name: p.total_balance
+                  for p in panel.context['bulk_payers']}
+        detail = self.client.get(reverse('bulk_payer_detail', args=[payer.pk]))
+        return {
+            'property': payer.get_pending_balance,
+            'panel': listed.get(payer.customer_name),
+            'account page': detail.context['total_balance'],
+        }
+
+    def _assert_agree(self, payer, expected, note):
+        said = self._screens(payer)
+        for screen, value in said.items():
+            self.assertEqual(
+                value, expected,
+                f"{note}: the {screen} says Rs {value}, expected Rs {expected} "
+                f"- one account, three answers: {said}")
+
+    def test_the_three_screens_agree_on_an_ordinary_account(self):
+        """The case that always worked - pinned so a fix cannot regress it."""
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self.assign(payer, self.make_card('KL01AAA', 5000))
+        self.pay(payer, 2000)
+        self._assert_agree(payer, Decimal('3000'), 'a part-paid account')
+
+    def _settled_with_a_writeoff(self, payer, bill, paid):
+        """A fleet card settled for less than it was billed.
+
+        BUILT DIRECTLY, BECAUSE NO SCREEN CAN CURRENTLY PRODUCE IT - and that
+        is the reason to pin it rather than skip it. `bulk_payer_pay` zeroes
+        `discount_amount` when it settles a card, `update_bill_status` refuses
+        a fleet card outright, and `move_jobcard_to_bulk` takes only
+        PENDING/PARTIAL cards, so a discounted walk-in cannot be moved onto an
+        account either. `analysis_engine` says the same thing about its own
+        fleet line: the two agree today ONLY because no fleet card carries a
+        discount, and the first one that does makes the page contradict
+        itself. This is the tripwire for that day.
+        """
+        card = self.make_card('KL01AAA', bill)
+        self.assign(payer, card)
+        self.pay(payer, paid)
+        card.refresh_from_db()
+        card.payment_status = 'BULK_PAID'
+        card.discount_amount = Decimal(bill) - Decimal(paid)
+        card.save()
+        payer.update_totals()
+        return card
+
+    def test_a_DISCOUNT_on_a_settled_card_is_not_still_owed(self):
+        """
+        THE FIRST STATE THAT PULLS THEM APART. A settled card's write-off sat
+        in the stored balance for ever, so an account that owes nothing read as
+        still owing exactly the amount it had been let off.
+        """
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self._settled_with_a_writeoff(payer, 5000, 4600)
+
+        self._assert_agree(payer, Decimal('0'), 'a settled card with a discount')
+
+        payer.refresh_from_db()
+        self.assertEqual(
+            payer.total_billed_amount - payer.total_paid_amount, Decimal('400'),
+            'the stored columns keep their own meaning - what was billed and '
+            'what was paid - and it is exactly that Rs 400 gap which used to '
+            'be reported as a live debt')
+
+    def test_an_ADVANCE_does_not_swing_the_balance_into_credit(self):
+        """
+        THE SECOND STATE. An overpayment is banked as `advance_balance` - money
+        in the payment ledger that is on no card - so the stored balance swung
+        into credit while the open cards correctly said nothing was owed.
+
+        What we hold and what we owe sit together and are never netted, so the
+        credit is reported as `advance_balance` and the balance reads Rs 0.
+        """
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self.assign(payer, self.make_card('KL01AAA', 5000))
+        self.pay(payer, 6500)
+
+        payer.refresh_from_db()
+        self.assertEqual(payer.advance_balance, Decimal('1500'))
+        self._assert_agree(payer, Decimal('0'), 'an account paid ahead')
+        self.assert_ledger_balances(payer, 'after an overpayment')
+
+    def test_an_ARCHIVED_account_reads_the_same_way(self):
+        """
+        The archived list was the one screen still on the stored columns, and
+        it is where the discount case bites hardest: an account can only be
+        archived once it holds no open card, so every row there should read
+        Rs 0 - and one carrying a settled discount read as still owing it.
+        """
+        payer = BulkPayer.objects.create(customer_name='Acme Fleet')
+        self._settled_with_a_writeoff(payer, 5000, 4600)
+        payer.is_trashed = True
+        payer.save(update_fields=['is_trashed'])
+
+        page = self.client.get(reverse('bulk_payer_archived'))
+        row = [p for p in page.context['page_obj']
+               if p.customer_name == 'Acme Fleet'][0]
+        self.assertEqual(row.total_balance, Decimal('0'))
+        # Read off the annotation, never the stored columns. Deliberately not a
+        # string search on the page: `font-weight: 400` also matches "400".
+        self.assertEqual(payer.get_pending_balance, Decimal('0'))
+
+    def test_the_archived_list_costs_the_same_however_many_rows(self):
+        """
+        Annotated, never `get_pending_balance` per row - that property is a
+        query, and over a page of 45 rows it is 45 of them.
+
+        Asserted as an INVARIANT (one row costs what five cost) rather than
+        against a magic number, which would go stale on the next query added
+        anywhere in the stack.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        url = reverse('bulk_payer_archived')
+        self.client.get(url)          # warm up: session row, group lookups
+
+        BulkPayer.objects.create(customer_name='Fleet 0', is_trashed=True)
+        with CaptureQueriesContext(connection) as one:
+            self.client.get(url)
+
+        for n in range(1, 5):
+            BulkPayer.objects.create(customer_name='Fleet %d' % n, is_trashed=True)
+        with CaptureQueriesContext(connection) as five:
+            self.client.get(url)
+
+        self.assertEqual(
+            len(five.captured_queries), len(one.captured_queries),
+            'five archived accounts cost %d queries where one costs %d - the '
+            'balance is being fetched per row'
+            % (len(five.captured_queries), len(one.captured_queries)))

@@ -7,6 +7,7 @@ from django.utils.html import escape
 from datetime import date, timedelta
 from django.contrib import messages
 from django.core.paginator import Paginator
+from django.urls import reverse
 from django.db import models, transaction
 from django.db.models import Q, Sum, Count, Case, When, Value, DecimalField
 from django.db.models.functions import Coalesce
@@ -18,6 +19,7 @@ from .money import parse_money, fit_text
 # asks the same question, and two copies would drift apart at a month boundary,
 # which is exactly where an owner reads the difference.
 from .money_dates import posted_date, is_future, too_far_back, backdate_floor
+from .notifications import notify
 from . import delete_window
 
 
@@ -584,6 +586,10 @@ def edit_cashbook_entry(request, pk):
     """Edit the name, amount, note, date, side and payment method of an entry."""
     if request.method == 'POST':
         entry          = get_object_or_404(CashbookEntry, pk=pk)
+        # READ BEFORE ANYTHING IS WRITTEN - the three fields below are about to
+        # be overwritten on this same instance, so "what it was" has to be taken
+        # now or it is gone.
+        was = (entry.amount, entry.date, entry.entry_type)
         category       = request.POST.get('category', '').strip()
         amount         = request.POST.get('amount', '').strip()
         payment_method = request.POST.get('payment_method', 'CASH')
@@ -637,5 +643,60 @@ def edit_cashbook_entry(request, pk):
         if posted_type in ('INCOME', 'EXPENSE'):
             entry.entry_type = posted_type
         entry.save()
+
+        # SAY SO, TO THE OTHER OWNER. Deleting an entry has written a
+        # `DeletionLog` row and raised `RECORD_DELETED` since day one; editing
+        # one - which can do the same damage, and is the ONLY way to move money
+        # between two closed reporting periods - said nothing at all.
+        #
+        # ONLY THE THREE FIELDS THAT MOVE MONEY ON THE PROFIT PAGE: the figure,
+        # the month it lands in, and which SIDE of the equation it sits on
+        # (income mis-keyed as an expense is a double-sized error). Correcting
+        # a spelling, a note or a payment method raises nothing, or the event
+        # means nothing by the second week - the settle dialog's own rule.
+        #
+        # NOT a `DeletionLog` row, and that is not laziness. That model's
+        # columns are `deleted_by` and `deleted_at`, its page is called
+        # Deletion History, and `record()` always raises `RECORD_DELETED` with
+        # the word "deleted" in the body - three surfaces that would each be
+        # stating something untrue. Writing the row WITHOUT going through
+        # `record()` is worse again: that choke point is the only reason the
+        # other fourteen entity types stay correct.
+        #
+        # What this buys is AWARENESS, not an archive - a read notification is
+        # swept after RETENTION_DAYS. A permanent mark on the row itself is the
+        # separate, larger decision (the rent ledger's own answer, which needed
+        # a column this model does not have).
+        # THE LINK HAS TO OPEN A PAGE THE ENTRY IS ACTUALLY ON, and a bare
+        # `/cashbook/` is not one: it defaults to filter=today, so an entry
+        # moved back to last August lands the reader on a list that does not
+        # contain it. That is the defect CLAUDE.md records fixing twice, and
+        # it bites harder here because a notification STORES its url - a bad
+        # one is wrong for every row ever written, not just the next.
+        #
+        # A one-day custom window on the entry's NEW date is the tightest
+        # answer: whatever month it was moved into, it is on the page.
+        day = entry.date.isoformat()
+        where = '%s?filter=custom&start_date=%s&end_date=%s' % (
+            reverse('cashbook'), day, day)
+
+        changed = []
+        if was[0] != entry.amount:
+            changed.append(f"was ₹{was[0]:,.0f}")
+        if was[1] != entry.date:
+            changed.append(f"was {was[1]:%d %b %Y}")
+        if was[2] != entry.entry_type:
+            changed.append(f"was {was[2].title()}")
+        if changed:
+            notify(
+                'CASHBOOK_EDITED',
+                f"{entry.category} · ₹{entry.amount:,.0f} edited",
+                detail=' · '.join(changed),
+                actor=request.user,
+                url=where,
+                object_type='CashbookEntry',
+                object_id=entry.pk,
+            )
+
         messages.success(request, "Entry updated.")
     return redirect('cashbook')

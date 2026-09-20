@@ -1,7 +1,7 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User, Group
-from workshop.models import CashbookEntry
+from workshop.models import CashbookEntry, DeletionLog, Notification
 from decimal import Decimal
 from django.utils import timezone
 from datetime import timedelta
@@ -464,3 +464,167 @@ class BothSidesAreCollectedEvenThoughOnlyTwoAreShownTests(TestCase):
 
     def test_an_unusable_custom_window_still_renders(self):
         self.assertEqual(self.page('?filter=custom&start_date=abc&end_date=zz').status_code, 200)
+
+
+class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
+    """
+    AUD-0083. Deleting a cashbook entry has written a `DeletionLog` row and
+    raised `RECORD_DELETED` since day one. EDITING one said nothing at all -
+    and an edit here can do the same damage: a Rs 50,000 expense retyped as
+    Rs 5, or moved into a month the Profit page has already been read against.
+    This is the only screen in the app that can move money between two closed
+    reporting periods.
+
+    INFO rather than CRITICAL, on the catalogue's own rule: the Cashbook is the
+    most frequently keyed money screen in the app, and a phone that buzzes for
+    routine bookkeeping is how the thirteen critical events stop being read.
+    """
+
+    def setUp(self):
+        for name in ('Owner', 'Office', 'Floor'):
+            Group.objects.get_or_create(name=name)
+        self.owner = User.objects.create_user(username='sahad', password='pw')
+        self.owner.groups.add(Group.objects.get(name='Owner'))
+        self.office = User.objects.create_user(username='officestaff', password='pw')
+        self.office.groups.add(Group.objects.get(name='Office'))
+        self.client.login(username='officestaff', password='pw')
+
+        self.entry = CashbookEntry.objects.create(
+            entry_type='EXPENSE', category='Electricity',
+            amount=Decimal('50000.00'), payment_method='CASH',
+            created_by=self.office, date=timezone.localdate(),
+        )
+
+    def _post(self, **over):
+        payload = {
+            'category': self.entry.category,
+            'amount': str(self.entry.amount),
+            'payment_method': self.entry.payment_method,
+            'entry_type': self.entry.entry_type,
+            'date': self.entry.date.isoformat(),
+        }
+        payload.update(over)
+        return self.client.post(
+            reverse('manage_edit_cashbook_entry', args=[self.entry.pk]), payload)
+
+    def _alerts(self):
+        return Notification.objects.filter(event='CASHBOOK_EDITED')
+
+    # -- the three that move money -------------------------------------------
+
+    def test_retyping_the_amount_reaches_the_owner(self):
+        self._post(amount='5')
+        row = self._alerts().get()
+        self.assertEqual(row.recipient, self.owner, 'owners are the audience')
+        self.assertIn('Electricity', row.body)
+        self.assertIn('5', row.body)
+        self.assertIn('50,000', row.detail,
+                      'the alert has to carry what the figure WAS')
+
+    def test_moving_it_into_another_month_reaches_the_owner(self):
+        old = self.entry.date
+        moved = (old.replace(day=1) - timedelta(days=1))
+        self._post(date=moved.isoformat())
+        self.assertIn(old.strftime('%b'), self._alerts().get().detail)
+
+    def test_flipping_the_side_of_the_equation_reaches_the_owner(self):
+        """Income mis-keyed as an expense is a double-sized error."""
+        self._post(entry_type='INCOME')
+        self.assertIn('Expense', self._alerts().get().detail)
+
+    # -- and nothing else does -----------------------------------------------
+
+    def test_a_note_or_a_method_raises_nothing(self):
+        """
+        Confirming what cannot surprise anyone is how confirmations stop being
+        read - the settle dialog's rule, applied to the feed. Only the figure,
+        the month and the side are worth an owner's attention.
+        """
+        self._post(payment_method='UPI', description='paid at the counter')
+        self.assertEqual(self._alerts().count(), 0)
+
+    def test_saving_an_unchanged_entry_raises_nothing(self):
+        self._post()
+        self.assertEqual(self._alerts().count(), 0)
+
+    # -- where it lands -------------------------------------------------------
+
+    def test_tapping_it_opens_a_page_the_entry_is_actually_on(self):
+        """
+        CLAUDE.md's rule, and the one it records breaking twice: follow the
+        link and look at the RENDERED page, because comparing a stored url
+        against a `reverse()` proves the route exists and says nothing about
+        whether the destination shows the thing.
+
+        It bites harder here than it did for `ACCOUNT_LOCKED`, because the
+        whole point of this alert is an entry that was moved into ANOTHER
+        MONTH - and `/cashbook/` defaults to filter=today, so the bare route
+        is guaranteed not to contain it. A notification STORES its url, so a
+        wrong one is wrong for every row ever written.
+
+        The entry is looked for by its ROW, never by its category name. The
+        add form offers every spelling already in use as a `<datalist>`, so a
+        whole-page search for "Switchgear" finds it on a page that lists no
+        such entry - which is how the first version of this test passed while
+        proving nothing.
+        """
+        # The 1st of LAST month: a different month from today, and still
+        # inside Office's own backdate floor, so the edit is actually
+        # accepted. Anything older is refused by `too_far_back` before a
+        # notification could exist to test.
+        first_of_this = self.entry.date.replace(day=1)
+        moved = (first_of_this - timedelta(days=1)).replace(day=1)
+        self._post(date=moved.isoformat(), category='Switchgear')
+
+        row = self._alerts().get()
+        self.client.login(username='sahad', password='pw')   # owner reads it
+        marker = 'data-id="%d"' % self.entry.pk
+
+        # The defect this is pinned against, stated as a fact rather than
+        # assumed: the bare route CANNOT show the entry, because the Cashbook
+        # opens on filter=today. If this ever stops being true the test below
+        # is passing for free and should be rewritten.
+        bare = self.client.get(reverse('cashbook'), follow=True)
+        self.assertNotIn(self.entry, bare.context['entries'],
+                         'the bare cashbook now lists a moved entry - this '
+                         'test has stopped proving anything')
+
+        page = self.client.get(row.url, follow=True)
+        self.assertEqual(page.status_code, 200, 'the alert opens a dead page')
+        self.assertIn(self.entry, page.context['entries'],
+                      'the alert lands on a window the entry is not in')
+        self.assertContains(
+            page, marker,
+            msg_prefix='the entry is in the queryset but its row is not drawn')
+
+    def test_the_link_is_built_from_reverse_not_a_hardcoded_path(self):
+        """A hardcoded path survives a urls.py edit silently; `reverse()`
+        does not. The query string is ours, the route is not."""
+        self._post(amount='5')
+        self.assertTrue(self._alerts().get().url.startswith(reverse('cashbook')))
+
+    # -- how it is filed ------------------------------------------------------
+
+    def test_it_is_INFO_so_it_never_reaches_a_phone(self):
+        from workshop.notifications import EVENTS, INFO
+        self.assertEqual(EVENTS['CASHBOOK_EDITED'].severity, INFO)
+
+    def test_it_writes_no_deletion_log_row(self):
+        """
+        `DeletionLog`'s columns are `deleted_by` and `deleted_at`, its page is
+        called Deletion History, and `record()` always raises `RECORD_DELETED`
+        with the word "deleted" in the body. An edit filed there would make
+        three surfaces state something untrue.
+        """
+        self._post(amount='5')
+        self.assertEqual(DeletionLog.objects.count(), 0)
+
+    def test_an_owners_own_edit_does_not_buzz_that_owner(self):
+        """`notify()` excludes the actor - what arrives is always somebody
+        ELSE did this, which with two owners is corroboration."""
+        second = User.objects.create_user(username='rijas', password='pw')
+        second.groups.add(Group.objects.get(name='Owner'))
+        self.client.login(username='sahad', password='pw')
+        self._post(amount='5')
+        self.assertEqual(list(self._alerts().values_list('recipient', flat=True)),
+                         [second.pk])
