@@ -9444,12 +9444,14 @@ call.** Django asks for it several times per row — `initial_form_count()`,
 so every later `[i]` reads the loaded rows. `return super().get_queryset().filter(…)`
 hands back a fresh, unloaded queryset each time, and every one of those questions
 becomes a database trip. The job card's two parts sections cost **5 queries per
-row** this way — **200 on a card of fifteen spares and fifteen draws, against 46
-for one of each** — with nothing failing and the page looking right. Build it once
-and keep it (`SourceScopedSpareFormSet`); a subclass adds to it through
-`narrow_queryset()`, because chaining onto `super().get_queryset()` in a subclass
-brings the defect straight back. Fixed 2026-09-21: **16 queries whatever the card
-carries.**
+row** this way — in the test suite's full request, **200 on a card of fifteen
+spares and fifteen draws, against 46 for one of each** — with nothing failing and
+the page looking right. Build it once and keep it (`SourceScopedSpareFormSet`); a
+subclass adds to it through `narrow_queryset()`, because chaining onto
+`super().get_queryset()` in a subclass brings the defect straight back. Fixed
+2026-09-21: the page is **flat whatever the card carries** — 16 in that same test
+request, and 12 for the view alone on every card in the development database, as
+all three roles, with the HTML byte-identical to the old code's.
 → `workshop/tests/test_jobcard_form_queries.py`
 
 **An absent field behaves in OPPOSITE ways on a ModelForm and a formset.** On a
