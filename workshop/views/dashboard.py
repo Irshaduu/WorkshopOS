@@ -8,7 +8,7 @@ from django.db.models.functions import Coalesce, Trim
 from django.core.paginator import Paginator
 
 from ..models import (
-    JobCard, JobCardConcern, JobCardLabourItem, JobCardSpareItem,
+    JobCard, JobCardConcern, JobCardLabourItem, JobCardSpareItem, live_cards,
 )
 from ..decorators import office_required, staff_required
 from ..settlement import unfilled
@@ -122,7 +122,7 @@ def home(request):
     survives a refresh, the Back button and the pager. That is only safe because
     the heading keeps counting the WHOLE floor — see `floor_count`.
     """
-    floor = JobCard.objects.filter(completed=False, is_deleted=False)
+    floor = JobCard.objects.filter(live_cards(), completed=False)
 
     # The heading's "IN WORKSHOP" figure, and the All chip's, counted off the
     # UNFILTERED floor. The heading used to read `page_obj.paginator.count`,
@@ -157,14 +157,14 @@ def home(request):
     # (cars that left today), and a mechanic filter is a way of reading the
     # floor, not a different workshop.
     completed_count = JobCard.objects.filter(
+        live_cards(),
         completed=True,
-        is_deleted=False,
         completed_date=timezone.localdate()
     ).count()
 
     # Count pending bills (Completed but not fully paid, Active only)
     pending_bills_count = JobCard.objects.filter(
-        is_deleted=False,
+        live_cards(),
         payment_status__in=['PENDING', 'PARTIAL']
     ).count()
 
@@ -431,7 +431,7 @@ def _billed_but_unfilled():
 
     return (
         JobCard.objects
-        .filter(is_deleted=False, payment_status__in=BILLED_STATUSES)
+        .filter(live_cards(), payment_status__in=BILLED_STATUSES)
         .annotate(
             # Coalesce first: TRIM(NULL) is NULL, so a card that never had a
             # mileage would otherwise match no clause at all.
@@ -513,7 +513,7 @@ def live_report(request):
     """
     today = timezone.localdate()
 
-    on_the_floor = JobCard.objects.filter(is_deleted=False, completed=False)
+    on_the_floor = JobCard.objects.filter(live_cards(), completed=False)
 
     # The figure in the page heading. It counts the WORKSHOP, never a filtered
     # list — a heading reading "3 in workshop" because somebody left a query in
@@ -543,9 +543,9 @@ def live_report(request):
     awaited = (
         JobCardSpareItem.objects
         .filter(
+            live_cards('job_card__'),
             source=JobCardSpareItem.SOURCE_SHOP,
             job_card__isnull=False,
-            job_card__is_deleted=False,
             job_card__completed=False,
         )
         .select_related('job_card', 'shop')

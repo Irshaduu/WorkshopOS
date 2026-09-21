@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.db.models import Q
 from django.core.paginator import Paginator
 
-from ..models import JobCard
+from ..models import JobCard, live_cards
 from ..decorators import office_required, is_owner
 
 
@@ -30,8 +30,8 @@ def paid_bills_list(request):
 
     # 1. Base query: fully paid job cards only
     paid_jobs = JobCard.objects.filter(
+        live_cards(),
         payment_status__in=['PAID', 'BULK_PAID'],
-        is_deleted=False,
     ).order_by('-paid_date', '-admitted_date')
 
     # 2. Read filter from URL always — non-AJAX and AJAX both respect the same param

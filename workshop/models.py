@@ -932,6 +932,26 @@ class CarColourMixin:
         return car_color_label(self.car_color, self.car_color_other)
 
 
+def live_cards(through=''):
+    """
+    Which job cards count — THE ONE ANSWER (AUD-0007). A `Q`, so it serves every
+    shape the question is asked in:
+
+        JobCard.objects.filter(live_cards())
+        JobCardSpareItem.objects.filter(live_cards('job_card__'))
+        Sum(..., filter=Q(completed=True) & live_cards())
+
+    and `JobCard.is_live` is the same rule for a card already in hand.
+
+    ⚠ `is_deleted` is DORMANT: cards are hard-deleted now (the delete guard
+    refuses a card carrying parts, labour or a payment), so nothing writes True
+    and today this excludes nothing. It was hand-typed in 25 places across 13 files anyway, so
+    reviving a trash — or changing what "live" means — would have had to find
+    every one. `test_live_cards.py` fails on a twenty-sixth.
+    """
+    return models.Q(**{through + 'is_deleted': False})
+
+
 class JobCard(CarColourMixin, models.Model):
     # What counts as a discount worth an owner's attention. Shared by
     # `audit_high_discounts`, the HIGH_DISCOUNT notification and the settlement
@@ -984,6 +1004,11 @@ class JobCard(CarColourMixin, models.Model):
 
     # Soft Delete (Trash System)
     is_deleted = models.BooleanField(default=False, db_index=True, help_text="Hide from main list (moved to trash)")
+
+    @property
+    def is_live(self):
+        """`live_cards()` for a card already in hand — never `not card.is_deleted`."""
+        return not self.is_deleted
 
 
     # Vehicle Details (Text fields with Autocomplete)
@@ -1288,9 +1313,9 @@ class JobCard(CarColourMixin, models.Model):
         if not registration_number:
             return None
         qs = cls.objects.filter(
+            live_cards(),
             registration_number__iexact=registration_number.strip(),
             completed=False,
-            is_deleted=False,
         )
         if exclude_pk:
             qs = qs.exclude(pk=exclude_pk)

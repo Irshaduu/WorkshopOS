@@ -12,7 +12,7 @@ from django.core.paginator import Paginator
 from ..analysis_engine import MONEY, SPARE_COST
 from ..models import (
     JobCard, JobCardConcern, JobCardLabourItem, JobCardSpareItem, OldBill,
-    OldBillJobLine, OldBillPartLine, car_color_hex,
+    OldBillJobLine, OldBillPartLine, car_color_hex, live_cards,
 )
 from ..decorators import office_required, is_owner
 from ..return_to import safe_return
@@ -291,7 +291,7 @@ def car_profile_list(request):
                 # most useful thing a list of cars can tell you — "is this one
                 # of the cars I am looking after today?" — and it was not on the
                 # page at all.
-                'on_floor': (not jc.completed) and (not jc.is_deleted),
+                'on_floor': (not jc.completed) and jc.is_live,
             })
 
     context = {
@@ -348,7 +348,7 @@ def car_profile_detail(request, registration):
     #
     # The discount counts positive rows only — the floor the sheet applies to
     # each visit's discount, so the two can never print different DISCOUNTs.
-    done = Q(completed=True, is_deleted=False)
+    done = Q(completed=True) & live_cards()
     total_field = DecimalField(max_digits=14, decimal_places=2)
     money = all_visits.aggregate(
         visits=Count('id'),
@@ -365,7 +365,7 @@ def car_profile_detail(request, registration):
             ZERO, output_field=total_field,
         ),
         on_floor_so_far=Coalesce(
-            Sum('total_bill_amount', filter=Q(completed=False, is_deleted=False)),
+            Sum('total_bill_amount', filter=Q(completed=False) & live_cards()),
             ZERO, output_field=total_field,
         ),
     )
@@ -492,7 +492,7 @@ def car_profile_detail(request, registration):
         **latest_recorded(registration),
         # Only one job card per registration can be active at a time, and the
         # newest is it when there is one.
-        'on_floor': bool(latest) and (not latest.completed) and (not latest.is_deleted),
+        'on_floor': bool(latest) and (not latest.completed) and latest.is_live,
         'visits': total_visits,
         'old_bills': len(old_bills),
         'old_bills_total': sum((old.total_amount for old in old_bills), ZERO),
@@ -820,7 +820,7 @@ def car_all_invoices(request, registration):
     the floor has a total that is not final, so its bill is not a bill yet.
     """
     all_cards, old_bills = _history_records(registration)
-    cards = [card for card in all_cards if card.completed and not card.is_deleted]
+    cards = [card for card in all_cards if card.completed and card.is_live]
     cards.sort(key=lambda card: (card.admitted_date, card.pk), reverse=True)
 
     # The car's OLD BILLS follow, newest first — all older than any job card, so

@@ -120,6 +120,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'workshop.middleware.SessionTrackingMiddleware',
     'workshop.middleware.NoIndexMiddleware',
+    # AUD-0043 — the four directives that cannot break anything. Read the
+    # class docstring before adding a fifth.
+    'workshop.middleware.ContentSecurityPolicyMiddleware',
     # Must stay AFTER AuthenticationMiddleware — it reads request.user to decide
     # whether the response is worth withholding from the cache.
     'workshop.middleware.NoStoreMiddleware',

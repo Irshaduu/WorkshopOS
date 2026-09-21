@@ -578,7 +578,7 @@ def build_service_history(jobcards, current_km=None, old_bills=()):
     `part_lines`). They join the history in date order and stay out of the
     money totals — see the module docstring.
     """
-    live = [card for card in jobcards if not card.is_deleted]
+    live = [card for card in jobcards if card.is_live]
     completed = sorted(
         [_record_from_card(card) for card in live if card.completed]
         + [_record_from_old_bill(bill) for bill in old_bills],

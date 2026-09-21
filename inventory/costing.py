@@ -92,7 +92,7 @@ def cost_events(item):
     draw by the job card's admitted date — matching the dating rule the analysis
     engine follows.
     """
-    from workshop.models import JobCardSpareItem
+    from workshop.models import JobCardSpareItem, live_cards
     from .models import OpeningStock
 
     events = []
@@ -115,10 +115,10 @@ def cost_events(item):
 
     draws = (
         JobCardSpareItem.objects
-        .filter(item=item,
+        .filter(live_cards('job_card__'),
+                item=item,
                 source=JobCardSpareItem.SOURCE_INVENTORY,
-                job_card__isnull=False,
-                job_card__is_deleted=False)
+                job_card__isnull=False)
         .values_list('job_card__admitted_date', 'quantity', 'pk', 'unit_price')
     )
     for admitted_date, qty, pk, unit_price in draws:

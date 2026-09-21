@@ -830,8 +830,8 @@ guards are the only protection. **Delete is allowed only while the category hold
 no products** (`Item.category` is `PROTECT`).
 
 **Stock History is a live query over `JobCardSpareItem`**, not the dormant
-`ConsumptionRecord` model, and adds no signals. Both views filter
-`job_card__is_deleted=False` and flag entries whose `spare_part_name` matches no
+`ConsumptionRecord` model, and adds no signals. Both views keep to live cards
+(`live_cards('job_card__')`) and flag entries whose `spare_part_name` matches no
 `Item` as **"not from stock"**. Rows are capped at `HISTORY_ROW_CAP` rather than
 paginated, so the day-grouped layout is never split.
 ## Salary & advances
@@ -6590,6 +6590,30 @@ are standalone templates that do not extend `base.html`, and a fifth would be ad
 one day with nothing failing. **Neither is a security control**; every page worth
 protecting is behind a login.
 
+**THE CONTENT-SECURITY-POLICY IS FOUR DIRECTIVES, AND EACH SHUTS A DOOR THIS APP
+NEVER USES** (`ContentSecurityPolicyMiddleware`, 2026-09-21, AUD-0043):
+`object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`.
+An injected `<base>` cannot re-point the page's links and forms, an injected form
+cannot post a typed password off-site, no plugin loads, and no other site can
+frame the app — `frame-ancestors` is the modern form of the `X-Frame-Options:
+DENY` that still goes out beside it.
+
+⚠ **IT SAYS NOTHING ABOUT SCRIPTS, STYLES, IMAGES OR FETCHES, AND THAT IS WHAT
+MAKES IT SAFE TO ENFORCE.** The frontend is inline by design, so a `script-src`
+without `'unsafe-inline'` stops every page; photos load from and upload to the
+bucket's own origin, so an `img-src` / `connect-src` that forgot it breaks photos
+with no error. Blocking injected SCRIPTS needs the inline JS and its 73 inline
+handlers moved out first — see "Frontend architecture". Verified in a real
+browser before it shipped: fifteen main pages with no violation, an off-site form
+refused, the app refused inside a frame, an own-site form sent normally.
+
+⚠ **Before adding an `<object>`, `<embed>`, `<base>`, an `<iframe>` of our own
+page or an off-site form, change the policy first** — the browser refuses them
+silently. There is deliberately no Report-Only mode: reporting needs an endpoint
+anybody on the internet can post to, a new door to guard, for a policy that only
+refuses what the app never does.
+→ `test_content_security_policy.py`
+
 **`SessionTrackingMiddleware`** updates `UserSession` (device / IP / last-activity)
 on every authenticated request, throttled to a 5-minute cooldown per session.
 Owners can remotely terminate any active session from the management dashboard.
@@ -6731,8 +6755,14 @@ else, which is the right way round for the largest receipts the workshop takes.
 **Financial-transaction deletes reverse their effect** (restore job-card balances /
 warehouse stock) inside the same atomic block, then log + hard-delete.
 
-**`is_deleted` (JobCard) is a dormant column** — still filtered on for
-compatibility, no longer written.
+**`is_deleted` (JobCard) is a dormant column, and `models.live_cards()` is the one
+thing that filters on it** — never written, and every "which cards count?" question
+goes through that one `Q` (`card.is_live` for a card already in hand). It was
+hand-typed in 25 places across 13 files until 2026-09-21 (AUD-0007): every copy
+was right and none did anything, so the day a trash is revived — or "live" changes
+meaning — it now changes in one place. `inventory/signals.py`'s dormant reversal
+handlers are the one other reader, by design: they must see the flag move.
+→ `test_live_cards.py` — a scan fails on a hand-typed copy.
 
 **There is deliberately no delete for staff, only deactivate.** Changing someone's
 `role` is an in-place field update on the same row, never a delete-and-recreate —
@@ -7382,8 +7412,8 @@ Fold it in only as its own change, with those tests in front of you.
 
 The four master-list forms cancelled with `javascript:history.back()`. Each has
 exactly one caller, so a named URL was always available and is strictly better:
-it survives an empty history, and it is the one thing on those pages a CSP would
-break.
+it survives an empty history, and it is the one thing on those pages a CSP that
+restricts scripts would break (the one the app sends does not — see "Middleware").
 
 ⚠ **They keep the word "Cancel" and do NOT take `.pg-back`.** Cancel-beside-Save
 in a form footer is a different control from a page's back affordance;
@@ -9874,8 +9904,8 @@ reason it is being shown.
 and there is no build step.** Every outside review reaches the same suggestion, so the
 reasoning is recorded here rather than re-argued.
 
-Roughly 264 KB of inline JS across 42 templates, and ~723 KB of inline CSS across 67
-of the 118 (most templates carry their own `<style>`; measured 2026-09-15). Ten JS files exist —
+Roughly 297 KB of inline JS across 45 templates, and ~756 KB of inline CSS across 71
+of the 125 (most templates carry their own `<style>`; measured 2026-09-21). Ten JS files exist —
 `script.js`, `estimate.js`, `notifications.js`, `sound.js`, `photos.js`,
 `photos-core.js`, `pricing-core.js`, `old-bill-core.js`, `spare_autofill.js`, `confirm.js` — and the rule for what goes in one
 is **used on more than one page**; what stays inline is genuinely page-specific. The
@@ -9893,7 +9923,10 @@ fail silently the way a moved event handler can. If a new thing is drawn on more
 than one page, put it here rather than pasting it a second time.
 
 The usual arguments do not apply here:
-- **There is no CSP**, so no hardening is unlocked today.
+- **The CSP stops at four directives that touch no script** (see "Middleware").
+  Moving the JS out is what would unlock `script-src`, the half that blocks injected
+  scripts — real protection, and still the trade this section declines pre-ship,
+  because nothing here could prove the move broke nothing.
 - The largest page — the job card form — carries ~63 KB of inline script and ~66 KB of
   inline CSS, read by four devices on one shop's LAN, so caching is a rounding error.
   It is re-sent on every navigation anyway, because `no-store` makes a signed-in page
@@ -9967,7 +10000,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 79 files, 2,729 tests (counted 2026-09-21). Always SQLite (see below).
+# Full test suite — 81 files, 2,743 tests (counted 2026-09-21). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10009,7 +10042,10 @@ python manage.py runserver
 #     re-run only the failing files SERIALLY before calling one a bug.
 #   • ⚠ Do not pipe it through `tail`: that buffers the whole run, so there is
 #     no progress to watch until it exits.
-# Last full run 2026-09-21: 2,729 tests, 2,642s (44.0 min) on `--parallel 3`,
+# Last full run 2026-09-21: 2,743 tests, 2,050s (34.2 min) on `--parallel 3`,
+# ALL GREEN, verifying AUD-0007 (one live-card rule) and AUD-0043 (the
+# four-directive CSP) together.
+# Before it: the same day, 2,729 tests, 2,642s (44.0 min) on `--parallel 3`,
 # ALL GREEN, verifying AUD-0096 (the job card form flat at any number of parts).
 # Before it: the same day, 2,726 tests, 2,799s (46.7 min) on `--parallel 3`,
 # ALL GREEN, verifying AUD-0008 (the one cached role rule) and AUD-0088 (the
@@ -10342,12 +10378,30 @@ each exists so that one rule has exactly one implementation:
 | `old_bill_pdf.py` | what does this Excel bill's PDF say, box by box? — fills the form, never saves |
 
 `decorators.py` defines the RBAC decorators. `middleware.py` holds
-`SessionTrackingMiddleware`, `NoStoreMiddleware` and `NoIndexMiddleware`.
+`SessionTrackingMiddleware`, `NoStoreMiddleware`, `NoIndexMiddleware` and
+`ContentSecurityPolicyMiddleware`.
 
 **`inventory/`** — stock items/categories and supplier shops (`views.py` for core
 inventory, `views_suppliers.py` for the supplier-shop module). Stock levels stay in sync
 with workshop activity **purely via Django signals** in `signals.py`; there is no direct
 view-to-view coupling between the two apps for stock changes.
+
+**THE TWO APPS IMPORT EACH OTHER, AND THAT IS KEPT ON PURPOSE** (the owner's
+decision, 2026-09-21, closing `AUD-0003`). Counted that day: `workshop` reaches
+into `inventory` in 16 places and `inventory` into `workshop` in 17. Most of it is
+the business itself — a job card draws stock (`JobCardSpareItem.item` is a FK to
+`inventory.Item`), a draw moves the shelf through `inventory/signals.py`, and the
+costing replay and the Profit page read both sides — so no rearrangement of code
+can remove the loop. The rest is shared rules that live in `workshop` and that
+`inventory` borrows: the RBAC decorators, `money.py`, `money_dates.py`,
+`notifications`, `delete_window`, `DeletionLog`.
+
+Moving those into a neutral package was costed and declined: it rewrites dozens
+of imports, tests and doc paths, leaves the job-card ↔ stock loop exactly where it
+is, and changes nothing anybody sees. The two apps are one product and ship
+together. **When a cross-app import fails at startup, import inside the function**
+— the pattern `analysis_engine.py`, `models.py` and `inventory/costing.py` already
+use — never restructure the apps to dodge it.
 
 ## Signals-driven stock sync
 
@@ -10431,8 +10485,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **79 files, 2,729 tests**,
-re-counted 2026-09-21. (`workshop/tests/` is 73 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **81 files, 2,743 tests**,
+re-counted 2026-09-21. (`workshop/tests/` is 75 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

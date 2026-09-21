@@ -74,6 +74,55 @@ class NoIndexMiddleware:
         return response
 
 
+CONTENT_SECURITY_POLICY = (
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
+
+
+class ContentSecurityPolicyMiddleware:
+    """
+    The part of a Content-Security-Policy that cannot break this app (AUD-0043).
+
+    Four directives, and each shuts a door this app never uses:
+
+      object-src 'none'       no <object>/<embed> — a plugin is never needed here
+      base-uri 'self'         an injected <base> cannot re-point every relative
+                              link and form on the page at another site
+      form-action 'self'      a form can only post to this app — an injected
+                              form cannot send a typed password somewhere else
+      frame-ancestors 'none'  no site may frame this one (clickjacking). The
+                              modern form of the X-Frame-Options: DENY that
+                              `XFrameOptionsMiddleware` already sends.
+
+    ⚠ IT DELIBERATELY SAYS NOTHING ABOUT SCRIPTS, STYLES, IMAGES OR FETCHES, and
+    that is why it is safe to enforce. The frontend is inline JS and CSS by
+    design (CLAUDE.md, "Frontend architecture"), so a `script-src` without
+    'unsafe-inline' would stop every page working; and photos load from and
+    upload to the bucket's own origin, so an `img-src` / `connect-src` that
+    forgot it would break photos with no error. Blocking injected SCRIPTS needs
+    the inline JS and the 73 inline handlers moved out first — declined
+    pre-ship, and not something to reach for from here.
+
+    ⚠ Before adding an <object>, <embed>, <base> or <iframe> of our own pages,
+    or a form that posts off-site: this policy refuses it, silently, in the
+    browser. `test_content_security_policy.py` fails first.
+
+    A header on every response, the NoIndexMiddleware reasoning: the printed
+    invoice, the estimate and the signed-out pages do not extend `base.html`.
+    Static files never reach it (WhiteNoise answers them first), and a policy
+    only governs documents and workers, so nothing is lost.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if 'Content-Security-Policy' not in response:
+            response['Content-Security-Policy'] = CONTENT_SECURITY_POLICY
+        return response
+
+
 class NoStoreMiddleware:
     """
     Keep signed-in pages out of the browser's cache, so Back cannot un-log-out.

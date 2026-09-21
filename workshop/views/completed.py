@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.db.models import Q
 from django.core.paginator import Paginator
 
-from ..models import JobCard
+from ..models import JobCard, live_cards
 from ..decorators import office_required, staff_required
 
 
@@ -18,7 +18,7 @@ def completed_list(request):
     # 1. Base Query (Active only)
     completed_jobcards = (
         JobCard.objects
-        .filter(completed=True, is_deleted=False)
+        .filter(live_cards(), completed=True)
         .select_related('lead_mechanic')
         .prefetch_related('spares', 'labours')
         # NEWEST COMPLETED FIRST, AND `-id` IS THE TIEBREAKER RATHER THAN

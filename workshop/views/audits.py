@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.db.models.functions import Coalesce
 
-from ..models import JobCard
+from ..models import JobCard, live_cards
 from ..decorators import owner_required
 
 
@@ -43,9 +43,9 @@ def audit_high_discounts(request):
     end_date = request.GET.get('end_date', '').strip()
 
     bills = JobCard.objects.filter(
+        live_cards(),
         payment_status='PAID',
         discount_amount__gt=JobCard.HIGH_DISCOUNT_AMOUNT,
-        is_deleted=False
     ).annotate(
         effective_paid_date=Coalesce('paid_date', 'updated_at')
     )

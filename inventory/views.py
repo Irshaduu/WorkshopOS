@@ -12,7 +12,7 @@ from django.core.paginator import Paginator
 
 from .models import Category, Item
 from workshop.decorators import staff_required, office_required
-from workshop.models import JobCardSpareItem, Mechanic
+from workshop.models import JobCardSpareItem, Mechanic, live_cards
 
 
 @staff_required
@@ -223,9 +223,9 @@ def consumption_history(request):
 
     rows = list(
         JobCardSpareItem.objects
-        .filter(source=JobCardSpareItem.SOURCE_INVENTORY,
+        .filter(live_cards('job_card__'),
+                source=JobCardSpareItem.SOURCE_INVENTORY,
                 job_card__isnull=False,
-                job_card__is_deleted=False,
                 job_card__admitted_date__range=(start, end))
         .exclude(spare_part_name__isnull=True).exclude(spare_part_name='')
         .select_related('job_card', 'job_card__lead_mechanic')
@@ -262,9 +262,9 @@ def inventory_history_mechanic(request, mechanic_id):
     # rows can still carry.
     totals = list(
         JobCardSpareItem.objects
-        .filter(source=JobCardSpareItem.SOURCE_INVENTORY,
+        .filter(live_cards('job_card__'),
+                source=JobCardSpareItem.SOURCE_INVENTORY,
                 job_card__lead_mechanic=mechanic,
-                job_card__is_deleted=False,
                 job_card__admitted_date__range=(start, end))
         .exclude(spare_part_name__isnull=True).exclude(spare_part_name='')
         .annotate(lname=Lower('spare_part_name'))

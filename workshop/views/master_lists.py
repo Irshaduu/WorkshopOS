@@ -187,7 +187,8 @@ def model_create(request, brand_id=None):
         
     # Cancel is a NAMED destination, never `history.back()`: this form is
     # reachable with an empty history (a bookmark, the first tap of a session),
-    # and `javascript:` in an href is the one thing here that a CSP would break.
+    # and `javascript:` in an href is the one thing here that a script-restricting
+    # CSP would break (the one this app sends does not restrict scripts).
     # Without a brand there is no model list to return to, so the brand list is.
     cancel_url = (reverse('brand_model_list', args=[brand_id]) if brand_id
                   else reverse('brand_list'))

@@ -50,7 +50,7 @@ from django.shortcuts import render
 
 from .decorators import owner_required
 from .models import (
-    JobCard, JobCardSpareItem, BulkPayer, SpareShop, SpareShopPayment,
+    JobCard, JobCardSpareItem, BulkPayer, SpareShop, SpareShopPayment, live_cards,
 )
 from . import analysis_engine as engine
 from .analysis_engine import MONEY, ZERO, SPARE_COST, SUPPLIER_BILL_COST, live_jobcards, _sum
@@ -394,7 +394,8 @@ PARTS_CHART_CAP = 10
 def _parts_base(start, end):
     """Spare rows on real job cards admitted in the window, either route."""
     return JobCardSpareItem.objects.filter(
-        job_card__isnull=False, job_card__is_deleted=False,
+        live_cards('job_card__'),
+        job_card__isnull=False,
         job_card__admitted_date__range=(start, end),
     )
 
@@ -778,8 +779,9 @@ def _insight_shops(start, end):
     # shop reference to the inventory route.
     spare_rows = list(
         JobCardSpareItem.objects.filter(
+            live_cards('job_card__'),
             source=JobCardSpareItem.SOURCE_SHOP,
-            shop__isnull=False, job_card__isnull=False, job_card__is_deleted=False,
+            shop__isnull=False, job_card__isnull=False,
             job_card__admitted_date__range=(start, end),
         ).values('shop', 'shop__name')
          .annotate(spend=Coalesce(Sum(SPARE_COST, output_field=MONEY),

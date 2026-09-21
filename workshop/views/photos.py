@@ -45,7 +45,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 
 from .. import photos as photo_storage
 from ..decorators import staff_required
-from ..models import JobCard, JobCardPhoto, JobCardSpareItem
+from ..models import JobCard, JobCardPhoto, JobCardSpareItem, live_cards
 
 SUBJECT_CARD = 'card'
 SUBJECT_SPARE = 'spare'
@@ -92,7 +92,7 @@ def _resolve_subject(subject, subject_id):
         raise Http404('Bad photo subject id')
 
     if subject == SUBJECT_CARD:
-        card = get_object_or_404(JobCard, pk=pk, is_deleted=False)
+        card = get_object_or_404(JobCard, live_cards(), pk=pk)
         return card, card, settings.PHOTO_LIMIT_CAR, {'job_card': card}
 
     if subject == SUBJECT_SPARE:

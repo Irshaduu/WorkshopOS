@@ -13,7 +13,7 @@ from django.core.paginator import Paginator
 from ..models import (
     CarBrand, CarModel, SparePart, ConcernSolution,
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
-    SpareShop, DeletionLog,
+    SpareShop, DeletionLog, live_cards,
 )
 from ..forms import (
     JobCardForm, JobCardConcernFormSet, JobCardSpareFormSet,
@@ -636,7 +636,7 @@ def jobcard_list(request):
     """
     SECTION 2: JOBS - List of active saved job cards.
     """
-    jobcard_list_query = JobCard.objects.filter(is_deleted=False).select_related('lead_mechanic').prefetch_related('spares', 'labours').order_by('-updated_at', '-pk')
+    jobcard_list_query = JobCard.objects.filter(live_cards()).select_related('lead_mechanic').prefetch_related('spares', 'labours').order_by('-updated_at', '-pk')
     
     # Detect AJAX vs Full Refresh for "Smart Reset"
     is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'

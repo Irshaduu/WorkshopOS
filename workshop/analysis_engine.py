@@ -167,7 +167,7 @@ from .models import (
     JobCard, JobCardSpareItem, CashbookEntry,
     SalaryPayment, SalaryPaymentLine, SalaryAdvance,
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
-    OwnerWithdrawal, RentRate, RentDeposit,
+    OwnerWithdrawal, RentRate, RentDeposit, live_cards,
 )
 # ⚠ THE RENT ARITHMETIC IS NOT RESTATED HERE. `workshop/rent.py` owns the
 # rate spans, the month boundaries and the cap; this module calls it. A second
@@ -519,10 +519,9 @@ def live_jobcards():
     """
     Every job card that counts as real business.
 
-    is_deleted is a dormant column (cards are hard-deleted now) but pre-existing
-    rows may still carry the flag, so it stays filtered for correctness.
+    Which cards count is `models.live_cards()`, and is never restated here.
     """
-    return JobCard.objects.filter(is_deleted=False)
+    return JobCard.objects.filter(live_cards())
 
 
 def car_bill_turnover(start, end):
@@ -582,8 +581,8 @@ def _live_spares(start, end):
     """Spare rows on real job cards admitted in this window — the common filter
     the three classifiers below each narrow by `source`."""
     return JobCardSpareItem.objects.filter(
+        live_cards('job_card__'),
         job_card__isnull=False,
-        job_card__is_deleted=False,
         job_card__admitted_date__range=(start, end),
     )
 
