@@ -191,15 +191,16 @@ class PayingASuppliesShopRefusesAnImpossibleFigureTests(MoneyGuardBase):
 
 class ThePaymentMethodsAgreeAcrossTheAppTests(TestCase):
     """
-    Five models carry their own copy-pasted `PAYMENT_METHODS` list: a job card's
-    settlement, a fleet payment, a spare-shop payment, a Supplies Shop payment
-    and a cashbook entry. Nothing joins them, so they are free to drift, and a
-    method added to one is silently missing from the other four.
+    Six models carry their own copy-pasted `PAYMENT_METHODS` list: a job card's
+    settlement, a fleet payment, a spare-shop payment, a Supplies Shop payment,
+    a cashbook entry and an owner withdrawal. Nothing joins them, so they are
+    free to drift, and a method added to one is silently missing from the rest.
 
-    Only the STORED VALUES are pinned. The labels are deliberately left free:
-    `JobCard` already says "UPI / QR Code" and "Credit/Debit Card" where the
-    others say "UPI" and "Card", and that is the customer-facing wording on the
-    one document a customer actually reads.
+    The LABELS are pinned too, since AUD-0104 (2026-09-21). They were left free
+    on the belief that `JobCard`'s "UPI / QR Code" and "Credit/Debit Card" were
+    the wording on the customer's bill — they never were (the bill prints no
+    method), and the only place they showed was Deep Analysis and Paid Bills,
+    naming one method two ways beside the Cashbook's "UPI".
 
     Deliberately NOT a validation rule in the views — every one of these is
     chosen from a `<select>` carrying exactly these four options, so an invalid
@@ -228,6 +229,33 @@ class ThePaymentMethodsAgreeAcrossTheAppTests(TestCase):
                     f"or to none — a method missing from one screen is a payment "
                     f"that cannot be recorded there."
                 )
+
+    def test_every_payment_model_calls_each_method_the_same(self):
+        """One vocabulary for the whole app — value, label AND order — on all
+        six models that record how money moved."""
+        from workshop.models import CashbookEntry, OwnerWithdrawal
+
+        reference = list(CashbookEntry.PAYMENT_METHODS)
+        for name, choices in (
+            ('JobCard', JobCard.PAYMENT_METHOD_CHOICES),
+            ('BulkPaymentHistory', BulkPaymentHistory.PAYMENT_METHODS),
+            ('SpareShopPayment', SpareShopPayment.PAYMENT_METHODS),
+            ('SupplierPayment', SupplierPayment.PAYMENT_METHODS),
+            ('OwnerWithdrawal', OwnerWithdrawal.PAYMENT_METHODS),
+        ):
+            with self.subTest(model=name):
+                self.assertEqual(list(choices), reference)
+
+    def test_the_printed_shop_report_names_the_method_not_its_code(self):
+        """The spare shop's own page printed "Bank Transfer" and its printed
+        report printed the stored code, "TRANSFER" — one payment, two names."""
+        owner = User.objects.create_superuser('print-owner', 'p@example.com', 'pw')
+        shop = SpareShop.objects.create(name='Label Test Spares')
+        SpareShopPayment.objects.create(shop=shop, amount=D('500'), payment_method='TRANSFER')
+        self.client.force_login(owner)
+        html = self.client.get(reverse('spare_shop_print', args=[shop.pk])).content.decode()
+        self.assertIn('<strong>Bank Transfer</strong>', html)
+        self.assertNotIn('<strong>TRANSFER</strong>', html)
 
     def test_the_column_can_hold_every_method_it_offers(self):
         """

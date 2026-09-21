@@ -1090,10 +1090,13 @@ class JobCard(CarColourMixin, models.Model):
     ]
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='PENDING', db_index=True)
     
+    # The same four labels as every other payment model (AUD-0104). This one
+    # said "UPI / QR Code" and "Credit/Debit Card" long after the rest were
+    # unified, so Deep Analysis and Paid Bills named one method two ways.
     PAYMENT_METHOD_CHOICES = [
         ('CASH', 'Cash'),
-        ('UPI', 'UPI / QR Code'),
-        ('CARD', 'Credit/Debit Card'),
+        ('UPI', 'UPI'),
+        ('CARD', 'Card'),
         ('TRANSFER', 'Bank Transfer'),
     ]
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, blank=True, null=True)

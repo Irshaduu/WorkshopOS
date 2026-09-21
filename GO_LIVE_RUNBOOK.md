@@ -259,13 +259,15 @@ Then the four things that actually bite:
   Railway, Django's `SECURE_SSL_REDIRECT` sends it back to HTTPS, forever. Full
   (strict) is the fix.
 - ☐ **Sign in and read the IP in the resulting login notification.** It must be a
-  real public address. If it is a Cloudflare IP, or the same constant on every
-  sign-in, then `get_client_ip` in `workshop/auth_views.py` is reading the
-  proxy — and `FailedAttempt` is now counting *everybody's* failures into one
-  row, so 20 fumbles across all four devices would lock out the whole workshop.
-  The fix is to read `CF-Connecting-IP`, which is safe **only** because
-  Cloudflare overwrites that header on every request; never trust
-  `X-Forwarded-For` here, which is why the function ignores it today.
+  real public address. If it is a Cloudflare IP, a `100.64.x.x`, or the same
+  constant on every sign-in, then `workshop/client_ip.py` is reading a proxy —
+  and `FailedAttempt` is counting *everybody's* failures into one row, so 20
+  fumbles from anyone would lock out the whole workshop. On Railway alone this
+  was measured and fixed on 2026-09-21 (AUD-0107): `REMOTE_ADDR` is Railway's
+  internal proxy, and the first `X-Forwarded-For` value is the real visitor,
+  set by Railway. Behind Cloudflare the fix is to read `CF-Connecting-IP`,
+  which is safe **only** because Cloudflare overwrites it on every request —
+  change `client_ip.py` and nothing else, since everything reads it.
 - ☐ **Check this before Cloudflare too**, at §1.4 — Railway has its own edge, so
   this may already be true today and Cloudflare would only be inheriting it.
 - ☐ Push notifications still arrive (the origin has not changed, so they should)

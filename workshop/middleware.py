@@ -1,3 +1,4 @@
+from .client_ip import client_ip
 from .models import UserSession
 from django.utils import timezone
 
@@ -21,12 +22,10 @@ class SessionTrackingMiddleware:
                 session_key = request.session.session_key
             
             if session_key:
-                # Capture Real IP (even behind proxies like Cloudflare/Nginx)
-                x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-                if x_forwarded_for:
-                    ip = x_forwarded_for.split(',')[0].strip()
-                else:
-                    ip = request.META.get('REMOTE_ADDR')
+                # The one IP rule (AUD-0107). It used to read the first
+                # X-Forwarded-For value unchecked, and a non-IP value there is
+                # refused by Postgres's inet column — every page would 500.
+                ip = client_ip(request)
 
                 now = timezone.now()
                 from datetime import timedelta

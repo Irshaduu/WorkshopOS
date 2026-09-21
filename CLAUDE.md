@@ -538,6 +538,18 @@ The unrendered `bulk_payments_partial.html` carries the same four labels. It is
 reachable from no view and no `{% include %}`, and was updated anyway so that
 reviving it cannot quietly reintroduce a sixth spelling.
 
+⚠ **The STORED labels on the six models match as well — the job card's were
+missed until 2026-09-21 (AUD-0104).** The selects were unified and
+`JobCard.PAYMENT_METHOD_CHOICES` still read "UPI / QR Code" and "Credit/Debit
+Card", so Deep Analysis → How Customers Paid named UPI two ways, and Paid Bills'
+pill printed the raw code through `|title` — **"Upi"**. The spare shop's
+printed report printed the bare code too (**"TRANSFER"** under a page whose
+screen twin says "Bank Transfer"). All three read the label now: **print a
+method through `get_payment_method_display`, never the stored code.**
+→ `test_every_payment_model_calls_each_method_the_same`,
+`ThePaymentPillSaysTheMethodsOwnNameTests`,
+`test_the_printed_shop_report_names_the_method_not_its_code`
+
 **A FLEET PAYMENT CAN CARRY A NOTE — `0073`, the last of the three ledgers to
 get one.** `SpareShopPayment.note` and `inventory.SupplierPayment.note` have
 existed since those models were written, so the shared control drew a Note box
@@ -892,6 +904,13 @@ the first settlement and every later save reuses it, so re-saving a month to fix
 leave days can never reprice it. To settle at a different figure, delete the
 settlement and settle again — Owner-only, logged. A crafted `salary_<pk>` POST
 field is ignored.
+
+**The Set Salary dialog says so at the moment of change, and ONLY there** (the
+owner's call, 2026-09-21, AUD-0092): *"Settled months keep their old salary. A
+month not yet settled — even last month — is paid at this new one."* The second
+half is the one that matters — the risk is never an old month, it is last month
+still waiting to be settled. There is deliberately no standing line on a settled
+month: a guarantee repeated on every one is clutter.
 → `AMonthKeepsTheSalaryItWasSettledAtTests`
 
 **A month cannot be SETTLED while someone handed an advance would get no
@@ -2527,6 +2546,16 @@ A spare or concern could be renamed from **two** screens — Master Lists and Da
 Cleanup — and they were two implementations of one rule, so the same edit meant
 different things depending on which page you opened. Both now call
 `rename_spare()` / `rename_concern()`.
+
+⚠ **Data Cleanup is now the ONE door for spares and concerns** — Master Data's
+Parts tile opens it. Master Lists' own spare and concern screens were linked
+from nothing, and were retired on the owner's decision (2026-09-21, AUD-0085 /
+AUD-0106): views, URLs, templates and their two forms. **Do not bring them
+back** — two front doors for one job is how the original drift started, and
+`test_the_retired_master_lists_doors_stay_gone` fails if one returns. The
+rename tests that went through them now go through Data Cleanup. Rename/merge
+itself stays: the alternative, fixing each job card by hand, means unlocking
+settled bills for a typo. Brands and models keep their Master Lists screens.
 
 Three properties of a merge: **the surviving entry's spelling wins** (so list and
 history can never disagree); it is scoped to `source=SHOP`, because the rename
@@ -5824,9 +5853,32 @@ pushes a month is how a critical alert stops being read.
 **Two lockouts, different units.**
 - `AccountLockout` is the primary: **5 failures locks that one account** for 15
   minutes.
-- `FailedAttempt` is the backstop, counting by direct `REMOTE_ADDR`
-  (X-Forwarded-For is intentionally ignored to prevent spoofed-IP bypass), at
-  **`IP_FAILURE_LIMIT = 20`**.
+- `FailedAttempt` is the backstop, counting by the VISITOR's IP at
+  **`IP_FAILURE_LIMIT = 20`** — read through `workshop/client_ip.py`, the one
+  rule every caller uses (sign-in, the lockout, security alerts, reset codes,
+  the session list).
+
+⚠ **THIS READ `REMOTE_ADDR` ALONE UNTIL 2026-09-21, AND ON RAILWAY THAT IS THE
+PROXY (AUD-0107).** Measured on the test host: five wrong passwords from a
+visitor at 157.51.207.147 raised an alert naming **100.64.0.13**, Railway's
+internal proxy — so every visitor arriving through it shared ONE counter, 20
+wrong passwords from any of them would lock out all the others (owners
+included), and every alert named the proxy. The session list meanwhile read
+the first `X-Forwarded-For` value UNCHECKED, and a non-IP value there is
+refused by Postgres's `inet` column inside the middleware — every page would
+500 for that visitor (measured on the dev database; it cannot arrive behind
+Railway, which sets the header).
+
+**The rule now:** the first `X-Forwarded-For` value is trusted ONLY when the
+connection came from inside the host's own network (a non-global
+`REMOTE_ADDR`), because that proxy was measured to SET it — a request carrying
+a faked header still recorded the real visitor. A connection from a PUBLIC
+address has no proxy in front of it, so its header is ignored: the old
+spoof-protection, kept where it still applies. Every value is parsed, never
+passed through. ⚠ **Re-measure on any change of host, and if Cloudflare goes in
+front** — `GO_LIVE_RUNBOOK.md` §2.5 carries the check.
+→ `test_client_ip.py` — including a SCAN that fails if anything but
+`client_ip.py` reads the address headers.
 
 The IP threshold was raised from 5 because the unit was wrong for this business:
 the laptop, the tablet and both owners' phones leave through one connection, so
@@ -7410,7 +7462,8 @@ Fold it in only as its own change, with those tests in front of you.
 
 ### Cancel is not Back
 
-The four master-list forms cancelled with `javascript:history.back()`. Each has
+The master-list forms cancelled with `javascript:history.back()` (four then; the
+spare and concern ones were retired 2026-09-21, AUD-0106). Each has
 exactly one caller, so a named URL was always available and is strictly better:
 it survives an empty history, and it is the one thing on those pages a CSP that
 restricts scripts would break (the one the app sends does not — see "Middleware").
@@ -10000,7 +10053,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 81 files, 2,743 tests (counted 2026-09-21). Always SQLite (see below).
+# Full test suite — 82 files, 2,756 tests (counted 2026-09-21). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10042,7 +10095,12 @@ python manage.py runserver
 #     re-run only the failing files SERIALLY before calling one a bug.
 #   • ⚠ Do not pipe it through `tail`: that buffers the whole run, so there is
 #     no progress to watch until it exits.
-# Last full run 2026-09-21: 2,743 tests, 2,050s (34.2 min) on `--parallel 3`,
+# Last full run 2026-09-21: 2,756 tests, 2,803s (46.7 min) on `--parallel 4`,
+# ALL GREEN, verifying AUD-0107 (one visitor-IP rule), AUD-0104, AUD-0105 and
+# AUD-0106 together. ⚠ SLOWER than the 3-worker run just below (34.2 min) with
+# 2.6 GB free at the start — so on this 2-core laptop a fourth worker is not
+# reliably faster, and 3 stays the default.
+# Before it: the same day, 2,743 tests, 2,050s (34.2 min) on `--parallel 3`,
 # ALL GREEN, verifying AUD-0007 (one live-card rule) and AUD-0043 (the
 # four-directive CSP) together.
 # Before it: the same day, 2,729 tests, 2,642s (44.0 min) on `--parallel 3`,
@@ -10353,7 +10411,7 @@ adding a view, add it to both its module and the re-export list.
 `urls.py`: `analysis_views`, `auth_views`, `cashbook_views`, `cleanup_views`,
 `management_views`.
 
-**Eighteen modules hold no views at all** — this is the codebase's main structural idea, and
+**Nineteen modules hold no views at all** — this is the codebase's main structural idea, and
 each exists so that one rule has exactly one implementation:
 
 | Module | The one question it answers |
@@ -10366,6 +10424,7 @@ each exists so that one rule has exactly one implementation:
 | `money_dates.py` | what day did this money move? — both Cashbook forms, all three payment screens, the Supplies Shop bill and the job card's admitted date |
 | `spare_dates.py` | is this ordered/received pair the right way round? |
 | `return_to.py` | where does this page send you when you leave it? |
+| `client_ip.py` | what is the visitor's IP? — the lockout, the alerts and the session list (AUD-0107) |
 | `delete_window.py` | has this money row been in the books too long for Office to delete? |
 | `rent.py` | how much should we hand the rent collector today? |
 | `photos.py` | where do the bytes go, and how is the URL signed? |
@@ -10485,8 +10544,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **81 files, 2,743 tests**,
-re-counted 2026-09-21. (`workshop/tests/` is 75 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **82 files, 2,756 tests**,
+re-counted 2026-09-21. (`workshop/tests/` is 76 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

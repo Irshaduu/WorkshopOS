@@ -84,9 +84,9 @@ graph TD
    - Manage Bulk Payers (create, transfer bills, process cascade payments)
    - View Pending Bills dashboard
    - Manage Spare Shops (create, edit, pay, view ledger, print) and edit or delete rows in the Unassigned Spares Hub
-   - Manage Master Lists (Brands, Models, Spares, Concerns)
+   - Manage Master Lists (Brands, Models)
    - View Car Profiles (vehicle history)
-   - Run Data Cleanup (rename, merge, delete duplicates)
+   - Run Data Cleanup — the one screen for spare and concern names (rename, merge, delete duplicates)
    - Manage inventory Categories (add/list/edit) + create/edit products via Supplier Shops (Add Product); all supplier-shop management
    - Record and review Cashbook entries (income & expenses ledger). Typing a wage, an owner's name or anything to do with rent here asks first — each has its own section and would land wrong in the profit figure. It only asks
    - Record the daily **rent deposit** in Deposit & Rent — the cash handed to the collector who comes round each day, keyed off his own book. The page says what to pay today: whatever is left of the month's rent over the days left. Office may date an entry back to the 1st of last month; anything older is an owner's
@@ -457,8 +457,8 @@ BULK_PAID = Paid via bulk/fleet payment system
 
 ```
 CASH     = Cash payment
-UPI      = UPI / QR Code
-CARD     = Credit/Debit Card
+UPI      = UPI
+CARD     = Card
 TRANSFER = Bank Transfer
 ```
 

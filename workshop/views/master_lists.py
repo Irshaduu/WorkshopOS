@@ -1,17 +1,16 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q
 from django.core.paginator import Paginator
 from django.urls import reverse
 
-from ..models import CarBrand, CarModel, SparePart, ConcernSolution, DeletionLog
-from ..forms import CarBrandForm, CarModelForm, SparePartForm, ConcernSolutionForm
+from ..models import CarBrand, CarModel, DeletionLog
+from ..forms import CarBrandForm, CarModelForm
 from ..master_data import (
-    rename_spare, rename_concern, rename_brand, rename_model,
+    rename_brand, rename_model,
     merge_preview, MERGE_CONFIRM_TEMPLATE,
 )
-from ..decorators import staff_required, office_required
+from ..decorators import office_required
 
 
 def _confirm_merge(request, preview, *, action, field_name, field_value,
@@ -242,138 +241,3 @@ def model_delete(request, pk):
         messages.success(request, "Model deleted (logged to Deletion History).")
         return redirect('brand_model_list', brand_id=brand_id)
     return render(request, 'workshop/master_lists/model_confirm_delete.html', {'model': model})
-
-
-# =============================================================================
-# SPARE PARTS
-# =============================================================================
-
-@office_required
-def spare_list(request):
-    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
-    q = request.GET.get('q', '').strip() if is_ajax else ''
-    
-    spares_query = SparePart.objects.all()
-    if q:
-        spares_query = spares_query.filter(name__icontains=q)
-        
-    paginator = Paginator(spares_query, 50)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    return render(request, 'workshop/master_lists/spare_list.html', {
-        'spares': page_obj, 
-        'page_obj': page_obj,
-        'q': q
-    })
-
-
-@office_required
-def spare_create(request):
-    form = SparePartForm(request.POST or None)
-    if form.is_valid():
-        form.save()
-        return redirect('spare_list')
-    return render(request, 'workshop/master_lists/spare_form.html', {'form': form, 'title': 'Add Spare'})
-
-
-@office_required
-def spare_edit(request, pk):
-    """
-    Rename a master spare — through the SAME helper Data Cleanup's rename uses.
-
-    This used to be a plain `form.save()`, so the identical edit meant two
-    different things depending on which screen it was made from: Data Cleanup
-    merged case-variant duplicates and rewrote the job-card lines carrying the
-    old name, this one did neither. `rename_spare` is now the only
-    implementation of that rule.
-    """
-    spare = get_object_or_404(SparePart, pk=pk)
-    form = SparePartForm(request.POST or None, instance=spare)
-
-    if request.method == 'POST':
-        new_name = (request.POST.get('name') or '').strip()
-        if new_name:
-            old_name = spare.name
-            preview = merge_preview(spare, new_name)
-            if preview and not _merge_confirmed(request):
-                return _confirm_merge(
-                    request, preview,
-                    action=reverse('spare_edit', args=[spare.pk]),
-                    field_name='name', field_value=new_name,
-                    cancel_url=reverse('spare_list'))
-            final_name, merged = rename_spare(spare, new_name, user=request.user)
-            if merged:
-                messages.success(request, f"Merged '{old_name}' into '{final_name}'. All job cards updated.")
-            else:
-                messages.success(request, f"Renamed to '{final_name}'. All job cards updated.")
-            return redirect('spare_list')
-        form.add_error('name', 'Name cannot be empty.')
-
-    return render(request, 'workshop/master_lists/spare_form.html', {'form': form, 'title': 'Edit Spare'})
-
-
-# =============================================================================
-# CONCERNS DATABASE
-# =============================================================================
-
-@office_required
-def concern_list(request):
-    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
-    q = request.GET.get('q', '').strip() if is_ajax else ''
-    
-    concerns_query = ConcernSolution.objects.all()
-    if q:
-        for word in q.split():
-            concerns_query = concerns_query.filter(
-                Q(concern__icontains=word)
-            )
-            
-    paginator = Paginator(concerns_query, 50)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    return render(request, 'workshop/master_lists/concern_list.html', {
-        'concerns': page_obj, 
-        'page_obj': page_obj,
-        'q': q
-    })
-
-
-@office_required
-def concern_create(request):
-    form = ConcernSolutionForm(request.POST or None)
-    if form.is_valid():
-        form.save()
-        return redirect('concern_list')
-    return render(request, 'workshop/master_lists/concern_form.html', {'form': form, 'title': 'Add Concern'})
-
-
-# @office_required, not @staff_required. This was the only view in the section
-# Floor could reach: they got 200 here and successfully rewrote master concerns,
-# while concern_list next door returned 403 — so the section's own list was
-# forbidden but editing its contents was not. A view's decorator and its
-# neighbours have to agree, or the drawer gate is meaningless.
-@office_required
-def concern_edit(request, pk):
-    """Rename a master concern — through the same helper Data Cleanup uses."""
-    concern = get_object_or_404(ConcernSolution, pk=pk)
-    form = ConcernSolutionForm(request.POST or None, instance=concern)
-
-    if request.method == 'POST':
-        new_text = (request.POST.get('concern') or '').strip()
-        if new_text:
-            preview = merge_preview(concern, new_text)
-            if preview and not _merge_confirmed(request):
-                return _confirm_merge(
-                    request, preview,
-                    action=reverse('concern_edit', args=[concern.pk]),
-                    field_name='concern', field_value=new_text,
-                    cancel_url=reverse('concern_list'))
-            _final, merged = rename_concern(concern, new_text, user=request.user)
-            messages.success(
-                request,
-                "Merged into the existing concern. All job cards updated." if merged
-                else "Concern renamed. All job cards updated.")
-            return redirect('concern_list')
-        form.add_error('concern', 'Concern text cannot be empty.')
-
-    return render(request, 'workshop/master_lists/concern_form.html', {'form': form, 'title': 'Edit Concern'})

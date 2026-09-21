@@ -50,8 +50,10 @@ counter is in `CLAUDE.md` § Testing conventions.
 - **Primary, per account (`AccountLockout`)** — 5 consecutive failures lock **that
   one account** for 15 minutes.
 - **Backstop, per IP (`FailedAttempt`)** — 20 failures lock the network. Counted
-  strictly by direct `REMOTE_ADDR`; `X-Forwarded-For` is ignored to prevent
-  spoofed-IP bypass.
+  by the visitor's IP from `workshop/client_ip.py`: behind Railway's proxy that
+  is the first `X-Forwarded-For` value, which Railway sets (measured
+  2026-09-21 — `REMOTE_ADDR` there is the proxy itself, AUD-0107); a direct
+  connection's header is still ignored, to prevent spoofed-IP bypass.
 
 **Why the split:** the IP threshold used to be 5, and that was the wrong unit for
 this business. The laptop, the tablet and both owners' phones leave through one

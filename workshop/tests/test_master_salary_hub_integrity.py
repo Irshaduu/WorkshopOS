@@ -55,7 +55,9 @@ class WorkshopTestCase(TestCase):
 # ===========================================================================
 class MasterListsDedupeCaseInsensitivelyTests(WorkshopTestCase):
     """
-    Brands, models, spares and concerns dedupe on `__iexact`.
+    Brands, models, spares and concerns dedupe on `__iexact`. (The spare and
+    concern ADD screens were retired 2026-09-21, AUD-0106 — those names arrive
+    by auto-learn — so the add tests here are brand and model.)
 
     The models' `unique=True` is case-sensitive, so "Toyota"/"toyota" and
     "Oil Filter"/"oil filter" were both insertable, and ConcernSolution had no
@@ -69,16 +71,6 @@ class MasterListsDedupeCaseInsensitivelyTests(WorkshopTestCase):
         self.client.post(reverse('brand_add'), {'name': 'Toyota'})
         self.client.post(reverse('brand_add'), {'name': 'toyota'})
         self.assertEqual(list(CarBrand.objects.values_list('name', flat=True)), ['Toyota'])
-
-    def test_a_case_variant_spare_is_rejected(self):
-        self.client.post(reverse('spare_add'), {'name': 'Oil Filter'})
-        self.client.post(reverse('spare_add'), {'name': 'oil filter'})
-        self.assertEqual(list(SparePart.objects.values_list('name', flat=True)), ['Oil Filter'])
-
-    def test_a_duplicate_concern_is_rejected(self):
-        for _ in range(3):
-            self.client.post(reverse('concern_add'), {'concern': 'Brake noise'})
-        self.assertEqual(ConcernSolution.objects.count(), 1)
 
     def test_a_case_variant_model_is_rejected_within_its_brand(self):
         brand = CarBrand.objects.create(name='Toyota')
@@ -94,17 +86,20 @@ class MasterListsDedupeCaseInsensitivelyTests(WorkshopTestCase):
         self.assertEqual(CarModel.objects.filter(brand=other).count(), 1)
 
     def test_saving_an_entry_without_changing_its_name_is_not_blocked(self):
-        """The dedupe check must exclude the row being edited."""
+        """The collision check must exclude the row being edited — re-saving a
+        name it already has is a plain save, never a merge prompt."""
         spare = SparePart.objects.create(name='Oil Filter')
-        self.client.post(reverse('spare_edit', args=[spare.pk]), {'name': 'Oil Filter'})
-        spare.refresh_from_db()
-        self.assertEqual(spare.name, 'Oil Filter')
+        resp = self.client.post(reverse('cleanup_rename_spare', args=[spare.pk]),
+                                {'new_name': 'Oil Filter'})
+        self.assertEqual(resp.status_code, 302, 'a merge prompt would render with 200')
+        self.assertEqual(list(SparePart.objects.values_list('name', flat=True)), ['Oil Filter'])
 
 
 class RenamingAMasterEntryMeansTheSameThingFromBothScreensTests(WorkshopTestCase):
     """
-    Master Lists and Data Cleanup both rename a spare/concern, and both now go
-    through workshop.master_data.
+    Master Lists and Data Cleanup both renamed a spare/concern, and both went
+    through workshop.master_data. Master Lists' door was retired 2026-09-21
+    (AUD-0106), so these tests now go through the one that is left.
 
     They used to be two implementations of one rule: Data Cleanup deduped
     case-insensitively, merged into an existing entry and rewrote the job-card
@@ -124,54 +119,45 @@ class RenamingAMasterEntryMeansTheSameThingFromBothScreensTests(WorkshopTestCase
             source=JobCardSpareItem.SOURCE_SHOP)
         return jc
 
-    def test_master_lists_rename_reaches_job_cards(self):
+    def test_a_rename_reaches_job_cards(self):
         spare = SparePart.objects.create(name='Oil Fillter')
         self._card_with_spare('KL01AA0001', 'Oil Fillter')
-        self.client.post(reverse('spare_edit', args=[spare.pk]), {'name': 'Oil Filter'})
+        self.client.post(reverse('cleanup_rename_spare', args=[spare.pk]), {'new_name': 'Oil Filter'})
         self.assertEqual(
             list(JobCardSpareItem.objects.values_list('spare_part_name', flat=True)),
             ['Oil Filter'])
 
-    def test_master_lists_rename_onto_an_existing_entry_merges(self):
+    def test_a_rename_onto_an_existing_entry_merges(self):
         typo = SparePart.objects.create(name='Wheel Bearing Front Left')
         SparePart.objects.create(name='Front Left Wheel Bearing')
         self._card_with_spare('KL01AA0001', 'Wheel Bearing Front Left')
         self._card_with_spare('KL02BB0002', 'Front Left Wheel Bearing')
 
-        self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'Front Left Wheel Bearing', 'confirm_merge': 'yes'})
+        self.client.post(reverse('cleanup_rename_spare', args=[typo.pk]),
+                         {'new_name': 'Front Left Wheel Bearing', 'confirm_merge': 'yes'})
 
         self.assertEqual(SparePart.objects.count(), 1)
         self.assertEqual(
             set(JobCardSpareItem.objects.values_list('spare_part_name', flat=True)),
             {'Front Left Wheel Bearing'})
 
-    def test_both_screens_produce_the_identical_result(self):
-        for view_name, field, pk_getter in (
-            ('spare_edit', 'name', lambda s: [s.pk]),
-            ('cleanup_rename_spare', 'new_name', lambda s: [s.pk]),
-        ):
-            SparePart.objects.all().delete()
-            JobCardSpareItem.objects.all().delete()
-            JobCard.objects.all().delete()
-            typo = SparePart.objects.create(name='Brake Pd')
-            SparePart.objects.create(name='Brake Pad')
-            self._card_with_spare('KL01AA0001', 'Brake Pd')
-
-            self.client.post(reverse(view_name, args=pk_getter(typo)),
-                             {field: 'Brake Pad', 'confirm_merge': 'yes'})
-
-            self.assertEqual(SparePart.objects.count(), 1, view_name)
-            self.assertEqual(
-                list(JobCardSpareItem.objects.values_list('spare_part_name', flat=True)),
-                ['Brake Pad'], view_name)
+    def test_the_retired_master_lists_doors_stay_gone(self):
+        """AUD-0106: Master Lists had its own spare/concern screens, linked from
+        nothing. Two doors for one job is how the rename rule drifted in the first
+        place, so Data Cleanup is the only one — and this fails if a second
+        comes back."""
+        from django.urls import NoReverseMatch
+        for name in ('spare_list', 'spare_add', 'spare_edit',
+                     'concern_list', 'concern_add', 'concern_edit'):
+            with self.subTest(name=name), self.assertRaises(NoReverseMatch):
+                reverse(name, args=[1]) if name.endswith('edit') else reverse(name)
 
     def test_the_surviving_entrys_spelling_wins(self):
         typo = SparePart.objects.create(name='Brake Pd')
         SparePart.objects.create(name='Brake Pad')
         self._card_with_spare('KL01AA0001', 'Brake Pd')
-        self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'BRAKE PAD', 'confirm_merge': 'yes'})
+        self.client.post(reverse('cleanup_rename_spare', args=[typo.pk]),
+                         {'new_name': 'BRAKE PAD', 'confirm_merge': 'yes'})
         self.assertEqual(SparePart.objects.get().name, 'Brake Pad')
         self.assertEqual(JobCardSpareItem.objects.get().spare_part_name, 'Brake Pad')
 
@@ -179,8 +165,8 @@ class RenamingAMasterEntryMeansTheSameThingFromBothScreensTests(WorkshopTestCase
         typo = SparePart.objects.create(name='Brake Pd')
         SparePart.objects.create(name='Brake Pad')
         self._card_with_spare('KL01AA0001', 'Brake Pd')
-        self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'Brake Pad', 'confirm_merge': 'yes'})
+        self.client.post(reverse('cleanup_rename_spare', args=[typo.pk]),
+                         {'new_name': 'Brake Pad', 'confirm_merge': 'yes'})
         log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_MASTER_DATA)
         self.assertIn('Brake Pd', log.entity_label)
         self.assertEqual(log.snapshot.get('job_card_lines_relabelled'), 1)
@@ -223,8 +209,8 @@ class AMergeIsConfirmedBeforeItHappensTests(WorkshopTestCase):
         SparePart.objects.create(name='Brake Pad')
         self._card_with_spare('KL01AA0001', 'Brake Pd')
 
-        resp = self.client.post(reverse('spare_edit', args=[typo.pk]),
-                                {'name': 'Brake Pad'})
+        resp = self.client.post(reverse('cleanup_rename_spare', args=[typo.pk]),
+                                {'new_name': 'Brake Pad'})
 
         self.assertEqual(resp.status_code, 200,
                          "the confirmation renders; it must not redirect as a done deal")
@@ -237,8 +223,8 @@ class AMergeIsConfirmedBeforeItHappensTests(WorkshopTestCase):
         SparePart.objects.create(name='Brake Pad')
         self._card_with_spare('KL01AA0001', 'Brake Pd')
 
-        self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'Brake Pad', 'confirm_merge': 'yes'})
+        self.client.post(reverse('cleanup_rename_spare', args=[typo.pk]),
+                         {'new_name': 'Brake Pad', 'confirm_merge': 'yes'})
 
         self.assertEqual(SparePart.objects.count(), 1)
         self.assertEqual(JobCardSpareItem.objects.get().spare_part_name, 'Brake Pad')
@@ -248,8 +234,8 @@ class AMergeIsConfirmedBeforeItHappensTests(WorkshopTestCase):
         spare = SparePart.objects.create(name='Oil Fillter')
         self._card_with_spare('KL01AA0001', 'Oil Fillter')
 
-        resp = self.client.post(reverse('spare_edit', args=[spare.pk]),
-                                {'name': 'Oil Filter'})
+        resp = self.client.post(reverse('cleanup_rename_spare', args=[spare.pk]),
+                                {'new_name': 'Oil Filter'})
 
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(SparePart.objects.get().name, 'Oil Filter')
@@ -264,8 +250,8 @@ class AMergeIsConfirmedBeforeItHappensTests(WorkshopTestCase):
             self._card_with_spare(f'KL02BB000{i}', 'Front Left Wheel Bearing')
 
         text = self._text(self.client.post(
-            reverse('spare_edit', args=[typo.pk]),
-            {'name': 'Front Left Wheel Bearing'}))
+            reverse('cleanup_rename_spare', args=[typo.pk]),
+            {'new_name': 'Front Left Wheel Bearing'}))
 
         self.assertIn('Wheel Bearing Front Left', text)
         self.assertIn('on 3 job-card part lines', text)
@@ -285,40 +271,22 @@ class AMergeIsConfirmedBeforeItHappensTests(WorkshopTestCase):
             self._card_with_spare(f'KL01AA000{i}', 'Brake Pd')
 
         text = self._text(self.client.post(
-            reverse('spare_edit', args=[typo.pk]), {'name': 'Brake Pad'}))
+            reverse('cleanup_rename_spare', args=[typo.pk]), {'new_name': 'Brake Pad'}))
         self.assertIn('on 4 job-card part lines', text)
 
-        self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'Brake Pad', 'confirm_merge': 'yes'})
+        self.client.post(reverse('cleanup_rename_spare', args=[typo.pk]),
+                         {'new_name': 'Brake Pad', 'confirm_merge': 'yes'})
 
         log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_MASTER_DATA)
         self.assertEqual(log.snapshot.get('job_card_lines_relabelled'), 4,
                          "the page said 4; the merge must have moved 4")
 
-    def test_both_screens_gate_it(self):
-        """
-        A warning on one screen and not the other would just move the silent
-        merge to whichever door happened to be open — the same failure that put
-        the rename itself into one shared module.
-        """
-        for view_name, field in (('spare_edit', 'name'),
-                                 ('cleanup_rename_spare', 'new_name')):
-            SparePart.objects.all().delete()
-            typo = SparePart.objects.create(name='Brake Pd')
-            SparePart.objects.create(name='Brake Pad')
-
-            resp = self.client.post(reverse(view_name, args=[typo.pk]),
-                                    {field: 'Brake Pad'})
-
-            self.assertEqual(resp.status_code, 200, view_name)
-            self.assertEqual(SparePart.objects.count(), 2, view_name)
-
     def test_a_concern_merge_is_gated(self):
         typo = ConcernSolution.objects.create(concern='Brake noise')
         ConcernSolution.objects.create(concern='Brake squeal')
 
-        resp = self.client.post(reverse('concern_edit', args=[typo.pk]),
-                                {'concern': 'Brake squeal'})
+        resp = self.client.post(reverse('cleanup_rename_concern', args=[typo.pk]),
+                                {'new_name': 'Brake squeal'})
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(ConcernSolution.objects.count(), 2)
@@ -541,8 +509,8 @@ class MergingAMasterEntryNeverMovesMoneyOrStockTests(WorkshopTestCase):
             }
 
         before = snapshot()
-        self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'Front Left Wheel Bearing', 'confirm_merge': 'yes'})
+        self.client.post(reverse('cleanup_rename_spare', args=[typo.pk]),
+                         {'new_name': 'Front Left Wheel Bearing', 'confirm_merge': 'yes'})
         self.assertEqual(before, snapshot(),
                          "a merge must relabel text only — no figure may move")
 
@@ -565,8 +533,8 @@ class MergingAMasterEntryNeverMovesMoneyOrStockTests(WorkshopTestCase):
         item.refresh_from_db()
         stock_before = item.current_stock
 
-        self.client.post(reverse('spare_edit', args=[typo.pk]),
-                         {'name': 'Engine Oil', 'confirm_merge': 'yes'})
+        self.client.post(reverse('cleanup_rename_spare', args=[typo.pk]),
+                         {'new_name': 'Engine Oil', 'confirm_merge': 'yes'})
 
         draw.refresh_from_db()
         item.refresh_from_db()
@@ -662,7 +630,9 @@ class MasterDataDeleteTouchesNoHistoryTests(WorkshopTestCase):
 
 class MasterListsRbacMatchesItsNeighboursTests(WorkshopTestCase):
     """
-    `concern_edit` was `@staff_required` while every other view in the section
+    `concern_edit` (Master Lists, retired 2026-09-21 — AUD-0106; these now test
+    Data Cleanup's rename, the one door left) was `@staff_required` while every
+    other view in the section
     was `@office_required`. Floor got 200 there and could rewrite any master
     concern, while `concern_list` next door returned 403 — the section's list was
     forbidden but editing its contents was not.
@@ -671,17 +641,17 @@ class MasterListsRbacMatchesItsNeighboursTests(WorkshopTestCase):
     def test_floor_cannot_edit_a_master_concern(self):
         concern = ConcernSolution.objects.create(concern='Brake noise')
         floor = self.client_for('floor')
-        self.assertEqual(floor.get(reverse('concern_edit', args=[concern.pk])).status_code, 403)
+        self.assertEqual(floor.get(reverse('cleanup_rename_concern', args=[concern.pk])).status_code, 403)
         self.assertEqual(
-            floor.post(reverse('concern_edit', args=[concern.pk]),
-                       {'concern': 'Changed by floor'}).status_code, 403)
+            floor.post(reverse('cleanup_rename_concern', args=[concern.pk]),
+                       {'new_name': 'Changed by floor'}).status_code, 403)
         concern.refresh_from_db()
         self.assertEqual(concern.concern, 'Brake noise')
 
     def test_office_still_can(self):
         concern = ConcernSolution.objects.create(concern='Brake noise')
-        self.client.post(reverse('concern_edit', args=[concern.pk]),
-                         {'concern': 'Brake squeal'})
+        self.client.post(reverse('cleanup_rename_concern', args=[concern.pk]),
+                         {'new_name': 'Brake squeal'})
         concern.refresh_from_db()
         self.assertEqual(concern.concern, 'Brake squeal')
 

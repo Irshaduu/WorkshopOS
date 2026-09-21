@@ -10,8 +10,6 @@ from django.forms.formsets import DELETION_FIELD_NAME
 from .models import (
     CarBrand,
     CarModel,
-    SparePart,
-    ConcernSolution,
     SpareShop,
     Estimate,
     EstimateJobLine,
@@ -71,7 +69,10 @@ class BootstrapFormMixin:
 # ---------------------------------------------------------------------------
 # MASTER DATA
 #
-# All four of these dedupe on `__iexact`, never on the model's plain `unique=True`.
+# The brand and model forms dedupe on `__iexact`, never on the model's plain
+# `unique=True`. (The spare and concern forms went with their Master Lists
+# screens on 2026-09-21, AUD-0106 — those names now arrive through the job
+# card's auto-learn and `load_master_data`, and are corrected in Data Cleanup.)
 # That constraint is case-sensitive, so "Toyota" and "toyota" were both
 # insertable, as were "Oil Filter" and "oil filter" — and ConcernSolution had no
 # uniqueness at all, so the same concern could be added any number of times. The
@@ -167,29 +168,6 @@ class CarModelForm(BootstrapFormMixin, forms.ModelForm):
                 if clash:
                     self.add_error('name', f"'{clash.name}' is already listed under {brand.name}.")
         return cleaned
-
-
-class SparePartForm(BootstrapFormMixin, forms.ModelForm):
-    class Meta:
-        model = SparePart
-        fields = ['name']
-
-    def clean_name(self):
-        name = ' '.join((self.cleaned_data.get('name') or '').split())
-        return _reject_case_variant(SparePart, 'name', name, self.instance, 'spare parts')
-
-
-class ConcernSolutionForm(BootstrapFormMixin, forms.ModelForm):
-    class Meta:
-        model = ConcernSolution
-        fields = ['concern']
-        widgets = {
-            'concern': forms.Textarea(attrs={'rows': 2}),
-        }
-
-    def clean_concern(self):
-        text = ' '.join((self.cleaned_data.get('concern') or '').split())
-        return _reject_case_variant(ConcernSolution, 'concern', text, self.instance, 'concerns')
 
 
 class SpareShopForm(BootstrapFormMixin, forms.ModelForm):

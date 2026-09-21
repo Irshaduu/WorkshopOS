@@ -8,6 +8,7 @@ from datetime import timedelta
 from django.utils import timezone
 from .models import UserSession, FailedAttempt, UserProfile, PasswordResetOTP, AccountLockout
 from .notifications import notify, recently_raised
+from .client_ip import client_ip
 from django.urls import reverse
 from django.db.models import F
 import logging
@@ -82,11 +83,12 @@ AUTH_PAGE = {'hide_chrome': True}
 
 def get_client_ip(request):
     """
-    Returns the direct client IP.
-    Only use REMOTE_ADDR — never trust client-supplied headers without a
-    verified trusted proxy configuration.
+    The visitor's IP. `workshop/client_ip.py` is the ONE rule (AUD-0107) — it
+    trusts the proxy's header only behind a proxy MEASURED to set it. This
+    read `REMOTE_ADDR` alone, which on Railway is its internal proxy, so the
+    IP lockout counted every visitor arriving through that proxy as one.
     """
-    return request.META.get('REMOTE_ADDR', '0.0.0.0')
+    return client_ip(request)
 
 def check_ip_lockout(request):
     """

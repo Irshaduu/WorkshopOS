@@ -275,7 +275,7 @@ family is on these two numbers; the reasoning lives beside the rule.
                         {% elif job.payment_method == 'CHEQUE' %}cheque
                         {% elif job.payment_method == 'UPI' %}upi
                         {% endif %}">
-                        {{ job.payment_method|title }}
+                        {{ job.get_payment_method_display }}
                     </span>
                     {% endif %}
                 </div>

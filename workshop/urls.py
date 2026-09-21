@@ -95,15 +95,9 @@ urlpatterns = [
     path('master-lists/models/<int:pk>/edit/', views.model_edit, name='model_edit'),
     path('master-lists/models/<int:pk>/delete/', views.model_delete, name='model_delete'),
 
-    # 3B. Spares
-    path('master-lists/spares/', views.spare_list, name='spare_list'),
-    path('master-lists/spares/add/', views.spare_create, name='spare_add'),
-    path('master-lists/spares/<int:pk>/edit/', views.spare_edit, name='spare_edit'),
-
-    # 3C. Concerns Database
-    path('master-lists/concerns/', views.concern_list, name='concern_list'),
-    path('master-lists/concerns/add/', views.concern_create, name='concern_add'),
-    path('master-lists/concerns/<int:pk>/edit/', views.concern_edit, name='concern_edit'),
+    # Spares and concerns are renamed, merged and deleted in ONE place — Data
+    # Cleanup (manage/cleanup/). Master Lists had a second door for each,
+    # linked from nothing, retired 2026-09-21 (AUD-0106).
 
     # ------------------
     # API: AUTOCOMPLETE

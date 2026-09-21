@@ -188,3 +188,25 @@ class TheDiscountAuditStaysOwnerOnlyTests(TestCase):
         response = self.client.get(
             reverse('audit_high_discounts') + '?filter=custom&start_date=abc&end_date=zzz')
         self.assertEqual(response.status_code, 200)
+
+
+class ThePaymentPillSaysTheMethodsOwnNameTests(TestCase):
+    """AUD-0104: the pill printed the stored code through `|title`, so UPI read
+    "Upi" on the one list where every card carries it. It prints the label."""
+
+    def test_upi_reads_UPI_and_a_transfer_reads_bank_transfer(self):
+        owner_group, _ = Group.objects.get_or_create(name='Owner')
+        owner = User.objects.create_user('pillowner', password='pw')
+        owner.groups.add(owner_group)
+        today = timezone.localdate()
+        for reg, method in (('KL01UPI', 'UPI'), ('KL01BANK', 'TRANSFER')):
+            JobCard.objects.create(
+                registration_number=reg, brand_name='Honda', model_name='City',
+                payment_status='PAID', payment_method=method,
+                received_amount=5000, total_bill_amount=5000,
+                paid_date=timezone.now(), admitted_date=today)
+        self.client.force_login(owner)
+        html = self.client.get(reverse('paid_bills_list') + '?filter=all').content.decode()
+        pills = [chunk.split('</span>')[0].split('>', 1)[1].strip()
+                 for chunk in html.split('class="pb-method-pill')[1:]]
+        self.assertEqual(sorted(pills), ['Bank Transfer', 'UPI'])

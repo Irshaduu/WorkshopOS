@@ -15,6 +15,10 @@ rule and behaved differently on the same row:
 
 Which screen someone happened to open decided what a rename meant. These
 functions are the single implementation both now call.
+
+Since 2026-09-21 (AUD-0106) Data Cleanup is the ONLY screen for spares and
+concerns: Master Lists' own were linked from nothing and were retired. Brands
+and models are still renamed from Master Lists, through this same module.
 """
 from django.db import transaction
 from django.db.models.functions import Lower, Trim

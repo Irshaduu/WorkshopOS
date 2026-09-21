@@ -369,12 +369,12 @@ def build(theme):
         # seating cue rather than a wash, and the vignette is faint enough to
         # round the sheet off without darkening the outer zones - which is
         # where ACCESS, RULES and CLOUD live, so it was dimming real content.
-        add('<filter id="card-shadow" x="-2%%" y="-2%%" width="104%%" height="108%%">'
+        add('<filter id="card-shadow" x="-2%" y="-2%" width="104%" height="108%">'
             '<feDropShadow dx="0" dy="1.2" stdDeviation="1.8" flood-color="#000" '
             'flood-opacity="0.22"/></filter>')
-        add('<radialGradient id="vignette" cx="50%%" cy="50%%" r="78%%" fx="50%%" fy="50%%">'
-            '<stop offset="70%%" stop-color="#000" stop-opacity="0"/>'
-            '<stop offset="100%%" stop-color="#000" stop-opacity="0.10"/>'
+        add('<radialGradient id="vignette" cx="50%" cy="50%" r="78%" fx="50%" fy="50%">'
+            '<stop offset="70%" stop-color="#000" stop-opacity="0"/>'
+            '<stop offset="100%" stop-color="#000" stop-opacity="0.10"/>'
             '</radialGradient>')
     add('</defs>')
 

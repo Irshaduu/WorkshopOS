@@ -380,7 +380,7 @@
           {# The day the money moved — what this ledger is filed under. #}
           <td>{{ pay.date|date:"d/m/Y" }}</td>
           <td>
-            <strong>{{ pay.payment_method|default:"CASH" }}</strong>
+            <strong>{{ pay.get_payment_method_display|default:"Cash" }}</strong>
             {% if pay.note %}<br><small style="color: #666;">{{ pay.note }}</small>{% endif %}
           </td>
           <td class="text-end balance-green" style="font-weight: bold;">₹{{ pay.amount|floatformat:0 }}</td>

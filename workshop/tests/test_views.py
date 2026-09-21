@@ -172,14 +172,6 @@ class WorkshopViewTests(TestCase):
         # Model CRUD
         response = self.client.post(reverse('model_add_generic'), {'brand': self.brand.id, 'name': 'Accord'})
         self.assertTrue(CarModel.objects.filter(name='Accord').exists())
-        
-        # SparePart CRUD
-        response = self.client.post(reverse('spare_add'), {'name': 'Brake Pad'})
-        self.assertTrue(SparePart.objects.filter(name='Brake Pad').exists())
-        
-        # ConcernSolution CRUD
-        response = self.client.post(reverse('concern_add'), {'concern': 'Brake Sound'})
-        self.assertTrue(ConcernSolution.objects.filter(concern='Brake Sound').exists())
 
     def test_completed_view_search(self):
         self.jobcard.completed = True

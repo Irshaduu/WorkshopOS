@@ -109,10 +109,10 @@ def cleanup_rename_spare(request, spare_id):
             messages.error(request, "New name cannot be empty.")
             return redirect('data_cleanup')
 
-        # One implementation, shared with Master Lists' spare edit — see
-        # workshop/master_data.py for why that matters. The merge confirmation is
-        # shared for the same reason: a warning shown on one screen and not the
-        # other would just move the silent merge to whichever door was open.
+        # One implementation, in workshop/master_data.py — see there for why that
+        # matters. This is the only door for spares since Master Lists' own was
+        # retired (AUD-0106); the merge confirmation is the one the brand and
+        # model screens show too, so a collision is gated the same everywhere.
         old_name = spare.name
         preview = merge_preview(spare, new_name)
         if preview and not _merge_confirmed(request):
@@ -170,7 +170,7 @@ def cleanup_rename_concern(request, concern_id):
             messages.error(request, "New concern text cannot be empty.")
             return redirect('data_cleanup')
 
-        # Shared with Master Lists' concern edit — see workshop/master_data.py.
+        # The one implementation — see workshop/master_data.py.
         preview = merge_preview(concern, new_text)
         if preview and not _merge_confirmed(request):
             return _confirm_merge(

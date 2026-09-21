@@ -229,7 +229,8 @@ class TheSpareShopReportIsNoLongerADeadEndTests(TestCase):
 
 class CancelIsANamedDestinationTests(TestCase):
     """
-    The four master-list forms cancelled with `javascript:history.back()`. Each
+    The master-list forms cancelled with `javascript:history.back()` (four then;
+    the spare and concern ones were retired 2026-09-21, AUD-0106). Each
     has exactly one caller, so a named URL was always available — and it is
     strictly better: it survives an empty history, and it is not the one thing
     on these pages a CSP would break.
@@ -241,8 +242,6 @@ class CancelIsANamedDestinationTests(TestCase):
 
     FORMS = [
         ('brand_add', 'brand_list'),
-        ('spare_add', 'spare_list'),
-        ('concern_add', 'concern_list'),
     ]
 
     def setUp(self):

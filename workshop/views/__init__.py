@@ -41,8 +41,6 @@ from .master_lists import (
     master_lists_home,
     brand_list, brand_create, brand_edit, brand_delete, brand_model_list,
     model_create, model_edit, model_delete,
-    spare_list, spare_create, spare_edit,
-    concern_list, concern_create, concern_edit,
 )
 from .autocomplete import (
     autocomplete_brands, autocomplete_models,
