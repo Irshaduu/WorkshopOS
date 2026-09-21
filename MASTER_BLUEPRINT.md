@@ -114,7 +114,7 @@ erDiagram
 | 6 | **AccountLockout** | user (1:1→User), failures, last_attempt | Per-account sign-in lockout: 5 failures / 15 min. The primary control; `FailedAttempt` (by IP, limit 20) is only a backstop. Counting solely by IP locked the whole workshop out whenever one person fumbled, since every device shares one connection. |
 | 7 | **PasswordResetOTP** | user (FK→User), code_hash (SHA-256), created_at, expires_at, attempts, used_at, requested_ip | Emailed 6-digit reset code, Owners only. 10-min expiry, single use, 5 attempts, 60s resend cooldown, 3/hour — all counted per account **in the DB**, since a session counter is cleared with the cookies. The code itself is never stored. See CLAUDE.md for why this is a code and not Django's built-in reset link. |
 | 8 | **Mechanic** | name (unique), role (Mechanic/Assistant Mechanic/Office Staff/General Helper, default Mechanic), is_active, created_at | Workshop staff roster ("Staff Registration" in the UI — model/table name kept for continuity, see CLAUDE.md). Only Mechanic/Assistant Mechanic roles are selectable as a Job Card's `lead_mechanic`. |
-| 9 | **CarBrand** | name (unique), logo_image, created_at | Master list for autocomplete |
+| 9 | **CarBrand** | name (unique), logo_image *(dormant — no form or page uses it)*, created_at | Master list for autocomplete |
 | 10 | **CarModel** | brand (FK→CarBrand), name, created_at | Master list, unique_together(brand,name) |
 | 11 | **SparePart** | name (unique), created_at | Master list for autocomplete |
 | 12 | **ConcernSolution** | concern (text), created_at | Knowledge base for autocomplete |
@@ -631,7 +631,7 @@ stateDiagram-v2
 
 | Form | Model | Fields |
 |------|-------|--------|
-| `CarBrandForm` | CarBrand | name, logo_image |
+| `CarBrandForm` | CarBrand | name |
 | `CarModelForm` | CarModel | brand, name |
 | `SparePartForm` | SparePart | name |
 | `ConcernSolutionForm` | ConcernSolution | concern |

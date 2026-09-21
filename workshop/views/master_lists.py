@@ -93,8 +93,7 @@ def brand_edit(request, pk):
             # captured above it: `_post_clean()` writes the posted name onto the
             # bound instance, so by then `brand.name` is already the NEW one and
             # the confirmation would name the wrong entry as the one being
-            # deleted. (A logo uploaded in the same submit is dropped by the
-            # re-post — moot on a merge, since this row is about to be deleted.)
+            # deleted.
             preview = merge_preview(brand, new_name)
             if preview and not _merge_confirmed(request):
                 return _confirm_merge(

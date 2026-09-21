@@ -46,14 +46,9 @@
             <a href="{% url 'brand_model_list' brand.id %}" class="text-decoration-none h-100">
                 <div class="card-body p-3 d-flex flex-column align-items-center justify-content-center"
                     style="min-height: 120px;">
-                    {% if brand.logo_image %}
-                    <img src="{{ brand.logo_image.url }}" alt="{{ brand.name }}" class="img-fluid mb-2"
-                        style="max-height: 60px;">
-                    {% else %}
                     <div class="display-6 text-muted mb-2">
                         <i class="bi bi-car-front"></i>
                     </div>
-                    {% endif %}
                     <h6 class="fw-bold text-dark mb-0">{{ brand.name }}</h6>
                 </div>
             </a>

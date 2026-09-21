@@ -107,10 +107,17 @@ def _reject_case_variant(model, field_name, value, instance, label):
 class CarBrandForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = CarBrand
-        fields = ['name', 'logo_image']
+        # NO LOGO UPLOAD, and not because it was never asked for: it could not
+        # work. `urls.py` serves media through Django's `static()` helper, which
+        # returns nothing when DEBUG is off, so in production an upload looked
+        # saved and then 404'd — and Railway's disk is wiped on every deploy, so
+        # the file died on the next push regardless. The admin already hid it.
+        # `CarBrand.logo_image` stays as an unused column rather than a
+        # migration. A logo that is wanted later needs storage that survives a
+        # deploy (RAILWAY_OPERATIONS.md §11) — never this field switched back on.
+        fields = ['name']
         labels = {
             'name': 'Brand Name',
-            'logo_image': 'Brand Logo',
         }
 
     def clean_name(self):

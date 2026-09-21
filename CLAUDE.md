@@ -9951,7 +9951,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 78 files, 2,723 tests (counted 2026-09-21). Always SQLite (see below).
+# Full test suite — 78 files, 2,726 tests (counted 2026-09-21). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -9979,6 +9979,12 @@ python manage.py runserver
 #     would have swapped, which is slower AND less stable; with everything
 #     closed there was 2.25 GB and it ran clean. CHECK AVAILABLE MEMORY BEFORE
 #     CHOOSING THE NUMBER — `Get-Counter '\Memory\Available MBytes'`.
+#   • THREE WORKERS COST ALMOST NOTHING AGAINST FOUR — measured 2026-09-21:
+#     2,726 tests in 2,799s (46.7 min) on `--parallel 3`, against 2,637s
+#     (44 min) on 4 the day before, 6% slower for one worker less. This
+#     laptop has 2 PHYSICAL cores, so the fourth worker is sharing a core it
+#     only half has. When free memory is tight, 3 is the safe choice and
+#     nearly free; 4 is worth it only with the machine cleared.
 #   • THE TELL THAT IT IS HEALTHY is the workers' CPU seconds being nearly
 #     EQUAL (measured 913/913/913/912 at 16 minutes). A stalled worker shows as
 #     a flat count while the others climb.
@@ -9987,7 +9993,10 @@ python manage.py runserver
 #     re-run only the failing files SERIALLY before calling one a bug.
 #   • ⚠ Do not pipe it through `tail`: that buffers the whole run, so there is
 #     no progress to watch until it exits.
-# Last full run 2026-09-20: 2,711 tests, 2,637s (44 min) on `--parallel 4`, ALL
+# Last full run 2026-09-21: 2,726 tests, 2,799s (46.7 min) on `--parallel 3`,
+# ALL GREEN, verifying AUD-0008 (the one cached role rule) and AUD-0088 (the
+# brand logo upload removed) together.
+# Before it: 2026-09-20, 2,711 tests, 2,637s (44 min) on `--parallel 4`, ALL
 # GREEN, verifying commit ff93dda on an otherwise idle machine.
 # Before it: 2,691 tests, 8,987s (2h30m) serial, ALL GREEN — the slowest
 # run recorded here, on a machine also running the dev server and a browser;
@@ -10404,7 +10413,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **78 files, 2,723 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **78 files, 2,726 tests**,
 re-counted 2026-09-21. (`workshop/tests/` is 72 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)

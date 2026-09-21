@@ -678,6 +678,7 @@ class CarBrand(models.Model):
     Used for the Study section grid and autocomplete source.
     """
     name = models.CharField(max_length=100, unique=True)
+    # DORMANT — offered by no form and drawn by no page. See `CarBrandForm`.
     logo_image = models.ImageField(upload_to='brands/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

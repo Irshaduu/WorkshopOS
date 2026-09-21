@@ -686,6 +686,62 @@ class MasterListsRbacMatchesItsNeighboursTests(WorkshopTestCase):
         self.assertEqual(concern.concern, 'Brake squeal')
 
 
+class TheBrandLogoUploadIsGoneTests(WorkshopTestCase):
+    """
+    AUD-0088. The brand form offered a "Brand Logo" upload that could never work
+    in production: `urls.py` serves media through Django's `static()` helper,
+    which returns nothing when DEBUG is off, so the upload looked saved and the
+    image then 404'd — and Railway's disk is wiped on every deploy, so the file
+    died on the next push anyway. The admin already hid it.
+
+    The column stays, unused, so nothing needed a migration. What is pinned here
+    is that no screen OFFERS it, STORES it, or tries to DRAW it.
+    """
+
+    def test_the_form_offers_no_upload(self):
+        from workshop.forms import CarBrandForm
+        self.assertNotIn('logo_image', CarBrandForm().fields)
+        page = self.client.get(reverse('brand_add'))
+        self.assertEqual(page.status_code, 200)
+        self.assertNotContains(page, 'type="file"')
+
+    def test_a_crafted_upload_is_not_stored(self):
+        """The form is the control, so a POST carrying a real image stores none.
+
+        A real PNG, not a header: with the field still on the form a fake one is
+        rejected as an invalid image, the brand is never created, and the test
+        would fail for the wrong reason.
+        """
+        import io as _io
+        import tempfile
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from PIL import Image
+
+        buf = _io.BytesIO()
+        Image.new('RGB', (1, 1)).save(buf, format='PNG')
+        upload = SimpleUploadedFile('logo.png', buf.getvalue(), content_type='image/png')
+        with tempfile.TemporaryDirectory() as media, override_settings(MEDIA_ROOT=media):
+            self.client.post(reverse('brand_add'),
+                             {'name': 'Koenigsegg', 'logo_image': upload})
+        brand = CarBrand.objects.get(name__iexact='Koenigsegg')
+        self.assertFalse(brand.logo_image, 'a crafted upload was stored')
+
+    def test_the_list_never_draws_a_stored_logo(self):
+        """A brand that picked up a logo before this change keeps its column.
+
+        Drawing it would put a broken image on the page in production, so the
+        list draws the car icon for every brand. The icon itself cannot be
+        asserted on - `base.html` uses the same glyph - so the check is that the
+        stored path never reaches the page.
+        """
+        CarBrand.objects.create(name='Porsche', logo_image='brands/porsche.png')
+        page = self.client.get(reverse('brand_list'))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'Porsche')
+        self.assertNotContains(page, 'brands/porsche.png')
+
+
 # ===========================================================================
 # SALARY & ADVANCE
 # ===========================================================================

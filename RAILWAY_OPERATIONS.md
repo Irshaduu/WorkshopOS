@@ -40,8 +40,8 @@ Consequences that bite in practice:
 
 - `manage.py backup_db` writes into `BASE_DIR/backups` — inside the container.
   On Railway that backup is deleted by the next deploy. **See §6.**
-- Uploaded brand logos do not survive, and are not served at all in production
-  anyway. **See §11.**
+- Nothing in the app writes an upload to the container's disk any more — the
+  brand-logo upload was removed for exactly this reason. **See §11.**
 - Log files on disk are pointless. Use Railway's log viewer.
 
 ---
@@ -679,18 +679,20 @@ you expect to keep (ephemeral), `purge_business_data`.
 
 Documented so they are not rediscovered as emergencies.
 
-### Uploaded images do not work in production
+### There is no file upload to the container — the brand logo was removed
 
-`CarBrand.logo_image` is the **one** `ImageField` left in the codebase, and
-`CarBrandForm` exposes it. In production it is **silently broken**:
+`CarBrand.logo_image` is the **one** `ImageField` left in the codebase, and it
+is **dormant**: since 2026-09-21 no form offers it and no page draws it. It was
+removed from `CarBrandForm` because in production it could never have worked —
 `formulad_workshop/urls.py` serves media through Django's `static()` helper,
-which returns an empty list when `DEBUG=False` — so the file is written, never
-servable (404), and destroyed by the next deploy.
+which returns an empty list when `DEBUG=False`, so an upload was written, never
+servable (404), and destroyed by the next deploy. Every brand now shows the car
+icon, which is what the admin had always assumed.
 
-Decorative master data, so not a go-live blocker. If you want it working, it
-needs a Railway Volume mounted at `/app/media` plus a way to serve `MEDIA_URL`.
-If you do not, removing `logo_image` from `CarBrandForm` is more honest than an
-upload button that does nothing. Logged as `AUD-0088` in `TECH_DEBT.md`.
+The column stays rather than a migration. **If brand logos are ever wanted**,
+they need storage that survives a deploy — the photo bucket's route (§3), or a
+Railway Volume at `/app/media` plus a way to serve `MEDIA_URL` — never this
+field simply switched back on. → `TheBrandLogoUploadIsGoneTests`
 
 *(An earlier version of this note also named `CarModel.sample_image`. That field
 does not exist — `CarModel` carries only `brand`, `name` and `created_at`.)*
