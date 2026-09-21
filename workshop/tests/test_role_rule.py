@@ -15,8 +15,9 @@ Two things are pinned here and they fail in completely different ways:
   fix: the job card form issued **32 role queries out of 48**, because that one
   template calls `has_group` 19 times.
 
-Nothing here asserts a page's total query count — that belongs to AUD-0096 and
-would go stale on the next query added. What is asserted is the INVARIANT: the
+Nothing here asserts a page's total query count — that would go stale on the
+next query added (the job-card form's own invariant is
+`test_jobcard_form_queries.py`). What is asserted is the INVARIANT: the
 answer costs the same whether it is wanted once or twenty times.
 """
 

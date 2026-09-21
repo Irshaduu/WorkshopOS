@@ -9438,6 +9438,20 @@ which reads `self.deleted_forms`, and that property caches its answer in
 `_deleted_form_indexes` on first access. Marking rows DELETE after `super().clean()`
 marks them too late.
 
+**An overridden formset `get_queryset()` must return the SAME object on every
+call.** Django asks for it several times per row — `initial_form_count()`,
+`_construct_form()`, `add_fields()` — and relies on the first `len()` loading it,
+so every later `[i]` reads the loaded rows. `return super().get_queryset().filter(…)`
+hands back a fresh, unloaded queryset each time, and every one of those questions
+becomes a database trip. The job card's two parts sections cost **5 queries per
+row** this way — **200 on a card of fifteen spares and fifteen draws, against 46
+for one of each** — with nothing failing and the page looking right. Build it once
+and keep it (`SourceScopedSpareFormSet`); a subclass adds to it through
+`narrow_queryset()`, because chaining onto `super().get_queryset()` in a subclass
+brings the defect straight back. Fixed 2026-09-21: **16 queries whatever the card
+carries.**
+→ `workshop/tests/test_jobcard_form_queries.py`
+
 **An absent field behaves in OPPOSITE ways on a ModelForm and a formset.** On a
 ModelForm, omitting it leaves the stored value alone. In a formset, an absent field
 **saves as blank and wipes the row.** This asymmetry decides several rules in this
@@ -9927,7 +9941,7 @@ applies to all seven.**
 near-copies** across the list pages. It has drifted once already — an
 out-of-order-response guard was written in `estimate_list.html` and never reached the
 other six, so they showed stale rows for a fast typist until it was copied across by
-hand. Logged as `AUD-0086`/`AUD-0096` in `TECH_DEBT.md`. A shared `list_search.js` is the
+hand. Logged as `AUD-0086` in `TECH_DEBT.md`. A shared `list_search.js` is the
 textbook fix and was deliberately declined: **seven working copies beat one untested
 abstraction** on a system this close to shipping. Revisit only if that pattern needs
 changing again.
@@ -9951,7 +9965,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 78 files, 2,726 tests (counted 2026-09-21). Always SQLite (see below).
+# Full test suite — 79 files, 2,729 tests (counted 2026-09-21). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -9993,7 +10007,9 @@ python manage.py runserver
 #     re-run only the failing files SERIALLY before calling one a bug.
 #   • ⚠ Do not pipe it through `tail`: that buffers the whole run, so there is
 #     no progress to watch until it exits.
-# Last full run 2026-09-21: 2,726 tests, 2,799s (46.7 min) on `--parallel 3`,
+# Last full run 2026-09-21: 2,729 tests, 2,642s (44.0 min) on `--parallel 3`,
+# ALL GREEN, verifying AUD-0096 (the job card form flat at any number of parts).
+# Before it: the same day, 2,726 tests, 2,799s (46.7 min) on `--parallel 3`,
 # ALL GREEN, verifying AUD-0008 (the one cached role rule) and AUD-0088 (the
 # brand logo upload removed) together.
 # Before it: 2026-09-20, 2,711 tests, 2,637s (44 min) on `--parallel 4`, ALL
@@ -10207,8 +10223,8 @@ said a 47-query page cost ~3.5 s of pure latency because the database was in
 Singapore. It is on `localhost`, so that latency is gone — but the query counts
 that produced it have not changed, and production reaches Railway's Postgres over
 a real network. **A page that feels instant here can still be slow there**, so keep
-query counts low on the evidence (`AUD-0096` measures the job-card form), not on
-how it feels locally.
+query counts low on the evidence, not on how it feels locally — the job-card
+form is held flat at any number of parts by `test_jobcard_form_queries.py`.
 
 ## Environment variables
 
@@ -10413,8 +10429,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **78 files, 2,726 tests**,
-re-counted 2026-09-21. (`workshop/tests/` is 72 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **79 files, 2,729 tests**,
+re-counted 2026-09-21. (`workshop/tests/` is 73 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

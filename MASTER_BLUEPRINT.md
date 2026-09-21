@@ -867,7 +867,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (77 files · 2,692 tests)
+## 13. TEST SUITE (79 files · 2,729 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -875,7 +875,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (72 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (74 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -950,6 +950,8 @@ base classes.*
 | `test_setup_groups.py` | `setup_groups` creating the roles RBAC actually reads. It used to create `Workers` and `Admins`, two groups nothing here has ever looked at, while the runbook's checklist claimed Owner / Office / Floor and Control Hub told anyone with a missing role to run it — both remedies pointing at a command that reported success and fixed nothing. **Only reproducible on an empty database, which is exactly what go-live day is and what no development database ever is** |
 | `test_go_live_safety.py` | What keeps the live database safe from the tooling built while exploring hosts: every demo seeder refuses to run outside `DJANGO_ENV=development` and writes nothing, `DJANGO_ENV=render_demo` now refuses to start instead of booting on a SQLite file, no Render file is left in the repository, and `makemigrations --check` finds no model change missing its migration |
 | `test_price_markup.py` | Suggested customer prices on the job card. **`TheServerNeverPricesAPartTests` is the one that matters**: a shop price or a costed draw saved with no customer price stores none, so the settle check still chases it and `workshop/pricing.py` holds no price function. Cost and markup reach Office and Owner only — the product search sends Floor neither key and Floor's page carries no config, column or badge. A settled card is never filled. A saved draw shows its OWN cost, an unknown cost a dash, and a draw corrected to another product takes that product's cost. Unit price × quantity too large for the column is refused rather than a 500. Add Product / Edit Product store a whole markup 0–999, refuse anything else changing nothing, never change a linked product's markup, and save only their own three fields. The badge's `position: relative`, which stops its hidden label widening the page on a phone, is asserted directly. The inventory total is headed **Total Price** (Spare Parts keeps Customer Price, and the settle check names a draw's gap "no total price"); a typed total saves exactly with no unit price, and the class beside it proves why the grey unit price is never posted — 142.86 × 7 saves ₹1,000.02 |
+| `test_role_rule.py` | AUD-0008 — "what role is this user?" is ONE cached function. Eighty role checks cost what one costs; adding or removing a group throws the cached answer away; the decorators and the `has_group` filter agree on every role; and a SCAN of every app file finds no tenth copy of the rule (with a floor test, so a scan that reads nothing cannot pass) |
+| `test_jobcard_form_queries.py` | AUD-0096 — the job card edit page costs the same with fifteen parts of each kind as with one, each parts section reads its rows once (the draw's product and category included), and each section still shows only its own route's rows with their own photo counts |
 
 *JavaScript: `workshop/tests/js/photos-core.test.js`, `workshop/tests/js/pricing-core.test.js` and `workshop/tests/js/old-bill-core.test.js` run under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. The first covers the photo upload queue's failure paths and the gallery's index arithmetic; the second the suggested price — strict parsing (a comma is refused), rounding up to the rupee in whole paise, the badge rounding down, and the line total rounding half-even exactly as the server does, every expectation produced by Python first; the third what the Old Bill form understood while typing, read against `old-bill-cases.json` — the same file the Django suite reads, so the browser and the server answer every listed date and amount identically. They are the only JavaScript in this repo with tests, and they add no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
@@ -1071,7 +1073,7 @@ WorkshopOS (Titan)/
 │   │                             notifications.js and
 │   │                             style.css live in the project-level static/
 │   ├── migrations/             ← 81 migrations
-│   └── tests/                  ← 72 test files (71 test_*.py + tests.py) + tests/js/ (node --test)
+│   └── tests/                  ← 74 test files (73 test_*.py + tests.py) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 9 Models (3 core + 5 supplier + OpeningStock)

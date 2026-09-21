@@ -552,17 +552,33 @@ class SourceScopedSpareFormSet(BaseInlineFormSet):
     spare_source = None
 
     def get_queryset(self):
+        # BUILT ONCE PER FORMSET, AND THAT IS THE WHOLE POINT (AUD-0096).
+        # Django asks a formset for its queryset several times per row —
+        # `initial_form_count()`, `_construct_form()`, `add_fields()` — and
+        # relies on getting the SAME object back: the first `len()` loads it,
+        # and every later `[i]` reads the loaded rows. Returning a fresh
+        # `.filter()` on each call looked harmless and cost five queries per
+        # part — 200 queries for a card of fifteen spares and fifteen draws,
+        # against 46 for one of each.
+        #
         # `photo_count` is annotated, never counted per row. Each spare row
         # renders a photo box carrying its own count, and a card can hold
         # dozens of parts — a rebuild in the live data carries 91 — so a
         # `.photos.count()` in the template would be one query per row on the
         # longest form in the app. Annotating is this codebase's own rule for
         # list views.
-        return (
-            super().get_queryset()
-            .filter(source=self.spare_source)
-            .annotate(photo_count=Count('photos'))
-        )
+        if not hasattr(self, '_scoped_queryset'):
+            self._scoped_queryset = self.narrow_queryset(
+                super().get_queryset()
+                .filter(source=self.spare_source)
+                .annotate(photo_count=Count('photos'))
+            )
+        return self._scoped_queryset
+
+    def narrow_queryset(self, queryset):
+        """A route's own additions. Never override `get_queryset` for this —
+        a chained call there is a new queryset on every call, the defect above."""
+        return queryset
 
     def save_new(self, form, commit=True):
         # `source` is deliberately not an editable field — a row cannot be moved
@@ -582,11 +598,13 @@ class ShopSpareFormSet(SourceScopedSpareFormSet):
 class InventoryDrawFormSet(SourceScopedSpareFormSet):
     spare_source = JobCardSpareItem.SOURCE_INVENTORY
 
-    def get_queryset(self):
-        # The row prints "38 in stock" under each product, so every saved row
-        # needs its Item. Without this the section costs one query per row to
-        # render that line — a rebuild carrying twenty draws would pay twenty.
-        return super().get_queryset().select_related('item')
+    def narrow_queryset(self, queryset):
+        # Every saved row reads its Item (the product box, the cost) AND that
+        # Item's CATEGORY — `part_category`, which the Job Performed
+        # suggestions read off the row. `'item'` alone left the category to one
+        # query per draw (measured: a card of 5 draws ran it 5 times), so it is
+        # joined here too.
+        return queryset.select_related('item__category')
 
 
 class InventoryDrawForm(forms.ModelForm):

@@ -286,9 +286,11 @@ a claim of internet-scale throughput.
 > needed for a deployment, back it with an actual benchmark rather than asserting it
 > here.
 
-**One known hot spot:** the job-card form costs ~7 queries per spare row, mostly
-`auth_group` lookups from the per-row role checks. `AUD-0096` / `AUD-0046` in
-`TECH_DEBT.md`.
+**The job-card form's hot spot is closed (2026-09-21).** It cost extra queries
+for every part on the card — role lookups (`AUD-0008`) and a parts query asked
+afresh several times per row (`AUD-0096`). The edit page now costs **16 queries
+whatever the card carries**, measured at 1, 8 and 15 parts of each kind in the test
+database, and `test_jobcard_form_queries.py` holds it there.
 
 ---
 
