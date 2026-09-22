@@ -2103,7 +2103,7 @@ grey".
                         lets the stock line hang below, which is where it belongs.
                         {% endcomment %}
                         <table class="table table-borderless mb-0 inventory-table" style="min-height: 80px;">
-                            <thead class="table-premium-header text-muted small text-uppercase">
+                            <thead class="text-muted small text-uppercase">
                                 <tr class="border-bottom">
                                     <th class="col-idx" scope="col" aria-label="Row number">#</th>
                                     <th class="ps-3" style="min-width: 240px;">Item</th>
@@ -2266,7 +2266,7 @@ grey".
                             to keep pace, because a field that stops being
                             rendered saves as blank.
                             {% endcomment %}
-                            <thead class="table-premium-header text-muted small text-uppercase">
+                            <thead class="text-muted small text-uppercase">
                                 <tr class="border-bottom">
                                     <th class="col-idx" scope="col" aria-label="Row number">#</th>
                                     <th class="ps-3 col-part" style="min-width: 320px;">Part Name</th>
@@ -2304,7 +2304,7 @@ grey".
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <th class="col-shop" style="min-width: 220px;">Shop</th>
                                     {% endif %}
-                                    <th class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}" style="min-width: 138px;">Dates</th>
+                                    <th class="{% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}" style="min-width: 138px;">Dates</th>
                                     {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                                     <th class="col-price text-nowrap">Shop Price (₹)</th>
                                     <th class="col-price col-price-mk pe-4 text-nowrap">Customer Price (₹)</th>
@@ -2404,7 +2404,7 @@ grey".
                                     only sometimes, which is the `.cb-list` trap
                                     CLAUDE.md already records.
                                     {% endcomment %}
-                                    <td class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
+                                    <td class="{% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
                                         <div class="jc-dates">
                                             <button type="button" class="jc-date-chip"
                                                     aria-haspopup="dialog" aria-expanded="false">
@@ -2667,7 +2667,7 @@ is now true, and the column width is unchanged at every breakpoint.
                     </select>
                 </td>
                 {% endif %}
-                <td class="col-date {% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
+                <td class="{% if not request.user|has_group:'Office' and not request.user|has_group:'Owner' and not request.user.is_superuser %}pe-4{% endif %}">
                     <div class="jc-dates">
                         <button type="button" class="jc-date-chip"
                                 aria-haspopup="dialog" aria-expanded="false">

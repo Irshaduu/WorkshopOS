@@ -115,95 +115,6 @@
 }
 
 /* ========================================== */
-/* WORKSHOP DASHBOARD - VEHICLE BOXES */
-/* ========================================== */
-
-/* Red underline for missing discharge date */
-.discharge-not-set {
-    color: var(--color-text-muted);
-    border-bottom: 2px solid #dc3545;
-    padding-bottom: 2px;
-    font-style: italic;
-}
-
-/* Horizontal vehicle box layout - COMPACT VERSION */
-.vehicle-box-horizontal {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    /* Reduced from 0.75rem 1rem */
-    border: 1px solid var(--color-border);
-    /* Thinner border */
-    border-radius: 6px;
-    /* Slightly smaller radius */
-    background-color: var(--color-card);
-    transition: all 0.2s ease;
-    margin-bottom: 0.5rem;
-    /* Reduced from 0.75rem */
-}
-
-.vehicle-box-horizontal:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 2px 8px var(--color-shadow);
-}
-
-.vehicle-info-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    /* Tighter gap */
-    flex: 1;
-}
-
-.vehicle-actions-row {
-    display: flex;
-    gap: 0.35rem;
-    /* Reduced from 0.5rem */
-    flex-shrink: 0;
-}
-
-.vehicle-name {
-    min-width: 150px;
-}
-
-@media (max-width: 768px) {
-    .vehicle-box-horizontal {
-        flex-direction: column;
-        align-items: flex-start;
-        padding: 0.4rem 0.6rem;
-        /* Even more compact on mobile */
-        gap: 0.35rem;
-    }
-
-    .vehicle-info-row {
-        gap: 0.35rem;
-        /* Tighter on mobile */
-        font-size: 0.9rem;
-        /* Slightly smaller text */
-    }
-
-    .vehicle-actions-row {
-        width: 100%;
-        justify-content: flex-end;
-        gap: 0.3rem;
-    }
-
-    /* Make badges smaller on mobile */
-    .vehicle-info-row .badge {
-        font-size: 0.75rem;
-        padding: 0.25rem 0.5rem;
-    }
-
-    /* Compact icon buttons on mobile */
-    .vehicle-actions-row .btn-sm {
-        padding: 0.25rem 0.5rem;
-    }
-}
-
-/* ========================================== */
 /* STATUS COLOR CODING */
 /* ========================================== */
 
@@ -1268,3 +1179,21 @@ form[data-ws-busy="1"] .js-ws-submit {
 }
 .opening-left i { flex: 0 0 auto; }
 .opening-left b { color: #fff; font-weight: 700; }
+
+/* -------------------------------------------------------------------------
+   A CARD THAT LIFTS ON HOVER  —  .hover-up
+   -------------------------------------------------------------------------
+   Worn by the cards on Master Data, the brand list and the model list. It was
+   declared only inside model_list.html, so the other two pages never lifted.
+   Here because three pages use it — the `.rpay-*` rule.
+
+   The z-index keeps the hovered card, and a ⋮ menu open inside it, above the
+   card bodies around it. Behind `(hover: hover)`: on a touch screen a hover
+   never fires, and where it does fire it sticks.
+   ------------------------------------------------------------------------- */
+@media (hover: hover) {
+    .hover-up:hover {
+        transform: translateY(-2px);
+        z-index: 50 !important;
+    }
+}
