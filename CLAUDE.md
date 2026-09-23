@@ -5457,7 +5457,9 @@ with no amount stays blank, never ₹0; Indian commas; ₹ on either side of an 
 a double space inside a job line is not two columns. **The date is read two ways**
 — `10-Apr-2026`, and on the workshop's earliest bills `09-07-2024`, which is **day
 first**: those PDFs' own creation date is 9 July 2024 (2026-09-23; that template
-was a second change the owner's word above did not cover). **The paper's NAME is not
+was a second change the owner's word above did not cover). Those bills also have no
+MAKE line and print both on MODEL's (`MODEL: LEXUS, LS430`), so with no MAKE the
+model is split at its first comma. **The paper's NAME is not
 taken** — the form has no name box. What the PDF did not give is named in a warning,
 and a number already in (or a job card's) is said the moment the form comes back,
 not after the checking is done.

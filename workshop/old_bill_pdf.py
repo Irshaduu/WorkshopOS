@@ -184,6 +184,11 @@ def read_bill_text(text):
     if not fields['model_name']:
         model = _search(r'MODEL\s*:(.*)$', top)
         fields['model_name'] = ' '.join(model.group(1).split()) if model else ''
+    # The earliest bills have no MAKE line and print both on one:
+    # "MODEL: AUDIO, Q7". Split at the first comma.
+    if not make and ',' in fields['model_name']:
+        brand, model_name = fields['model_name'].split(',', 1)
+        fields['brand_name'], fields['model_name'] = brand.strip(), model_name.strip()
     mileage = _search(r'MIL(?:E)?AGE\s*:(.*)$', top)
     fields['mileage'] = ' '.join(mileage.group(1).split()) if mileage else ''
 

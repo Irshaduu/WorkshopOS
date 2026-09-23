@@ -169,6 +169,14 @@ class ReadingTheBillTests(SimpleTestCase):
         self.assertEqual(got['fields']['month'], '')
         self.assertIn('the date', got['missing'])
 
+    def test_the_earliest_bills_make_and_model_on_one_line_are_split(self):
+        # No MAKE line on those bills: "MODEL: LEXUS, LS430" carries both.
+        got = read_bill_text('  NAME:   MUFEED        MODEL:     LEXUS, LS430\n  JOB PERFOMED    AMOUNT\n')
+        self.assertEqual((got['fields']['brand_name'], got['fields']['model_name']), ('LEXUS', 'LS430'))
+        # With a MAKE line, a comma in the model is left alone.
+        got = read_bill_text('  MAKE :  BMW       MODEL:  X5, M Sport\n  JOB PERFOMED    AMOUNT\n')
+        self.assertEqual((got['fields']['brand_name'], got['fields']['model_name']), ('BMW', 'X5, M Sport'))
+
     def test_both_spellings_of_the_heading_are_read(self):
         for heading in ('JOB PERFOMED', 'JOB PERFORMED'):
             got = read_bill_text(f'  {heading}    AMOUNT\nCoolant replaced\n  SUBTOTAL\n')
