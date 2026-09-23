@@ -8,8 +8,8 @@ from datetime import timedelta, date
 from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill, SupplierRestockItem, SupplierPayment
 from workshop.analysis_engine import SUPPLIER_BILL_COST
 from workshop.decorators import office_required
-from workshop.models import DeletionLog, JobCardSpareItem
-from workshop.notifications import notify, notify_changed, notify_dated_back
+from workshop.models import DeletionLog, EditLog, JobCardSpareItem
+from workshop.notifications import notify, notify_dated_back
 from workshop.money import parse_money, fit_text
 from workshop.money_dates import posted_date, is_future, too_far_back, backdate_floor
 from workshop.pricing import DEFAULT_MARKUP_PERCENT, MAX_MARKUP_PERCENT, parse_markup
@@ -573,7 +573,7 @@ def remove_shop_catalog_item(request, shop_id, catalog_item_id):
                 extra={'removed_from_shop': shop_name},
             )
             item.delete()
-            messages.success(request, f"'{name}' removed and deleted from inventory (logged to Deletion History).")
+            messages.success(request, f"'{name}' removed and deleted from inventory (logged to Change History).")
         else:
             messages.success(request, f"'{name}' removed from this shop's catalog.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
@@ -770,17 +770,21 @@ def update_bill_discount(request, shop_id, bill_id):
         # by `test_update_bill_discount`). The Edit Bill page needs it because
         # its lines change; this door changes none.
         bill.discount_amount = discount
-        bill.save(update_fields=['discount_amount'])
-        shop.update_totals()
-        if was != discount:
-            notify_changed(
-                f"{shop.name} · Bill #{bill.id} discount now ₹{discount:,.0f}",
-                bill.created_at,
+        # One transaction: the discount, the shop's balance and the Edit
+        # History row land together or not at all.
+        with transaction.atomic():
+            bill.save(update_fields=['discount_amount'])
+            shop.update_totals()
+            EditLog.record(
+                EditLog.ENTITY_RESTOCK_BILL, bill,
+                [EditLog.change('Discount', was, discount)],
+                label=f"{shop.name} · Bill #{bill.id}",
+                user=request.user,
+                stamp=bill.created_at,
+                headline=f"{shop.name} · Bill #{bill.id} discount now ₹{discount:,.0f}",
                 detail=f"was ₹{was:,.0f} · Supplies Shop bill",
-                actor=request.user,
                 url=reverse('supplier_shop_detail', args=[shop.pk]) + '?filter=all',
                 object_type='SupplierRestockBill',
-                object_id=bill.pk,
             )
         messages.success(request, f"Discount updated for Bill #{bill.id}.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
@@ -912,8 +916,9 @@ def edit_restock_bill(request, shop_id, bill_id):
         return redirect('supplier_shop_detail', shop_id=shop.id)
 
     if request.method == 'POST':
-        # What the bill said before, for the owners' alert below.
+        # What the bill said before, for the owners' alert and Edit History.
         was_net, was_date = bill.get_effective_amount, bill.bill_date
+        was_total, was_discount = bill.total_amount, bill.discount_amount
         try:
             # 1. Update bill-level info
             #
@@ -993,25 +998,35 @@ def edit_restock_bill(request, shop_id, bill_id):
             bill.refresh_from_db()
             rejected = _reject_impossible_discount(request, bill)
 
-            # SAY SO, TO THE OWNERS — after the discount guard, so the alert
-            # quotes what the bill actually says now. The bell inside Office's
-            # window, the other owner's phone past it (only an owner can).
-            # The date is not held to the back-date limit here: dating a bill
-            # to its delivery day is the workflow, not a correction.
+            # SAY SO, TO THE OWNERS, AND KEEP IT — after the discount guard, so
+            # the alert and the Edit History row quote what the bill actually
+            # says now. The bell inside Office's window, the other owner's phone
+            # past it (only an owner can). The date is not held to the back-date
+            # limit here: dating a bill to its delivery day is the workflow, not
+            # a correction.
+            #
+            # The alert fires on what the shop is OWED (total less discount) or
+            # the date; the history row names which half moved, since lines and
+            # discount both reach the stock's cost.
             changed = []
             if bill.get_effective_amount != was_net:
                 changed.append(f"was ₹{was_net:,.0f}")
             if bill.bill_date != was_date:
                 changed.append(f"was dated {was_date:%d %b %Y}")
             if changed:
-                notify_changed(
-                    f"{shop.name} · Bill #{bill.id} now ₹{bill.get_effective_amount:,.0f}",
-                    bill.created_at,
+                EditLog.record(
+                    EditLog.ENTITY_RESTOCK_BILL, bill,
+                    [EditLog.change('Bill total', was_total, bill.total_amount),
+                     EditLog.change('Discount', was_discount, bill.discount_amount),
+                     EditLog.change('Bill date', was_date, bill.bill_date,
+                                    kind=EditLog.KIND_DATE)],
+                    label=f"{shop.name} · Bill #{bill.id}",
+                    user=request.user,
+                    stamp=bill.created_at,
+                    headline=f"{shop.name} · Bill #{bill.id} now ₹{bill.get_effective_amount:,.0f}",
                     detail=' · '.join(changed),
-                    actor=request.user,
                     url=reverse('supplier_shop_detail', args=[shop.pk]) + '?filter=all',
                     object_type='SupplierRestockBill',
-                    object_id=bill.pk,
                 )
 
             if rejected:
@@ -1070,7 +1085,7 @@ def delete_restock_bill(request, shop_id, bill_id):
             ]},
         )
         bill.delete()
-        messages.success(request, "Bill permanently deleted and stock reversed (logged to Deletion History).")
+        messages.success(request, "Bill permanently deleted and stock reversed (logged to Change History).")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
 @office_required
@@ -1127,6 +1142,7 @@ def add_shop_payment(request, shop_id):
                 payment_method=request.POST.get('payment_method'),
                 date=moved_on,
                 note=fit_text(request.POST.get('note'), SupplierPayment, 'note'),
+                recorded_by=request.user,
             )
             notify_dated_back(
                 f"{shop.name} · ₹{amount:,.0f} payment filed under {moved_on:%d %b %Y}",
@@ -1170,7 +1186,7 @@ def delete_shop_payment(request, shop_id, payment_id):
             label=f"{payment.supplier.name} · ₹{amount:,.0f} payment",
         )
         payment.delete()  # SupplierPayment.delete() recomputes supplier.update_totals()
-        messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Deletion History).")
+        messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Change History).")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
 @office_required

@@ -1,7 +1,7 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User, Group
-from workshop.models import CashbookEntry, DeletionLog, Notification
+from workshop.models import CashbookEntry, DeletionLog, EditLog, Notification
 from decimal import Decimal
 from django.utils import timezone
 from datetime import timedelta
@@ -466,19 +466,28 @@ class BothSidesAreCollectedEvenThoughOnlyTwoAreShownTests(TestCase):
         self.assertEqual(self.page('?filter=custom&start_date=abc&end_date=zz').status_code, 200)
 
 
-class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
+class TheCashbookSpeaksOnlyPastOfficesLimitsTests(TestCase):
     """
-    AUD-0083. Deleting a cashbook entry has written a `DeletionLog` row and
-    raised `RECORD_DELETED` since day one. EDITING one said nothing at all -
-    and an edit here can do the same damage: a Rs 50,000 expense retyped as
-    Rs 5, or moved into a month the Profit page has already been read against.
-    This is the only screen in the app that can move money between two closed
-    reporting periods.
+    ⚠ THE CASHBOOK'S OWN RULE (2026-09-24, the owners' call) — and it
+    REVERSES this class's predecessor, which asserted that every Office edit
+    here reached the bell (AUD-0083, "an edit says so the way a delete does").
 
-    INFO rather than CRITICAL, on the catalogue's own rule: the Cashbook is the
-    most frequently keyed money screen in the app, and a phone that buzzes for
-    routine bookkeeping is how the thirteen critical events stop being read.
+    The Cashbook's daily rhythm made that noise: a worker is handed ₹2,000,
+    comes back hours later having spent ₹1,800, and Office edits the row — or
+    deletes and re-adds it — every day. Announcing and keeping each one buried
+    the changes that matter and put a bell note up daily. So:
+
+      * an edit or delete Office could make (inside 24 hours) is QUIET — not
+        kept in Edit or Deletion History, not announced;
+      * one ONLY AN OWNER could make (past 24 hours, or a date moved past the
+        three-day limit) is kept AND reaches the other owner's phone;
+      * BACK-DATING IS NEVER QUIET — moving an entry to an earlier day reaches
+        the bell exactly as keying it there would, or the quiet rule would be
+        a way round the add form's own alert.
     """
+
+    EVENTS = ('RECORD_CHANGED', 'OLD_RECORD_CHANGED', 'DATED_BACK',
+              'DATED_BACK_PAST_LIMIT', 'RECORD_DELETED')
 
     def setUp(self):
         for name in ('Owner', 'Office', 'Floor'):
@@ -508,38 +517,49 @@ class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
             reverse('manage_edit_cashbook_entry', args=[self.entry.pk]), payload)
 
     def _alerts(self):
-        return Notification.objects.filter(event__in=('RECORD_CHANGED', 'OLD_RECORD_CHANGED'))
+        return Notification.objects.filter(event__in=self.EVENTS)
 
-    # -- the three that move money -------------------------------------------
+    def _second_owner(self):
+        second = User.objects.create_user(username='rijas', password='pw')
+        second.groups.add(Group.objects.get(name='Owner'))
+        return second
 
-    def test_retyping_the_amount_reaches_the_owner(self):
-        self._post(amount='5')
-        row = self._alerts().get()
-        self.assertEqual(row.recipient, self.owner, 'owners are the audience')
-        self.assertIn('Electricity', row.body)
-        self.assertIn('5', row.body)
-        self.assertIn('50,000', row.detail,
-                      'the alert has to carry what the figure WAS')
+    def _age(self, **delta):
+        CashbookEntry.objects.filter(pk=self.entry.pk).update(
+            created_at=timezone.now() - timedelta(**delta))
 
-    def test_moving_it_to_another_day_reaches_the_owner(self):
-        old = self.entry.date
-        moved = old - timedelta(days=2)      # inside Office's three days
-        self._post(date=moved.isoformat())
-        self.assertIn(old.strftime('%b'), self._alerts().get().detail)
+    # -- inside Office's 24 hours: the day's work, said nowhere ----------------
 
-    def test_flipping_the_side_of_the_equation_reaches_the_owner(self):
-        """Income mis-keyed as an expense is a double-sized error."""
+    def test_settling_the_amount_the_same_day_is_quiet(self):
+        """₹2,000 handed out, ₹1,800 spent: the second half of one act."""
+        self._post(amount='1800')
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.amount, Decimal('1800.00'), 'the edit itself still saves')
+        self.assertEqual(self._alerts().count(), 0)
+        self.assertFalse(EditLog.objects.exists())
+
+    def test_flipping_the_side_the_same_day_is_quiet(self):
         self._post(entry_type='INCOME')
-        self.assertIn('Expense', self._alerts().get().detail)
+        self.assertEqual(self._alerts().count(), 0)
+        self.assertFalse(EditLog.objects.exists())
 
-    # -- and nothing else does -----------------------------------------------
+    def test_an_owners_same_day_edit_is_quiet_too(self):
+        """The tier is the RECORD's, never the person's: inside Office's
+        limits an owner's edit is the same routine act."""
+        self._second_owner()
+        self.client.login(username='sahad', password='pw')
+        self._post(amount='5')
+        self.assertEqual(self._alerts().count(), 0)
+        self.assertFalse(EditLog.objects.exists())
+
+    def test_a_same_day_delete_is_not_logged_and_says_nothing(self):
+        self.client.post(reverse('manage_delete_cashbook_entry', args=[self.entry.pk]),
+                         {'reason': 'settled at 1800, re-adding'})
+        self.assertFalse(CashbookEntry.objects.filter(pk=self.entry.pk).exists())
+        self.assertFalse(DeletionLog.objects.exists())
+        self.assertEqual(self._alerts().count(), 0)
 
     def test_a_note_or_a_method_raises_nothing(self):
-        """
-        Confirming what cannot surprise anyone is how confirmations stop being
-        read - the settle dialog's rule, applied to the feed. Only the figure,
-        the month and the side are worth an owner's attention.
-        """
         self._post(payment_method='UPI', description='paid at the counter')
         self.assertEqual(self._alerts().count(), 0)
 
@@ -547,42 +567,38 @@ class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
         self._post()
         self.assertEqual(self._alerts().count(), 0)
 
-    # -- where it lands -------------------------------------------------------
+    # -- back-dating is never quiet --------------------------------------------
+
+    def test_moving_it_to_an_earlier_day_reaches_the_bell_as_back_dating(self):
+        old = self.entry.date
+        self._post(date=(old - timedelta(days=2)).isoformat())
+        row = self._alerts().get()
+        self.assertEqual(row.event, 'DATED_BACK')
+        self.assertEqual(row.recipient, self.owner)
+        self.assertIn(old.strftime('%b'), row.detail, 'it says what the date WAS')
+        self.assertFalse(EditLog.objects.exists(), 'kept by the Back-dated tab, not as an edit')
+
+    def test_moving_it_to_a_later_day_says_nothing(self):
+        CashbookEntry.objects.filter(pk=self.entry.pk).update(
+            date=timezone.localdate() - timedelta(days=2))
+        self.entry.refresh_from_db()
+        self._post(date=(timezone.localdate() - timedelta(days=1)).isoformat())
+        self.assertEqual(self._alerts().count(), 0)
 
     def test_tapping_it_opens_a_page_the_entry_is_actually_on(self):
         """
-        CLAUDE.md's rule, and the one it records breaking twice: follow the
-        link and look at the RENDERED page, because comparing a stored url
-        against a `reverse()` proves the route exists and says nothing about
-        whether the destination shows the thing.
-
-        It bites harder here than it did for `ACCOUNT_LOCKED`, because the
-        whole point of this alert is an entry that was moved into ANOTHER
-        MONTH - and `/cashbook/` defaults to filter=today, so the bare route
-        is guaranteed not to contain it. A notification STORES its url, so a
-        wrong one is wrong for every row ever written.
-
-        The entry is looked for by its ROW, never by its category name. The
-        add form offers every spelling already in use as a `<datalist>`, so a
-        whole-page search for "Switchgear" finds it on a page that lists no
-        such entry - which is how the first version of this test passed while
-        proving nothing.
+        Follow the link and look at the RENDERED page: `/cashbook/` opens on
+        filter=today, so the bare route is guaranteed not to contain an entry
+        moved to another day. The entry is found by its ROW, never its name —
+        the add form's datalist carries every category already in use.
         """
-        # Two days back: a different day from today, and still inside
-        # Office's own three-day floor, so the edit is actually accepted.
-        # Anything older is refused by `too_far_back` before a notification
-        # could exist to test.
         moved = self.entry.date - timedelta(days=2)
         self._post(date=moved.isoformat(), category='Switchgear')
 
         row = self._alerts().get()
-        self.client.login(username='sahad', password='pw')   # owner reads it
+        self.client.login(username='sahad', password='pw')
         marker = 'data-id="%d"' % self.entry.pk
 
-        # The defect this is pinned against, stated as a fact rather than
-        # assumed: the bare route CANNOT show the entry, because the Cashbook
-        # opens on filter=today. If this ever stops being true the test below
-        # is passing for free and should be rewritten.
         bare = self.client.get(reverse('cashbook'), follow=True)
         self.assertNotIn(self.entry, bare.context['entries'],
                          'the bare cashbook now lists a moved entry - this '
@@ -590,66 +606,74 @@ class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
 
         page = self.client.get(row.url, follow=True)
         self.assertEqual(page.status_code, 200, 'the alert opens a dead page')
-        self.assertIn(self.entry, page.context['entries'],
-                      'the alert lands on a window the entry is not in')
-        self.assertContains(
-            page, marker,
-            msg_prefix='the entry is in the queryset but its row is not drawn')
+        self.assertIn(self.entry, page.context['entries'])
+        self.assertContains(page, marker)
 
     def test_the_link_is_built_from_reverse_not_a_hardcoded_path(self):
-        """A hardcoded path survives a urls.py edit silently; `reverse()`
-        does not. The query string is ours, the route is not."""
-        self._post(amount='5')
+        self._post(date=(self.entry.date - timedelta(days=1)).isoformat())
         self.assertTrue(self._alerts().get().url.startswith(reverse('cashbook')))
 
-    # -- how it is filed ------------------------------------------------------
+    # -- past the limits: only an owner, kept, and the other owner's phone ------
 
-    def test_an_office_edit_is_INFO_so_it_never_reaches_a_phone(self):
-        """Anything Office is allowed to do goes to the bell."""
-        from workshop.notifications import EVENTS, INFO
-        self._post(amount='5')
-        self.assertEqual(self._alerts().get().event, 'RECORD_CHANGED')
-        self.assertEqual(EVENTS['RECORD_CHANGED'].severity, INFO)
-
-    def test_an_owner_editing_an_old_entry_reaches_the_other_owners_phone(self):
-        """Only an owner can change a row past Office's 24 hours, so that one
-        is announced where it cannot be missed."""
-        from workshop.notifications import CRITICAL, EVENTS
-        CashbookEntry.objects.filter(pk=self.entry.pk).update(
-            created_at=timezone.now() - timedelta(days=5))
-        second = User.objects.create_user(username='rijas2', password='pw')
-        second.groups.add(Group.objects.get(name='Owner'))
+    def test_an_owner_editing_an_old_entry_is_kept_and_phones_the_other_owner(self):
+        second = self._second_owner()
+        self._age(days=5)
         self.client.login(username='sahad', password='pw')
         self._post(amount='5')
         row = self._alerts().get()
         self.assertEqual(row.event, 'OLD_RECORD_CHANGED')
         self.assertEqual(row.recipient, second)
-        self.assertEqual(EVENTS['OLD_RECORD_CHANGED'].severity, CRITICAL)
+        self.assertIn('50,000', row.detail)
+        log = EditLog.objects.get()
+        self.assertEqual(log.edited_by, self.owner)
+        self.assertEqual([c['field'] for c in log.changes], ['Amount'])
+
+    def test_an_owner_moving_a_date_past_the_limit_is_kept_and_phoned_once(self):
+        """Owner-only even inside 24 hours: one act, one alert — the edit's,
+        not a second back-dating one beside it."""
+        self._second_owner()
+        self.client.login(username='sahad', password='pw')
+        self._post(date=(self.entry.date - timedelta(days=10)).isoformat())
+        self.assertEqual(list(self._alerts().values_list('event', flat=True)),
+                         ['OLD_RECORD_CHANGED'])
+        self.assertEqual(EditLog.objects.count(), 1)
+
+    def test_an_owner_deleting_an_old_entry_is_logged_and_phones_the_other_owner(self):
+        second = self._second_owner()
+        self._age(days=5)
+        self.client.login(username='sahad', password='pw')
+        self.client.post(reverse('manage_delete_cashbook_entry', args=[self.entry.pk]),
+                         {'reason': 'duplicate of the 3rd'})
+        log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_CASHBOOK)
+        self.assertEqual(log.reason, 'duplicate of the 3rd')
+        self.assertEqual(self._alerts().get().recipient, second)
 
     def test_office_cannot_edit_an_entry_past_24_hours(self):
-        CashbookEntry.objects.filter(pk=self.entry.pk).update(
-            created_at=timezone.now() - timedelta(hours=25))
+        self._age(hours=25)
         self._post(amount='5')
         self.entry.refresh_from_db()
         self.assertEqual(self.entry.amount, Decimal('50000.00'))
         self.assertEqual(self._alerts().count(), 0)
 
-    def test_it_writes_no_deletion_log_row(self):
-        """
-        `DeletionLog`'s columns are `deleted_by` and `deleted_at`, its page is
-        called Deletion History, and `record()` always raises `RECORD_DELETED`
-        with the word "deleted" in the body. An edit filed there would make
-        three surfaces state something untrue.
-        """
+    def test_an_edit_writes_no_deletion_log_row(self):
+        self._second_owner()
+        self._age(days=5)
+        self.client.login(username='sahad', password='pw')
         self._post(amount='5')
         self.assertEqual(DeletionLog.objects.count(), 0)
 
-    def test_an_owners_own_edit_does_not_buzz_that_owner(self):
-        """`notify()` excludes the actor - what arrives is always somebody
-        ELSE did this, which with two owners is corroboration."""
-        second = User.objects.create_user(username='rijas', password='pw')
-        second.groups.add(Group.objects.get(name='Owner'))
+    # -- the delete dialog asks for a reason only when there is a log to keep it
+
+    def test_the_reason_box_is_offered_only_for_a_delete_that_is_logged(self):
+        """A reason typed for a delete that is not logged would go nowhere —
+        a field whose value is silently dropped. The row says which it is."""
+        old = CashbookEntry.objects.create(
+            entry_type='EXPENSE', category='Diesel', amount=Decimal('700'),
+            payment_method='CASH', created_by=self.office, date=timezone.localdate())
+        CashbookEntry.objects.filter(pk=old.pk).update(
+            created_at=timezone.now() - timedelta(days=5))
         self.client.login(username='sahad', password='pw')
-        self._post(amount='5')
-        self.assertEqual(list(self._alerts().values_list('recipient', flat=True)),
-                         [second.pk])
+        html = self.client.get(reverse('cashbook')).content.decode()
+        self.assertEqual(html.count('data-logged="1"'), 1, 'only the old row is logged')
+        self.assertEqual(html.count('data-logged=""'), 1, 'the fresh row is not')
+        self.assertIn('id="cbDelReasonField" hidden', html, 'the box starts hidden')

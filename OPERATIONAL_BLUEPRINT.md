@@ -62,7 +62,7 @@ graph TD
    - **WhatsApp a customer from the invoice** — a small icon beside Print, on a card carrying a real mobile number. It only opens that customer's chat; the owner attaches the saved PDF and presses Send
    - Read the **About** page — the system map, and what every section does
    - View Financial Audits (High Discounts) — Owner only, since it reads as what the workshop settled for against what it billed
-   - View the **Deletion History** — read-only log of every permanent deletion (no restore)
+   - View **Change History** — three read-only tabs, one month at a time: **Deleted** (every permanent deletion, no restore), **Edited** (every edit that moved money, with what each figure was before) and **Back-dated** (money typed in on a later day than it moved)
    - Monitor all active login sessions, and remotely revoke any staff access
    - **The whole Control Hub (`/manage/`)** — create, delete and reset staff logins;
      unlock a locked account; add, edit and retire staff on the roster. Office cannot
@@ -1077,16 +1077,43 @@ TRANSACTIONS & RECORDS (Job Cards, Fleet/Shop/Supplier payments,
         or a received payment — clear/unassign them first.
       • NO RESTORE anywhere — reviving stale records corrupts running balances.
 
-DELETION HISTORY (/deletion-history/) — Owner only, READ-ONLY
-  - One unified list of all deletions, filterable by type, click to read the snapshot.
+CHANGE HISTORY (/deletion-history/) — Owner only, READ-ONLY
+  - Three tabs over one month at a time, each carrying its count; filter by type, step month by month.
+  - DELETED: every permanent delete, filterable by type, tap a row to read the snapshot.
   - Also registered read-only in Django Admin — which nobody can enter, since no
     account carries is_staff (see CLAUDE.md).
+  - Its EDITED tab (/deletion-history/edited/) is Edit History: every edit that
+    moved money, one row each — which record, who, when, and each figure that
+    moved as before → after. Five doors write it: a Cashbook edit, a Supplies
+    Shop bill's edit page and its quick discount box, an unlocked edit of a
+    settled job card, and Settle Bill on an already-paid bill. A note or a
+    spelling is not history; neither is a first settlement. Kept for good, and
+    it outlives the record — a row edited and later deleted keeps its edits.
+  - Its BACK-DATED tab (/deletion-history/back-dated/): money typed in on a
+    later day than it moved, from the Cashbook, rent deposits, all three
+    payment ledgers, salary advances and owner withdrawals — one month of
+    keystrokes at a time, with who typed it and how many days back. Red when
+    past the three-day limit, which only an owner can do. Nothing is stored
+    for it: every row already keeps both dates.
 
 HOW OLD A RECORD MAY BE — Office corrects, an owner takes anything older
-  Six money deletes are Office's: a fleet payment, a spare-shop payment, a
-  Supplies Shop payment, a restock bill, a cashbook entry and a salary advance.
-  Office may remove one recorded in the last SEVEN DAYS; past that the POST is
-  refused and the message names the row, its age, the rule and who to ask.
+  Office may CHANGE OR DELETE a money record only within 24 HOURS of keying it
+  (since 2026-09-22; it was seven days, deletes only). That covers a fleet
+  payment, a spare-shop payment, a Supplies Shop payment, a restock bill (its
+  edit page — refused on the GET too — its discount box and its delete), a
+  cashbook entry (edit and delete), a rent deposit and a salary advance. A
+  settled job card's Unlock and Settle Bill on an already-paid bill count from
+  when it was SETTLED. Past the window the POST is refused and the message names
+  the row, its age, the rule and who to ask; an owner is not limited, and every
+  change is announced — the bell inside the window, the other owner's phone
+  past it — and kept in Edit History.
+    • THE CASHBOOK IS QUIET INSIDE THE WINDOW (2026-09-24, the owners' call).
+      A worker is handed ₹2,000, comes back having spent ₹1,800, and Office
+      corrects the row — or deletes and re-adds it — every day. So a Cashbook
+      edit or delete inside 24 hours is neither kept nor announced; past it
+      (owner only) it is kept and the other owner's phone is told. Back-dating
+      a Cashbook entry is never quiet — on the add or on an edit that moves
+      the date earlier, it reaches the bell like every other screen.
     • Measured on when it was KEYED, never on the money date. Back-dating is
       normal here — a Supplies Shop keeps its own book and the bill is keyed at
       month end — so a money-date window would refuse Office permission to

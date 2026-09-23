@@ -493,7 +493,7 @@ def salary_advance_delete(request, pk):
             label=f"{advance.staff.name} · ₹{advance.amount:,.0f}, {advance.date:%d %b %Y}",
         )
         advance.delete()
-        messages.success(request, "Advance permanently deleted (logged to Deletion History).")
+        messages.success(request, "Advance permanently deleted (logged to Change History).")
     return redirect('salary_advance_home')
 
 
@@ -1008,5 +1008,5 @@ def salary_payment_delete(request, pk):
         )
         payment.delete()
 
-    messages.success(request, f"{month_label} settlement permanently deleted (logged to Deletion History).")
+    messages.success(request, f"{month_label} settlement permanently deleted (logged to Change History).")
     return redirect('salary_advance_home')

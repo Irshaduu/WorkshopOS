@@ -1580,6 +1580,37 @@ under "Money & billing": `CashbookEntry` carries a `CheckConstraint amount > 0`,
 so `0.004` quantising to `0.00` was a 500 on the two commonest write paths in
 the ledger.
 
+⚠ **AN EDIT OR DELETE OFFICE COULD MAKE IS QUIET HERE — NOT KEPT, NOT
+ANNOUNCED** (2026-09-24, the owners' call; the ONE money section where that is
+true). The Cashbook's daily rhythm is a correction: a worker is handed ₹2,000
+to buy things, comes back hours later having spent ₹1,800, and Office edits
+the row — or deletes and re-adds it. Keeping and announcing every one buried
+the changes that matter in Edit and Deletion History, put a bell note up every
+day, and made every same-day delete buzz both owners' phones.
+
+| Cashbook act | kept | announced |
+|---|---|---|
+| edit or delete inside Office's 24 hours — anyone | ❌ | ❌ |
+| an owner's edit or delete past 24 hours | ✅ Edited / Deleted | 📱 the other owner |
+| an edit moving the date past the three-day limit (owner only) | ✅ Edited | 📱 the other owner |
+| money **dated back**, on the add OR an edit that moves it earlier | ✅ Back-dated tab | 🔔 bell within 3 days, 📱 past them |
+
+**Why dropping the trace is acceptable:** a change inside 24 hours gives Office
+no power the add did not — they could have typed any figure in the first place.
+The control that matters is after the window, and only an owner can act there.
+**Back-dating is never quiet** ("it's not normal" — the owners' words), and an
+edit that moves a date earlier reaches the bell exactly as keying it there
+would, or the quiet rule would be a way round the add form's alert.
+
+Mechanics: `EditLog.record(..., only_past_limits=True)` for the edit, split on
+`notifications.is_owner_only_change` — the very line that decides bell or
+phone; the delete logs only when `delete_window.is_past_window()`, the test the
+refusal already uses. The delete dialog asks for a reason only for a row whose
+delete will be logged (`data-logged`), because a reason box whose value goes
+nowhere is a field silently dropped.
+→ `TheCashbookSpeaksOnlyPastOfficesLimitsTests` (it replaced the class that
+asserted every Office edit reached the bell, AUD-0083).
+
 ## Owner withdrawals
 
 **TAKING PROFIT OUT IS NOT AN EXPENSE, AND `OwnerWithdrawal` APPEARS IN EXACTLY
@@ -2241,7 +2272,10 @@ decided — from the DATE, never the person. **The rule, stated once for the
 whole app: anything Office is allowed to do goes to the bell, whoever did it;
 anything only an owner can do goes to the other owner's phone; every delete
 already did.** The salary advance sends the phone alert *instead of* its usual
-bell note when it is past the limit, so one act is one alert.
+bell note when it is past the limit, so one act is one alert. ⚠ **The Cashbook
+is the one exception, and only for EDITS AND DELETES**: inside Office's limits
+those are quiet there (see the Cashbook section); its back-dating follows this
+rule like every other screen.
 
 **One constant decides both halves.** `is_too_far_back()` is what refuses
 Office *and* what triggers the alert on an owner, so the rule enforced and the
@@ -2333,9 +2367,13 @@ header there would print "the part of that day I happen to be showing". Each
 row stands alone instead.
 → `FindingWhatWasFiledBackwardsTests`
 
-⚠ **THE ROW MARKER IS NOT YET ON THE OTHER FIVE SCREENS.** They have the floor;
-they do not have the permanent visible trace, and none has a Recently-added
-view. Every model involved already carries both dates — do it as its own pass.
+⚠ **THE OTHER SCREENS GOT THEIR TRACE IN ONE PLACE, NOT FIVE ROW MARKS**
+(2026-09-24). The **Back-dated** tab of the history page lists money typed in
+on a later day than it moved from all seven tables whose date can be typed —
+rent included — with this section's red mark (`money_dates.filed_past_limit`,
+which `rent.backdating()` now reads, so the two cannot mark a row differently).
+See "Edit History" under the Deletion model. Rent keeps its own row mark and
+Recently-added view until the rent section's own refactor.
 
 **Volume is what keeps them safe at CRITICAL** — the argument `LOGIN` already
 rests on. A rent changes about once a **year**; a deposit past the floor is a
@@ -6307,10 +6345,13 @@ browsers.
 
 The whole event list is **`workshop/notifications.py`**. Add an event to `EVENTS`,
 then call `notify()` from the single place it happens — **never**
-`Notification.objects.create()` in a view. There are **29 call sites across 12
-modules** (re-counted 2026-09-22, counting `notify_dated_back()` and
-`notify_changed()` as calls); that file is the only way to answer "what does
-this thing notify about?" without grepping.
+`Notification.objects.create()` in a view. There are **26 call sites across 11
+modules** (re-counted 2026-09-24, counting `notify_dated_back()` and
+`notify_changed()` as calls, and not counting `notifications.py` itself; it
+fell from 29 / 12 when the five edit doors moved behind `EditLog.record()`, and
+the Cashbook's back-dating edit added one);
+that file is the only way to answer "what does this thing notify about?"
+without grepping.
 
 `EVENTS` holds **20 events — 15 CRITICAL, 5 INFO**, all Owner-audience
 (re-counted 2026-09-22; `len(EVENTS)` is the truth, and `test_about` holds the
@@ -6319,7 +6360,9 @@ system map's own count to it).
 ⚠ **MONEY MOVED IN TIME OR RETYPED IS TWO PAIRS, AND THE TIER IS THE RECORD'S,
 NOT THE PERSON'S** (2026-09-22): `DATED_BACK` / `DATED_BACK_PAST_LIMIT` and
 `RECORD_CHANGED` / `OLD_RECORD_CHANGED`, raised only through
-`notify_dated_back()` and `notify_changed()`. Inside Office's reach → the bell;
+`notify_dated_back()` and `notify_changed()` — and `notify_changed()` is called
+only by `EditLog.record()`, which keeps the edit first (see "Edit History" under
+the Deletion model). Inside Office's reach → the bell;
 past it, which only an owner can do → the other owner's phone. They replaced
 `RENT_BACKDATED` and `CASHBOOK_EDITED`, which each covered one section. See
 "How far back money may be filed" and the Deletion model's window.
@@ -6854,7 +6897,9 @@ come.
 bills, Cashbook entries — are **permanently deleted**, but every delete first
 writes a snapshot via `DeletionLog.record(...)` to the Owner-only, read-only
 **Deletion History** (`/deletion-history/`). There is deliberately **no restore** —
-reviving stale financial data corrupts running balances.
+reviving stale financial data corrupts running balances. ⚠ **One exception: a
+Cashbook delete inside Office's 24 hours is NOT logged** (2026-09-24) — see the
+Cashbook section for why.
 
 **EVERY LOGGED DELETE POSTS A REASON, AND THE REASON IS OPTIONAL.** 16 of the 21
 `DeletionLog.record()` call sites read `request.POST.get('reason', '')` and the
@@ -6963,12 +7008,110 @@ back-dating (`notify_changed()`): inside the window → `RECORD_CHANGED`, the
 bell; past it, or a date moved past the three-day limit → `OLD_RECORD_CHANGED`,
 the other owner's phone. `CASHBOOK_EDITED` (Cashbook only, bell only) is gone.
 The Supplies Shop bill edit and the settled-card edit were silent before.
+⚠ **Except the Cashbook inside the window**, which is quiet since 2026-09-24 —
+its same-day edit is the day's work, not a correction (see the Cashbook
+section).
 
 ⚠ **Cost the owner accepted:** a Saturday-evening typo noticed on Monday is an
 owner's to fix.
 
 **24 is a dial, not a law** — one constant, and the messages follow it.
 → `workshop/tests/test_delete_window.py`, `workshop/tests/test_money_change_rules.py`
+
+**EDIT HISTORY — AN EDIT IS KEPT, NOT ONLY ANNOUNCED** (2026-09-23, Pass 2 of
+the owners' money-change rules). `EditLog`, drawn as the **Edited** tab of
+Change History (`/deletion-history/edited/`, Owner-only, read-only). Until
+it, an edit's only trace was its alert, and a notification is a FEED — read
+rows are swept after `RETENTION_DAYS` and `notify()` excludes the actor — so a
+fortnight on nothing said what a figure used to be, while a delete had kept a
+permanent row from day one.
+
+⚠ **`EditLog.record()` IS THE CHOKE POINT, the way `DeletionLog.record()` is
+for deletes.** It writes the row and then calls `notify_changed()` — its ONLY
+caller — so a door cannot announce an edit without keeping it, or keep one
+silently. All five doors go through it: the Cashbook edit, a Supplies Shop
+bill's edit page and its quick discount box, an unlocked edit of a settled job
+card, and Settle Bill on an already-paid bill. ⚠ The Cashbook passes
+`only_past_limits=True`, so it keeps only an edit only an owner could make —
+its own rule, in the Cashbook section. It runs inside the same
+transaction as the save (three doors gained an `atomic()` for it), so a
+rolled-back edit leaves no row and no alert.
+→ `NoDoorGoesRoundTheHistoryTests` scans the source for any other caller of
+`notify_changed()`; a new edit door that calls it directly fails there.
+
+Four rules travel with it:
+- **MONEY FIELDS ONLY, AND ONLY THE ONES THAT MOVED** — the alert's own rule,
+  so the row and the alert always describe one act. A door lists every money
+  field it has through `EditLog.change()`, which returns None for an unmoved
+  one. A note, a spelling or a payment method is not history; a FIRST
+  settlement is not an edit.
+- **STORED RAW, FORMATTED ON THE PAGE.** Money is kept at two decimals, dates
+  as ISO, and drawn with `inr_amount` — `:,.0f` at write time would record
+  ₹5,000.50 → ₹5,000.00 as "₹5,000 → ₹5,000", a change that reads as none.
+- **NO FOREIGN KEY to the edited row**, `DeletionLog`'s discipline: a record
+  edited and later deleted keeps its edits, where an FK would cascade them away
+  or PROTECT the record from ever being deleted.
+- **NO RETENTION LIMIT, on either history** — the owners' decision
+  (2026-09-22), after a 45-day cap was proposed: a row is a few hundred bytes,
+  disputes surface months later, GST expects records kept for years, and a
+  history that forgets on a timer is a loophole with a waiting period.
+  Alerts are short-lived; history is permanent.
+
+⚠ **THE PAGE IS "CHANGE HISTORY" — one menu entry, three tabs, one row
+shape, one month at a time** (2026-09-24, the owner's ask: "organize all
+perfectly, no clutter, no over-engineering"). Deleted, Edited and Back-dated
+are three views of one question — what was done to the books? — so the menu
+entry and the `<h1>` name the PAGE ("Change History") and the open tab names
+the view. Every message and dialog that said "logged to Deletion History" now
+says Change History, because a message naming a menu entry that does not exist
+sends the reader hunting. ⚠ **The URLs, url names and code identifiers keep
+`deletion_history`**: a `RECORD_DELETED` notification stores its URL, so the
+addresses already sent must keep working. In this file "Deletion History"
+still means the Deleted tab — the `DeletionLog` it reads.
+
+*Considered and NOT done: a hub page like Legacy Data* (three rows, each
+opening its own screen). That suits three different jobs done once; these are
+three lenses flipped between while reading, and a hub costs a tap and a Back
+on every switch.
+
+Four rules hold the page up:
+- **ONE MONTH AT A TIME, ON ALL THREE TABS, AND NO PAGER.** A month of changes
+  is bounded however long the workshop runs — the rent log's shape — so
+  nothing hides behind a page two, and the tabs share one month control. The
+  month is when the change was MADE. It filters on AWARE midnight-to-midnight
+  IST bounds over the stamp columns, never a per-row `__date`. A month that is
+  unreadable, not yet begun or before `EARLIEST_MONTH` (2000) falls back to
+  this one — `?month=0001-01` used to 500, because the month before it does
+  not exist and its midnight cannot be converted to UTC.
+- **ONE ROW SHAPE.** Each view hands the template plain dicts with the same
+  keys (title, amount, kind, who, when, plus one detail), so the markup exists
+  once and one layout serves every width — no second phone layout to keep in
+  step. The figure right-aligns on one edge.
+- **NOTHING IS SAID TWICE ON A ROW.** The type is dropped when the title opens
+  with it (`DeletionLog.record()`'s own notification rule), and a deletion's
+  title drops its own "· ₹X" part, because nine delete paths put the amount in
+  the label and the row prints it on the right.
+- **EACH TAB CARRIES ITS COUNT FOR THE MONTH**, which replaced a separate
+  "N records" line; the tab row scrolls inside itself at big counts rather than
+  pushing the page sideways.
+→ `workshop/tests/test_edit_history.py` (`TheDeletedTabTests` too),
+`test_backdated_history.py`; both purges clear Edit History.
+
+**THE BACK-DATED TAB STORES NOTHING** (`/deletion-history/back-dated/`,
+2026-09-24). Every money table keeps `date` (when the money moved) and
+`created_at` (when somebody typed it), and a back-dated row loses NEITHER —
+so where Edit History had to copy an overwritten figure, a table here would
+only be a second answer free to drift. `backdated_rows()` reads seven tables
+(Cashbook, rent deposit, the three payment ledgers, salary advance, owner
+withdrawal) for rows whose IST keyed day (`created_at__date`, converted in the
+SQL) is after their money date; red is `filed_past_limit`, judged as at the
+day each was typed. One month of KEYSTROKES at a time, like the rent log — so
+no pager — and filed by when somebody reached back, not where the money landed.
+
+⚠ **THE THREE PAYMENT LEDGERS GAINED `recorded_by`** (migrations `0084`,
+inventory `0011`), because they alone could not say who typed a payment. A row
+keyed before the column existed reads "unknown", never a guess.
+→ `workshop/tests/test_backdated_history.py`
 
 **Job-card delete guard:** a card carrying spares, labour, or a received payment
 **cannot** be deleted. A deletable card holds no spares, so no stock is affected.
@@ -10222,7 +10365,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 83 files, 2,808 tests (counted 2026-09-22). Always SQLite (see below).
+# Full test suite — 85 files, 2,868 tests (counted 2026-09-24). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10723,8 +10866,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **83 files, 2,808 tests**,
-re-counted 2026-09-22. (`workshop/tests/` is 77 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **85 files, 2,868 tests**,
+re-counted 2026-09-24. (`workshop/tests/` is 79 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

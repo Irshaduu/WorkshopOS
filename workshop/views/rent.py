@@ -293,7 +293,7 @@ def rent_deposit_delete(request, pk):
             label=f"Rent deposit · ₹{entry.amount:,.0f} of {entry.date:%d %b %Y}",
         )
         entry.delete()
-    messages.success(request, "Deposit deleted (logged to Deletion History).")
+    messages.success(request, "Deposit deleted (logged to Change History).")
     return _back(request)
 
 

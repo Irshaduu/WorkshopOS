@@ -80,7 +80,7 @@ from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
 from .models import RentDeposit, RentRate
-from .money_dates import is_too_far_back
+from .money_dates import filed_past_limit
 
 ZERO = Decimal('0')
 
@@ -587,10 +587,7 @@ def backdating(deposit):
     What is left is the one tier that was ever worth a colour: money filed
     further back than Office may reach, which only an owner can do.
     """
-    if deposit.created_at is None:
-        return ''
-    keyed = timezone.localtime(deposit.created_at).date()
-    return 'past_limit' if is_too_far_back(deposit.date, today=keyed) else ''
+    return 'past_limit' if filed_past_limit(deposit.date, deposit.created_at) else ''
 
 
 def recently_added(limit=RECENT_ROWS):

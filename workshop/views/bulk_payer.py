@@ -490,6 +490,7 @@ def bulk_payer_pay(request, pk):
             payment_method=payment_method,
             note=note,
             date=pay_date,
+            recorded_by=request.user,
             jobs_affected=jobs_updated,
             details=json.dumps({
                 'jobs': history_details,
@@ -753,5 +754,5 @@ def bulk_payment_history_delete(request, pk, history_pk):
         amount = history.amount
         history.delete()
 
-    messages.success(request, f"Payment of ₹{amount:,.0f} reversed and permanently deleted (logged to Deletion History).")
+    messages.success(request, f"Payment of ₹{amount:,.0f} reversed and permanently deleted (logged to Change History).")
     return redirect('bulk_payer_detail', pk=pk)

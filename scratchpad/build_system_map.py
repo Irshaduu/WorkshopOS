@@ -703,7 +703,7 @@ def build(theme):
                                       'a change, never a balance'],  FLOW['in']),
         ('deep',   'DEEP ANALYSIS', ['mechanics - spares - vehicles',
                                      'fleet - shops - operations'], FLOW['data']),
-        ('del',    'DELETION HISTORY', ['every permanent delete',
+        ('del',    'CHANGE HISTORY',   ['deletes - edits - back-dated',
                                         'owner only - no restore'], FLOW['alert']),
     ]
     for (cid, t, ch, ac), cell in zip(_bi, grid(

@@ -1098,18 +1098,22 @@
             <form id="cbDelForm" method="post">
                 {% csrf_token %}
                 {% comment %}
-                delete_cashbook_entry reads `reason` and DeletionLog stores it,
-                but nothing ever posted one — so every cashbook row in the
-                Owner's Deletion History had a blank reason. Optional, like the
-                job-card delete form's.
+                delete_cashbook_entry reads `reason` and DeletionLog stores it.
+                Optional, like the job-card delete form's.
+
+                ⚠ SHOWN ONLY WHEN THE DELETE IS LOGGED (2026-09-24): a delete
+                inside Office's 24 hours is the Cashbook's daily correction and
+                is not written to Deletion History, so a reason box there would
+                be a field whose value goes nowhere. The row's `data-logged`
+                decides, from the same test the view uses.
                 {% endcomment %}
-                <div class="cb-field">
+                <div class="cb-field" id="cbDelReasonField" hidden>
                     <label for="cbDelReason">Reason (optional)</label>
                     <input type="text" name="reason" id="cbDelReason" class="cb-input" maxlength="255"
                            placeholder="Why is it going?">
                 </div>
-                <p class="cb-modal-msg" style="margin:12px 0 14px; font-size:0.78rem;">
-                    Permanent — there is no undo. It is written to the owners' Deletion History.
+                <p class="cb-modal-msg" id="cbDelNote" style="margin:12px 0 14px; font-size:0.78rem;">
+                    Permanent — there is no undo.
                 </p>
                 <div class="cb-modal-actions">
                     <button type="button" class="cb-btn-cancel" data-cb-close="cbDelModal">Cancel</button>
@@ -1757,6 +1761,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 d.name + ' — ₹' + d.shown;
             document.getElementById('cbDelForm').action = '/cashbook/' + d.id + '/delete/';
             document.getElementById('cbDelReason').value = '';
+            const logged = d.logged === '1';
+            document.getElementById('cbDelReasonField').hidden = !logged;
+            document.getElementById('cbDelNote').textContent = logged
+                ? 'Permanent — there is no undo. It is written to the owners\u2019 Change History.'
+                : 'Permanent — there is no undo.';
             openModal('cbDelModal');
         }
     });

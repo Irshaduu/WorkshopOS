@@ -1229,7 +1229,7 @@ button may be a child of it.
     <div class="bd-confirm-box" style="max-width: 340px; border-radius: 20px;">
         <i class="bi bi-trash3-fill text-danger d-block mb-3" style="font-size: 3rem;"></i>
         <h5 class="fw-bold mb-2">Are you sure?</h5>
-        <p class="text-muted small mb-4" id="historyDeleteText">This permanently deletes the payment (logged to Deletion History) and returns balances to the affected job cards.</p>
+        <p class="text-muted small mb-4" id="historyDeleteText">This permanently deletes the payment (logged to Change History) and returns balances to the affected job cards.</p>
         <form method="POST" id="historyDeleteForm" action="">
             {% csrf_token %}
             {% comment %}
@@ -1408,7 +1408,7 @@ function showHistoryDeleteConfirm(historyPk, amount) {
     // number this page rendered from `floatformat:0`, never user text.
     document.getElementById('historyDeleteText').innerHTML =
         `Delete this <strong class="text-danger">₹${amount}</strong> payment?` +
-        `<br><small>Balances are restored to the affected job cards, and it is logged to Deletion History.</small>`;
+        `<br><small>Balances are restored to the affected job cards, and it is logged to Change History.</small>`;
     document.getElementById('historyDeleteForm').action = '/pending-payments/bulk-payers/{{ bulk_payer.pk }}/history/' + historyPk + '/delete/';
     // Cleared on every open. A reason typed and then cancelled must not be
     // filed against the NEXT payment somebody reverses.

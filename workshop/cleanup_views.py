@@ -91,7 +91,7 @@ def cleanup_delete_spare(request, spare_id):
             extra={'job_card_lines_using_it': usage},
         )
         spare.delete()
-    messages.success(request, f"✅ Spare part '{name}' removed from master list (logged to Deletion History).")
+    messages.success(request, f"✅ Spare part '{name}' removed from master list (logged to Change History).")
     return redirect('data_cleanup')
 
 
@@ -153,7 +153,7 @@ def cleanup_delete_concern(request, concern_id):
             extra={'job_card_lines_using_it': usage},
         )
         concern.delete()
-    messages.success(request, f"✅ Concern '{text[:40]}…' removed from master list (logged to Deletion History).")
+    messages.success(request, f"✅ Concern '{text[:40]}…' removed from master list (logged to Change History).")
     return redirect('data_cleanup')
 
 

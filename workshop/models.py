@@ -1901,6 +1901,13 @@ class BulkPaymentHistory(models.Model):
     date = models.DateField(default=timezone.now, db_index=True,
                             help_text="The day the money actually moved.")
     created_at = models.DateTimeField(auto_now_add=True)
+    # WHO KEYED IT (2026-09-24). The other money tables all say who typed a
+    # row; the three payment ledgers did not, so the Back-dated tab could say a
+    # payment was filed under an earlier day but not by whom. Nullable: rows
+    # keyed before the column existed are honestly "unknown", never guessed.
+    recorded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='fleet_payments_recorded')
 
     class Meta:
         # `-date` leads and `created_at` breaks ties, so two payments
@@ -1952,6 +1959,13 @@ class SpareShopPayment(models.Model):
     date = models.DateField(default=timezone.now, db_index=True,
                             help_text="The day the money actually moved.")
     created_at = models.DateTimeField(auto_now_add=True)
+    # WHO KEYED IT (2026-09-24). The other money tables all say who typed a
+    # row; the three payment ledgers did not, so the Back-dated tab could say a
+    # payment was filed under an earlier day but not by whom. Nullable: rows
+    # keyed before the column existed are honestly "unknown", never guessed.
+    recorded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='spare_shop_payments_recorded')
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -2800,6 +2814,155 @@ class DeletionLog(models.Model):
             object_id=entry.pk,
         )
 
+        return entry
+
+
+# -----------------------------------------------------------------------------
+# EDIT HISTORY (read-only audit of edits that moved money)
+# -----------------------------------------------------------------------------
+class EditLog(models.Model):
+    """
+    Immutable, Owner-only record of every edit that moved money on a saved row.
+
+    DeletionLog's twin, and it exists for the same reason. An edit can do
+    everything a delete can — retype ₹50,000 as ₹500 — and until this table the
+    only trace of one was its bell note or phone alert, which is a FEED: read
+    rows are swept after `Notification.RETENTION_DAYS`, and `notify()`
+    excludes the actor. So two weeks on, nothing anywhere said what a figure
+    used to be. This does, for good.
+
+    ⚠ `record()` IS THE ONLY WAY AN EDIT IS ANNOUNCED. It writes the row and
+    then calls `notify_changed()` — the choke point `DeletionLog.record()` is
+    for deletes — so a door cannot tell the owners about an edit without also
+    keeping it, or keep one without telling them.
+    `NoDoorGoesRoundTheHistoryTests.test_no_door_announces_an_edit_without_keeping_it`
+    scans for a caller that goes round it.
+
+    ONLY THE MONEY FIELDS, and only the ones that changed: a figure, the day it
+    lands on, which side of the Profit page it sits on. A corrected spelling or
+    note is not history — the rule `notify_changed` already follows, so the
+    row and its alert always describe the same act. ⚠ The CASHBOOK keeps only
+    what only an owner could do (`only_past_limits` below) — its same-day edit
+    is the day's work, not a correction.
+
+    NO FOREIGN KEY to the edited row, deliberately. A record edited and then
+    deleted must keep its edit history (the deletion is logged too), and a
+    ForeignKey would cascade the history away with the record — or PROTECT it
+    and make the record undeletable. `object_id` plus a frozen `entity_label`
+    is `DeletionLog`'s own discipline.
+
+    No retention limit, for the reasons the owners agreed on 2026-09-22: a row
+    is a few hundred bytes, disputes surface months later, and a history that
+    forgets on a timer is a loophole with a waiting period.
+    """
+    ENTITY_CASHBOOK = DeletionLog.ENTITY_CASHBOOK
+    ENTITY_RESTOCK_BILL = DeletionLog.ENTITY_RESTOCK_BILL
+    ENTITY_JOBCARD = DeletionLog.ENTITY_JOBCARD
+    # The same keys AND labels as Deletion History, so one record type is
+    # called one thing on both tabs of the page. (Named through `DeletionLog`
+    # inside the comprehension: a comprehension in a class body cannot see the
+    # class's own names.)
+    ENTITY_CHOICES = [
+        (key, label) for key, label in DeletionLog.ENTITY_CHOICES
+        if key in (DeletionLog.ENTITY_JOBCARD, DeletionLog.ENTITY_RESTOCK_BILL,
+                   DeletionLog.ENTITY_CASHBOOK)
+    ]
+
+    KIND_MONEY = 'money'
+    KIND_DATE = 'date'
+    KIND_TEXT = 'text'
+
+    entity_type = models.CharField(max_length=20, choices=ENTITY_CHOICES, db_index=True)
+    object_id = models.PositiveIntegerField(null=True, blank=True, help_text="The edited record's id — no FK, so the history outlives it")
+    entity_label = models.CharField(max_length=255, help_text="Human-readable identity of the edited record, frozen at the time")
+    changes = models.JSONField(default=list, help_text="What moved: [{field, kind, before, after}], money only")
+    edited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='edits')
+    edited_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-edited_at']
+        indexes = [
+            models.Index(fields=['entity_type', '-edited_at']),
+        ]
+        verbose_name = "Edit Log"
+        verbose_name_plural = "Edit History"
+
+    def __str__(self):
+        return f"{self.get_entity_type_display()}: {self.entity_label} ({self.edited_at:%d %b %Y})"
+
+    @classmethod
+    def change(cls, field, before, after, kind=KIND_MONEY):
+        """
+        One line of an edit, or None when the field did not move — so a door
+        lists every money field it has and only the moved ones are kept.
+
+        Stored RAW (a Decimal as its string, a date as ISO) and formatted when
+        the page is drawn, never at write time: `:,.0f` would record ₹5,000.50
+        becoming ₹5,000.00 as "₹5,000 → ₹5,000", a change that reads as none.
+        """
+        if before == after:
+            return None
+
+        def _raw(v):
+            if v is None:
+                return None
+            if kind == cls.KIND_MONEY and isinstance(v, (Decimal, int)):
+                # Two places, as every money column is — so a stored ₹0 reads
+                # "0.00" whether the view held the column's value or a bare
+                # `Decimal('0')` fallback, and a typed "500" reads "500.00".
+                return str(Decimal(v).quantize(Decimal('0.01')))
+            if isinstance(v, Decimal):
+                return str(v)
+            if hasattr(v, 'isoformat'):
+                return v.isoformat()
+            return str(v)
+
+        return {'field': field, 'kind': kind, 'before': _raw(before), 'after': _raw(after)}
+
+    @classmethod
+    def record(cls, entity_type, instance, changes, *, label, user, stamp,
+               headline, detail='', url='', moved_to=None, object_type=None,
+               only_past_limits=False):
+        """
+        Keep one edit and announce it. Call AFTER the save, inside the same
+        transaction, so a rolled-back edit leaves no history and no alert.
+
+        `changes` is a list of `EditLog.change(...)` results; the Nones (fields
+        that did not move) are dropped, and if nothing is left nothing is
+        written or said. `stamp` / `moved_to` / `headline` / `detail` / `url`
+        are exactly `notify_changed()`'s, which decides bell or phone.
+
+        `only_past_limits=True` is the CASHBOOK's rule (2026-09-24, the
+        owners' call): an edit Office could have made is part of the day's
+        work — cash handed out at ₹2,000 and settled at ₹1,800 hours later —
+        so it is neither kept nor announced. Only an edit ONLY AN OWNER could
+        make is, split on `is_owner_only_change`, the very line that decides
+        bell or phone. It returns None whenever nothing was kept, so a caller
+        can tell (the Cashbook does, to announce a back-dating instead).
+        """
+        changes = [c for c in changes if c]
+        if not changes:
+            return None
+        if only_past_limits:
+            from .notifications import is_owner_only_change
+            if not is_owner_only_change(stamp, moved_to):
+                return None
+
+        entry = cls.objects.create(
+            entity_type=entity_type,
+            object_id=instance.pk,
+            entity_label=(label or str(instance))[:255],
+            changes=changes,
+            edited_by=user if (user is not None and getattr(user, 'is_authenticated', False)) else None,
+        )
+
+        # Imported here: `notifications` imports this module.
+        from .notifications import notify_changed
+        notify_changed(
+            headline, stamp, moved_to=moved_to, detail=detail,
+            actor=entry.edited_by, url=url,
+            object_type=object_type or entity_type, object_id=instance.pk,
+        )
         return entry
 
 

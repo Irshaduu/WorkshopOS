@@ -114,6 +114,28 @@ def is_too_far_back(value, today=None):
     return value < backdate_floor(today)
 
 
+def keyed_on(created_at):
+    """The calendar day a row was TYPED IN — the IST day, never the UTC date,
+    which reads yesterday for the whole of an IST morning."""
+    return timezone.localtime(created_at).date()
+
+
+def filed_past_limit(value, created_at):
+    """
+    Was money dated `value` filed PAST THE LIMIT, judged as at the day it was
+    KEYED? — so it answers what the rule said at that moment, and a row never
+    becomes "past the limit" just because weeks have gone by since.
+
+    The one answer read by rent's row mark and by the Back-dated tab of the
+    history page, so the two can never mark the same row differently — and it
+    is `is_too_far_back`, the predicate that refused Office and tiered the
+    alert at that same moment.
+    """
+    if created_at is None:
+        return False
+    return is_too_far_back(value, today=keyed_on(created_at))
+
+
 def too_far_back(value, user, what, today=None):
     """
     The reason this user may not file money on this date, or **None** if they may.

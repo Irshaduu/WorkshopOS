@@ -59,7 +59,7 @@ from inventory.models import (
 from workshop.models import (
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem, JobCardPhoto,
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
-    Mechanic, CashbookEntry, DeletionLog,
+    Mechanic, CashbookEntry, DeletionLog, EditLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
     CarBrand, CarModel, OwnerWithdrawal, RentRate, RentDeposit,
 )
@@ -222,6 +222,7 @@ class Command(BaseCommand):
             ("rent deposits", RentDeposit.objects.all()),
             ("rent rates", RentRate.objects.all()),
             ("deletion history", DeletionLog.objects.all()),
+            ("edit history", EditLog.objects.all()),
         ]:
             n = qs.count()
             if n:

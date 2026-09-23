@@ -32,6 +32,10 @@ urlpatterns = [
     path('completed/', views.completed_list, name='completed_list'),
     path('deletion-history/', views.deletion_history_list, name='deletion_history'),
     path('deletion-history/<int:pk>/', views.deletion_history_detail, name='deletion_history_detail'),
+    # The Edited tab of the same page — under the same prefix, so the drawer's
+    # Deletion History entry lights for both tabs with no change there.
+    path('deletion-history/edited/', views.edit_history_list, name='edit_history'),
+    path('deletion-history/back-dated/', views.backdated_history_list, name='backdated_history'),
     path('pending-payments/', views.pending_payments_list, name='pending_payments_list'),
     path('paid-bills/', views.paid_bills_list, name='paid_bills_list'),
     

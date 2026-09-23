@@ -106,7 +106,8 @@
                             <li><button type="button" class="dropdown-item cb-js-delete del-item"
                                     data-id="{{ entry.id }}"
                                     data-name="{{ entry.category }}"
-                                    data-shown="{{ entry.amount|inr_amount }}">
+                                    data-shown="{{ entry.amount|inr_amount }}"
+                                    data-logged="{% if entry.logged %}1{% endif %}">
                                 <i class="bi bi-trash3"></i> Delete
                             </button></li>
                             {% endif %}

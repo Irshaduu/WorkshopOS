@@ -14,7 +14,8 @@ from .completed import (
     completed_list, mark_completed, undo_completed, toggle_hold,
 )
 from .deletion_history import (
-    deletion_history_list, deletion_history_detail,
+    deletion_history_list, deletion_history_detail, edit_history_list,
+    backdated_history_list,
 )
 from .billing import invoice_view, update_bill_status
 from .bulk_payer import (

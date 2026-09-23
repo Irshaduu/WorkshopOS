@@ -363,6 +363,7 @@ def spare_shop_pay(request, pk):
         payment_method=payment_method,
         note=note or None,
         date=pay_date,
+        recorded_by=request.user,
     )
     notify_dated_back(
         f"{shop.name} · ₹{lump_sum:,.0f} payment filed under {pay_date:%d %b %Y}",
@@ -412,7 +413,7 @@ def spare_shop_payment_reverse(request, shop_pk, payment_pk):
     )
     payment.delete()  # SpareShopPayment.delete() recomputes shop.update_totals()
 
-    messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Deletion History).")
+    messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Change History).")
     return redirect('spare_shop_detail', pk=shop_pk)
 
 
@@ -966,7 +967,7 @@ def spare_shop_delete_unassigned(request, item_pk):
     item.delete()   # JobCardSpareItem.delete() recomputes the shop's totals
     messages.success(
         request,
-        f"'{name}' removed from the ledger (logged to Deletion History)."
+        f"'{name}' removed from the ledger (logged to Change History)."
     )
     return redirect('unassigned_spares_hub')
 

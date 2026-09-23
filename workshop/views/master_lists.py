@@ -147,7 +147,7 @@ def brand_delete(request, pk):
         messages.success(
             request,
             f"Brand '{brand.name}' and {len(model_names)} model(s) deleted "
-            f"(logged to Deletion History)."
+            f"(logged to Change History)."
         )
         return redirect('brand_list')
 
@@ -238,6 +238,6 @@ def model_delete(request, pk):
                 label=f"Model '{model.brand.name} {model.name}'",
             )
             model.delete()
-        messages.success(request, "Model deleted (logged to Deletion History).")
+        messages.success(request, "Model deleted (logged to Change History).")
         return redirect('brand_model_list', brand_id=brand_id)
     return render(request, 'workshop/master_lists/model_confirm_delete.html', {'model': model})

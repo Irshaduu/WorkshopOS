@@ -406,6 +406,13 @@ class SupplierPayment(models.Model):
     note = models.CharField(max_length=255, blank=True, null=True)
     is_trashed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    # WHO KEYED IT (2026-09-24). The other money tables all say who typed a
+    # row; the three payment ledgers did not, so the Back-dated tab could say a
+    # payment was filed under an earlier day but not by whom. Nullable: rows
+    # keyed before the column existed are honestly "unknown", never guessed.
+    recorded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='supplier_payments_recorded')
 
     class Meta:
         ordering = ['-date', '-created_at']

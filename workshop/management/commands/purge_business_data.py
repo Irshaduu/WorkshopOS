@@ -22,7 +22,7 @@ REMOVED:
   - OwnerWithdrawal
   - RentRate, RentDeposit
   - OldBill (+ job lines, part lines via CASCADE)
-  - DeletionLog
+  - DeletionLog, EditLog (Deletion and Edit History)
   - LegacyDataLock (the go-live lock — a purged system starts unlocked)
 
 ⚠ THREE TABLES WERE MISSING FROM THIS LIST UNTIL 2026-09-04, all three added
@@ -51,7 +51,7 @@ from workshop.models import (
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
     JobCardPhoto, LegacyDataLock,
     SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
-    Mechanic, CashbookEntry, DeletionLog,
+    Mechanic, CashbookEntry, DeletionLog, EditLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
     OwnerWithdrawal, RentRate, RentDeposit,
     OldBill, OldBillJobLine, OldBillPartLine,
@@ -110,6 +110,7 @@ class Command(BaseCommand):
             ("Old bill job lines", OldBillJobLine),
             ("Old bills", OldBill),
             ("Deletion history", DeletionLog),
+            ("Edit history", EditLog),
             # The go-live lock. This command runs BEFORE go-live, so a purged
             # system must be ready to type its starting position again — and
             # then lock it.

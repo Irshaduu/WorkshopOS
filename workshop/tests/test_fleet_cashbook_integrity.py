@@ -915,9 +915,21 @@ class DeleteFormsPostTheReasonTheirViewsRecordTests(TestCase):
         self.assertIn('name="reason"', page)
 
     def test_a_cashbook_deletion_records_the_reason(self):
+        """
+        ⚠ Only a delete ONLY AN OWNER could make is logged in the Cashbook
+        (2026-09-24, the owners' quiet rule — see test_cashbook), so the
+        reason is asserted on that one: an owner removing a row past
+        Office's 24 hours. A same-day delete is the day's own correction and
+        keeps no row to hold a reason.
+        """
+        owner = User.objects.create_user(username='owner_rsn', password='pass')
+        owner.groups.add(Group.objects.get(name='Owner'))
         entry = CashbookEntry.objects.create(
             entry_type='EXPENSE', category='Rent', amount=Decimal('9000'),
             payment_method='CASH', date=timezone.localdate())
+        CashbookEntry.objects.filter(pk=entry.pk).update(
+            created_at=timezone.now() - timedelta(days=5))
+        self.client.login(username='owner_rsn', password='pass')
         self.client.post(reverse('manage_delete_cashbook_entry', args=[entry.pk]),
                          {'reason': 'Duplicate of the 3rd'})
         log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_CASHBOOK)

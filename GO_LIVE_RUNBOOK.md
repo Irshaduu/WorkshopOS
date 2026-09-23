@@ -367,7 +367,7 @@ python manage.py purge_business_data --yes
 
 This clears every business table — job cards, both kinds of shop, the fleet
 accounts, inventory, the cashbook, the staff roster, **the owner withdrawals
-and the rent ledger**, **the old bills**, and Deletion History. It does not touch logins, groups
+and the rent ledger**, **the old bills**, and Deletion and Edit History. It does not touch logins, groups
 or the master lists.
 
 ⚠ **Those last two were missing from the command until 2026-09-04**, and both

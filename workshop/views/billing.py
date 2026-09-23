@@ -1,16 +1,17 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Prefetch
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.urls import reverse
 from django.utils import timezone
 
-from ..models import JobCard, JobCardLabourItem, JobCardSpareItem
+from ..models import EditLog, JobCard, JobCardLabourItem, JobCardSpareItem
 from .. import delete_window
 from ..decorators import is_owner, office_required
 from ..invoice import build_invoice, whatsapp_chat_url
-from ..notifications import notify, notify_changed
+from ..notifications import notify
 from ..settlement import settlement_readiness
 from ..money import parse_money
 from ..return_to import safe_return
@@ -235,23 +236,27 @@ def update_bill_status(request, pk):
             jobcard.discount_amount = Decimal('0')
             jobcard.paid_date = None
 
-        jobcard.save()
-
-        # A RE-SETTLED BILL IS ANNOUNCED — the bell inside Office's 24 hours,
-        # the other owner's phone past them (which only an owner can reach).
-        # A first settlement is not: taking the money is the ordinary act.
-        if was_paid and received != was_received:
-            notify_changed(
-                (f"{jobcard.registration_number} · settled at ₹{received:,.0f}"
-                 if received > 0 else
-                 f"{jobcard.registration_number} · payment taken off"),
-                settled_at,
-                detail=f"was ₹{was_received:,.0f} · {jobcard.bill_number}",
-                actor=request.user,
-                url=reverse('invoice_view', args=[jobcard.pk]),
-                object_type='JOBCARD',
-                object_id=jobcard.pk,
-            )
+        # A RE-SETTLED BILL IS ANNOUNCED AND KEPT — the bell inside Office's
+        # 24 hours, the other owner's phone past them (which only an owner can
+        # reach), and an Edit History row either way, written in the same
+        # transaction as the save. A first settlement is neither: taking the
+        # money is the ordinary act, not an edit.
+        with transaction.atomic():
+            jobcard.save()
+            if was_paid and received != was_received:
+                EditLog.record(
+                    EditLog.ENTITY_JOBCARD, jobcard,
+                    [EditLog.change('Received', was_received, received),
+                     EditLog.change('Discount', was_discount, jobcard.discount_amount)],
+                    label=f"{jobcard.registration_number} · {jobcard.bill_number}",
+                    user=request.user,
+                    stamp=settled_at,
+                    headline=(f"{jobcard.registration_number} · settled at ₹{received:,.0f}"
+                              if received > 0 else
+                              f"{jobcard.registration_number} · payment taken off"),
+                    detail=f"was ₹{was_received:,.0f} · {jobcard.bill_number}",
+                    url=reverse('invoice_view', args=[jobcard.pk]),
+                )
 
         # Only when the discount GREW: a re-settle that leaves a large
         # discount where it was — or shrinks it — is not news, and repeating

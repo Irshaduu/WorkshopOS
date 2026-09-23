@@ -13,13 +13,13 @@ from django.db.models import Q, Sum, Count, Case, When, Value, DecimalField
 from django.db.models.functions import Coalesce
 from decimal import Decimal, InvalidOperation
 from .decorators import office_required, is_owner
-from .models import CashbookEntry, DeletionLog
+from .models import CashbookEntry, DeletionLog, EditLog
 from .money import parse_money, fit_text
 # The day the money moved, parsed in ONE place — the spare-shop payment form
 # asks the same question, and two copies would drift apart at a month boundary,
 # which is exactly where an owner reads the difference.
 from .money_dates import posted_date, is_future, too_far_back, backdate_floor
-from .notifications import notify_changed, notify_dated_back
+from .notifications import notify_dated_back
 from . import delete_window
 
 
@@ -427,6 +427,9 @@ def cashbook_view(request):
     viewer_is_owner = is_owner(request.user)
     for entry in entries:
         entry.locked = not viewer_is_owner and delete_window.is_past_window(entry.created_at)
+        # Will a delete of this row be LOGGED? Only past the window — which
+        # only an owner can reach — so the dialog asks for a reason only then.
+        entry.logged = delete_window.is_past_window(entry.created_at)
 
     context = {
         'entries': entries,
@@ -590,7 +593,20 @@ def add_cashbook_entry(request):
 
 @office_required
 def delete_cashbook_entry(request, pk):
-    """Permanently delete a cashbook entry, logged to the Owner-only Deletion History."""
+    """
+    Permanently delete a cashbook entry.
+
+    ⚠ LOGGED ONLY WHEN ONLY AN OWNER COULD HAVE DONE IT (2026-09-24, the
+    owners' call) — the one money delete in the app that is not always
+    written to Deletion History. The Cashbook's daily rhythm is a delete and a
+    re-add: a worker is handed ₹2,000, comes back hours later having spent
+    ₹1,800, and Office corrects the row. Logging that — and phoning both
+    owners, which `RECORD_DELETED` does — buried the deletions that matter and
+    trained everyone to ignore the alert. A delete inside Office's 24 hours is
+    the same as typing the row right the first time, which Office could have
+    done with any figure; the control that matters is AFTER the window, and
+    that delete is still logged and still reaches the other owner's phone.
+    """
     if request.method == 'POST':
         entry = get_object_or_404(CashbookEntry, pk=pk)
 
@@ -604,16 +620,21 @@ def delete_cashbook_entry(request, pk):
             return redirect('cashbook')
 
         reason = request.POST.get('reason', '').strip()
+        # Same test the refusal above uses, so "Office may delete it" and "it
+        # is not logged" are one line, never two.
+        logged = delete_window.is_past_window(entry.created_at)
         # Log + delete in one transaction so the history can never record a
         # deletion that didn't happen (see DeletionLog.record).
         with transaction.atomic():
-            DeletionLog.record(
-                DeletionLog.ENTITY_CASHBOOK, entry,
-                user=request.user, reason=reason, amount=entry.amount,
-                label=f"{entry.get_entry_type_display()} · {entry.category} · ₹{entry.amount:,.0f}",
-            )
+            if logged:
+                DeletionLog.record(
+                    DeletionLog.ENTITY_CASHBOOK, entry,
+                    user=request.user, reason=reason, amount=entry.amount,
+                    label=f"{entry.get_entry_type_display()} · {entry.category} · ₹{entry.amount:,.0f}",
+                )
             entry.delete()
-        messages.success(request, "Entry permanently deleted (logged to Deletion History).")
+        messages.success(request, "Entry permanently deleted (logged to Change History)."
+                         if logged else "Entry deleted.")
     return redirect('cashbook')
 
 
@@ -690,25 +711,24 @@ def edit_cashbook_entry(request, pk):
         posted_type = request.POST.get('entry_type', '').upper()
         if posted_type in ('INCOME', 'EXPENSE'):
             entry.entry_type = posted_type
-        entry.save()
-
-        # SAY SO, TO THE OWNERS. Deleting an entry has written a `DeletionLog`
-        # row and raised `RECORD_DELETED` since day one; an edit can do the same
-        # damage and is the only way to move money between two periods.
+        # ⚠ QUIET INSIDE OFFICE'S LIMITS, KEPT AND ANNOUNCED PAST THEM
+        # (2026-09-24, the owners' call). A same-day edit here is the second
+        # half of one act, not a correction: a worker is handed ₹2,000, comes
+        # back having spent ₹1,800, and the row is settled at that. Keeping
+        # every one buried the edits that matter in Edit History and put a bell
+        # note up every day. So `only_past_limits` keeps and announces only an
+        # edit ONLY AN OWNER could make — past the 24 hours, or a date moved
+        # past the three-day limit — which reaches the other owner's phone.
         #
         # ONLY THE THREE FIELDS THAT MOVE MONEY ON THE PROFIT PAGE: the figure,
         # the day it lands on, and which SIDE of the equation it sits on
-        # (income mis-keyed as an expense is a double-sized error). Correcting
-        # a spelling, a note or a payment method raises nothing, or the event
-        # means nothing by the second week - the settle dialog's own rule.
+        # (income mis-keyed as an expense is a double-sized error). A spelling,
+        # a note or a payment method is never history.
         #
-        # NOT a `DeletionLog` row: that model's columns are `deleted_by` and
-        # `deleted_at` and `record()` always says "deleted" — three surfaces
-        # that would each be stating something untrue.
-        #
-        # The tier is `notify_changed`'s: the bell while the row is inside
-        # Office's window and stays inside the back-date limit, the other
-        # owner's phone once either is past — which only an owner can do.
+        # ⚠ BACK-DATING IS NEVER QUIET, on an edit as on an add: moving an
+        # entry to an EARLIER day inside the limits still reaches the bell,
+        # exactly as keying it there would have — or the quiet rule would be a
+        # way round the add form's alert.
         changed = []
         if was[0] != entry.amount:
             changed.append(f"was ₹{was[0]:,.0f}")
@@ -716,17 +736,38 @@ def edit_cashbook_entry(request, pk):
             changed.append(f"was {was[1]:%d %b %Y}")
         if was[2] != entry.entry_type:
             changed.append(f"was {was[2].title()}")
-        if changed:
-            notify_changed(
-                f"{entry.category} · ₹{entry.amount:,.0f} edited",
-                entry.created_at,
-                moved_to=entry.date if was[1] != entry.date else None,
-                detail=' · '.join(changed),
-                actor=request.user,
-                url=_day_url(entry.date),
-                object_type='CashbookEntry',
-                object_id=entry.pk,
-            )
+        sides = dict(CashbookEntry.ENTRY_TYPES)
+        with transaction.atomic():
+            entry.save()
+            kept = None
+            if changed:
+                kept = EditLog.record(
+                    EditLog.ENTITY_CASHBOOK, entry,
+                    [EditLog.change('Amount', was[0], entry.amount),
+                     EditLog.change('Date', was[1], entry.date, kind=EditLog.KIND_DATE),
+                     EditLog.change('Type', sides.get(was[2], was[2]),
+                                    sides.get(entry.entry_type, entry.entry_type),
+                                    kind=EditLog.KIND_TEXT)],
+                    label=entry.category,
+                    user=request.user,
+                    stamp=entry.created_at,
+                    moved_to=entry.date if was[1] != entry.date else None,
+                    headline=f"{entry.category} · ₹{entry.amount:,.0f} edited",
+                    detail=' · '.join(changed),
+                    url=_day_url(entry.date),
+                    object_type='CashbookEntry',
+                    only_past_limits=True,
+                )
+            if kept is None and entry.date < was[1]:
+                notify_dated_back(
+                    f"{entry.category} · ₹{entry.amount:,.0f} moved to {entry.date:%d %b %Y}",
+                    entry.date,
+                    detail=f"Cashbook {entry.entry_type.lower()} · was dated {was[1]:%d %b %Y}",
+                    actor=request.user,
+                    url=_day_url(entry.date),
+                    object_type='CashbookEntry',
+                    object_id=entry.pk,
+                )
 
         messages.success(request, "Entry updated.")
     return redirect('cashbook')

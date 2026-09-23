@@ -172,7 +172,9 @@ EVENTS = {
     # so the rule enforced and the rule announced cannot drift apart.
     #
     # Call these through `notify_dated_back()` / `notify_changed()` below,
-    # never directly: those are where the tier is decided.
+    # never directly: those are where the tier is decided. And an EDIT goes
+    # one step further out, through `EditLog.record()`, which keeps the
+    # permanent Edit History row and then calls `notify_changed()` itself.
     #
     # They replace RENT_BACKDATED (a phone alert, rent only) and
     # CASHBOOK_EDITED (a bell note, Cashbook only) — one section each had the
@@ -213,6 +215,22 @@ def notify_dated_back(body, when, *, detail='', actor=None, url='',
                   object_type=object_type, object_id=object_id)
 
 
+def is_owner_only_change(stamp, moved_to=None):
+    """
+    Could only an OWNER have made this edit? — the row is past Office's window,
+    or the edit moved its money date past the back-date limit.
+
+    The tier `notify_changed()` announces with, AND the line the Cashbook's
+    quiet rule draws (`EditLog.record(..., only_past_limits=True)`), so the
+    edit that goes quiet and the edit that rings a phone are split by one
+    expression, never two.
+    """
+    from .delete_window import is_past_window
+    from .money_dates import is_too_far_back
+
+    return is_past_window(stamp) or (moved_to is not None and is_too_far_back(moved_to))
+
+
 def notify_changed(body, stamp, *, moved_to=None, detail='', actor=None, url='',
                    object_type='', object_id=None):
     """
@@ -223,11 +241,11 @@ def notify_changed(body, stamp, *, moved_to=None, detail='', actor=None, url='',
     date when the edit changed it. Inside Office's reach → the bell. A row past
     the window, or a date moved past the back-date limit — both of which only
     an owner can do → the other owner's phone.
-    """
-    from .delete_window import is_past_window
-    from .money_dates import is_too_far_back
 
-    past = is_past_window(stamp) or (moved_to is not None and is_too_far_back(moved_to))
+    ⚠ A view never calls this directly: `EditLog.record()` does, after keeping
+    the edit in Edit History, so no door can announce an edit it did not keep.
+    """
+    past = is_owner_only_change(stamp, moved_to)
     event = 'OLD_RECORD_CHANGED' if past else 'RECORD_CHANGED'
     return notify(event, body, detail=detail, actor=actor, url=url,
                   object_type=object_type, object_id=object_id)

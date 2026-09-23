@@ -13,7 +13,7 @@ from django.core.paginator import Paginator
 from ..models import (
     CarBrand, CarModel, SparePart, ConcernSolution,
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
-    SpareShop, DeletionLog, live_cards,
+    SpareShop, DeletionLog, EditLog, live_cards,
 )
 from ..forms import (
     JobCardForm, JobCardConcernFormSet, JobCardSpareFormSet,
@@ -24,7 +24,6 @@ from django.template.defaultfilters import floatformat
 
 from ..decorators import staff_required, office_required, is_office_or_owner, is_owner
 from .. import delete_window
-from ..notifications import notify_changed
 from ..return_to import safe_return
 from .billing import announce_high_discount
 # The app's ONE way of printing a quantity — 1.00 → "1", 1.50 → "1.5". Imported
@@ -1122,20 +1121,25 @@ def jobcard_edit(request, pk):
                 jobcard.refresh_from_db()
                 reopened = _reconcile_settled_bill(jobcard)
 
-                # A SETTLED BILL THAT MOVED IS ANNOUNCED. It is the customer's
-                # own bill, so the Profit page's revenue moved with it — and
-                # nothing said so. The bell inside Office's 24 hours, the other
-                # owner's phone past them (which only an owner can reach).
+                # A SETTLED BILL THAT MOVED IS ANNOUNCED, AND KEPT. It is the
+                # customer's own bill, so the Profit page's revenue moved with
+                # it — and nothing said so. The bell inside Office's 24 hours,
+                # the other owner's phone past them (which only an owner can
+                # reach), and an Edit History row either way. The discount is
+                # listed too: on a walk-in it is recomputed off the new total.
                 if settled and jobcard.total_bill_amount != was_bill:
-                    notify_changed(
-                        f"{jobcard.registration_number} · bill now "
-                        f"₹{jobcard.total_bill_amount:,.0f}",
-                        settled_at,
+                    EditLog.record(
+                        EditLog.ENTITY_JOBCARD, jobcard,
+                        [EditLog.change('Bill total', was_bill, jobcard.total_bill_amount),
+                         EditLog.change('Discount', was_discount,
+                                        jobcard.discount_amount or Decimal('0'))],
+                        label=f"{jobcard.registration_number} · {jobcard.bill_number}",
+                        user=request.user,
+                        stamp=settled_at,
+                        headline=(f"{jobcard.registration_number} · bill now "
+                                  f"₹{jobcard.total_bill_amount:,.0f}"),
                         detail=f"was ₹{was_bill:,.0f} · {jobcard.bill_number}",
-                        actor=request.user,
                         url=reverse('invoice_view', args=[jobcard.pk]),
-                        object_type='JOBCARD',
-                        object_id=jobcard.pk,
                     )
                     # A walk-in's discount was just recomputed off the new
                     # total, so a large one answers the settle screen's rule —
@@ -1259,5 +1263,5 @@ def jobcard_delete(request, pk):
         )
         jobcard.delete()
 
-    messages.success(request, f"Job Card {reg} permanently deleted (logged to Deletion History).")
+    messages.success(request, f"Job Card {reg} permanently deleted (logged to Change History).")
     return redirect('jobcard_list')

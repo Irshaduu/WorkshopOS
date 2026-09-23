@@ -337,5 +337,5 @@ def withdrawal_delete(request, pk):
             label=f"{display_name(entry.owner)} · ₹{entry.amount:,.0f} withdrawal",
         )
         entry.delete()
-    messages.success(request, "Withdrawal deleted (logged to Deletion History).")
+    messages.success(request, "Withdrawal deleted (logged to Change History).")
     return _back(request)
