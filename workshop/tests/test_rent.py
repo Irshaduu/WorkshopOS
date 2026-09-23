@@ -845,24 +845,34 @@ class AnOwnerCannotDoItSILENTLYTests(_Signed):
         person who back-dated an entry is the one person it never reaches. Both
         dates have been on the row since the first migration and nothing showed
         them: `date` is when the money moved, `created_at` is when somebody
-        typed it, and a row whose two fall in different months is money filed
-        into a month that had already closed.
+        typed it, and a row dated FURTHER BACK THAN OFFICE MAY REACH is money
+        only an owner could have filed.
         """
         old = date(2026, 5, 20)
         RentDeposit.objects.create(date=old, amount=D('5000'))
         res = self.as_(self.owner).get(reverse('rent_home'), {'month': '2026-05'})
         row = res.context['days'][0]['rows'][0]
-        self.assertTrue(row.added_late)
+        self.assertEqual(row.tier, 'past_limit')
         self.assertContains(res, 'added')
-        self.assertContains(res, 'rt-late')
+        self.assertContains(res, 'class="rt-past"')
 
-    def test_an_entry_keyed_in_its_own_month_carries_no_mark(self):
-        """Keying yesterday's handover this morning is the ordinary case, and
-        marking it would make the mark meaningless by the second row."""
+    def test_an_entry_keyed_INSIDE_THE_THREE_DAYS_carries_no_mark(self):
+        """
+        Keying yesterday's handover this morning is the ordinary case, and
+        marking it would make the mark meaningless by the second row.
+
+        ⚠ THIS ASSERTED THE WRONG THING UNTIL 2026-09-23 and passed anyway. It
+        read `assertFalse(row.added_late)`, and `added_late` meant the RED tier
+        only — so it proved the row was not red while the retired amber tier
+        was marking it on every ordinary day. It asks for the absence of ANY
+        mark now, and looks at the rendered chip rather than a flag.
+        """
         today = timezone.localdate()
         RentDeposit.objects.create(date=today - timedelta(days=1), amount=D('2000'))
         res = self.as_(self.owner).get(reverse('rent_home'))
-        self.assertFalse(res.context['days'][0]['rows'][0].added_late)
+        self.assertEqual(res.context['days'][0]['rows'][0].tier, '')
+        self.assertNotContains(res, 'class="rt-past"')
+        self.assertEqual(res.context['off_count'], 0)
 
     def test_the_person_who_did_it_is_told_which_month_it_landed_in(self):
         """The alert excludes the actor, so without this the one confirmation
@@ -1386,29 +1396,55 @@ class FindingWhatWasFiledBackwardsTests(_Signed):
         self.ordinary = RentDeposit.objects.create(date=today, amount=D('2000'))
         self.same_month = RentDeposit.objects.create(
             date=self.this_month, amount=D('1234'))
+        # ⚠ 40 DAYS, NOT ONE. It has to satisfy BOTH things the tests below
+        # ask of it: an EARLIER MONTH (so the month log cannot reach it) and
+        # PAST THE THREE-DAY FLOOR (so it is marked). The last day of the
+        # previous month is only the first of those — on the 1st to the 4th it
+        # is inside the floor and carries no mark, which would have failed
+        # `off_count` on four days in every month.
         self.closed = RentDeposit.objects.create(
-            date=self.this_month - timedelta(days=1), amount=D('4321'))
+            date=self.this_month - timedelta(days=40), amount=D('4321'))
 
-    def test_the_two_tiers_are_different_amounts_of_harm(self):
+    def test_the_mark_is_EXACTLY_what_went_past_the_limit(self):
         """
-        AMBER is a row dated back inside its OWN month — the month's total is
-        unchanged and no closed period moved, only the day is off. RED is a row
-        filed into a month that had already finished, which moved that month's
-        position and every month since.
+        ONE TIER, and its edge is the floor that refuses Office — so the mark
+        shows exactly the rows that rang the other owner's phone.
+
+        ⚠ IT WAS TWO TIERS UNTIL 2026-09-23, split on the MONTH boundary, and
+        the amber one fired on the daily workflow — see `rent.backdating()`.
+        The edge is asserted on BOTH sides here, because a floor that is off by
+        one day is invisible in every other test.
         """
-        self.assertEqual(rent_calc.backdating(self.closed), 'closed')
+        floor = backdate_floor(timezone.localdate())
+        at_floor = RentDeposit.objects.create(date=floor, amount=D('100'))
+        past = RentDeposit.objects.create(
+            date=floor - timedelta(days=1), amount=D('100'))
+
         self.assertEqual(rent_calc.backdating(self.ordinary), '')
-        if self.this_month != timezone.localdate():      # not on the 1st
-            self.assertEqual(rent_calc.backdating(self.same_month), 'late')
+        self.assertEqual(rent_calc.backdating(at_floor), '')
+        self.assertEqual(rent_calc.backdating(past), 'past_limit')
+        self.assertEqual(rent_calc.backdating(self.closed), 'past_limit')
 
     def test_keying_yesterdays_handover_this_morning_is_not_marked(self):
-        """The ordinary case. Marking it would make the mark meaningless by the
-        second row."""
+        """
+        The ordinary case. Marking it would make the mark meaningless by the
+        second row.
+
+        ⚠ THIS TEST DID NOT TEST ITS OWN NAME UNTIL 2026-09-23. It stamped
+        `created_at` back to YESTERDAY as well, so it asserted "keyed on the
+        day it was dated" — a case the rule never marked — and passed green
+        while the live workflow (keyed TODAY, dated yesterday) wore a chip.
+        `created_at` is `auto_now_add`, so leaving it alone IS the case.
+        """
         row = RentDeposit.objects.create(
             date=timezone.localdate() - timedelta(days=1), amount=D('1500'))
-        type(row).objects.filter(pk=row.pk).update(
-            created_at=timezone.now() - timedelta(days=1))
-        row.refresh_from_db()
+        self.assertEqual(rent_calc.backdating(row), '')
+
+    def test_saturdays_handover_keyed_on_monday_is_not_marked_either(self):
+        """Two days back, which the three-day floor exists to permit. The
+        workshop is shut on Sunday, so this is an ordinary Monday morning."""
+        row = RentDeposit.objects.create(
+            date=timezone.localdate() - timedelta(days=2), amount=D('1500'))
         self.assertEqual(rent_calc.backdating(row), '')
 
     def test_recently_added_is_ordered_by_the_KEYSTROKE_not_the_money_date(self):

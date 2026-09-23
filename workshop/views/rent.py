@@ -40,7 +40,8 @@ from ..decorators import is_owner, office_required, owner_required
 from ..delete_window import is_past_window, refusal
 from ..models import DeletionLog, RentDeposit, RentRate
 from ..money import fit_text, parse_money
-from ..money_dates import backdate_floor, is_future, posted_date, too_far_back
+from ..money_dates import (BACKDATE_DAYS, backdate_floor, is_future,
+                           posted_date, too_far_back)
 from ..notifications import notify, notify_dated_back
 
 
@@ -112,13 +113,16 @@ def rent_home(request):
     # `notify()` excludes the actor, so the person who back-dated an entry is
     # the one person it never reaches. Both dates have been on the row since
     # the first migration; nothing showed them. `date` is when the money moved,
-    # `created_at` is when somebody typed it, and a row whose two dates fall in
-    # different MONTHS is money filed into a month that had already closed.
+    # `created_at` is when somebody typed it, and a row filed FURTHER BACK THAN
+    # OFFICE MAY REACH is money only an owner could have filed.
     #
-    # The month is the threshold rather than the day, for the reason the
-    # backdate floor uses one: keying yesterday's handover this morning is the
-    # ordinary case and marking it would make the mark meaningless by the
-    # second row.
+    # ⚠ THE THRESHOLD IS THE THREE-DAY FLOOR, judged as at the day the row was
+    # keyed — so the mark shows exactly the rows that rang the other owner's
+    # phone. It was the MONTH until 2026-09-23, with a second amber tier for a
+    # row keyed any day after the one it was dated: that fired on yesterday's
+    # handover keyed this morning, which is the ordinary work the floor exists
+    # to permit, and a mark on the ordinary case is meaningless by the second
+    # row. See `rent.backdating()`.
     # ⚠ `is_owner` ONCE, THE AGE RULE PER ROW. `refusal()` calls `is_owner`,
     # which was a fresh `user.groups.filter(...)` on every call — so asking it
     # per row put one extra query on every deposit in the list. Sixty rows,
@@ -132,12 +136,14 @@ def rent_home(request):
         # ONE rule for both views — `rent.backdating()` — so the month log and
         # the Recently-added list can never mark the same row differently.
         row.tier = rent_calc.backdating(row)
-        row.added_late = row.tier == 'closed'
         row.added_on = timezone.localtime(row.created_at).date() if row.created_at else None
 
     return render(request, 'workshop/rent/rent_home.html', {
         'state': state,
         'recent': recent,
+        # Read from the constant, never typed into the template: the legend
+        # names the same number the guard enforces, so the two cannot drift.
+        'backdate_days': BACKDATE_DAYS,
         # How many of the rows on screen were filed backwards, so the heading
         # can say it without the reader counting chips.
         'off_count': sum(1 for r in rows if r.tier),

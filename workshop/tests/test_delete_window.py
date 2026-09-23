@@ -357,3 +357,73 @@ class TheWindowLeavesTheRestAloneTests(WindowBase):
                                 {'reason': 'created in error'})
         self.assertEqual(resp.status_code, 302)
         self.assertFalse(JobCard.objects.filter(pk=jc.pk).exists())
+
+
+# ---------------------------------------------------------------------------
+# The fleet page's own menu
+# ---------------------------------------------------------------------------
+
+class TheFleetPageOffersTheReversalItsViewAllowsTests(WindowBase):
+    """
+    ⚠ THE TEMPLATE GATE READ OWNER-ONLY WHILE THE VIEW IS `@office_required`,
+    so Office never saw the control and the 24-hour window above could only
+    ever have fired on a crafted POST — every test in this file reaches the
+    view directly, which is exactly why nothing caught it.
+
+    The gate came in with `4a93409`, a UI refactor, and nothing documented it,
+    while three things said Office was intended: the decorator itself,
+    `delete_window`'s own docstring naming this view as one of the six Office
+    deletes the window bounds, and the note that a fleet reversal escalates
+    more often here than anywhere else — which presupposes Office starting
+    one. Widened to match, and nothing is allowed that the view did not
+    already allow.
+
+    ⚠ THE CONTROL IS FOUND BY ITS ROW'S OWN PK. `showHistoryDeleteConfirm`
+    is also the name of the function DEFINED in the page's script, so a bare
+    search for it matches on every render whether or not a button was drawn —
+    the whole-page-search trap CLAUDE.md records.
+    """
+
+    def _payment(self, days_old=0):
+        payer = BulkPayer.objects.create(customer_name='Hafsi')
+        hist = BulkPaymentHistory.objects.create(
+            bulk_payer=payer, amount=D('110000'), payment_method='UPI',
+            jobs_affected=0, details='[]', date=date.today())
+        if days_old:
+            hist = _age(hist, days_old)
+        return payer, hist
+
+    def _page(self, payer):
+        resp = self.client.get(reverse('bulk_payer_detail', args=[payer.pk]))
+        self.assertEqual(resp.status_code, 200)
+        return resp
+
+    def test_office_is_offered_the_reversal_on_a_fresh_payment(self):
+        payer, hist = self._payment()
+        self.assertContains(self._page(payer),
+                            f'showHistoryDeleteConfirm({hist.pk}')
+
+    def test_office_is_told_in_advance_once_the_row_is_too_old(self):
+        """A door somebody can see but not open is worse than no door — so the
+        item is annotated rather than hidden, and the view refuses again."""
+        payer, hist = self._payment(days_old=30)
+        page = self._page(payer)
+        self.assertContains(page, 'Too old to delete here')
+        self.assertContains(page, 'Ask an owner to remove it.')
+        self.assertNotContains(page, f'showHistoryDeleteConfirm({hist.pk}')
+
+    def test_an_owner_is_still_offered_it_on_an_old_payment(self):
+        payer, hist = self._payment(days_old=30)
+        self.as_owner()
+        page = self._page(payer)
+        self.assertContains(page, f'showHistoryDeleteConfirm({hist.pk}')
+        self.assertNotContains(page, 'Too old to delete here')
+
+    def test_the_page_says_the_same_thing_the_view_does(self):
+        """The template gate and the decorator must agree: what the page
+        offers Office is what the POST accepts from Office."""
+        payer, hist = self._payment(days_old=30)
+        self.assertContains(self._page(payer), 'Too old to delete here')
+        self.refused(
+            reverse('bulk_payment_history_delete', args=[payer.pk, hist.pk]))
+        self.assertTrue(BulkPaymentHistory.objects.filter(pk=hist.pk).exists())

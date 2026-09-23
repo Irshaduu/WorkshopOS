@@ -155,22 +155,26 @@
   .rt-date { flex: 0 0 118px; font-size: 0.75rem; color: #64748b; font-weight: 600;
              font-variant-numeric: tabular-nums; }
   .rt-amt { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 0.95rem; }
-  /* Amber, the same colour the date box wears while a back-dated entry is
-     being typed — one fact, one colour, before and after it is saved. It sits
-     inline so it costs no row height. */
-  .rt-late { flex: 0 0 auto; font-size: 0.68rem; font-weight: 600; color: #b45309;
-             background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px;
+  /* RED, and there is only ONE of these: a row filed FURTHER BACK than Office
+     may date money, which only an owner can do and which rang the other
+     owner's phone when it happened. It sits inline so it costs no row height.
+
+     ⚠ AN AMBER SECOND TIER WAS RETIRED 2026-09-23. It marked any row keyed
+     after the day it was dated — so yesterday's handover keyed this morning,
+     and Saturday's keyed on Monday, both wore a chip — which is the ordinary
+     work the three-day floor exists to PERMIT. One colour left means the mark
+     is never ambiguous and there are no longer two of them to tell apart. See
+     `rent.backdating()`. */
+  .rt-past { flex: 0 0 auto; font-size: 0.68rem; font-weight: 600; color: #b91c1c;
+             background: #fef2f2; border: 1px solid #fecaca; border-radius: 999px;
              padding: 0.1rem 0.45rem; white-space: nowrap; }
-  /* RED for a row filed into a month that had already finished — that one
-     moved a closed position, where an amber one only got the day wrong. */
-  .rt-closed { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
-  /* ⚠ `padding: 0` IS LOAD-BEARING. The legend dot reuses `.rt-late` to pick
+  /* ⚠ `padding: 0` IS LOAD-BEARING. The legend dot reuses `.rt-past` to pick
      up its colour, and that class carries the CHIP's padding — which leaked
-     through and rendered the amber dot as a squashed 16.4 x 9 pill beside a
-     round 9 x 9 red one. Both are single-class selectors, so this wins only by
-     coming later in the file; keep the two rules in this order. Found by
-     measuring in a browser — nothing in the Django suite executes CSS. */
-  .rt-late-dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px;
+     through and rendered the dot as a squashed 16.4 x 9 pill rather than a
+     round 9 x 9. Both are single-class selectors, so this wins only by coming
+     later in the file; keep the two rules in this order. Found by measuring in
+     a browser — nothing in the Django suite executes CSS. */
+  .rt-past-dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px;
                  padding: 0; border: 1px solid currentColor; background: currentColor;
                  vertical-align: baseline; }
   /* THE TWO ANNOTATIONS TRAVEL TOGETHER, and that is what stops the row
@@ -497,8 +501,7 @@
     </div>
     {% if recent and off_count %}
       <p class="rt-foot rt-legend mb-2" style="margin-top:-0.25rem;">
-        <span><span class="rt-late-dot rt-late"></span> dated back inside its own month</span>
-        <span><span class="rt-late-dot rt-closed"></span> filed into a month already finished</span>
+        <span><span class="rt-past-dot rt-past"></span> dated more than {{ backdate_days }} days back</span>
       </p>
     {% endif %}
     <div class="rt-list">
@@ -537,13 +540,13 @@
               entry is being typed. Same fact, same colour, before and after.
             {% endcomment %}
             {% comment %}
-              TWO TIERS, because they are different amounts of harm. AMBER is a
-              row dated back inside its OWN month: the month's total is
-              unchanged and no closed period moved, only the day is off. RED is
-              a row filed into a month that had already finished — that month's
-              position, and every month since, has moved. The tier is decided
-              by `rent.backdating()` so this list and Recently added can never
-              mark the same row differently.
+              ONE MARK: this row was dated FURTHER BACK than Office may
+              reach, so only an owner could have filed it and the other owner's
+              phone rang when they did. It is decided by `rent.backdating()`,
+              which both this list and Recently added read, so the two can
+              never mark the same row differently — and that function asks the
+              same three-day rule that refused Office and chose the alert, as
+              at the day the row was keyed.
             {% endcomment %}
             {% comment %}
               ⚠ THE WRAPPER RENDERS WHETHER OR NOT IT HOLDS ANYTHING, because
@@ -554,8 +557,8 @@
             {% endcomment %}
             <span class="rt-meta{% if row.tier or row.note %} is-on{% endif %}">
               {% if row.tier %}
-                <span class="rt-late {% if row.tier == 'closed' %}rt-closed{% endif %}"
-                      title="Filed under {{ row.date|date:'F Y' }}, keyed on {{ row.added_on|date:'j M Y' }}">
+                <span class="rt-past"
+                      title="Dated {{ row.date|date:'j M Y' }}, keyed on {{ row.added_on|date:'j M Y' }}">
                   <i class="bi bi-clock-history"></i> added {{ row.added_on|date:"j M" }}
                 </span>
               {% endif %}

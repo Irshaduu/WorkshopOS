@@ -80,6 +80,7 @@ from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
 from .models import RentDeposit, RentRate
+from .money_dates import is_too_far_back
 
 ZERO = Decimal('0')
 
@@ -556,34 +557,40 @@ def year_blocks(today=None):
 RECENT_ROWS = 40
 
 
-def backdating(deposit, today=None):
+def backdating(deposit):
     """
-    How far back a row was filed WHEN IT WAS KEYED — `''`, `'late'` or `'closed'`.
+    Was this row filed PAST THE LIMIT when it was keyed? — `''` or
+    `'past_limit'`.
 
     ⚠ THE ONE RULE BOTH VIEWS READ, so the month log and the Recently-added
     list can never disagree about the same row. Every deposit stores two dates
     and nothing used to show them: `date` is when the money moved, `created_at`
     is when somebody typed it.
 
-    The two tiers are not decoration — they are different amounts of harm:
+    ⚠ IT ASKS `is_too_far_back` AS AT THE DAY IT WAS KEYED, AND THAT IS THE
+    WHOLE POINT — the mark then shows EXACTLY the rows that rang the other
+    owner's phone, because `notify_dated_back` tiers itself on the same
+    predicate at the same moment. One constant, `BACKDATE_DAYS`, decides who is
+    refused, which alert fires AND whether the row is marked, so the three can
+    never drift apart. Judging against TODAY instead would quietly mark every
+    row in the ledger as the weeks passed.
 
-      * `late`   — dated back inside its OWN month. The month's total is
-                   unchanged and no closed period moved; only the day is off.
-      * `closed` — filed into an EARLIER month. That month's position, and
-                   every month since, has moved on a page nobody re-reads.
+    ⚠ AN AMBER SECOND TIER WAS RETIRED HERE (2026-09-23) BECAUSE IT FIRED ON
+    THE DAILY WORKFLOW. It marked any row keyed after the day it was dated, so
+    yesterday's handover keyed this morning — and Saturday's keyed on Monday —
+    both wore a chip. That is the ordinary work the three-day floor exists to
+    PERMIT, and this docstring already promised it went unmarked while the code
+    marked it; the test named for that case passed only because it stamped
+    `created_at` to the same day it was dated. A mark on the ordinary case is
+    meaningless by the second row, which is the failure the promise named.
 
-    A row keyed on the day it is dated, or keyed the next morning for
-    yesterday's handover, is the ordinary case and gets nothing at all —
-    marking that would make the mark meaningless by the second row.
+    What is left is the one tier that was ever worth a colour: money filed
+    further back than Office may reach, which only an owner can do.
     """
     if deposit.created_at is None:
         return ''
     keyed = timezone.localtime(deposit.created_at).date()
-    if month_of(keyed) > month_of(deposit.date):
-        return 'closed'
-    if keyed > deposit.date:
-        return 'late'
-    return ''
+    return 'past_limit' if is_too_far_back(deposit.date, today=keyed) else ''
 
 
 def recently_added(limit=RECENT_ROWS):

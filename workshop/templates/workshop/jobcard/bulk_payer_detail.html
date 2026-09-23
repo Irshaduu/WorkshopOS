@@ -1069,18 +1069,42 @@
                         {% if h.note %}<br><span class="bd-history-note"><i class="bi bi-chat-left-text me-1"></i>{{ h.note }}</span>{% endif %}
                     </div>
                 </div>
-                {% if request.user|has_group:"Owner" or request.user.is_superuser %}
+                {% comment %}
+                  ⚠ OFFICE AND OWNER, MIRRORING `bulk_payment_history_delete`'s
+                  OWN `@office_required`. This read Owner-only from `4a93409`, a
+                  UI refactor rather than a permissions decision, and nothing
+                  documented it — while three things said Office was intended:
+                  the view's decorator, `delete_window.py`'s docstring naming
+                  this view as one of the six Office deletes the window exists
+                  to bound, and CLAUDE.md's note that a fleet reversal
+                  "escalates more often here than anywhere else". So the window
+                  could only ever have fired on a crafted POST. Nothing is
+                  widened that the view did not already allow.
+
+                  ⚠ AND A PAST-WINDOW ROW SAYS SO INSTEAD OF BEING REFUSED
+                  AFTER THE FACT — the rule the spare shop, the Supplies Shop
+                  and the rent log already follow, in their words. The view
+                  refuses again either way; this is presentation. It is also
+                  where the newest-first rule bites hardest: past the window
+                  the owner takes the whole chain.
+                {% endcomment %}
+                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                 <div class="dropdown">
                     <button class="bd-page-menu-btn" type="button" data-bs-toggle="dropdown" style="width: 26px; height: 26px; font-size: 0.8rem;">
                         <i class="bi bi-three-dots-vertical"></i>
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end bd-dropdown">
+                        {% if h.created_at|past_office_window:request.user %}
+                        <li><span class="dropdown-item disabled py-2 small">Too old to delete here</span></li>
+                        <li><span class="dropdown-item-text small text-muted">Ask an owner to remove it.</span></li>
+                        {% else %}
                         <li>
                             <button type="button" class="dropdown-item text-danger"
                                 onclick="showHistoryDeleteConfirm({{ h.pk }}, '{{ h.amount|floatformat:0 }}')">
                                 <i class="bi bi-trash3 me-2"></i>Delete this Payment
                             </button>
                         </li>
+                        {% endif %}
                     </ul>
                 </div>
                 {% endif %}

@@ -2161,9 +2161,11 @@ yesterday's receipt typed this morning and a Saturday found on Monday.
 asked *"File into a closed month?"* at the floor, which was true only while the
 floor WAS a month boundary. It now asks *"Date it this far back?"* and adds the
 closed-month sentence only when the date really is in a finished month; the
-success message and the alert's detail do the same (`earlier_month`). The
-row marks (`rent.backdating()` — `late` / `closed`) were always month-based and
-are untouched.
+success message and the alert's detail do the same (`earlier_month`).
+
+⚠ **The row marks followed on 2026-09-23, and they were the last month-based
+thing left.** They were untouched in this pass and that turned out to be the
+defect below — `rent.backdating()` now asks this same floor.
 
 ⚠ **IT BINDS OFFICE, NOT OWNERS** — `delete_window`'s escalation, not a wall.
 Owners need the exception for real reasons: a go-live opening position is a
@@ -2289,13 +2291,38 @@ one link beside the heading, `RECENT_ROWS = 40` — it answers *"what did I just
 do?"*, and anything older is found by opening the month, where the row's own
 mark makes it obvious.
 
-**TWO TIERS, because they are different amounts of harm** — `backdating()`
-returns `''` / `'late'` / `'closed'`:
+⚠ **ONE MARK, AND ITS EDGE IS THE THREE-DAY FLOOR — this REVERSES the two
+month-based tiers this file described until 2026-09-23.** `backdating()`
+returns `''` or `'past_limit'`, asking **`is_too_far_back()` as at the day the
+row was KEYED**. So the mark shows exactly the rows that rang the other
+owner's phone: one constant, `BACKDATE_DAYS`, decides who is refused, which
+alert fires and whether the row is marked, and the three cannot drift apart.
+Judging against *today* instead would creep a mark onto every old row in the
+ledger as the weeks passed.
 
-| | | |
+**What it replaced, and why it had to go.** The tiers were `late` (amber —
+dated back inside its own month) and `closed` (red — filed into a month
+already finished), split on the month boundary because the floor was a month
+boundary when they were written. The floor became **three days** on
+2026-09-22 and the marks were left alone — so amber then fired on any row
+keyed after the day it was dated:
+
+| | marked, before | now |
 |---|---|---|
-| **amber** | `late` | dated back inside its OWN month — the month's total is unchanged and no closed period moved, only the day is off |
-| **red** | `closed` | filed into a month already finished — that month's position, and every month since, has moved |
+| yesterday's handover keyed this morning | **amber** | — |
+| Saturday's handover keyed on Monday | **amber** | — |
+| three days back, the floor itself | **amber** | — |
+| four days back — only an owner can | red | **red** |
+
+That is the ordinary work the floor exists to PERMIT, wearing a chip. The
+function's own docstring had promised *"keyed the next morning for yesterday's
+handover … gets nothing at all — marking that would make the mark meaningless
+by the second row"* while the code marked it, and
+`test_keying_yesterdays_handover_this_morning_is_not_marked` passed green
+because it stamped `created_at` back to yesterday too, testing *keyed on the
+day it was dated* instead. **A green test guarding a promise the code did not
+keep.** The legend went from two items to one with it, and `.rt-late` /
+`.rt-closed` are now the single red `.rt-past`.
 
 ⚠ **ONE RULE, READ BY BOTH VIEWS.** The month log and Recently added must
 never mark the same row differently, so neither computes its own answer.
@@ -2419,6 +2446,26 @@ going out; it is the fourth screen to use it and adds no copy of it.
 office hands over the cash and keys it; what the premises cost is a business
 term. The rent card is gated in the template to match the view — a door Office
 can see and cannot open is worse than no door. Floor sees none of it.
+
+**DELIBERATELY NO EDIT ON A DEPOSIT — add and delete are the whole of it**
+(written down 2026-09-23; it had been true and unstated since the section was
+built). A row keyed wrong is deleted and re-added, which costs one extra tap
+and buys three things: every correction lands in **Deletion History** with a
+reason and a snapshot rather than silently overwriting what was there; there
+is one fewer surface carrying money; and the 24-hour window then governs the
+correction through the delete, so a row older than that is an owner's either
+way. It is the Owner Withdrawals rule for the same reasons, and it is the
+majority pattern — **8 of the 11 money sections have no edit door.** Only the
+Cashbook, the Supplies Shop bill and a settled job card have one, and each of
+those has a reason this does not: a Cashbook row is the one place a free-text
+category is corrected, a Supplies bill's LINES are edited for months, and a
+settled card's bill moves when the work does.
+
+⚠ **So the 24-hour window's EDIT half has no door to bind here, and that is
+not a gap.** Office is bound on the delete; an owner is unbound and announced.
+Do not add an edit view to "complete" the uniformity — the uniformity is the
+Office/Owner rule, and this section already answers it identically to the
+other ten.
 
 ### Rent is the fifth expense stream — 2026-09-04
 
