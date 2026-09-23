@@ -5454,7 +5454,10 @@ parts carries on with no heading); both heading spellings ("JOB PERFOMED" became
 "JOB PERFORMED" — the owner's word is that this is the only change the template
 ever had, so no heading is matched by its exact wording); labour left blank; a part
 with no amount stays blank, never ₹0; Indian commas; ₹ on either side of an amount;
-a double space inside a job line is not two columns. **The paper's NAME is not
+a double space inside a job line is not two columns. **The date is read two ways**
+— `10-Apr-2026`, and on the workshop's earliest bills `09-07-2024`, which is **day
+first**: those PDFs' own creation date is 9 July 2024 (2026-09-23; that template
+was a second change the owner's word above did not cover). **The paper's NAME is not
 taken** — the form has no name box. What the PDF did not give is named in a warning,
 and a number already in (or a job card's) is said the moment the form comes back,
 not after the checking is done.

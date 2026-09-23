@@ -155,8 +155,9 @@ def read_bill_text(text):
     )}
     missing = []
 
-    # DATE: 10-Apr-2026
-    date = _search(r'DATE:\s*(\d{1,2})\s*-\s*([A-Za-z]{3,9})\s*-\s*(\d{4}|\d{2})', top)
+    # DATE: 10-Apr-2026 — or, on the workshop's earliest bills, 09-07-2024.
+    # A numeric date is DAY first: those PDFs were created on 9 July 2024.
+    date = _search(r'DATE:\s*(\d{1,2})\s*-\s*([A-Za-z]{3,9}|\d{1,2})\s*-\s*(\d{4}|\d{2})', top)
     month = read_month(date.group(2)) if date else None
     if date and month:
         fields.update(day=str(int(date.group(1))), month=str(month), year=date.group(3)[-2:])

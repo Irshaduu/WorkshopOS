@@ -156,6 +156,19 @@ class ReadingTheBillTests(SimpleTestCase):
         self.assertEqual(got['fields']['labour_amount'], '22300')
         self.assertEqual(got['total'], '39880')
 
+    def test_the_earliest_bills_numeric_date_is_read_day_first(self):
+        # The first bills print DATE: 09-07-2024, and their PDFs were created
+        # on 9 July 2024 — so a numeric date is day, month, year.
+        top = '  DATE:       09-07-2024          #: JB-24-03\n  JOB PERFOMED    AMOUNT\n'
+        got = read_bill_text(top)
+        self.assertEqual((got['fields']['day'], got['fields']['month'], got['fields']['year']),
+                         ('9', '7', '24'))
+        self.assertNotIn('the date', got['missing'])
+        # Month first would make this the 13th month: not read, and said so.
+        got = read_bill_text(top.replace('09-07-2024', '07-13-2024'))
+        self.assertEqual(got['fields']['month'], '')
+        self.assertIn('the date', got['missing'])
+
     def test_both_spellings_of_the_heading_are_read(self):
         for heading in ('JOB PERFOMED', 'JOB PERFORMED'):
             got = read_bill_text(f'  {heading}    AMOUNT\nCoolant replaced\n  SUBTOTAL\n')
