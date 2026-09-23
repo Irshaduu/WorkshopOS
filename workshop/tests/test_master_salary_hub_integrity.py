@@ -1384,7 +1384,13 @@ class AnAdvanceCannotEnterASettledMonthTests(WorkshopTestCase):
 
         self.assertEqual(SalaryAdvance.objects.count(), 0)
 
-    def test_office_is_told_to_ask_an_owner(self):
+    def test_office_is_told_only_an_owner_can_add_it(self):
+        """
+        Short, and no route Office cannot finish: since the three-day
+        back-date limit, Office could not add the advance even after an owner
+        deleted the settlement — so the message used to send an owner to delete
+        a settlement for nothing.
+        """
         last = self._last_month()
         anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
         self._settle(last, anil)
@@ -1393,7 +1399,8 @@ class AnAdvanceCannotEnterASettledMonthTests(WorkshopTestCase):
             'staff_id': anil.pk, 'amount': '5000',
             'date': str(last + timedelta(days=10))}, follow=True)
 
-        self.assertContains(resp, 'Ask an owner')
+        self.assertContains(resp, 'Only an owner can add an advance to it')
+        self.assertNotContains(resp, 'so it can be added')
 
     def test_an_owner_is_told_to_delete_it_themselves(self):
         last = self._last_month()
@@ -1407,23 +1414,28 @@ class AnAdvanceCannotEnterASettledMonthTests(WorkshopTestCase):
         self.assertContains(resp, 'Delete that settlement')
 
     def test_an_advance_into_an_unsettled_month_is_still_fine(self):
+        """Recorded by an OWNER: the 11th of last month is past Office's
+        three-day back-date limit, and that limit is pinned elsewhere — this
+        test is about the settled-month rule not firing on an open month."""
         last = self._last_month()
         anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
-        self.client.post(reverse('salary_advance_add'), {
+        self.client_for('owner').post(reverse('salary_advance_add'), {
             'staff_id': anil.pk, 'amount': '5000',
             'date': str(last + timedelta(days=10))})
         self.assertEqual(SalaryAdvance.objects.count(), 1)
 
     def test_the_documented_route_works_end_to_end(self):
-        """Delete the settlement, record the advance, settle again."""
+        """Delete the settlement, record the advance, settle again — all three
+        steps the OWNER's, which is what the owner's message says."""
         last = self._last_month()
         anil = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
         self._settle(last, anil)
 
         payment = SalaryPayment.objects.get()
-        self.client_for('owner').post(reverse('salary_payment_delete', args=[payment.pk]),
-                                      {'reason': 'forgotten advance'})
-        self.client.post(reverse('salary_advance_add'), {
+        owner = self.client_for('owner')
+        owner.post(reverse('salary_payment_delete', args=[payment.pk]),
+                   {'reason': 'forgotten advance'})
+        owner.post(reverse('salary_advance_add'), {
             'staff_id': anil.pk, 'amount': '5000',
             'date': str(last + timedelta(days=10)), 'note': 'forgotten'})
         self._settle(last, anil)

@@ -41,6 +41,10 @@ rows appended by "Load Older History" work with no JavaScript of our own.
       <i class="bi bi-three-dots-vertical" style="font-size: 1.2rem;"></i>
     </button>
     <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px; min-width: 150px;">
+      {% if payment.created_at|past_office_window:request.user %}
+      <li><span class="dropdown-item disabled py-2 small">Too old to delete here</span></li>
+      <li><span class="dropdown-item-text small text-muted">Ask an owner to remove it.</span></li>
+      {% else %}
       <li>
         <form method="post" action="{% url 'delete_shop_payment' shop.id payment.id %}"
               onsubmit="confirmSubmit(event, 'Delete this <strong class=\'text-danger\'>₹{{ payment.amount|floatformat:0 }}</strong> payment?<br><small>The shop balance will be recalculated.</small>', this, 'danger', 'bi-trash3-fill', 'deleting this payment');">
@@ -50,6 +54,7 @@ rows appended by "Load Older History" work with no JavaScript of our own.
           </button>
         </form>
       </li>
+      {% endif %}
     </ul>
   </div>
   {% endif %}

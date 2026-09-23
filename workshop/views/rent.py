@@ -32,6 +32,7 @@ from decimal import Decimal
 from django.contrib import messages
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from .. import rent as rent_calc
@@ -39,9 +40,8 @@ from ..decorators import is_owner, office_required, owner_required
 from ..delete_window import is_past_window, refusal
 from ..models import DeletionLog, RentDeposit, RentRate
 from ..money import fit_text, parse_money
-from ..money_dates import (backdate_floor, is_future, is_too_far_back,
-                           posted_date, too_far_back)
-from ..notifications import notify
+from ..money_dates import backdate_floor, is_future, posted_date, too_far_back
+from ..notifications import notify, notify_dated_back
 
 
 def _group_by_day(rows):
@@ -202,6 +202,7 @@ def rent_deposit_add(request):
         messages.error(request, "Enter a valid amount.")
         return _back(request)
 
+    today = timezone.localdate()
     when = posted_date(request.POST.get('date'))
     if is_future(when):
         messages.error(request, "A deposit can't be dated in the future.")
@@ -223,26 +224,32 @@ def rent_deposit_add(request):
 
     note = fit_text((request.POST.get('note') or '').strip(), RentDeposit, 'note')
 
+    # Filed into a month that has already finished — that month's position,
+    # and every month's since, moves. The one fact about a back-dated deposit
+    # worth more than its date.
+    earlier_month = (when.year, when.month) < (today.year, today.month)
+
     with transaction.atomic():
-        RentDeposit.objects.create(
+        deposit = RentDeposit.objects.create(
             amount=amount, date=when, note=note or None, recorded_by=request.user)
-        if is_too_far_back(when):
-            # Inside the transaction, so a rolled-back write leaves no
-            # announcement behind. The actor is excluded by `notify()`, so this
-            # reaches the OTHER owner — which is the whole point of raising it.
-            notify(
-                'RENT_BACKDATED',
-                f"₹{amount:,.0f} deposit filed under {when:%B %Y}",
-                detail=f"Recorded by {request.user.username} · "
-                       f"the position of every month since has moved",
-                actor=request.user,
-                url='/rent/',
-            )
+        # Inside the transaction, so a rolled-back write leaves no announcement
+        # behind. The bell inside Office's three days, the other owner's phone
+        # past them — `notify_dated_back` decides, from the date alone.
+        notify_dated_back(
+            f"₹{amount:,.0f} rent deposit filed under {when:%d %b %Y}",
+            when,
+            detail=("the position of every month since has moved"
+                    if earlier_month else "Rent deposit"),
+            actor=request.user,
+            url=reverse('rent_home') + f"?month={when:%Y-%m}",
+            object_type='RentDeposit',
+            object_id=deposit.pk,
+        )
     # THE MESSAGE NAMES THE MONTH when the entry did not land in this one. The
     # alert excludes the actor, so without this the person who just back-dated
     # something is told only "Recorded ₹5,000 deposited" — the one confirmation
     # that says nothing about the one thing that was unusual about it.
-    if is_too_far_back(when):
+    if earlier_month:
         messages.success(
             request,
             f"Recorded ₹{amount:,.0f} deposited, filed under {when:%B %Y}. "

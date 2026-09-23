@@ -945,7 +945,7 @@ class TheShopPageOwnPayFormCarriesTheDateTests(TestCase):
                       'the box defaults to today and is capped at it')
 
     def test_a_back_dated_payment_from_this_form_is_stored_on_that_day(self):
-        moved = self.today - timedelta(days=11)
+        moved = self.today - timedelta(days=2)    # inside Office's three days
 
         self.client.post(reverse('add_shop_payment', args=[self.shop.id]),
                          {'amount': '1000', 'payment_method': 'CASH',
@@ -1001,8 +1001,8 @@ class ASupplierPaymentIsDatedByTheDayTheMoneyMovedTests(TestCase):
             reverse('add_shop_payment', args=[self.shop.id]), data)
 
     def test_a_back_dated_payment_is_stored_on_the_day_it_was_typed_for(self):
-        """The whole point: the office keys last month's settlement this week."""
-        moved = self.today - timedelta(days=12)
+        """The whole point: a payment keyed a day or two after the money moved."""
+        moved = self.today - timedelta(days=3)    # inside Office's three days
         self._pay(date=moved.isoformat())
 
         payment = SupplierPayment.objects.get(supplier=self.shop)

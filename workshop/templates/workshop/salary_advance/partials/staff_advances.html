@@ -46,6 +46,15 @@
               month's pay.
             </span>
           </li>
+          {% elif adv.too_old %}
+          <li>
+            <span class="dropdown-item disabled adv-menu-locked" aria-disabled="true">
+              <i class="bi bi-lock-fill me-2"></i>Too old to delete here
+            </span>
+          </li>
+          <li>
+            <span class="adv-menu-why">Ask an owner to remove it.</span>
+          </li>
           {% else %}
           <li>
             {% comment %}

@@ -19,7 +19,7 @@ from ..models import (
     FLEET_UNSETTLED, FLEET_OWED,
 )
 from ..decorators import office_required, owner_required, is_owner
-from ..notifications import notify
+from ..notifications import notify, notify_dated_back
 from ..money import parse_money, fit_text
 from ..money_dates import posted_date, is_future, too_far_back, backdate_floor
 from .. import delete_window
@@ -416,8 +416,9 @@ def bulk_payer_pay(request, pk):
     # ⚠ AND HOW FAR BACK. These are the LARGEST single receipts the workshop
     # takes, and `cash_position()` cuts money-in by this date — so one filed
     # into a closed month moves a cash figure an owner has already read, with
-    # nothing on the page that re-reads it. Office is floored at the 1st of
-    # last month, the window a month is actually reconciled in.
+    # nothing on the page that re-reads it. Office is floored at
+    # `money_dates.BACKDATE_DAYS`; an owner may go further, and the other owner
+    # is told.
     blocked = too_far_back(pay_date, request.user, "A payment")
     if blocked:
         messages.error(request, blocked)
@@ -483,7 +484,7 @@ def bulk_payer_pay(request, pk):
         bulk_payer.save(update_fields=['advance_balance'])
 
         # Record history with full advance tracking (dict format for new records)
-        BulkPaymentHistory.objects.create(
+        history = BulkPaymentHistory.objects.create(
             bulk_payer=bulk_payer,
             amount=lump_sum,
             payment_method=payment_method,
@@ -495,6 +496,15 @@ def bulk_payer_pay(request, pk):
                 'advance_used': str(advance_used),
                 'advance_stored': str(new_advance),
             }),
+        )
+        notify_dated_back(
+            f"{bulk_payer.customer_name} · ₹{lump_sum:,.0f} payment filed under {pay_date:%d %b %Y}",
+            pay_date,
+            detail="Fleet payment",
+            actor=request.user,
+            url=reverse('bulk_payer_detail', args=[bulk_payer.pk]),
+            object_type='BulkPaymentHistory',
+            object_id=history.pk,
         )
 
     # Build descriptive success message

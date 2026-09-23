@@ -7,12 +7,50 @@ from django.urls import reverse
 from django.utils import timezone
 
 from ..models import JobCard, JobCardLabourItem, JobCardSpareItem
-from ..decorators import office_required
+from .. import delete_window
+from ..decorators import is_owner, office_required
 from ..invoice import build_invoice, whatsapp_chat_url
-from ..notifications import notify
+from ..notifications import notify, notify_changed
 from ..settlement import settlement_readiness
 from ..money import parse_money
 from ..return_to import safe_return
+
+
+def announce_high_discount(jobcard, total_bill, actor):
+    """
+    Raise HIGH_DISCOUNT when a settled walk-in's discount is past the line.
+
+    A part-paid bill books its shortfall as a discount (see CLAUDE.md — that is
+    the business rule, not a bug), which makes an unusually large discount the
+    signal worth surfacing rather than the payment itself. Same threshold as
+    `audit_high_discounts`, read from one constant so the audit page and the
+    alert can never disagree about what "large" means.
+
+    ONE implementation, two callers: settling a bill here, and an unlocked
+    edit of a settled card (`jobcard_edit`), which recomputes the discount off
+    the new total. The second used to claim, in its own docstring and in the
+    Unlock dialog, that a large jump "alerts both owners" — and raised nothing.
+    """
+    if not (jobcard.discount_amount and total_bill > 0):
+        return
+    if jobcard.discount_amount <= JobCard.HIGH_DISCOUNT_AMOUNT:
+        return
+    ratio = jobcard.discount_amount / total_bill
+    notify(
+        'HIGH_DISCOUNT',
+        # `:,.0f`, not the bare Decimal — that rendered "₹5500.00 off
+        # ₹20500.00", the only two figures in the whole feed printed without
+        # separators and with paise nobody asked for.
+        f"{jobcard.registration_number} — "
+        f"₹{jobcard.discount_amount:,.0f} discount given",
+        # The percentage is no longer the threshold, but it is still the
+        # context the figure is read against.
+        detail=f"{ratio:.0%} of the ₹{total_bill:,.0f} bill · {jobcard.bill_number}",
+        actor=actor,
+        url=reverse('invoice_view', args=[jobcard.pk]),
+        object_type='JOBCARD',
+        object_id=jobcard.pk,
+    )
 
 
 
@@ -75,6 +113,14 @@ def invoice_view(request, pk):
         # Screen only — the WhatsApp icon's chat link, or '' when the number on
         # the card is not a mobile. The template draws it for an Owner only.
         'whatsapp_url': whatsapp_chat_url(jobcard.customer_contact),
+        # Screen only — a PAID bill settled more than 24 hours ago is an
+        # owner's to re-settle, so Office is not offered a Settle Bill button
+        # that `update_bill_status` would refuse. The PAID chip already says
+        # where the bill stands.
+        'settle_past_window': (
+            jobcard.payment_status == 'PAID'
+            and not is_owner(request.user)
+            and delete_window.is_past_window(jobcard.paid_date)),
     })
     return render(request, 'workshop/invoice/invoice_template.html', context)
 
@@ -100,6 +146,26 @@ def update_bill_status(request, pk):
                 f"'{jobcard.bulk_payer.customer_name}' — settle it from that account's page, not here."
             )
             return redirect('invoice_view', pk=pk)
+
+        # ⚠ AN ALREADY-PAID BILL FOLLOWS THE 24-HOUR WINDOW, THE SAME AS ITS
+        # UNLOCK. Re-settling changes what was received — and so the discount
+        # and the Profit page's revenue — which is exactly what the Financial
+        # Lock guards on `jobcard_edit`. Without this, Settle Bill was a second
+        # door onto any paid bill of any age. Measured on `paid_date`, and
+        # asked BEFORE anything moves, "Complete & settle" included.
+        was_paid = jobcard.payment_status == 'PAID'
+        if was_paid:
+            stop = delete_window.refusal(
+                request.user, jobcard.paid_date,
+                f"{jobcard.registration_number}'s bill",
+                action='change', happened='settled')
+            if stop:
+                messages.error(request, stop)
+                return redirect('invoice_view', pk=pk)
+        # What the bill said before, for the settle time and the alerts below.
+        was_received = jobcard.received_amount or Decimal('0')
+        was_discount = jobcard.discount_amount or Decimal('0')
+        settled_at = jobcard.paid_date
 
         # One shared rule — see workshop/money.py, which every other typed
         # rupee amount already goes through. The old `try: Decimal(...)` here
@@ -153,7 +219,12 @@ def update_bill_status(request, pk):
         # Automated status and discount calculation
         if received > 0:
             jobcard.payment_status = 'PAID'
-            jobcard.paid_date = timezone.now()
+            # Stamped when the bill is FIRST settled, never on a re-settle:
+            # `paid_date` is what Paid Bills files the bill under, and a
+            # correction must not move an old bill to "Today" — nor restart
+            # the 24-hour window above.
+            if not (was_paid and settled_at):
+                jobcard.paid_date = timezone.now()
             if received > total_bill:
                 jobcard.discount_amount = Decimal('0')
                 messages.warning(request, f"Received amount (₹{received}) exceeds total bill (₹{total_bill}). Overpayment recorded.")
@@ -166,36 +237,28 @@ def update_bill_status(request, pk):
 
         jobcard.save()
 
-        # A part-paid bill books its shortfall as a discount (see CLAUDE.md —
-        # that is the business rule, not a bug), which makes an unusually large
-        # discount the signal worth surfacing rather than the payment itself.
-        # Same threshold as `audit_high_discounts`, read from one constant so the
-        # audit page and the alert can never disagree about what "large" means.
-        if jobcard.discount_amount and total_bill > 0:
-            if jobcard.discount_amount > JobCard.HIGH_DISCOUNT_AMOUNT:
-                ratio = jobcard.discount_amount / total_bill
-                notify(
-                    'HIGH_DISCOUNT',
-                    # The percentage stays in the body — it is not the threshold
-                    # any more, but it is still the context an owner reads the
-                    # figure against.
-                    # `:,.0f`, not the bare Decimal — that rendered
-                    # "₹5500.00 off ₹20500.00", the only two figures in the
-                    # whole feed printed without separators and with paise
-                    # nobody asked for.
-                    f"{jobcard.registration_number} — "
-                    f"₹{jobcard.discount_amount:,.0f} discount given",
-                    # The percentage is no longer the threshold, but it is
-                    # still the context the figure is read against.
-                    detail=(
-                        f"{ratio:.0%} of the ₹{total_bill:,.0f} bill · "
-                        f"{jobcard.bill_number}"
-                    ),
-                    actor=request.user,
-                    url=reverse('invoice_view', args=[jobcard.pk]),
-                    object_type='JOBCARD',
-                    object_id=jobcard.pk,
-                )
+        # A RE-SETTLED BILL IS ANNOUNCED — the bell inside Office's 24 hours,
+        # the other owner's phone past them (which only an owner can reach).
+        # A first settlement is not: taking the money is the ordinary act.
+        if was_paid and received != was_received:
+            notify_changed(
+                (f"{jobcard.registration_number} · settled at ₹{received:,.0f}"
+                 if received > 0 else
+                 f"{jobcard.registration_number} · payment taken off"),
+                settled_at,
+                detail=f"was ₹{was_received:,.0f} · {jobcard.bill_number}",
+                actor=request.user,
+                url=reverse('invoice_view', args=[jobcard.pk]),
+                object_type='JOBCARD',
+                object_id=jobcard.pk,
+            )
+
+        # Only when the discount GREW: a re-settle that leaves a large
+        # discount where it was — or shrinks it — is not news, and repeating
+        # a phone alert about a figure already reported is how they stop
+        # being read.
+        if jobcard.discount_amount > was_discount:
+            announce_high_discount(jobcard, total_bill, request.user)
 
         messages.success(request, f"Billing updated for {jobcard.registration_number}")
     

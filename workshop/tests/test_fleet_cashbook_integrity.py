@@ -418,7 +418,7 @@ class AFleetPaymentIsDatedByTheDayTheMoneyMovedTests(FleetLedgerTestCase):
     def test_a_back_dated_payment_is_stored_under_the_day_it_moved(self):
         payer = BulkPayer.objects.create(customer_name='Acme Fleet')
         self.assign(payer, self.make_card('KL01AAA', 5000))
-        moved = timezone.localdate() - timedelta(days=9)
+        moved = timezone.localdate() - timedelta(days=2)   # inside Office's three days
 
         self.pay_on(payer, 5000, moved)
 
@@ -467,7 +467,7 @@ class AFleetPaymentIsDatedByTheDayTheMoneyMovedTests(FleetLedgerTestCase):
         self.assign(payer, self.make_card('KL01AAA', 5000))
         self.assign(payer, self.make_card('KL01BBB', 5000))
 
-        old = timezone.localdate() - timedelta(days=20)
+        old = timezone.localdate() - timedelta(days=3)     # inside Office's three days
         self.pay_on(payer, 3000, timezone.localdate())   # keyed first, moved LATER
         self.pay_on(payer, 3000, old)            # keyed second, moved EARLIER
 
@@ -621,14 +621,11 @@ class CashbookEntriesAreDatedByTheDayTheMoneyMovedTests(TestCase):
         self.assertIn('name="date"', page)
 
     def test_an_entry_is_stored_on_the_posted_date(self):
-        # ⚠ THE 2nd OF LAST MONTH, NOT `today - 40 days`. It is inside the
-        # Office back-date floor (the 1st of last month), and this test signs
-        # in as Office. `today - 40` was also flaky on its own terms: it lands
-        # in last month for most of a month and in the month BEFORE it near the
-        # start, so what the test meant depended on the day it ran. The point —
-        # the POSTED date is stored, and the Profit page files it under the
-        # month it belongs to — is untouched.
-        backdated = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=2)
+        # ⚠ TWO DAYS BACK: inside the Office back-date floor (three days since
+        # 2026-09-22), and this test signs in as Office. The point — the
+        # POSTED date is stored, and the Profit page files it under the day it
+        # belongs to — is untouched.
+        backdated = timezone.localdate() - timedelta(days=2)
         self.client.post(reverse('manage_add_cashbook_entry'), {
             'entry_type': 'EXPENSE', 'category': 'Electricity',
             'amount': '5000', 'payment_method': 'CASH', 'date': str(backdated),

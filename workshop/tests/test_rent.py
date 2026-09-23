@@ -40,7 +40,7 @@ from django.utils import timezone
 
 from workshop import analysis_engine as engine
 from workshop import rent as rent_calc
-from workshop.delete_window import OFFICE_DELETE_WINDOW_DAYS
+from workshop.delete_window import OFFICE_WINDOW_HOURS
 from workshop.money_dates import backdate_floor, is_too_far_back
 from workshop.models import (CashbookEntry, DeletionLog, FailedAttempt,
                              Notification, OwnerWithdrawal, RentDeposit,
@@ -665,11 +665,12 @@ class WhatTheFormRefusesTests(_Signed):
         self.assertEqual(RentDeposit.objects.count(), 0)
 
     def test_a_deposit_can_be_back_dated_because_the_book_is_keyed_late(self):
-        week_ago = (timezone.localdate() - timedelta(days=7)).isoformat()
+        """Up to Office's three days — the limit itself is allowed. Older is an
+        owner's, pinned in `HowFarBackMoneyMayBeFiledTests`."""
+        three_back = timezone.localdate() - timedelta(days=3)
         self.as_(self.office).post(
-            reverse('rent_deposit_add'), {'amount': '2000', 'date': week_ago})
-        self.assertEqual(RentDeposit.objects.get().date,
-                         timezone.localdate() - timedelta(days=7))
+            reverse('rent_deposit_add'), {'amount': '2000', 'date': three_back.isoformat()})
+        self.assertEqual(RentDeposit.objects.get().date, three_back)
 
     def test_the_last_rent_on_file_cannot_be_removed(self):
         """With no rate at all every figure on the page silently becomes zero."""
@@ -699,10 +700,9 @@ class HowFarBackMoneyMayBeFiledTests(_Signed):
     position of every month since, on rows nobody scrolls to, and reports
     nothing at all.
 
-    The floor is a CALENDAR MONTH, never a day count. A fixed "14 days" breaks
-    at exactly the moment the rule exists for: the office reconciles last month
-    against the collector's book in the first days of this one, so a gap found
-    on the 3rd may belong to the 5th of last month.
+    The floor is THREE DAYS since 2026-09-22 (the owner's decision); it was the
+    1st of last month, which let Office file into last month for the whole of
+    this one. A late catch-up is an owner's now, and the other owner is told.
     """
 
     def setUp(self):
@@ -715,7 +715,7 @@ class HowFarBackMoneyMayBeFiledTests(_Signed):
         return self.as_(user).post(
             reverse('rent_deposit_add'), {'amount': '2000', 'date': when.isoformat()})
 
-    def test_office_may_reach_back_to_the_first_of_last_month(self):
+    def test_office_may_reach_back_three_days(self):
         self.post(self.office, self.floor)
         self.assertEqual(RentDeposit.objects.count(), 1)
 
@@ -729,13 +729,12 @@ class HowFarBackMoneyMayBeFiledTests(_Signed):
         self.assertIn(f"{self.floor.day} {self.floor:%B %Y}", said)
         self.assertIn("Ask an owner", said)
 
-    def test_the_window_holds_for_the_WHOLE_month_not_a_rolling_count(self):
-        """On the 28th, the 1st of last month must still be reachable — a day
-        count would have closed it weeks earlier."""
+    def test_last_month_is_closed_to_office_by_the_28th(self):
+        """The rule this replaced kept last month open to Office all month."""
         late = date(2026, 9, 28)
-        self.assertEqual(backdate_floor(late), date(2026, 8, 1))
-        self.assertFalse(is_too_far_back(date(2026, 8, 1), today=late))
-        self.assertTrue(is_too_far_back(date(2026, 7, 31), today=late))
+        self.assertEqual(backdate_floor(late), date(2026, 9, 25))
+        self.assertTrue(is_too_far_back(date(2026, 8, 1), today=late))
+        self.assertFalse(is_too_far_back(date(2026, 9, 25), today=late))
 
     def test_an_owner_is_not_refused_because_the_opening_entry_needs_it(self):
         """A go-live opening position is a deposit dated before the ledger even
@@ -777,22 +776,26 @@ class AnOwnerCannotDoItSILENTLYTests(_Signed):
         old = backdate_floor(timezone.localdate()) - timedelta(days=90)
         self.as_(self.owner).post(
             reverse('rent_deposit_add'), {'amount': '5000', 'date': old.isoformat()})
-        rows = self.raised('RENT_BACKDATED')
+        rows = self.raised('DATED_BACK_PAST_LIMIT')
         self.assertEqual([r.recipient for r in rows], [self.other])
         self.assertIn('₹5,000', rows[0].body)
-        self.assertIn(f"{old:%B %Y}", rows[0].body)
+        self.assertIn(f"{old:%d %b %Y}", rows[0].body)
 
     def test_an_ordinary_deposit_raises_nothing(self):
         """Most days, every day. An alert here would be the noise that stops
         the ones that matter from being read."""
         self.as_(self.owner).post(reverse('rent_deposit_add'), {'amount': '2000'})
-        self.assertEqual(self.raised('RENT_BACKDATED').count(), 0)
+        self.assertFalse(Notification.objects.filter(
+            event__in=('DATED_BACK', 'DATED_BACK_PAST_LIMIT')).exists())
 
-    def test_office_recording_inside_the_window_raises_nothing_either(self):
+    def test_office_dating_back_inside_the_window_reaches_only_the_bell(self):
+        """Anything Office is allowed to do goes to the bell, never a phone —
+        yesterday's handover typed this morning is ordinary work."""
         self.as_(self.office).post(
             reverse('rent_deposit_add'),
             {'amount': '2000', 'date': backdate_floor(timezone.localdate()).isoformat()})
-        self.assertEqual(self.raised('RENT_BACKDATED').count(), 0)
+        self.assertTrue(self.raised('DATED_BACK').exists())
+        self.assertEqual(self.raised('DATED_BACK_PAST_LIMIT').count(), 0)
 
     def test_every_rent_change_is_announced_not_only_a_backdated_one(self):
         """What the premises cost is what every figure here is measured
@@ -832,7 +835,7 @@ class AnOwnerCannotDoItSILENTLYTests(_Signed):
         self.assertFalse(Notification.objects.filter(recipient=self.owner).exists())
 
     def test_both_new_events_are_critical_so_they_reach_a_phone(self):
-        for key in ('RENT_RATE_SET', 'RENT_BACKDATED'):
+        for key in ('RENT_RATE_SET', 'DATED_BACK_PAST_LIMIT'):
             self.assertEqual(EVENTS[key].severity, CRITICAL, key)
 
     def test_the_row_ITSELF_says_it_was_keyed_late_and_that_is_permanent(self):
@@ -883,7 +886,7 @@ class AnOwnerCannotDoItSILENTLYTests(_Signed):
         old = backdate_floor(timezone.localdate()) - timedelta(days=90)
         self.as_(self.owner).post(
             reverse('rent_deposit_add'), {'amount': '5000', 'date': old.isoformat()})
-        row = self.raised('RENT_BACKDATED').first()
+        row = self.raised('DATED_BACK_PAST_LIMIT').first()
         self.assertEqual(self.as_(self.other).get(row.url).status_code, 200)
 
 
@@ -904,7 +907,7 @@ class DeletingADepositTests(_Signed):
         self.assertEqual(log.amount, D('2000'))
 
     def test_office_is_refused_past_the_window_and_an_owner_is_not(self):
-        _age(self.entry, OFFICE_DELETE_WINDOW_DAYS + 1)
+        _age(self.entry, OFFICE_WINDOW_HOURS // 24 + 1)   # past the 24 hours
         self.as_(self.office).post(reverse('rent_deposit_delete', args=[self.entry.pk]))
         self.assertEqual(RentDeposit.objects.count(), 1)
         self.as_(self.owner).post(reverse('rent_deposit_delete', args=[self.entry.pk]))
@@ -1474,7 +1477,7 @@ class TheSameHandoverKeyedTwiceTests(_Signed):
         today = timezone.localdate()
         self.month = today.replace(day=1)
         _rate(today.year, today.month, '35000')
-        self.taken = self.month
+        self.taken = today              # inside the three-day window the counts cover
         RentDeposit.objects.create(date=self.taken, amount=D('2000'))
 
     def counts(self):
@@ -1487,7 +1490,7 @@ class TheSameHandoverKeyedTwiceTests(_Signed):
         """Absent and zero mean the same thing to the browser, and absent is
         the smaller payload — a month of empty days would otherwise ride over
         on every page load."""
-        empty = (self.month + timedelta(days=1)).isoformat()
+        empty = (self.taken - timedelta(days=1)).isoformat()
         self.assertNotIn(empty, self.counts())
 
     def test_it_counts_every_deposit_of_that_day_not_just_the_first(self):
@@ -1543,7 +1546,7 @@ class TheSameHandoverKeyedTwiceTests(_Signed):
         # that broke the day both questions moved from `window.confirm()` into
         # the app's own confirmation card and were reworded — the rule was
         # untouched, only the words it was pinned to.
-        self.assertLess(script.index('File into a closed month?'),
+        self.assertLess(script.index('Date it this far back?'),
                         script.index('Another one for '))
 
 

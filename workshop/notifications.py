@@ -40,7 +40,9 @@ from typing import NamedTuple
 from django.contrib.auth.models import User
 from django.db.models import Q
 
+from .delete_window import OFFICE_WINDOW_HOURS
 from .models import Notification
+from .money_dates import BACKDATE_DAYS
 
 logger = logging.getLogger(__name__)
 
@@ -149,36 +151,86 @@ EVENTS = {
     # OTHER owner learning what was done — which with two owners is real
     # corroboration rather than somebody being told about themselves.
     #
-    # Volume is what keeps them safe at CRITICAL, the same argument LOGIN
-    # already rests on: a rent changes about once a YEAR, and a deposit filed
-    # past the Office floor is a go-live opening entry or a rare correction.
-    # Two pushes a year between them.
-    #
-    # They stay SPLIT rather than becoming one "rent history changed", because
-    # the bodies are different facts with different remedies — one says what
-    # the premises now cost, the other says money was filed into a closed
-    # month — and a title covering both would have to be vague enough to say
-    # nothing. Same reasoning that keeps LOGIN and STAFF_LOGIN apart.
+    # Volume is what keeps it safe at CRITICAL, the same argument LOGIN already
+    # rests on: a rent changes about once a YEAR.
     'RENT_RATE_SET':    Event("Rent changed",        CRITICAL, AUDIENCE_OWNERS, 'bi-building-gear'),
-    'RENT_BACKDATED':   Event("Deposit back-dated",  CRITICAL, AUDIENCE_OWNERS, 'bi-calendar-x'),
     'ACCOUNT_ARCHIVED': Event("Account archived",    INFO,     AUDIENCE_OWNERS, 'bi-archive-fill'),
     'SALARY_ADVANCE':   Event("Salary advance",      INFO,     AUDIENCE_OWNERS, 'bi-cash-coin'),
     'SALARY_SETTLED':   Event("Salary settled",      INFO,     AUDIENCE_OWNERS, 'bi-cash-stack'),
 
-    # THE DELETE BESIDE IT HAS BEEN LOGGED SINCE DAY ONE AND THE EDIT WAS
-    # SILENT. `edit_cashbook_entry` can retype a Rs 50,000 expense as Rs 5, or
-    # move it into a month the Profit page has already been read against, and
-    # nothing said so - the Cashbook is the one place a free-text amount
-    # reaches owner reporting with no second pair of eyes.
+    # ⚠ MONEY MOVED IN TIME OR RETYPED — TWO PAIRS, ONE RULE FOR WHICH TIER
+    # (the owner's decision, 2026-09-22): anything OFFICE IS ALLOWED TO DO goes
+    # to the bell, whoever did it; anything ONLY AN OWNER CAN DO goes to the
+    # other owner's phone. Every change is recorded, and only the unusual ones
+    # interrupt.
     #
-    # INFO, DELIBERATELY. This is the most frequently keyed money screen in the
-    # app, and a phone that buzzes for routine bookkeeping is how the thirteen
-    # CRITICAL events stop being read. It lands in the feed, where an owner
-    # meets it next time they look - and unlike the rent case, the actor here
-    # is OFFICE and the audience is OWNERS, so excluding the actor costs this
-    # event nothing.
-    'CASHBOOK_EDITED':  Event("Cashbook entry changed", INFO,   AUDIENCE_OWNERS, 'bi-pencil-square'),
+    # The tier is decided by the RECORD, never by the person: a date inside
+    # `money_dates.BACKDATE_DAYS` is Office's reach, a row inside
+    # `delete_window.OFFICE_WINDOW_HOURS` is Office's reach. Since Office is
+    # refused past both, "past the limit" always means an owner did it — and
+    # the same constant that refuses Office is the one that raises the push,
+    # so the rule enforced and the rule announced cannot drift apart.
+    #
+    # Call these through `notify_dated_back()` / `notify_changed()` below,
+    # never directly: those are where the tier is decided.
+    #
+    # They replace RENT_BACKDATED (a phone alert, rent only) and
+    # CASHBOOK_EDITED (a bell note, Cashbook only) — one section each had the
+    # rule, and every other money screen had none.
+    'DATED_BACK':       Event("Dated back",          INFO,     AUDIENCE_OWNERS, 'bi-calendar-minus'),
+    'DATED_BACK_PAST_LIMIT':
+        Event(f"Dated past the {BACKDATE_DAYS}-day limit", CRITICAL, AUDIENCE_OWNERS, 'bi-calendar-x'),
+    'RECORD_CHANGED':   Event("Record changed",      INFO,     AUDIENCE_OWNERS, 'bi-pencil-square'),
+    'OLD_RECORD_CHANGED':
+        Event(f"Changed after {OFFICE_WINDOW_HOURS} hours", CRITICAL, AUDIENCE_OWNERS, 'bi-pencil-fill'),
+
+    # AN OWNER TAKING MONEY OUT WAS SILENT. Deleting a withdrawal has been
+    # announced from the start (through `DeletionLog.record`), recording one
+    # never was — so the other owner learned what their partner took only by
+    # opening the page. CRITICAL because the section is owner-only end to end,
+    # which puts it on the "only an owner can do it" side of the rule above,
+    # and it happens a handful of times a month.
+    'WITHDRAWAL_ADDED': Event("Owner withdrawal",    CRITICAL, AUDIENCE_OWNERS, 'bi-wallet2'),
 }
+
+
+def notify_dated_back(body, when, *, detail='', actor=None, url='',
+                      object_type='', object_id=None):
+    """
+    Announce money filed under a day before today. Returns rows written.
+
+    Nothing for today's date. Inside Office's reach → the bell; past it (which
+    only an owner can do) → the other owner's phone. The date is the only
+    input to the tier, so a caller cannot choose it.
+    """
+    from django.utils import timezone
+    from .money_dates import is_too_far_back
+
+    if when >= timezone.localdate():
+        return 0
+    event = 'DATED_BACK_PAST_LIMIT' if is_too_far_back(when) else 'DATED_BACK'
+    return notify(event, body, detail=detail, actor=actor, url=url,
+                  object_type=object_type, object_id=object_id)
+
+
+def notify_changed(body, stamp, *, moved_to=None, detail='', actor=None, url='',
+                   object_type='', object_id=None):
+    """
+    Announce an edit that moved money on a saved record. Returns rows written.
+
+    `stamp` is what `delete_window` measures for that record — `created_at`, or
+    `paid_date` for a settled job card. `moved_to` is the record's new money
+    date when the edit changed it. Inside Office's reach → the bell. A row past
+    the window, or a date moved past the back-date limit — both of which only
+    an owner can do → the other owner's phone.
+    """
+    from .delete_window import is_past_window
+    from .money_dates import is_too_far_back
+
+    past = is_past_window(stamp) or (moved_to is not None and is_too_far_back(moved_to))
+    event = 'OLD_RECORD_CHANGED' if past else 'RECORD_CHANGED'
+    return notify(event, body, detail=detail, actor=actor, url=url,
+                  object_type=object_type, object_id=object_id)
 
 # Fallback for a row written before its event was renamed, or by a key that has
 # since been removed from the catalogue. A notification is kept for a fortnight

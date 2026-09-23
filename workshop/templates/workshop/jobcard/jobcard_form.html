@@ -1555,7 +1555,14 @@ grey".
                         <i class="bi bi-shield-lock-fill me-1"></i> FINANCIAL LOCK ACTIVE
                         {% if jobcard.payment_status == 'BULK_PAID' %}<span class="fw-normal">— Fleet Paid</span>{% endif %}
                     </div>
-                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                    {% if unlock_past_window %}
+                    {% comment %}
+                    Settled more than 24 hours ago: Office cannot unlock it, and
+                    the banner says who can rather than offering a button that
+                    jobcard_edit would refuse.
+                    {% endcomment %}
+                    <span class="small fw-semibold text-end">Settled over 24 hours ago — ask an owner to change it</span>
+                    {% elif request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                     <button type="button" class="btn btn-sm btn-danger py-0 fw-bold" onclick="toggleRecordLock(true)" style="font-size: 0.75rem;">
                         UNLOCK RECORD
                     </button>
@@ -3086,7 +3093,7 @@ is now true, and the column width is unchanged at every breakpoint.
                 // the one box that cannot be designed at all.
                 wsConfirm({
                     title: 'Unlock a settled bill?',
-                    text: 'This card is settled. Unlocking lets its figures be changed, and if the total moves the payment is put right to match it — a large gap alerts both owners.',
+                    text: 'This card is settled. Unlocking lets its figures be changed, and if the total moves the payment is put right to match it — and the owners are told.',
                     icon: 'bi-unlock-fill',
                     theme: 'danger',
                     ok: 'Unlock it'
@@ -3142,7 +3149,9 @@ is now true, and the column width is unchanged at every breakpoint.
                 {% endcomment %}
                 wsAlert({
                     title: 'This card is locked',
-                    {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
+                    {% if unlock_past_window %}
+                    text: 'It was settled more than 24 hours ago, so only an owner can change it.',
+                    {% elif request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                     text: 'It is settled, so its figures cannot be changed until the lock is released. Use UNLOCK RECORD at the top of the card.',
                     {% else %}
                     text: 'This card is closed, so it cannot be changed here. Ask the office if something on it needs correcting.',

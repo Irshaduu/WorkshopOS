@@ -1,8 +1,8 @@
 """
-How long a money row stays deletable by OFFICE.
+How long a money row stays changeable by OFFICE — edited or deleted.
 
 One question, one implementation: *has this record been in the books long
-enough that removing it should be an owner's decision?*
+enough that changing or removing it should be an owner's decision?*
 
 Every permanent delete in this app already funnels through
 `DeletionLog.record()`, which stores who, when, what and a full snapshot and
@@ -16,112 +16,100 @@ keyed this morning.
 
 Those are two different acts and the system treated them identically:
 
-  * deleting something recorded an hour ago is a CORRECTION — frequent, cheap,
+  * changing something recorded an hour ago is a CORRECTION — frequent, cheap,
     and the money is still fresh in everybody's head;
-  * deleting something recorded six weeks ago is ANOMALOUS — that period has
-    been reported on, an owner has read the Profit page against it, and a
-    shop's balance was settled on it.
+  * changing something recorded last week is ANOMALOUS — that period may have
+    been reported on, and a shop's balance may have been settled on it.
 
 So Office keeps the first and an owner takes the second. It is an ESCALATION,
 never a wall: no new mechanism, no approval queue, and the owners are already
-the people the CRITICAL alert goes to.
+the people the alerts go to.
 
-⚠ **THE WINDOW IS MEASURED ON `created_at`, NEVER ON THE MONEY DATE, and that
-is what stops this feature breaking the workflow it protects.** Every model it
-covers carries both columns, and the two answer different questions.
-`date` / `bill_date` is when the money moved; `created_at` is when somebody
-keyed the row. Back-dating is NORMAL here — a Supplies Shop delivers and keeps
-its own book, and the bill is only entered when the collector comes at month
-end; the Cashbook, the spare-shop and the fleet payment forms all have a date
-box for exactly this. Measured on the money date, Office would key a bill
-back-dated six weeks, mistype it, and be refused permission to delete their own
-typo thirty seconds later — the precise case this exists to keep easy.
-`created_at` asks the right question: how long has this been sitting in the
-books. It is also why those columns were kept when the money dates landed.
+⚠ **24 HOURS, AND IT COVERS EDITS AS WELL AS DELETES — both reverse what this
+file said until 2026-09-22** (the owner's decision). It was 7 calendar days, and
+for deletes only. That left the Cashbook's EDIT as a quiet delete: Office could
+not remove a three-week-old ₹50,000 entry, but could retype it as ₹500, which
+only reached the bell. One window for both doors closes that, and 24 hours is
+long enough for "I typed it wrong" and short enough that nothing older moves
+without an owner.
 
-⚠ **A REFUSAL NAMES THE ROUTE, and that is why the button is still offered.**
-The rule this codebase already follows for a frozen salary advance is that "a
-lock says *you cannot* without saying why, and why is the only part anybody can
-act on". Hiding the control would say something false as well — that the record
-cannot be deleted at all, when an owner can delete it. So the control stays,
-the POST is refused, and the message says how old the row is and who to ask.
+⚠ **THE WINDOW IS MEASURED ON WHEN THE ROW WAS TYPED (`created_at`), NEVER ON
+THE MONEY DATE**, and that is what stops this breaking the workflow it
+protects. `date` / `bill_date` is when the money moved; `created_at` is when
+somebody keyed the row. A Supplies Shop bill is keyed when the collector comes
+and dated to the delivery day; measured on that date, Office would type it,
+mistype it, and be refused their own typo thirty seconds later. The one caller
+that passes something else is the settled job card, which passes `paid_date` —
+the moment the bill was settled is when it entered the books as money.
+
+⚠ **A REFUSAL NAMES THE ROUTE.** The rule this codebase already follows for a
+frozen salary advance is that "a lock says *you cannot* without saying why, and
+why is the only part anybody can act on". So the message says how old the row
+is and who to ask, and a list that can tell in advance (`is_past_window`) says
+so in the row's own menu rather than offering a button that will be refused.
 
 Deliberately NOT covered:
 
   * **`jobcard_delete`** — already guarded: a card carrying spares, labour or a
     received payment cannot be deleted at all, so a deletable card holds no
-    money and there is nothing here to protect. A window would be friction
-    buying nothing.
+    money and there is nothing here to protect.
+  * **An unsettled job card** — work in progress is edited over days.
+  * **Filling in the price of a part Floor recorded without one** — Office does
+    that days later by design; it is the hand-off, not a correction.
   * **`salary_payment_delete`** — `@owner_required` already.
   * **Housekeeping deletes** (master data, unassigned spares) — no money moves,
     and auto-learn restores a master-list name the next time somebody types it.
 """
 
+from datetime import timedelta
+
 from django.utils import timezone
 
 from .decorators import is_owner
 
-#: How many days back Office may still delete a money row it recorded.
-#: Recorded today is 0 days old, so a row stays deletable through its 7th day
-#: and is refused on the 8th. Generous for the "I keyed it wrong" case, which
-#: is caught in minutes or the next morning; a correction found at month-end
-#: reconciliation lands past it, and that is the case worth an owner's eyes,
-#: because it changes a period they have already read.
-#:
-#: One constant, read by the guard and by every message it writes, so the
-#: number on screen can never disagree with the number enforced.
-OFFICE_DELETE_WINDOW_DAYS = 7
+#: How many hours after a money row is recorded Office may still change or
+#: delete it. One constant, read by the guard and by every message it writes,
+#: so the number on screen can never disagree with the number enforced.
+OFFICE_WINDOW_HOURS = 24
 
 
-def age_in_days(created_at):
+def is_past_window(stamp):
     """
-    How many CALENDAR days ago this row was recorded, in the workshop's own
-    timezone.
+    Is this row older than Office may change? — the age rule, with no user.
 
-    `timezone.localtime()` rather than a bare `.date()`: the server can run in
-    UTC while the business runs in IST, so a row keyed at 01:00 on a Kerala
-    morning is stored under the previous UTC day and would read a day older
-    than it is.
+    Split out so a list can ask it per row without holding a user: the age of a
+    row is not a question about a person. A missing stamp is never "too old" —
+    every column this covers is `auto_now_add` or set on settlement, and
+    guessing about a row whose age is unknowable would refuse on no evidence.
     """
-    return (timezone.localdate() - timezone.localtime(created_at).date()).days
+    return (stamp is not None
+            and timezone.now() - stamp > timedelta(hours=OFFICE_WINDOW_HOURS))
 
 
-def is_past_window(created_at):
+def _how_long_ago(stamp):
+    """'30 hours ago' inside two days, '5 days ago' after — never '0 days'."""
+    hours = int((timezone.now() - stamp).total_seconds() // 3600)
+    if hours < 48:
+        return f"{hours} hours ago"
+    return f"{hours // 24} days ago"
+
+
+def refusal(user, stamp, what, action='delete', happened='recorded'):
     """
-    Is this row older than Office may delete? — the age rule, with no user.
+    The reason this user may not change this row, or **None** if they may.
 
-    ⚠ SPLIT OUT SO A LIST CAN ASK IT PER ROW WITHOUT HOLDING A USER.
-    `refusal()` below calls `is_owner()`, which used to be a fresh
-    `user.groups.filter(...)` every time — so a view annotating "may this be
-    deleted?" onto sixty rows issued sixty extra queries. `role_names` caches
-    per request now, so that particular bill is gone; **the split stays**,
-    because the age of a row is not a question about a person and a list should
-    not need one to ask it. One implementation of the age rule either way, which
-    is the point of it living here.
+    `what` names the record in the message ("This ₹15,000 payment"), `action`
+    is what they tried ('delete' or 'change'), and `happened` is what the stamp
+    measures ('recorded', or 'settled' for a job card) — so one sentence shape
+    serves every call site and no view writes its own.
+
+    An owner is never refused.
     """
-    return created_at is not None and age_in_days(created_at) > OFFICE_DELETE_WINDOW_DAYS
-
-
-def refusal(user, created_at, what):
-    """
-    The reason this user may not delete this row, or **None** if they may.
-
-    `what` names the record in the message ("this ₹15,000 payment"), so one
-    sentence shape serves every call site and no view writes its own.
-
-    An owner is never refused. A missing `created_at` is never refused either —
-    every column this covers is `auto_now_add`, so it cannot legitimately be
-    None, and guessing "too old" about a row whose age is unknowable would
-    block a delete on no evidence.
-    """
-    if is_owner(user) or not is_past_window(created_at):
+    if is_owner(user) or not is_past_window(stamp):
         return None
 
-    days = age_in_days(created_at)
-
-    when = "yesterday" if days == 1 else f"{days} days ago"
     return (
-        f"{what} was recorded {when}. Office can delete something recorded in "
-        f"the last {OFFICE_DELETE_WINDOW_DAYS} days — ask an owner to remove "
-        f"this one."
+        f"{what} was {happened} {_how_long_ago(stamp)}. Office can change or "
+        f"delete money only within {OFFICE_WINDOW_HOURS} hours — ask an owner "
+        f"to {action} this one."
     )

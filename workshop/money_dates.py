@@ -18,7 +18,7 @@ Pure functions over strings and dates. The callers hold the messages, because
 what a refused date should *say* depends on the ledger it was typed into.
 """
 
-from datetime import date as _date
+from datetime import date as _date, timedelta
 
 from django.utils import timezone
 
@@ -70,35 +70,38 @@ def is_future(value):
 # reads the period it lands in, while one dated three years back rewrites a
 # month nobody scrolls to and reports nothing.
 #
-# ⚠ IT IS A CALENDAR MONTH, NEVER A DAY COUNT, and that is the whole design.
-# A fixed "14 days" breaks at exactly the moment the feature exists for: the
-# office reconciles LAST month against the collector's book in the first days
-# of this one, so a gap found on 3 September may belong to 5 August. A day
-# count refuses that correction; the month boundary is the rhythm the work
-# actually follows. Same lesson `delete_window` records for measuring on
-# `created_at` rather than the money date — a rule that cuts across the month
-# end fights the workflow it is meant to protect.
+# ⚠ IT IS THREE DAYS, AND THAT REVERSES WHAT THIS FILE SAID UNTIL 2026-09-22
+# (the owner's decision). It read "a calendar month, never a day count": the
+# floor was the 1st of LAST month, on the reasoning that the office reconciles
+# last month in the first days of this one and a day count would refuse that
+# correction. True, and the price was that Office could quietly file money
+# into last month for the whole of this one — after the owners had read that
+# month's profit and decided on it. The owners' answer is that the office
+# enters money on the day it moves, and the rare catch-up is theirs to do:
+# "this limitation stops users from moving entries to another time".
+#
+# So a late correction is not refused, it is ESCALATED — an owner records it,
+# and the other owner is told. Three days covers yesterday's receipt typed this
+# morning and a Saturday found on Monday.
 #
 # ⚠ IT BINDS OFFICE, NOT OWNERS — the escalation `delete_window` already uses,
 # not a wall. Owners need the exception for real reasons: a go-live opening
 # position is a deposit dated before the ledger even starts, and an audit
 # finding can be older still. What stops an owner's mistake is not a refusal,
-# it is that the act cannot happen SILENTLY: the caller raises a CRITICAL
-# notification to the other owner using this same floor as its trigger, so one
-# constant decides both who is refused and what is announced.
+# it is that the act cannot happen SILENTLY: `notifications.notify_dated_back`
+# raises a CRITICAL notification to the other owner using this same floor as
+# its trigger, so one constant decides both who is refused and what is
+# announced.
 
-#: How many whole calendar months back Office may file money. 1 means "the 1st
-#: of last month onward", so the window is the whole of this month plus the
-#: whole of the last — generous during the days a month is being reconciled and
-#: closed everywhere else.
-BACKDATE_MONTHS = 1
+#: How many days back Office may date money. 3 means today and the three days
+#: before it: on the 22nd, the 19th is the earliest.
+BACKDATE_DAYS = 3
 
 
 def backdate_floor(today=None):
-    """The earliest money date Office may file: the 1st of `BACKDATE_MONTHS` months ago."""
+    """The earliest money date Office may file: `BACKDATE_DAYS` days before today."""
     today = today or timezone.localdate()
-    total = today.year * 12 + (today.month - 1) - BACKDATE_MONTHS
-    return _date(total // 12, total % 12 + 1, 1)
+    return today - timedelta(days=BACKDATE_DAYS)
 
 
 def is_too_far_back(value, today=None):
@@ -128,6 +131,6 @@ def too_far_back(value, user, what, today=None):
     # platform-specific (glibc vs MSVC) and this codebase is developed on
     # Windows and deployed on Linux, so one of the two would print "01 August".
     floor = backdate_floor(today)
-    return (f"{what} can only be dated back to "
-            f"{floor.day} {floor:%B %Y}. "
+    return (f"{what} can only be dated up to {BACKDATE_DAYS} days back — "
+            f"{floor.day} {floor:%B %Y} at the earliest. "
             f"Ask an owner to record one older than that.")

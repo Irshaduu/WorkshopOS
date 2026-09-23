@@ -578,19 +578,13 @@ class APaymentIsDatedByTheDayTheMoneyMovedTests(SpareFlowBase):
 
     def test_a_payment_is_stored_on_the_posted_date(self):
         """
-        ⚠ THE DATE IS THE 2nd OF LAST MONTH, NOT `today - 40 days`, and the
-        change is two fixes rather than one.
-
-        It is inside the Office back-date floor, which is the 1st of last
-        month — a payment older than that is an owner's call now, and this test
-        signs in as Office. And the old form was FLAKY on its own terms: 40
-        days back lands in last month for most of a month and in the month
-        BEFORE it near the start, so the test's meaning depended on the day it
-        ran. Anchoring to a month boundary makes it deterministic, and the
-        point it proves — the POSTED date is stored, not today — is untouched.
+        ⚠ TWO DAYS BACK: inside the Office back-date floor (three days since
+        2026-09-22) — a payment older than that is an owner's call, and this
+        test signs in as Office. The point it proves — the POSTED date is
+        stored, not today — is untouched.
         """
         self._owing_spare()
-        backdated = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=2)
+        backdated = timezone.localdate() - timedelta(days=2)
         self._pay(date=str(backdated))
         self.assertEqual(SpareShopPayment.objects.get().date, backdated)
 
@@ -616,10 +610,16 @@ class APaymentIsDatedByTheDayTheMoneyMovedTests(SpareFlowBase):
         today has to leave the This Month window and appear in Last Month —
         under `created_at` it did the exact opposite, on the one screen that
         reports it.
+
+        ⚠ Built on the model, not posted: last month is past Office's
+        three-day floor for most of any month, and this test is about what the
+        PAGE reads, not the form's policy (`test_backdate_floor.py`).
         """
         self._owing_spare()
         last_month_day = timezone.localdate().replace(day=1) - timedelta(days=1)
-        self._pay(date=str(last_month_day))
+        SpareShopPayment.objects.create(
+            shop=self.shop, amount=D('1000'), payment_method='CASH', date=last_month_day)
+        self.shop.update_totals()
 
         url = reverse('spare_shop_detail', args=[self.shop.pk])
         this_month = self.client.get(url, {'filter': 'this_month'})
@@ -660,7 +660,7 @@ class APaymentIsDatedByTheDayTheMoneyMovedTests(SpareFlowBase):
         payment entered second still sorts under the one it precedes."""
         self._owing_spare()
         recent = timezone.localdate() - timedelta(days=2)
-        older = timezone.localdate() - timedelta(days=30)
+        older = timezone.localdate() - timedelta(days=3)    # inside Office's three days
         self._pay(lump_sum='1000', date=str(recent))
         self._pay(lump_sum='2000', date=str(older))  # entered LAST, dated FIRST
         self.assertEqual([p.amount for p in SpareShopPayment.objects.all()],
@@ -714,7 +714,7 @@ class BothLedgersDateMoneyByOneRuleTests(TestCase):
         return payment.date if payment else None
 
     def test_both_read_a_good_date(self):
-        wanted = timezone.localdate() - timedelta(days=17)
+        wanted = timezone.localdate() - timedelta(days=3)   # inside Office's three days
         self.assertEqual(self._add_cashbook(str(wanted)), wanted)
         self.assertEqual(self._add_payment(str(wanted)), wanted)
 

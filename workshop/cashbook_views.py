@@ -19,7 +19,7 @@ from .money import parse_money, fit_text
 # asks the same question, and two copies would drift apart at a month boundary,
 # which is exactly where an owner reads the difference.
 from .money_dates import posted_date, is_future, too_far_back, backdate_floor
-from .notifications import notify
+from .notifications import notify_changed, notify_dated_back
 from . import delete_window
 
 
@@ -38,6 +38,21 @@ PAGE_SIZE = 45
 # itself, or a long period overflows the declared precision on PostgreSQL.
 _MONEY = DecimalField(max_digits=20, decimal_places=2)
 _ZERO = Value(Decimal('0'), output_field=_MONEY)
+
+
+def _day_url(day):
+    """
+    The Cashbook narrowed to one day — where a notification about an entry
+    must land.
+
+    ⚠ A bare `/cashbook/` is not a page the entry is on: it defaults to
+    filter=today, so an entry dated or moved back to last week lands the
+    reader on a list that does not contain it. A notification STORES its url,
+    so a bad one is wrong for every row ever written. A one-day custom window
+    on the entry's own date is the tightest answer.
+    """
+    iso = day.isoformat()
+    return '%s?filter=custom&start_date=%s&end_date=%s' % (reverse('cashbook'), iso, iso)
 
 TYPE_CHOICES = ('all', 'expense', 'income')
 
@@ -404,8 +419,17 @@ def cashbook_view(request):
     paginator = Paginator(list_qs.order_by('-date', '-created_at'), PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get('page'))
 
+    # Whether Office may still edit or delete each row, decided here rather
+    # than per row in the template — the rent log's own rule. A row past the
+    # window says so in its menu instead of offering two buttons that would be
+    # refused; the views refuse again either way.
+    entries = list(page_obj.object_list)
+    viewer_is_owner = is_owner(request.user)
+    for entry in entries:
+        entry.locked = not viewer_is_owner and delete_window.is_past_window(entry.created_at)
+
     context = {
-        'entries': page_obj.object_list,
+        'entries': entries,
         'page_obj': page_obj,
         'cashbook_totals': cashbook_totals,
         'type_counts': type_counts,
@@ -539,15 +563,27 @@ def add_cashbook_entry(request):
             messages.error(request, blocked)
             return redirect('cashbook')
 
-        CashbookEntry.objects.create(
-            entry_type=entry_type,
-            category=fit_text(_canonical_category(category), CashbookEntry, 'category'),
-            amount=decimal_amount,
-            payment_method=payment_method,
-            description=description,
-            date=entry_date,
-            created_by=request.user,
-        )
+        with transaction.atomic():
+            entry = CashbookEntry.objects.create(
+                entry_type=entry_type,
+                category=fit_text(_canonical_category(category), CashbookEntry, 'category'),
+                amount=decimal_amount,
+                payment_method=payment_method,
+                description=description,
+                date=entry_date,
+                created_by=request.user,
+            )
+            # Money filed under an earlier day is announced — the bell inside
+            # Office's three days, the other owner's phone past them.
+            notify_dated_back(
+                f"{entry.category} · ₹{entry.amount:,.0f} filed under {entry.date:%d %b %Y}",
+                entry.date,
+                detail=f"Cashbook {entry.entry_type.lower()}",
+                actor=request.user,
+                url=_day_url(entry.date),
+                object_type='CashbookEntry',
+                object_id=entry.pk,
+            )
         messages.success(request, f"Successfully added {entry_type.lower()} entry.")
     return redirect('cashbook')
 
@@ -586,6 +622,18 @@ def edit_cashbook_entry(request, pk):
     """Edit the name, amount, note, date, side and payment method of an entry."""
     if request.method == 'POST':
         entry          = get_object_or_404(CashbookEntry, pk=pk)
+
+        # ONE WINDOW FOR BOTH DOORS. An edit can do everything a delete can —
+        # retype ₹50,000 as ₹500 — so it answers the same rule the delete
+        # beside it does: Office within 24 hours of recording the row, an
+        # owner after that. Measured on `created_at`, never the money date.
+        stop = delete_window.refusal(
+            request.user, entry.created_at, f"This ₹{entry.amount:,.0f} entry",
+            action='change')
+        if stop:
+            messages.error(request, stop)
+            return redirect('cashbook')
+
         # READ BEFORE ANYTHING IS WRITTEN - the three fields below are about to
         # be overwritten on this same instance, so "what it was" has to be taken
         # now or it is gone.
@@ -644,42 +692,23 @@ def edit_cashbook_entry(request, pk):
             entry.entry_type = posted_type
         entry.save()
 
-        # SAY SO, TO THE OTHER OWNER. Deleting an entry has written a
-        # `DeletionLog` row and raised `RECORD_DELETED` since day one; editing
-        # one - which can do the same damage, and is the ONLY way to move money
-        # between two closed reporting periods - said nothing at all.
+        # SAY SO, TO THE OWNERS. Deleting an entry has written a `DeletionLog`
+        # row and raised `RECORD_DELETED` since day one; an edit can do the same
+        # damage and is the only way to move money between two periods.
         #
         # ONLY THE THREE FIELDS THAT MOVE MONEY ON THE PROFIT PAGE: the figure,
-        # the month it lands in, and which SIDE of the equation it sits on
+        # the day it lands on, and which SIDE of the equation it sits on
         # (income mis-keyed as an expense is a double-sized error). Correcting
         # a spelling, a note or a payment method raises nothing, or the event
         # means nothing by the second week - the settle dialog's own rule.
         #
-        # NOT a `DeletionLog` row, and that is not laziness. That model's
-        # columns are `deleted_by` and `deleted_at`, its page is called
-        # Deletion History, and `record()` always raises `RECORD_DELETED` with
-        # the word "deleted" in the body - three surfaces that would each be
-        # stating something untrue. Writing the row WITHOUT going through
-        # `record()` is worse again: that choke point is the only reason the
-        # other fourteen entity types stay correct.
+        # NOT a `DeletionLog` row: that model's columns are `deleted_by` and
+        # `deleted_at` and `record()` always says "deleted" — three surfaces
+        # that would each be stating something untrue.
         #
-        # What this buys is AWARENESS, not an archive - a read notification is
-        # swept after RETENTION_DAYS. A permanent mark on the row itself is the
-        # separate, larger decision (the rent ledger's own answer, which needed
-        # a column this model does not have).
-        # THE LINK HAS TO OPEN A PAGE THE ENTRY IS ACTUALLY ON, and a bare
-        # `/cashbook/` is not one: it defaults to filter=today, so an entry
-        # moved back to last August lands the reader on a list that does not
-        # contain it. That is the defect CLAUDE.md records fixing twice, and
-        # it bites harder here because a notification STORES its url - a bad
-        # one is wrong for every row ever written, not just the next.
-        #
-        # A one-day custom window on the entry's NEW date is the tightest
-        # answer: whatever month it was moved into, it is on the page.
-        day = entry.date.isoformat()
-        where = '%s?filter=custom&start_date=%s&end_date=%s' % (
-            reverse('cashbook'), day, day)
-
+        # The tier is `notify_changed`'s: the bell while the row is inside
+        # Office's window and stays inside the back-date limit, the other
+        # owner's phone once either is past — which only an owner can do.
         changed = []
         if was[0] != entry.amount:
             changed.append(f"was ₹{was[0]:,.0f}")
@@ -688,12 +717,13 @@ def edit_cashbook_entry(request, pk):
         if was[2] != entry.entry_type:
             changed.append(f"was {was[2].title()}")
         if changed:
-            notify(
-                'CASHBOOK_EDITED',
+            notify_changed(
                 f"{entry.category} · ₹{entry.amount:,.0f} edited",
+                entry.created_at,
+                moved_to=entry.date if was[1] != entry.date else None,
                 detail=' · '.join(changed),
                 actor=request.user,
-                url=where,
+                url=_day_url(entry.date),
                 object_type='CashbookEntry',
                 object_id=entry.pk,
             )

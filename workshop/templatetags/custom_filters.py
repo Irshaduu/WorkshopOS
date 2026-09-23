@@ -84,6 +84,25 @@ def has_group(user, group_name):
         return True
     return group_name in role_names(user)
 
+
+@register.filter(name='past_office_window')
+def past_office_window(stamp, user):
+    """
+    Is this money row too old for THIS user to change? —
+    `{% if pay.created_at|past_office_window:request.user %}`.
+
+    True only for someone who is not an owner, on a row older than
+    `delete_window.OFFICE_WINDOW_HOURS`. It lets a list say "ask an owner" in
+    the row's own menu instead of offering a button the view would refuse. It
+    reads the SAME two functions the views do, so a menu and a refusal cannot
+    disagree — and it is presentation only: every view refuses again.
+    """
+    from workshop.decorators import is_owner
+    from workshop.delete_window import is_past_window
+
+    return not is_owner(user) and is_past_window(stamp)
+
+
 @register.filter
 def divide(value, arg):
     """Divides value by arg"""

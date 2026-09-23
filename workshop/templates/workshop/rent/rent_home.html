@@ -949,12 +949,20 @@
       var question = null;
 
       if (floorISO && iso < floorISO) {
-        var when = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, 1)
-          .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+        // Past the three-day limit only an owner can reach. Whether it also
+        // lands in a FINISHED month is a second fact, said only when true:
+        // five days back on the 20th is still this month.
+        var picked = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1,
+                              Number(iso.slice(8, 10)));
+        var closed = iso.slice(0, 7) < todayISO().slice(0, 7);
         question = {
-          title: 'File into a closed month?',
-          text: 'This deposit lands in ' + when + '. That month is finished, so its '
-              + 'position and every month since moves — and the other owner is told.',
+          title: 'Date it this far back?',
+          text: 'This deposit is dated '
+              + picked.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+              + (closed
+                  ? '. That month is finished, so its position and every month since moves'
+                  : '')
+              + ' — and the other owner is told.',
           icon: 'bi-calendar-event',
           theme: 'danger',
           ok: 'File it there',

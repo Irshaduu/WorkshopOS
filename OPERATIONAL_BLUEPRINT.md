@@ -89,7 +89,7 @@ graph TD
    - Run Data Cleanup — the one screen for spare and concern names (rename, merge, delete duplicates)
    - Manage inventory Categories (add/list/edit) + create/edit products via Supplier Shops (Add Product); all supplier-shop management
    - Record and review Cashbook entries (income & expenses ledger). Typing a wage, an owner's name or anything to do with rent here asks first — each has its own section and would land wrong in the profit figure. It only asks
-   - Record the daily **rent deposit** in Deposit & Rent — the cash handed to the collector who comes round each day, keyed off his own book. The page says what to pay today: whatever is left of the month's rent over the days left. Office may date an entry back to the 1st of last month; anything older is an owner's
+   - Record the daily **rent deposit** in Deposit & Rent — the cash handed to the collector who comes round each day, keyed off his own book. The page says what to pay today: whatever is left of the month's rent over the days left. Office may date an entry up to three days back; anything older is an owner's, and the other owner is told
 
 
  FLOOR (Mechanics / Floor Manager)
@@ -509,7 +509,7 @@ If a payment fully covers every pending/partial job and money is left over, the 
 ```
 Same oldest-first cascade logic applies to shop payments.
 Lump sum distributed across unpaid items chronologically.
-Payment history is recorded; Office can reverse a payment within seven days of keying it, an owner any time.
+Payment history is recorded; Office can reverse a payment within 24 hours of keying it, an owner any time.
 ```
 
 **Each payment is dated by the day the money moved.** The shop's collector comes at
@@ -658,7 +658,7 @@ SUPPLIES SHOP (Inventory Supplier)
    │
    ├── Payment Options:
    │     Quick payment form (amount + method + note)
-   │     A payment is deleted permanently and logged (Office within seven days, an owner any time)
+   │     A payment is deleted permanently and logged (Office within 24 hours, an owner any time)
    │
    ├── Bill Status Tracking:
    │     Each bill shows Covered / Partial / Unpaid status
@@ -725,7 +725,7 @@ Bill Structure:     Restock Bills + Line Items  Per-job spare items
 Payment System:     Running balance; delete     Cascade waterfall; delete
                     reverses + logs             reverses + logs
 Access:             Office+ (all 23 views)      Office+ (a money delete older than
-                                                seven days is an owner's)
+                                                24 hours is an owner's)
 ```
 
 > **The two modules now agree, and they did not always.** Every Supplies-Shop view —
@@ -780,7 +780,7 @@ SPARE SHOP (Supplier)
    │
    ├── Payment History:
    │     Each payment is stored as a ledger record
-   │     Office can reverse one within seven days, an owner any time (logged)
+   │     Office can reverse one within 24 hours, an owner any time (logged)
    │
    ├── Unassigned Spares Hub  (FLOOR can reach this one — add only):
    │     Add legacy stock/balances not linked to any job card

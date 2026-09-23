@@ -77,7 +77,15 @@ screen shows the running shortfall on *every* settlement and says what it
 becomes; the **confirmation fires only past the threshold**, because confirming
 what cannot surprise anyone is how confirmations stop being read. It does not
 block.
-→ `ALargeDiscountIsConfirmedBeforeItHappensTests`, `TheDiscountAuditListsByAmountTests`
+
+⚠ **The `HIGH_DISCOUNT` alert fires when a large discount APPEARS OR GROWS,
+never again for one already reported** (2026-09-22). Re-settling a bill, or an
+unlocked edit that recomputes the discount, used to re-send the phone alert
+whenever the discount was still over the line — including when the change made
+it smaller. `billing.announce_high_discount()` is the one implementation; both
+callers pass it only a discount larger than the one before.
+→ `ALargeDiscountIsConfirmedBeforeItHappensTests`, `TheDiscountAuditListsByAmountTests`,
+`test_a_re_settle_does_not_repeat_a_large_discount_alert`
 
 **Labour is ONE charge per job card, not a price per job line.** Work is quoted
 whole — the customer is told "₹22,300 for the job" — so `JobCard.labour_amount`
@@ -114,7 +122,12 @@ real need, but nothing followed the money afterwards.
   revenue off the new total while `received_amount` never moved. The discount is
   **recomputed** — that is the shortfall-is-the-discount rule applied to the new
   total, and a large jump trips the HIGH_DISCOUNT alert, which is the
-  compensating control for exactly this.
+  compensating control for exactly this. ⚠ **It did not, until 2026-09-22** —
+  the docstring and the Unlock dialog both said so while only the Settle screen
+  raised it. `billing.announce_high_discount()` is now the one implementation,
+  called by both, and `jobcard_edit` also announces any settled bill that moved
+  (`notify_changed`, stamped on `paid_date`). Office may Unlock only within 24
+  hours of settling — see the Deletion model's window.
 - A **`BULK_PAID` fleet card** is the opposite: a fleet genuinely does pay later,
   so the extra is owed, not discounted. It drops back to **PARTIAL**, because
   `bulk_payer_pay` only cascades over PENDING/PARTIAL and the difference was
@@ -177,6 +190,21 @@ which is the rule the whole module exists for. The caller decides, in one line:
 Paid Bills filters and sorts on it, never `updated_at` — that is `auto_now=True`
 and changes on *any* save, so an old paid bill resurfaced under "Today" the moment
 someone edited it for an unrelated reason.
+
+⚠ **A RE-SETTLE KEEPS IT — it was restamped until 2026-09-22.** Settle Bill on
+an already-PAID card wrote `timezone.now()` again, so correcting an old bill's
+receipt moved it to "Today" in Paid Bills — the defect this column exists to
+stop, through a second door — and restarted the 24-hour Office window below,
+handing the bill back to Office. `update_bill_status` now stamps it only on a
+FIRST settlement.
+
+⚠ **Re-settling an already-PAID bill is an edit, and follows the 24-hour
+window** (measured on `paid_date`): Office inside it, an owner after, a
+changed receipt announced by `notify_changed`. It was a second door onto any
+paid bill of any age — the Settle Bill button renders on every paid walk-in
+bill — around the Financial Lock's Unlock rule. Past the window Office is not
+shown the button (`settle_past_window`).
+→ `ASettledJobCardFollowsTheWindowTests`
 
 **Financial Lock covers `PAID` and `BULK_PAID` alike**, enforced on both sides:
 JS disables the fields and requires a confirm() to unlock; `jobcard_edit` rejects
@@ -804,7 +832,17 @@ changes the average.** Four rules, all in `inventory/`:
   would divide by a stale or zero total.
 - A `SupplierRestockBill` pre/post_save pair **re-costs when `bill_date` or
   `discount_amount` changes**, since neither lives on a line.
-→ `inventory/test_supplier_costing.py`
+  ⚠ **So every door that changes either must save THROUGH THE MODEL, never
+  `.update()`** — which fires no signal. The bill card's quick discount box
+  (`update_bill_discount`) did exactly that until 2026-09-22: the bill total
+  and the shop balance took the discount while `avg_cost` and every draw kept
+  the gross price (₹1,000/L where the Edit Bill page gave ₹800/L for the same
+  discount). It now does `bill.save(update_fields=['discount_amount'])`, and
+  deliberately NOT `bill.update_totals()`: a discount never changes the total,
+  and that method recomputes the total from the lines — it wrote ₹0 onto a
+  bill whose total had no lines behind it (`test_update_bill_discount`).
+→ `inventory/test_supplier_costing.py` — `TheQuickDiscountBoxRecostsTheStockTests`
+  holds the two doors to one answer.
 
 **Stock moves only via signals.** Restock bills and the go-live Opening Stock add,
 job-card draws remove. There
@@ -926,9 +964,12 @@ and names them. It fires **only** on staff who actually received money that mont
 detector used to catch this afterwards and flag the month for re-settling, but it
 nagged from another screen days later and, by existing, invited people back into
 reopening a closed month. The message is **role-aware**, because deleting a
-settlement is Owner-only: Office is told to ask an owner, an owner is told to
-delete it themselves. Both are offered the second route — record it in the current
-month with a note — which is the only route once the month is closed.
+settlement is Owner-only: an owner is told to delete it themselves, or record it
+in the current month with a note. ⚠ **Office is told only that an owner must
+add it** (2026-09-22, the owner's wording). It used to say "ask an owner to
+delete that settlement so it can be added" — and since the three-day back-date
+limit Office could not add it even after the settlement was deleted, so the
+message sent an owner to delete a settlement for nothing.
 → `AnAdvanceCannotEnterASettledMonthTests`
 
 **AND IT CANNOT LEAVE ONE EITHER — a settled month's advances are FROZEN in
@@ -1701,6 +1742,14 @@ read by this page and by `notifications._recipients`. ⚠ The either-or
 an **empty** Owner group until somebody runs `sync_owner_identity --yes`, and
 group membership alone went dark that way on two demo deployments.
 
+**RECORDING ONE TELLS THE OTHER OWNER — `WITHDRAWAL_ADDED`, CRITICAL
+(2026-09-22).** Deleting a withdrawal was announced from the start, through
+`DeletionLog.record`; recording one was silent, so a partner learned what the
+other took only by opening this page. Owner-only end to end, so it is on the
+"only an owner can do it" side of the alert rule, and it happens a handful of
+times a month. The actor is excluded; the day rides in `detail` only when it
+is not today; the link opens All Time so a back-dated one is on the page.
+
 **DELIBERATELY NO EDIT.** Every other ledger has one because a row keyed on the
 wrong day would otherwise be stuck in the wrong month for good — but that
 argument assumes a role that *cannot* delete it. This section is Owner-only end
@@ -2094,14 +2143,27 @@ the damage is quiet.** A figure dated forward is caught the moment somebody
 reads the period it lands in. One dated three years back rewrites the running
 position of every month since, on rows nobody scrolls to, and reports nothing.
 
-⚠ **IT IS A CALENDAR MONTH, NEVER A DAY COUNT** (`BACKDATE_MONTHS = 1`, so the
-floor is the 1st of last month). A fixed "14 days" was the obvious alternative
-and it breaks at exactly the moment the rule exists for: the office reconciles
-LAST month against the collector's book in the first days of this one, so a gap
-found on 3 September may belong to 5 August. A day count refuses that
-correction. It is the same lesson `delete_window` records for measuring on
-`created_at` — **a rule that cuts across the month end fights the workflow it
-is meant to protect.**
+⚠ **IT IS THREE DAYS (`BACKDATE_DAYS = 3`), AND THAT REVERSES WHAT THIS FILE
+SAID UNTIL 2026-09-22** (the owner's decision). It read **"a calendar month,
+never a day count"**: the floor was the 1st of last month, because the office
+reconciles last month in the first days of this one and a day count refuses
+that correction. True — and the price was that Office could quietly file money
+into last month for the whole of this one, after the owners had read that
+month's profit. The owners' answer: the office enters money on the day it
+moves, the rare late catch-up is an owner's, and *"this limitation stops users
+from moving entries to another time"*. A late correction is **escalated, not
+refused** — an owner records it and the other owner is told.
+
+On the 22nd, the 19th is the earliest Office may type. Three days covers
+yesterday's receipt typed this morning and a Saturday found on Monday.
+
+⚠ **The rent section's month-based wording had to follow.** Its owner prompt
+asked *"File into a closed month?"* at the floor, which was true only while the
+floor WAS a month boundary. It now asks *"Date it this far back?"* and adds the
+closed-month sentence only when the date really is in a finished month; the
+success message and the alert's detail do the same (`earlier_month`). The
+row marks (`rent.backdating()` — `late` / `closed`) were always month-based and
+are untouched.
 
 ⚠ **IT BINDS OFFICE, NOT OWNERS** — `delete_window`'s escalation, not a wall.
 Owners need the exception for real reasons: a go-live opening position is a
@@ -2109,7 +2171,8 @@ deposit dated *before the ledger starts*, and an audit finding can be older.
 The refusal names the rule **and** the route, because "you cannot" without
 "here is who can" is the half nobody can act on.
 
-**IT IS NOW ON EVERY SCREEN THAT TAKES A TYPED MONEY DATE — six call sites**,
+**IT IS NOW ON EVERY SCREEN THAT TAKES A TYPED MONEY DATE — seven call sites**
+(the salary advance joined on 2026-09-22; it had only the settled-month freeze),
 which is why the rule lives in `money_dates.py` rather than in `views/rent.py`:
 
 | screen | what a back-dated row moves |
@@ -2120,6 +2183,7 @@ which is why the rule lives in `money_dates.py` rather than in `views/rent.py`:
 | **spare-shop payment** | that shop's own windows, and `cash_position()` |
 | **Supplies Shop payment** | `cash_position()`; the side whose collector comes weekly |
 | **fleet payment** | Cash Tracking, on the largest receipts the workshop takes |
+| **salary advance** | the month's wage bill; the settled-month freeze still binds everybody first |
 
 ⚠ **TWO CALLERS ARE DELIBERATELY NOT GUARDED, and both would be a check that
 reads like a control:**
@@ -2159,16 +2223,28 @@ within seconds.** `notify()` excludes the actor, so an owner never buzzes
 themselves and what arrives is always *somebody else did this*, which with two
 owners is corroboration rather than a receipt.
 
-Two events, both CRITICAL, both Owner-audience:
+Owner-audience, and since 2026-09-22 on **every** money screen rather than rent
+alone:
 
-| | fires on | carries |
+| | fires on | tier |
 |---|---|---|
-| **`RENT_RATE_SET`** | **every** rate change | `detail` says *backdated, N months re-priced* when it reached back |
-| **`RENT_BACKDATED`** | a deposit filed past the Office floor | the month it landed in |
+| **`RENT_RATE_SET`** | **every** rate change; `detail` says *backdated, N months re-priced* when it reached back | CRITICAL |
+| **`DATED_BACK`** | money filed under an earlier day, inside Office's three days | INFO — the bell |
+| **`DATED_BACK_PAST_LIMIT`** | money filed past the three days — only an owner can | CRITICAL — the other owner's phone |
+
+⚠ **`DATED_BACK_PAST_LIMIT` REPLACED `RENT_BACKDATED`**, which covered rent
+alone while five other screens back-dated silently. All of them call
+`notifications.notify_dated_back()`, which is the only place the tier is
+decided — from the DATE, never the person. **The rule, stated once for the
+whole app: anything Office is allowed to do goes to the bell, whoever did it;
+anything only an owner can do goes to the other owner's phone; every delete
+already did.** The salary advance sends the phone alert *instead of* its usual
+bell note when it is past the limit, so one act is one alert.
 
 **One constant decides both halves.** `is_too_far_back()` is what refuses
 Office *and* what triggers the alert on an owner, so the rule enforced and the
 rule announced can never drift apart.
+→ `workshop/tests/test_money_change_rules.py`
 
 ⚠ **AND AN ALERT IS NOT ENOUGH ON ITS OWN, WHICH THE OWNER CAUGHT BY USING
 IT.** They back-dated a deposit, then asked why they still felt insecure — and
@@ -6179,11 +6255,22 @@ browsers.
 
 The whole event list is **`workshop/notifications.py`**. Add an event to `EVENTS`,
 then call `notify()` from the single place it happens — **never**
-`Notification.objects.create()` in a view. There are **18 call sites across 9
-modules**; that file is the only way to answer "what does this thing notify
-about?" without grepping.
+`Notification.objects.create()` in a view. There are **29 call sites across 12
+modules** (re-counted 2026-09-22, counting `notify_dated_back()` and
+`notify_changed()` as calls); that file is the only way to answer "what does
+this thing notify about?" without grepping.
 
-`EVENTS` holds **16 events — 13 CRITICAL, 3 INFO**, all Owner-audience.
+`EVENTS` holds **20 events — 15 CRITICAL, 5 INFO**, all Owner-audience
+(re-counted 2026-09-22; `len(EVENTS)` is the truth, and `test_about` holds the
+system map's own count to it).
+
+⚠ **MONEY MOVED IN TIME OR RETYPED IS TWO PAIRS, AND THE TIER IS THE RECORD'S,
+NOT THE PERSON'S** (2026-09-22): `DATED_BACK` / `DATED_BACK_PAST_LIMIT` and
+`RECORD_CHANGED` / `OLD_RECORD_CHANGED`, raised only through
+`notify_dated_back()` and `notify_changed()`. Inside Office's reach → the bell;
+past it, which only an owner can do → the other owner's phone. They replaced
+`RENT_BACKDATED` and `CASHBOOK_EDITED`, which each covered one section. See
+"How far back money may be filed" and the Deletion model's window.
 
 **Severity is a tier, not decoration: CRITICAL sends a Web Push, INFO only lands
 in the feed.** Keep the critical list short — a phone that buzzes for routine
@@ -6745,7 +6832,7 @@ missing was PREVENTION rather than a better audit field, and that is the Office
 delete window below — a boundary nobody can type around.
 
 **OFFICE CORRECTS A RECENT MISTAKE; AN OWNER TAKES ANYTHING OLDER.**
-`workshop/delete_window.py`, `OFFICE_DELETE_WINDOW_DAYS = 7`. Six money
+`workshop/delete_window.py`, `OFFICE_WINDOW_HOURS = 24`. Six money
 deletes are `@office_required` — fleet payment, spare-shop payment, Supplies
 Shop payment, restock bill, cashbook entry, salary advance — so Office could
 remove a six-month-old fleet payment exactly as easily as one keyed this
@@ -6777,10 +6864,9 @@ button would say "you cannot" without saying why — the rule the frozen-advance
 ⋮ menu already follows — and would additionally say something false, that the
 record cannot be deleted at all, when an owner can. So the POST is refused and
 the message carries the row, its age, the rule and who to ask: *"This ₹100,000
-payment was recorded 40 days ago. Office can delete something recorded in the
-last 7 days — ask an owner to remove this one."* The window is read from the
-one constant, so the number on screen can never disagree with the number
-enforced.
+payment was recorded 40 days ago. Office can change or delete money only within
+24 hours — ask an owner to delete this one."* The window is read from the one
+constant, so the number on screen can never disagree with the number enforced.
 
 Three things deliberately **not** covered:
 - **`jobcard_delete`** — already refuses a card carrying spares, labour or a
@@ -6798,8 +6884,39 @@ if any payment in that chain is past the window the owner does the whole chain
 rather than Office starting it; that escalates more often here than anywhere
 else, which is the right way round for the largest receipts the workshop takes.
 
-**7 is a dial, not a law** — one constant, and the messages follow it.
-→ `workshop/tests/test_delete_window.py`
+⚠ **24 HOURS, AND IT COVERS EDITS AS WELL AS DELETES — both reverse what this
+file said until 2026-09-22** (the owner's decision). It was **7 calendar days,
+deletes only**, and that left an edit as a quiet delete: Office could not remove
+a three-week-old ₹50,000 Cashbook entry but could retype it as ₹500, which
+reached only the bell. One window now governs both doors, on every screen that
+can change money:
+
+| screen | the window counts from |
+|---|---|
+| Cashbook edit and delete | `created_at` |
+| Supplies Shop bill edit — **refused on the GET too**, so nobody fills in a whole bill to be told at the end — its discount box, and its delete | `created_at` |
+| the three payment deletes, rent deposit, salary advance | `created_at` |
+| **a settled job card's Unlock** | **`paid_date`** — settling is when the bill entered the books as money |
+| **Settle Bill on an already-paid bill** (re-settling, or putting it back to PENDING) | **`paid_date`** — the same bill through a second door |
+
+Past it, Office meets `refusal()`'s message naming the age and the route, and a
+list that can tell in advance says so in the row's own menu (*"Too old to change
+here · Ask an owner"*) through the **`past_office_window`** template filter,
+which reads the same two functions the views do. A settled card past it shows
+*"Settled over 24 hours ago — ask an owner to change it"* in place of the
+UNLOCK RECORD button — Office only; Floor's banner is unchanged.
+
+**Every edit that moves money is announced**, tiered by the same rule as
+back-dating (`notify_changed()`): inside the window → `RECORD_CHANGED`, the
+bell; past it, or a date moved past the three-day limit → `OLD_RECORD_CHANGED`,
+the other owner's phone. `CASHBOOK_EDITED` (Cashbook only, bell only) is gone.
+The Supplies Shop bill edit and the settled-card edit were silent before.
+
+⚠ **Cost the owner accepted:** a Saturday-evening typo noticed on Monday is an
+owner's to fix.
+
+**24 is a dial, not a law** — one constant, and the messages follow it.
+→ `workshop/tests/test_delete_window.py`, `workshop/tests/test_money_change_rules.py`
 
 **Job-card delete guard:** a card carrying spares, labour, or a received payment
 **cannot** be deleted. A deletable card holds no spares, so no stock is affected.
@@ -10053,7 +10170,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 82 files, 2,756 tests (counted 2026-09-21). Always SQLite (see below).
+# Full test suite — 83 files, 2,808 tests (counted 2026-09-22). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10073,8 +10190,15 @@ python manage.py runserver
 # ⚠ `--parallel` CUTS IT TO A THIRD, AND IT IS SAFE HERE. Measured 2026-09-20 on
 # a 2-physical-core laptop: `--parallel 4` ran 2,711 tests in 2,637s (44 min)
 # ALL GREEN, against 8,987s (2h30m) serial — 3.4x. The test database is
-# in-memory SQLite, which Django clones per worker, so there is no file to
-# collide over.
+# in-memory SQLite, which Django clones per worker.
+#   • ⚠ ON WINDOWS THOSE CLONES ARE FILES — `default_1.sqlite3` … one per
+#     worker, in the project root (workers are spawned, not forked, so an
+#     in-memory database cannot be shared). A finished run deletes them; a run
+#     cut off by a shutdown LEAVES them (found 2026-09-22). Delete them before
+#     the next run, and never commit them.
+#   • ⚠ `*> file` in PowerShell shows no progress: Python holds its output in a
+#     buffer when writing to a file, so the dots arrive in lumps or at the end.
+#     Judge a run by the workers' CPU seconds instead (below).
 #   • THE BINDING CONSTRAINT IS MEMORY, NOT CORES. Each worker carries its own
 #     Django instance plus its own in-memory database. Measured: 4 workers cost
 #     ~500 MB. With a browser open there was 1.16 GB free and `--parallel 4`
@@ -10095,7 +10219,10 @@ python manage.py runserver
 #     re-run only the failing files SERIALLY before calling one a bug.
 #   • ⚠ Do not pipe it through `tail`: that buffers the whole run, so there is
 #     no progress to watch until it exits.
-# Last full run 2026-09-21: 2,756 tests, 2,803s (46.7 min) on `--parallel 4`,
+# Last full run 2026-09-22: 2,808 tests, 3,277s (54.6 min) on `--parallel 3`,
+# ALL GREEN, verifying the three-day back-date limit, the 24-hour Office window
+# for edits and deletes, and the quick discount box re-costing the stock.
+# Before it: 2026-09-21, 2,756 tests, 2,803s (46.7 min) on `--parallel 4`,
 # ALL GREEN, verifying AUD-0107 (one visitor-IP rule), AUD-0104, AUD-0105 and
 # AUD-0106 together. ⚠ SLOWER than the 3-worker run just below (34.2 min) with
 # 2.6 GB free at the start — so on this 2-core laptop a fourth worker is not
@@ -10544,8 +10671,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **82 files, 2,756 tests**,
-re-counted 2026-09-21. (`workshop/tests/` is 76 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **83 files, 2,808 tests**,
+re-counted 2026-09-22. (`workshop/tests/` is 77 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 
@@ -10566,7 +10693,9 @@ Grepping `def test_` **cannot see tests inherited from shared base classes**.
 
 **Running two suites at once is safe.** SQLite's test database is in-memory by default
 (no `TEST['NAME']` is set), so concurrent `manage.py test` processes cannot collide —
-worth knowing when you only need to re-check one file.
+worth knowing when you only need to re-check one file. ⚠ **Serial runs only on
+Windows**: a `--parallel` run clones into `default_N.sqlite3` files in the project
+root, so two parallel runs started from the same folder share those names.
 
 **They always run against SQLite**, so the suite stays fast and never touches the hosted
 Postgres.
@@ -10747,7 +10876,7 @@ close**. Each of those has caught a real defect:
   from it would be a diagonal on a sheet built entirely on right angles. The remaining shared-corridor lines are
   spaced by hand, ~12px minimum.
 
-⚠ **It states counts** (16 events, 13 critical, 10 signal handlers, ₹3,500, 25%,
+⚠ **It states counts** (20 events, 15 critical, 13 signal handlers, ₹3,500, 25%,
 keeps 14). Those drift like every other count in these docs — check them when you
 touch it. It read "10 critical" for a day after `LOGIN` was raised to CRITICAL,
 and that is worse on the map than in prose: the **About page prints this drawing

@@ -729,10 +729,11 @@ def build(theme):
                              'arrival after the order'],              FLOW['alert']),
         ('arch',  'ARCHIVE',        ['shops and staff put away',
                              'deletes are written down'],             FLOW['alert']),
-        ('dwin',  'DELETE WINDOW',  ['office 7 days', 'older is an owner'],   FLOW['alert']),
+        ('dwin',  'CHANGE WINDOW',  ['office 24 hours', 'older is an owner'], FLOW['alert']),
         # spare_dates.py is DATE RULES above; this one is money_dates.py -
         # which day a rupee is filed under, not whether a pair is in order.
-        ('mdate', 'MONEY DATES',    ['filed by the day it moved'],            FLOW['alert']),
+        ('mdate', 'MONEY DATES',    ['filed by the day it moved',
+                             'office 3 days back'],                   FLOW['alert']),
     ]
     for (cid, t, ch, ac), cell in zip(_rules, grid(
             16, B3Y, 674, B3H, 5, 2, top=32,
@@ -744,7 +745,7 @@ def build(theme):
     # =========================================================================
     zone(710, B3Y, 688, B3H, 'INFRA.08 // CLOUD', 'Platform & Services', FLOW['work'])
     _infra = [
-        ('notif', 'NOTIFICATIONS', ['17 events - 13 critical', 'owners only'],   FLOW['alert']),
+        ('notif', 'NOTIFICATIONS', ['20 events - 15 critical', 'owners only'],   FLOW['alert']),
         ('push',  'WEB PUSH',      ['critical goes to a phone'],                 FLOW['alert']),
         ('mail',  'EMAIL',         ['reset codes only'],                         FLOW['alert']),
         ('store', 'PHOTO STORAGE', ['S3 - presigned', 'browser uploads direct'], FLOW['work']),

@@ -22,8 +22,11 @@ from ..forms import (
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.template.defaultfilters import floatformat
 
-from ..decorators import staff_required, office_required, is_office_or_owner
+from ..decorators import staff_required, office_required, is_office_or_owner, is_owner
+from .. import delete_window
+from ..notifications import notify_changed
 from ..return_to import safe_return
+from .billing import announce_high_discount
 # The app's ONE way of printing a quantity — 1.00 → "1", 1.50 → "1.5". Imported
 # rather than restated so the read-only card cannot disagree with every other
 # screen about how many of something there are.
@@ -305,6 +308,16 @@ def _form_context(request, *, form, concern_formset, spare_formset,
             job_card__isnull=True
         ).select_related('shop').order_by('-ordered_date'),
         'problems': problems or [],
+        # A settled card past Office's 24 hours shows WHY instead of an Unlock
+        # button that `jobcard_edit` would refuse — a door somebody can see and
+        # cannot open is worse than no door. Presentation; the view refuses.
+        # Office only: Floor is never offered Unlock and is shown no payment
+        # state anywhere, so its banner is left exactly as it was.
+        'unlock_past_window': bool(
+            jobcard is not None
+            and jobcard.payment_status in ('PAID', 'BULK_PAID')
+            and is_office_or_owner(request.user) and not is_owner(request.user)
+            and delete_window.is_past_window(jobcard.paid_date)),
     }
 
 
@@ -325,7 +338,9 @@ def _reconcile_settled_bill(jobcard):
         exactly one payment event (see CLAUDE.md), so the shortfall *is* the
         discount — recomputing it is that rule applied to the new total, and it
         restores `bill − discount == received`. A large jump trips the existing
-        HIGH_DISCOUNT alert and shows up in `audit_high_discounts`, which is
+        HIGH_DISCOUNT alert (raised by `jobcard_edit` through
+        `billing.announce_high_discount` — this function raised nothing until
+        2026-09-22, while saying it did) and shows up in `audit_high_discounts`, which is
         precisely the compensating control for it.
 
       BULK_PAID (fleet) — a fleet genuinely does pay later, so the extra is not
@@ -963,6 +978,24 @@ def jobcard_edit(request, pk):
             )
             return redirect('jobcard_edit', pk=pk)
 
+        # AND ONLY WITHIN 24 HOURS OF SETTLING, FOR ANYONE BUT AN OWNER — the
+        # window every other money record answers, measured on `paid_date`,
+        # because settling is when this bill entered the books as money. The
+        # Unlock button already says so on a card past it; this is the control.
+        settled = jobcard.payment_status in ('PAID', 'BULK_PAID')
+        if settled:
+            stop = delete_window.refusal(
+                request.user, jobcard.paid_date,
+                f"{jobcard.registration_number}'s bill",
+                action='change', happened='settled')
+            if stop:
+                messages.error(request, stop)
+                return redirect('jobcard_edit', pk=pk)
+        # What the bill said before, for the owners' alerts after the save.
+        # `paid_date` is taken now: re-opening a fleet card clears it.
+        was_bill, settled_at = jobcard.total_bill_amount, jobcard.paid_date
+        was_discount = jobcard.discount_amount or Decimal('0')
+
         # See jobcard_create: one locked copy binds the card and its parts alike,
         # because `labour_amount` is a price that sits on the card.
         parts_data = _floor_locked_data(request, jobcard)
@@ -1088,6 +1121,31 @@ def jobcard_edit(request, pk):
                 # Re-read before deciding whether a settled bill still adds up.
                 jobcard.refresh_from_db()
                 reopened = _reconcile_settled_bill(jobcard)
+
+                # A SETTLED BILL THAT MOVED IS ANNOUNCED. It is the customer's
+                # own bill, so the Profit page's revenue moved with it — and
+                # nothing said so. The bell inside Office's 24 hours, the other
+                # owner's phone past them (which only an owner can reach).
+                if settled and jobcard.total_bill_amount != was_bill:
+                    notify_changed(
+                        f"{jobcard.registration_number} · bill now "
+                        f"₹{jobcard.total_bill_amount:,.0f}",
+                        settled_at,
+                        detail=f"was ₹{was_bill:,.0f} · {jobcard.bill_number}",
+                        actor=request.user,
+                        url=reverse('invoice_view', args=[jobcard.pk]),
+                        object_type='JOBCARD',
+                        object_id=jobcard.pk,
+                    )
+                    # A walk-in's discount was just recomputed off the new
+                    # total, so a large one answers the settle screen's rule —
+                    # but only when it GREW. A discount already reported, or
+                    # one the edit made smaller, is not news, and a repeated
+                    # phone alert is how they stop being read.
+                    if (jobcard.payment_status == 'PAID'
+                            and (jobcard.discount_amount or Decimal('0')) > was_discount):
+                        announce_high_discount(
+                            jobcard, jobcard.total_bill_amount, request.user)
 
             messages.success(request, f'Job card for {jobcard.registration_number} updated successfully!')
             if reopened:

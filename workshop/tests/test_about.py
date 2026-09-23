@@ -65,7 +65,7 @@ class AboutPageTests(TestCase):
 
         self.assertIn('<svg viewBox="0 0 1414 1000"', html)
         # Cards only the generator writes — proof this is the real drawing.
-        for title in ('SETTLEMENT CHECK', 'AVERAGE COST', 'DELETE WINDOW'):
+        for title in ('SETTLEMENT CHECK', 'AVERAGE COST', 'CHANGE WINDOW'):
             self.assertIn(title, html)
 
     def test_it_carries_no_links_at_all(self):
@@ -120,7 +120,7 @@ class AboutPageTests(TestCase):
             'Devices',              # sessions
             'Control Hub',
             'Forgotten password',
-            'seven-day window',
+            '24-hour window',
             'Stock History',
             'Average cost',
             'Low Stock',

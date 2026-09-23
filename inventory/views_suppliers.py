@@ -9,7 +9,7 @@ from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierResto
 from workshop.analysis_engine import SUPPLIER_BILL_COST
 from workshop.decorators import office_required
 from workshop.models import DeletionLog, JobCardSpareItem
-from workshop.notifications import notify
+from workshop.notifications import notify, notify_changed, notify_dated_back
 from workshop.money import parse_money, fit_text
 from workshop.money_dates import posted_date, is_future, too_far_back, backdate_floor
 from workshop.pricing import DEFAULT_MARKUP_PERCENT, MAX_MARKUP_PERCENT, parse_markup
@@ -720,6 +720,14 @@ def update_bill_discount(request, shop_id, bill_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     bill = get_object_or_404(SupplierRestockBill, pk=bill_id, supplier=shop)
     if request.method == 'POST':
+        # Office within 24 hours of keying the bill; an owner after that —
+        # the same window as the bill's own edit page and its delete.
+        stop = delete_window.refusal(
+            request.user, bill.created_at, f"Bill #{bill.id}", action='change')
+        if stop:
+            messages.error(request, stop)
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
         discount = request.POST.get('discount_amount', '0')
         try:
             discount = Decimal(str(discount).strip())
@@ -746,8 +754,34 @@ def update_bill_discount(request, shop_id, bill_id):
             )
             return redirect('supplier_shop_detail', shop_id=shop_id)
 
-        SupplierRestockBill.objects.filter(pk=bill.pk).update(discount_amount=discount)
+        was = bill.discount_amount
+        # ⚠ THROUGH THE MODEL, NEVER `.update()`. A bill's discount is part of
+        # what its stock cost — it is shared into each line's effective unit
+        # price — and the only thing that re-costs on a discount change is the
+        # `SupplierRestockBill` pre/post_save pair in `inventory/signals.py`.
+        # `.update()` fires no signals, so this door moved the bill total and
+        # the shop's balance while `Item.avg_cost` and every warehouse draw kept
+        # the GROSS price: the Profit page charged parts at a cost the shop was
+        # never paid. `update_fields` keeps the write to the one column.
+        #
+        # ⚠ NO `bill.update_totals()` HERE. A discount never changes a bill's
+        # total, and that method RECOMPUTES the total from the lines — so on a
+        # bill whose stored total is not backed by lines it wrote ₹0 (caught
+        # by `test_update_bill_discount`). The Edit Bill page needs it because
+        # its lines change; this door changes none.
+        bill.discount_amount = discount
+        bill.save(update_fields=['discount_amount'])
         shop.update_totals()
+        if was != discount:
+            notify_changed(
+                f"{shop.name} · Bill #{bill.id} discount now ₹{discount:,.0f}",
+                bill.created_at,
+                detail=f"was ₹{was:,.0f} · Supplies Shop bill",
+                actor=request.user,
+                url=reverse('supplier_shop_detail', args=[shop.pk]) + '?filter=all',
+                object_type='SupplierRestockBill',
+                object_id=bill.pk,
+            )
         messages.success(request, f"Discount updated for Bill #{bill.id}.")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
@@ -865,8 +899,21 @@ def shop_restock_bill(request, shop_id):
 def edit_restock_bill(request, shop_id, bill_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     bill = get_object_or_404(SupplierRestockBill, pk=bill_id, supplier=shop)
-    
+
+    # OFFICE WITHIN 24 HOURS OF KEYING THE BILL; AN OWNER AFTER THAT — asked on
+    # the GET as well as the POST, so nobody fills in a whole bill to be told
+    # at the end. Measured on `created_at`: the bill is keyed when the
+    # collector comes and dated back to the delivery day on this very page, so
+    # the money date would refuse Office the step that sets it.
+    stop = delete_window.refusal(
+        request.user, bill.created_at, f"Bill #{bill.id}", action='change')
+    if stop:
+        messages.error(request, stop)
+        return redirect('supplier_shop_detail', shop_id=shop.id)
+
     if request.method == 'POST':
+        # What the bill said before, for the owners' alert below.
+        was_net, was_date = bill.get_effective_amount, bill.bill_date
         try:
             # 1. Update bill-level info
             #
@@ -944,7 +991,30 @@ def edit_restock_bill(request, shop_id, bill_id):
             # Trigger total update
             bill.update_totals()
             bill.refresh_from_db()
-            if _reject_impossible_discount(request, bill):
+            rejected = _reject_impossible_discount(request, bill)
+
+            # SAY SO, TO THE OWNERS — after the discount guard, so the alert
+            # quotes what the bill actually says now. The bell inside Office's
+            # window, the other owner's phone past it (only an owner can).
+            # The date is not held to the back-date limit here: dating a bill
+            # to its delivery day is the workflow, not a correction.
+            changed = []
+            if bill.get_effective_amount != was_net:
+                changed.append(f"was ₹{was_net:,.0f}")
+            if bill.bill_date != was_date:
+                changed.append(f"was dated {was_date:%d %b %Y}")
+            if changed:
+                notify_changed(
+                    f"{shop.name} · Bill #{bill.id} now ₹{bill.get_effective_amount:,.0f}",
+                    bill.created_at,
+                    detail=' · '.join(changed),
+                    actor=request.user,
+                    url=reverse('supplier_shop_detail', args=[shop.pk]) + '?filter=all',
+                    object_type='SupplierRestockBill',
+                    object_id=bill.pk,
+                )
+
+            if rejected:
                 return redirect('edit_restock_bill', shop_id=shop.id, bill_id=bill.id)
             messages.success(request, f"Bill #{bill.id} updated successfully.")
             return redirect('supplier_shop_detail', shop_id=shop.id)
@@ -1039,10 +1109,9 @@ def add_shop_payment(request, shop_id):
 
         # ⚠ AND HOW FAR BACK. `cash_position()` cuts money-out by this date, so
         # a payment filed into a closed month moves a cash figure an owner has
-        # already read. This is the side whose collector comes round weekly or
-        # monthly, so the floor — the 1st of last month — is the whole window a
-        # month is reconciled in and refuses nothing ordinary. An owner is not
-        # bound, and the refusal names them.
+        # already read. Office is floored at `money_dates.BACKDATE_DAYS`; a
+        # payment typed later than that is an owner's to record, and the other
+        # owner is told.
         blocked = too_far_back(moved_on, request.user, "A payment")
 
         if amount is None or amount <= 0:
@@ -1052,12 +1121,21 @@ def add_shop_payment(request, shop_id):
         elif blocked:
             messages.error(request, blocked)
         else:
-            SupplierPayment.objects.create(
+            payment = SupplierPayment.objects.create(
                 supplier=shop,
                 amount=amount,
                 payment_method=request.POST.get('payment_method'),
                 date=moved_on,
                 note=fit_text(request.POST.get('note'), SupplierPayment, 'note'),
+            )
+            notify_dated_back(
+                f"{shop.name} · ₹{amount:,.0f} payment filed under {moved_on:%d %b %Y}",
+                moved_on,
+                detail="Supplies Shop payment",
+                actor=request.user,
+                url=reverse('supplier_shop_detail', args=[shop.pk]) + '?filter=all',
+                object_type='SupplierPayment',
+                object_id=payment.pk,
             )
             messages.success(request, "Payment recorded successfully.")
             return redirect('supplier_shop_detail', shop_id=shop.id)

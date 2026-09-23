@@ -507,7 +507,7 @@
               did before it was rewritten. See CLAUDE.md, Traps.
               {% endcomment %}
               <input type="date" name="date" id="advDateInput" class="form-control adv-compact"
-                     value="{% now 'Y-m-d' %}" max="{% now 'Y-m-d' %}" required>
+                     value="{% now 'Y-m-d' %}" max="{% now 'Y-m-d' %}"{% if floor_iso %} min="{{ floor_iso }}"{% endif %} required>
             </div>
             <div class="col-7">
               <div class="form-label-sm">Note <span class="fw-normal">(optional)</span></div>

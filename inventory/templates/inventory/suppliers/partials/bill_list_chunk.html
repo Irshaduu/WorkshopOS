@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load humanize custom_filters %}
 {% for bill in bills %}
 <div class="bill-card">
   <!-- Clickable header -->
@@ -28,6 +28,14 @@
             <i class="bi bi-three-dots-vertical"></i>
           </button>
           <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0" style="font-size: 0.85rem;">
+            {% if bill.created_at|past_office_window:request.user %}
+            {% comment %}
+              Past Office's 24 hours: the menu says who can, instead of two
+              items the views would refuse. Presentation; the views refuse.
+            {% endcomment %}
+            <li><span class="dropdown-item disabled py-2">Too old to change here</span></li>
+            <li><span class="dropdown-item-text small text-muted">Ask an owner to edit or delete it.</span></li>
+            {% else %}
             <li>
               <a class="dropdown-item py-2" href="{% url 'edit_restock_bill' shop.id bill.id %}">
                 <i class="bi bi-pencil text-muted me-2"></i> Edit Bill
@@ -42,6 +50,7 @@
                 </button>
               </form>
             </li>
+            {% endif %}
           </ul>
         </div>
         
@@ -90,6 +99,7 @@
     </div>
     {% endif %}
 
+    {% if not bill.created_at|past_office_window:request.user %}
     <!-- Collapsible Action Forms -->
     <div class="d-flex gap-2 mt-3 pt-3 border-top" style="border-color:var(--color-border-light)!important;">
       <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDiscount_{{ bill.id }}" aria-expanded="false" style="font-size: 0.75rem;">
@@ -113,6 +123,7 @@
         </form>
       </div>
     </div>
+    {% endif %}
 
   </div>
 </div>

@@ -819,6 +819,13 @@
             <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 1h8v14H8v-3H4v3H2V1zm2 2v2h2V3H4zm4 0v2h2V3H8zM4 6v2h2V6H4zm4 0v2h2V6H8zm3-1h3v10h-3V5z"/></svg>
             Settle on Fleet Account
         </a>
+        {% elif settle_past_window %}
+        {% comment %}
+        A paid bill settled more than 24 hours ago is an owner's to re-settle,
+        so Office gets no button `update_bill_status` would refuse — the PAID
+        chip already says where the bill stands. The script below handles an
+        absent #settleBtn, as it always has for a fleet card.
+        {% endcomment %}
         {% elif request.user|has_group:"Office" or request.user|has_group:"Owner" %}
         {% comment %}
         Opens the PRE-FLIGHT when there is something unfilled or the car is still

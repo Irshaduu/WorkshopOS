@@ -508,7 +508,7 @@ class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
             reverse('manage_edit_cashbook_entry', args=[self.entry.pk]), payload)
 
     def _alerts(self):
-        return Notification.objects.filter(event='CASHBOOK_EDITED')
+        return Notification.objects.filter(event__in=('RECORD_CHANGED', 'OLD_RECORD_CHANGED'))
 
     # -- the three that move money -------------------------------------------
 
@@ -521,9 +521,9 @@ class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
         self.assertIn('50,000', row.detail,
                       'the alert has to carry what the figure WAS')
 
-    def test_moving_it_into_another_month_reaches_the_owner(self):
+    def test_moving_it_to_another_day_reaches_the_owner(self):
         old = self.entry.date
-        moved = (old.replace(day=1) - timedelta(days=1))
+        moved = old - timedelta(days=2)      # inside Office's three days
         self._post(date=moved.isoformat())
         self.assertIn(old.strftime('%b'), self._alerts().get().detail)
 
@@ -568,12 +568,11 @@ class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
         such entry - which is how the first version of this test passed while
         proving nothing.
         """
-        # The 1st of LAST month: a different month from today, and still
-        # inside Office's own backdate floor, so the edit is actually
-        # accepted. Anything older is refused by `too_far_back` before a
-        # notification could exist to test.
-        first_of_this = self.entry.date.replace(day=1)
-        moved = (first_of_this - timedelta(days=1)).replace(day=1)
+        # Two days back: a different day from today, and still inside
+        # Office's own three-day floor, so the edit is actually accepted.
+        # Anything older is refused by `too_far_back` before a notification
+        # could exist to test.
+        moved = self.entry.date - timedelta(days=2)
         self._post(date=moved.isoformat(), category='Switchgear')
 
         row = self._alerts().get()
@@ -605,9 +604,35 @@ class AnEditSaysSoTheWayADeleteDoesTests(TestCase):
 
     # -- how it is filed ------------------------------------------------------
 
-    def test_it_is_INFO_so_it_never_reaches_a_phone(self):
+    def test_an_office_edit_is_INFO_so_it_never_reaches_a_phone(self):
+        """Anything Office is allowed to do goes to the bell."""
         from workshop.notifications import EVENTS, INFO
-        self.assertEqual(EVENTS['CASHBOOK_EDITED'].severity, INFO)
+        self._post(amount='5')
+        self.assertEqual(self._alerts().get().event, 'RECORD_CHANGED')
+        self.assertEqual(EVENTS['RECORD_CHANGED'].severity, INFO)
+
+    def test_an_owner_editing_an_old_entry_reaches_the_other_owners_phone(self):
+        """Only an owner can change a row past Office's 24 hours, so that one
+        is announced where it cannot be missed."""
+        from workshop.notifications import CRITICAL, EVENTS
+        CashbookEntry.objects.filter(pk=self.entry.pk).update(
+            created_at=timezone.now() - timedelta(days=5))
+        second = User.objects.create_user(username='rijas2', password='pw')
+        second.groups.add(Group.objects.get(name='Owner'))
+        self.client.login(username='sahad', password='pw')
+        self._post(amount='5')
+        row = self._alerts().get()
+        self.assertEqual(row.event, 'OLD_RECORD_CHANGED')
+        self.assertEqual(row.recipient, second)
+        self.assertEqual(EVENTS['OLD_RECORD_CHANGED'].severity, CRITICAL)
+
+    def test_office_cannot_edit_an_entry_past_24_hours(self):
+        CashbookEntry.objects.filter(pk=self.entry.pk).update(
+            created_at=timezone.now() - timedelta(hours=25))
+        self._post(amount='5')
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.amount, Decimal('50000.00'))
+        self.assertEqual(self._alerts().count(), 0)
 
     def test_it_writes_no_deletion_log_row(self):
         """

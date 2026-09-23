@@ -16,7 +16,7 @@ from .. import photos as photo_storage
 from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
 from ..return_to import safe_return
 from ..decorators import office_required, owner_required, staff_required, is_office_or_owner, is_owner
-from ..notifications import notify
+from ..notifications import notify, notify_dated_back
 from ..spare_dates import pair_problem
 from ..money import parse_money, fit_text
 # The day the money moved, parsed by the same rule the Cashbook uses — one
@@ -357,12 +357,21 @@ def spare_shop_pay(request, pk):
         messages.error(request, blocked)
         return redirect('spare_shop_detail', pk=pk)
 
-    SpareShopPayment.objects.create(
+    payment = SpareShopPayment.objects.create(
         shop=shop,
         amount=lump_sum,
         payment_method=payment_method,
         note=note or None,
         date=pay_date,
+    )
+    notify_dated_back(
+        f"{shop.name} · ₹{lump_sum:,.0f} payment filed under {pay_date:%d %b %Y}",
+        pay_date,
+        detail="Spare-shop payment",
+        actor=request.user,
+        url=reverse('spare_shop_detail', args=[shop.pk]) + '?filter=all',
+        object_type='SpareShopPayment',
+        object_id=payment.pk,
     )
 
     messages.success(request, f"₹{lump_sum:,.0f} payment recorded for {shop.name}.")

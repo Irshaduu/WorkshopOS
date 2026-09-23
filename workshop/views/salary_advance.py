@@ -13,7 +13,8 @@ from ..decorators import is_owner, office_required, owner_required
 from ..models import Mechanic, SalaryAdvance, SalaryPayment, SalaryPaymentLine, DeletionLog
 from ..money import parse_money, fit_text
 from .. import delete_window
-from ..notifications import notify
+from ..money_dates import backdate_floor, is_too_far_back, too_far_back
+from ..notifications import notify, notify_dated_back
 
 # The running month becomes settleable from this day of the month onward.
 # Most workshops finish the previous month's attendance/salary math in the
@@ -148,21 +149,26 @@ def _settled_month_for(advance_date):
     return SalaryPayment.objects.filter(month=advance_date.replace(day=1)).first()
 
 
-def _mark_locked(advances):
+def _mark_locked(advances, user):
     """
-    Flag each advance whose month has already been settled, in ONE query.
+    Flag each advance whose month has already been settled, in ONE query —
+    and, for Office, each one past the 24-hour window.
 
     The delete is refused server-side whatever this says — that is the control.
     This is what stops the button being offered at all, on the rule the audit
     menu already follows: a door somebody can see but not open is worse than no
-    door.
+    door. Two flags, because the two reasons have different remedies: a settled
+    month is nobody's to change here, an old row is an owner's.
     """
     months = {a.date.replace(day=1) for a in advances}
     settled = set(
         SalaryPayment.objects.filter(month__in=months).values_list('month', flat=True)
     ) if months else set()
+    viewer_is_owner = is_owner(user)
     for advance in advances:
         advance.locked = advance.date.replace(day=1) in settled
+        advance.too_old = (not viewer_is_owner
+                           and delete_window.is_past_window(advance.created_at))
     return advances
 
 
@@ -286,6 +292,9 @@ def salary_advance_home(request):
         # rule applied one screen over. Already loaded — `settled_map` is the
         # query the year list is built from, so this costs nothing.
         'settled_month_keys': sorted(f"{m:%Y-%m}" for m in settled_map),
+        # PRESENTATION ONLY — `too_far_back()` in the view is the control. The
+        # same `min` every other money date box carries; empty for an owner.
+        'floor_iso': '' if is_owner(request.user) else backdate_floor(today).isoformat(),
     })
 
 
@@ -323,10 +332,11 @@ def salary_advance_add(request):
             # will not reach for weeks.
             messages.error(request, "An advance can't be dated in the future.")
         elif settled:
-            # The month is closed. Two honest ways forward, and which one to
-            # offer depends on who is asking: deleting a settlement is
-            # Owner-only, so telling Office to "delete it first" would send them
-            # at a button they cannot see.
+            # The month is closed. Which way forward to offer depends on who is
+            # asking: deleting a settlement is Owner-only, and since the
+            # three-day back-date limit Office could not add the advance even
+            # after an owner deleted it — so Office is told plainly that this
+            # is an owner's job, rather than given a route that fails halfway.
             if is_owner(request.user):
                 messages.error(
                     request,
@@ -338,10 +348,15 @@ def salary_advance_add(request):
             else:
                 messages.error(
                     request,
-                    f"{settled.month:%B %Y} is already settled. Ask an owner to delete "
-                    f"that settlement so it can be added — or record it in "
-                    f"{today:%B} with a note saying it was from {settled.month:%B}."
+                    f"{settled.month:%B %Y} is already settled. Only an owner can "
+                    f"add an advance to it."
                 )
+        elif too_far_back(advance_date, request.user, "An advance"):
+            # AFTER the settled-month branch: that one binds everybody and names
+            # the settlement in the way, so it is the better message wherever
+            # the two overlap. This one only escalates Office to an owner — the
+            # same three-day limit every other money date in the app follows.
+            messages.error(request, too_far_back(advance_date, request.user, "An advance"))
         elif not staff.is_active and advance_date >= today:
             # A retired staff member takes no NEW cash — but a BACKDATED entry
             # is a correction, not a handout, and refusing it was the wrong
@@ -361,9 +376,7 @@ def salary_advance_add(request):
                 staff=staff, amount=amount, date=advance_date,
                 note=note or None, created_by=request.user,
             )
-            notify(
-                'SALARY_ADVANCE',
-                f"{staff.name} given ₹{amount:,.0f} advance",
+            alert = dict(
                 detail=f"{advance_date:%d %b %Y}",
                 actor=request.user,
                 # Straight to the one-glance answer page, naming THIS advance so
@@ -384,6 +397,14 @@ def salary_advance_add(request):
                 ),
                 object_type='SALARY_ADVANCE', object_id=advance.pk,
             )
+            body = f"{staff.name} given ₹{amount:,.0f} advance"
+            # Every advance reaches the bell. One dated past the three-day
+            # limit — which only an owner can record — reaches the other
+            # owner's phone INSTEAD, so one act is one alert.
+            if is_too_far_back(advance_date):
+                notify_dated_back(body, advance_date, **alert)
+            else:
+                notify('SALARY_ADVANCE', body, **alert)
             messages.success(request, f"₹{amount:,.0f} advance recorded for {staff.name}.")
     return redirect('salary_advance_home')
 
@@ -510,7 +531,8 @@ def salary_advance_staff_detail(request, staff_id):
             # Marked so a settled month's advances show a lock where the bin
             # would be. The refusal in `salary_advance_delete` is the control;
             # this only stops the button being offered.
-            'advances': _mark_locked(list(staff.salary_advances.all()[:STAFF_ADVANCE_ROWS])),
+            'advances': _mark_locked(list(staff.salary_advances.all()[:STAFF_ADVANCE_ROWS]),
+                                     request.user),
         })
 
     # Which advance the alert was about. New notifications name it with

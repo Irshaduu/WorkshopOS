@@ -717,6 +717,10 @@
             <i class="bi bi-three-dots-vertical" style="font-size: 1.2rem;"></i>
           </button>
           <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="border-radius: 12px; min-width: 150px;">
+            {% if pay.created_at|past_office_window:request.user %}
+            <li><span class="dropdown-item disabled py-2 small">Too old to delete here</span></li>
+            <li><span class="dropdown-item-text small text-muted">Ask an owner to remove it.</span></li>
+            {% else %}
             <li>
               <form method="post" action="{% url 'spare_shop_payment_reverse' shop.pk pay.pk %}"
                     onsubmit="confirmSubmit(event, 'Delete this <strong class=\'text-danger\'>₹{{ pay.amount|floatformat:0 }}</strong> payment?<br><small>The paid amounts will be deducted from the affected items.</small>', this, 'danger', 'bi-trash3-fill', 'reversing this payment');">
@@ -726,6 +730,7 @@
                 </button>
               </form>
             </li>
+            {% endif %}
           </ul>
         </div>
         {% endif %}

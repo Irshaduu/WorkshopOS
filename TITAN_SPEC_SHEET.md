@@ -335,8 +335,8 @@ rather than by reading source.
 | Database signal handlers | 15 | 13 for stock & costing, 2 for sessions & photos |
 | Atomic transaction blocks | 61 | 45 `with` blocks and 16 decorators — every money movement is all-or-nothing |
 | Row locks (`select_for_update`) | 10 | Guards cascade payments against races |
-| Notification events | 16 | 13 critical (push to phone), 3 informational |
-| Notification call sites | 23 | Across 9 modules, one catalogue |
+| Notification events | 20 | 15 critical (push to phone), 5 informational — re-counted 2026-09-22 |
+| Notification call sites | 29 | Across 12 modules, one catalogue — re-counted 2026-09-22 |
 | Permanently-deletable record types | 15 | Each writes a snapshot before deletion |
 | Management commands | 15 | Backup, seeding, purge, owner identity, roles, photo sweep, legacy unlock |
 | Template tags & filters | 15 | Custom, shared across screens |
@@ -495,10 +495,11 @@ that earned it and then *hides* it, because the year-to-date window ends on a
 calendar boundary the card now sits past. The other end is quieter and needed
 its own rule: a figure dated three years back rewrites the running position of
 every month since, on rows nobody scrolls to, and reports nothing. Office may
-file back to the 1st of last month — a **calendar month, never a day count**,
-because the office reconciles last month in the first days of this one and a
-"14 days" rule would refuse exactly that correction.
-*One implementation, six screens, and the owner's exception is logged rather than silent.*
+date money at most **three days** back — enough for yesterday's receipt typed
+this morning and a Saturday found on Monday, and short enough that nobody can
+quietly move an entry into a month the owners have already read. Anything older
+is an owner's to record, and the other owner is told on their phone.
+*One implementation, seven screens, and every back-dated entry is announced — the bell inside the three days, the other owner's phone past them.*
 
 **The system installs into a workshop that is already running, and says so in
 the schema.** Parts are on the shelf and money is owed to every shop on the day
@@ -616,21 +617,23 @@ job card skips any number an old bill holds, and an old bill cannot take a
 number that belongs to the live series.
 *Where the bill was saved as a PDF, the PDF fills the form — and saves nothing until a person has looked at it.*
 
-**A correction and an anomaly are different acts.** Office can delete a money
-record entered in the last seven days; anything older is an owner's to remove.
-The window is measured from when the row was *entered*, never from the date the
-money carries — because back-dating is normal here, and on the money date Office
-would be refused permission to delete their own typo thirty seconds after making
-it. The control is still offered rather than hidden, and the refusal names the
-rule, the age of the row and who to ask.
+**A correction and an anomaly are different acts.** Office can change or delete
+a money record within 24 hours of entering it; anything older is an owner's to
+change, and a change moved past that reaches the other owner's phone. One window
+covers both doors, because an edit that retypes ₹50,000 as ₹500 is a delete by
+another name. It is measured from when the row was *entered*, never from the
+date the money carries — because back-dating is normal here, and on the money
+date Office would be refused permission to fix their own typo thirty seconds
+after making it. The refusal names the rule, the age of the row and who to ask,
+and a list row too old to change says so in its own menu.
 *An escalation, not a wall — no approval queue, no second sign-off.*
 
 **Where prevention stops, detection starts.** Every guard in the system escalates
 to an owner, and nothing can refuse an owner — so at that boundary the model
-changes rather than the rule getting stricter. An owner who files money into a
-closed month sends a critical alert to the *other* owner within seconds, the row
-itself carries a permanent visible mark, and a separate view lists what was
-filed backwards most recently. That last part exists because the owner tested it,
+changes rather than the rule getting stricter. An owner who dates money past the
+three days sends a critical alert to the *other* owner within seconds. On the
+rent screen a row filed into a finished month also carries a permanent visible
+mark, and a separate view lists what was filed backwards most recently. That last part exists because the owner tested it,
 knew they had back-dated something, and still could not find it: the row's mark
 is only visible once the right month is open.
 *An approval queue in a two-owner workshop is machinery nobody would use.*
@@ -733,9 +736,12 @@ time, announcing "done" before the server had done anything.
 
 ### Alerts
 
-**One catalogue, one entry point.** Sixteen events, defined in a single file,
-raised from eighteen places. Severity is a delivery tier rather than decoration:
-thirteen push to the owners' phones, three land only in the in-app feed. A
+**One catalogue, one entry point.** Twenty events, defined in a single file,
+raised from twenty-nine places. Severity is a delivery tier rather than decoration:
+fifteen push to the owners' phones, five land only in the in-app feed. For money
+the tier is decided by the record, never the person: anything Office is allowed
+to do reaches the bell, anything only an owner can do reaches the other owner's
+phone. A
 notification's address is permanent, so the rule is that a bad one is fixed by
 making that address work — never by repointing the next alert, which does nothing
 for every alert already sent.

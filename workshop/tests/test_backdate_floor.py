@@ -7,19 +7,16 @@ it is the end where the damage is quiet: a figure dated FORWARD is caught the
 moment somebody reads the period it lands in, while one dated three years BACK
 rewrites a month nobody scrolls to and reports nothing at all.
 
-⚠ THE FLOOR IS A CALENDAR MONTH, NEVER A DAY COUNT. A fixed "14 days" was the
-obvious alternative and it breaks at exactly the moment the rule exists for:
-the office reconciles LAST month against its books in the first days of THIS
-one, so a gap found on the 3rd may belong to the 5th of last month. The month
-boundary is the rhythm the work actually follows — the same lesson
-`delete_window` records for measuring on `created_at` rather than the money
-date.
+⚠ THE FLOOR IS THREE DAYS, AND THAT REVERSES THE CALENDAR-MONTH RULE THESE
+TESTS PINNED UNTIL 2026-09-22 (the owner's decision). The floor was the 1st of
+LAST month, so Office could quietly file money into last month for the whole
+of this one — after the owners had read that month's profit. The office enters
+money on the day it moves; the rare late catch-up is an owner's.
 
 ⚠ IT BINDS OFFICE, NOT OWNERS. `delete_window`'s escalation, not a wall: an
 owner keeps every route open because a go-live opening figure and an audit
 correction are both legitimately older than the floor. What covers the owner is
-that the act cannot happen silently — see `AnOwnerCannotDoItSILENTLYTests` in
-`test_rent.py` for the section where that half is built.
+that the act cannot happen silently — see `test_money_change_rules.py`.
 
 These tests are deliberately shaped as ONE list of screens rather than one
 class per section: the point of the rule living in `money_dates` is that every
@@ -36,7 +33,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from workshop.models import (BulkPayer, CashbookEntry, FailedAttempt, SpareShop)
-from workshop.money_dates import (BACKDATE_MONTHS, backdate_floor,
+from workshop.money_dates import (BACKDATE_DAYS, backdate_floor,
                                   is_too_far_back, too_far_back)
 
 from inventory.models import SupplierShop
@@ -45,33 +42,39 @@ from inventory.models import SupplierShop
 class TheFloorItselfTests(TestCase):
     """The rule, before any screen uses it."""
 
-    def test_it_is_the_first_of_last_month(self):
+    def test_it_is_three_days_before_today(self):
         from datetime import date
-        self.assertEqual(backdate_floor(today=date(2026, 9, 4)), date(2026, 8, 1))
-        self.assertEqual(backdate_floor(today=date(2026, 9, 30)), date(2026, 8, 1))
-        self.assertEqual(backdate_floor(today=date(2026, 1, 2)), date(2025, 12, 1))
+        self.assertEqual(backdate_floor(today=date(2026, 9, 22)), date(2026, 9, 19))
+        self.assertEqual(backdate_floor(today=date(2026, 9, 2)), date(2026, 8, 30))
+        self.assertEqual(backdate_floor(today=date(2026, 1, 1)), date(2025, 12, 29))
 
-    def test_it_holds_for_the_WHOLE_month_which_a_day_count_would_not(self):
-        """
-        On the 28th the 1st of last month is 58 days back and must still be
-        reachable — the office is reconciling that month right now. A rolling
-        14- or 30-day rule closed it weeks earlier, which is the correction the
-        feature exists to keep easy.
-        """
+    def test_the_third_day_back_is_allowed_and_the_fourth_is_not(self):
         from datetime import date
-        for day in (1, 14, 28):
-            self.assertFalse(is_too_far_back(date(2026, 8, 1), today=date(2026, 9, day)))
-        self.assertTrue(is_too_far_back(date(2026, 7, 31), today=date(2026, 9, 1)))
+        today = date(2026, 9, 22)
+        self.assertFalse(is_too_far_back(date(2026, 9, 19), today=today))
+        self.assertTrue(is_too_far_back(date(2026, 9, 18), today=today))
 
-    def test_it_crosses_a_year_boundary(self):
+    def test_last_month_is_no_longer_open_all_month(self):
+        """
+        The rule this replaced kept the whole of last month open until this
+        one ended — so on the 28th Office could still file into a month the
+        owners had already read. On the 28th, last month is closed to Office.
+        """
         from datetime import date
-        self.assertFalse(is_too_far_back(date(2025, 12, 1), today=date(2026, 1, 20)))
-        self.assertTrue(is_too_far_back(date(2025, 11, 30), today=date(2026, 1, 20)))
+        self.assertTrue(is_too_far_back(date(2026, 8, 25), today=date(2026, 9, 28)))
+        # ...and the first days of this month still reach the end of the last.
+        self.assertFalse(is_too_far_back(date(2026, 8, 31), today=date(2026, 9, 2)))
 
     def test_the_constant_is_read_not_restated(self):
         """The messages and the guard must never be able to name different
-        numbers — the rule `OFFICE_DELETE_WINDOW_DAYS` already follows."""
-        self.assertEqual(BACKDATE_MONTHS, 1)
+        numbers — the rule `OFFICE_WINDOW_HOURS` already follows."""
+        self.assertEqual(BACKDATE_DAYS, 3)
+        from datetime import date
+        Group.objects.get_or_create(name='Office')
+        staff = User.objects.create_user('off_n', password='pw')
+        staff.groups.add(Group.objects.get(name='Office'))
+        said = too_far_back(date(2020, 1, 1), staff, "A payment")
+        self.assertIn(f"{BACKDATE_DAYS} days back", said)
 
     def test_an_owner_is_never_refused(self):
         from datetime import date
@@ -98,10 +101,11 @@ class TheFloorItselfTests(TestCase):
         Group.objects.get_or_create(name='Office')
         staff = User.objects.create_user('off2', password='pw')
         staff.groups.add(Group.objects.get(name='Office'))
+        # Three days before 4 September is the 1st — a single-digit day.
         said = too_far_back(date(2020, 1, 1), staff, "A payment",
                             today=date(2026, 9, 4))
-        self.assertIn("1 August 2026", said)
-        self.assertNotIn("01 August", said)
+        self.assertIn("1 September 2026", said)
+        self.assertNotIn("01 September", said)
 
 
 class _Screens(TestCase):

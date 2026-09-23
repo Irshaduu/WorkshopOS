@@ -408,3 +408,86 @@ class EveryDoorIntoADiscountEnforcesTheSameRuleTests(SupplierCostingBase):
         self.assertEqual(rows[newer.id].covered_status, 'PARTIAL')
         self.assertEqual(rows[newer.id].pending_amount, D('5000'))
         self.assertEqual(rows[older.id].get_effective_amount, D('0'))
+
+
+class TheQuickDiscountBoxRecostsTheStockTests(SupplierCostingBase):
+    """
+    The discount box on a bill card (`update_bill_discount`) saved with
+    `.update()`, which fires no signals — so the `SupplierRestockBill`
+    pre/post_save pair that re-costs on a discount change never ran. The bill
+    total and the shop's balance took the discount; `Item.avg_cost` and every
+    warehouse draw kept the GROSS price. The Profit page's Inventory Used then
+    charged the parts at a cost the Supplies Shop was never paid.
+
+    The Edit Bill page always went through `bill.save()` and was right, so the
+    two doors are held to ONE answer.
+    """
+
+    def setUp(self):
+        super().setUp()
+        g, _ = Group.objects.get_or_create(name='Office')
+        self.user = User.objects.create_user(username='off_disc', password='pw')
+        self.user.groups.add(g)
+        self.client = Client()
+        self.client.login(username='off_disc', password='pw')
+
+    def test_a_discount_through_the_box_reaches_the_average_cost(self):
+        # 10 L billed ₹10,000 = ₹1,000/L; ₹2,000 off makes it ₹800/L.
+        b, _line = self.bill(10, 10000, days_ago=10)
+        self.assertEqual(self.avg(), D('1000.00'))
+
+        self.client.post(reverse('update_bill_discount', args=[self.shop.id, b.id]),
+                         {'discount_amount': '2000'})
+
+        b.refresh_from_db()
+        self.assertEqual(b.discount_amount, D('2000'))
+        self.assertEqual(self.avg(), D('800.00'))
+        self.assertEqual(self.avg(), average_cost_for(self.item))
+
+    def test_a_draw_made_after_the_bill_is_recosted_too(self):
+        b, _line = self.bill(10, 10000, days_ago=10)
+        draw = self.draw(4, days_ago=5)
+        self.assertEqual(draw.unit_price, D('1000.00'))
+
+        self.client.post(reverse('update_bill_discount', args=[self.shop.id, b.id]),
+                         {'discount_amount': '2000'})
+
+        draw.refresh_from_db()
+        self.assertEqual(draw.unit_price, D('800.00'),
+                         'the part fitted is still charged at the pre-discount cost')
+
+    def test_the_box_and_the_edit_page_give_the_same_answer(self):
+        """Two doors onto one discount must cost the stock identically."""
+        # Door 1 — the discount box, on this item.
+        b1, _ = self.bill(10, 10000, days_ago=10)
+        box_draw = self.draw(4, days_ago=5, reg='KL09BOX001')
+        self.client.post(reverse('update_bill_discount', args=[self.shop.id, b1.id]),
+                         {'discount_amount': '2000'})
+
+        # Door 2 — the Edit Bill page, on an identical second item.
+        other = Item.objects.create(category=self.category, name='Castrol 10w40',
+                                    average_stock=D('40'), current_stock=D('0'))
+        b2, line2 = self.bill(10, 10000, days_ago=10, item=other)
+        edit_draw = JobCardSpareItem.objects.create(
+            job_card=JobCard.objects.create(registration_number='KL09EDT001',
+                                            admitted_date=self.today - timedelta(days=5)),
+            source=INVENTORY, item=other, quantity=D('4'))
+        self.client.post(reverse('edit_restock_bill', args=[self.shop.id, b2.id]), {
+            'bill_date': b2.bill_date.isoformat(), 'discount_amount': '2000',
+            f'qty_{line2.id}': '10', f'price_{line2.id}': '10000'})
+
+        other.refresh_from_db()
+        box_draw.refresh_from_db()
+        edit_draw.refresh_from_db()
+        self.assertEqual(self.avg(), other.avg_cost)
+        self.assertEqual(box_draw.unit_price, edit_draw.unit_price)
+        self.assertEqual(other.avg_cost, D('800.00'))
+
+    def test_the_refusals_still_change_nothing(self):
+        b, _line = self.bill(10, 10000, days_ago=10)
+        for bad in ('-500', '20000'):             # negative, above the bill
+            self.client.post(reverse('update_bill_discount', args=[self.shop.id, b.id]),
+                             {'discount_amount': bad})
+        b.refresh_from_db()
+        self.assertEqual(b.discount_amount, D('0'))
+        self.assertEqual(self.avg(), D('1000.00'))

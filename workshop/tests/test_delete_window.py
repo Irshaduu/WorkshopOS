@@ -1,6 +1,10 @@
 """
 OFFICE CORRECTS A RECENT MISTAKE; AN OWNER TAKES ANYTHING OLDER.
 
+⚠ The window is 24 HOURS and covers edits as well as deletes since 2026-09-22
+(the owner's decision); it was 7 calendar days, deletes only. See
+`test_money_change_rules.py` for the edits and the alerts.
+
 Six money deletes are `@office_required`, so before this Office could remove a
 six-month-old fleet payment exactly as easily as one keyed this morning. Those
 are two different acts: deleting something recorded an hour ago is a
@@ -22,14 +26,14 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from workshop.delete_window import OFFICE_DELETE_WINDOW_DAYS, refusal
+from workshop.delete_window import OFFICE_WINDOW_HOURS, refusal
 from workshop.models import (BulkPayer, BulkPaymentHistory, CashbookEntry,
                              DeletionLog, FailedAttempt, JobCard, Mechanic,
                              SalaryAdvance, SpareShop, SpareShopPayment)
 
 from inventory.models import SupplierPayment, SupplierShop
 
-WINDOW = OFFICE_DELETE_WINDOW_DAYS
+WINDOW = OFFICE_WINDOW_HOURS   # hours
 
 
 def _age(instance, days):
@@ -92,14 +96,18 @@ class TheRuleItselfTests(WindowBase):
         old = timezone.now() - timedelta(days=365)
         self.assertIsNone(refusal(self.owner_user, old, 'This payment'))
 
-    def test_office_keeps_todays_row_and_the_last_day_of_the_window(self):
-        for days in (0, 1, WINDOW):
-            with self.subTest(days=days):
-                stamp = timezone.now() - timedelta(days=days)
+    def test_the_window_is_24_hours(self):
+        """It was 7 calendar days, for deletes only, until 2026-09-22."""
+        self.assertEqual(WINDOW, 24)
+
+    def test_office_keeps_a_row_inside_its_first_24_hours(self):
+        for hours in (0, 1, 12, WINDOW - 1):
+            with self.subTest(hours=hours):
+                stamp = timezone.now() - timedelta(hours=hours)
                 self.assertIsNone(refusal(self.office_user, stamp, 'This payment'))
 
-    def test_office_loses_it_the_day_after_the_window(self):
-        stamp = timezone.now() - timedelta(days=WINDOW + 1)
+    def test_office_loses_it_once_the_24_hours_are_up(self):
+        stamp = timezone.now() - timedelta(hours=WINDOW, minutes=1)
         self.assertIsNotNone(refusal(self.office_user, stamp, 'This payment'))
 
     def test_the_refusal_names_the_row_the_age_and_the_route(self):
@@ -114,13 +122,26 @@ class TheRuleItselfTests(WindowBase):
         self.assertIn(str(WINDOW), msg)        # what the rule is
         self.assertIn('owner', msg.lower())    # who can do it
 
+    def test_a_row_a_day_and_a_bit_old_is_counted_in_hours(self):
+        """'1 days ago' and '0 days ago' are both wrong; hours read true."""
+        msg = refusal(self.office_user, timezone.now() - timedelta(hours=30), 'This entry')
+        self.assertIn('30 hours ago', msg)
+
     def test_the_message_quotes_the_window_it_actually_enforces(self):
         """
         One constant behind both, so the number on screen can never disagree
         with the number enforced.
         """
         msg = refusal(self.office_user, timezone.now() - timedelta(days=99), 'This entry')
-        self.assertIn(f'last {WINDOW} days', msg)
+        self.assertIn(f'within {WINDOW} hours', msg)
+
+    def test_the_message_says_which_act_was_refused(self):
+        msg = refusal(self.office_user, timezone.now() - timedelta(days=3),
+                      'This entry', action='change')
+        self.assertIn('to change this one', msg)
+        msg = refusal(self.office_user, timezone.now() - timedelta(days=3),
+                      "KL 1's bill", action='change', happened='settled')
+        self.assertIn('was settled', msg)
 
     def test_a_row_with_no_recorded_time_is_not_refused(self):
         """
@@ -201,7 +222,7 @@ class EveryCoveredDeleteRefusesOfficePastTheWindowTests(WindowBase):
         entry = CashbookEntry.objects.create(
             entry_type='EXPENSE', category='Electricity', amount=D('900'),
             date=date.today())
-        return _age(entry, WINDOW + 30)
+        return _age(entry, 30)
 
     def test_cashbook_refuses_office_and_deletes_nothing(self):
         entry = self._old_entry()
@@ -223,7 +244,7 @@ class EveryCoveredDeleteRefusesOfficePastTheWindowTests(WindowBase):
         shop = SpareShop.objects.create(name='Spare Club')
         pay = SpareShopPayment.objects.create(
             shop=shop, amount=D('5000'), payment_method='CASH', date=date.today())
-        return shop, _age(pay, WINDOW + 30)
+        return shop, _age(pay, 30)
 
     def test_spare_shop_payment_refuses_office(self):
         shop, pay = self._old_spare_payment()
@@ -242,7 +263,7 @@ class EveryCoveredDeleteRefusesOfficePastTheWindowTests(WindowBase):
         shop = SupplierShop.objects.create(name='Lubricant')
         pay = SupplierPayment.objects.create(
             supplier=shop, amount=D('9000'), payment_method='CASH', date=date.today())
-        return shop, _age(pay, WINDOW + 30)
+        return shop, _age(pay, 30)
 
     def test_supplier_payment_refuses_office(self):
         shop, pay = self._old_supplier_payment()
@@ -262,7 +283,7 @@ class EveryCoveredDeleteRefusesOfficePastTheWindowTests(WindowBase):
         hist = BulkPaymentHistory.objects.create(
             bulk_payer=payer, amount=D('110000'), payment_method='UPI',
             jobs_affected=0, details='[]', date=date.today())
-        return payer, _age(hist, WINDOW + 30)
+        return payer, _age(hist, 30)
 
     def test_fleet_payment_refuses_office(self):
         payer, hist = self._old_fleet_payment()
@@ -282,7 +303,7 @@ class EveryCoveredDeleteRefusesOfficePastTheWindowTests(WindowBase):
         staff = Mechanic.objects.create(name='Amlah', current_salary=D('20000'))
         adv = SalaryAdvance.objects.create(
             staff=staff, amount=D('3000'), date=date.today())
-        return _age(adv, WINDOW + 30)
+        return _age(adv, 30)
 
     def test_salary_advance_refuses_office(self):
         adv = self._old_advance()

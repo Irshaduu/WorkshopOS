@@ -46,6 +46,7 @@ from django.db import transaction
 from django.db.models import Count, DecimalField, Sum, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import urlencode
 
@@ -54,6 +55,7 @@ from ..decorators import owner_accounts, owner_required
 from ..models import DeletionLog, OwnerWithdrawal
 from ..money import fit_text, parse_money
 from ..money_dates import is_future, posted_date
+from ..notifications import notify
 
 #: One page of history. 45 matches every other list view in the app.
 PAGE_SIZE = 45
@@ -286,10 +288,28 @@ def withdrawal_add(request):
     # SQLite-accepts / Postgres-500s split, on a screen where money moves.
     note = fit_text((request.POST.get('note') or '').strip(), OwnerWithdrawal, 'note')
 
-    OwnerWithdrawal.objects.create(
-        owner=owner, amount=amount, payment_method=method,
-        note=note or None, date=when, recorded_by=request.user,
-    )
+    with transaction.atomic():
+        OwnerWithdrawal.objects.create(
+            owner=owner, amount=amount, payment_method=method,
+            note=note or None, date=when, recorded_by=request.user,
+        )
+        # THE OTHER OWNER IS TOLD. Deleting a withdrawal has always been
+        # announced (through `DeletionLog.record`); recording one was silent,
+        # so a partner learned what the other took only by opening this page.
+        # The actor is excluded, so this always reaches the other owner — and
+        # the day rides in `detail` only when it is not today.
+        notify(
+            'WITHDRAWAL_ADDED',
+            f"{display_name(owner)} · ₹{amount:,.0f} taken out",
+            # The title already says "Owner withdrawal", so today's needs no
+            # detail at all; a back-dated one says which day.
+            detail=(f"Dated {when:%d %b %Y}"
+                    if when != timezone.localdate() else ""),
+            actor=request.user,
+            # All Time, so a withdrawal dated into an earlier month is on the
+            # page the alert opens rather than filtered out of This Month.
+            url=reverse('withdrawal_home') + '?range=all_time#wdHistory',
+        )
     messages.success(
         request, f"Recorded ₹{amount:,.0f} taken by {display_name(owner)}.")
     return _back(request)
