@@ -196,8 +196,8 @@ def backdated_rows(start, end, kind=''):
     overwrites a figure, so Edit History has to copy the old one before it is
     lost; a back-dated row loses nothing — `date` and `created_at` both stay on
     it — so a second copy would only be a second answer free to drift. The
-    red mark is `filed_past_limit`, the rent row mark's own rule, judged as at
-    the day the row was keyed.
+    red mark is `filed_past_limit`, judged as at the day the row was keyed —
+    the same predicate that refused Office and tiered the alert at that moment.
     """
     labels = dict(BACKDATED_CHOICES)
     rows = []

@@ -75,7 +75,7 @@ from .withdrawal import (
     withdrawal_home, withdrawal_add, withdrawal_delete,
 )
 from .rent import (
-    rent_home, rent_deposit_add, rent_deposit_delete,
+    rent_home, rent_deposit_add, rent_deposit_edit, rent_deposit_delete,
     rent_rate_set, rent_rate_delete,
 )
 from .legacy import legacy_home, legacy_lock, opening_stock, opening_balances

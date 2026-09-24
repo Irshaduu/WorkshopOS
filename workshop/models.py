@@ -2841,9 +2841,9 @@ class EditLog(models.Model):
     ONLY THE MONEY FIELDS, and only the ones that changed: a figure, the day it
     lands on, which side of the Profit page it sits on. A corrected spelling or
     note is not history — the rule `notify_changed` already follows, so the
-    row and its alert always describe the same act. ⚠ The CASHBOOK keeps only
-    what only an owner could do (`only_past_limits` below) — its same-day edit
-    is the day's work, not a correction.
+    row and its alert always describe the same act. ⚠ The CASHBOOK and a RENT
+    DEPOSIT keep only what only an owner could do (`only_past_limits` below)
+    — an edit inside Office's 24 hours is the day's work, not a correction.
 
     NO FOREIGN KEY to the edited row, deliberately. A record edited and then
     deleted must keep its edit history (the deletion is logged too), and a
@@ -2858,6 +2858,7 @@ class EditLog(models.Model):
     ENTITY_CASHBOOK = DeletionLog.ENTITY_CASHBOOK
     ENTITY_RESTOCK_BILL = DeletionLog.ENTITY_RESTOCK_BILL
     ENTITY_JOBCARD = DeletionLog.ENTITY_JOBCARD
+    ENTITY_RENT_DEPOSIT = DeletionLog.ENTITY_RENT_DEPOSIT
     # The same keys AND labels as Deletion History, so one record type is
     # called one thing on both tabs of the page. (Named through `DeletionLog`
     # inside the comprehension: a comprehension in a class body cannot see the
@@ -2865,7 +2866,7 @@ class EditLog(models.Model):
     ENTITY_CHOICES = [
         (key, label) for key, label in DeletionLog.ENTITY_CHOICES
         if key in (DeletionLog.ENTITY_JOBCARD, DeletionLog.ENTITY_RESTOCK_BILL,
-                   DeletionLog.ENTITY_CASHBOOK)
+                   DeletionLog.ENTITY_CASHBOOK, DeletionLog.ENTITY_RENT_DEPOSIT)
     ]
 
     KIND_MONEY = 'money'
@@ -2933,9 +2934,10 @@ class EditLog(models.Model):
         are exactly `notify_changed()`'s, which decides bell or phone.
 
         `only_past_limits=True` is the CASHBOOK's rule (2026-09-24, the
-        owners' call): an edit Office could have made is part of the day's
-        work — cash handed out at ₹2,000 and settled at ₹1,800 hours later —
-        so it is neither kept nor announced. Only an edit ONLY AN OWNER could
+        owners' call), and a RENT DEPOSIT's since the same day: an edit Office
+        could have made is part of the day's work — cash handed out at ₹2,000
+        and settled at ₹1,800 hours later — so it is neither kept nor
+        announced. Only an edit ONLY AN OWNER could
         make is, split on `is_owner_only_change`, the very line that decides
         bell or phone. It returns None whenever nothing was kept, so a caller
         can tell (the Cashbook does, to announce a back-dating instead).

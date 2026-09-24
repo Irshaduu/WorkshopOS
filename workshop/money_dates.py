@@ -126,10 +126,10 @@ def filed_past_limit(value, created_at):
     KEYED? — so it answers what the rule said at that moment, and a row never
     becomes "past the limit" just because weeks have gone by since.
 
-    The one answer read by rent's row mark and by the Back-dated tab of the
-    history page, so the two can never mark the same row differently — and it
+    Read by the Back-dated tab of the history page, for every money table. It
     is `is_too_far_back`, the predicate that refused Office and tiered the
-    alert at that same moment.
+    alert at that same moment, so the red mark shows exactly the rows that
+    rang the other owner's phone.
     """
     if created_at is None:
         return False

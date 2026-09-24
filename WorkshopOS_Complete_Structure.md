@@ -32,7 +32,8 @@ brackets — a section belongs where the app puts it, not where a category would
 │
 ├── High Discounts
 │
-├── Deletion History
+├── Change History   (Owner only)
+│   └── Deleted · Edited · Back-dated
 │
 ├── Spare Shops
 │   ├── Shop List
@@ -75,7 +76,7 @@ brackets — a section belongs where the app puts it, not where a category would
 │
 ├── Deposit & Rent
 │   ├── What to hand the collector today
-│   ├── Deposit log (one month), and Recently added
+│   ├── Deposit log (one month) — edit or delete from each row's ⋮
 │   └── Update Rent (Owner only) — rate history
 │
 ├── Owner Withdrawals   (Owner only)

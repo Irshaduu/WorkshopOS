@@ -80,7 +80,6 @@ from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
 from .models import RentDeposit, RentRate
-from .money_dates import filed_past_limit
 
 ZERO = Decimal('0')
 
@@ -551,62 +550,25 @@ def year_blocks(today=None):
     return blocks
 
 
-#: How many rows "Recently added" draws. It answers "what did I just do?", so
-#: it is a short list by construction — anything older is found by opening the
-#: month, which the row's own mark makes obvious once you are there.
-RECENT_ROWS = 40
-
-
-def backdating(deposit):
+def log_starts(today=None):
     """
-    Was this row filed PAST THE LIMIT when it was keyed? — `''` or
-    `'past_limit'`.
+    The first month the deposit log can open on — the earlier of the first
+    rate's month and the month of the oldest deposit — or this month when
+    there is neither.
 
-    ⚠ THE ONE RULE BOTH VIEWS READ, so the month log and the Recently-added
-    list can never disagree about the same row. Every deposit stores two dates
-    and nothing used to show them: `date` is when the money moved, `created_at`
-    is when somebody typed it.
+    ⚠ THE OLDEST DEPOSIT COUNTS AS WELL AS THE FIRST RATE, because a deposit
+    dated BEFORE the ledger starts is how a go-live opening position is
+    entered, and `position()` counts it. A log that stopped at the first rate
+    would hold money the page adds up and no month can show.
 
-    ⚠ IT ASKS `is_too_far_back` AS AT THE DAY IT WAS KEYED, AND THAT IS THE
-    WHOLE POINT — the mark then shows EXACTLY the rows that rang the other
-    owner's phone, because `notify_dated_back` tiers itself on the same
-    predicate at the same moment. One constant, `BACKDATE_DAYS`, decides who is
-    refused, which alert fires AND whether the row is marked, so the three can
-    never drift apart. Judging against TODAY instead would quietly mark every
-    row in the ledger as the weeks passed.
-
-    ⚠ AN AMBER SECOND TIER WAS RETIRED HERE (2026-09-23) BECAUSE IT FIRED ON
-    THE DAILY WORKFLOW. It marked any row keyed after the day it was dated, so
-    yesterday's handover keyed this morning — and Saturday's keyed on Monday —
-    both wore a chip. That is the ordinary work the three-day floor exists to
-    PERMIT, and this docstring already promised it went unmarked while the code
-    marked it; the test named for that case passed only because it stamped
-    `created_at` to the same day it was dated. A mark on the ordinary case is
-    meaningless by the second row, which is the failure the promise named.
-
-    What is left is the one tier that was ever worth a colour: money filed
-    further back than Office may reach, which only an owner can do.
+    A month asked for before it falls back to this month, like a future or
+    unreadable one. Two small queries, the same on any size of history.
     """
-    return 'past_limit' if filed_past_limit(deposit.date, deposit.created_at) else ''
-
-
-def recently_added(limit=RECENT_ROWS):
-    """
-    Deposits by the day they were KEYED, newest first, across every month.
-
-    ⚠ THE ANSWER TO "I KNOW I DID IT, BUT I CANNOT FIND WHERE." The row mark
-    is only visible once the right month is open, so a mis-dated entry stayed
-    findable only by hunting month by month — the owner found one by eye and
-    only because the demo data was uniform enough for it to stand out. Ordered
-    by `created_at`, this puts whatever was just done at the top whatever month
-    it was filed under.
-
-    Ordered by `-created_at` explicitly: the model's own ordering is
-    `-date, -created_at`, which is the money order and the exact opposite of
-    what this list is for.
-    """
-    return list(RentDeposit.objects.select_related('recorded_by')
-                .order_by('-created_at', '-id')[:limit])
+    this_month = month_of(today or timezone.localdate())
+    first_rate = ledger_starts()
+    oldest = RentDeposit.objects.order_by('date').values_list('date', flat=True).first()
+    candidates = [m for m in (first_rate, month_of(oldest) if oldest else None) if m]
+    return min(candidates + [this_month])
 
 
 def deposit_days(start, end):
@@ -619,8 +581,8 @@ def deposit_days(start, end):
     twice by two people is often typed slightly differently.
 
     A second deposit in a day is not WRONG — a morning and an evening handover
-    happen — which is why the page asks rather than refuses, and why the day
-    total in the log exists to catch what slips through either way.
+    happen — which is why the page asks rather than refuses. Whatever slips
+    through sits as two rows of one date side by side in that month's log.
 
     ⚠ IT TAKES A RANGE, NOT THE MONTH BEING VIEWED, and that was a real bug:
     the log can be showing May while the form's date box still defaults to

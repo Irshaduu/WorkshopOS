@@ -10,7 +10,7 @@ hold is that the tab reads those two dates the way the rest of the app does:
 
   * a row is listed when the day it was TYPED (in IST) is after its money date;
   * red is `filed_past_limit` — the three-day limit AS AT THE DAY IT WAS TYPED,
-    the rent row mark's own rule, so the two can never mark a row differently;
+    the same predicate that refused Office and tiered the alert at that moment;
   * all seven money tables whose date can be typed are read;
   * the three payment ledgers now say WHO keyed a payment (`recorded_by`), and
     a row keyed before that column existed says "unknown", never a guess.
@@ -22,11 +22,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from inventory.models import SupplierPayment, SupplierShop
-from workshop import rent as rent_calc
 from workshop.models import (BulkPayer, BulkPaymentHistory, CashbookEntry, Mechanic,
                              OwnerWithdrawal, RentDeposit, SalaryAdvance, SpareShop,
                              SpareShopPayment)
-from workshop.money_dates import filed_past_limit
 from workshop.tests.test_money_change_rules import _age, _People
 from workshop.views.deletion_history import BACKDATED_SOURCES, _bounds, backdated_rows
 
@@ -84,13 +82,6 @@ class WhatCountsAsBackDatedTests(_Tab):
         (row,) = backdated_rows(*_bounds(first, self.today))
         self.assertEqual(row['days_back'], 2)
         self.assertFalse(row['past_limit'])
-
-    def test_the_tab_and_the_rent_row_mark_are_one_rule(self):
-        for back in (1, 3, 4, 20):
-            dep = RentDeposit.objects.create(
-                date=self.today - timedelta(days=back), amount=D('2000'))
-            self.assertEqual(rent_calc.backdating(dep) == 'past_limit',
-                             filed_past_limit(dep.date, dep.created_at), back)
 
     def test_newest_keystroke_first(self):
         # Two days back, so a minute's ageing can never pull the older row onto

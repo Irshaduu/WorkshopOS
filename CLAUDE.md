@@ -1581,8 +1581,8 @@ so `0.004` quantising to `0.00` was a 500 on the two commonest write paths in
 the ledger.
 
 ⚠ **AN EDIT OR DELETE OFFICE COULD MAKE IS QUIET HERE — NOT KEPT, NOT
-ANNOUNCED** (2026-09-24, the owners' call; the ONE money section where that is
-true). The Cashbook's daily rhythm is a correction: a worker is handed ₹2,000
+ANNOUNCED** (2026-09-24, the owners' call; Deposit & Rent follows the same
+rule, table for table — see "Editing a deposit"). The Cashbook's daily rhythm is a correction: a worker is handed ₹2,000
 to buy things, comes back hours later having spent ₹1,800, and Office edits
 the row — or deletes and re-adds it. Keeping and announcing every one buried
 the changes that matter in Edit and Deletion History, put a bell note up every
@@ -2099,14 +2099,14 @@ holding an inline-flex child, and as the read-only job card's own ⋮.
 
 - **The deposit log shows ONE MONTH** (`?month=YYYY-MM`), which is naturally
   bounded at about sixty rows however long the business runs. An unreadable or
-  future month falls back to the current one — the Estimates list's own rule —
-  because an empty list under a heading naming a month reads as "nothing was
-  deposited then", and that would be a lie.
+  future month, or one before the log can start, falls back to the current one — the Estimates
+  list's own rule — because an empty list under a heading naming a month reads
+  as "nothing was deposited then", and that would be a lie.
 - **The history is COLLAPSED YEAR BLOCKS** — Salary & Advance's own pattern,
   where the running year opens and older ones sit behind a one-line total. Two
   decades is twenty closed lines and one open year of twelve. Each month row
-  **links to its own deposits**, which is the only navigation the log needs and
-  is why the log can show one month and carry no pager.
+  **links to its own deposits**, so a month years back is two taps away rather
+  than a walk of arrow presses.
 
 A row cap was the first answer and it was wrong the way caps usually are:
 everything past it becomes unreachable, and a money list that quietly stops is
@@ -2134,16 +2134,15 @@ still shows its in-progress figure in the row inside.
 `₹2,58,300 of ₹2,80,000  −₹3,700` and the owner's verdict was that the section
 had too many numbers to read. The answer to "do I need to open this year?" is
 the position and nothing else, so it now reads **"All square"** or "Behind
-₹4,500" — a column of *All square* down twenty years is scannable in one pass
-and the year that is not jumps out. The two totals it carried are inside, as
-twelve rows, where they can be read against each other.
+₹4,500". The two totals it carried are inside, as twelve rows, where they can
+be read against each other.
 
-⚠ **THE MONTH IN PROGRESS IS GREY IN THE TABLE, NOT RED.** Its position carries
-the whole month's rent against however many days have been paid, so on the 2nd
-it reads −₹33,000 — arithmetic, not a problem, and red is this app's colour for
-something being wrong. A figure that is alarming on the 2nd of every month is
-how the colour stops meaning anything by the 10th. The figure is unchanged and
-still signed; the hero already says what is actually owed today.
+⚠ **THE MONTH IN PROGRESS SAYS "In progress", IN GREY, NEVER A FIGURE.** Its
+position carries the whole month's rent against however many days have been
+paid, so on the 2nd it is −₹33,000 — arithmetic, not a problem, and red is this
+app's colour for something being wrong. It was a grey signed figure with a
+footnote explaining it until 2026-09-24; the words need no footnote, and the
+Pay today card already says what is actually owed today.
 
 **TWO WAYS THE TABLE AND THE HERO COULD DISAGREE, BOTH CLOSED.** They are two
 walks over the same two tables — `position()` sums, `month_rows()` accumulates
@@ -2194,23 +2193,21 @@ floor WAS a month boundary. It now asks *"Date it this far back?"* and adds the
 closed-month sentence only when the date really is in a finished month; the
 success message and the alert's detail do the same (`earlier_month`).
 
-⚠ **The row marks followed on 2026-09-23, and they were the last month-based
-thing left.** They were untouched in this pass and that turned out to be the
-defect below — `rent.backdating()` now asks this same floor.
-
 ⚠ **IT BINDS OFFICE, NOT OWNERS** — `delete_window`'s escalation, not a wall.
 Owners need the exception for real reasons: a go-live opening position is a
 deposit dated *before the ledger starts*, and an audit finding can be older.
 The refusal names the rule **and** the route, because "you cannot" without
 "here is who can" is the half nobody can act on.
 
-**IT IS NOW ON EVERY SCREEN THAT TAKES A TYPED MONEY DATE — seven call sites**
-(the salary advance joined on 2026-09-22; it had only the settled-month freeze),
-which is why the rule lives in `money_dates.py` rather than in `views/rent.py`:
+**IT IS NOW ON EVERY SCREEN THAT TAKES A TYPED MONEY DATE — eight call sites**
+(the salary advance joined on 2026-09-22; the rent deposit's edit on
+2026-09-24), which is why the rule lives in `money_dates.py` rather than in
+`views/rent.py`:
 
 | screen | what a back-dated row moves |
 |---|---|
-| rent deposit | the running position of every month since |
+| rent deposit add | the running position of every month since |
+| **rent deposit edit** | the same — but only when the edit MOVES the date (see "Editing a deposit") |
 | **cashbook add** | a closed Profit period — `cashbook_expense()` feeds the equation |
 | **cashbook edit** | the same, on the screen that exists to change a date |
 | **spare-shop payment** | that shop's own windows, and `cash_position()` |
@@ -2273,107 +2270,40 @@ whole app: anything Office is allowed to do goes to the bell, whoever did it;
 anything only an owner can do goes to the other owner's phone; every delete
 already did.** The salary advance sends the phone alert *instead of* its usual
 bell note when it is past the limit, so one act is one alert. ⚠ **The Cashbook
-is the one exception, and only for EDITS AND DELETES**: inside Office's limits
-those are quiet there (see the Cashbook section); its back-dating follows this
-rule like every other screen.
+and a rent deposit are the exception, and only for EDITS AND DELETES**: inside
+Office's limits those are quiet there (see the Cashbook section); their
+back-dating follows this rule like every other screen.
 
 **One constant decides both halves.** `is_too_far_back()` is what refuses
 Office *and* what triggers the alert on an owner, so the rule enforced and the
 rule announced can never drift apart.
 → `workshop/tests/test_money_change_rules.py`
 
-⚠ **AND AN ALERT IS NOT ENOUGH ON ITS OWN, WHICH THE OWNER CAUGHT BY USING
-IT.** They back-dated a deposit, then asked why they still felt insecure — and
-they were right: a `Notification` is a **feed**, read rows are swept after
-`RETENTION_DAYS` (14), and `notify()` excludes the actor, so the one person who
-most needs to see what they did is the one it never reaches.
+⚠ **THE TRACE LIVES IN CHANGE HISTORY, NOT ON THIS PAGE — this REVERSES the
+row mark and the "Recently added" view this section carried until
+2026-09-24** (the owners' call, in the rent refactor). Both answered a real
+complaint, found by the owner using the page: a `Notification` is a feed —
+read rows are swept after `RETENTION_DAYS` (14) — and `notify()` excludes the
+actor, so an owner who back-dated a deposit had nothing permanent to find it
+by. A red "added 9 Sep" chip went on each row keyed past the three-day limit,
+and `?added=recent` listed the log by keystroke across every month, because
+the chip was visible only once the right month was open.
 
-The fix needed no new column. **Every deposit already stores two dates** —
-`date` (when the money moved) and `created_at` (when somebody keyed it) — and
-nothing showed them. A row whose two dates fall in **different months** is
-money filed into a month that had already closed, and it now says so on the row
-itself, permanently, visible to whoever opens that month:
+Change History's **Back-dated** tab now answers that question for all seven
+money tables in one place, permanently, in the same red
+(`money_dates.filed_past_limit`, judged as at the day the row was keyed), and
+its **Edited** and **Deleted** tabs keep what an owner changed afterwards. One
+place to look beats two views of one fact that must never disagree. Office
+cannot lose a row either: it can date money three days back at most, so its
+deposits land in this month or the first days of the last.
 
-    ₹5,000   ⏱ added 4 Sep 2026   second handover
-
-Three things travel with it. The threshold is the **month**, not the day —
-keying yesterday's handover this morning is the ordinary case and marking it
-would make the mark meaningless by the second row. It is **amber**, the colour
-the date box already wears while a back-dated entry is being typed: one fact,
-one colour, before and after. And the **success message names the month**
-("filed under May 2024 — the position of every month since has moved"), because
-the actor is excluded from the alert and would otherwise be told only
-"Recorded ₹5,000 deposited".
-
-**The add form also asks first, but only past the floor.** Recording a deposit
-is the most frequent money action in the app and carries no dialog on purpose;
-a date past the floor is not most days, and for an owner it is the only guard
-there is. This is the settle dialog's rule applied exactly: confirm where it
-can still surprise somebody, nowhere else.
-→ `test_the_row_ITSELF_says_it_was_keyed_late_and_that_is_permanent`
-
-⚠ **AND THE ROW MARK ALONE WAS STILL NOT ENOUGH — the owner found that by
-using it too.** They back-dated a deposit, *knew* they had, and still could not
-find it: the mark is only visible once the RIGHT MONTH is open, so a row filed
-into a month nobody would think to open stayed findable only by hunting. They
-spotted it in the end because the demo data was uniform enough for one odd
-figure to stand out, **which is not a control.**
-
-**"Recently added" reads the same log by KEYSTROKE instead of by money date**,
-across every month, so whatever was just done is at the top. `?added=recent`,
-one link beside the heading, `RECENT_ROWS = 40` — it answers *"what did I just
-do?"*, and anything older is found by opening the month, where the row's own
-mark makes it obvious.
-
-⚠ **ONE MARK, AND ITS EDGE IS THE THREE-DAY FLOOR — this REVERSES the two
-month-based tiers this file described until 2026-09-23.** `backdating()`
-returns `''` or `'past_limit'`, asking **`is_too_far_back()` as at the day the
-row was KEYED**. So the mark shows exactly the rows that rang the other
-owner's phone: one constant, `BACKDATE_DAYS`, decides who is refused, which
-alert fires and whether the row is marked, and the three cannot drift apart.
-Judging against *today* instead would creep a mark onto every old row in the
-ledger as the weeks passed.
-
-**What it replaced, and why it had to go.** The tiers were `late` (amber —
-dated back inside its own month) and `closed` (red — filed into a month
-already finished), split on the month boundary because the floor was a month
-boundary when they were written. The floor became **three days** on
-2026-09-22 and the marks were left alone — so amber then fired on any row
-keyed after the day it was dated:
-
-| | marked, before | now |
-|---|---|---|
-| yesterday's handover keyed this morning | **amber** | — |
-| Saturday's handover keyed on Monday | **amber** | — |
-| three days back, the floor itself | **amber** | — |
-| four days back — only an owner can | red | **red** |
-
-That is the ordinary work the floor exists to PERMIT, wearing a chip. The
-function's own docstring had promised *"keyed the next morning for yesterday's
-handover … gets nothing at all — marking that would make the mark meaningless
-by the second row"* while the code marked it, and
-`test_keying_yesterdays_handover_this_morning_is_not_marked` passed green
-because it stamped `created_at` back to yesterday too, testing *keyed on the
-day it was dated* instead. **A green test guarding a promise the code did not
-keep.** The legend went from two items to one with it, and `.rt-late` /
-`.rt-closed` are now the single red `.rt-past`.
-
-⚠ **ONE RULE, READ BY BOTH VIEWS.** The month log and Recently added must
-never mark the same row differently, so neither computes its own answer.
-⚠ **RECENT MODE PRINTS NO DAY TOTALS.** A day header carries a day TOTAL, and
-that is only true when the block holds every deposit of that day. Ordered by
-keystroke the list is a SLICE — two rows of one day can be far apart — so a
-header there would print "the part of that day I happen to be showing". Each
-row stands alone instead.
-→ `FindingWhatWasFiledBackwardsTests`
-
-⚠ **THE OTHER SCREENS GOT THEIR TRACE IN ONE PLACE, NOT FIVE ROW MARKS**
-(2026-09-24). The **Back-dated** tab of the history page lists money typed in
-on a later day than it moved from all seven tables whose date can be typed —
-rent included — with this section's red mark (`money_dates.filed_past_limit`,
-which `rent.backdating()` now reads, so the two cannot mark a row differently).
-See "Edit History" under the Deletion model. Rent keeps its own row mark and
-Recently-added view until the rent section's own refactor.
+What survived: **the success message names the month** when a deposit is
+filed under an earlier one ("filed under May 2024 — the position of every month
+since has moved"), because the actor is excluded from the alert; and **the add
+form asks first, but only past the floor** — the settle dialog's rule: confirm
+where it can still surprise somebody, nowhere else.
+→ `test_a_far_back_row_is_found_in_change_history_not_marked_here`,
+`test_tracking_lives_in_change_history_not_here`
 
 **Volume is what keeps them safe at CRITICAL** — the argument `LOGIN` already
 rests on. A rent changes about once a **year**; a deposit past the floor is a
@@ -2400,72 +2330,69 @@ point: one call gives the audit row, the reason, the snapshot *and*
 would be the same act announced twice.
 → `HowFarBackMoneyMayBeFiledTests`, `AnOwnerCannotDoItSILENTLYTests`
 
-**A DAY HEADER APPEARS ONLY WHEN A DAY HAS MORE THAN ONE DEPOSIT.** The header
-exists to carry a day TOTAL, and on a day with one handover — most days — that
-total is the row's own amount printed twice, one line apart, for double the
-height. The invoice's own rule about a single part: with one unit there is
-nothing to break down. On a day with two or more the total is the whole point,
-because **the collector's book is the truth and this is a copy of it**, so the
-realistic failure is the same handover keyed twice — which quietly lowers
-today's figure and is invisible until month end. Never blocked; two genuine
-handovers in a day are ordinary. Measured: the list went 340px → 262px.
-→ `TheDayTotalMakesADoubleEntryVisibleTests`
+### The page — four blocks, phone first (2026-09-24)
 
-⚠ **ON A PHONE A DEPOSIT ROW'S ANNOTATIONS TAKE A LINE OF THEIR OWN, and
-before they did, the ⋮ RENDERED OUTSIDE THE CARD.** The date column is a fixed
-118px and the "added 9 Sep" chip is 92px, so a row carrying both fitted no phone
-at all: measured at 409px it needed **391px inside a 341px card** — with the
-note already crushed to nothing — so the menu sat **49px past the list, on the
-viewport edge**, and at 375px it is 84px out and the page itself scrolls
-sideways. The only delete there is, off the screen.
+The owners' ask: no clutter, no confusion, mobile first, for a section that
+tracks one payment a day. Measured on a 375px phone before the rebuild:
+"₹1,300 paid ahead" was said **twice**, in two cards one above the other, the
+deposit list started 594px down, and last month's deposits were reachable only
+through the table at the foot of the page. After: the list starts 378px down,
+and the page itself never scrolls sideways at 320, 375, 768 or 1280px.
 
-**Clipping is not available here**, which is what forces the shape: every row
-carries a dropdown, and a clipping ancestor is the one thing Popper cannot
-escape — the same reason `.rt-list` is not `overflow: hidden`. So the rule is
-that **nothing on the first line may refuse to shrink** except the date and the
-⋮, and the chip and the note drop to a second line together below 576px.
+| block | what it carries |
+|---|---|
+| **Pay today** | the figure, what is left and how many days, the bar, paid of needed — and ONE line about earlier months, only when they are not square |
+| **Record a Deposit** | the shared `.rpay-*` card, exactly as the other three payment cards draw it |
+| **the month** | this month, or one opened from Month by month with "Back to this month"; one row shape — day, amount, ⋮ — with the note under the day |
+| **Month by month** | collapsed years; each month: what was paid, then ✓, "Ahead ₹X", "Behind ₹X" or "In progress" |
 
-Three things carry it:
-- **`.rt-meta` renders whether or not it holds anything**, because on a laptop
-  it is the row's flexer — the thing that pushes who-recorded-it against the ⋮,
-  which `.rt-note` did alone before it existed. The desktop row is unchanged to
-  the pixel, empty wrapper included; `is-on` is what the phone reads. An
-  `:empty` test would not survive somebody adding a newline inside it.
-- **Every phone row's first line is identical** — when, how much, who, ⋮ — and
-  the ⋮ holds the right edge on the only auto margin on that line, because an
-  empty `.rt-meta` stops flexing there. An annotated row and a plain one draw
-  their first line the same.
-- **576px is this page's own breakpoint**, the one `.rt-status` already switches
-  on, and it clears the content: at 576px the one-line row needs 366px of 515px.
-
-The note gains by it — **33px on line one at 375px, ~200px on its own**, so a
-note is readable on a phone for the first time. Measured after: 375px, every ⋮
-at 344px inside a card ending at 359, no row overflowing and no page scroll.
-
-⚠ **THE LEGEND ON "RECENTLY ADDED" BREAKS BETWEEN ITS TWO ITEMS, NEVER INSIDE
-ONE.** Written as one run separated by two `&nbsp;`, it wrapped as *"...filed
-into a month already / finished"* — a dangling word sitting under the AMBER dot,
-so the red item read as belonging to the wrong colour, on the one line whose
-whole job is to say which colour means what. Each item is its own `nowrap` box
-now.
-
-⚠ **THE FOOTNOTE WAITS TO BE ASKED, and this is the one card of the five that
-earns it** (the owner's instruction). Two sentences of standing explanation —
-three lines and 48px on a phone — between the amount box and the log the page
-exists to be read against. The glyph is the control; the text opens beside it.
-The other four `.rpay-foot`s carry a single short line and keep it standing: a
-tap to read six words is a tap for nothing.
-
-It is `.rpay-ask` in **`static/css/style.css`**, opt-in beside `.rpay-foot`, so
-it is one declaration a second card could adopt with one class rather than a
-second footnote drawn a second way — and **open, it IS the shared footnote**,
-glyph then text on one row, because `.rpay-foot` is already `display: flex`. A
-native `<details>`, never a wired-up button: the Job Card's Customer Details
-fold's own reasoning — nothing to initialise, keyboard and screen-reader
-behaviour for free. ⚠ **The closed state is stated rather than inherited** — a
-UA hides a closed `<details>`'s contents on its own, but a `display` other than
-`block` on the element is exactly where that has broken, and a footnote that
-would not close is worse than one that never folded.
+- ⚠ **THE FORM IS THE SHARED ROW, SCROLLING SIDEWAYS ON A PHONE — a two-line
+  grid was built and reverted the same day** (the owners' call). On a 375px
+  phone the shared row hides the Record button until a swipe: measured, the
+  button starts 41px past the screen's edge and the row scrolls 183px inside
+  its card. The grid put every field on screen; the owners chose one shape
+  across all four payment cards instead, the trade the shared row already
+  records ("THE PAY BUTTON IS THE LAST THING IN THE SCROLLER"). The rent
+  page's own wider Note (`min-width: 200px`) went with it, so the swipe is no
+  longer than the other cards' — it was 223px.
+- **The earlier-months line shows only when they are not square.** It is the
+  one reason this month's target is not simply the rent, so it is said where
+  the target is — once. It replaced the "Before this month" card.
+- **No day headers** — reversing "a day header appears only when a day has more
+  than one deposit". Two rows of one date side by side say it, and "Another one
+  for 23 Sep?" at entry is what stops the same handover being keyed twice.
+- **Who keyed a row, and when, is inside its ⋮**, not printed on every row.
+- ⚠ **NO ‹ › ARROWS ON THE LOG** (the owners' call, the same day they
+  shipped). Month by month already opens any month in one tap, where arrows
+  took six taps to reach March — and invited drifting into a month by
+  accident. Away from this month the log carries exactly one control, **"Back
+  to this month"** (`.rt-now`, `.pg-back`'s pill values); on this month it
+  carries none. A typed month before `rent.log_starts()` — the earlier of the
+  first rate's month and the oldest deposit, so a go-live opening deposit is
+  reachable — falls back to this month.
+- **A month's rent is printed under its name only when it differs from the rent
+  now**, which is exactly when a fully paid month would otherwise read behind
+  with nothing saying why. The Rent column is gone.
+- **The ⓘ footnote went, and `.rpay-ask` with it** — it was the only card using
+  that opt-in.
+- ⚠ **AHEAD AND BEHIND ARE ONE CALM SLATE, NOT GREEN AND RED — this reverses
+  "ahead is green, behind is red" on this page** (the owners' call: *"most of
+  the month will have Behind ₹, Ahead ₹ — this is the normal in workflow"*).
+  Daily cash rarely lands on the rent exactly, so nearly every month ends a
+  little over or under and the next month's figure absorbs it; red on most
+  rows would be an alarm that means nothing, the "month in progress is grey"
+  reasoning applied to every month. The words carry the direction
+  (`.rt-pos`), on the month rows, the year lines and the Pay today card's
+  earlier-months line alike. The one colour left is the green ✓ on a month
+  that is exactly square.
+- **The card says "this month", never the month's name** — it is always the
+  current month, and the log under it may be showing another.
+- **"Nothing due" says where more money goes: "This month is fully paid.
+  Anything handed over now counts toward next month."** The collector keeps
+  coming after the target is met and the office keeps recording, so the
+  covered state must never read as "stop". The ✓ is on this line only, where
+  it is true — never on a part-paid month.
+→ `ThePageIsFourBlocksTests`, `WhichMonthTheLogIsShowingTests`
 
 **NO CONFIRMATION DIALOG ON RECORDING A DEPOSIT — the only payment form in the
 app without one.** The other three settle a shop, a fleet account or an owner
@@ -2477,33 +2404,50 @@ day out when it is not today.
 
 **No payment method**, deliberately — it is always cash handed to a man with a
 book, and a select that can only ever say one thing is a field to leave out.
-The form is otherwise the shared `.rpay-*` control, **red** because the money is
-going out; it is the fourth screen to use it and adds no copy of it.
+The card is otherwise the shared `.rpay-*` control, **red** because the money
+is going out.
 
 **Recording is `@office_required`; setting the rent is `@owner_required`.** The
 office hands over the cash and keys it; what the premises cost is a business
-term. The rent card is gated in the template to match the view — a door Office
-can see and cannot open is worse than no door. Floor sees none of it.
+term. Editing and deleting a deposit are Office's for 24 hours after it is
+keyed and an owner's after that. The rent card is gated in the template to
+match the view — a door Office can see and cannot open is worse than no door.
+Floor sees none of it.
 
-**DELIBERATELY NO EDIT ON A DEPOSIT — add and delete are the whole of it**
-(written down 2026-09-23; it had been true and unstated since the section was
-built). A row keyed wrong is deleted and re-added, which costs one extra tap
-and buys three things: every correction lands in **Deletion History** with a
-reason and a snapshot rather than silently overwriting what was there; there
-is one fewer surface carrying money; and the 24-hour window then governs the
-correction through the delete, so a row older than that is an owner's either
-way. It is the Owner Withdrawals rule for the same reasons, and it is the
-majority pattern — **8 of the 11 money sections have no edit door.** Only the
-Cashbook, the Supplies Shop bill and a settled job card have one, and each of
-those has a reason this does not: a Cashbook row is the one place a free-text
-category is corrected, a Supplies bill's LINES are edited for months, and a
-settled card's bill moves when the work does.
+### Editing a deposit — 2026-09-24
 
-⚠ **So the 24-hour window's EDIT half has no door to bind here, and that is
-not a gap.** Office is bound on the delete; an owner is unbound and announced.
-Do not add an edit view to "complete" the uniformity — the uniformity is the
-Office/Owner rule, and this section already answers it identically to the
-other ten.
+⚠ **A DEPOSIT CAN BE EDITED, AND THAT REVERSES "DELIBERATELY NO EDIT ON A
+DEPOSIT"** (written 2026-09-23, reversed the next day on the owners' call).
+That rule's first reason was that every correction should land in the history
+rather than silently overwrite what was there — and since Edit History exists,
+an edit that matters does exactly that. Amount, date and note, from the row's
+⋮, in one modal (`rent_deposit_edit`).
+
+| act | kept | announced |
+|---|---|---|
+| edit or delete inside Office's 24 hours — anyone | ❌ | ❌ |
+| an owner's edit or delete past 24 hours | ✅ Edited / Deleted | 📱 the other owner |
+| an edit moving the date past the three-day limit (owner only) | ✅ Edited | 📱 the other owner |
+| money **dated back**, on the add OR an edit that moves it earlier | ✅ Back-dated tab | 🔔 bell within 3 days, 📱 past them |
+
+It is the Cashbook's table row for row — the same
+`EditLog.record(..., only_past_limits=True)` and the same `is_past_window()`
+gate on the delete; see the Cashbook section for why dropping the trace inside
+24 hours is acceptable. The owners chose the **phone**, not the bell, for what
+only an owner can do: one rule for the whole app.
+
+Three details:
+- ⚠ **ONLY A DATE THAT MOVES IS HELD TO THE LIMIT.** The floor moves every
+  night, so a row Office keyed yesterday for the floor of yesterday is past
+  today's floor by morning; checking the untouched date would refuse Office a
+  correction to the AMOUNT inside their own 24 hours. The modal's date `min`
+  is lowered to the row's own date for the same reason. (The Cashbook's edit
+  still checks its date unconditionally.)
+- **A payload with no date keeps the row's date** rather than falling back to
+  today, which would move money on a correction that never asked to.
+- **A note is never history**, and an edit that moves a deposit into another
+  month says where it went, because it vanishes from the month on screen.
+→ `EditingADepositTests`, `DeletingADepositTests`
 
 ### Rent is the fifth expense stream — 2026-09-04
 
@@ -6345,11 +6289,11 @@ browsers.
 
 The whole event list is **`workshop/notifications.py`**. Add an event to `EVENTS`,
 then call `notify()` from the single place it happens — **never**
-`Notification.objects.create()` in a view. There are **26 call sites across 11
+`Notification.objects.create()` in a view. There are **27 call sites across 11
 modules** (re-counted 2026-09-24, counting `notify_dated_back()` and
 `notify_changed()` as calls, and not counting `notifications.py` itself; it
 fell from 29 / 12 when the five edit doors moved behind `EditLog.record()`, and
-the Cashbook's back-dating edit added one);
+the Cashbook's and the rent deposit's back-dating edits added one each);
 that file is the only way to answer "what does this thing notify about?"
 without grepping.
 
@@ -6898,8 +6842,8 @@ bills, Cashbook entries — are **permanently deleted**, but every delete first
 writes a snapshot via `DeletionLog.record(...)` to the Owner-only, read-only
 **Deletion History** (`/deletion-history/`). There is deliberately **no restore** —
 reviving stale financial data corrupts running balances. ⚠ **One exception: a
-Cashbook delete inside Office's 24 hours is NOT logged** (2026-09-24) — see the
-Cashbook section for why.
+Cashbook or rent-deposit delete inside Office's 24 hours is NOT logged**
+(2026-09-24) — see the Cashbook section for why.
 
 **EVERY LOGGED DELETE POSTS A REASON, AND THE REASON IS OPTIONAL.** 16 of the 21
 `DeletionLog.record()` call sites read `request.POST.get('reason', '')` and the
@@ -6992,7 +6936,7 @@ can change money:
 |---|---|
 | Cashbook edit and delete | `created_at` |
 | Supplies Shop bill edit — **refused on the GET too**, so nobody fills in a whole bill to be told at the end — its discount box, and its delete | `created_at` |
-| the three payment deletes, rent deposit, salary advance | `created_at` |
+| the three payment deletes, rent deposit edit and delete, salary advance | `created_at` |
 | **a settled job card's Unlock** | **`paid_date`** — settling is when the bill entered the books as money |
 | **Settle Bill on an already-paid bill** (re-settling, or putting it back to PENDING) | **`paid_date`** — the same bill through a second door |
 
@@ -7008,9 +6952,9 @@ back-dating (`notify_changed()`): inside the window → `RECORD_CHANGED`, the
 bell; past it, or a date moved past the three-day limit → `OLD_RECORD_CHANGED`,
 the other owner's phone. `CASHBOOK_EDITED` (Cashbook only, bell only) is gone.
 The Supplies Shop bill edit and the settled-card edit were silent before.
-⚠ **Except the Cashbook inside the window**, which is quiet since 2026-09-24 —
-its same-day edit is the day's work, not a correction (see the Cashbook
-section).
+⚠ **Except the Cashbook and a rent deposit inside the window**, which are quiet
+since 2026-09-24 — a same-day edit there is the day's work, not a correction
+(see the Cashbook section).
 
 ⚠ **Cost the owner accepted:** a Saturday-evening typo noticed on Monday is an
 owner's to fix.
@@ -7029,11 +6973,11 @@ permanent row from day one.
 ⚠ **`EditLog.record()` IS THE CHOKE POINT, the way `DeletionLog.record()` is
 for deletes.** It writes the row and then calls `notify_changed()` — its ONLY
 caller — so a door cannot announce an edit without keeping it, or keep one
-silently. All five doors go through it: the Cashbook edit, a Supplies Shop
-bill's edit page and its quick discount box, an unlocked edit of a settled job
-card, and Settle Bill on an already-paid bill. ⚠ The Cashbook passes
-`only_past_limits=True`, so it keeps only an edit only an owner could make —
-its own rule, in the Cashbook section. It runs inside the same
+silently. All six doors go through it: the Cashbook edit, a rent deposit's
+edit, a Supplies Shop bill's edit page and its quick discount box, an unlocked
+edit of a settled job card, and Settle Bill on an already-paid bill. ⚠ The
+Cashbook and the rent deposit pass `only_past_limits=True`, so they keep only
+an edit only an owner could make — the rule in the Cashbook section. It runs inside the same
 transaction as the save (three doors gained an `atomic()` for it), so a
 rolled-back edit leaves no row and no alert.
 → `NoDoorGoesRoundTheHistoryTests` scans the source for any other caller of
@@ -10365,7 +10309,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 85 files, 2,868 tests (counted 2026-09-24). Always SQLite (see below).
+# Full test suite — 85 files, 2,882 tests (counted 2026-09-24). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10866,7 +10810,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **85 files, 2,868 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **85 files, 2,882 tests**,
 re-counted 2026-09-24. (`workshop/tests/` is 79 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)

@@ -5,77 +5,76 @@
 
 {% block content %}
 {% comment %}
-  DEPOSIT & RENT.
+  DEPOSIT & RENT — one payment a day, and a page built to be read in one pass.
 
-  The whole page answers one question in its first 120 pixels — how much should
-  we hand the collector today — because that is the question the office asks
-  every morning and used to work out on paper against the collector's book.
-  Everything under the hero is there to make that figure CHECKABLE: one month's
-  deposits listed by day so they can be read against the book line by line, and
-  a year history showing how the position got where it is.
+  FOUR BLOCKS, top to bottom, in the order the office uses them (rebuilt
+  2026-09-24, the owners' ask: no clutter, no confusion, phone first):
 
-  ⚠ BUILT FOR TWENTY YEARS OF DATA, WITH NO CAP AND NO PAGER ANYWHERE. The
-  deposit log shows ONE MONTH — naturally bounded at about sixty rows however
-  long the business runs — and the history is COLLAPSED YEAR BLOCKS, Salary &
-  Advance's own pattern, so two decades is twenty closed lines and one open
-  year. A cap was the first answer and it was wrong the way caps usually are:
-  everything past it becomes unreachable.
+    1. PAY TODAY — everything about this month in ONE card: the figure, what
+       is left and how many days, the bar, and one line only when the months
+       before this one are not square. It replaced a hero plus two status
+       cards that said "₹1,300 paid ahead" twice.
+    2. RECORD A DEPOSIT — the shared payment row, exactly as the other three
+       payment cards draw it: one line that scrolls sideways on a phone.
+    3. ONE MONTH OF DEPOSITS — this month unless somebody chose another from
+       Month by month, with one way back. One row shape (date, amount, ⋮),
+       the note under it. Who keyed a row and when is inside its ⋮.
+    4. MONTH BY MONTH — collapsed years, and each month says in words where
+       the ledger stood after it — in one calm colour, because a little ahead
+       or behind is the normal rhythm of daily cash.
 
-  ⚠ EVERY CLASS HERE IS PREFIXED `rt-`. Page-scoped CSS in this codebase is
-  scoped by convention only — a <style> block in a child template applies to
-  every element on the page, base.html's included — and a collision with a
-  shared partial is invisible, silently wrong, and green in every test, because
-  nothing in the Django suite executes CSS.
+  Tracking lives in Change History, not here: edits, deletes and back-dating
+  past Office's limits are kept there permanently, so this page carries no
+  marks of its own.
+
+  ⚠ BUILT FOR TWENTY YEARS OF DATA, WITH NO CAP AND NO PAGER. The log shows ONE
+  MONTH — about sixty rows at most however long the business runs — and the
+  history is COLLAPSED YEAR BLOCKS, so two decades is twenty closed lines.
+
+  ⚠ EVERY CLASS HERE IS PREFIXED `rt-`. Page-scoped CSS is scoped by
+  convention only — a <style> block in a child template applies to every
+  element on the page, base.html's included.
 {% endcomment %}
 <style>
-  /* ── The hero ────────────────────────────────────────────────────────────
-     DARK GREEN, on the owner's instruction, and the only section header in the
-     app that is not the shared slate slab. Same gradient geometry, same 16px
-     radius, same type — only the two stops differ, so it still reads as this
-     app's section header rather than as a different product.
-
-     ⚠ Green is the app's MONEY-IN colour, and rent is money OUT, so this is a
-     deliberate exception to that rule rather than an oversight. It survives
-     because the rule governs AMOUNTS — a green figure means money coming in —
-     and no amount on this card is green: the ground is, and a ground is an
-     identity, not a direction. Do not extend it to the figures.
-
-     Measured against white: #14532d is 9.1:1 and #052e16 is deeper still. */
+  /* ── Pay today ─────────────────────────────────────────────────────────── */
   .rt-hero {
     background: linear-gradient(135deg, #14532d 0%, #052e16 100%);
-    border-radius: 16px; padding: 1rem 1.25rem 1.25rem; color: #fff;
+    border-radius: 16px; padding: 1rem 1.25rem 1.1rem; color: #fff;
     margin-bottom: 0.85rem;
   }
   .rt-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
   .rt-hero-label {
     font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase;
-    /* ⚠ .72, NOT the slate slab's .55, AND THE DIFFERENCE IS MEASURED RATHER
-       THAN EYEballed. Green is a far lighter ground than #1e293b, so the same
-       alpha composites to much less contrast: .55 and even .66 land at 4.15:1
-       against the gradient's lightest stop, and this is 10.9px BOLD — under
-       WCAG's large-text threshold, so it needs 4.5:1, not 3:1. .72 measures
-       5.6:1 and is still visibly quieter than the white figure at 9.1:1. */
     color: rgba(255,255,255,.72); font-weight: 700;
   }
   .rt-hero-fig {
     font-size: 2.4rem; font-weight: 800; line-height: 1.05; margin-top: 0.3rem;
     font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
   }
-  /* THE WORKING, PRINTED. `₹32,200 to go · 28 days left` is what lets somebody
-     check the app against the book in two seconds, and being checkable is the
-     whole of why this figure gets trusted. Without it the hero is an oracle. */
   .rt-hero-work {
-    font-size: 0.8rem; color: rgba(255,255,255,.72); margin-top: 0.4rem;
+    font-size: 0.82rem; color: rgba(255,255,255,.78); margin-top: 0.35rem;
     font-variant-numeric: tabular-nums;
   }
   .rt-hero-work b { color: #fff; font-weight: 600; }
   .rt-hero.is-clear .rt-hero-fig { color: #86efac; }
+  .rt-hero-bar {
+    height: 7px; border-radius: 999px; background: rgba(255,255,255,.16);
+    margin-top: 0.8rem; overflow: hidden;
+  }
+  .rt-hero-bar i { display: block; height: 100%; border-radius: 999px; background: #86efac; }
+  .rt-hero-paid {
+    font-size: 0.78rem; color: rgba(255,255,255,.72); margin-top: 0.4rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .rt-hero-paid b { color: #fff; font-weight: 600; }
+  /* ONE CALM COLOUR, AHEAD OR SHORT. Ending a month a little over or under
+     the rent is the ordinary rhythm of daily cash (the owners' words), and the
+     figure above already absorbs it — so the line is information, not an
+     alarm, and the words carry the direction. */
+  .rt-hero-carry { font-size: 0.76rem; font-weight: 600; margin-top: 0.15rem;
+                   color: rgba(255,255,255,.78); font-variant-numeric: tabular-nums; }
+  .rt-hero-ok { color: #86efac; margin-right: 0.2rem; }
 
-  /* ⚠ `display: flex` AND `line-height: 0` on the wrapper. Bootstrap's
-     `.dropdown` is a plain inline box, so it inherits the surrounding
-     line-height and the button sits on THAT line box's baseline — which drops
-     it several pixels and then sets the row's height. Same cause and same fix
-     as the table cell holding an inline-flex child. */
   .rt-hero-menu { display: flex; line-height: 0; }
   .rt-hero-menu > button {
     border: 0; background: rgba(255,255,255,.10); color: rgba(255,255,255,.85);
@@ -84,194 +83,100 @@
   @media (hover: hover) { .rt-hero-menu > button:hover { background: rgba(255,255,255,.20); color: #fff; } }
   @media (hover: none)  { .rt-hero-menu > button { width: 34px; height: 34px; } }
 
-  /* ── The two status cards ───────────────────────────────────────────────
-     THIS MONTH, and the months that are DONE. Two questions, deliberately not
-     added together: the pace charges the current month in full because that is
-     what is being paced, and the position stops at the end of last month
-     because charging the current one there would read "behind ₹35,000" every
-     month from the 1st to the 5th — alarming, meaningless, and exactly how a
-     real shortfall stops being noticed. */
-  .rt-status { display: grid; gap: 0.6rem; grid-template-columns: 1fr; margin-bottom: 0.85rem; }
-  @media (min-width: 576px) { .rt-status { grid-template-columns: 1.4fr 1fr; } }
-  .rt-card {
+  /* ── One month of deposits ─────────────────────────────────────────────── */
+  .rt-log {
     background: #fff; border: 1px solid var(--color-border, #e2e8f0);
-    border-radius: 14px; padding: 0.8rem 0.9rem;
+    border-radius: 14px; margin-top: 0.85rem;
   }
-  .rt-k {
-    font-size: 0.66rem; letter-spacing: 0.07em; text-transform: uppercase;
-    color: #64748b; font-weight: 700; margin-bottom: 0.3rem;
+  /* ⚠ NOT `overflow: hidden`: every row carries a ⋮ dropdown, and a clipping
+     ancestor is the one thing Popper cannot escape. */
+  .rt-log-head {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.75rem 0.75rem 0.75rem 0.95rem; border-bottom: 1px solid #eef2f7;
   }
-  .rt-v { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .rt-v small { font-size: 0.78rem; font-weight: 500; color: #64748b; }
-  .rt-bar { height: 7px; border-radius: 999px; background: #eef2f7; margin-top: 0.5rem; overflow: hidden; }
-  .rt-bar i { display: block; height: 100%; border-radius: 999px; background: #16a34a; }
-  /* AHEAD IS GREEN, BEHIND IS RED. The magnitude is always positive and the
-     DIRECTION is a word: "behind ₹4,500" is a position, "-4,500" reads as a
-     broken figure. Same rule `financial_position()` follows for every tile. */
-  .rt-ahead { color: var(--color-success, #16a34a); }
-  .rt-behind { color: #dc2626; }
-  .rt-square { color: #64748b; }
-
-  /* ── Sections ───────────────────────────────────────────────────────────*/
-  .rt-sec { margin-top: 1.15rem; }
-  .rt-sec-h {
-    display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap;
-    margin-bottom: 0.5rem; font-size: 0.82rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.05em; color: #334155;
+  .rt-log-title { flex: 1; min-width: 0; line-height: 1.25; }
+  .rt-log-title b { display: block; font-size: 0.98rem; font-weight: 800; color: #0f172a; }
+  .rt-log-title span { font-size: 0.76rem; color: #64748b; font-variant-numeric: tabular-nums; }
+  /* The one way back from another month — `.pg-back`'s own pill values, so
+     it reads as the app's "go back" rather than a new kind of button. */
+  .rt-now {
+    display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+    min-height: 38px; padding: 0 13px 0 11px;
+    border: 1px solid var(--color-border, #e2e8f0); border-radius: 999px;
+    background: var(--color-card, #fff); color: var(--color-text-muted, #64748b);
+    font-size: 0.8rem; font-weight: 600; text-decoration: none; white-space: nowrap;
   }
-  .rt-sec-h span { font-size: 0.72rem; font-weight: 500; text-transform: none;
-                   letter-spacing: 0; color: #94a3b8; }
-  .rt-sec-h a { margin-left: auto; font-size: 0.72rem; font-weight: 600;
-                text-transform: none; letter-spacing: 0; text-decoration: none; }
-  .rt-list { background: #fff; border: 1px solid var(--color-border, #e2e8f0); border-radius: 14px; }
-  /* ⚠ NOT `overflow: hidden`. Every row carries a ⋮ dropdown, and a clipping
-     ancestor is the one thing Popper cannot escape — invisibly, and only on
-     the rows near an edge, which is the trap this codebase has paid for twice.
-     The corners are rounded on the first and last children instead. */
-  .rt-list > :first-child { border-radius: 14px 14px 0 0; }
-  .rt-list > :last-child { border-radius: 0 0 14px 14px; }
-
-  /* ── The deposit log ────────────────────────────────────────────────────*/
-  .rt-day {
-    display: flex; justify-content: space-between; align-items: baseline;
-    padding: 0.42rem 0.85rem; background: #f8fafc;
-    border-bottom: 1px solid #eef2f7; font-size: 0.72rem; font-weight: 700;
-    color: #475569; letter-spacing: 0.03em;
-  }
-  /* THE DAY TOTAL IS LOAD-BEARING. The collector's book is the truth and this
-     is a copy, so the realistic failure is one handover keyed twice — which
-     quietly lowers today's figure and is invisible until month end. A day
-     total that disagrees with the book is what makes it findable. */
-  .rt-day b { font-variant-numeric: tabular-nums; color: #0f172a; }
+  @media (hover: hover) { .rt-now:hover { border-color: #64748b; color: #0f172a; } }
+  @media (hover: none) { .rt-now { min-height: 44px; } }
   .rt-row {
-    display: flex; align-items: center; gap: 0.7rem;
-    padding: 0.6rem 0.85rem; border-bottom: 1px solid #f1f5f9;
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.6rem 0.75rem 0.6rem 0.95rem; border-bottom: 1px solid #f1f5f9;
   }
   .rt-row:last-child { border-bottom: 0; }
-  /* The date on a single-deposit row sits where the day header's date would
-     have been, so the list keeps one left edge whichever shape a day takes.
-     Fixed width: a date cannot vary, so letting it size to its contents would
-     move the amounts between rows. */
-  .rt-date { flex: 0 0 118px; font-size: 0.75rem; color: #64748b; font-weight: 600;
-             font-variant-numeric: tabular-nums; }
-  .rt-amt { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 0.95rem; }
-  /* RED, and there is only ONE of these: a row filed FURTHER BACK than Office
-     may date money, which only an owner can do and which rang the other
-     owner's phone when it happened. It sits inline so it costs no row height.
-
-     ⚠ AN AMBER SECOND TIER WAS RETIRED 2026-09-23. It marked any row keyed
-     after the day it was dated — so yesterday's handover keyed this morning,
-     and Saturday's keyed on Monday, both wore a chip — which is the ordinary
-     work the three-day floor exists to PERMIT. One colour left means the mark
-     is never ambiguous and there are no longer two of them to tell apart. See
-     `rent.backdating()`. */
-  .rt-past { flex: 0 0 auto; font-size: 0.68rem; font-weight: 600; color: #b91c1c;
-             background: #fef2f2; border: 1px solid #fecaca; border-radius: 999px;
-             padding: 0.1rem 0.45rem; white-space: nowrap; }
-  /* ⚠ `padding: 0` IS LOAD-BEARING. The legend dot reuses `.rt-past` to pick
-     up its colour, and that class carries the CHIP's padding — which leaked
-     through and rendered the dot as a squashed 16.4 x 9 pill rather than a
-     round 9 x 9. Both are single-class selectors, so this wins only by coming
-     later in the file; keep the two rules in this order. Found by measuring in
-     a browser — nothing in the Django suite executes CSS. */
-  .rt-past-dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px;
-                 padding: 0; border: 1px solid currentColor; background: currentColor;
-                 vertical-align: baseline; }
-  /* THE TWO ANNOTATIONS TRAVEL TOGETHER, and that is what stops the row
-     escaping its own card on a phone. The chip and the note, nothing else.
-
-     On a laptop this wrapper is simply the flexer that pushes who-recorded-it
-     up against the ⋮ — the job `.rt-note` did alone before it existed — so the
-     desktop row is unchanged to the pixel, empty wrapper included. Below 576px
-     it drops to a line of its own. */
-  .rt-meta { display: flex; align-items: center; gap: 0.7rem; flex: 1 1 auto; min-width: 0; }
-  .rt-note { flex: 1; min-width: 0; font-size: 0.78rem; color: #64748b;
-             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* The last valve. Nothing on this row may refuse to shrink except the date
-     and the ⋮, so no length of username can push the menu off the card again. */
-  .rt-by { font-size: 0.68rem; color: #94a3b8; white-space: nowrap;
-           min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .rt-row-main { flex: 1; min-width: 0; }
+  .rt-date { display: block; font-size: 0.86rem; font-weight: 600; color: #334155; }
+  .rt-note { display: block; font-size: 0.76rem; color: #64748b; margin-top: 0.1rem; overflow-wrap: anywhere; }
+  .rt-amt { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 0.95rem; white-space: nowrap; }
   .rt-kebab {
     border: 0; background: transparent; color: #94a3b8; border-radius: 8px;
     width: 32px; height: 32px; line-height: 0; flex: 0 0 auto;
   }
   @media (hover: hover) { .rt-kebab:hover { background: #f1f5f9; color: #334155; } }
-  @media (hover: none) { .rt-kebab { width: 34px; height: 34px; } }
-  .rt-empty { padding: 1.1rem 0.9rem; text-align: center; color: #94a3b8; font-size: 0.82rem; }
-
-  /* ⚠ THE LEGEND BREAKS BETWEEN ITS TWO ITEMS, NEVER INSIDE ONE. Written as
-     one run separated by two &nbsp;, it wrapped at 409px as "...filed into a
-     month already / finished" — a dangling word under the AMBER dot, so the
-     red item read as belonging to the wrong colour. Each item is its own
-     nowrap box now and the wrap can only fall between them. Measured at 409px:
-     two lines, 182px and 195px, neither broken. */
-  .rt-legend { display: flex; flex-wrap: wrap; column-gap: 0.9rem; row-gap: 0.1rem; }
-  .rt-legend > span { white-space: nowrap; }
-
-  /* ⚠ ON A PHONE THE ANNOTATIONS TAKE A LINE OF THEIR OWN, and every row's
-     first line then reads the same: when, how much, who, ⋮.
-
-     The chip is 92px and the date column a fixed 118px, so a row carrying both
-     fitted no phone: measured at 409px it needed 391px inside a 341px card,
-     with the note already crushed to zero — so the ⋮ rendered 49px OUTSIDE the
-     list, on the viewport edge, and at 375px it is 84px out and the page
-     itself scrolls sideways. The only delete there is, off the screen.
-
-     ⚠ CLIPPING IS NOT AVAILABLE HERE. Every row carries a dropdown, and a
-     clipping ancestor is the one thing Popper cannot escape — which is why
-     `.rt-list` is not `overflow: hidden` either. Shrinking is the only answer,
-     so the fix is that nothing on line one refuses to shrink.
-
-     576px is this page's own breakpoint, the one `.rt-status` already switches
-     on, and it clears the content: at 576px the one-line row needs 366px of
-     515px. The ⋮ holds the right edge on its own auto margin — the ONLY one on
-     the line, because an empty `.rt-meta` stops flexing here, so an annotated
-     row and a plain one draw their first line identically.
-
-     The note gains by it: 33px on line one at 375px, ~200px on its own. */
-  @media (max-width: 575.98px) {
-    .rt-row { flex-wrap: wrap; column-gap: 0.5rem; row-gap: 0.1rem; }
-    .rt-meta { flex: 0 1 auto; gap: 0.5rem; }
-    .rt-meta.is-on { flex: 0 0 100%; order: 9; padding-bottom: 0.1rem; }
-    .rt-row > .dropdown { margin-left: auto; }
+  /* A finger gets the 44px ⋮ (a near miss there opens nothing useful), and the
+     row pays for it out of its own padding rather than growing 12px taller. */
+  @media (hover: none) {
+    .rt-kebab { width: 44px; height: 44px; }
+    .rt-row { padding-top: 0.3rem; padding-bottom: 0.3rem; padding-right: 0.4rem; }
+    .rt-menu .dropdown-item { min-height: 44px; display: flex; align-items: center; gap: 0.4rem; }
   }
+  .rt-menu { min-width: 210px; max-width: 260px; }
+  .rt-menu .dropdown-item-text { white-space: normal; font-size: 0.76rem; color: #64748b; }
+  .rt-empty { padding: 1.3rem 0.9rem; text-align: center; color: #94a3b8; font-size: 0.84rem; }
 
-  /* ── The year history ───────────────────────────────────────────────────
-     Salary & Advance's own collapsed-year pattern. Twenty years is twenty
-     closed lines; the running year opens on arrival. */
+  /* ── Month by month ────────────────────────────────────────────────────── */
+  .rt-sec { margin-top: 1.25rem; }
+  .rt-sec-h {
+    margin-bottom: 0.5rem; font-size: 0.82rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; color: #334155;
+  }
+  .rt-list { background: #fff; border: 1px solid var(--color-border, #e2e8f0); border-radius: 14px; overflow: hidden; }
   .rt-yr { border-bottom: 1px solid #eef2f7; }
   .rt-yr:last-child { border-bottom: 0; }
   .rt-yr-head {
-    display: flex; align-items: center; gap: 0.6rem; width: 100%;
-    padding: 0.62rem 0.85rem; background: transparent; border: 0; text-align: left;
+    display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 44px;
+    padding: 0.6rem 0.9rem; background: transparent; border: 0; text-align: left;
   }
   @media (hover: hover) { .rt-yr-head:hover { background: #f8fafc; } }
-  .rt-yr-n { font-weight: 700; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
-  .rt-yr-pos { margin-left: auto; font-size: 0.8rem; font-weight: 700;
-               font-variant-numeric: tabular-nums; }
+  .rt-yr-n { font-weight: 700; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  .rt-yr-pos { margin-left: auto; font-size: 0.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
   .rt-chev { color: #94a3b8; font-size: 0.75rem; transition: transform .18s ease; }
   .rt-yr-head[aria-expanded="true"] .rt-chev { transform: rotate(180deg); }
-  .rt-months { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-  .rt-months th {
-    font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase;
-    color: #94a3b8; font-weight: 700; padding: 0.35rem 0.85rem; text-align: right;
-    background: #f8fafc;
-  }
-  .rt-months th:first-child { text-align: left; }
+  .rt-months { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
   .rt-months td {
-    padding: 0.45rem 0.85rem; text-align: right; border-top: 1px solid #f1f5f9;
-    font-variant-numeric: tabular-nums;
+    padding: 0.55rem 0.9rem; border-top: 1px solid #f1f5f9;
+    font-variant-numeric: tabular-nums; vertical-align: middle;
   }
-  .rt-months td:first-child { text-align: left; font-weight: 600; }
-  .rt-months a { text-decoration: none; color: inherit; }
+  .rt-months td:nth-child(2), .rt-months td:nth-child(3) { text-align: right; white-space: nowrap; }
+  .rt-months td:nth-child(3) { width: 1%; font-weight: 600; }
+  .rt-months a { text-decoration: none; color: inherit; font-weight: 600; }
+  .rt-mrent { display: block; font-size: 0.7rem; color: #94a3b8; font-weight: 500; }
   @media (hover: hover) { .rt-months tbody tr:hover td { background: #f8fafc; } }
-  .rt-months tr.is-current td:first-child::after {
-    content: 'now'; margin-left: 0.4rem; font-size: 0.6rem; font-weight: 700;
-    color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em;
-  }
-  .rt-scroll { overflow-x: auto; }
+  /* ⚠ AHEAD AND BEHIND ARE NOT RED AND GREEN HERE (2026-09-24, the owners'
+     call). Daily cash rarely lands on the rent exactly, so nearly every month
+     ends a little ahead or a little behind — the normal workflow, and the
+     next month's figure absorbs it. Red on most rows would be an alarm that
+     means nothing, so both read in one calm slate and the WORDS say which way.
+     The only colour left is the green tick on a month that is exactly square;
+     the month still running is named in grey words rather than a figure. */
+  .rt-pos { color: #475569; }
+  .rt-square { color: #64748b; }
+  .rt-ok { color: var(--color-success, #16a34a); font-size: 1rem; line-height: 1; position: relative; }
 
-  /* ── The rent modal ─────────────────────────────────────────────────────*/
+  /* ── The rent modal and the edit modal ─────────────────────────────────── */
+  .rt-k {
+    font-size: 0.66rem; letter-spacing: 0.07em; text-transform: uppercase;
+    color: #64748b; font-weight: 700; margin-bottom: 0.3rem;
+  }
   .rt-rate-row {
     display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0;
     border-bottom: 1px solid #f1f5f9; font-size: 0.82rem;
@@ -280,24 +185,29 @@
   .rt-rate-row b { font-variant-numeric: tabular-nums; }
   .rt-rate-when { flex: 1; color: #64748b; }
   .rt-foot { font-size: 0.72rem; color: #94a3b8; margin: 0.5rem 0 0; line-height: 1.5; }
-  /* This page's own narrower fields: the row has no Method select, so the Note
-     takes the width that one would have had. Page-scoped — the three payment
-     templates are untouched. */
-  .rt-page .rpay-f-note { flex: 1 0 200px; min-width: 200px; }
+  .rt-edit-field { margin-bottom: 0.8rem; }
+  .rt-edit-field .form-control { height: 44px; border-radius: 10px; }
+  .rt-edit-amt { position: relative; }
+  .rt-edit-amt span {
+    position: absolute; left: 12px; top: 0; bottom: 0; display: flex; align-items: center;
+    color: #94a3b8; font-weight: 700; pointer-events: none;
+  }
+  .rt-edit-amt .form-control { padding-left: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
 </style>
 
 <div class="rt-page">
 
   {% comment %}
-    THE HERO. `pay_today` is 0 whenever the month's target is already met, and
-    it says so in words rather than printing ₹0 with no explanation — "nothing
-    due" and "we could not work it out" must never look the same.
+    1 · PAY TODAY. `pay_today` is 0 whenever the month's target is met, and it
+    says so in words rather than printing ₹0 — "nothing due" and "we could not
+    work it out" must never look the same.
 
-    ⚠ THE ⋮ HOLDS UPDATE RENT, AND THAT PLACEMENT IS THE POINT. Setting the
-    rent is a once-a-YEAR act; recording a deposit happens most days. A card
-    for the rare thing sat permanently at the foot of the page, so the section
-    carried a whole block of furniture for something almost nobody would ever
-    press. Behind the menu it costs one line of markup and nothing on screen.
+    ⚠ THE LINE ABOUT EARLIER MONTHS SHOWS ONLY WHEN THEY ARE NOT SQUARE. It is
+    the one reason this month's target is not simply the rent, so it is said
+    exactly where the target is — once. Square, it would be a line saying
+    nothing on most days of the year.
+
+    The ⋮ holds Update rent: a once-a-year act, so it costs no furniture.
   {% endcomment %}
   <div class="rt-hero{% if state.started and not state.remaining %} is-clear{% endif %}">
     <div class="rt-hero-top">
@@ -333,72 +243,51 @@
           An owner needs to set the monthly rent before this can work.
         {% endif %}
       </div>
-    {% elif state.remaining %}
-      <div class="rt-hero-fig">&#8377;{{ state.pay_today|inr }}</div>
-      <div class="rt-hero-work">
-        <b>&#8377;{{ state.remaining|inr }}</b> to go &middot;
-        <b>{{ state.days_left }}</b> day{{ state.days_left|pluralize }} left in {{ state.this_month|date:"F" }}
-      </div>
     {% else %}
-      <div class="rt-hero-fig">Nothing due</div>
-      <div class="rt-hero-work">
-        {{ state.this_month|date:"F" }} is fully deposited.
-        {% if state.paid_this_month > state.due %}
-          &#8377;{{ state.paid_this_month|inr }} in against &#8377;{{ state.due|inr }} needed &mdash; the extra carries forward.
-        {% endif %}
+      {% if state.remaining %}
+        <div class="rt-hero-fig">&#8377;{{ state.pay_today|inr }}</div>
+        <div class="rt-hero-work">
+          <b>&#8377;{{ state.remaining|inr }}</b> to go &middot;
+          <b>{{ state.days_left }}</b> day{{ state.days_left|pluralize }} left
+        </div>
+      {% else %}
+        <div class="rt-hero-fig">Nothing due</div>
+        {% comment %}
+          ⚠ THE COLLECTOR STILL COMES once the month is covered, and the office
+          still hands him cash and records it — so "Nothing due" must never read
+          as "stop recording". It says where that money goes.
+        {% endcomment %}
+        <div class="rt-hero-work">
+          <i class="bi bi-check2-circle rt-hero-ok" aria-hidden="true"></i>This month is fully paid. Anything handed over now counts toward next month.
+        </div>
+      {% endif %}
+      <div class="rt-hero-bar"><i style="width: {{ state.progress }}%"></i></div>
+      <div class="rt-hero-paid">
+        {% if state.due %}<b>&#8377;{{ state.paid_this_month|inr }}</b> of &#8377;{{ state.due|inr }} paid this month{% else %}<b>&#8377;{{ state.paid_this_month|inr }}</b> paid this month{% endif %}
       </div>
+      {% if state.carry_direction == 'ahead' %}
+        <div class="rt-hero-carry">&#8377;{{ state.carry_amount|inr }} paid ahead from earlier months</div>
+      {% elif state.carry_direction == 'behind' %}
+        <div class="rt-hero-carry">&#8377;{{ state.carry_amount|inr }} short from earlier months</div>
+      {% endif %}
     {% endif %}
   </div>
 
-  <div class="rt-status">
-    <div class="rt-card">
-      <div class="rt-k">{{ state.this_month|date:"F Y" }}</div>
-      <div class="rt-v">
-        &#8377;{{ state.paid_this_month|inr }}
-        <small>of &#8377;{{ state.due|inr }} needed</small>
-      </div>
-      <div class="rt-bar"><i style="width: {{ state.progress }}%"></i></div>
-      {% if state.due != state.rent %}
-        {% comment %}
-          The DERIVATION of the target, shown only when it differs from the
-          rent — which is exactly when a reader would otherwise wonder why the
-          finish line is not the rent. It is not a second telling of the card
-          beside it: that one states the POSITION, this states the sum.
-        {% endcomment %}
-        <div class="rt-foot">
-          &#8377;{{ state.rent|inr }} rent
-          {% if state.carry > 0 %}&minus;{% else %}+{% endif %}
-          &#8377;{{ state.carry_amount|inr }}
-          {% if state.carry > 0 %}already paid ahead{% else %}carried in{% endif %}
-        </div>
-      {% endif %}
-    </div>
-    <div class="rt-card">
-      <div class="rt-k">Before this month</div>
-      {% if state.carry_direction == 'ahead' %}
-        <div class="rt-v rt-ahead">Ahead &#8377;{{ state.carry_amount|inr }}</div>
-      {% elif state.carry_direction == 'behind' %}
-        <div class="rt-v rt-behind">Behind &#8377;{{ state.carry_amount|inr }}</div>
-      {% else %}
-        <div class="rt-v rt-square">All square</div>
-      {% endif %}
-      <div class="rt-foot">Every month that has finished, against what was deposited for it.</div>
-    </div>
-  </div>
-
   {% comment %}
-    RECORD A DEPOSIT — the shared `.rpay-*` control, red because the money is
-    going out. Four fields, not five: there is no Method select, because it is
-    always cash handed to a man with a book, and a picker that can only ever
-    say one thing is a field to leave out.
+    2 · RECORD A DEPOSIT — the shared `.rpay-*` card, red because the money is
+    going out, drawn EXACTLY as the other three payment cards draw it: one row
+    that never wraps and scrolls sideways on a phone, the Record button last in
+    the scroller. ⚠ A two-line grid was tried for a day so the button was never
+    off-screen; the owners' call was that one shape across every payment form
+    matters more, the same call the shared row already records. The Note takes
+    the shared width, not a wider one of its own, so the swipe is as short as
+    the other cards'.
 
-    ⚠ NO CONFIRMATION DIALOG, deliberately, and this is the one payment form in
-    the app without one. The other three settle a shop, a fleet account or an
-    owner draw — large, occasional, worth a pause. This is the most frequent
-    money action in the system, keyed most days, and a modal on every one is
-    precisely how a confirmation stops being read. What can actually surprise
-    anybody here is a back-dated entry, and the date box already turns amber
-    and spells the day out when it is not today.
+    No payment method (it is always cash to a man with a book), and no
+    confirmation on an ordinary deposit — a modal most days is how a
+    confirmation stops being read. The date glyph turns amber and spells the
+    day out when it is not today, and the two surprising cases (a date past
+    the floor, a second deposit on one day) are asked about.
   {% endcomment %}
   {{ day_counts|json_script:"rtDayCounts" }}
   <form method="post" action="{% url 'rent_deposit_add' %}" id="rtAddForm"
@@ -417,10 +306,8 @@
                 <i class="bi bi-calendar-event"></i>
                 <span class="rpay-date-txt" id="rtDateTxt"></span>
                 {% comment %}
-                  `min` is the browser saying it before the button, the same
-                  rule the advance date box follows — and it is PRESENTATION:
-                  `too_far_back()` in the view is the control, and it refuses a
-                  crafted POST that never rendered this box. Empty for an owner,
+                  `min` is the browser saying it before the button — PRESENTATION:
+                  `too_far_back()` in the view is the control. Empty for an owner,
                   who has no floor.
                 {% endcomment %}
                 <input type="date" name="date" id="rtDate" value="{{ today_iso }}"
@@ -445,181 +332,96 @@
           </div>
         </div>
       </div>
-      {% comment %}
-        THE FOOTNOTE WAITS TO BE ASKED — the shared `.rpay-ask` disclosure, on
-        the owner's instruction. This is the one card of the five that earns
-        it: two sentences of standing explanation, three lines and 48px on a
-        phone, between the amount box and the log the page exists to be read
-        against. The other four carry a single short line and keep it standing.
-
-        Open, it is the shared footnote unchanged — glyph, then the same
-        sentence on the same row.
-      {% endcomment %}
-      <details class="rpay-foot rpay-ask">
-        <summary aria-label="What a deposit is" title="What a deposit is">
-          <i class="bi bi-info-circle"></i>
-        </summary>
-        <span>Cash handed to the rent collector. The rent itself is charged monthly,
-              whatever was deposited &mdash; the two are never the same number.</span>
-      </details>
     </div>
   </form>
 
-  {% comment %} ── One month's deposits ──────────────────────────────────── {% endcomment %}
-  <div class="rt-sec" id="deposits">
-    {% comment %}
-      TWO WAYS TO READ ONE LOG. By MONEY DATE it is one month at a time, which
-      is what the office checks against the collector's book. By KEYSTROKE it
-      is whatever was done most recently across EVERY month — the only view
-      that finds a row filed into a month nobody would think to open. The row
-      mark alone was not enough: it is visible only once the right month is
-      already open, so a mis-dated entry stayed findable by hunting.
-    {% endcomment %}
-    <div class="rt-sec-h">
-      {% if recent %}
-        Recently added
-        <span>newest keystroke first &middot; every month</span>
-      {% else %}
-        {{ focus|date:"F Y" }} deposits
-        <span>{{ days|length }} day{{ days|length|pluralize }} &middot;
-              &#8377;{{ focus_total|inr }} in total</span>
-      {% endif %}
-      {% if recent %}
-        <a href="{% url 'rent_home' %}#deposits">
-          <i class="bi bi-arrow-left"></i> Back to this month
-        </a>
-      {% else %}
-        {% if not focus_is_current %}
-          <a href="{% url 'rent_home' %}#deposits">
-            <i class="bi bi-arrow-left"></i> This month
-          </a>
-        {% endif %}
-        <a href="?added=recent#deposits" class="{% if not focus_is_current %}ms-3{% else %}ms-auto{% endif %}">
-          <i class="bi bi-clock-history"></i> Recently added
-        </a>
+  {% comment %}
+    3 · ONE MONTH OF DEPOSITS, read against the collector's book — THIS month,
+    unless somebody opened another from Month by month. ⚠ NO ‹ › ARROWS (the
+    owners' call, 2026-09-24): Month by month already reaches every month in
+    one tap, and arrows invite drifting into a month by accident. Away from
+    this month there is exactly one control, "Back to this month". One row
+    shape — the day, the amount, the ⋮ — with the note under the day when there
+    is one. Who keyed it and when is inside the ⋮, on demand rather than on
+    every row. A day with two deposits simply shows two rows of that date side
+    by side; the "Another one for …?" question at entry is what stops the same
+    handover being keyed twice.
+
+    The ⋮ offers Edit and Delete within Office's 24 hours (an owner's always);
+    past them it stays and says why, rather than vanishing — a door somebody
+    can see and cannot open is worse than no door, and the view refuses again.
+  {% endcomment %}
+  <div class="rt-log" id="deposits">
+    <div class="rt-log-head">
+      <div class="rt-log-title">
+        <b>{{ focus|date:"F Y" }}</b>
+        <span>{% if rows %}&#8377;{{ focus_total|inr_amount }} &middot; {{ rows|length }} deposit{{ rows|length|pluralize }}{% else %}No deposits{% endif %}</span>
+      </div>
+      {% if not focus_is_current %}
+        <a class="rt-now" href="{% url 'rent_home' %}#deposits"><i class="bi bi-arrow-return-left" aria-hidden="true"></i>Back to this month</a>
       {% endif %}
     </div>
-    {% if recent and off_count %}
-      <p class="rt-foot rt-legend mb-2" style="margin-top:-0.25rem;">
-        <span><span class="rt-past-dot rt-past"></span> dated more than {{ backdate_days }} days back</span>
-      </p>
-    {% endif %}
-    <div class="rt-list">
-      {% comment %}
-        A DAY HEADER APPEARS ONLY WHEN THE DAY HAS MORE THAN ONE DEPOSIT.
-
-        The header exists to carry a day TOTAL, and on a day with one handover
-        — which is most days — that total is the row's own amount, printed
-        twice, one line apart, for double the height. It is the invoice's own
-        rule about a single part: with one unit there is nothing to break down.
-        On a day with two or more the total is the whole point, because that is
-        the number read against the collector's book to catch the same handover
-        keyed twice.
-      {% endcomment %}
-      {% for block in days %}
-        {% if block.rows|length > 1 %}
-        <div class="rt-day">
-          <span>{{ block.day|date:"D, j M Y" }}</span>
-          <b>&#8377;{{ block.total|inr_amount }}</b>
+    {% for row in rows %}
+      <div class="rt-row">
+        <div class="rt-row-main">
+          <span class="rt-date">{{ row.date|date:"D, j M" }}</span>
+          {% if row.note %}<span class="rt-note">{{ row.note }}</span>{% endif %}
         </div>
-        {% endif %}
-        {% for row in block.rows %}
-          <div class="rt-row">
-            {% if block.rows|length == 1 %}
-              <span class="rt-date">{{ row.date|date:"D, j M Y" }}</span>
+        <span class="rt-amt">&#8377;{{ row.amount|inr_amount }}</span>
+        <div class="dropdown">
+          <button class="rt-kebab" type="button" data-bs-toggle="dropdown"
+                  data-bs-display="static" aria-expanded="false"
+                  aria-label="Actions for this deposit">
+            <i class="bi bi-three-dots-vertical"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end rt-menu">
+            <li><span class="dropdown-item-text">Added{% if row.recorded_by %} by {{ row.recorded_by.username }}{% endif %} &middot; {{ row.created_at|date:"j M, g:i A" }}</span></li>
+            <li><hr class="dropdown-divider"></li>
+            {% if row.locked %}
+              <li><span class="dropdown-item disabled">Older than 24 hours</span></li>
+              <li><span class="dropdown-item-text">Ask an owner to change it.</span></li>
+            {% else %}
+              <li>
+                <button type="button" class="dropdown-item"
+                        data-rt-edit="{% url 'rent_deposit_edit' row.pk %}"
+                        data-date="{{ row.date|date:'Y-m-d' }}"
+                        data-amount="{{ row.amount|stringformat:'s' }}"
+                        data-note="{{ row.note|default:'' }}">
+                  <i class="bi bi-pencil"></i> Edit
+                </button>
+              </li>
+              <li>
+                <button type="button" class="dropdown-item text-danger"
+                        data-rt-del="{% url 'rent_deposit_delete' row.pk %}"
+                        data-amt="{{ row.amount|inr_amount }}"
+                        data-day="{{ row.date|date:'j M Y' }}"
+                        data-logged="{% if row.logged %}1{% else %}0{% endif %}">
+                  <i class="bi bi-trash"></i> Delete
+                </button>
+              </li>
             {% endif %}
-            <span class="rt-amt">&#8377;{{ row.amount|inr_amount }}</span>
-            {% comment %}
-              ⚠ THE ONLY PERMANENT TRACE OF A BACK-DATED ENTRY. The alert that
-              fires when one is filed reaches the OTHER owner and is swept from
-              the feed after a fortnight; this sits on the row itself, for ever,
-              and is visible to whoever actually opens the month — including the
-              person who keyed it, whom the alert deliberately excludes.
-
-              AMBER, matching the date box that goes amber while a back-dated
-              entry is being typed. Same fact, same colour, before and after.
-            {% endcomment %}
-            {% comment %}
-              ONE MARK: this row was dated FURTHER BACK than Office may
-              reach, so only an owner could have filed it and the other owner's
-              phone rang when they did. It is decided by `rent.backdating()`,
-              which both this list and Recently added read, so the two can
-              never mark the same row differently — and that function asks the
-              same three-day rule that refused Office and chose the alert, as
-              at the day the row was keyed.
-            {% endcomment %}
-            {% comment %}
-              ⚠ THE WRAPPER RENDERS WHETHER OR NOT IT HOLDS ANYTHING, because
-              on a laptop it is the row's flexer — the thing that pushes who
-              recorded it against the ⋮. `is-on` says it has something to show,
-              which is what the phone reads to give it a line of its own; an
-              `:empty` test would not survive a newline being added inside it.
-            {% endcomment %}
-            <span class="rt-meta{% if row.tier or row.note %} is-on{% endif %}">
-              {% if row.tier %}
-                <span class="rt-past"
-                      title="Dated {{ row.date|date:'j M Y' }}, keyed on {{ row.added_on|date:'j M Y' }}">
-                  <i class="bi bi-clock-history"></i> added {{ row.added_on|date:"j M" }}
-                </span>
-              {% endif %}
-              {% if row.note %}<span class="rt-note">{{ row.note }}</span>{% endif %}
-            </span>
-            {% if row.recorded_by %}<span class="rt-by">{{ row.recorded_by.username }}</span>{% endif %}
-            <div class="dropdown">
-              <button class="rt-kebab" type="button" data-bs-toggle="dropdown"
-                      data-bs-display="static" aria-expanded="false"
-                      aria-label="Actions for this deposit">
-                <i class="bi bi-three-dots-vertical"></i>
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                {% comment %}
-                  A LOCKED ROW STILL SHOWS THE ITEM AND SAYS WHY. Hiding it
-                  would say "you cannot" without saying why — and would say
-                  something false as well, since an owner can. The view refuses
-                  again either way; this is presentation.
-                {% endcomment %}
-                {% if row.locked %}
-                  <li><span class="dropdown-item disabled">Too old to delete here</span></li>
-                  <li><span class="dropdown-item-text small text-muted">Ask an owner to remove it.</span></li>
-                {% else %}
-                  <li>
-                    <button type="button" class="dropdown-item text-danger"
-                            data-rt-del="{% url 'rent_deposit_delete' row.pk %}"
-                            data-rt-amt="{{ row.amount|inr_amount }}"
-                            data-rt-day="{{ row.date|date:'j M Y' }}">
-                      <i class="bi bi-trash"></i> Delete deposit
-                    </button>
-                  </li>
-                {% endif %}
-              </ul>
-            </div>
-          </div>
-        {% endfor %}
-      {% empty %}
-        <div class="rt-empty">
-          Nothing deposited in {{ focus|date:"F Y" }}.
+          </ul>
         </div>
-      {% endfor %}
-    </div>
+      </div>
+    {% empty %}
+      <div class="rt-empty">Nothing deposited in {{ focus|date:"F Y" }}.</div>
+    {% endfor %}
   </div>
 
   {% comment %}
-    ── The year history ────────────────────────────────────────────────────
-    SALARY & ADVANCE'S OWN COLLAPSED-YEAR PATTERN, and it is what makes twenty
-    years of this section readable: the running year opens on arrival, every
-    older one is a single line carrying that year's rent, its deposits and the
-    position it ended on. Nothing is capped, so the twentieth year back is two
-    taps away rather than unreachable.
+    4 · MONTH BY MONTH. Salary & Advance's collapsed-year pattern: the running
+    year opens, every older one is one line carrying where it ended. Each month
+    says what was PAID and, in words, where the ledger stood AFTER it — a tick
+    when square, "ahead" or "behind" with the figure, and "in progress" for the
+    month still running, whose figure is arithmetic rather than a problem.
 
-    A month row LINKS to its own deposits above, which is the only navigation
-    the log needs — and it is why the log can show one month and carry no pager.
+    A month's rent is printed under its name only when it differs from the rent
+    now, which is exactly when a reader would otherwise wonder why a fully paid
+    month reads behind. Each month links to its own deposits above.
   {% endcomment %}
   {% if years %}
   <div class="rt-sec">
-    <div class="rt-sec-h">
-      By month
-      <span>running position after each one</span>
-    </div>
+    <div class="rt-sec-h">Month by month</div>
     <div class="rt-list">
       {% for y in years %}
       <div class="rt-yr">
@@ -627,16 +429,7 @@
                 data-bs-target="#rtYear{{ y.year }}"
                 aria-expanded="{% if y.is_current %}true{% else %}false{% endif %}">
           <span class="rt-yr-n">{{ y.year }}</span>
-          {% comment %}
-            THE YEAR LINE CARRIES ONE FIGURE, AND ONLY ONE. It shipped with
-            "₹2,58,300 of ₹2,80,000" beside the position — three numbers on a
-            line whose entire job is to answer "do I need to open this year?".
-            The answer to that is the position and nothing else, so a column of
-            "All square" down twenty years is scannable in one pass and the one
-            year that is not jumps out. The totals it carried are inside, as
-            twelve rows, where they can be read against each other.
-          {% endcomment %}
-          <span class="rt-yr-pos {% if y.running > 0 %}rt-ahead{% elif y.running < 0 %}rt-behind{% else %}rt-square{% endif %}">
+          <span class="rt-yr-pos {% if y.running %}rt-pos{% else %}rt-square{% endif %}">
             {% if y.running > 0 %}Ahead &#8377;{{ y.running|inr }}
             {% elif y.running < 0 %}Behind &#8377;{{ y.running|abs_value|inr }}
             {% else %}All square{% endif %}
@@ -644,45 +437,32 @@
           <i class="bi bi-chevron-down rt-chev"></i>
         </button>
         <div class="collapse{% if y.is_current %} show{% endif %}" id="rtYear{{ y.year }}">
-          <div class="rt-scroll">
-            <table class="rt-months">
-              <thead>
-                <tr><th>Month</th><th>Rent</th><th>Deposited</th><th>Position</th></tr>
-              </thead>
-              <tbody>
-                {% for m in y.months %}
-                  <tr{% if m.is_current %} class="is-current"{% endif %}>
-                    <td>
-                      <a href="?month={{ m.month|date:'Y-m' }}#deposits">{{ m.month|date:"F" }}</a>
-                    </td>
-                    <td>&#8377;{{ m.rent|inr }}</td>
-                    <td>&#8377;{{ m.paid|inr }}</td>
-                    {% comment %}
-                      ⚠ THE MONTH IN PROGRESS IS GREY, NOT RED. Its position
-                      carries the whole month's rent against however many days
-                      have been paid, so on the 2nd it reads −₹33,000 — which
-                      is arithmetic, not a problem, and red is this app's
-                      colour for something being wrong. A figure that is
-                      alarming on the 2nd of every month is how the colour
-                      stops meaning anything by the 10th. The figure itself is
-                      unchanged and still signed, and the hero above already
-                      says what is actually owed today.
-                    {% endcomment %}
-                    <td class="{% if m.is_current %}rt-square{% elif m.running > 0 %}rt-ahead{% elif m.running < 0 %}rt-behind{% else %}rt-square{% endif %}">
-                      {% if m.running > 0 %}+{% elif m.running < 0 %}&minus;{% endif %}&#8377;{{ m.running|abs_value|inr }}
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+          <table class="rt-months">
+            <tbody>
+              {% for m in y.months %}
+                <tr>
+                  <td>
+                    <a href="?month={{ m.month|date:'Y-m' }}#deposits">{{ m.month|date:"F" }}</a>
+                    {% if m.rent != state.rent %}<span class="rt-mrent">rent &#8377;{{ m.rent|inr }}</span>{% endif %}
+                  </td>
+                  <td>&#8377;{{ m.paid|inr }}</td>
+                  {% if m.is_current %}
+                    <td class="rt-square">In progress</td>
+                  {% elif m.running > 0 %}
+                    <td class="rt-pos">Ahead &#8377;{{ m.running|inr }}</td>
+                  {% elif m.running < 0 %}
+                    <td class="rt-pos">Behind &#8377;{{ m.running|abs_value|inr }}</td>
+                  {% else %}
+                    <td><span class="rt-ok" title="All square"><i class="bi bi-check2-circle" aria-hidden="true"></i><span class="visually-hidden">All square</span></span></td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
       </div>
       {% endfor %}
     </div>
-    <p class="rt-foot">
-      The current month counts its whole rent, so it reads behind until the month is paid for.
-    </p>
   </div>
   {% endif %}
 </div>
@@ -690,9 +470,8 @@
 {% comment %}
   The delete form is built once and re-pointed, so a month of rows carries one
   form rather than sixty. The ROUTE is reversed onto each button by the url tag
-  above and read off the dataset here — a path stitched together in script goes
-  on 404ing silently the day the URL changes, where a reverse fails loudly at
-  render.
+  and read off the dataset in script — a path stitched together in script goes
+  on 404ing silently the day the URL changes, where a reverse fails loudly.
 {% endcomment %}
 <form id="rtDelForm" method="post" class="d-none">
   {% csrf_token %}
@@ -700,31 +479,46 @@
   <input type="hidden" name="reason" id="rtDelReason">
 </form>
 
-<div class="modal fade" id="rtConfirmDel" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+{% comment %}
+  EDIT A DEPOSIT — one modal, re-pointed at the row whose ⋮ opened it. The date
+  box carries the same `min` the add form's does, lowered to the row's own date
+  when that is older (the floor moves every night), and the view is the
+  control either way.
+{% endcomment %}
+<div class="modal fade" id="rtEditModal" tabindex="-1" aria-hidden="true" aria-labelledby="rtEditTitle">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 380px;">
     <div class="modal-content">
-      <div class="modal-body text-center p-4">
-        <div style="font-size: 3rem; line-height: 1;">&#128465;</div>
-        <h6 class="fw-bold mt-2 mb-1">Are you sure?</h6>
-        <p class="text-muted small mb-3">
-          Deleting the <span class="fw-bold text-danger" id="rtDelAmt"></span>
-          deposit of <span id="rtDelDay"></span>. This cannot be undone.
-        </p>
-        <input type="text" class="form-control form-control-sm mb-3" id="rtDelWhy"
-               maxlength="255" placeholder="Reason (optional)">
-        <div class="d-flex gap-2">
-          {% comment %}
-            `type="button"` on Cancel is the whole defence against a bare
-            <button> in a form submitting it. This one sits outside the form,
-            but the habit is what stops the next copy of this dialog being the
-            one where Cancel deletes the row.
-          {% endcomment %}
-          <button type="button" class="btn btn-light flex-fill rounded-pill"
-                  data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-danger flex-fill rounded-pill"
-                  id="rtDelGo">Delete</button>
+      <form method="post" id="rtEditForm" data-floor="{{ min_date_iso }}" data-limit="{{ floor_iso }}">
+        {% csrf_token %}
+        <input type="hidden" name="back" value="{{ back_qs }}">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold" id="rtEditTitle"><i class="bi bi-pencil-square me-2"></i>Edit deposit</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-      </div>
+        <div class="modal-body">
+          <div class="rt-edit-field">
+            <label class="rt-k d-block" for="rtEditDate">Date</label>
+            <input type="date" class="form-control" name="date" id="rtEditDate"
+                   max="{{ today_iso }}" required>
+          </div>
+          <div class="rt-edit-field">
+            <label class="rt-k d-block" for="rtEditAmount">Amount</label>
+            <div class="rt-edit-amt">
+              <span aria-hidden="true">&#8377;</span>
+              <input type="number" class="form-control" name="amount" id="rtEditAmount"
+                     min="1" step="0.01" inputmode="decimal" required>
+            </div>
+          </div>
+          <div class="rt-edit-field mb-0">
+            <label class="rt-k d-block" for="rtEditNote">Note (optional)</label>
+            <input type="text" class="form-control" name="note" id="rtEditNote" maxlength="255">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light rounded-pill flex-fill" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-dark rounded-pill flex-fill">Save</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -732,13 +526,9 @@
 {% comment %}
   ── UPDATE RENT ───────────────────────────────────────────────────────────
   OWNER-ONLY, matching `@owner_required` on `rent_rate_set`. A template gate
-  must mirror its view's decorator. Office reads every figure on this page and
-  does not decide what the premises cost.
-
-  It is a MODAL rather than a card because the rent changes about once a year,
-  and a permanent block of form for a yearly act is furniture. Everything it
-  needs is in one place: the form, the note about backdating, and the history
-  of what the rent has been.
+  must mirror its view's decorator. It is a MODAL because the rent changes
+  about once a year, and a permanent block of form for a yearly act is
+  furniture.
 {% endcomment %}
 {% if is_owner %}
 <div class="modal fade" id="rtRentModal" tabindex="-1" aria-hidden="true">
@@ -778,8 +568,7 @@
           {% comment %}
             THE FULL AMOUNT, NOT AN ADJUSTMENT. "+5,000" is a delta on a number
             the person has to already know, so a mis-keyed one is silently
-            wrong and a run of them makes the current rent unreadable without
-            adding up. The landlord says "forty thousand from January" — that is
+            wrong. The landlord says "forty thousand from January" — that is
             what gets stored, and what this list prints back.
           {% endcomment %}
           <p class="rt-foot">
@@ -800,14 +589,6 @@
                 from {{ r.effective_from|date:"F Y" }}{% if r.note %} &middot; {{ r.note }}{% endif %}
               </span>
               {% if rates|length > 1 %}
-                {% comment %}
-                  The reason rides the form that posts it — `DeletionLog`
-                  stores it, and on this row it is the only field that later
-                  says why a past month's rent was changed back. Optional, the
-                  rule every logged delete in the app follows: the compensating
-                  control is the CRITICAL alert, not a box somebody fills with
-                  a full stop.
-                {% endcomment %}
                 <form method="post" action="{% url 'rent_rate_delete' r.pk %}" class="d-inline"
                       data-rt-rate-del="{{ r.effective_from|date:'F Y' }}">
                   {% csrf_token %}
@@ -839,11 +620,31 @@
       String(d.getMonth() + 1).padStart(2, '0') + '-' +
       String(d.getDate()).padStart(2, '0');
   }
+  function asDate(iso) {
+    return new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+  }
   function prettyDate(iso) {
     var p = (iso || '').split('-');
     if (p.length !== 3) { return iso || ''; }
-    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
-      .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    return asDate(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // The same question on the add and on the edit: a date past the three-day
+  // limit is the one case that moves a closed month and rings the other
+  // owner's phone. The server refuses Office there, so only an owner meets it.
+  function farBackQuestion(iso, form) {
+    var closed = iso.slice(0, 7) < todayISO().slice(0, 7);
+    return {
+      title: 'Date it this far back?',
+      text: 'This deposit is dated '
+          + asDate(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+          + (closed ? '. That month is finished, so its position and every month since moves' : '')
+          + ' — and the other owner is told.',
+      icon: 'bi-calendar-event',
+      theme: 'danger',
+      ok: 'File it there',
+      parent: form
+    };
   }
 
   // The date glyph, the Cashbook's own control: amber and spelled out the
@@ -869,67 +670,8 @@
     syncDate();
   }
 
-  // ⚠ A MODAL IS BUILT ON FIRST USE, NEVER AT PARSE TIME. This script sits in
-  // the content block, which base.html renders ABOVE its own script tags, so
-  // `bootstrap` is undefined while these lines run — and a constructor here
-  // throws a ReferenceError that aborts the whole IIFE and takes every
-  // listener below it with it, silently, while the page looks normal.
-  // (The rent modal needs none of this: it is opened by Bootstrap's own
-  // delegated data-bs-toggle handler, which is registered when the bundle
-  // arrives.)
-  var _modal = null;
-  function confirmModal() {
-    var el = document.getElementById('rtConfirmDel');
-    if (!_modal && el && typeof bootstrap !== 'undefined') {
-      _modal = new bootstrap.Modal(el);
-    }
-    return _modal;
-  }
-
-  var delForm = document.getElementById('rtDelForm');
-  var pending = '';
-
-  // Delegated on `document`: one handler for every row, and a row in another
-  // month needs nothing re-initialised.
-  document.addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-rt-del]');
-    if (!btn || !delForm) { return; }
-    pending = btn.dataset.rtDel;
-    document.getElementById('rtDelAmt').textContent = '₹' + btn.dataset.rtAmt;
-    document.getElementById('rtDelDay').textContent = btn.dataset.rtDay;
-    document.getElementById('rtDelWhy').value = '';
-    var dlg = confirmModal();
-    if (dlg) { dlg.show(); } else { delForm.action = pending; delForm.submit(); }
-  });
-
-  var go = document.getElementById('rtDelGo');
-  if (go && delForm) {
-    go.addEventListener('click', function () {
-      var self = this;
-      delForm.action = pending;
-      document.getElementById('rtDelReason').value =
-        document.getElementById('rtDelWhy').value;
-      delForm.submit();
-      // Disabled in a timeout, never inline: a button disabled inside its own
-      // handler cancels the submission in some browsers.
-      setTimeout(function () { self.disabled = true; }, 0);
-    });
-  }
-
-  // A rent change re-prices months, and a BACKDATED one re-prices months
-  // somebody has already read a profit figure against. That is the surprise
-  // worth a pause; setting it from the current month is not, so the question
-  // is only asked when the month chosen is not this one.
-  // ⚠ THE ADD FORM ASKS ONLY WHEN IT REACHES PAST THE FLOOR. Recording a
-  // deposit is the most frequent money action in the app and carries no dialog
-  // on purpose — a modal most days is how a confirmation stops being read. But
-  // a date past the floor is not most days: it is the one case that rewrites a
-  // month already closed, and for an OWNER it is the only guard there is,
-  // because the server refuses Office and lets them through. So the question
-  // is asked exactly where it can still surprise somebody.
   var addForm = document.getElementById('rtAddForm');
   var floorISO = addForm ? addForm.dataset.floor : '';
-  // How many deposits each day of the month on screen already has.
   var countsEl = document.getElementById('rtDayCounts');
   var DAY_COUNTS = countsEl ? JSON.parse(countsEl.textContent || '{}') : {};
 
@@ -939,65 +681,24 @@
       // this handler has to let that second one through or it would ask again
       // for ever.
       if (addForm.dataset.wsConfirmed === '1') { return; }
-
       var iso = dateInput ? dateInput.value : '';
       if (!iso) { return; }
 
-      // ⚠ THE BACK-DATE QUESTION COMES FIRST, because it is the bigger fact:
-      // it moves a closed month's position and reaches the other owner's
-      // phone. Only one card ever shows — a person who has just been asked
-      // about a closed month does not also need to be asked whether it is the
-      // day's second entry. Two different questions, two different cards: a
-      // red calendar for a closed month, an amber stack of pages for a repeat.
+      // The back-date question comes FIRST, because it is the bigger fact.
+      // Only one card ever shows.
       var question = null;
-
       if (floorISO && iso < floorISO) {
-        // Past the three-day limit only an owner can reach. Whether it also
-        // lands in a FINISHED month is a second fact, said only when true:
-        // five days back on the 20th is still this month.
-        var picked = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1,
-                              Number(iso.slice(8, 10)));
-        var closed = iso.slice(0, 7) < todayISO().slice(0, 7);
-        question = {
-          title: 'Date it this far back?',
-          text: 'This deposit is dated '
-              + picked.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-              + (closed
-                  ? '. That month is finished, so its position and every month since moves'
-                  : '')
-              + ' — and the other owner is told.',
-          icon: 'bi-calendar-event',
-          theme: 'danger',
-          ok: 'File it there',
-          parent: addForm
-        };
+        question = farBackQuestion(iso, addForm);
       } else {
-        // ⚠ THE REPEAT CHECK. The collector comes once a day, so a second entry
-        // on one date is the shape a double-key takes here — one person keying
-        // in a rush, or two people recording the same handover. It ASKS: a
-        // morning and an evening handover is real, and the day total in the log
-        // is what catches whatever slips through either way.
+        // The repeat check: the collector comes once a day, so a second entry
+        // on one date is the shape a double-key takes here. It asks; a
+        // morning and an evening handover is real.
         var n = DAY_COUNTS[iso] || 0;
         if (n > 0) {
-          var day = new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1,
-                             Number(iso.slice(8, 10)))
-            .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          var day = asDate(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
           question = {
             title: 'Another one for ' + day + '?',
-            // ⚠ THE FACT, AND NOTHING ELSE — the owner's instruction. A second
-            // sentence used to follow, saying that two handovers in a day are
-            // ordinary and the same one twice is not: it explained the question
-            // to somebody who had already been asked it, and a line telling the
-            // reader that both answers are reasonable is the rent steer's own
-            // third-line defect. The title asks, the buttons answer, and what
-            // is printed is what gets checked against the collector's book.
-            //
-            // ⚠ AND IT IS PARAPHRASED HERE RATHER THAN QUOTED, because a
-            // comment inside an inline <script> is served with the page — the
-            // trap this codebase has paid for on a CSS comment and on the
-            // bill's own third-party test.
-            text: n + (n > 1 ? ' deposits are' : ' deposit is')
-                + ' already recorded for that day.',
+            text: n + (n > 1 ? ' deposits are' : ' deposit is') + ' already recorded for that day.',
             icon: 'bi-files',
             theme: 'warning',
             ok: 'Add it',
@@ -1005,7 +706,6 @@
           };
         }
       }
-
       if (!question) { return; }
       e.preventDefault();
       wsConfirm(question).then(function (answer) {
@@ -1014,6 +714,79 @@
     });
   }
 
+  // ⚠ A MODAL IS BUILT ON FIRST USE, NEVER AT PARSE TIME: this script sits in
+  // the content block, which base.html renders ABOVE its own script tags, so
+  // `bootstrap` is undefined while these lines run.
+  var editForm = document.getElementById('rtEditForm');
+  var editDate = document.getElementById('rtEditDate');
+  var editAmount = document.getElementById('rtEditAmount');
+  var editNote = document.getElementById('rtEditNote');
+  var _edit = null;
+  function editDialog() {
+    var el = document.getElementById('rtEditModal');
+    if (!_edit && el && typeof bootstrap !== 'undefined') { _edit = new bootstrap.Modal(el); }
+    return _edit;
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-rt-edit]');
+    if (!btn || !editForm) { return; }
+    editForm.action = btn.dataset.rtEdit;
+    editForm.dataset.was = btn.dataset.date;
+    editDate.value = btn.dataset.date;
+    // Office's floor, lowered to the row's own date when that is older, so a
+    // correction to the amount is never blocked by a date nobody touched.
+    var floor = editForm.dataset.floor;
+    if (floor) { editDate.min = btn.dataset.date < floor ? btn.dataset.date : floor; }
+    editAmount.value = (btn.dataset.amount || '').replace(/\.00$/, '');
+    editNote.value = btn.dataset.note || '';
+    var dlg = editDialog();
+    if (dlg) { dlg.show(); }
+  });
+
+  if (editForm) {
+    editForm.addEventListener('submit', function (e) {
+      if (editForm.dataset.wsConfirmed === '1') { return; }
+      var iso = editDate.value;
+      var limit = editForm.dataset.limit;
+      // Asked only when the date MOVED past the limit — the row's own date,
+      // untouched, is not a new decision.
+      if (!iso || iso === editForm.dataset.was || !limit || iso >= limit) { return; }
+      e.preventDefault();
+      wsConfirm(farBackQuestion(iso, editForm)).then(function (answer) {
+        if (answer.ok) { wsSubmit(editForm); }
+      });
+    });
+  }
+
+  // DELETE — the shared confirmation card. It asks for a reason only when the
+  // delete will be kept in Change History (past the 24 hours), because a
+  // reason box whose value goes nowhere is a field silently dropped.
+  var delForm = document.getElementById('rtDelForm');
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-rt-del]');
+    if (!btn || !delForm) { return; }
+    var logged = btn.dataset.logged === '1';
+    wsConfirm({
+      title: 'Delete this deposit?',
+      text: 'The ₹' + btn.dataset.amt + ' deposit of ' + btn.dataset.day
+          + ' is removed. This can’t be undone.'
+          + (logged ? ' It is written to the owners’ Change History.' : ''),
+      icon: 'bi-trash3-fill',
+      theme: 'danger',
+      ok: 'Delete',
+      reason: logged ? 'deleting this deposit' : ''
+    }).then(function (answer) {
+      if (!answer.ok) { return; }
+      delForm.action = btn.dataset.rtDel;
+      document.getElementById('rtDelReason').value = answer.reason || '';
+      wsSubmit(delForm);
+    });
+  });
+
+  // A rent change re-prices months, and a BACKDATED one re-prices months
+  // somebody has already read a profit figure against. That is the surprise
+  // worth a pause; setting it from the current month is not.
   var rateForm = document.getElementById('rtRateForm');
   if (rateForm) {
     rateForm.addEventListener('submit', function (e) {
@@ -1045,9 +818,6 @@
     if (f.dataset.wsConfirmed === '1') { return; }
     // The card carries a REASON BOX, because this one is logged: the reason is
     // the only field that later says why a past month's rent was changed back.
-    // An empty string is a deliberate "no reason" and goes through, which is
-    // the rule every other logged delete here follows — Cancel is the only
-    // answer that stops it.
     e.preventDefault();
     wsConfirm({
       title: 'Remove this rent change?',
@@ -1061,8 +831,8 @@
       parent: f
     }).then(function (answer) {
       if (!answer.ok) { return; }
-      var box = f.querySelector('.rt-rate-why');
-      if (box) { box.value = answer.reason; }
+      var why = f.querySelector('.rt-rate-why');
+      if (why) { why.value = answer.reason; }
       wsSubmit(f);
     });
   });

@@ -7,24 +7,26 @@ resolves the request, calls that module, and renders. Same split
 pace calculation is the whole feature and it has to be testable without a
 request.
 
-⚠ **NOTHING HERE REACHES `analysis_engine`, YET.** This is the section on its
-own: a deposit log and today's figure, which is what the owners asked for. Rent
-still reaches the Profit page the way it always has, as a Cashbook category, so
-switching this on changes no reported figure by a rupee. Moving rent out of the
-Cashbook and into an expense line of its own is a SEPARATE change with real
-reach — the equation, the earnings card, All Time, the trend chart and the
-historical cashbook rows all have to move together, and doing it in the same
-edit as this would put a working tool behind a risky one.
-
 WHO DOES WHAT:
 
   * **Recording a deposit is Office**, because the office is who hands the
-    collector the cash and keys it off his book afterwards.
+    collector the cash and keys it off his book afterwards. **Correcting or
+    removing one is Office within 24 hours of keying it**, and an owner's
+    after that — `delete_window`, the rule every money section follows.
   * **Setting the rent is Owner-only.** It is a business term, it decides what
     every figure on the page is measured against, and a backdated rate
     reprices months that have already been read.
   * **Floor sees none of it** — there is no drawer entry and every view here is
     gated at Office or above.
+
+⚠ WHAT IS KEPT AND WHAT IS ANNOUNCED IS THE CASHBOOK'S RULE (2026-09-24, the
+owners' call). An edit or delete inside Office's 24 hours is neither kept nor
+announced — it gives Office no power the add did not, since they could have
+typed any figure in the first place. Only what ONLY AN OWNER can do — an edit
+or delete past the 24 hours, or a date moved past the three-day limit — is kept
+in Change History and reaches the other owner's phone. Back-dating is never
+quiet: on the add, and on an edit that moves a date earlier, it reaches the
+bell inside the three days and the phone past them.
 """
 from datetime import date
 from decimal import Decimal
@@ -38,43 +40,20 @@ from django.utils import timezone
 from .. import rent as rent_calc
 from ..decorators import is_owner, office_required, owner_required
 from ..delete_window import is_past_window, refusal
-from ..models import DeletionLog, RentDeposit, RentRate
+from ..models import DeletionLog, EditLog, RentDeposit, RentRate
 from ..money import fit_text, parse_money
-from ..money_dates import (BACKDATE_DAYS, backdate_floor, is_future,
-                           posted_date, too_far_back)
+from ..money_dates import backdate_floor, is_future, posted_date, too_far_back
 from ..notifications import notify, notify_dated_back
 
 
-def _group_by_day(rows):
-    """The page's deposits as day blocks, each with its own total.
-
-    ⚠ THE DAY TOTAL IS THE POINT, not decoration. The collector's book is the
-    truth and this is a copy of it, so the realistic failure here is the same
-    handover being keyed TWICE — which silently lowers today's figure and is
-    invisible until month end. Two rows under one date, adding to a total that
-    does not match the book, is what makes that findable. It is not blocked:
-    two genuine handovers in one day are perfectly normal.
-
-    The rows arrive ordered `-date`, so equal dates are already contiguous and
-    this is one pass with no sorting.
-    """
-    blocks = []
-    for row in rows:
-        if not blocks or blocks[-1]['day'] != row.date:
-            blocks.append({'day': row.date, 'rows': [], 'total': 0})
-        blocks[-1]['rows'].append(row)
-        blocks[-1]['total'] += row.amount
-    return blocks
-
-
-def _focus_month(raw, today):
+def _focus_month(raw, today, starts):
     """Which month the deposit log is showing — 'YYYY-MM' from the URL.
 
-    Anything unreadable, or a month past today, falls back to the current one:
-    the only way to reach either is a hand-edited URL, and an empty list under
-    a heading naming a month reads as "nothing was deposited", which would be a
-    lie. Same fallback the dashboard's crew filter and the Estimates list give
-    an unrecognised value.
+    Anything unreadable, a month past today, or one before the log can start
+    falls back to the current one: the only way to reach any of them is a
+    hand-edited URL, and an empty list under a heading naming a month reads as
+    "nothing was deposited", which would be a lie. Same fallback the
+    dashboard's crew filter and the Estimates list give an unrecognised value.
     """
     this_month = rent_calc.month_of(today)
     raw = (raw or '').strip()
@@ -83,88 +62,44 @@ def _focus_month(raw, today):
             chosen = date(int(raw[:4]), int(raw[5:]), 1)
         except ValueError:
             return this_month
-        return chosen if chosen <= this_month else this_month
+        return chosen if starts <= chosen <= this_month else this_month
     return this_month
 
 
 @office_required
 def rent_home(request):
-    """The section: today's figure, one month's deposits, and the year history."""
+    """The section: what to pay today, one month's deposits, and the history."""
     today = timezone.localdate()   # IST-aware — never date.today()
-    state = rent_calc.position(today=today)
-    focus = _focus_month(request.GET.get('month'), today)
+    this_month = rent_calc.month_of(today)
+    starts = rent_calc.log_starts(today=today)
+    focus = _focus_month(request.GET.get('month'), today, starts)
+    rows = rent_calc.deposits_in(focus)
 
-    # TWO WAYS TO READ THE SAME LOG, and the second exists because the first
-    # cannot answer "I know I did it, but where?". By MONEY DATE it is one
-    # month at a time (bounded at about sixty rows however long the business
-    # runs, so there is nothing to page). By KEYSTROKE it is whatever was done
-    # most recently, across every month — which is the only view that finds a
-    # row filed into a month nobody would think to open.
-    recent = request.GET.get('added') == 'recent'
-    rows = rent_calc.recently_added() if recent else rent_calc.deposits_in(focus)
-
-    # Whether each row may still be deleted by THIS user, decided once here
-    # rather than per row in the template. A door somebody can see and cannot
-    # open is worse than no door — the rule the frozen-advance menu follows —
-    # so the item is annotated rather than hidden, and the view refuses again.
-    #
-    # ⚠ AND WHETHER IT WAS KEYED LATE, WHICH IS THE ONLY PERMANENT TRACE THERE
-    # IS. A notification is a FEED — read rows are swept after 14 days — and
-    # `notify()` excludes the actor, so the person who back-dated an entry is
-    # the one person it never reaches. Both dates have been on the row since
-    # the first migration; nothing showed them. `date` is when the money moved,
-    # `created_at` is when somebody typed it, and a row filed FURTHER BACK THAN
-    # OFFICE MAY REACH is money only an owner could have filed.
-    #
-    # ⚠ THE THRESHOLD IS THE THREE-DAY FLOOR, judged as at the day the row was
-    # keyed — so the mark shows exactly the rows that rang the other owner's
-    # phone. It was the MONTH until 2026-09-23, with a second amber tier for a
-    # row keyed any day after the one it was dated: that fired on yesterday's
-    # handover keyed this morning, which is the ordinary work the floor exists
-    # to permit, and a mark on the ordinary case is meaningless by the second
-    # row. See `rent.backdating()`.
-    # ⚠ `is_owner` ONCE, THE AGE RULE PER ROW. `refusal()` calls `is_owner`,
-    # which was a fresh `user.groups.filter(...)` on every call — so asking it
-    # per row put one extra query on every deposit in the list. Sixty rows,
-    # sixty queries, found by a test asserting the cost does not grow with the
-    # data. `role_names` caches per request now, so the query is no longer the
-    # reason; the shape is kept because the age rule genuinely does not need a
-    # user, and that test still holds it to that.
+    # WHAT THIS VIEWER MAY STILL CHANGE, decided once here rather than per row
+    # in the template. A door somebody can see and cannot open is worse than no
+    # door — the rule the frozen-advance menu follows — so a locked row still
+    # shows its menu and says why, and the view refuses again either way.
+    # `logged` is the same test, read the other way: an edit or delete past
+    # the 24 hours is kept in Change History, so only then does the delete ask
+    # for a reason (a reason box whose value goes nowhere is a field dropped).
     viewer_is_owner = is_owner(request.user)
     for row in rows:
-        row.locked = not viewer_is_owner and is_past_window(row.created_at)
-        # ONE rule for both views — `rent.backdating()` — so the month log and
-        # the Recently-added list can never mark the same row differently.
-        row.tier = rent_calc.backdating(row)
-        row.added_on = timezone.localtime(row.created_at).date() if row.created_at else None
+        row.logged = is_past_window(row.created_at)
+        row.locked = row.logged and not viewer_is_owner
 
     return render(request, 'workshop/rent/rent_home.html', {
-        'state': state,
-        'recent': recent,
-        # Read from the constant, never typed into the template: the legend
-        # names the same number the guard enforces, so the two cannot drift.
-        'backdate_days': BACKDATE_DAYS,
-        # How many of the rows on screen were filed backwards, so the heading
-        # can say it without the reader counting chips.
-        'off_count': sum(1 for r in rows if r.tier),
+        'state': rent_calc.position(today=today),
         'focus': focus,
-        'focus_is_current': focus == rent_calc.month_of(today),
+        'focus_is_current': focus == this_month,
+        'rows': rows,
         'focus_total': sum((r.amount for r in rows), Decimal('0')),
-        # ⚠ NO DAY GROUPING IN RECENT MODE. The day header carries a day TOTAL,
-        # and that total is only true when the block holds every deposit of
-        # that day. Ordered by keystroke this list is a slice — two rows of one
-        # day can be pages apart — so a header here would print a "day total"
-        # that is really "the part of that day I happen to be showing". Each
-        # row stands alone instead, with its own money date.
-        'days': ([{'day': r.date, 'rows': [r], 'total': r.amount} for r in rows]
-                 if recent else _group_by_day(rows)),
         'years': rent_calc.year_blocks(today=today),
         'rates': rent_calc.rates()[::-1],
-        'is_owner': is_owner(request.user),
+        'is_owner': viewer_is_owner,
         # PRESENTATION ONLY — `too_far_back()` in the view is the control. An
         # owner gets no floor at all, which is what lets a go-live opening
         # position be dated before the ledger starts.
-        'min_date_iso': '' if is_owner(request.user) else backdate_floor(today).isoformat(),
+        'min_date_iso': '' if viewer_is_owner else backdate_floor(today).isoformat(),
         # Always handed over, owner or not: the browser asks before the button
         # on a date past it, which is the only guard an owner meets at all.
         'floor_iso': backdate_floor(today).isoformat(),
@@ -182,7 +117,7 @@ def rent_home(request):
         'day_counts': rent_calc.deposit_days(backdate_floor(today), today),
         'today_iso': today.isoformat(),
         'this_month_iso': f"{today:%Y-%m}",
-        'back_qs': '' if focus == rent_calc.month_of(today) else f"?month={focus:%Y-%m}",
+        'back_qs': '' if focus == this_month else f"?month={focus:%Y-%m}",
     })
 
 
@@ -190,6 +125,10 @@ def _back(request):
     """Return to the page the form was posted from, never to a bare /rent/."""
     keep = request.POST.get('back', '').strip()
     return redirect(f"/rent/{keep}" if keep.startswith('?') else 'rent_home')
+
+
+def _month_url(day):
+    return reverse('rent_home') + f"?month={day:%Y-%m}"
 
 
 @office_required
@@ -247,7 +186,7 @@ def rent_deposit_add(request):
             detail=("the position of every month since has moved"
                     if earlier_month else "Rent deposit"),
             actor=request.user,
-            url=reverse('rent_home') + f"?month={when:%Y-%m}",
+            url=_month_url(when),
             object_type='RentDeposit',
             object_id=deposit.pk,
         )
@@ -266,8 +205,122 @@ def rent_deposit_add(request):
 
 
 @office_required
+def rent_deposit_edit(request, pk):
+    """Correct a deposit's amount, date or note.
+
+    ⚠ THIS REVERSES "DELIBERATELY NO EDIT ON A DEPOSIT" (the owners' call,
+    2026-09-24). That rule's first reason was that every correction should
+    land in the history rather than silently overwrite what was there — and
+    since Edit History exists, an edit that matters does exactly that.
+    """
+    if request.method != 'POST':
+        return redirect('rent_home')
+
+    entry = get_object_or_404(RentDeposit, pk=pk)
+
+    # ONE WINDOW FOR BOTH DOORS. An edit can do everything a delete can —
+    # retype ₹2,000 as ₹200 — so it answers the rule the delete beside it
+    # does: Office within 24 hours of keying the row, an owner after that.
+    # Measured on `created_at`, because back-dating is normal here.
+    blocked = refusal(request.user, entry.created_at,
+                      f"This ₹{entry.amount:,.0f} deposit", action='change')
+    if blocked:
+        messages.error(request, blocked)
+        return _back(request)
+
+    amount = parse_money(request.POST.get('amount', ''), RentDeposit, 'amount')
+    if amount is None or amount <= 0:
+        messages.error(request, "Enter a valid amount.")
+        return _back(request)
+
+    # A payload with no date keeps the one the row has, rather than falling
+    # back to today and moving the money on a correction that never asked to.
+    raw_date = (request.POST.get('date') or '').strip()
+    when = posted_date(raw_date) if raw_date else entry.date
+    if is_future(when):
+        messages.error(request, "A deposit can't be dated in the future.")
+        return _back(request)
+    # ⚠ ONLY A DATE THAT MOVES IS HELD TO THE LIMIT. The floor moves every
+    # night, so a row Office keyed yesterday for three days before that is
+    # past it by this morning — and asking about a date nobody touched would
+    # refuse Office a correction to the amount, inside their own 24 hours.
+    if when != entry.date:
+        blocked = too_far_back(when, request.user, "A deposit")
+        if blocked:
+            messages.error(request, blocked)
+            return _back(request)
+
+    # READ BEFORE ANYTHING IS WRITTEN — the two money fields are about to be
+    # overwritten on this same instance, so "what it was" has to be taken now.
+    was_amount, was_date = entry.amount, entry.date
+    entry.amount = amount
+    entry.date = when
+    # Only honoured when the form posts the key at all, so a payload without it
+    # keeps the note rather than silently clearing it. Blank stores NULL.
+    if 'note' in request.POST:
+        entry.note = fit_text(request.POST.get('note', '').strip(),
+                              RentDeposit, 'note') or None
+
+    said = []
+    if was_amount != entry.amount:
+        said.append(f"was ₹{was_amount:,.0f}")
+    if was_date != entry.date:
+        said.append(f"was {was_date:%d %b %Y}")
+
+    with transaction.atomic():
+        entry.save()
+        # KEPT AND ANNOUNCED ONLY PAST OFFICE'S LIMITS — `only_past_limits`,
+        # the Cashbook's rule — and then it reaches the other owner's phone.
+        # The amount and the day it lands on are the whole of the money here;
+        # a corrected note is never history.
+        kept = EditLog.record(
+            EditLog.ENTITY_RENT_DEPOSIT, entry,
+            [EditLog.change('Amount', was_amount, entry.amount),
+             EditLog.change('Date', was_date, entry.date, kind=EditLog.KIND_DATE)],
+            label=f"Rent deposit · {entry.date:%d %b %Y}",
+            user=request.user,
+            stamp=entry.created_at,
+            moved_to=entry.date if was_date != entry.date else None,
+            headline=f"Rent deposit · ₹{entry.amount:,.0f} edited",
+            detail=' · '.join(said),
+            url=_month_url(entry.date),
+            object_type='RentDeposit',
+            only_past_limits=True,
+        )
+        # ⚠ BACK-DATING IS NEVER QUIET, on an edit as on an add: moving a
+        # deposit to an EARLIER day inside the limits still reaches the bell,
+        # exactly as keying it there would have — or the quiet rule would be a
+        # way round the add form's alert.
+        if kept is None and entry.date < was_date:
+            notify_dated_back(
+                f"₹{entry.amount:,.0f} rent deposit moved to {entry.date:%d %b %Y}",
+                entry.date,
+                detail=f"Rent deposit · was dated {was_date:%d %b %Y}",
+                actor=request.user,
+                url=_month_url(entry.date),
+                object_type='RentDeposit',
+                object_id=entry.pk,
+            )
+
+    # A deposit moved OUT of the month on screen disappears from it, so the
+    # message says where it went rather than leaving somebody to wonder.
+    if (entry.date.year, entry.date.month) != (was_date.year, was_date.month):
+        messages.success(request, f"Deposit updated — moved to {entry.date:%B %Y}.")
+    else:
+        messages.success(request, "Deposit updated.")
+    return _back(request)
+
+
+@office_required
 def rent_deposit_delete(request, pk):
-    """Permanently delete a deposit, logged to Deletion History."""
+    """Permanently delete a deposit.
+
+    ⚠ LOGGED ONLY PAST OFFICE'S 24 HOURS — the Cashbook's rule (2026-09-24,
+    the owners' call). A delete inside the window is the same as typing the
+    row right the first time, which Office could have done with any figure;
+    the control that matters is after it, and that delete is written to
+    Change History and reaches the other owner's phone.
+    """
     if request.method != 'POST':
         return redirect('rent_home')
 
@@ -284,16 +337,21 @@ def rent_deposit_delete(request, pk):
         return _back(request)
 
     reason = request.POST.get('reason', '').strip()
+    # Same test the refusal above uses, so "Office may delete it" and "it is
+    # not logged" are one line, never two.
+    logged = is_past_window(entry.created_at)
     with transaction.atomic():
-        # The label LEADS WITH THE SUBJECT, so the alert reads "Rent deposit ·
-        # ₹2,000 deleted" rather than a figure with the verb left to a glyph.
-        DeletionLog.record(
-            DeletionLog.ENTITY_RENT_DEPOSIT, entry,
-            user=request.user, reason=reason, amount=entry.amount,
-            label=f"Rent deposit · ₹{entry.amount:,.0f} of {entry.date:%d %b %Y}",
-        )
+        if logged:
+            # The label LEADS WITH THE SUBJECT, so the alert reads "Rent deposit
+            # · ₹2,000 deleted" rather than a figure with the verb left to a glyph.
+            DeletionLog.record(
+                DeletionLog.ENTITY_RENT_DEPOSIT, entry,
+                user=request.user, reason=reason, amount=entry.amount,
+                label=f"Rent deposit · ₹{entry.amount:,.0f} of {entry.date:%d %b %Y}",
+            )
         entry.delete()
-    messages.success(request, "Deposit deleted (logged to Change History).")
+    messages.success(request, "Deposit deleted (logged to Change History)."
+                     if logged else "Deposit deleted.")
     return _back(request)
 
 
@@ -368,11 +426,10 @@ def rent_rate_delete(request, pk):
 
     # ⚠ LOGGED LIKE EVERY OTHER PERMANENT DELETE. This wrote nothing at all for
     # one revision, which made it the one act in the section that could rewrite
-    # what every past month cost and leave no trace — worse than deleting a
-    # deposit, which was logged from the start. `DeletionLog.record()` is the
-    # choke point: one call gives the audit row, the reason, the snapshot AND
-    # `RECORD_DELETED` at CRITICAL to the other owner, so no separate `notify()`
-    # belongs here.
+    # what every past month cost and leave no trace. `DeletionLog.record()` is
+    # the choke point: one call gives the audit row, the reason, the snapshot
+    # AND `RECORD_DELETED` at CRITICAL to the other owner, so no separate
+    # `notify()` belongs here.
     label = f"{rate.effective_from:%B %Y}"
     reason = request.POST.get('reason', '').strip()
     with transaction.atomic():

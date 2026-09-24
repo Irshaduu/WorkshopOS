@@ -89,7 +89,7 @@ graph TD
    - Run Data Cleanup — the one screen for spare and concern names (rename, merge, delete duplicates)
    - Manage inventory Categories (add/list/edit) + create/edit products via Supplier Shops (Add Product); all supplier-shop management
    - Record and review Cashbook entries (income & expenses ledger). Typing a wage, an owner's name or anything to do with rent here asks first — each has its own section and would land wrong in the profit figure. It only asks
-   - Record the daily **rent deposit** in Deposit & Rent — the cash handed to the collector who comes round each day, keyed off his own book. The page says what to pay today: whatever is left of the month's rent over the days left. Office may date an entry up to three days back; anything older is an owner's, and the other owner is told
+   - Record the daily **rent deposit** in Deposit & Rent — the cash handed to the collector who comes round each day, keyed off his own book. The page says what to pay today: whatever is left of the month's rent over the days left. Office may date an entry up to three days back; anything older is an owner's, and the other owner is told. A deposit keyed wrong is **edited or deleted from its ⋮** within 24 hours of keying it — quietly, like the Cashbook; after that it is an owner's, kept in Change History, and the other owner's phone is told. The list shows this month; any other opens from Month by month, with one "Back to this month" button
 
 
  FLOOR (Mechanics / Floor Manager)
@@ -1084,9 +1084,10 @@ CHANGE HISTORY (/deletion-history/) — Owner only, READ-ONLY
     account carries is_staff (see CLAUDE.md).
   - Its EDITED tab (/deletion-history/edited/) is Edit History: every edit that
     moved money, one row each — which record, who, when, and each figure that
-    moved as before → after. Five doors write it: a Cashbook edit, a Supplies
-    Shop bill's edit page and its quick discount box, an unlocked edit of a
-    settled job card, and Settle Bill on an already-paid bill. A note or a
+    moved as before → after. Six doors write it: a Cashbook edit, a rent
+    deposit's edit, a Supplies Shop bill's edit page and its quick discount
+    box, an unlocked edit of a settled job card, and Settle Bill on an
+    already-paid bill. A note or a
     spelling is not history; neither is a first settlement. Kept for good, and
     it outlives the record — a row edited and later deleted keeps its edits.
   - Its BACK-DATED tab (/deletion-history/back-dated/): money typed in on a
@@ -1101,7 +1102,8 @@ HOW OLD A RECORD MAY BE — Office corrects, an owner takes anything older
   (since 2026-09-22; it was seven days, deletes only). That covers a fleet
   payment, a spare-shop payment, a Supplies Shop payment, a restock bill (its
   edit page — refused on the GET too — its discount box and its delete), a
-  cashbook entry (edit and delete), a rent deposit and a salary advance. A
+  cashbook entry (edit and delete), a rent deposit (edit and delete) and a
+  salary advance. A
   settled job card's Unlock and Settle Bill on an already-paid bill count from
   when it was SETTLED. Past the window the POST is refused and the message names
   the row, its age, the rule and who to ask; an owner is not limited, and every
@@ -1114,6 +1116,10 @@ HOW OLD A RECORD MAY BE — Office corrects, an owner takes anything older
       (owner only) it is kept and the other owner's phone is told. Back-dating
       a Cashbook entry is never quiet — on the add or on an edit that moves
       the date earlier, it reaches the bell like every other screen.
+    • A RENT DEPOSIT FOLLOWS THE SAME RULE (2026-09-24, the owners' call): an
+      edit or delete inside 24 hours is neither kept nor announced; past it,
+      or a date moved past the three-day limit, only an owner can, and it is
+      kept and reaches the other owner's phone.
     • Measured on when it was KEYED, never on the money date. Back-dating is
       normal here — a Supplies Shop keeps its own book and the bill is keyed at
       month end — so a money-date window would refuse Office permission to

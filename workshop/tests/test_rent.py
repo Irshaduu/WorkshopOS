@@ -42,7 +42,7 @@ from workshop import analysis_engine as engine
 from workshop import rent as rent_calc
 from workshop.delete_window import OFFICE_WINDOW_HOURS
 from workshop.money_dates import backdate_floor, is_too_far_back
-from workshop.models import (CashbookEntry, DeletionLog, FailedAttempt,
+from workshop.models import (CashbookEntry, DeletionLog, EditLog, FailedAttempt,
                              Notification, OwnerWithdrawal, RentDeposit,
                              RentRate)
 from workshop.notifications import CRITICAL, EVENTS
@@ -612,7 +612,7 @@ class WhichMonthTheLogIsShowingTests(_Signed):
         self.assertEqual(res.context['focus'], date(2026, 3, 1))
         self.assertFalse(res.context['focus_is_current'])
         self.assertEqual(res.context['focus_total'], D('1500'))
-        self.assertEqual(sum(len(b['rows']) for b in res.context['days']), 1)
+        self.assertEqual(len(res.context['rows']), 1)
 
     def test_junk_and_a_future_month_both_fall_back_to_this_one(self):
         for bad in ('', 'abc', '2026-13', '9999-01', '2026-3', 'x'):
@@ -621,8 +621,40 @@ class WhichMonthTheLogIsShowingTests(_Signed):
     def test_a_month_with_nothing_in_it_says_so_rather_than_looking_broken(self):
         res = self.get(month='2026-02')
         self.assertEqual(res.context['focus'], date(2026, 2, 1))
-        self.assertEqual(res.context['days'], [])
+        self.assertEqual(res.context['rows'], [])
         self.assertContains(res, 'Nothing deposited in February 2026')
+
+    def test_a_month_before_the_log_can_start_falls_back_too(self):
+        """The log starts at the first rate's month or the oldest deposit,
+        whichever is earlier; a month before that can only be a typed URL."""
+        for early in ('2025-12', '2000-01', '0001-01'):
+            self.assertEqual(self.get(month=early).context['focus'], self.this_month)
+
+    def test_another_month_has_one_way_back_and_this_month_has_none(self):
+        """
+        ⚠ NO ‹ › ARROWS (the owners' call, 2026-09-24): Month by month already
+        opens any month in one tap, and arrows invite drifting into a month by
+        accident. Away from this month there is exactly one control, and on
+        this month there is nothing to go back to.
+        """
+        march = self.get(month='2026-03')
+        self.assertContains(march, 'Back to this month', count=1)
+        self.assertContains(march, f'href="{reverse("rent_home")}#deposits"')
+        now = self.get()
+        self.assertNotContains(now, 'Back to this month')
+        for res in (march, now):
+            self.assertNotIn('prev_month', res.context)
+            self.assertNotContains(res, 'aria-label="Previous month"')
+        # Every month is still reachable from Month by month.
+        self.assertContains(now, 'href="?month=2026-03#deposits"')
+
+    def test_an_opening_deposit_before_the_first_rate_is_reachable(self):
+        """A go-live opening position is a deposit dated before the ledger
+        starts, and `position()` counts it — so its month must be reachable."""
+        _deposit(date(2025, 11, 20), '5000')
+        res = self.get(month='2025-11')
+        self.assertEqual(res.context['focus'], date(2025, 11, 1))
+        self.assertEqual(res.context['focus_total'], D('5000'))
 
     def test_recording_from_an_older_month_returns_to_that_month(self):
         """A form posts the query string it was rendered under: the period
@@ -838,41 +870,20 @@ class AnOwnerCannotDoItSILENTLYTests(_Signed):
         for key in ('RENT_RATE_SET', 'DATED_BACK_PAST_LIMIT'):
             self.assertEqual(EVENTS[key].severity, CRITICAL, key)
 
-    def test_the_row_ITSELF_says_it_was_keyed_late_and_that_is_permanent(self):
+    def test_a_far_back_row_is_found_in_change_history_not_marked_here(self):
         """
-        ⚠ THE ANSWER TO "I CANNOT TRACK IT". The alert is a FEED — read rows
-        are swept after 14 days — and `notify()` excludes the actor, so the
-        person who back-dated an entry is the one person it never reaches. Both
-        dates have been on the row since the first migration and nothing showed
-        them: `date` is when the money moved, `created_at` is when somebody
-        typed it, and a row dated FURTHER BACK THAN OFFICE MAY REACH is money
-        only an owner could have filed.
+        The trace of a back-dated deposit lives in ONE place — Change
+        History's Back-dated tab, permanent and in red past the limit — so this
+        page carries no marks of its own (2026-09-24, the owners' call).
         """
-        old = date(2026, 5, 20)
-        RentDeposit.objects.create(date=old, amount=D('5000'))
-        res = self.as_(self.owner).get(reverse('rent_home'), {'month': '2026-05'})
-        row = res.context['days'][0]['rows'][0]
-        self.assertEqual(row.tier, 'past_limit')
-        self.assertContains(res, 'added')
-        self.assertContains(res, 'class="rt-past"')
-
-    def test_an_entry_keyed_INSIDE_THE_THREE_DAYS_carries_no_mark(self):
-        """
-        Keying yesterday's handover this morning is the ordinary case, and
-        marking it would make the mark meaningless by the second row.
-
-        ⚠ THIS ASSERTED THE WRONG THING UNTIL 2026-09-23 and passed anyway. It
-        read `assertFalse(row.added_late)`, and `added_late` meant the RED tier
-        only — so it proved the row was not red while the retired amber tier
-        was marking it on every ordinary day. It asks for the absence of ANY
-        mark now, and looks at the rendered chip rather than a flag.
-        """
-        today = timezone.localdate()
-        RentDeposit.objects.create(date=today - timedelta(days=1), amount=D('2000'))
-        res = self.as_(self.owner).get(reverse('rent_home'))
-        self.assertEqual(res.context['days'][0]['rows'][0].tier, '')
-        self.assertNotContains(res, 'class="rt-past"')
-        self.assertEqual(res.context['off_count'], 0)
+        old = backdate_floor(timezone.localdate()) - timedelta(days=90)
+        self.as_(self.owner).post(
+            reverse('rent_deposit_add'), {'amount': '5000', 'date': old.isoformat()})
+        tab = self.as_(self.other).get(reverse('backdated_history'))
+        self.assertContains(tab, 'Rent deposit')
+        self.assertContains(tab, 'class="hx-days is-past"', count=1)
+        page = self.as_(self.owner).get(reverse('rent_home'), {'month': f"{old:%Y-%m}"})
+        self.assertNotContains(page, 'added=recent')
 
     def test_the_person_who_did_it_is_told_which_month_it_landed_in(self):
         """The alert excludes the actor, so without this the one confirmation
@@ -901,20 +912,38 @@ class AnOwnerCannotDoItSILENTLYTests(_Signed):
 
 
 class DeletingADepositTests(_Signed):
+    """
+    ⚠ QUIET INSIDE OFFICE'S 24 HOURS, KEPT AND ANNOUNCED PAST THEM — the
+    Cashbook's rule, applied here on 2026-09-24 (the owners' call). A delete
+    inside the window is the same as typing the row right the first time; the
+    control that matters is after it, where only an owner can act.
+    """
 
     def setUp(self):
         super().setUp()
+        self.other = User.objects.create_user('owner2', password='pw')
+        self.other.groups.add(Group.objects.get(name='Owner'))
         today = timezone.localdate()
         _rate(today.year, today.month, '35000')
         self.entry = _deposit(today, '2000')
+        Notification.objects.all().delete()
 
-    def test_office_may_delete_something_keyed_today_and_it_is_logged(self):
-        self.as_(self.office).post(
-            reverse('rent_deposit_delete', args=[self.entry.pk]), {'reason': 'keyed twice'})
+    def test_inside_the_24_hours_it_goes_and_nothing_is_kept_or_said(self):
+        res = self.as_(self.office).post(
+            reverse('rent_deposit_delete', args=[self.entry.pk]),
+            {'reason': 'keyed twice'}, follow=True)
         self.assertEqual(RentDeposit.objects.count(), 0)
-        log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_RENT_DEPOSIT)
-        self.assertEqual(log.reason, 'keyed twice')
-        self.assertEqual(log.amount, D('2000'))
+        self.assertFalse(DeletionLog.objects.exists())
+        self.assertFalse(Notification.objects.exists())
+        said = ' '.join(str(m) for m in get_messages(res.wsgi_request))
+        self.assertIn('Deposit deleted.', said)
+
+    def test_an_owner_inside_the_24_hours_is_quiet_too(self):
+        """The line is the RECORD's age, never the person."""
+        self.as_(self.owner).post(reverse('rent_deposit_delete', args=[self.entry.pk]))
+        self.assertEqual(RentDeposit.objects.count(), 0)
+        self.assertFalse(DeletionLog.objects.exists())
+        self.assertFalse(Notification.objects.exists())
 
     def test_office_is_refused_past_the_window_and_an_owner_is_not(self):
         _age(self.entry, OFFICE_WINDOW_HOURS // 24 + 1)   # past the 24 hours
@@ -922,6 +951,16 @@ class DeletingADepositTests(_Signed):
         self.assertEqual(RentDeposit.objects.count(), 1)
         self.as_(self.owner).post(reverse('rent_deposit_delete', args=[self.entry.pk]))
         self.assertEqual(RentDeposit.objects.count(), 0)
+
+    def test_an_owner_past_the_window_is_logged_and_the_other_owner_told(self):
+        _age(self.entry, 2)
+        self.as_(self.owner).post(
+            reverse('rent_deposit_delete', args=[self.entry.pk]), {'reason': 'keyed twice'})
+        log = DeletionLog.objects.get(entity_type=DeletionLog.ENTITY_RENT_DEPOSIT)
+        self.assertEqual(log.reason, 'keyed twice')
+        self.assertEqual(log.amount, D('2000'))
+        rows = Notification.objects.filter(event='RECORD_DELETED')
+        self.assertEqual([r.recipient for r in rows], [self.other])
 
     def test_the_window_follows_the_KEYSTROKE_not_the_money_date(self):
         """Back-dating is normal here — the office keys a forgotten day later
@@ -931,6 +970,179 @@ class DeletingADepositTests(_Signed):
             date=timezone.localdate() - timedelta(days=90), amount=D('1500'))
         self.as_(self.office).post(reverse('rent_deposit_delete', args=[old.pk]))
         self.assertFalse(RentDeposit.objects.filter(pk=old.pk).exists())
+
+    def test_the_delete_asks_for_a_reason_only_when_it_will_be_kept(self):
+        """A reason box whose value goes nowhere is a field silently dropped."""
+        fresh = self.as_(self.owner).get(reverse('rent_home')).content.decode()
+        self.assertIn('data-logged="0"', fresh)
+        self.assertNotIn('data-logged="1"', fresh)
+        _age(self.entry, 2)
+        aged = self.as_(self.owner).get(reverse('rent_home')).content.decode()
+        self.assertIn('data-logged="1"', aged)
+
+
+class EditingADepositTests(_Signed):
+    """
+    ⚠ A DEPOSIT CAN BE EDITED — reversing "deliberately no edit" (2026-09-24,
+    the owners' call). That rule's first reason was that a correction must
+    never silently overwrite what was there, and Edit History now keeps every
+    edit that matters. The same line as the delete beside it:
+
+      * inside Office's 24 hours — anyone, quiet, not kept;
+      * past them, or a date moved past the three-day limit — only an owner,
+        kept in Edit History, and the other owner's phone;
+      * moving a date EARLIER inside the limits still reaches the bell, exactly
+        as keying it there would.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.other = User.objects.create_user('owner2', password='pw')
+        self.other.groups.add(Group.objects.get(name='Owner'))
+        self.today = timezone.localdate()
+        _rate(self.today.year, self.today.month, '35000')
+        self.entry = _deposit(self.today, '2000')
+        Notification.objects.all().delete()
+
+    def edit(self, user, **data):
+        payload = {'amount': '2000', 'date': self.entry.date.isoformat()}
+        payload.update(data)
+        return self.as_(user).post(reverse('rent_deposit_edit', args=[self.entry.pk]), payload)
+
+    def said(self, res):
+        return ' '.join(str(m) for m in get_messages(res.wsgi_request))
+
+    def test_office_corrects_the_amount_inside_the_24_hours_quietly(self):
+        self.edit(self.office, amount='1500')
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.amount, D('1500'))
+        self.assertFalse(EditLog.objects.exists())
+        self.assertFalse(Notification.objects.exists())
+
+    def test_an_owner_inside_the_24_hours_is_quiet_too(self):
+        self.edit(self.owner, amount='1500')
+        self.assertFalse(EditLog.objects.exists())
+        self.assertFalse(Notification.objects.exists())
+
+    def test_office_is_refused_past_the_24_hours(self):
+        _age(self.entry, 2)
+        res = self.edit(self.office, amount='1500')
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.amount, D('2000'))
+        self.assertIn('ask an owner to change this one', self.said(res))
+
+    def test_an_owner_past_the_24_hours_is_kept_and_reaches_the_other_phone(self):
+        _age(self.entry, 2)
+        self.edit(self.owner, amount='1500')
+        log = EditLog.objects.get()
+        self.assertEqual(log.entity_type, EditLog.ENTITY_RENT_DEPOSIT)
+        self.assertEqual(log.changes, [
+            {'field': 'Amount', 'kind': 'money', 'before': '2000.00', 'after': '1500.00'}])
+        rows = Notification.objects.filter(event='OLD_RECORD_CHANGED')
+        self.assertEqual([r.recipient for r in rows], [self.other])
+        self.assertIn('₹1,500', rows[0].body)
+
+    def test_the_edit_is_on_the_edited_tab(self):
+        _age(self.entry, 2)
+        self.edit(self.owner, amount='1500')
+        tab = self.as_(self.other).get(reverse('edit_history'))
+        self.assertContains(tab, 'Rent deposit')
+        self.assertContains(tab, '1,500')
+
+    def test_moving_a_date_earlier_inside_the_limits_rings_the_bell(self):
+        yesterday = self.today - timedelta(days=1)
+        self.edit(self.office, date=yesterday.isoformat())
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.date, yesterday)
+        self.assertFalse(EditLog.objects.exists())
+        self.assertTrue(Notification.objects.filter(event='DATED_BACK').exists())
+        self.assertFalse(Notification.objects.filter(event='DATED_BACK_PAST_LIMIT').exists())
+
+    def test_office_cannot_move_a_date_past_the_limit(self):
+        too_old = backdate_floor(self.today) - timedelta(days=1)
+        self.edit(self.office, date=too_old.isoformat())
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.date, self.today)
+
+    def test_an_owner_moving_it_past_the_limit_is_kept_and_reaches_the_phone(self):
+        too_old = backdate_floor(self.today) - timedelta(days=10)
+        self.edit(self.owner, date=too_old.isoformat())
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.date, too_old)
+        self.assertEqual(EditLog.objects.get().changes[0]['field'], 'Date')
+        self.assertEqual(Notification.objects.filter(event='OLD_RECORD_CHANGED').count(), 1)
+
+    def test_an_untouched_date_is_never_held_to_the_limit(self):
+        """
+        ⚠ THE FLOOR MOVES EVERY NIGHT. A row Office keyed yesterday for the
+        floor of yesterday is past today's floor by this morning — and holding
+        a date nobody touched to the limit would refuse Office a correction to
+        the AMOUNT, inside their own 24 hours.
+        """
+        self.entry.date = backdate_floor(self.today) - timedelta(days=1)
+        self.entry.save()
+        self.edit(self.office, amount='1800', date=self.entry.date.isoformat())
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.amount, D('1800'))
+
+    def test_a_future_date_and_a_bad_amount_are_refused(self):
+        tomorrow = (self.today + timedelta(days=1)).isoformat()
+        self.edit(self.office, date=tomorrow)
+        for bad in ('', 'abc', '0.004', '-5', 'Infinity', 'NaN'):
+            self.edit(self.office, amount=bad)
+        self.entry.refresh_from_db()
+        self.assertEqual((self.entry.amount, self.entry.date), (D('2000'), self.today))
+
+    def test_a_note_is_never_history(self):
+        """Money fields only: a corrected note is kept by nobody, even past
+        the 24 hours, and a blank note stores NULL."""
+        _age(self.entry, 2)
+        self.edit(self.owner, note='second handover')
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.note, 'second handover')
+        self.assertFalse(EditLog.objects.exists())
+        self.assertFalse(Notification.objects.exists())
+        self.edit(self.owner, note='   ')
+        self.entry.refresh_from_db()
+        self.assertIsNone(self.entry.note)
+
+    def test_a_payload_with_no_date_keeps_the_date(self):
+        """Falling back to today would move the money on a correction that
+        never asked to."""
+        self.entry.date = self.today - timedelta(days=2)
+        self.entry.save()
+        self.as_(self.office).post(
+            reverse('rent_deposit_edit', args=[self.entry.pk]), {'amount': '1900'})
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.date, self.today - timedelta(days=2))
+        self.assertEqual(self.entry.amount, D('1900'))
+
+    def test_a_deposit_moved_to_another_month_says_where_it_went(self):
+        last_month = self.today.replace(day=1) - timedelta(days=1)
+        res = self.edit(self.owner, date=last_month.isoformat())
+        self.assertIn(f"moved to {last_month:%B %Y}", self.said(res))
+        same = self.edit(self.owner, date=last_month.isoformat(), amount='2100')
+        self.assertIn('Deposit updated.', self.said(same))
+
+    def test_floor_cannot_edit_and_a_get_changes_nothing(self):
+        res = self.edit(self.floor, amount='1')
+        self.assertEqual(res.status_code, 403)
+        self.as_(self.office).get(reverse('rent_deposit_edit', args=[self.entry.pk]))
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.amount, D('2000'))
+
+    def test_the_menu_offers_edit_inside_the_window_and_says_why_outside_it(self):
+        """A door somebody can see and cannot open is worse than no door, so
+        a locked row keeps its menu and says why."""
+        fresh = self.as_(self.office).get(reverse('rent_home'))
+        self.assertContains(fresh, reverse('rent_deposit_edit', args=[self.entry.pk]))
+        self.assertNotContains(fresh, 'Older than 24 hours')
+        _age(self.entry, 2)
+        locked = self.as_(self.office).get(reverse('rent_home'))
+        self.assertNotContains(locked, reverse('rent_deposit_edit', args=[self.entry.pk]))
+        self.assertContains(locked, 'Older than 24 hours')
+        owner = self.as_(self.owner).get(reverse('rent_home'))
+        self.assertContains(owner, reverse('rent_deposit_edit', args=[self.entry.pk]))
 
 
 def _month_start(day, back=0):
@@ -1354,145 +1566,6 @@ class ThePreGoLivePurgeClearsTheRentLedgerTests(TestCase):
         self.assertEqual(RentDeposit.objects.count(), 1)
 
 
-class TheDayTotalMakesADoubleEntryVisibleTests(_Signed):
-    """
-    The collector's book is the truth and this is a copy of it, so the
-    realistic failure is one handover keyed twice — which quietly lowers
-    today's figure and is invisible until month end. Two rows under one date,
-    adding to a total that disagrees with the book, is what makes it findable.
-    It is never blocked: two genuine handovers in one day are ordinary.
-    """
-
-    def test_two_deposits_on_one_day_are_grouped_under_one_dated_total(self):
-        today = timezone.localdate()
-        _rate(today.year, today.month, '35000')
-        _deposit(today, '1500')
-        _deposit(today, '1500')
-        res = self.as_(self.office).get(reverse('rent_home'))
-        blocks = res.context['days']
-        self.assertEqual(len(blocks), 1)
-        self.assertEqual(len(blocks[0]['rows']), 2)
-        self.assertEqual(blocks[0]['total'], D('3000'))
-
-
-class FindingWhatWasFiledBackwardsTests(_Signed):
-    """
-    ⚠ THE ROW MARK ALONE WAS NOT ENOUGH, AND THE OWNER FOUND THAT BY USING IT.
-    They back-dated a deposit, knew they had done it, and still could not find
-    it — the mark is only visible once the RIGHT MONTH is already open, so a
-    row filed into a month nobody would think to open stayed findable only by
-    hunting. They spotted it in the end because the demo data was uniform
-    enough for one odd figure to stand out, which is not a control.
-
-    "Recently added" reads the same log by KEYSTROKE instead of by money date,
-    across every month, so whatever was just done is at the top.
-    """
-
-    def setUp(self):
-        super().setUp()
-        today = timezone.localdate()
-        self.this_month = today.replace(day=1)
-        _rate(2026, 1, '35000')
-        self.ordinary = RentDeposit.objects.create(date=today, amount=D('2000'))
-        self.same_month = RentDeposit.objects.create(
-            date=self.this_month, amount=D('1234'))
-        # ⚠ 40 DAYS, NOT ONE. It has to satisfy BOTH things the tests below
-        # ask of it: an EARLIER MONTH (so the month log cannot reach it) and
-        # PAST THE THREE-DAY FLOOR (so it is marked). The last day of the
-        # previous month is only the first of those — on the 1st to the 4th it
-        # is inside the floor and carries no mark, which would have failed
-        # `off_count` on four days in every month.
-        self.closed = RentDeposit.objects.create(
-            date=self.this_month - timedelta(days=40), amount=D('4321'))
-
-    def test_the_mark_is_EXACTLY_what_went_past_the_limit(self):
-        """
-        ONE TIER, and its edge is the floor that refuses Office — so the mark
-        shows exactly the rows that rang the other owner's phone.
-
-        ⚠ IT WAS TWO TIERS UNTIL 2026-09-23, split on the MONTH boundary, and
-        the amber one fired on the daily workflow — see `rent.backdating()`.
-        The edge is asserted on BOTH sides here, because a floor that is off by
-        one day is invisible in every other test.
-        """
-        floor = backdate_floor(timezone.localdate())
-        at_floor = RentDeposit.objects.create(date=floor, amount=D('100'))
-        past = RentDeposit.objects.create(
-            date=floor - timedelta(days=1), amount=D('100'))
-
-        self.assertEqual(rent_calc.backdating(self.ordinary), '')
-        self.assertEqual(rent_calc.backdating(at_floor), '')
-        self.assertEqual(rent_calc.backdating(past), 'past_limit')
-        self.assertEqual(rent_calc.backdating(self.closed), 'past_limit')
-
-    def test_keying_yesterdays_handover_this_morning_is_not_marked(self):
-        """
-        The ordinary case. Marking it would make the mark meaningless by the
-        second row.
-
-        ⚠ THIS TEST DID NOT TEST ITS OWN NAME UNTIL 2026-09-23. It stamped
-        `created_at` back to YESTERDAY as well, so it asserted "keyed on the
-        day it was dated" — a case the rule never marked — and passed green
-        while the live workflow (keyed TODAY, dated yesterday) wore a chip.
-        `created_at` is `auto_now_add`, so leaving it alone IS the case.
-        """
-        row = RentDeposit.objects.create(
-            date=timezone.localdate() - timedelta(days=1), amount=D('1500'))
-        self.assertEqual(rent_calc.backdating(row), '')
-
-    def test_saturdays_handover_keyed_on_monday_is_not_marked_either(self):
-        """Two days back, which the three-day floor exists to permit. The
-        workshop is shut on Sunday, so this is an ordinary Monday morning."""
-        row = RentDeposit.objects.create(
-            date=timezone.localdate() - timedelta(days=2), amount=D('1500'))
-        self.assertEqual(rent_calc.backdating(row), '')
-
-    def test_recently_added_is_ordered_by_the_KEYSTROKE_not_the_money_date(self):
-        """
-        The model's own ordering is `-date, -created_at`, which is the money
-        order and the exact opposite of what this list is for — so it is
-        ordered explicitly.
-        """
-        rows = rent_calc.recently_added()
-        self.assertEqual([r.pk for r in rows[:3]],
-                         [self.closed.pk, self.same_month.pk, self.ordinary.pk])
-
-    def test_it_reaches_across_every_month_which_the_month_log_cannot(self):
-        res = self.as_(self.office).get(reverse('rent_home'), {'added': 'recent'})
-        listed = [r.pk for block in res.context['days'] for r in block['rows']]
-        self.assertIn(self.closed.pk, listed)
-        self.assertTrue(res.context['recent'])
-        # ...while the month log shows only the month it is looking at.
-        month = self.as_(self.office).get(reverse('rent_home'))
-        month_pks = [r.pk for b in month.context['days'] for r in b['rows']]
-        self.assertNotIn(self.closed.pk, month_pks)
-
-    def test_recent_mode_prints_no_day_totals(self):
-        """
-        ⚠ A day header carries a day TOTAL, and that is only true when the
-        block holds every deposit of that day. Ordered by keystroke this list
-        is a SLICE — two rows of one day can be far apart — so a header here
-        would print "the part of that day I happen to be showing".
-        """
-        res = self.as_(self.office).get(reverse('rent_home'), {'added': 'recent'})
-        for block in res.context['days']:
-            self.assertEqual(len(block['rows']), 1)
-
-    def test_both_views_mark_the_same_row_the_same_way(self):
-        """One rule — `rent.backdating()` — so the two lists can never
-        disagree about a row they both show."""
-        recent = self.as_(self.office).get(reverse('rent_home'), {'added': 'recent'})
-        month = self.as_(self.office).get(reverse('rent_home'))
-        in_recent = {r.pk: r.tier for b in recent.context['days'] for r in b['rows']}
-        for block in month.context['days']:
-            for row in block['rows']:
-                self.assertEqual(row.tier, in_recent[row.pk], row.pk)
-
-    def test_the_count_of_marked_rows_rides_over_so_the_heading_can_say_it(self):
-        res = self.as_(self.office).get(reverse('rent_home'), {'added': 'recent'})
-        self.assertGreaterEqual(res.context['off_count'], 1)
-
-
 class TheSameHandoverKeyedTwiceTests(_Signed):
     """
     ⚠ THE COMMONEST MONEY MISTAKE IN A WORKSHOP THIS SIZE, and nothing in the
@@ -1586,82 +1659,100 @@ class TheSameHandoverKeyedTwiceTests(_Signed):
                         script.index('Another one for '))
 
 
-class TheRowStaysINSIDETheCardOnAPhoneTests(_Signed):
+class ThePageIsFourBlocksTests(_Signed):
     """
-    ⚠ NOTHING IN THIS SUITE EXECUTES CSS, so these assert the two things it CAN
-    reach — the markup the layout hangs off, and the declarations themselves.
-    The defect they stand in for was measured in a browser: at 409px a row
-    carrying the "added 9 Sep" chip needed 391px inside a 341px card, so the ⋮
-    rendered 49px OUTSIDE the list and sat on the viewport edge. At 375px it is
-    84px out and the page scrolls sideways. The ONLY delete there is, off the
-    screen — and clipping cannot be the answer, because every row carries a
-    dropdown and a clipping ancestor is the one thing Popper cannot escape.
+    The page rebuilt 2026-09-24 on the owners' ask — no clutter, no
+    confusion, phone first: pay today, record, one month, month by month.
+    Nothing in this suite executes CSS, so these hold the markup the layout
+    hangs off and the facts each block may say; the widths were measured in a
+    browser at 320, 375, 768 and 1280px.
     """
 
     def setUp(self):
         super().setUp()
-        RentRate.objects.create(effective_from=date(2026, 1, 1), amount=D('35000'))
         self.today = timezone.localdate()
+        self.this_month = self.today.replace(day=1)
+        _rate(2026, 1, '35000')
 
-    def page(self):
-        return self.as_(self.office).get(reverse('rent_home')).content.decode()
+    def page(self, **params):
+        return self.as_(self.office).get(reverse('rent_home'), params)
 
-    def test_the_wrapper_renders_even_with_nothing_to_put_in_it(self):
-        """On a laptop `.rt-meta` IS the row's flexer — the thing that pushes
-        who-recorded-it up against the ⋮, which `.rt-note` did alone before it
-        existed. A wrapper that appeared only when it had content would move
-        every plain row's ⋮ in the same edit that fixed the annotated one."""
-        RentDeposit.objects.create(date=self.today, amount=D('2000'))
-        # Scoped to the LIST: `.rt-meta.is-on` is also a rule in this page's
-        # own <style> block, so a whole-page search finds it on every render.
-        rows = self.page().split('class="rt-list"', 1)[1]
-        self.assertIn('class="rt-meta"', rows)
-        self.assertNotIn('is-on', rows)
+    def test_the_carry_is_said_once_and_only_when_it_is_not_square(self):
+        """It used to be said twice, in two cards one above the other."""
+        # Every finished month since the ledger started, paid to the rupee.
+        month = date(2026, 1, 1)
+        while month < self.this_month:
+            _deposit(month.replace(day=5), '35000')
+            month = rent_calc.shift_month(month, 1)
+        self.assertNotContains(self.page(), 'from earlier months')
+        _deposit(self.this_month - timedelta(days=1), '1300')
+        self.assertContains(self.page(), '&#8377;1,300 paid ahead from earlier months', count=1)
 
-    def test_an_annotated_row_says_so_in_a_class_and_not_by_being_empty(self):
-        """`is-on` is what the phone reads to give the wrapper a line of its
-        own. An `:empty` test would do the same job until somebody put a
-        newline inside it."""
+    def test_the_card_says_this_month_rather_than_its_name(self):
+        """The card is always about the current month, and the log under it
+        can be showing another one — so it says "this month"."""
+        self.assertContains(self.page(), 'paid this month')
+
+    def test_a_covered_month_says_where_more_money_goes(self):
+        """The collector still comes once the month is covered, and the office
+        still records the cash — "Nothing due" must not read as "stop"."""
+        _deposit(self.today, '999999')
+        res = self.page()
+        self.assertContains(res, 'Nothing due')
+        self.assertContains(res, 'This month is fully paid. Anything handed over now counts toward next month.')
+
+    def test_a_normal_ahead_or_behind_is_words_in_one_calm_colour(self):
+        """Nearly every month ends a little over or under the rent — the
+        normal rhythm of daily cash, in the owners' words — so neither
+        direction is painted red or green; the words say which way."""
+        _deposit(self.this_month - timedelta(days=1), '1000')
+        html = self.page().content.decode()
+        self.assertIn('<td class="rt-pos">Behind', html)
+        self.assertIn('<div class="rt-hero-carry">', html)
+
+    def test_the_record_form_is_the_shared_payment_row(self):
+        """One shape across every payment form (the owners' call): the row
+        scrolls sideways on a phone with Record last in it, exactly as the
+        other three cards draw it — and the Note takes the shared width
+        rather than a wider one, so the swipe is no longer than theirs."""
+        html = self.page().content.decode()
+        form = html.split('id="rtAddForm"', 1)[1].split('</form>', 1)[0]
+        self.assertIn('class="rpay-scroll"', form)
+        self.assertIn('class="rpay-row"', form)
+        self.assertIn('class="rpay-field rpay-f-note"', form)
+        self.assertLess(form.index('rpay-f-note'), form.index('rpay-btn'))
+        self.assertNotIn('rpay-f-note {', html)
+
+    def test_two_deposits_on_one_day_are_two_rows_of_that_date(self):
+        _deposit(self.today, '1500')
+        _deposit(self.today, '1500')
+        res = self.page()
+        self.assertEqual(len(res.context['rows']), 2)
+        self.assertContains(res, f'{self.today:%a}, {self.today.day} {self.today:%b}', count=2)
+        self.assertEqual(res.context['focus_total'], D('3000'))
+
+    def test_who_keyed_a_row_is_inside_its_menu(self):
         RentDeposit.objects.create(date=self.today, amount=D('2000'),
-                                   note='second handover')
-        self.assertIn('rt-meta is-on', self.page())
+                                   recorded_by=self.office, note='second handover')
+        res = self.page()
+        self.assertContains(res, 'Added by office1')
+        self.assertContains(res, 'second handover')
 
-    def test_the_row_is_allowed_to_wrap_below_the_pages_own_breakpoint(self):
-        """576px is the width `.rt-status` already switches on, and it clears
-        the content: at 576px the one-line row needs 366px of 515px."""
-        html = self.page()
-        phone = html.split('@media (max-width: 575.98px)', 1)
-        self.assertEqual(len(phone), 2, 'the row has no phone rule at all')
-        self.assertIn('flex-wrap: wrap', phone[1][:600])
-        self.assertIn('.rt-meta.is-on', phone[1][:600])
+    def test_a_months_rent_is_printed_only_where_it_differed(self):
+        _rate(self.this_month.year, self.this_month.month, '40000')
+        res = self.page()
+        self.assertContains(res, 'rent &#8377;35,000')
+        self.assertNotContains(res, 'rent &#8377;40,000')
 
-    def test_the_only_auto_margin_on_the_first_line_holds_the_menu_right(self):
-        """An annotated row loses its flexer to the second line, so without
-        this the ⋮ would sit against the amount on exactly the rows that took
-        two lines — the list reading as two different shapes."""
-        html = self.page()
-        phone = html.split('@media (max-width: 575.98px)', 1)[1][:600]
-        self.assertIn('.rt-row > .dropdown { margin-left: auto; }', phone)
+    def test_the_month_in_progress_says_so_rather_than_a_figure(self):
+        res = self.page()
+        self.assertContains(res, 'In progress', count=1)
 
-
-class TheFootnoteWaitsToBeAskedTests(_Signed):
-    """The one card of the five whose footnote is a standing EXPLANATION rather
-    than a one-line rule: two sentences, three lines and 48px on a phone,
-    between the amount box and the log the page exists to be read against."""
-
-    def test_the_sentence_is_still_on_the_page_behind_its_own_glyph(self):
-        html = self.as_(self.office).get(reverse('rent_home')).content.decode()
-        self.assertIn('the two are never the same number', html)
-        card = html.split('rpay-card', 1)[1]
-        self.assertIn('<details class="rpay-foot rpay-ask">', card)
-        self.assertIn('<summary', card.split('rpay-ask', 1)[1][:400])
-
-    def test_it_is_a_native_details_and_not_a_wired_up_button(self):
-        """The Job Card's Customer Details fold's own reasoning: nothing to
-        initialise, and keyboard and screen-reader behaviour for free. The
-        glyph also carries a name, since it is a control now rather than a
-        bullet."""
-        html = self.as_(self.office).get(reverse('rent_home')).content.decode()
-        summary = html.split('rpay-ask', 1)[1].split('</summary>', 1)[0]
-        self.assertIn('aria-label=', summary)
-        self.assertNotIn('<button', summary)
+    def test_tracking_lives_in_change_history_not_here(self):
+        """No Recently-added view and no row marks: Change History keeps every
+        edit, delete and back-dating that only an owner could make."""
+        old = RentDeposit.objects.create(date=self.this_month, amount=D('999'))
+        _age(old, 2)
+        html = self.page().content.decode()
+        self.assertNotIn('added=recent', html)
+        self.assertNotIn('Recently added', html)
