@@ -49,9 +49,12 @@ if ('serviceWorker' in navigator) {
 //
 // It only ever STARTS. The navigation it reports on replaces the document, so
 // the bar is discarded with the page that created it — there is no completion
-// path to get wrong. The two ways a navigation can fail to happen are handled
+// path to get wrong. The three ways a navigation can fail to happen are handled
 // explicitly below, because a bar left creeping over a page that is going
 // nowhere is worse than no bar at all.
+//
+// The tab bar rides on the same click (followTab, below): a tapped tab is
+// marked at once, decided by exactly these guards.
 (function () {
     /*
      * A NAVIGATION paints at once; an IN-PAGE UPDATE has to earn it.
@@ -108,11 +111,75 @@ if ('serviceWorker' in navigator) {
      * page, or an inline handler that submits later by script.
      */
     function startNavigation() {
+        watchForStay();
         if (bar) { return; }
         window.clearTimeout(scheduled);
         scheduled = null;
         paint();
     }
+
+    /*
+     * A THIRD way a navigation fails to happen: the page asks "leave?" and the
+     * answer is Stay. The job card, the old-bill form, Opening Stock and a
+     * photo still uploading all guard `beforeunload` by calling
+     * preventDefault(), and each registers its guard at load — so this
+     * listener, added at the moment of navigating, runs after all of them and
+     * can read their answer. Without it the bar crept over a page going nowhere
+     * for fifteen seconds, and a tab marked by followTab stayed marked for a
+     * page nobody was going to. If the answer is Leave instead, the page simply
+     * goes with neither: the question itself was the answer to the tap.
+     */
+    function watchForStay() {
+        window.addEventListener('beforeunload', function (e) {
+            // `returnValue` is typed: a plain Event carries a legacy BOOLEAN
+            // there (true = not cancelled), so only a non-empty string counts.
+            if (e.defaultPrevented ||
+                    (typeof e.returnValue === 'string' && e.returnValue !== '')) {
+                clear();
+                unfollowTab();
+            }
+        }, { once: true });
+    }
+
+    /*
+     * THE TAB BAR ANSWERS A TAP BEFORE THE SERVER DOES.
+     *
+     * Tapping a tab used to change nothing in the bar until the next page had
+     * arrived — every page is a no-store round trip, so on an owner's phone the
+     * bar sat there for a noticeable beat saying nothing about the tap. So the
+     * tapped tab is marked PENDING at once — decided by the very guards that
+     * decide the progress bar above, since it is called from the same click
+     * handler — and base.html draws that as the capsule's faint press shape
+     * held in place. The lit capsule stays where it is: the page that arrives
+     * lights the new tab, and on a phone the cross-document view transition
+     * in base.html slides the capsule over onto the pending one.
+     *
+     * Why the lit class is not moved here: a same-document view transition is
+     * skipped the moment a navigation starts (measured — it finished 1ms after
+     * it began), so a capsule moved at the tap could only ever JUMP, and it
+     * would then have nothing left to slide when the page arrived.
+     *
+     * Only the bar's own direct links: the bell opens its panel (it prevents
+     * its own click), and Manage opens the drawer (a button, not a link).
+     */
+    function followTab(link) {
+        var tabBar = link.parentNode;
+        if (!tabBar || !tabBar.classList || !tabBar.classList.contains('navbar-container')) { return; }
+        unfollowTab();
+        if (!link.classList.contains('active')) { link.classList.add('is-pending'); }
+    }
+
+    function unfollowTab() {
+        [].forEach.call(document.querySelectorAll('.navbar-container .is-pending'), function (tab) {
+            tab.classList.remove('is-pending');
+        });
+    }
+
+    // iOS applies `:active` only to an element with a touch listener on it or
+    // an ancestor. Passive and empty — it exists so the capsule's press shows
+    // on an iPhone at all. Scoped to the bar, not the whole document.
+    var navBar = document.querySelector('.navbar-top');
+    if (navBar) { navBar.addEventListener('touchstart', function () {}, { passive: true }); }
 
     /*
      * An in-page update. Returns the function to call when the work is done —
@@ -141,8 +208,11 @@ if ('serviceWorker' in navigator) {
 
     // A page restored from the back/forward cache re-runs no script, but it does
     // fire pageshow — so if `no-store` is ever relaxed, a restored page does not
-    // come back wearing a stale bar.
-    window.addEventListener('pageshow', clear);
+    // come back wearing a stale bar, or with the tab it was leaving for still marked.
+    window.addEventListener('pageshow', function () {
+        clear();
+        unfollowTab();
+    });
 
     document.addEventListener('click', function (e) {
         // Another handler already refused this click (a confirm() that was
@@ -170,6 +240,7 @@ if ('serviceWorker' in navigator) {
         if (link.href === window.location.href) { return; }
 
         startNavigation();
+        followTab(link);
     }, false);
 
     // Bubble phase, deliberately. The guards that refuse a submit — the

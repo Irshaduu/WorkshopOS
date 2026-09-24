@@ -7246,7 +7246,8 @@ Five things are load-bearing:
 - **It only ever STARTS on a navigation.** The page it reports on replaces the
   document, so the bar leaves with the page that created it — there is no
   completion path to get wrong. A 15s safety timer covers a navigation that never
-  happens.
+  happens, and a "leave?" prompt answered Stay clears it at once (`watchForStay`,
+  see the phone tab bar below).
 - **`transform` only**, so it cannot reflow the page it is describing;
   `prefers-reduced-motion` keeps the bar and drops the creep, because the
   information is the point.
@@ -7348,7 +7349,7 @@ following it. Costs 0.4px per tab.
 it rises from sit on ONE edge — they were 10px and 12px for a few minutes and the
 two-pixel step was plainly visible.
 
-⚠ **No `backdrop-filter` on the pill.** The nav gradient is fully opaque so a blur
+⚠ **No `backdrop-filter` on the pill.** The pill is fully opaque so a blur
 buys nothing visually, and it is a permanent compositing cost on the one element
 that is always on screen — against the rule the job card's "only looping animation"
 note is written for.
@@ -7507,6 +7508,116 @@ padding / icon tile / gaps / chevron — so **246px is the width at which the la
 label stops fitting on one line**. 70vw clears it from 360px up; the 240px floor
 stops a 320px screen wrapping. Grow the type or shrink the width past that and rows
 start wrapping.
+
+### The phone tab bar — capsule, glide, pending (2026-09-24)
+
+⚠ **THE PHONE BAR IS WHITE AND THE CURRENT TAB IS A BLACK CAPSULE — this
+reverses the blue pill it shipped as the same day** (the owner's call: *"the nav bar
+color is not match for the total system"*, mobile only). Three were mocked up on the
+real pages — dark slate, white with a blue capsule, and the owner's own suggestion,
+white with the capsule in the dashboard mechanic filter's black — and the last won,
+for reasons worth keeping:
+- **Every card in the app is white on the light ground**, so a white bar with the
+  cards' own `#e2e8f0` hairline is one more card. The blue gradient was the only
+  saturated slab on the screen.
+- **Black is already the app's SELECTED state**: `.pit-crew-chip.is-active` fills
+  with `--pit-track` (`#0f172a`), and the Cashbook's All / Out / In chips wear the
+  same ink. It is also the slate of every section header slab.
+- **A blue capsule lost because blue is the app's BUTTON colour** — on white it
+  reads as one more thing to press, where "you are here" is not an action. The same
+  reasoning that made the Owner Withdrawals card navy rather than `#2563eb`.
+
+Measured: white glyph on the capsule, the capsule against the pill and the lit label
+all **17.9:1**; unlit labels and glyphs `#64748b`, **4.76:1** (they are ~10.5px, so
+they need 4.5). The badge is ringed in the pill's own white. **Phone only** — the
+laptop and tablet bar keeps its gradient, and the diff is inside the phone block.
+⚠ **The drawer's header is still the blue gradient on every width**, now that the
+phone bar no longer is — the phone-only deeper stop (`--nav-blue-2: #2563eb`) went
+with the gradient, since its reason (label contrast on the pill) went too.
+→ `ThePhoneBarSpeaksTheAppsOwnSelectedStateTests` holds the capsule to the
+dashboard chip's own `--pit-track`, so the two cannot drift apart.
+
+⚠ **EVERY TOUCH STATE RESTATES `color` IN THE PHONE BLOCK.** The laptop rules set
+the label WHITE for hover, focus and a pending tap — right on the blue bar,
+invisible on the white one. Each is restated as `#0f172a` (a shade darker than the
+unlit tabs, so the tab you touched reads as the one you are going to), and the focus
+ring moves from the laptop's `#bfdbfe` to `#2563eb`, which a white ground can carry.
+→ `test_no_state_turns_a_label_white_on_the_white_pill`
+
+**THE CURRENT TAB IS A CAPSULE BEHIND ITS GLYPH, NOT A WASH OVER THE WHOLE TAB.**
+The wash was white at 22% over a gradient, so it changed colour with its position:
+over the navy end it read as a muddy grey-violet slab, over the bright end as barely
+anything. The capsule is 50 × 28px, on every glyph lit or not so lighting one moves
+nothing; a press or a pending tap shows it faintly (`rgba(15, 23, 42, .08)`).
+
+**Labels scale with the phone** — `clamp(9.5px, 2.8vw, 11px)`: 9.5px at 320 (where
+"Completed" has a 54px tab), 10.5px at 375, 11px from 393. Weight 500 unlit, 700 lit.
+
+⚠ **A LABEL CARRIES `line-height: 1.25`, NEVER THE BAR'S `1`.** It clips its
+overflow for the ellipsis, so a box exactly one em tall cut the descenders off at
+the baseline — the g of "Manage", the p of "Completed". Invisible at 1x, obvious on
+the owner's 2x screenshot, and older than this pass. The tab's padding went 5px → 4px
+and its gap 4px → 3px to pay for it; measured, capsule and label sit dead centre in
+the 54px tab at every width (4.6–5.6px above and below).
+
+**EXACTLY ONE TAB IS LIT ON EVERY PAGE, AND IT WAS TWO ON FLOOR'S INVENTORY
+PAGES.** `/inventory/` is a drawer section — for Owner and Office, who have no
+Inventory tab — so Floor's Menu lit beside the Inventory tab that owns the page. Menu
+now lights only where no tab of its own owns the path. It matters twice over: two
+"you are here" marks is a defect on its own, and two elements carrying the view
+transition's name make the browser skip the transition outright.
+→ `ExactlyOneTabIsLitTests` renders every bar and drawer destination as every role.
+
+**THE CAPSULE GLIDES TO THE NEW TAB — a CROSS-DOCUMENT view transition, and only
+the capsule.** `@view-transition { navigation: auto }` on both pages, the lit glyph
+named `nav-current`, and three rules that keep it harmless:
+- **`:root { view-transition-name: none }`**, or every navigation in the app
+  cross-fades the whole page. The new page appears exactly as it always did.
+- **`::view-transition { pointer-events: none }`**, so 340ms of glide can never
+  swallow a tap.
+- **Phone only, and never under `prefers-reduced-motion`.** A browser without view
+  transitions just lights the tab in place — nothing is load-bearing.
+
+Verified in Chromium: `pagereveal` reports a view transition on a tab tap, a
+script-initiated navigation and Back; slowed 10× the capsule travels Admin → Live
+while its glyph cross-fades.
+
+⚠ **IT IS NOT STARTED AT THE TAP, and that was built first and measured.** A
+same-document `document.startViewTransition` is **skipped the moment a navigation
+begins** — it finished 1ms after it started — so the capsule could only jump, and
+then had nothing left to slide when the page arrived.
+
+**What the tap gets instead is `.is-pending`** (`followTab` in `script.js`, called
+from navProgress's own click handler so it shares every guard): the tapped tab holds
+the faint capsule its `:active` press already showed — same shape, same tint, so
+press and wait read as one gesture — and the arriving page's capsule slides onto it.
+On the laptop bar it is the hover wash, held.
+
+⚠ **A "LEAVE?" PROMPT ANSWERED STAY TAKES IT BACK, AND THE PROGRESS BAR WITH IT.**
+`watchForStay()` adds a `beforeunload` listener at the moment of navigating, so it
+runs after every page's own guard (job card, old bill, Opening Stock, photos — all
+register at load and all call `preventDefault()`) and reads their answer. It checks
+`defaultPrevented`, or `returnValue` only when it is a non-empty STRING — on a plain
+`Event` that property is a legacy boolean that reads `true`.
+
+⚠ **ANY GRADIENT UNDER A BORDER NEEDS `background-origin: border-box`.** The blue
+pill had none: a background is laid out on the padding box and REPEATS under the
+border, so the 1px rim showed the next tile's navy down the bright right end (a black
+line) and the previous tile's bright blue down the navy left end — the owner spotted
+both. The white pill is one solid fill and has no seam to show;
+`test_the_pill_is_one_solid_fill` keeps it so.
+
+**Hover on the bar is behind `@media (hover: hover)`** — on a phone it stuck to
+Manage after the drawer closed, a second "you are here". The capsule's `:active`
+press needs a touch listener on an ancestor to fire on iOS; the bar carries an empty
+passive one.
+
+⚠ **Two Playwright traps cost time verifying this:** `page.evaluate` and
+`page.screenshot` both BLOCK while a navigation is pending, so the pending state
+cannot be screenshotted — a CDP screencast (`Page.startScreencast`) can; and
+`page.route` never sees a request that goes through the service worker, so a delayed
+response needs the context opened with `serviceWorkers: 'block'`.
+→ `workshop/tests/test_phone_tab_bar.py`
 
 ## Going back — one control, one shape, one place
 
@@ -10309,7 +10420,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 85 files, 2,882 tests (counted 2026-09-24). Always SQLite (see below).
+# Full test suite — 86 files, 2,903 tests (counted 2026-09-24). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10358,7 +10469,12 @@ python manage.py runserver
 #     re-run only the failing files SERIALLY before calling one a bug.
 #   • ⚠ Do not pipe it through `tail`: that buffers the whole run, so there is
 #     no progress to watch until it exits.
-# Last full run 2026-09-22: 2,808 tests, 3,277s (54.6 min) on `--parallel 3`,
+# Last full run 2026-09-24: 2,903 tests, 509s on `--parallel 4`, ALL GREEN,
+# verifying the white phone tab bar with the black capsule — in the CLOUD
+# container (4 cores, 15 GB), which is why it is a sixth of the laptop's time.
+# Before it, the same day: 2,896 tests, 511s, the same container, verifying
+# the capsule, the glide and one lit tab.
+# Before it: 2026-09-22, 2,808 tests, 3,277s (54.6 min) on `--parallel 3`,
 # ALL GREEN, verifying the three-day back-date limit, the 24-hour Office window
 # for edits and deletes, and the quick discount box re-costing the stock.
 # Before it: 2026-09-21, 2,756 tests, 2,803s (46.7 min) on `--parallel 4`,
@@ -10810,8 +10926,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **85 files, 2,882 tests**,
-re-counted 2026-09-24. (`workshop/tests/` is 79 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **86 files, 2,903 tests**,
+re-counted 2026-09-24. (`workshop/tests/` is 80 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

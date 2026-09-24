@@ -172,11 +172,24 @@
             line-height: 1;
         }
 
-        .nav-btn:hover,
         .nav-btn:focus-visible {
             color: #ffffff;
             background-color: rgba(255, 255, 255, 0.14);
             text-decoration: none;
+        }
+
+        {% comment %}
+        HOVER ONLY WHERE THERE IS A POINTER. On a touch screen `:hover` sticks to
+        the last thing tapped, and on this bar that meant the Manage tab kept its
+        wash after the drawer closed — reading as a second "you are here" beside
+        the real one. Same rule the job card's buttons follow.
+        {% endcomment %}
+        @media (hover: hover) {
+            .nav-btn:hover {
+                color: #ffffff;
+                background-color: rgba(255, 255, 255, 0.14);
+                text-decoration: none;
+            }
         }
 
         .nav-btn:focus-visible {
@@ -194,6 +207,14 @@
         }
 
         .nav-btn.active i { color: #ffffff; }
+
+        /* A tapped tab whose page is still on its way (script.js, followTab).
+           The hover wash, held — so the bar answers the tap on the laptop and
+           the Floor tablet too, where there is no hover to fall back on. */
+        .nav-btn.is-pending {
+            color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.14);
+        }
 
         /* Icon-only buttons (notifications, menu on narrow screens) */
         .nav-btn--icon {
@@ -580,17 +601,23 @@
                    Costs 0.4px per tab, measured. */
                 padding: 0 3px;
                 /* The paint moves here from `.navbar-top` — see the note
-                   above. The gradient is fully opaque, so content scrolling
-                   underneath disappears cleanly and no backdrop blur is
-                   needed; one would be a permanent compositing cost on the
-                   one element that is always on screen. */
-                background: linear-gradient(90deg, var(--nav-blue-1) 0%, var(--nav-blue-mid) 45%, var(--nav-blue-2) 100%);
-                border: 1px solid rgba(147, 197, 253, 0.22);
+                   above. WHITE, not the laptop bar's blue gradient: see "THE
+                   PHONE BAR IS WHITE" below. Fully opaque, so content
+                   scrolling underneath disappears cleanly and no backdrop
+                   blur is needed; one would be a permanent compositing cost
+                   on the one element that is always on screen. A solid fill
+                   also has no seam to show under its border, which is what
+                   the gradient needed `background-origin: border-box` for. */
+                background: #ffffff;
+                /* `--color-border`, the hairline every white card in the app
+                   carries — the bar is drawn as one more of them. */
+                border: 1px solid #e2e8f0;
                 border-radius: 18px;
-                /* Cast in every direction now that it is detached, where the
-                   welded bar threw light upwards only. */
-                box-shadow: 0 6px 24px rgba(10, 25, 60, 0.28),
-                            0 2px 6px rgba(10, 25, 60, 0.18);
+                /* The shadow is what lifts a white pill off a light page,
+                   cast in every direction now that it is detached. Slate,
+                   never the old navy, which tinted the ground blue. */
+                box-shadow: 0 8px 28px rgba(15, 23, 42, 0.14),
+                            0 2px 6px rgba(15, 23, 42, 0.08);
                 /* Only takes effect once the tabs stop filling the row — a
                    landscape phone, or the two-item signed-out bar, where
                    equal shares would otherwise be 150px+ slabs. Spread from
@@ -611,28 +638,134 @@
                 gap: 3px;
                 width: 100%;
                 height: 54px;
-                padding: 5px 0;
+                /* 4px, so the capsule (28), the gap (3) and a label line with
+                   room for its descenders (1.25 × 11px) fit the 54px tab. */
+                padding: 4px 0;
                 /* Concentric with the pill: the outer radius (18px) less the
-                   uniform 4px inset. At 12px the active tab's corner cut
-                   across the pill's own curve instead of following it. */
+                   uniform 4px inset, so the focus outline follows the pill's
+                   own curve. */
                 border-radius: 14px;
+                /* `--color-text-muted`'s slate: 4.76:1 on the white pill, and
+                   the labels are ~10.5px, so they need 4.5. Which tab is
+                   current is said by the capsule below, never by dimming the
+                   others until they are hard to read. */
+                color: #64748b;
             }
-            .nav-btn i { font-size: 20px; }
+
+            {% comment %}
+            THE PHONE BAR IS WHITE, AND THE CURRENT TAB IS A BLACK CAPSULE —
+            the owner's call (2026-09-24): the blue gradient did not match the
+            rest of the system on a phone. Every card in the app is white on
+            the light ground, and the app's SELECTED state is already this
+            black: the dashboard's mechanic filter (`.pit-crew-chip.is-active`,
+            `--pit-track` #0f172a) and the Cashbook's All / Out / In chips.
+            A blue capsule was mocked up beside it and lost: blue is the app's
+            BUTTON colour, so a blue capsule reads as one more thing to press,
+            where "you are here" is not an action. The black is also the slate
+            of every section header slab, so the bar and the page share ink.
+            Phone only — the laptop and tablet bar keeps its gradient.
+            Measured: white glyph on the capsule 17.9:1, the capsule against
+            the white pill 17.9:1, the lit label 17.9:1, unlit labels 4.76:1.
+            test_phone_tab_bar holds the capsule to the dashboard chip's own
+            value, so the two cannot drift apart.
+
+            A CAPSULE BEHIND THE GLYPH, NOT A WASH OVER THE WHOLE TAB: the
+            same object in every position, and at 50 × 28px it marks the tab
+            without taking the whole column. Every glyph gets the capsule's
+            box, lit or not, so lighting one moves nothing. It is also the one
+            element the view transition below animates.
+            {% endcomment %}
+            .nav-btn i,
+            .nav-btn--icon i {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 50px;
+                max-width: 100%;
+                height: 28px;
+                border-radius: 999px;
+                font-size: 19px;
+                /* Paint only, and never on the lit state's colour — see the
+                   transition trap in CLAUDE.md. The capsule appears at once;
+                   what moves is the view transition, not this. */
+                transition: transform 0.12s ease;
+            }
+            .nav-btn.active,
+            .nav-btn--menu.is-open { background-color: transparent; }
+            .nav-btn.active i,
+            .nav-btn--menu.is-open i {
+                background-color: #0f172a;
+                color: #ffffff;
+            }
+
+            {% comment %}
+            The label scales with the phone: 9.5px at 320 (where "Completed"
+            has a 54px tab), 10.5px at 375, 11px from 393 up. It was a flat
+            9.5px everywhere, which on the owners' 412px phones left a quarter
+            of each tab empty around type smaller than the phone's own tab bars.
+            {% endcomment %}
             .nav-btn .nav-label {
-                font-size: 9.5px;
+                font-size: clamp(9.5px, 2.8vw, 11px);
+                /* NOT the bar's `line-height: 1`. The label clips its overflow
+                   (for the ellipsis), and a box exactly one em tall clips the
+                   descenders with it: the g of "Manage" and the p of
+                   "Completed" were cut off at the baseline — the owner caught
+                   it on a 2x screenshot. 1.25 holds them at every size here. */
+                line-height: 1.25;
+                font-weight: 500;
                 letter-spacing: 0.01em;
                 max-width: 100%;
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
-            .nav-btn--icon { width: 100%; padding: 5px 0; }
-            .nav-btn--icon i { font-size: 20px; }
+            .nav-btn.active .nav-label,
+            .nav-btn--menu.is-open .nav-label {
+                color: #0f172a;
+                font-weight: 700;
+            }
+
+            /* A finger gets a press, not a hover: the capsule squashes under
+               it and, on a tab that is not lit, shows faintly where it is
+               about to land. `:active` ends the moment the finger lifts, so
+               the faint capsule is then HELD by `.is-pending` (script.js,
+               followTab) until the page arrives and the lit one slides onto
+               it. Same shape, same tint: press and wait read as one gesture. */
+            {% comment %}
+            ⚠ EVERY STATE HERE RESTATES `color`, because the laptop rules
+            above it set the label WHITE for hover, focus and a pending tap —
+            written for the blue bar, and white on this white pill is a label
+            that vanishes. Slate ink instead, a shade darker than the unlit
+            tabs, so the tab you touched reads as the one you are going to.
+            {% endcomment %}
+            .nav-btn:active i { transform: scale(0.9); }
+            .nav-btn.is-pending { background-color: transparent; color: #0f172a; }
+            .nav-btn:active:not(.active):not(.is-open) i,
+            .nav-btn.is-pending i { background-color: rgba(15, 23, 42, 0.08); }
+
+            /* A pointer on a narrow window: tint the capsule, not the tab, so
+               hover and the lit state are the same shape. */
+            @media (hover: hover) {
+                .nav-btn:hover { background-color: transparent; color: #0f172a; }
+                .nav-btn:hover:not(.active):not(.is-open) i { background-color: rgba(15, 23, 42, 0.06); }
+            }
+            /* The laptop's `#bfdbfe` ring is drawn for a navy ground and all
+               but disappears on white; the app's own blue carries it. */
+            .nav-btn:focus-visible { background-color: transparent; color: #0f172a; outline-color: #2563eb; }
+
+            .nav-btn--icon { width: 100%; padding: 4px 0; }
             .nav-btn--icon .nav-label { display: block; }
 
-            /* The badge follows the bell glyph, not the button's right edge —
-               a full-width tab would otherwise park the count out in empty
-               space with nothing under it. */
-            .nav-btn--bell .nav-badge { top: 3px; right: calc(50% - 16px); }
+            /* The badge sits on the bell glyph's upper-right shoulder, not the
+               button's edge — a full-width tab would otherwise park the count
+               out in empty space. Anchored on its LEFT so a "99+" grows away
+               from the glyph instead of across it, and ringed in the pill's
+               own white so it reads as cut out of the bar. */
+            .nav-btn--bell .nav-badge {
+                top: 3px;
+                right: auto;
+                left: calc(50% + 3px);
+                box-shadow: 0 0 0 2px #ffffff;
+            }
 
             /* Room beneath the content so the last row of every page clears
                the bar. The matching `.main-content` margin reset lives down
@@ -641,6 +774,51 @@
                the cascade to it and the page would keep a 62px gap at the
                top with nothing in it. */
             body { padding-bottom: calc(var(--nav-clear) + 24px); }
+        }
+
+        {% comment %}
+        THE CAPSULE GLIDES TO THE NEW TAB — a view transition, and nothing else
+        on the page takes part in it.
+
+        A cross-document view transition: both pages opt in with
+        `@view-transition`, and the capsule slides from where it was on the old
+        page to where it is on the new one — whatever changed the page: a tab,
+        Back, a drawer link landing on a Manage page, a link in the page
+        itself. A tapped tab has already shown a faint capsule where it is
+        going (`.is-pending`), so on a tab tap the lit one slides onto it.
+
+        It is NOT started at the tap with `document.startViewTransition`. That
+        was built first and measured: a same-document transition is skipped the
+        moment a navigation begins — it finished 1ms after it started — so the
+        capsule could only jump, and then had nothing left to slide on arrival.
+
+        Three rules keep it to the capsule and keep it harmless:
+          * `:root` is NOT captured. The root's default is a cross-fade of the
+            whole page on every navigation, which would change how every
+            screen in the app arrives. With it named `none` the new page
+            appears exactly as it always has, and only `nav-current` moves.
+          * The overlay takes no pointer events, so the 340ms of glide can
+            never swallow a tap on the page underneath it.
+          * Exactly ONE element may carry the name — two and the browser
+            skips the transition outright. That is why Floor's Menu no longer
+            lights on an Inventory page (see the Manage button's markup), and
+            why `test_phone_tab_bar.py` asserts one lit tab on every page.
+
+        Phone only, because only the phone bar has the capsule; and never
+        under reduced motion, where the tab simply lights in place. A browser
+        without view transitions ignores all of it and lights the tab without
+        the slide — nothing here is load-bearing.
+        {% endcomment %}
+        @media (max-width: 640px) and (prefers-reduced-motion: no-preference) {
+            @view-transition { navigation: auto; }
+            :root { view-transition-name: none; }
+            ::view-transition { pointer-events: none; }
+            .nav-btn.active i,
+            .nav-btn--menu.is-open i { view-transition-name: nav-current; }
+            ::view-transition-group(nav-current) {
+                animation-duration: 0.34s;
+                animation-timing-function: cubic-bezier(0.2, 0.9, 0.25, 1);
+            }
         }
 
         /* ========================================== */
@@ -1415,7 +1593,7 @@
             <!-- Inventory (Floor's own quick link) -->
             <a class="nav-btn{% if p|slice:':11' == '/inventory/' %} active{% endif %}"
                href="{% url 'inventory_list' %}" aria-label="Inventory" title="Inventory">
-                <i class="bi bi-box-seam"></i><span class="nav-label">Inventory</span>
+                <i class="bi bi-box-seam{% if p|slice:':11' == '/inventory/' %}-fill{% endif %}"></i><span class="nav-label">Inventory</span>
             </a>
             {% endif %}
 
@@ -1509,9 +1687,17 @@ widen this and the audience together.
             the drawer and missing from the highlight, so Manage read as
             inactive on pages reachable only through it. One list, one place to
             add to.
+
+            ONE TAB IS LIT, NEVER TWO. `/inventory/` is a drawer section for
+            Owner and Office, who have no Inventory tab — but Floor HAS one,
+            and it already lights on those pages, so Menu lit beside it put two
+            "you are here" marks on one bar. Menu lights only where no tab of
+            its own owns the page. The tabs are chosen by role just above: the
+            Inventory tab is rendered exactly when the user is neither Owner
+            nor Office.
             {% endcomment %}
             <button type="button"
-                    class="nav-btn nav-btn--menu{% if p|is_drawer_section %} is-open{% endif %}"
+                    class="nav-btn nav-btn--menu{% if p|is_drawer_section %}{% if is_owner or is_office or p|slice:':11' != '/inventory/' %} is-open{% endif %}{% endif %}"
                     data-bs-toggle="offcanvas" data-bs-target="#appDrawer" aria-controls="appDrawer"
                     aria-label="{% if is_owner or is_office %}Manage{% else %}Menu{% endif %}"
                     title="{% if is_owner or is_office %}Manage{% else %}Menu{% endif %}">
@@ -1926,7 +2112,7 @@ page that needs it.
 
     <!-- SCRIPTS -->
     <script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
-    <script src="{% static 'js/script.js' %}?v=10"></script>
+    <script src="{% static 'js/script.js' %}?v=11"></script>
     {% comment %}
     Two jobs, one file: it draws the confirmation card above, and it refuses a
     second submit on a form already on its way. Both are needed by every role

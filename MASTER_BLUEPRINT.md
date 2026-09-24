@@ -866,7 +866,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (85 files · 2,882 tests)
+## 13. TEST SUITE (86 files · 2,903 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -874,7 +874,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (78 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (81 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -957,6 +957,7 @@ base classes.*
 | `test_live_cards.py` | AUD-0007 — `models.live_cards()` is the one answer to "which job cards count?": it keeps a live card and drops a flagged one, reaches through a relation, combines with other conditions, and the one-active-card-per-plate rule reads it; a SCAN fails on any hand-typed `is_deleted` outside `models.py` and the dormant signals, with a floor test so a scan that reads nothing cannot pass |
 | `test_client_ip.py` | AUD-0107 — the visitor's IP is ONE rule: behind Railway's proxy it is the forwarded visitor, a direct public connection cannot choose its own address, an unreadable header never reaches the database, two visitors behind one proxy do not share the lockout counter, the session list records the visitor, and a SCAN fails if anything but `client_ip.py` reads the address headers (with a floor test) |
 | `test_content_security_policy.py` | AUD-0043 — every kind of response carries exactly the four directives (signed in and out, the standalone invoice, a 404, `robots.txt`, `sw.js`), `X-Frame-Options` still goes out, the policy names no script, style, image or fetch directive, and nothing in the templates or our own JS uses what it refuses |
+| `test_phone_tab_bar.py` | The phone tab bar (2026-09-24). **`ExactlyOneTabIsLitTests` renders every bar and drawer destination as every role** and finds at most one lit tab — two lit elements carry the view transition's name twice and the browser skips it; it caught Floor's Menu lighting beside the Inventory tab on every Inventory page. The rest reads declarations, since nothing here executes CSS or JS: the glide confined to the capsule (phone only, never under reduced motion, `:root` not captured, the overlay taking no taps, the name on the lit glyph alone), every `.nav-btn:hover` behind a hover query, the white pill's labels clearing 4.5:1 lit and unlit, the black capsule clearing 4.5:1 for its glyph and 3:1 against the pill, no hover / focus / pending state leaving the laptop bar's white label on the white pill, the capsule held to the dashboard mechanic filter's own `--pit-track` black, the pill one solid fill (the blue gradient it replaced repeated under its border, drawing a dark line down one end and a light one down the other), the badge ringed in the pill's own colour, the laptop bar keeping its gradient, a label's line box tall enough for its descenders, and the script marking a tapped tab with the class the stylesheet draws — from the progress bar's own click handler, and taken back when a "leave?" prompt is answered Stay |
 
 *JavaScript: `workshop/tests/js/photos-core.test.js`, `workshop/tests/js/pricing-core.test.js` and `workshop/tests/js/old-bill-core.test.js` run under `node --test "workshop/tests/js/*.test.js"`, NOT under `manage.py test`. The first covers the photo upload queue's failure paths and the gallery's index arithmetic; the second the suggested price — strict parsing (a comma is refused), rounding up to the rupee in whole paise, the badge rounding down, and the line total rounding half-even exactly as the server does, every expectation produced by Python first; the third what the Old Bill form understood while typing, read against `old-bill-cases.json` — the same file the Django suite reads, so the browser and the server answer every listed date and amount identically. They are the only JavaScript in this repo with tests, and they add no dependency — Node's built-in runner, so still no npm, package.json, node_modules, bundler or linter.*
 
@@ -1079,7 +1080,7 @@ WorkshopOS (Titan)/
 │   │                             notifications.js and
 │   │                             style.css live in the project-level static/
 │   ├── migrations/             ← 81 migrations
-│   └── tests/                  ← 80 test files (79 test_*.py + tests.py) + tests/js/ (node --test)
+│   └── tests/                  ← 81 test files (80 test_*.py + tests.py) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 9 Models (3 core + 5 supplier + OpeningStock)
@@ -1125,4 +1126,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-24)*: 2 Django Apps · **47 Models** (38 workshop + 9 inventory) · **177 URL Routes** (144 + 33, excluding Django admin; 178 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **85 Test Files / 2,882 tests** · **96 Migrations** (85 workshop + 11 inventory)
+> **Total** *(re-measured 2026-09-24)*: 2 Django Apps · **47 Models** (38 workshop + 9 inventory) · **177 URL Routes** (144 + 33, excluding Django admin; 178 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **86 Test Files / 2,903 tests** · **96 Migrations** (85 workshop + 11 inventory)
