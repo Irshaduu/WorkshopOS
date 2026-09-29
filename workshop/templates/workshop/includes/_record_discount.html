@@ -1,0 +1,139 @@
+{% load humanize %}{% comment %}
+RECORD A DISCOUNT — one small dialog for the spare shop, the Supplies Shop and
+(next) the Fleet Account, opened by the tag symbol (`_discount_button.html`).
+CSS is `.rdisc-*` in static/css/style.css.
+
+A DISCOUNT IS A PAYMENT WITH NO CASH. It settles the debt exactly as a payment
+does and never changes what anything cost. The rules — never more than is
+owed, no future date, Office three days back at most — are
+`workshop/discounts.py`; everything here is presentation, the view is the
+control.
+
+  action   where it posts
+  owed     what is owed right now (a Decimal)
+  name     the account's name
+  loss     the fleet page: the workshop let the customer off, so RED; on a
+           shop page the shop let us off, so GREEN
+
+⚠ NO SECOND CONFIRMATION CARD. The dialog is itself the deliberate step, and
+the Apply button carries the figure ("Apply ₹150") at the moment it is pressed,
+so a card asking "₹150?" after it would be the same question twice. A figure
+over what is owed is said IN the dialog and Apply greys out — the view refuses
+it either way.
+
+Include it once per page, OUTSIDE any other form, and only while money is owed.
+{% endcomment %}
+<div class="modal fade" id="rdiscModal" tabindex="-1" aria-labelledby="rdiscTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 380px;">
+    <div class="modal-content rdisc-modal{% if loss %} rdisc-loss{% endif %}">
+      <form method="post" action="{{ action }}" id="rdiscForm"
+            data-owed="{{ owed|stringformat:'s' }}" data-today="{{ today_iso }}">
+        {% csrf_token %}
+        <div class="rdisc-mhead">
+          <span class="rdisc-disc" aria-hidden="true"><i class="bi bi-tag-fill"></i></span>
+          <div class="rdisc-mhead-txt">
+            <h6 class="rdisc-mtitle" id="rdiscTitle">Record a Discount</h6>
+            <span class="rdisc-mname">{{ name }}</span>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="rdisc-mbody">
+          <div class="rdisc-mrow">
+            <div class="rpay-field rdisc-f-amount">
+              <label for="rdiscAmount">Discount</label>
+              <span class="rpay-cur" aria-hidden="true">₹</span>
+              <input type="number" id="rdiscAmount" name="amount"
+                     class="rpay-input rpay-amount" placeholder="Enter amount"
+                     aria-label="Discount in rupees" aria-describedby="rdiscErr"
+                     min="0.01" step="0.01" required inputmode="decimal">
+            </div>
+            <span class="rpay-date" id="rdiscDateBox" title="Dated today — tap to change">
+              <i class="bi bi-calendar-event"></i>
+              <span class="rpay-date-txt" id="rdiscDateTxt"></span>
+              <input type="date" name="date" id="rdiscDate" value="{{ today_iso }}"
+                     max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}"{% endif %} required aria-label="Date of the discount">
+            </span>
+          </div>
+          <p class="rdisc-err" id="rdiscErr" hidden></p>
+          <div class="rpay-field">
+            <label for="rdiscNote">Note (Optional)</label>
+            <input type="text" id="rdiscNote" name="note" class="rpay-input"
+                   maxlength="255" placeholder="Add note">
+          </div>
+          <p class="rpay-foot">
+            <i class="bi bi-info-circle"></i>
+            <span>No cash moves — it comes off the <b>₹{{ owed|floatformat:0|intcomma }}</b> owed.</span>
+          </p>
+        </div>
+
+        <div class="rdisc-mfoot">
+          <button type="button" class="btn btn-light fw-bold rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="rpay-btn {% if loss %}rpay-btn-out{% else %}rpay-btn-in{% endif %}" id="rdiscApply">
+            <i class="bi bi-tag-fill"></i> <span id="rdiscApplyTxt">Apply</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+    var modal = document.getElementById('rdiscModal');
+    var form = document.getElementById('rdiscForm');
+    if (!modal || !form) { return; }
+    var amount = document.getElementById('rdiscAmount');
+    var box = document.getElementById('rdiscDateBox');
+    var txt = document.getElementById('rdiscDateTxt');
+    var date = document.getElementById('rdiscDate');
+    var err = document.getElementById('rdiscErr');
+    var apply = document.getElementById('rdiscApply');
+    var applyTxt = document.getElementById('rdiscApplyTxt');
+    var today = form.dataset.today;
+    var owed = parseFloat(form.dataset.owed);
+
+    function rupees(n, digits) {
+        return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: digits });
+    }
+    function pretty(iso) {
+        var p = (iso || '').split('-').map(Number);
+        var dt = new Date(p[0], p[1] - 1, p[2]);
+        return isNaN(dt) ? iso : dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    // The payment row's own date glyph: silent while it says today, amber and
+    // spelled out the moment it does not.
+    function syncDate() {
+        var custom = date.value && date.value !== today;
+        box.classList.toggle('is-custom', !!custom);
+        txt.textContent = custom ? pretty(date.value) : '';
+        box.title = custom ? 'Back-dated to ' + pretty(date.value) + ' — tap to change'
+                           : 'Dated today — tap to change';
+    }
+    date.addEventListener('change', syncDate);
+    syncDate();
+    box.addEventListener('click', function () {
+        if (typeof date.showPicker === 'function') {
+            try { date.showPicker(); } catch (e) { /* already open */ }
+        }
+    });
+
+    // The button says what pressing it does, and a figure over what is owed is
+    // said here, before the round trip. Presentation only.
+    function syncAmount() {
+        var n = parseFloat(amount.value);
+        var over = n > owed + 0.001;
+        err.hidden = !over;
+        err.textContent = over ? "A discount can't be more than the " + rupees(owed, 0) + ' owed.' : '';
+        apply.disabled = over;
+        applyTxt.textContent = (n > 0 && !over) ? 'Apply ' + rupees(n, 2) : 'Apply';
+    }
+    amount.addEventListener('input', syncAmount);
+    syncAmount();
+
+    modal.addEventListener('shown.bs.modal', function () { amount.focus(); });
+    form.addEventListener('submit', function (e) {
+        if (apply.disabled) { e.preventDefault(); }
+    });
+})();
+</script>

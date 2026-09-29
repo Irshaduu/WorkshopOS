@@ -392,6 +392,37 @@
   </div>
   {% endif %}
 
+  {% if discounts %}
+  {% comment %}
+    What the shop let us off — a payment with no cash. Its own table rather
+    than rows among the payments, because a payment table's Method column has
+    nothing to say about one. Rare, so it prints only when there is one.
+  {% endcomment %}
+  <div style="margin-top: 30px; margin-bottom: 20px;">
+    <h3 style="font-size: 15px; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px; color: #000;">Discounts</h3>
+    <div class="tbl-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Note</th>
+          <th class="text-end">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in discounts %}
+        <tr>
+          <td>{{ d.date|date:"d/m/Y" }}</td>
+          <td>{% if d.note %}<small style="color: #666;">{{ d.note }}</small>{% endif %}</td>
+          <td class="text-end balance-green" style="font-weight: bold;">₹{{ d.amount|floatformat:0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
   {% if items or opening_balance %}
   <div class="totals-box">
     <div class="totals-row">
@@ -408,6 +439,12 @@
       <span>Total Paid:</span>
       <span>₹{{ total_paid|floatformat:0 }}</span>
     </div>
+    {% if total_discount %}
+    <div class="totals-row">
+      <span>Discounts:</span>
+      <span>₹{{ total_discount|floatformat:0 }}</span>
+    </div>
+    {% endif %}
     <div class="totals-row">
       <span>Balance to Pay:</span>
       <span class="{% if total_balance > 0 %}balance-red{% else %}balance-green{% endif %}">

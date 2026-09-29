@@ -1,0 +1,18 @@
+{% comment %}
+THE DISCOUNT SYMBOL — a tag, and nothing else (the owner's call, 2026-09-30:
+"it's a very rare use case, it should not make sections feel heavy"). It sits
+on the LEFT of the history buttons and opens `_record_discount.html`, which the
+page includes once. No caption: the tag glyph, its colour and its tooltip say
+it, and a word here would make the rarest action on the page read as a peer of
+the ones used every week.
+
+  loss   the fleet page — red, on a light ground. A shop page is green on the
+         dark header: a shop letting us off is profit.
+
+Rendered only where the modal is — while money is owed — so it is never a door
+that refuses.
+{% endcomment %}
+<button type="button" class="rdisc-sym{% if loss %} rdisc-sym-loss{% endif %}" data-bs-toggle="modal" data-bs-target="#rdiscModal"
+        aria-label="Record a discount" title="Record a discount">
+  <i class="bi bi-tag-fill" aria-hidden="true"></i>
+</button>

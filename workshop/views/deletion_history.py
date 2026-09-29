@@ -28,10 +28,11 @@ from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 
-from inventory.models import SupplierPayment
+from inventory.models import SupplierDiscount, SupplierPayment
 
 from ..models import (BulkPaymentHistory, CashbookEntry, DeletionLog, EditLog,
-                      OwnerWithdrawal, RentDeposit, SalaryAdvance, SpareShopPayment)
+                      OwnerWithdrawal, RentDeposit, SalaryAdvance, SpareShopDiscount,
+                      SpareShopPayment)
 from ..decorators import owner_required
 from ..money_dates import BACKDATE_DAYS, filed_past_limit, keyed_on
 from ..templatetags.custom_filters import inr_amount
@@ -58,6 +59,12 @@ BACKDATED_SOURCES = [
      lambda r: r.staff.name),
     (DeletionLog.ENTITY_OWNER_WITHDRAWAL, OwnerWithdrawal, ['owner', 'recorded_by'], 'recorded_by',
      lambda r: display_name(r.owner)),
+    # A shop discount's date is typed like a payment's and held to the same
+    # back-date limit, so a back-dated one is found here the same way.
+    (DeletionLog.ENTITY_SHOP_DISCOUNT, SpareShopDiscount, ['shop', 'recorded_by'], 'recorded_by',
+     lambda r: r.shop.name),
+    (DeletionLog.ENTITY_SUPPLIER_DISCOUNT, SupplierDiscount, ['supplier', 'recorded_by'], 'recorded_by',
+     lambda r: r.supplier.name),
 ]
 BACKDATED_CHOICES = [
     (key, dict(DeletionLog.ENTITY_CHOICES)[key]) for key, *_ in BACKDATED_SOURCES

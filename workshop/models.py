@@ -747,6 +747,13 @@ class SpareShop(models.Model):
     address = models.CharField(max_length=300, blank=True, null=True)
     total_purchased_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # WHAT THE SHOP LET US OFF — the sum of this shop's `SpareShopDiscount`
+    # rows, cached beside `total_paid_amount` by `update_totals()`. Kept APART
+    # from the paid figure on purpose: "Paid" is cash and only cash on every
+    # screen in this app, and a discount moved none. The balance is
+    # purchased − paid − discounted (`SPARE_SHOP_OWED`).
+    total_discount_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'), db_default=Decimal('0'))
     # WHAT THE WORKSHOP ALREADY OWED THIS SHOP ON GO-LIVE DAY, typed once on
     # Legacy Data → Opening Balances, exactly as typed — the person entering it
     # takes off any unassigned spares already recorded against this shop, by
@@ -801,40 +808,62 @@ class SpareShop(models.Model):
             total=Coalesce(Sum('amount'), Value(Decimal('0'), output_field=DecimalField()), output_field=DecimalField())
         )['total']
 
+        discounts = self.discounts.aggregate(
+            total=Coalesce(Sum('amount'), Value(Decimal('0'), output_field=DecimalField()), output_field=DecimalField())
+        )['total']
+
         # The go-live debt joins the purchased side HERE, so every reader of the
         # cached total — this shop's pages, the Profit page's payable tile,
         # Deep Analysis and the archive guard — follows it with no change.
         self.total_purchased_amount = purchases + (self.opening_balance or Decimal('0'))
         self.total_paid_amount = payments
-        self.save(update_fields=['total_purchased_amount', 'total_paid_amount'])
+        self.total_discount_amount = discounts
+        self.save(update_fields=['total_purchased_amount', 'total_paid_amount',
+                                 'total_discount_amount'])
+
+    @property
+    def settled_amount(self):
+        """What has come off the debt: cash paid plus discounts the shop gave."""
+        return self.total_paid_amount + self.total_discount_amount
 
     @property
     def get_pending_balance(self):
-        return self.total_purchased_amount - self.total_paid_amount
+        return self.total_purchased_amount - self.settled_amount
 
     @property
     def opening_balance_left(self):
-        """How much of the go-live opening balance is still unpaid.
+        """How much of the go-live opening balance is still unsettled.
 
-        Payments pay the oldest debt first and the opening balance IS the
-        oldest, so every rupee paid comes off it before it reaches a part. The
-        shop page shows the line only while this is above zero.
+        Payments and discounts settle the oldest debt first and the opening
+        balance IS the oldest, so every rupee settled comes off it before it
+        reaches a part. The shop page shows the line only while this is above
+        zero.
         """
-        left = self.opening_balance - self.total_paid_amount
+        left = self.opening_balance - self.settled_amount
         return left if left > 0 else Decimal('0')
 
     @property
-    def paid_beyond_opening(self):
-        """What the payments leave for the PARTS once the opening balance is paid.
+    def settled_beyond_opening(self):
+        """What payments AND discounts leave for the PARTS once the opening
+        balance is settled.
 
-        The payment waterfall allocates this, not `total_paid_amount`, oldest
-        part first. Negative while the opening balance is still being paid off,
-        which correctly leaves every part UNPAID.
+        The waterfall allocates this, oldest part first. Negative while the
+        opening balance is still being paid off, which correctly leaves every
+        part UNPAID. A discount counts exactly as a payment does here — it
+        takes that much off the oldest debt — or a shop settled by "pay
+        ₹22,000, discount ₹150" would show a part Unpaid at a ₹0 balance.
         """
-        return self.total_paid_amount - self.opening_balance
+        return self.settled_amount - self.opening_balance
 
     def __str__(self):
         return self.name
+
+
+# WHAT A SPARE SHOP IS STILL OWED, as a query expression — the one declaration
+# every list, payable tile and archive guard reads, so none of them can drop
+# the discount term. `SpareShop.get_pending_balance` is the same sum for one row.
+SPARE_SHOP_OWED = (models.F('total_purchased_amount') - models.F('total_paid_amount')
+                   - models.F('total_discount_amount'))
 
 
 # -----------------------------------------------------------------------------
@@ -1994,6 +2023,54 @@ class SpareShopPayment(models.Model):
     def __str__(self):
         return f"₹{self.amount} → {self.shop.name} ({self.created_at:%d %b %Y})"
 
+
+class SpareShopDiscount(models.Model):
+    """
+    MONEY A SPARE SHOP LET US OFF (2026-09-29, the owners' call).
+
+    "Balance ₹22,150, just pay ₹22,000": the payment is ₹22,000 and this is the
+    ₹150. It lowers what the shop is owed exactly as a payment does, and it is
+    NOT cash — which is why it is its own table and never a payment row: every
+    reader of a payment ledger (Cash Tracking, the shop's Paid figure, the
+    Back-dated tab) keeps reading only real cash.
+
+    On the Profit page it is income on the day it was given ("Discounts from
+    shops"). It never changes what a part cost. The Supplies Shop carries the
+    identical model, `inventory.SupplierDiscount`.
+    """
+    shop = models.ForeignKey(SpareShop, on_delete=models.CASCADE, related_name='discounts')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # The day the shop gave it — typed, like every money date, through
+    # `money_dates.posted_date` and held to the same back-date limit.
+    date = models.DateField(default=timezone.now, db_index=True,
+                            help_text="The day the shop let us off.")
+    note = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    recorded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='spare_shop_discounts_recorded')
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name='workshop_spareshopdiscount_amount_positive'
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.shop.update_totals()
+
+    def delete(self, *args, **kwargs):
+        shop = self.shop
+        super().delete(*args, **kwargs)
+        shop.update_totals()
+
+    def __str__(self):
+        return f"₹{self.amount} discount ← {self.shop.name} ({self.date:%d %b %Y})"
+
 # -----------------------------------------------------------------------------
 # CASHBOOK / GENERAL EXPENSES & INCOME
 # -----------------------------------------------------------------------------
@@ -2687,6 +2764,8 @@ class DeletionLog(models.Model):
     ENTITY_OWNER_WITHDRAWAL = 'OWNER_WITHDRAWAL'
     ENTITY_RENT_DEPOSIT = 'RENT_DEPOSIT'
     ENTITY_RENT_RATE = 'RENT_RATE'
+    ENTITY_SHOP_DISCOUNT = 'SHOP_DISCOUNT'
+    ENTITY_SUPPLIER_DISCOUNT = 'SUPPLIER_DISCOUNT'
     # Master-list rows (spare-part names, concerns). Not financial — job cards
     # store these as free text, so removing one cannot alter a bill, a ledger or
     # a report (proven; see MasterDataDeleteTouchesNoHistoryTests). Logged
@@ -2709,6 +2788,8 @@ class DeletionLog(models.Model):
         (ENTITY_OWNER_WITHDRAWAL, 'Owner Withdrawal'),
         (ENTITY_RENT_DEPOSIT, 'Rent Deposit'),
         (ENTITY_RENT_RATE, 'Rent Rate'),
+        (ENTITY_SHOP_DISCOUNT, 'Spare-Shop Discount'),
+        (ENTITY_SUPPLIER_DISCOUNT, 'Supplier Discount'),
         (ENTITY_MASTER_DATA, 'Master List Entry'),
     ]
 

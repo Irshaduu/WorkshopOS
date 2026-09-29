@@ -114,12 +114,17 @@ class SupplierShop(models.Model):
     address = models.CharField(max_length=300, blank=True, null=True)
     total_billed_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # WHAT THE SHOP LET US OFF — the sum of its `SupplierDiscount` rows, cached
+    # beside the paid figure and kept APART from it, because "Paid" is cash and
+    # a discount moved none. The spare shop carries the identical column.
+    total_discount_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'), db_default=Decimal('0'))
     # WHAT THE WORKSHOP ALREADY OWED THIS SHOP ON GO-LIVE DAY, typed once on
     # Legacy Data → Opening Balances, exactly as the shop's own book says. It
     # is a debt from the Excel years and nothing else: no bill, no stock, no
     # expense and no cash. `update_totals()` adds it to the billed side, so the
     # balance on every screen follows it, and the payment waterfall treats it
-    # as the OLDEST debt — see `paid_beyond_opening`.
+    # as the OLDEST debt — see `settled_beyond_opening`.
     # `db_default` as well as `default`, per the migration rule.
     opening_balance = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0'), db_default=Decimal('0'),
@@ -142,29 +147,38 @@ class SupplierShop(models.Model):
         return self.name
 
     @property
+    def settled_amount(self):
+        """What has come off the debt: cash paid plus discounts the shop gave."""
+        return self.total_paid_amount + self.total_discount_amount
+
+    @property
     def get_pending_balance(self):
-        return self.total_billed_amount - self.total_paid_amount
+        return self.total_billed_amount - self.settled_amount
 
     @property
     def opening_balance_left(self):
-        """How much of the go-live opening balance is still unpaid.
+        """How much of the go-live opening balance is still unsettled.
 
-        Payments pay the oldest debt first and the opening balance IS the
-        oldest, so every rupee paid comes off it before it reaches a bill. The
-        shop page shows the line only while this is above zero.
+        Payments and discounts settle the oldest debt first and the opening
+        balance IS the oldest, so every rupee settled comes off it before it
+        reaches a bill. The shop page shows the line only while this is above
+        zero.
         """
-        left = self.opening_balance - self.total_paid_amount
+        left = self.opening_balance - self.settled_amount
         return left if left > 0 else Decimal('0')
 
     @property
-    def paid_beyond_opening(self):
-        """What the payments leave for the BILLS once the opening balance is paid.
+    def settled_beyond_opening(self):
+        """What payments AND discounts leave for the BILLS once the opening
+        balance is settled.
 
-        The payment waterfall allocates this, not `total_paid_amount`, oldest
-        bill first. Negative while the opening balance is still being paid off,
-        which correctly leaves every bill UNPAID.
+        Both waterfalls allocate this, oldest bill first. Negative while the
+        opening balance is still being paid off, which correctly leaves every
+        bill UNPAID. A discount counts exactly as a payment does here, or a
+        shop settled by "pay ₹22,000, discount ₹150" would show a bill Unpaid
+        at a ₹0 balance.
         """
-        return self.total_paid_amount - self.opening_balance
+        return self.settled_amount - self.opening_balance
 
     def update_totals(self):
         """
@@ -190,14 +204,28 @@ class SupplierShop(models.Model):
         paid = self.payments.filter(is_trashed=False).aggregate(
             total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField())
         )['total']
-        
-        if self.total_billed_amount != billed or self.total_paid_amount != paid:
+
+        discounted = self.discounts.aggregate(
+            total=Coalesce(Sum('amount'), 0, output_field=models.DecimalField())
+        )['total']
+
+        if (self.total_billed_amount != billed or self.total_paid_amount != paid
+                or self.total_discount_amount != discounted):
             self.total_billed_amount = billed
             self.total_paid_amount = paid
+            self.total_discount_amount = discounted
             SupplierShop.objects.filter(pk=self.pk).update(
-                total_billed_amount=billed, 
-                total_paid_amount=paid
+                total_billed_amount=billed,
+                total_paid_amount=paid,
+                total_discount_amount=discounted,
             )
+
+
+# WHAT A SUPPLIES SHOP IS STILL OWED, as a query expression — the one
+# declaration every list, payable tile and archive guard reads, so none of them
+# can drop the discount term. `get_pending_balance` is the same sum for one row.
+SUPPLIER_SHOP_OWED = (models.F('total_billed_amount') - models.F('total_paid_amount')
+                      - models.F('total_discount_amount'))
 
 
 class ShopCatalogItem(models.Model):
@@ -355,6 +383,50 @@ class SupplierPayment(models.Model):
 
     def __str__(self):
         return f"₹{self.amount} → {self.supplier.name} ({self.date})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.supplier.update_totals()
+
+    def delete(self, *args, **kwargs):
+        supplier = self.supplier
+        super().delete(*args, **kwargs)
+        supplier.update_totals()
+
+
+class SupplierDiscount(models.Model):
+    """
+    MONEY A SUPPLIES SHOP LET US OFF (2026-09-29, the owners' call) — on a bill
+    at purchase (the bill is entered at full line prices, then Discount ₹100)
+    or when settling ("balance ₹22,150, just pay ₹22,000", then Discount ₹150).
+
+    It lowers what the shop is owed exactly as a payment does, and it is NOT
+    cash, so it is its own table and never a payment row. On the Profit page it
+    is income on the day it was given; it NEVER changes what an item cost —
+    that is the whole reason a bill no longer carries a discount of its own.
+    The spare shop carries the identical model, `workshop.SpareShopDiscount`.
+    """
+    supplier = models.ForeignKey(SupplierShop, on_delete=models.CASCADE, related_name='discounts')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    date = models.DateField(default=timezone.now, db_index=True,
+                            help_text="The day the shop let us off.")
+    note = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    recorded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='supplier_discounts_recorded')
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name='inventory_supplierdiscount_amount_positive'
+            ),
+        ]
+
+    def __str__(self):
+        return f"₹{self.amount} discount ← {self.supplier.name} ({self.date})"
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

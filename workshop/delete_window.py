@@ -10,7 +10,8 @@ raises `RECORD_DELETED` at CRITICAL — a push to both owners' phones within
 seconds, linking straight to the record. That is DETECTION, and it is strong.
 What there was none of is PREVENTION: `bulk_payment_history_delete`,
 `spare_shop_payment_reverse`, `delete_shop_payment`, `delete_restock_bill`,
-`delete_cashbook_entry` and `salary_advance_delete` are all `@office_required`,
+`delete_cashbook_entry` and `salary_advance_delete` (and since 2026-09-29 the
+two shop-discount deletes) are all `@office_required`,
 so Office could remove a six-month-old fleet payment exactly as easily as one
 keyed this morning.
 

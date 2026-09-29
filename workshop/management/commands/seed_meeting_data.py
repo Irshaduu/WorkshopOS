@@ -54,11 +54,11 @@ from django.utils import timezone
 
 from inventory.models import (
     Category, Item, OpeningStock, ShopCatalogItem, SupplierShop,
-    SupplierRestockBill, SupplierRestockItem, SupplierPayment,
+    SupplierRestockBill, SupplierRestockItem, SupplierPayment, SupplierDiscount,
 )
 from workshop.models import (
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem, JobCardPhoto,
-    SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
+    SpareShop, SpareShopPayment, SpareShopDiscount, BulkPayer, BulkPaymentHistory,
     Mechanic, CashbookEntry, DeletionLog, EditLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
     CarBrand, CarModel, OwnerWithdrawal, RentRate, RentDeposit,
@@ -206,10 +206,12 @@ class Command(BaseCommand):
             ("fleet payment history", BulkPaymentHistory.objects.all()),
             ("fleet accounts", BulkPayer.objects.all()),
             ("spare shop payments", SpareShopPayment.objects.all()),
+            ("spare shop discounts", SpareShopDiscount.objects.all()),
             ("supplier restock items", SupplierRestockItem.objects.all()),
             ("opening stock", OpeningStock.objects.all()),
             ("supplier restock bills", SupplierRestockBill.objects.all()),
             ("supplier payments", SupplierPayment.objects.all()),
+            ("supplier discounts", SupplierDiscount.objects.all()),
             ("cashbook entries", CashbookEntry.objects.all()),
             ("salary payment lines", SalaryPaymentLine.objects.all()),
             ("salary settlements", SalaryPayment.objects.all()),
@@ -237,8 +239,10 @@ class Command(BaseCommand):
         Item.objects.update(current_stock=0, avg_cost=0)
         # Shops are kept, so their go-live opening balance is zeroed too — or
         # the next update_totals() would bring it straight back.
-        SpareShop.objects.update(total_purchased_amount=0, total_paid_amount=0, opening_balance=0)
-        SupplierShop.objects.update(total_billed_amount=0, total_paid_amount=0, opening_balance=0)
+        SpareShop.objects.update(total_purchased_amount=0, total_paid_amount=0,
+                                 total_discount_amount=0, opening_balance=0)
+        SupplierShop.objects.update(total_billed_amount=0, total_paid_amount=0,
+                                    total_discount_amount=0, opening_balance=0)
         self.stdout.write("      stock, cost and shop ledgers reset to zero")
 
     # ------------------------------------------------------------------

@@ -646,6 +646,22 @@
       </div>
       {% endif %}
 
+      {% comment %}
+        What a spare shop or Supplies Shop let the workshop off — a payment with
+        no cash, so the debt went down and nothing was spent for it. Profit on
+        the day it was given; it never changes what a part cost. Rare, so only
+        when there is some, like Cashbook Income above.
+      {% endcomment %}
+      {% if report.shop_discounts %}
+      <div class="pf-row">
+        <span class="lbl"><i class="bi bi-tag"></i>
+          <span><span class="name">Discounts from shops</span>
+          <span class="hint">Shops let you off</span></span>
+        </span>
+        <span class="amt">₹{{ report.shop_discounts|inr }}</span>
+      </div>
+      {% endif %}
+
       <div class="pf-row total">
         <span class="lbl"><span class="name">Total Turnover</span></span>
         <span class="amt" style="color: var(--color-primary);">₹{{ report.turnover|inr }}</span>

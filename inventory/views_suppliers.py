@@ -5,8 +5,10 @@ from django.db.models import Count, Max, Prefetch, Sum, F, OuterRef, Subquery, Q
 from django.db.models.functions import Coalesce
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date
-from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill, SupplierRestockItem, SupplierPayment
+from .models import (Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill,
+                     SupplierRestockItem, SupplierPayment, SupplierDiscount)
 from workshop.decorators import office_required
+from workshop.discounts import read_discount
 from workshop.models import DeletionLog, EditLog, JobCardSpareItem
 from workshop.notifications import notify, notify_dated_back
 from workshop.money import parse_money, fit_text
@@ -188,54 +190,62 @@ def supplier_shop_detail(request, shop_id):
         .order_by('-bill_date', '-id')
     )
     payments_qs = shop.payments.filter(is_trashed=False).order_by('-date', '-id')
+    # ONE WINDOW FOR BOTH MONEY LISTS — payments and discounts are cut by the
+    # same `date` condition, so the history panel shows one period, not two.
+    money_window = Q()
 
     if filter_type == 'today':
         bills_qs    = bills_qs.filter(bill_date=today)
-        payments_qs = payments_qs.filter(date=today)
+        money_window = Q(date=today)
 
     elif filter_type == 'this_week':
         start = today - timedelta(days=today.weekday())
         bills_qs    = bills_qs.filter(bill_date__gte=start)
-        payments_qs = payments_qs.filter(date__gte=start)
+        money_window = Q(date__gte=start)
 
     elif filter_type == 'this_month':
         start = today.replace(day=1)
         bills_qs    = bills_qs.filter(bill_date__gte=start)
-        payments_qs = payments_qs.filter(date__gte=start)
+        money_window = Q(date__gte=start)
 
     elif filter_type == 'this_year':
         start = today.replace(month=1, day=1)
         bills_qs    = bills_qs.filter(bill_date__gte=start)
-        payments_qs = payments_qs.filter(date__gte=start)
+        money_window = Q(date__gte=start)
 
     elif filter_type == 'last_week':
         start = today - timedelta(days=today.weekday() + 7)
         end   = start + timedelta(days=6)
         bills_qs    = bills_qs.filter(bill_date__gte=start, bill_date__lte=end)
-        payments_qs = payments_qs.filter(date__gte=start, date__lte=end)
+        money_window = Q(date__gte=start, date__lte=end)
 
     elif filter_type == 'last_month':
         first_of_this = today.replace(day=1)
         last_of_last  = first_of_this - timedelta(days=1)
         first_of_last = last_of_last.replace(day=1)
         bills_qs    = bills_qs.filter(bill_date__gte=first_of_last, bill_date__lte=last_of_last)
-        payments_qs = payments_qs.filter(date__gte=first_of_last, date__lte=last_of_last)
+        money_window = Q(date__gte=first_of_last, date__lte=last_of_last)
 
     elif filter_type == 'last_year':
         start = today.replace(year=today.year - 1, month=1,  day=1)
         end   = today.replace(year=today.year - 1, month=12, day=31)
         bills_qs    = bills_qs.filter(bill_date__gte=start, bill_date__lte=end)
-        payments_qs = payments_qs.filter(date__gte=start, date__lte=end)
+        money_window = Q(date__gte=start, date__lte=end)
 
     elif filter_type == 'custom' and start_date_str and end_date_str:
         try:
             start_dt = date.fromisoformat(start_date_str)
             end_dt   = date.fromisoformat(end_date_str)
             bills_qs    = bills_qs.filter(bill_date__range=(start_dt, end_dt))
-            payments_qs = payments_qs.filter(date__range=(start_dt, end_dt))
+            money_window = Q(date__range=(start_dt, end_dt))
         except ValueError:
             pass
     # any other value (incl. legacy 'all') → no date filter applied
+
+    payments_qs = payments_qs.filter(money_window)
+    discounts = list(shop.discounts.filter(money_window).select_related('recorded_by'))
+    for d in discounts:
+        d.delete_url = reverse('delete_shop_discount', args=[shop.pk, d.pk])
 
     bills_count = bills_qs.count()
     payments_count = payments_qs.count()
@@ -245,10 +255,10 @@ def supplier_shop_detail(request, shop_id):
     payments_list = list(payments_qs[:30])
 
     # ── Absolute Ledger Waterfall Calculation ──
-    # The pool is what the payments leave AFTER the go-live opening balance:
-    # that debt is the oldest this shop has, so it is paid off first, and a
-    # bill is only marked covered once the money has actually reached it.
-    paid_to_bills = shop.paid_beyond_opening
+    # The pool is what payments AND discounts leave after the go-live opening
+    # balance: that debt is the oldest this shop has, so it is settled first,
+    # and a bill is only marked covered once the money has actually reached it.
+    paid_to_bills = shop.settled_beyond_opening
     for bill in bills_list:
         bill_amt = bill.total_amount
         older_sum = bill.absolute_running_sum - bill_amt
@@ -279,6 +289,7 @@ def supplier_shop_detail(request, shop_id):
         'bills_count': bills_count,
         'recent_payments': payments_list,
         'payments_count': payments_count,
+        'discounts': discounts,
         'filter_type': filter_type,
         'start_date': start_date_str,
         'end_date': end_date_str,
@@ -346,7 +357,7 @@ def deactivate_supplier_shop(request, shop_id):
     """
     if request.method == 'POST':
         shop = get_object_or_404(SupplierShop, pk=shop_id)
-        balance = shop.total_billed_amount - shop.total_paid_amount
+        balance = shop.get_pending_balance
         if balance > Decimal('0'):
             messages.error(
                 request,
@@ -1057,6 +1068,75 @@ def delete_shop_payment(request, shop_id, payment_id):
         messages.success(request, f"Payment of ₹{amount:,.0f} permanently deleted (logged to Change History).")
     return redirect('supplier_shop_detail', shop_id=shop_id)
 
+
+@office_required
+@transaction.atomic
+def add_shop_discount(request, shop_id):
+    """
+    POST: Record money the Supplies Shop let us off — on a bill at purchase
+    (the bill is entered at full line prices, then a discount) or when
+    settling ("balance ₹22,150, just pay ₹22,000", then ₹150).
+
+    The spare shop's `spare_shop_discount`, rule for rule: the checks are
+    `workshop/discounts.py`, and the shop row is LOCKED so two discounts typed
+    at once cannot both pass "no more than is owed". An archived shop takes
+    none — it is archived because it owes nothing.
+    """
+    if request.method != 'POST':
+        return redirect('supplier_shop_detail', shop_id=shop_id)
+
+    shop = get_object_or_404(SupplierShop.objects.select_for_update(), pk=shop_id, is_active=True)
+    amount, on, note, problem = read_discount(
+        request, SupplierDiscount, shop.get_pending_balance)
+    if problem:
+        messages.error(request, problem)
+        return redirect('supplier_shop_detail', shop_id=shop_id)
+
+    discount = SupplierDiscount.objects.create(
+        supplier=shop, amount=amount, date=on, note=note, recorded_by=request.user)
+    notify_dated_back(
+        f"{shop.name} · ₹{amount:,.0f} discount filed under {on:%d %b %Y}",
+        on,
+        detail="Supplies Shop discount",
+        actor=request.user,
+        url=reverse('supplier_shop_detail', args=[shop.pk]) + '?filter=all',
+        object_type='SupplierDiscount',
+        object_id=discount.pk,
+    )
+    shop.refresh_from_db()
+    messages.success(
+        request,
+        f"₹{amount:,.0f} discount recorded for {shop.name}. "
+        f"Still owed: ₹{max(shop.get_pending_balance, Decimal('0')):,.0f}.")
+    return redirect('supplier_shop_detail', shop_id=shop_id)
+
+
+@office_required
+@transaction.atomic
+def delete_shop_discount(request, shop_id, discount_id):
+    """POST: Permanently delete a Supplies Shop discount — the payment delete's
+    rule exactly: Office within 24 hours of keying it, an owner after, and
+    every one logged to Change History."""
+    if request.method == 'POST':
+        discount = get_object_or_404(SupplierDiscount, pk=discount_id, supplier_id=shop_id)
+
+        stop = delete_window.refusal(
+            request.user, discount.created_at, f"This ₹{discount.amount:,.0f} discount")
+        if stop:
+            messages.error(request, stop)
+            return redirect('supplier_shop_detail', shop_id=shop_id)
+
+        amount = discount.amount
+        DeletionLog.record(
+            DeletionLog.ENTITY_SUPPLIER_DISCOUNT, discount,
+            user=request.user, reason=request.POST.get('reason', '').strip(), amount=amount,
+            label=f"{discount.supplier.name} · ₹{amount:,.0f} discount",
+        )
+        discount.delete()  # SupplierDiscount.delete() recomputes supplier.update_totals()
+        messages.success(request, f"Discount of ₹{amount:,.0f} permanently deleted (logged to Change History).")
+    return redirect('supplier_shop_detail', shop_id=shop_id)
+
+
 @office_required
 def inventory_item_suppliers(request, item_id):
     item = get_object_or_404(Item, pk=item_id)
@@ -1117,10 +1197,10 @@ def ajax_supplier_bills(request, shop_id):
     page_bills = list(bills_qs[start:end])
 
     # ── Absolute Ledger Waterfall Calculation ──
-    # The pool is what the payments leave AFTER the go-live opening balance:
-    # that debt is the oldest this shop has, so it is paid off first, and a
-    # bill is only marked covered once the money has actually reached it.
-    paid_to_bills = shop.paid_beyond_opening
+    # The pool is what payments AND discounts leave after the go-live opening
+    # balance — the shop page's own rule, so a page of older bills loaded here
+    # cannot disagree with the first page about which bills are covered.
+    paid_to_bills = shop.settled_beyond_opening
     for bill in page_bills:
         bill_amt = bill.total_amount
         older_sum = bill.absolute_running_sum - bill_amt

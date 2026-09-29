@@ -307,6 +307,8 @@
       {% if shop.address %}<div class="shop-sub" style="color: rgba(255,255,255,0.6); font-size: 0.82rem;"><i class="bi bi-geo-alt me-1"></i>{{ shop.address }}</div>{% endif %}
     </div>
     <div class="d-flex align-items-center gap-2 shop-actions">
+      {# The rare action, as a symbol only, left of the history it lands in. #}
+      {% if total_balance > 0 %}{% include "workshop/includes/_discount_button.html" %}{% endif %}
       <button class="btn btn-sm btn-outline-info rounded-pill px-3" data-bs-toggle="offcanvas" data-bs-target="#paymentHistoryOffcanvas" style="font-size: 0.8rem;">
         <i class="bi bi-cash-stack"></i> Payments ({{ pay_count }})
       </button>
@@ -364,6 +366,7 @@
       <div class="stat-box h-100">
         <div class="s-label">Total Paid</div>
         <div class="s-val" style="color: #4ade80;">₹{{ total_paid|floatformat:0|intcomma }}</div>
+        {% if total_discount %}<div class="stat-disc">+ ₹{{ total_discount|floatformat:0|intcomma }} discount</div>{% endif %}
       </div>
     </div>
     <div class="col-6 col-md-3">
@@ -474,6 +477,8 @@
     </p>
   </form>
 </div>
+{% url 'spare_shop_discount' shop.pk as discount_url %}
+{% include "workshop/includes/_record_discount.html" with action=discount_url owed=total_balance name=shop.name %}
 {% else %}
 <div class="alert alert-success border-0 mb-3" style="border-radius: 12px;">
   <i class="bi bi-check-circle-fill me-2"></i>
@@ -683,7 +688,14 @@
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
   </div>
   <div class="offcanvas-body p-0">
+    {% comment %}
+      Discounts first, on the first page only — they are rare, and the
+      payments below are paginated. The Payments heading appears only when a
+      Discounts block sits above it; alone, the list needs no heading.
+    {% endcomment %}
+    {% if pay_page_obj.number == 1 %}{% include "workshop/includes/_discount_history.html" with discounts=discounts %}{% endif %}
     {% if pay_page_obj %}
+      {% if discounts and pay_page_obj.number == 1 %}<div class="rdisc-hist-head">Payments</div>{% endif %}
       {% for pay in pay_page_obj %}
       <div class="px-3 py-3 border-bottom d-flex justify-content-between align-items-center">
         <div>
@@ -753,7 +765,7 @@
         </nav>
       </div>
       {% endif %}
-    {% else %}
+    {% elif not discounts %}
       <div class="text-center py-5 text-muted">
         <i class="bi bi-receipt" style="font-size: 2rem; opacity: 0.3;"></i>
         <p class="mt-2 small">No payments made yet.</p>

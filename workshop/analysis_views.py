@@ -43,14 +43,15 @@ Owner-only throughout (@owner_required); Office and Floor never see this.
 
 from decimal import Decimal
 
-from django.db.models import Sum, Count, Min, Q, F, Value, DecimalField
+from django.db.models import Sum, Count, Min, Q, F, Value, DecimalField, ExpressionWrapper
 from django.db.models.functions import Coalesce, Lower, TruncMonth
 from django.http import Http404
 from django.shortcuts import render
 
 from .decorators import owner_required
 from .models import (
-    JobCard, JobCardSpareItem, BulkPayer, SpareShop, SpareShopPayment, live_cards,
+    JobCard, JobCardSpareItem, BulkPayer, SpareShop, SpareShopPayment, SPARE_SHOP_OWED,
+    live_cards,
 )
 from . import analysis_engine as engine
 from .analysis_engine import MONEY, ZERO, SPARE_COST, live_jobcards, _sum
@@ -804,8 +805,11 @@ def _insight_shops(start, end):
         .order_by('-billed')
     )
 
-    dues = {s['id']: s['total_purchased_amount'] - s['total_paid_amount']
-            for s in SpareShop.objects.values('id', 'total_purchased_amount', 'total_paid_amount')}
+    # What each shop is owed now — payments AND discounts off, through each
+    # model's one declaration, so this column agrees with the shop's own page.
+    from inventory.models import SUPPLIER_SHOP_OWED
+    dues = dict(SpareShop.objects.annotate(o=ExpressionWrapper(SPARE_SHOP_OWED, output_field=MONEY))
+                .values_list('id', 'o'))
     # Parts bought from this shop and not yet fitted to a car. They are inside
     # "Owed now" (the shop ledger counts them) and outside "Spent" (which is
     # scoped to job cards in this window), so without them the two columns look
@@ -822,8 +826,8 @@ def _insight_shops(start, end):
     for r in spare_rows:
         r['due'] = dues.get(r['shop'], ZERO)
         r['waiting'] = waiting.get(r['shop'], ZERO)
-    sdues = {s['id']: s['total_billed_amount'] - s['total_paid_amount']
-             for s in SupplierShop.objects.values('id', 'total_billed_amount', 'total_paid_amount')}
+    sdues = dict(SupplierShop.objects.annotate(o=ExpressionWrapper(SUPPLIER_SHOP_OWED, output_field=MONEY))
+                 .values_list('id', 'o'))
     for r in supplier_rows:
         r['due'] = sdues.get(r['supplier'], ZERO)
 

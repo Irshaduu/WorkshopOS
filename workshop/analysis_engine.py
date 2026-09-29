@@ -22,6 +22,11 @@ TURNOVER
                          against live data), which is why it is the honest
                          "what the workshop actually earned" figure.
   • Cashbook Income .... CashbookEntry(entry_type=INCOME) — scrap sales etc.
+  • Discounts from shops  SpareShopDiscount + inventory.SupplierDiscount — money
+                         a shop let us off, income on the day it was given
+                         (2026-09-29). It NEVER changes what a part cost: a
+                         Supplies Shop bill carries no discount of its own, so
+                         a draw is still costed at the bill's line price.
 
 EXPENSES — five real, non-overlapping money-out streams, ALL ON ONE BASIS:
 what the work done in this period cost.
@@ -166,7 +171,8 @@ from django.utils import timezone
 from .models import (
     JobCard, JobCardSpareItem, CashbookEntry,
     SalaryPayment, SalaryPaymentLine, SalaryAdvance,
-    SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
+    SpareShop, SpareShopPayment, SpareShopDiscount, SPARE_SHOP_OWED,
+    BulkPayer, BulkPaymentHistory,
     OwnerWithdrawal, RentRate, RentDeposit, live_cards,
 )
 # ⚠ THE RENT ARITHMETIC IS NOT RESTATED HERE. `workshop/rent.py` owns the
@@ -293,12 +299,20 @@ _DATE_STREAMS = (
     # everything.
     (lambda: RentRate.objects, 'effective_from'),
     (lambda: RentDeposit.objects, 'date'),
+    # A shop discount is income on its own date, so All Time has to reach it.
+    (lambda: SpareShopDiscount.objects, 'date'),
+    (lambda: _supplier_discount_manager(), 'date'),
 )
 
 
 def _restock_manager():
     from inventory.models import SupplierRestockBill      # avoids a circular import
     return SupplierRestockBill.objects
+
+
+def _supplier_discount_manager():
+    from inventory.models import SupplierDiscount          # avoids a circular import
+    return SupplierDiscount.objects
 
 
 def _stream_bounds(latest=True):
@@ -525,6 +539,23 @@ def car_bill_turnover(start, end):
 
 def cashbook_income(start, end):
     return _sum(CashbookEntry.objects.filter(entry_type='INCOME', date__range=(start, end)), 'amount')
+
+
+def shop_discounts(start, end):
+    """
+    Money the spare shops and Supplies Shops let us off in the window — income
+    on the day it was given, both kinds of shop in one figure.
+
+    ⚠ IT IS NOT CASH, so `cash_position()` never reads it; and it NEVER
+    re-costs a part — a draw is charged at the bill's line price whatever the
+    shop later let us off. The discount's whole effect on profit is this one
+    line, dated by the discount itself. Accepted trade (the owners', 2026-09-22):
+    a discount on stock not yet used lands in profit now rather than spread as
+    the stock is used — the same total over time.
+    """
+    from inventory.models import SupplierDiscount          # avoids a circular import
+    return (_sum(SpareShopDiscount.objects.filter(date__range=(start, end)), 'amount')
+            + _sum(SupplierDiscount.objects.filter(date__range=(start, end)), 'amount'))
 
 
 def cashbook_income_by_category(start, end):
@@ -1115,7 +1146,7 @@ def parts_trading(start, end):
 
 
 def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_total,
-                       rent_total):
+                       rent_total, shop_disc=ZERO):
     """
     The same profit, said the owner's way. Every shared figure is HANDED IN.
 
@@ -1137,7 +1168,7 @@ def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_tota
     discount = bills['discount']
 
     gross = (labour + parts['shop']['profit'] + parts['stock']['profit']
-             + cb_income - discount)
+             + cb_income + shop_disc - discount)
 
     earn = [
         {'key': 'labour', 'label': 'Labour', 'icon': 'bi-tools',
@@ -1169,6 +1200,13 @@ def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_tota
         earn.append({'key': 'cashbook_income', 'label': 'Cashbook Income',
                      'icon': 'bi-journal-plus', 'hint': 'Scrap, black oil, misc',
                      'amount': cb_income, 'negative': False})
+    # Handed in like every shared figure, so this card and the equation above
+    # it cannot count a different set of discounts. Absent at ₹0, like the two
+    # rows either side of it.
+    if shop_disc:
+        earn.append({'key': 'shop_discounts', 'label': 'Discounts from shops',
+                     'icon': 'bi-tag', 'hint': 'Shops let you off',
+                     'amount': shop_disc, 'negative': False})
     if discount:
         earn.append({'key': 'discount', 'label': 'Less: discounts given',
                      'icon': 'bi-scissors', 'hint': 'Billed but never earned',
@@ -1210,6 +1248,7 @@ def earnings_breakdown(start, end, bills, cb_income, salary_total, cashbook_tota
         'parts': parts,
         'discount': discount,
         'cashbook_income': cb_income,
+        'shop_discounts': shop_disc,
         'earn': earn,
         'spend': spend,
         'gross': gross,
@@ -1245,7 +1284,11 @@ def build_profit_report(start, end, disclosures=True):
     """
     bills = car_bill_turnover(start, end)
     cb_income = cashbook_income(start, end)
-    turnover = bills['net'] + cb_income
+    # Money a shop let us off — income on its own date, never a re-cost. Always
+    # computed: it is part of the equation, so `disclosures=False` must not skip
+    # it or the comparison period would measure a different profit.
+    shop_disc = shop_discounts(start, end)
+    turnover = bills['net'] + cb_income + shop_disc
 
     spares = spare_shop_expense(start, end)
     # THE COST OF STOCK USED, not of stock bought. Always computed — it is part
@@ -1305,6 +1348,7 @@ def build_profit_report(start, end, disclosures=True):
         'turnover': turnover,
         'bills': bills,
         'cashbook_income': cb_income,
+        'shop_discounts': shop_disc,
         'expense_total': expense_total,
         'expense_lines': expense_lines,
         'salary': salary,
@@ -1315,7 +1359,7 @@ def build_profit_report(start, end, disclosures=True):
         # nothing but `turnover` and `profit`.
         'earnings': earnings_breakdown(
             start, end, bills, cb_income, salary['total'], cashbook['total'],
-            rent['total'],
+            rent['total'], shop_disc,
         ) if disclosures else None,
         'uncosted_draws': uncosted_draw_count(start, end) if disclosures else 0,
         'uncosted_shop': uncosted_shop_count(start, end) if disclosures else 0,
@@ -1347,6 +1391,14 @@ def monthly_series(start, end):
                   'admitted_date', F('total_bill_amount') - F('discount_amount'))
     inc = grouped(CashbookEntry.objects.filter(entry_type='INCOME', date__range=(start, end)),
                   'date', F('amount'))
+    # Money a shop let us off, on its own date — turnover, exactly as the
+    # headline counts it, or the chart stops totalling to the headline.
+    from inventory.models import SupplierDiscount           # avoids a circular import
+    sdisc = grouped(SpareShopDiscount.objects.filter(date__range=(start, end)),
+                    'date', F('amount'))
+    for k, v in grouped(SupplierDiscount.objects.filter(date__range=(start, end)),
+                        'date', F('amount')).items():
+        sdisc[k] = sdisc.get(k, ZERO) + v
     sp = grouped(_live_spares(start, end).filter(
                      source=JobCardSpareItem.SOURCE_SHOP, shop__isnull=False),
                  'job_card__admitted_date', SPARE_COST)
@@ -1385,11 +1437,11 @@ def monthly_series(start, end):
     # function.
     rnt = rent_calc.charged_by_month(start, end)
 
-    keys = sorted(set(rev) | set(inc) | set(sp) | set(inv) | set(cb) | set(sal)
-                  | set(adv) | set(oth) | set(rnt))
+    keys = sorted(set(rev) | set(inc) | set(sdisc) | set(sp) | set(inv) | set(cb)
+                  | set(sal) | set(adv) | set(oth) | set(rnt))
     rows = []
     for k in keys:
-        t = rev.get(k, ZERO) + inc.get(k, ZERO)
+        t = rev.get(k, ZERO) + inc.get(k, ZERO) + sdisc.get(k, ZERO)
         e = (sp.get(k, ZERO) + inv.get(k, ZERO) + cb.get(k, ZERO)
              + sal.get(k, ZERO) + adv.get(k, ZERO) + oth.get(k, ZERO)
              + rnt.get(k, ZERO))
@@ -1642,10 +1694,12 @@ def financial_position():
     # counts it, with nothing said. Money owed does not stop being owed because
     # somebody tidied a list. (`AUD-0082`; both archive views now refuse a shop
     # carrying a balance, so a live shop cannot get into that state either.)
-    spare_due = _sum(SpareShop.objects.all(),
-                     F('total_purchased_amount') - F('total_paid_amount'))
-    supplier_due = _sum(SupplierShop.objects.all(),
-                        F('total_billed_amount') - F('total_paid_amount'))
+    # Payments AND discounts off — each model's one declaration of what it is
+    # still owed, so a shop discount cannot lower the shop's page and be missed
+    # here.
+    from inventory.models import SUPPLIER_SHOP_OWED
+    spare_due = _sum(SpareShop.objects.all(), SPARE_SHOP_OWED)
+    supplier_due = _sum(SupplierShop.objects.all(), SUPPLIER_SHOP_OWED)
 
     def tile(amount, owed_label, credit_label, direction):
         """One balance, with its sign already turned into words."""

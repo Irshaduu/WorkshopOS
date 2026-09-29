@@ -11,7 +11,8 @@ hold is that the tab reads those two dates the way the rest of the app does:
   * a row is listed when the day it was TYPED (in IST) is after its money date;
   * red is `filed_past_limit` — the three-day limit AS AT THE DAY IT WAS TYPED,
     the same predicate that refused Office and tiered the alert at that moment;
-  * all seven money tables whose date can be typed are read;
+  * all nine money tables whose date can be typed are read (the two shop
+    discounts joined on 2026-09-29);
   * the three payment ledgers now say WHO keyed a payment (`recorded_by`), and
     a row keyed before that column existed says "unknown", never a guess.
 """
@@ -21,10 +22,10 @@ from decimal import Decimal as D
 from django.urls import reverse
 from django.utils import timezone
 
-from inventory.models import SupplierPayment, SupplierShop
+from inventory.models import SupplierDiscount, SupplierPayment, SupplierShop
 from workshop.models import (BulkPayer, BulkPaymentHistory, CashbookEntry, Mechanic,
                              OwnerWithdrawal, RentDeposit, SalaryAdvance, SpareShop,
-                             SpareShopPayment)
+                             SpareShopDiscount, SpareShopPayment)
 from workshop.tests.test_money_change_rules import _age, _People
 from workshop.views.deletion_history import BACKDATED_SOURCES, _bounds, backdated_rows
 
@@ -94,17 +95,20 @@ class WhatCountsAsBackDatedTests(_Tab):
 
 class EveryMoneyTableIsReadTests(_Tab):
 
-    def test_all_seven_tables_whose_date_can_be_typed(self):
+    def test_all_nine_tables_whose_date_can_be_typed(self):
         yesterday = self.today - timedelta(days=1)
         mech = Mechanic.objects.create(name='Amlah')
         self.cash(1)
         RentDeposit.objects.create(date=yesterday, amount=D('2000'), recorded_by=self.office)
+        spare_shop = SpareShop.objects.create(name='Spare Club')
         SpareShopPayment.objects.create(
-            shop=SpareShop.objects.create(name='Spare Club'), amount=D('900'),
-            payment_method='CASH', date=yesterday)
+            shop=spare_shop, amount=D('900'), payment_method='CASH', date=yesterday)
+        supplier = SupplierShop.objects.create(name='Fluid Manjeri')
         SupplierPayment.objects.create(
-            supplier=SupplierShop.objects.create(name='Fluid Manjeri'), amount=D('900'),
-            payment_method='CASH', date=yesterday)
+            supplier=supplier, amount=D('900'), payment_method='CASH', date=yesterday)
+        # A shop discount's date is typed like a payment's (2026-09-29).
+        SpareShopDiscount.objects.create(shop=spare_shop, amount=D('150'), date=yesterday)
+        SupplierDiscount.objects.create(supplier=supplier, amount=D('150'), date=yesterday)
         BulkPaymentHistory.objects.create(
             bulk_payer=BulkPayer.objects.create(customer_name='Hafsi'), amount=D('9000'),
             jobs_affected=0, details='[]', date=yesterday)
@@ -113,7 +117,7 @@ class EveryMoneyTableIsReadTests(_Tab):
 
         kinds = {r['source'] for r in self.rows()}
         self.assertEqual(kinds, {key for key, *_ in BACKDATED_SOURCES})
-        self.assertEqual(len(kinds), 7)
+        self.assertEqual(len(kinds), 9)
 
     def test_the_type_filter_narrows_it(self):
         self.cash(1)

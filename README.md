@@ -34,7 +34,10 @@ payroll, evidence photos and owner analytics, in one Django application.
 
 - Sequential bill numbers (`JB-26-001`), safe under concurrent writes.
 - **Spare shops** — per-shop ledgers, running balances, and lump-sum payments spread
-  across outstanding items oldest first.
+  across outstanding items oldest first. When a shop — spare or Supplies — lets the
+  workshop off a little, it is recorded as a discount: a payment with no cash, which
+  settles the balance and counts as profit on the day, without changing what any
+  part cost.
 - **Fleet accounts** — repeat and fleet customers billed across many cars, with
   surplus carried forward as advance credit and reversals guarded to newest-first.
 - **Unassigned spares** — record a purchase before there is a job card to attach it
@@ -58,9 +61,9 @@ payroll, evidence photos and owner analytics, in one Django application.
   range, the same profit again broken down by what earned it, cash movement kept
   visibly separate from profit, plus a deeper breakdown by mechanic, spare, vehicle,
   fleet account and shop.
-- Audit views for large discounts and for every permanent deletion, and a seven-day
-  window on money deletes — a recent mistake is the office's to correct, anything
-  older is an owner's to remove.
+- Audit views for large discounts and for every permanent deletion, and a 24-hour
+  window on money edits and deletes — a recent mistake is the office's to correct,
+  anything older is an owner's to change.
 
 ### Inventory
 

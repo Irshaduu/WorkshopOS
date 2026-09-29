@@ -78,7 +78,7 @@ graph TB
 
 ## 2. DATABASE MODELS — COMPLETE MAP
 
-### Workshop App Models (37)
+### Workshop App Models (39)
 
 ```mermaid
 erDiagram
@@ -99,6 +99,7 @@ erDiagram
 
     BulkPayer ||--o{ BulkPaymentHistory : "payment records"
     SpareShop ||--o{ SpareShopPayment : "payment records"
+    SpareShop ||--o{ SpareShopDiscount : "discounts"
 
     SparePart ||--|| SparePart : "standalone master"
     ConcernSolution ||--|| ConcernSolution : "standalone master"
@@ -118,7 +119,7 @@ erDiagram
 | 10 | **CarModel** | brand (FK→CarBrand), name, created_at | Master list, unique_together(brand,name) |
 | 11 | **SparePart** | name (unique), created_at | Master list for autocomplete |
 | 12 | **ConcernSolution** | concern (text), created_at | Knowledge base for autocomplete |
-| 13 | **SpareShop** | name (unique), phone, address, total_purchased_amount, total_paid_amount, **opening_balance**, is_trashed | Master list of spare parts suppliers. `opening_balance` (migration `0080`, default and `db_default` 0, CheckConstraint `>= 0`) is what the shop was owed on go-live day, typed on Legacy Data → Opening Balances exactly as typed; `update_totals()` adds it to the purchased side and the payment waterfall pays it first |
+| 13 | **SpareShop** | name (unique), phone, address, total_purchased_amount, total_paid_amount, **total_discount_amount**, **opening_balance**, is_trashed | Master list of spare parts suppliers. `opening_balance` (migration `0080`, default and `db_default` 0, CheckConstraint `>= 0`) is what the shop was owed on go-live day, typed on Legacy Data → Opening Balances exactly as typed; `update_totals()` adds it to the purchased side and the payment waterfall pays it first. `total_discount_amount` (migration `0086`, default and `db_default` 0) caches its `SpareShopDiscount` rows; the balance is purchased − paid − discounted, and `SPARE_SHOP_OWED` is that sum as a query expression |
 | 14 | **JobCard** | bill_number, dates, vehicle info, **chassis_code**, **vin**, customer, **notes**, financials, status flags | **Core entity** — full lifecycle. `notes` (migration `0069_jobcard_notes`) is an internal line for the workshop, declared field-for-field like `Estimate.notes` and **never printed** on the invoice. `chassis_code` (the platform code, e.g. F30 — up to 20 characters) and `vin` (17) arrived with migration `0078_jobcard_estimate_chassis_code_vin`: both optional free text, tidied in `clean()`, refused only by the forms, never printed and never chased at settlement. Every rule is `workshop/vehicle_ids.py`. |
 | 15 | **JobCardConcern** | job_card (FK), concern_text, status (PENDING/WORKING/FIXED) | Per-job concerns |
 | 16 | **JobCardSpareItem** | job_card (FK), part name, qty, **source** (SHOP/INVENTORY), **item** (FK→inventory.Item, PROTECT), unit_price (cost/unit), total_price (customer), **customer_rate** (customer price/unit, optional), shop (FK→SpareShop), order tracking, **original_vehicle_info** (free-text "Ordered For" note) | Per-job parts, both routes. `source` records which route and is **never inferred** — added with `item`/`customer_rate` (migration `0060_jobcardspareitem_customer_rate_jobcardspareitem_item_and_more`). Ordering fields (status/ordered_date/received_date/shop) apply to SHOP rows only. `original_vehicle_info` (since migration 0039) names the car an UNASSIGNED purchase was bought for — stamped automatically when a spare is moved out of a job card, and typed by hand on the Unassigned Hub. Free text with no FK by design: a part is usually ordered before there is a job card to attach it to |
@@ -128,11 +129,12 @@ erDiagram
 | 18 | **BulkPayer** | customer_name (unique), advance_balance, total_billed_amount, total_paid_amount, is_trashed, created_at — its cards point at it through `JobCard.bulk_payer`, a ForeignKey with `related_name='job_cards'` | Group for fleet/repeat customers. **UI label: "Fleet Account"** — cosmetic only, model/field/URL names unchanged |
 | 19 | **BulkPaymentHistory** | bulk_payer (FK), amount, payment_method, **note**, jobs_affected, details (JSON: `{jobs, advance_used, advance_stored}`), is_trashed, **date**, created_at, **recorded_by** (FK→User, null — migration `0084`) | Audit trail for bulk payments, precise reversal. `date` (migration `0072`, backfilled from `created_at`) is the day the money moved, typed on the payment form; `note` (`0073`) says what a large receipt covered. Ordering `['-date', '-created_at']`. Cash Tracking reads fleet cash from these rows, one per payment |
 | 20 | **SpareShopPayment** | shop (FK→SpareShop), amount, method, note, is_trashed, **date**, created_at, **recorded_by** (FK→User, null — migration `0084`) | Ledger payment record. `date` is the day the money MOVED — typed on the payment form, defaulting to today — and is what every date window on the shop page and its print sheet filters and orders by; `created_at` (`auto_now_add`) stays as the audit trail. Added by migration `0071`, which backfills existing rows from `created_at`. Ordering `['-date', '-created_at']`. |
+| 20a | **SpareShopDiscount** | shop (FK→SpareShop, CASCADE, `related_name='discounts'`), amount, **date**, note, created_at, recorded_by (FK→User, null) | What a spare shop let the workshop off — **a payment with no cash** (migration `0086`, 2026-09-29). Settles the debt like a payment, is **profit on its date** ("Discounts from shops" in Turnover), is read by no cash figure and never touches a part's cost. Rules in `workshop/discounts.py`: never more than is owed, never forward, Office three days back at most. `save()`/`delete()` refresh `shop.update_totals()`. Ordering `['-date', '-created_at']`. CheckConstraint `amount > 0` |
 | 21 | **CashbookEntry** | entry_type, category, amount, method, date | Daily expense & income ledger |
 | 21a | **OwnerWithdrawal** | owner (FK→User, **PROTECT**), amount, payment_method, note, **date**, created_at, recorded_by (FK→User) | Cash an owner takes out for themselves. Migration `0075`. ⚠ **Not an expense** — it appears in exactly one figure in `analysis_engine.py`, `cash_position()`'s money-out list, and nowhere in `build_profit_report`; profit is what is available to take, so taking it cannot reduce it. Exists because the Cashbook was the likeliest place for this money to land and `cashbook_expense()` feeds the profit equation. `owner` is PROTECT — one of only two in the codebase — because the row's whole job is to say *which* owner took it. `date` is the day the cash moved, typed; `created_at` is the audit trail. CheckConstraint `amount > 0`. |
 | 21b | **RentRate** | effective_from (**unique**, always the 1st), amount, note, created_at, set_by (FK→User) | What the premises cost per month, from a stated month onward. Migration `0076`. **Effective-dated, never edited in place** — a rent change is a new row, so a hike cannot rewrite what an earlier month cost. The figure is **absolute, not an increment**: a delta is a number the person must already know, so a mis-keyed `+5000` is silently ₹40,000 and a run of them makes the current rent unreadable. May be **backdated** (a hike agreed late and applied from an earlier month is ordinary, and refusing it would leave the books wrong for good) and may be **dated ahead** (a rate is not money; `rate_for()` applies it only once its month arrives). Owner-only, and every change raises `RENT_RATE_SET` at CRITICAL. `effective_from` is pinned to the 1st in `save()`. CheckConstraint `amount > 0`. |
 | 21c | **RentDeposit** | amount, **date**, note, created_at, recorded_by (FK→User) | One handover of cash to the rent collector, who comes daily and keeps his own book. Migration `0076`. ⚠ **Not an expense** — what a month COST is the rent; this is how it gets PAID, the same split a supplier payment and a stock draw already have. **No payment method**, deliberately: it is always cash handed to a man with a book, and a select that can only say one thing is a field to leave out. `date` is the day the money moved, typed and back-dateable; `created_at` is the audit trail, is what `delete_window` measures, and is what Change History's **Back-dated** tab reads against `date`. **Editable** since 2026-09-24 (amount, date, note): Office within 24 hours of keying it, an owner after; inside the 24 hours an edit or delete is neither kept nor announced, the Cashbook's rule. CheckConstraint `amount > 0`. ⚠ **Read by `cash_position()` and by nothing else in the engine** — the same footprint `OwnerWithdrawal` has, and for the same reason: handing cash over is not a cost. What the month cost is the RATE. |
-| 22 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers **fourteen** kinds: Job Card, Fleet / Spare-Shop / Supplier payments, Restock Bill, Cashbook Entry, Inventory Product, Salary Advance, Salary settlement, Unassigned Spare, Owner Withdrawal, Rent Deposit, Rent Rate and Master Data. No restore. |
+| 22 | **DeletionLog** | entity_type, entity_label, amount, snapshot (JSON), reason, deleted_by (FK→User), deleted_at | Read-only audit of every permanent deletion — the **Deletion History**. Written via `DeletionLog.record(...)` immediately before each hard-delete, inside the same atomic block. `entity_type` covers **sixteen** kinds: Job Card, Fleet / Spare-Shop / Supplier payments, Spare-Shop / Supplier discounts, Restock Bill, Cashbook Entry, Inventory Product, Salary Advance, Salary settlement, Unassigned Spare, Owner Withdrawal, Rent Deposit, Rent Rate and Master Data. No restore. |
 | 22a | **EditLog** | entity_type, object_id, entity_label, changes (JSON: `[{field, kind, before, after}]`), edited_by (FK→User), edited_at | Read-only audit of every edit that moved money — the **Edited** tab of Change History. Migration `0083`. Written by `EditLog.record(...)`, which then raises `RECORD_CHANGED` / `OLD_RECORD_CHANGED` through `notify_changed()` — its only caller, so an edit is announced if and only if it is kept. Five doors: the Cashbook edit, a rent deposit's edit, a Supplies Shop bill's edit page, a settled job card's unlocked edit, and Settle Bill on an already-paid bill (a sixth, the bill card's quick discount box, went with the bill discount on 2026-09-29). Money fields only, and only the ones that moved; stored raw (two-decimal money, ISO dates) and formatted on the page. **No FK** to the edited row, so the history outlives it. No retention limit. ⚠ The **Cashbook** and a **rent deposit** keep only an edit only an owner could make (`only_past_limits=True`) — a same-day edit there is the day's work (2026-09-24). Migration `0085` added the rent deposit to its choices. |
 | 23 | **SalaryAdvance** | staff (FK→Mechanic), amount, date, note, created_by | A cash advance handed to a staff member, recorded the day it happens. Never flagged "used" — a settlement re-sums whichever advances fall inside its month, so re-settling recomputes cleanly. |
 | 24 | **SalaryPayment** | month (unique, always the 1st), created_by, created_at/updated_at | One row per calendar month once that month's salary is settled. A row existing *is* the "settled" flag. `total_amount` sums its lines. |
@@ -149,19 +151,20 @@ Salary models (migration `0054_mechanic_current_salary_and_more`, which also add
 
 `advance_balance` (added migration `0047_bulkpayer_advance_balance`) tracks credit carried forward when a lump-sum Fleet Account payment exceeds the total currently owed; `total_balance` can legitimately go negative once this credit exists.
 
-### Inventory App Models (9)
+### Inventory App Models (10)
 
 | # | Model | Key Fields | Purpose |
 |---|-------|--------|---------|
 | 1 | **Category** | name | Groups inventory items |
 | 2 | **Item** | category (FK), name, average_stock, current_stock, usage_count, **avg_cost**, **markup_percent** | Warehouse part with stock levels. `current_stock` may be **negative** (an overdraw awaiting its supplier bill — deliberate, see CLAUDE.md). `avg_cost` is the weighted-average purchase cost per unit, (migration `inventory/0008_item_avg_cost`), maintained only by restock receipts via a full replay in `inventory/costing.py`. `markup_percent` (`inventory/0009_item_markup_percent`, `PositiveSmallIntegerField`, default and `db_default` 40, CheckConstraint ≤ 999) is the markup on cost the job card suggests for this product's customer unit price — a suggestion only, set on Add Product and Edit Product; the server prices nothing from it |
 | 3 | **ConsumptionRecord** | user (FK→User), item (FK→Item), quantity, date, timestamp | **Dormant** — superseded by Stock History, which reads `JobCardSpareItem` live. Nothing writes this model; kept only to avoid a needless migration |
-| 4 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, **opening_balance**, is_active | Supplier / Supplies Shop master record. `opening_balance` (migration `inventory/0010`) is the spare shop's column, identically: go-live debt, added to the billed side, paid off first |
+| 4 | **SupplierShop** | name (unique), phone, total_billed_amount, total_paid_amount, **total_discount_amount**, **opening_balance**, is_active | Supplier / Supplies Shop master record. `opening_balance` (migration `inventory/0010`) is the spare shop's column, identically: go-live debt, added to the billed side, paid off first. `total_discount_amount` (`inventory/0013`) is the spare shop's column too; `SUPPLIER_SHOP_OWED` is the balance as a query expression |
 | 5 | **ShopCatalogItem** | shop (FK→SupplierShop), item (FK→Item), is_active, unique_together(shop,item) | Links a supplier to the items they stock; `is_active=False` = deactivated (listed but excluded from restock bills) |
 | 6 | **SupplierRestockBill** | supplier (FK→SupplierShop), bill_date, total_amount | Individual restock purchase from a supplier. **No discount of its own** since 2026-09-29 (`0012`): `total_amount` is the shop's own line prices and is what every screen reads |
 | 7 | **SupplierRestockItem** | bill (FK→SupplierRestockBill), item (FK→Item), quantity, total_price (+ `per_unit_price` property) | Line item on a restock bill. There is no `unit_price` **column** — per-unit cost is derived as `total_price / quantity`. This is the per-batch cost record that makes a future FIFO reconstruction possible |
 | 8 | **SupplierPayment** | supplier (FK→SupplierShop), amount, payment_method, date, note, is_trashed, created_at, **recorded_by** (FK→User, null — migration `0011`) | Payment record for supplier accounts. `recorded_by` says who typed it (2026-09-24), for the Back-dated tab; older rows read "unknown" |
 | 9 | **OpeningStock** | item (OneToOne→Item, CASCADE), quantity, unit_cost, created_at, updated_at | What was on the shelf on go-live day (migration `inventory/0010`), typed on Legacy Data → Opening Stock. A receipt that belongs to **no shop**: raises the shelf through the signals and creates no balance. Always the FIRST event in the costing replay. CheckConstraints: quantity and unit_cost `> 0` — the cost is required |
+| 10 | **SupplierDiscount** | supplier (FK→SupplierShop, CASCADE, `related_name='discounts'`), amount, **date**, note, created_at, recorded_by (FK→User, null) | `SpareShopDiscount`'s twin (migration `inventory/0013`, 2026-09-29): a Supplies Shop's discount, on the balance or on one bill. **Never reaches an item's cost** — a bill carries no discount of its own. CheckConstraint `amount > 0` |
 
 ---
 
@@ -245,7 +248,7 @@ byte-identical.
 
 ---
 
-## 4. ALL URL ROUTES — COMPLETE (177 Total)
+## 4. ALL URL ROUTES — COMPLETE (180 Total)
 
 *Walked from `get_resolver().url_patterns` recursively and
 excluding Django admin (131 of its own) — the method below, not by grepping
@@ -267,7 +270,7 @@ media path, which is not served in production at all (§12, and `AUD-0088`).
 check finds nothing and quietly reports the development figure as if it were
 production's. Cost a wrong number on the way into this very entry.
 
-### Workshop App (143 routes)
+### Workshop App (146 routes)
 
 | Section | URL Pattern | View | Access |
 |---------|-------------|------|--------|
@@ -308,6 +311,8 @@ production's. Cost a wrong number on the way into this very entry.
 | | `/spare-shops/<pk>/edit/` | `spare_shop_edit` | Office |
 | | `/spare-shops/<pk>/pay/` | `spare_shop_pay` | Office |
 | | `/spare-shops/<shop_pk>/payment/<payment_pk>/reverse/` | `spare_shop_payment_reverse` (log + hard-delete) | Owner+Office |
+| | `/spare-shops/<pk>/discount/` | `spare_shop_discount` — record a discount the shop gave (a payment with no cash) | Office |
+| | `/spare-shops/<shop_pk>/discount/<discount_pk>/delete/` | `spare_shop_discount_delete` (log + hard-delete; Office within 24h) | Owner+Office |
 | | `/spare-shops/archived/` | `spare_shop_archived` | Owner+Office |
 | | `/spare-shops/<pk>/delete/` | `spare_shop_delete` (deactivate/archive) | Owner+Office |
 | | `/spare-shops/<pk>/restore/` | `spare_shop_restore` (reactivate) | Owner+Office |
@@ -417,9 +422,9 @@ production's. Cost a wrong number on the way into this very entry.
 
 *`manage_terminate_session` is secured with `@owner_required`.*
 
-### Inventory App (32 routes under `/inventory/`)
+### Inventory App (34 routes under `/inventory/`)
 
-**Access: 5 routes are `@staff_required`, the other 27 are `@office_required`.** Floor
+**Access: 5 routes are `@staff_required`, the other 29 are `@office_required`.** Floor
 reaches the entry point, the stock list, Low Stock, Stock History and the per-mechanic
 drill-down — all read-only. **Everything else is Office/Owner**: categories, Add Product,
 the catalog, restock bills, supplier payments, the AJAX partials.
@@ -460,6 +465,8 @@ are the authority: `grep -c "@office_required" inventory/views.py inventory/view
 | `/shops/<id>/bill/<bill_id>/delete/` | `delete_restock_bill` | Delete restock bill (reverses stock + logs to Deletion History) |
 | `/shops/<id>/payment/add/` | `add_shop_payment` | Record payment to supplier |
 | `/shops/<id>/payment/<payment_id>/delete/` | `delete_shop_payment` | Delete payment (recomputes balance + logs to Deletion History) |
+| `/shops/<id>/discount/add/` | `add_shop_discount` | Record a discount the shop gave — a payment with no cash; never reaches an item's cost |
+| `/shops/<id>/discount/<discount_id>/delete/` | `delete_shop_discount` | Delete a discount (recomputes balance + logs to Change History; Office within 24h) |
 | `/shops/<id>/bills/ajax/` | `ajax_supplier_bills` | AJAX: paginated bills list |
 | `/shops/<id>/payments/ajax/` | `ajax_supplier_payments` | AJAX: paginated payments list |
 | `/item/<item_id>/suppliers/` | `inventory_item_suppliers` | View all suppliers for an item |
@@ -594,7 +601,7 @@ stateDiagram-v2
 | `/rent/` | `rent/rent_home.html` | 1 file — Deposit & Rent, four blocks, phone first (rebuilt 2026-09-24): **Pay today** (the figure, what is left, the bar, and one line about earlier months only when they are not square), the shared `.rpay-*` record card (one row that scrolls sideways on a phone, like the other three), **one month's** deposit log (this month, or one opened from Month by month, with one "Back to this month") and an Edit / Delete ⋮ per row, and **Month by month** as collapsed year blocks so twenty years is twenty lines. No cap and no pager anywhere. Setting the rent is behind a ⋮ in the hero, Owner-only, because it changes about once a year. |
 | `/withdrawals/` | `withdrawal_home.html` | 1 file — Owner Withdrawals, the whole section on one page: what each owner took in the window, the shared `.rpay-*` record card, and the history narrowed by a chip row. No per-owner drill-down (with two owners the comparison *is* the question) and no edit (Owner-only end to end, so delete and re-add is one line and lands in Deletion History rather than overwriting silently). |
 | `/cashbook/` | `cashbook.html`, `cashbook_partial.html`, `_stats.html`, `_ledger.html` | The page, the AJAX response, and the two regions both of them share. `_stats` (period totals) and `_ledger` (chips + stream + pager) are the only parts a filter/search/page change replaces; the add form sits between them and is deliberately outside the swap. |
-| `/includes/` | 10 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_confirm_dialog.html`, `_invoice_sheet.html`, `_invoice_sheet_style.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by every printed document; the ONE confirmation card (`.wcf-*`), included by `base.html`; **the ONE printed bill — `_invoice_sheet.html` + its stylesheet, rendered by `invoice_view`, `car_all_invoices` and `old_bill_invoice` so they can never differ by a column width or a rounding** (it carries no `id`, since several sheets share one page, and it must `{% load custom_filters %}` itself because an include inherits nothing); and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
+| `/includes/` | 13 files: `pagination.html`, `_car_color_picker.html`, `_brand_mark.html`, `_confirm_dialog.html`, `_discount_button.html`, `_record_discount.html`, `_discount_history.html`, `_invoice_sheet.html`, `_invoice_sheet_style.html`, `_photo_box.html`, `_photo_card_row.html`, `_photo_overlays.html`, `_system_map_svg.html` (**GENERATED** by `scratchpad/build_system_map.py` from the same coordinates as the printed A4 sheet — never hand-edited, or the page and the PDF drift) | Reusable pagination; the ONE car-colour swatch picker shared by the Job Card and the Estimate (markup + CSS + JS in one place, palette from `CAR_COLOR_CHOICES`); the ONE letterhead, inlined as a data URI and used by every printed document; the ONE confirmation card (`.wcf-*`), included by `base.html`; **the ONE printed bill — `_invoice_sheet.html` + its stylesheet, rendered by `invoice_view`, `car_all_invoices` and `old_bill_invoice` so they can never differ by a column width or a rounding** (it carries no `id`, since several sheets share one page, and it must `{% load custom_filters %}` itself because an include inherits nothing); the ONE discount control (`_discount_button.html`, a captionless tag symbol left of each shop header's history buttons; `_record_discount.html`, the small dialog it opens, included once outside every other form; and `_discount_history.html`, the discount rows at the top of each payment history — `.rdisc-*` in style.css, green on a shop page and red with `loss`); and the three photo partials — the box is a `<div role="button">`, never a `<button>`, or the Financial Lock would kill *viewing* on a settled card, and the overlays live outside the `<form>` for the same reason |
 
 ### Inventory Templates (`inventory/templates/inventory/`) — 20 files
 
@@ -780,7 +787,7 @@ graph TB
 | `BulkPayer` | list: customer_name, is_trashed, created · filter: is_trashed · search: customer_name |
 | `BulkPaymentHistory` | list: bulk_payer, amount, payment_method, jobs_affected, created · filter: payment_method · search: customer_name |
 
-*Not registered in admin (managed via dedicated UI views only): `FailedAttempt`, `UserSession`, `SpareShop`, `SpareShopPayment`, `CashbookEntry`, and JobCard's child models (`JobCardConcern`/`JobCardSpareItem`/`JobCardLabourItem`, managed as JobCard inlines instead).*
+*Not registered in admin (managed via dedicated UI views only): `FailedAttempt`, `UserSession`, `SpareShop`, `SpareShopPayment`, `SpareShopDiscount`, `CashbookEntry`, and JobCard's child models (`JobCardConcern`/`JobCardSpareItem`/`JobCardLabourItem`, managed as JobCard inlines instead).*
 
 *Nor is anything added since: `AccountLockout`, `PasswordResetOTP`, `Notification`, `PushSubscription`, `JobCardPhoto`, `OrphanedPhotoBlob`, the three salary models, the three estimate models, `OwnerWithdrawal`, `RentRate`, `RentDeposit` and the three old bill models. None of it is reachable in practice — no account carries `is_staff`, so `/admin/` admits nobody (see `CLAUDE.md`).*
 
@@ -796,6 +803,7 @@ graph TB
 | `SupplierRestockBill` | list: id, supplier, bill_date, total_amount · filter: supplier, bill_date · search: supplier name |
 | `SupplierRestockItem` | list: bill, item, quantity, total_price · filter: bill supplier · search: item name |
 | `SupplierPayment` | list: supplier, amount, method, date, is_trashed · filter: method, is_trashed, supplier · search: supplier name, note |
+| `SupplierDiscount` | list: supplier, amount, date, recorded_by · filter: supplier · search: supplier name, note |
 
 ---
 
@@ -865,7 +873,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (87 files · 2,922 tests)
+## 13. TEST SUITE (88 files · 2,934 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -912,6 +920,7 @@ base classes.*
 | `test_fleet_cashbook_integrity.py` | Fleet Account + Cashbook invariants |
 | `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants. Spare and concern renames go through Data Cleanup, the one door left (AUD-0106), and a guard fails if a retired Master Lists spare/concern URL comes back |
 | `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants. Plus the 2026-08-26 pass: a payment is dated by the day the money MOVED — stored, windowed and ordered by `date` rather than the keystroke, a future date refused outright, the balance still ignoring the window — and the Cashbook and the payment form answering that question by one rule (`workshop/money_dates.py`) |
+| `test_shop_discounts.py` | A shop discount is a payment with no cash (2026-09-29). The owners' case — ₹22,150 owed, ₹22,000 paid, ₹150 let off — settles to ₹0, marks the part COVERED and lets the shop be archived; the Supplies Shop the same, on both its waterfalls, and the stock's cost does not move. **balance = billed + opening − paid − discounted** on the shop, the list and the Profit page's payable tiles, the opening balance still settled first, the printed report adding up. It is turnover and profit on the day it was GIVEN, moves no cash figure, lands in the earnings card, and the monthly chart still adds up to the headline. Refused and nothing written: more than owed, nothing owed, not money (0, 0.004, NaN, Infinity), a future date, Office four days back (an owner may), Floor, an archived shop; a long note trimmed, a blank one NULL. Delete: back on the balance and logged with its reason, Office inside 24 hours only, only from its own shop. It is on the Back-dated tab and cleared by the purge; the control is one captionless tag symbol left of the history buttons, never inside the payment card, and it and its history rows render only where they should — not while nothing is owed, not on an archived Supplies Shop |
 | `test_ui_regressions.py` | Layout and markup invariants that a functional test cannot see — the double-render rule, a list row never nesting a `<button>` inside an `<a>`, and the drawer/Manage-pill coverage |
 | `test_live_report.py` | The Live Report, Office/Owner only (Floor 403s): cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), each box's count matching the rows beneath it, and nothing on the page narrowed by a query string |
 | `test_billed_but_not_filled.py` | The critical container at the top of the Live Report: which billed cards are chased (PAID / FLEET PAID / PART PAID, never an unbilled or deleted one), what it says is missing on each, the two spare dates as ONE chip, a warehouse draw chased only for its customer price, and the DB narrowing never disagreeing with `settlement.unfilled` |
@@ -943,7 +952,7 @@ base classes.*
 | `test_future_dates.py` | The two typed dates that had never been wired to `is_future()`: `JobCard.admitted_date`, where `analysis_engine` dates a card's whole life and a mistyped year lifts one job out of the month that earned it and then hides it; and `SupplierRestockBill.bill_date`, which was two defects in one line — a raw POST string onto a `DateField`, so garbage reached Postgres as a `DataError` the view's `except ValueError` never caught. Both **refuse rather than clamp**, and every test that matters goes through the server, because the widget `max` is presentation on both |
 | `test_delete_window.py` | Office corrects a recent mistake; an owner takes anything older. The tests that matter most prove the window follows the **keystroke** and not the money date — every one of these forms back-dates deliberately, so a money-date window would refuse Office permission to delete a typo they made thirty seconds earlier. Also that the control is still offered and the refusal names the route, and that the three deliberately uncovered deletes stay uncovered. The window is **24 hours** (`OFFICE_WINDOW_HOURS`, since 2026-09-22; it was 7 days) |
 | `test_edit_history.py` | Edit History: every one of the money-edit doors keeps what it moved (before → after, who, which record) and only the fields that moved; a note, a spelling or an unchanged figure keeps nothing; a refused edit keeps nothing; a first settlement is not an edit; the history outlives the record. A SCAN fails if anything but `EditLog.record()` calls `notify_changed()`, so no door can announce an edit it did not keep. Also the Edited tab (Owner-only, paise kept, dates as dates, the type filter, both tabs pointing at each other) and that `purge_business_data` clears it |
-| `test_backdated_history.py` | The Back-dated tab: a row typed on a later day than its money date is listed and one typed on its own day is not; the red mark is the three-day limit AS AT THE DAY IT WAS TYPED; all seven money tables are read; the month is the month of the KEYSTROKE; a future or unreadable month falls back to this one; the three payment screens now save `recorded_by`, and an older row reads "unknown"; Owner-only, and the three tabs point at each other |
+| `test_backdated_history.py` | The Back-dated tab: a row typed on a later day than its money date is listed and one typed on its own day is not; the red mark is the three-day limit AS AT THE DAY IT WAS TYPED; all nine money tables are read (the two shop discounts since 2026-09-29); the month is the month of the KEYSTROKE; a future or unreadable month falls back to this one; the three payment screens now save `recorded_by`, and an older row reads "unknown"; Owner-only, and the three tabs point at each other |
 | `test_money_change_rules.py` | One rule for every money screen, decided by the RECORD and never the person: money dated back inside Office's three days reaches the bell (`DATED_BACK`), past them — which only an owner can do — the other owner's phone (`DATED_BACK_PAST_LIMIT`); an edit inside the 24-hour window reaches the bell (`RECORD_CHANGED`), past it the phone (`OLD_RECORD_CHANGED`). Pins the tiers, that an owner is never told about their own act, the salary advance's three-day limit, `WITHDRAWAL_ADDED`, the Supplies Shop bill edit (refused on the GET too), a settled job card's Unlock and Settle Bill re-settle (measured on `paid_date`, which a re-settle keeps), a large discount alerted only when it grows, and the row menus that say "ask an owner" |
 | `test_confirmation_card.py` | The app asks its own questions — no browser dialog anywhere. **Every test here is a markup or source assertion, and that is the point**: nothing in the Django suite executes a line of the CSS or JavaScript, so a card that opens behind the photo lightbox, a theme with no colour or a form that quietly lost its question all leave every functional test green. Seven classes: the twenty-one native dialogs gone with only the two deliberate fallbacks left, the card on every page, every question naming its own card (a bare `data-confirm` is the anonymous dialog coming back), **no card ever showing Floor money**, the card always visible and answerable, `OnePressIsOnePostTests` — including the programmatic `.submit()` latched on the prototype and the fallback that must NOT latch itself out — and `EveryConfirmButtonLocksItselfTests`. Also `test_every_dialog_is_centred_on_a_phone`, which measures ~480 dialogs across 16 pages |
 | `test_worklists.py` | The two work lists, both defects pure findability. Completed newest-first with `-id` as the tiebreaker (`completed_date` is a DateField, so every car handed over today shares one value and the order inside that day was whatever the database returned), never `-updated_at`; and Pending Bills carrying only cars that have been **handed over**, since a card is PENDING from the moment it is created and every live card was burying the bills somebody is actually chasing |
@@ -988,7 +997,7 @@ WorkshopOS (Titan)/
 │   ├── urls.py                 ← Root: admin + workshop + inventory
 │   ├── wsgi.py / asgi.py
 │
-├── workshop/                   ← Core App (143 URL routes)
+├── workshop/                   ← Core App (146 URL routes)
 │   ├── models.py               ← 36 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
@@ -1034,6 +1043,7 @@ WorkshopOS (Titan)/
 │   ├── master_data.py          ← The ONE rename/merge rule, shared by Master Lists and Data Cleanup (pure, no views)
 │   ├── money.py                ← Is this typed rupee amount acceptable for its column? Bounds READ from the column (pure, no views)
 │   ├── money_dates.py          ← What day did this money move, and how far back may it be filed? Shared by all six money-date forms (pure, no views)
+│   ├── discounts.py            ← May this discount be written? Never more than owed, never forward, Office three days back — one module for every ledger that takes a discount (pure, no views)
 │   ├── client_ip.py            ← What is the visitor's IP? The one rule for the sign-in lockout, security alerts and the session list — measured on Railway (pure, no views)
 │   ├── return_to.py            ← Where does this page send you when you leave it? The one `?back=` host check, shared by all three standalone print sheets (pure, no views)
 │   ├── photos.py               ← Where the bytes go and how the URL is signed — SigV4 on stdlib hmac/hashlib (pure, no views)
@@ -1082,7 +1092,7 @@ WorkshopOS (Titan)/
 │   ├── migrations/             ← 81 migrations
 │   └── tests/                  ← 82 test files (81 test_*.py + tests.py) + tests/js/ (node --test)
 │
-├── inventory/                  ← Warehouse + Supplier Shops App (32 URLs)
+├── inventory/                  ← Warehouse + Supplier Shops App (34 URLs)
 │   ├── models.py               ← 9 Models (3 core + 5 supplier + OpeningStock)
 │   ├── views.py                ← core inventory views
 │   ├── views_suppliers.py      ← supplier shops module views
@@ -1126,4 +1136,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-24)*: 2 Django Apps · **47 Models** (38 workshop + 9 inventory) · **177 URL Routes** (144 + 33, excluding Django admin; 178 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **87 Test Files / 2,922 tests** · **96 Migrations** (85 workshop + 11 inventory)
+> **Total** *(re-measured 2026-09-29)*: 2 Django Apps · **49 Models** (39 workshop + 10 inventory) · **180 URL Routes** (146 + 34, excluding Django admin; 181 under `DEBUG=True`, which adds the media path) · **124 Templates** (101 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **88 Test Files / 2,934 tests** · **99 Migrations** (86 workshop + 13 inventory)

@@ -520,6 +520,32 @@ Today / Last Month / Last Year filters and its printed history read. A date in t
 future is refused. The balance is never windowed: whichever filter is on, what the
 shop is owed is every purchase against every payment.
 
+### A Discount from a Shop (spare shops and Supplies Shops alike)
+
+A shop sometimes lets the workshop off a little — "the balance is ₹22,150, just pay
+₹22,000". That is a **₹22,000 payment and a ₹150 discount**, and the shop is settled.
+
+```
+Shop page → tag symbol (left of Payments / Restock Bills) → Record a Discount dialog
+  Discount ₹ · date · note → Apply ₹150
+```
+
+- **A discount is a payment with no cash.** It comes off what is owed exactly like a
+  payment, and the oldest items (or bills) are covered first. "Total Paid" stays the
+  cash; the discount shows under it as "+ ₹150 discount".
+- **It is profit on the day it was given** — "Discounts from shops" on the Profit
+  page's Turnover. It never moves Cash Tracking, and it never changes what a part or
+  a stock item cost: a Supplies Shop's discount on one bill is recorded here too,
+  with the bill entered at its full line prices.
+- **It can never be more than is owed**, cannot be dated ahead, and Office can date
+  it three days back at most — the payment rules.
+- **Deleting one** is the payment's rule: from the ⋮ on its row in the payment
+  history (discounts list first, under their own heading), Office within 24 hours of
+  keying it, an owner after, with an optional reason, logged to Change History.
+- It is **one small green tag symbol**, no caption, because it is rare and must not
+  weigh the page; green because the workshop gains. It appears only while money is
+  owed. A figure over what is owed is said inside the dialog and Apply greys out.
+
 ---
 
 ## 5. INVENTORY <-> JOB CARD AUTO-SYNC
@@ -1092,7 +1118,8 @@ CHANGE HISTORY (/deletion-history/) — Owner only, READ-ONLY
     it outlives the record — a row edited and later deleted keeps its edits.
   - Its BACK-DATED tab (/deletion-history/back-dated/): money typed in on a
     later day than it moved, from the Cashbook, rent deposits, all three
-    payment ledgers, salary advances and owner withdrawals — one month of
+    payment ledgers, both shop discounts, salary advances and owner
+    withdrawals — one month of
     keystrokes at a time, with who typed it and how many days back. Red when
     past the three-day limit, which only an owner can do. Nothing is stored
     for it: every row already keeps both dates.
@@ -1100,7 +1127,8 @@ CHANGE HISTORY (/deletion-history/) — Owner only, READ-ONLY
 HOW OLD A RECORD MAY BE — Office corrects, an owner takes anything older
   Office may CHANGE OR DELETE a money record only within 24 HOURS of keying it
   (since 2026-09-22; it was seven days, deletes only). That covers a fleet
-  payment, a spare-shop payment, a Supplies Shop payment, a restock bill (its
+  payment, a spare-shop payment, a Supplies Shop payment, a shop discount on
+  either kind of shop, a restock bill (its
   edit page — refused on the GET too — and its delete), a
   cashbook entry (edit and delete), a rent deposit (edit and delete) and a
   salary advance. A
@@ -1488,7 +1516,9 @@ OWNER WITHDRAWALS (Owner only)
 
 OWNER ANALYSIS — PROFIT (Owner only)
   Shows: Total Turnover − Total Expenses = Profit for one date window, stated as an equation
-  Turnover: Car Bills (bills less discounts) + Cashbook Income
+  Turnover: Car Bills (bills less discounts) + Cashbook Income + Discounts from shops
+    (what a spare shop or Supplies Shop let the workshop off, on the day it was given;
+    shown only when there is some, and never in Cash Tracking — no money moved)
   Expenses: Spare Shops · Inventory Used · Salary & Advance · Cashbook Expense · Rent
     — all five are the cost of work DONE in the period. A part is charged when it is
     fitted to a car, whichever shelf it came off.
@@ -1498,7 +1528,8 @@ OWNER ANALYSIS — PROFIT (Owner only)
     stock draw already have. A Cashbook row named like rent is now the same money twice
     and the page says so.
   Then the SAME profit a second way — "What Earned The Profit": Labour + Spare Parts
-    margin + Inventory margin + Cashbook Income = Gross Earnings, less salary, rent and
+    margin + Inventory margin + Cashbook Income (+ Discounts from shops, when there are
+    any) = Gross Earnings, less salary, rent and
     cashbook expense = the same Profit, with no reconciling line in between
   Also: CASH TRACKING — money in and money out for the window, by the day each rupee
     actually moved, sitting ABOVE the equation and drawn as a different kind of object

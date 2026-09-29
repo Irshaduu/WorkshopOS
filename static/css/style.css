@@ -704,6 +704,157 @@ select.status-fixed {
 }
 .rpay-foot i { font-size: 0.72rem; margin-top: 2px; flex-shrink: 0; }
 
+/* ── Record a Discount — a tag symbol and a small dialog ──────────────────
+   A DISCOUNT IS A PAYMENT WITH NO CASH: "balance ₹22,150, just pay ₹22,000"
+   is a ₹22,000 payment and a ₹150 discount. It is RARE, so it costs one round
+   symbol beside the history buttons and nothing else on the page (the owner's
+   call, 2026-09-30: "it should not make sections feel heavy"). It shipped for
+   a day as a folded line inside the payment card, and that was still a line
+   of furniture under the one control used every week.
+
+   The dialog reuses the payment row's own parts (`.rpay-field`, `.rpay-input`,
+   `.rpay-date`, `.rpay-btn`) — one control, not a second design.
+
+   ONE colour pair, set by a modifier, the `--rpay-btn-a/b` rule:
+     · default     — a shop let US off: profit goes UP, so GREEN
+     · `-loss`     — the workshop let a FLEET off: money never earned, RED */
+.rdisc-sym {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(74, 222, 128, 0.35);
+    background: rgba(74, 222, 128, 0.08);
+    color: #4ade80;
+    font-size: 0.85rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.15s ease;
+}
+/* On a light page (the Fleet Account) rather than the dark shop header. */
+.rdisc-sym-loss {
+    border-color: #fecaca;
+    background: #fff;
+    color: #dc2626;
+}
+@media (hover: hover) {
+    .rdisc-sym:hover { background: rgba(74, 222, 128, 0.18); }
+    .rdisc-sym-loss:hover { background: #fef2f2; }
+}
+.rdisc-sym:active { transform: scale(0.94); }
+.rdisc-sym:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+.rdisc-modal {
+    --rdisc-ink: #047857;
+    --rdisc-wash: rgba(4, 120, 87, 0.09);
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+}
+.rdisc-modal.rdisc-loss {
+    --rdisc-ink: #b91c1c;
+    --rdisc-wash: rgba(185, 28, 28, 0.08);
+}
+.rdisc-mhead {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 1rem 1.1rem 0.4rem;
+}
+.rdisc-disc {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--rdisc-wash);
+    color: var(--rdisc-ink);
+    font-size: 1.05rem;
+}
+.rdisc-mhead-txt { flex: 1 1 auto; min-width: 0; }
+.rdisc-mtitle { margin: 0; font-size: 1rem; font-weight: 700; color: var(--color-text, #0f172a); }
+.rdisc-mname {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rdisc-mhead .btn-close { align-self: flex-start; }
+.rdisc-mbody { padding: 0.6rem 1.1rem 0.2rem; }
+.rdisc-mbody > .rpay-field { margin-top: 0.75rem; }
+.rdisc-mrow { display: flex; align-items: flex-end; gap: 8px; }
+.rdisc-f-amount { flex: 1 1 auto; min-width: 0; }
+.rdisc-err {
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #b91c1c;
+}
+.rdisc-mfoot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    padding: 0.9rem 1.1rem 1.1rem;
+}
+.rdisc-mfoot .rpay-btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+
+/* A discount row in a payment history — the payment row's shape, with the
+   amount in the discount's own ink and a tag that says what it is, because
+   a figure alone would read as one more payment. */
+.rdisc-hist-head {
+    padding: 0.55rem 1rem 0.35rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #64748b;
+    background: #f8fafc;
+    border-bottom: 1px solid #eef2f7;
+}
+.rdisc-amt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--rdisc-ink, #047857);
+}
+.rdisc-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--rdisc-wash, rgba(4, 120, 87, 0.07));
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.rdisc-hist { --rdisc-ink: #047857; --rdisc-wash: rgba(4, 120, 87, 0.08); }
+.rdisc-hist.rdisc-loss { --rdisc-ink: #b91c1c; --rdisc-wash: rgba(185, 28, 28, 0.07); }
+
+/* Under a stat bar's Total Paid: what came off the debt WITHOUT cash. Only
+   rendered when there is some, and quiet, because the figure above it is
+   still the cash. */
+.stat-disc {
+    margin-top: 2px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.62);
+    white-space: nowrap;
+}
+
 /* ── Phone ───────────────────────────────────────────────────────────────
    640px is the app's own phone line — the nav bar moves to the bottom at the
    same width — so "mobile" means one thing across the whole app.

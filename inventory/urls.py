@@ -41,6 +41,8 @@ urlpatterns = [
     # Shop Payments
     path('shops/<int:shop_id>/payment/add/', views_suppliers.add_shop_payment, name='add_shop_payment'),
     path('shops/<int:shop_id>/payment/<int:payment_id>/delete/', views_suppliers.delete_shop_payment, name='delete_shop_payment'),
+    path('shops/<int:shop_id>/discount/add/', views_suppliers.add_shop_discount, name='add_shop_discount'),
+    path('shops/<int:shop_id>/discount/<int:discount_id>/delete/', views_suppliers.delete_shop_discount, name='delete_shop_discount'),
     
     # AJAX Pagination
     path('shops/<int:shop_id>/bills/ajax/', views_suppliers.ajax_supplier_bills, name='ajax_supplier_bills'),

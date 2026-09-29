@@ -14,7 +14,7 @@ KEPT (never touched):
 
 REMOVED:
   - JobCard (+ concerns, spares, labour via CASCADE)
-  - SpareShop, SpareShopPayment
+  - SpareShop, SpareShopPayment, SpareShopDiscount
   - BulkPayer (Fleet Accounts), BulkPaymentHistory
   - Mechanic (staff roster)
   - SalaryAdvance, SalaryPayment (+ SalaryPaymentLine via CASCADE)
@@ -35,7 +35,7 @@ PROFIT EQUATION: on the development data that was ₹12,60,000 of fabricated ren
 and ₹12,32,500 of fabricated cash out, left behind by a purge that reported
 success.
   - inventory: SupplierShop, SupplierRestockBill/Item, SupplierPayment,
-               OpeningStock, ShopCatalogItem, Item, Category
+               SupplierDiscount, OpeningStock, ShopCatalogItem, Item, Category
   (a shop's go-live `opening_balance` is a column on the shop, so it goes with
    the shop; `OpeningStock` is listed on its own so the report counts it)
 
@@ -50,7 +50,7 @@ from django.db import transaction
 from workshop.models import (
     JobCard, JobCardConcern, JobCardSpareItem, JobCardLabourItem,
     JobCardPhoto, LegacyDataLock,
-    SpareShop, SpareShopPayment, BulkPayer, BulkPaymentHistory,
+    SpareShop, SpareShopPayment, SpareShopDiscount, BulkPayer, BulkPaymentHistory,
     Mechanic, CashbookEntry, DeletionLog, EditLog,
     SalaryAdvance, SalaryPayment, SalaryPaymentLine,
     OwnerWithdrawal, RentRate, RentDeposit,
@@ -58,7 +58,7 @@ from workshop.models import (
 )
 from inventory.models import (
     Category, Item, OpeningStock, ShopCatalogItem, SupplierShop,
-    SupplierRestockBill, SupplierRestockItem, SupplierPayment,
+    SupplierRestockBill, SupplierRestockItem, SupplierPayment, SupplierDiscount,
 )
 
 
@@ -82,10 +82,14 @@ class Command(BaseCommand):
             ("Fleet payment history", BulkPaymentHistory),
             ("Fleet accounts", BulkPayer),
             ("Spare shop payments", SpareShopPayment),
+            # A shop discount is money on the Profit page (income on its date),
+            # so demo discounts left here would be demo profit in the real books.
+            ("Spare shop discounts", SpareShopDiscount),
             ("Spare shops", SpareShop),
             ("Supplier restock items", SupplierRestockItem),
             ("Supplier restock bills", SupplierRestockBill),
             ("Supplier payments", SupplierPayment),
+            ("Supplier discounts", SupplierDiscount),
             # The go-live shelf count. Typed on the live system AFTER this
             # purge, so anything here at purge time is test typing.
             ("Opening stock", OpeningStock),

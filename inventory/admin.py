@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     Category, Item, ConsumptionRecord,
     SupplierShop, ShopCatalogItem,
-    SupplierRestockBill, SupplierRestockItem, SupplierPayment,
+    SupplierRestockBill, SupplierRestockItem, SupplierPayment, SupplierDiscount,
 )
 
 @admin.register(Category)
@@ -53,4 +53,10 @@ class SupplierRestockItemAdmin(admin.ModelAdmin):
 class SupplierPaymentAdmin(admin.ModelAdmin):
     list_display = ('supplier', 'amount', 'payment_method', 'date', 'is_trashed')
     list_filter = ('payment_method', 'is_trashed', 'supplier')
+    search_fields = ('supplier__name', 'note')
+
+@admin.register(SupplierDiscount)
+class SupplierDiscountAdmin(admin.ModelAdmin):
+    list_display = ('supplier', 'amount', 'date', 'recorded_by')
+    list_filter = ('supplier',)
     search_fields = ('supplier__name', 'note')

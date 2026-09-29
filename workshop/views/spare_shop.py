@@ -13,7 +13,9 @@ from django.core.paginator import Paginator
 from django.urls import reverse
 
 from .. import photos as photo_storage
-from ..models import JobCardSpareItem, SpareShop, SpareShopPayment, DeletionLog
+from ..models import (JobCardSpareItem, SpareShop, SpareShopPayment, SpareShopDiscount,
+                      SPARE_SHOP_OWED, DeletionLog)
+from ..discounts import read_discount
 from ..return_to import safe_return
 from ..decorators import office_required, owner_required, staff_required, is_office_or_owner, is_owner
 from ..notifications import notify, notify_dated_back
@@ -47,10 +49,9 @@ def spare_shop_list(request):
         SpareShop.objects.filter(is_trashed=False)
         .annotate(
             item_count=Count('spare_items', distinct=True),
-            total_balance=ExpressionWrapper(
-                F('total_purchased_amount') - F('total_paid_amount'),
-                output_field=DecimalField()
-            ),
+            # Payments AND discounts off — the one declaration, so a discount
+            # cannot be counted on the shop page and missed on this list.
+            total_balance=ExpressionWrapper(SPARE_SHOP_OWED, output_field=DecimalField()),
             last_activity=Max('spare_items__job_card__admitted_date'),
         )
         .order_by(F('last_activity').desc(nulls_last=True), 'name')
@@ -168,43 +169,48 @@ def spare_shop_detail(request, pk):
             kwargs[f'{group_field}__lte'] = lte
         return _Q(**kwargs) | _Q(**{null_key: True})
 
+    # ONE WINDOW FOR BOTH MONEY LISTS — the payments and the discounts are cut
+    # by the same `date` condition, so the history panel cannot show a period's
+    # payments beside a different period's discounts.
+    money_window = _Q()
+
     if filter_type == 'today':
         items_qs   = items_qs.filter(_date_q(exact=today))
-        payment_qs = payment_qs.filter(date=today)
+        money_window = _Q(date=today)
 
     elif filter_type == 'this_week':
         start = today - timedelta(days=today.weekday())  # Monday of current week
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(date__gte=start)
+        money_window = _Q(date__gte=start)
 
     elif filter_type == 'this_month':
         start = today.replace(day=1)
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(date__gte=start)
+        money_window = _Q(date__gte=start)
 
     elif filter_type == 'this_year':
         start = today.replace(month=1, day=1)
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(date__gte=start)
+        money_window = _Q(date__gte=start)
 
     elif filter_type == 'last_week':
         start = today - timedelta(days=today.weekday() + 7)  # Previous Mon
         end   = start + timedelta(days=6)                     # Previous Sun
         items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
-        payment_qs = payment_qs.filter(date__gte=start, date__lte=end)
+        money_window = _Q(date__gte=start, date__lte=end)
 
     elif filter_type == 'last_month':
         first_of_this_month = today.replace(day=1)
         last_of_last_month  = first_of_this_month - timedelta(days=1)
         first_of_last_month = last_of_last_month.replace(day=1)
         items_qs   = items_qs.filter(_date_q(gte=first_of_last_month, lte=last_of_last_month))
-        payment_qs = payment_qs.filter(date__gte=first_of_last_month, date__lte=last_of_last_month)
+        money_window = _Q(date__gte=first_of_last_month, date__lte=last_of_last_month)
 
     elif filter_type == 'last_year':
         start = today.replace(year=today.year - 1, month=1,  day=1)
         end   = today.replace(year=today.year - 1, month=12, day=31)
         items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
-        payment_qs = payment_qs.filter(date__gte=start, date__lte=end)
+        money_window = _Q(date__gte=start, date__lte=end)
 
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
@@ -218,8 +224,13 @@ def spare_shop_detail(request, pk):
                 sd = ed = None
             if sd and ed:
                 items_qs   = items_qs.filter(_date_q(gte=sd, lte=ed))
-                payment_qs = payment_qs.filter(date__gte=sd, date__lte=ed)
+                money_window = _Q(date__gte=sd, date__lte=ed)
     # filter_type == 'all' → no date filter applied
+
+    payment_qs = payment_qs.filter(money_window)
+    discounts = list(shop.discounts.filter(money_window).select_related('recorded_by'))
+    for d in discounts:
+        d.delete_url = reverse('spare_shop_discount_delete', args=[shop.pk, d.pk])
 
 
     from django.db.models import OuterRef, Subquery, Q
@@ -239,17 +250,18 @@ def spare_shop_detail(request, pk):
 
     total_purchases = shop.total_purchased_amount
     total_paid = shop.total_paid_amount
-    total_balance = total_purchases - total_paid
+    # Purchased − paid − discounted: a discount settles the debt like a payment.
+    total_balance = shop.get_pending_balance
     item_count = items_qs.count()
 
     paginator = Paginator(items_qs, 45)
     page_obj = paginator.get_page(request.GET.get('page'))
-    
+
     # ── Absolute Ledger Waterfall Calculation ──
-    # The pool is what the payments leave AFTER the go-live opening balance:
-    # that debt is the oldest this shop has, so it is paid off first, and a part
-    # is only marked covered once the money has actually reached it.
-    paid_to_parts = shop.paid_beyond_opening
+    # The pool is what payments AND discounts leave after the go-live opening
+    # balance: that debt is the oldest this shop has, so it is settled first,
+    # and a part is only marked covered once the money has actually reached it.
+    paid_to_parts = shop.settled_beyond_opening
     page_items = list(page_obj)
     for row_no, item in enumerate(page_items, start=1):
         # The sticky row number, same handle the Job Card's Spare Parts table
@@ -286,8 +298,11 @@ def spare_shop_detail(request, pk):
         'page_obj': page_obj,
         'total_purchases': total_purchases,
         'total_paid': total_paid,
+        # Shown under Total Paid only when there is some — discounts are rare.
+        'total_discount': shop.total_discount_amount,
         'total_balance': total_balance,
         'item_count': item_count,
+        'discounts': discounts,
         'pay_page_obj': pay_page_obj,
         'pay_count': payment_qs.count(),
         'filter_type': filter_type,
@@ -418,6 +433,80 @@ def spare_shop_payment_reverse(request, shop_pk, payment_pk):
 
 
 @office_required
+@transaction.atomic
+def spare_shop_discount(request, pk):
+    """
+    POST: Record money the shop let us off — "balance ₹22,150, just pay
+    ₹22,000" is a ₹22,000 payment and a ₹150 discount.
+
+    A payment with no cash: it settles the debt exactly as a payment does and
+    is income on the Profit page on its date. The rules are
+    `workshop/discounts.py`, shared with the Supplies Shop and the Fleet
+    Account; the shop row is LOCKED so two discounts typed at once cannot both
+    pass the "no more than is owed" check.
+    """
+    if request.method != 'POST':
+        return redirect('spare_shop_detail', pk=pk)
+
+    shop = get_object_or_404(SpareShop.objects.select_for_update(), pk=pk, is_trashed=False)
+    amount, on, note, problem = read_discount(
+        request, SpareShopDiscount, shop.get_pending_balance)
+    if problem:
+        messages.error(request, problem)
+        return redirect('spare_shop_detail', pk=pk)
+
+    discount = SpareShopDiscount.objects.create(
+        shop=shop, amount=amount, date=on, note=note, recorded_by=request.user)
+    notify_dated_back(
+        f"{shop.name} · ₹{amount:,.0f} discount filed under {on:%d %b %Y}",
+        on,
+        detail="Spare-shop discount",
+        actor=request.user,
+        url=reverse('spare_shop_detail', args=[shop.pk]) + '?filter=all',
+        object_type='SpareShopDiscount',
+        object_id=discount.pk,
+    )
+    shop.refresh_from_db()
+    messages.success(
+        request,
+        f"₹{amount:,.0f} discount recorded for {shop.name}. "
+        f"Still owed: ₹{max(shop.get_pending_balance, Decimal('0')):,.0f}.")
+    return redirect('spare_shop_detail', pk=pk)
+
+
+@office_required
+@transaction.atomic
+def spare_shop_discount_delete(request, shop_pk, discount_pk):
+    """
+    POST: Permanently delete a spare-shop discount — the payment delete's rule
+    exactly: Office within 24 hours of keying it (`created_at`), an owner after,
+    and every one logged to Change History, which tells the owners.
+    """
+    if request.method != 'POST':
+        return redirect('spare_shop_detail', pk=shop_pk)
+
+    shop = get_object_or_404(SpareShop, pk=shop_pk)
+    discount = get_object_or_404(SpareShopDiscount, pk=discount_pk, shop=shop)
+
+    stop = delete_window.refusal(
+        request.user, discount.created_at, f"This ₹{discount.amount:,.0f} discount")
+    if stop:
+        messages.error(request, stop)
+        return redirect('spare_shop_detail', pk=shop_pk)
+
+    amount = discount.amount
+    DeletionLog.record(
+        DeletionLog.ENTITY_SHOP_DISCOUNT, discount,
+        user=request.user, reason=request.POST.get('reason', '').strip(), amount=amount,
+        label=f"{shop.name} · ₹{amount:,.0f} discount",
+    )
+    discount.delete()  # SpareShopDiscount.delete() recomputes shop.update_totals()
+
+    messages.success(request, f"Discount of ₹{amount:,.0f} permanently deleted (logged to Change History).")
+    return redirect('spare_shop_detail', pk=shop_pk)
+
+
+@office_required
 def spare_shop_delete(request, pk):
     """POST: Deactivate (archive) a spare shop — reversible, keeps all history.
 
@@ -431,7 +520,7 @@ def spare_shop_delete(request, pk):
     """
     if request.method == 'POST':
         shop = get_object_or_404(SpareShop, pk=pk, is_trashed=False)
-        balance = shop.total_purchased_amount - shop.total_paid_amount
+        balance = shop.get_pending_balance
         if balance > Decimal('0'):
             messages.error(
                 request,
@@ -523,43 +612,46 @@ def spare_shop_print(request, pk):
             kwargs[f'{group_field}__lte'] = lte
         return _Q(**kwargs) | _Q(**{null_key: True})
 
+    # One window for payments AND discounts, as on the shop page itself.
+    money_window = _Q()
+
     if filter_type == 'today':
         items_qs   = items_qs.filter(_date_q(exact=today))
-        payment_qs = payment_qs.filter(date=today)
+        money_window = _Q(date=today)
 
     elif filter_type == 'this_week':
         start = today - timedelta(days=today.weekday())
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(date__gte=start)
+        money_window = _Q(date__gte=start)
 
     elif filter_type == 'this_month':
         start = today.replace(day=1)
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(date__gte=start)
+        money_window = _Q(date__gte=start)
 
     elif filter_type == 'this_year':
         start = today.replace(month=1, day=1)
         items_qs   = items_qs.filter(_date_q(gte=start))
-        payment_qs = payment_qs.filter(date__gte=start)
+        money_window = _Q(date__gte=start)
 
     elif filter_type == 'last_week':
         start = today - timedelta(days=today.weekday() + 7)
         end   = start + timedelta(days=6)
         items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
-        payment_qs = payment_qs.filter(date__gte=start, date__lte=end)
+        money_window = _Q(date__gte=start, date__lte=end)
 
     elif filter_type == 'last_month':
         first_of_this_month = today.replace(day=1)
         last_of_last_month  = first_of_this_month - timedelta(days=1)
         first_of_last_month = last_of_last_month.replace(day=1)
         items_qs   = items_qs.filter(_date_q(gte=first_of_last_month, lte=last_of_last_month))
-        payment_qs = payment_qs.filter(date__gte=first_of_last_month, date__lte=last_of_last_month)
+        money_window = _Q(date__gte=first_of_last_month, date__lte=last_of_last_month)
 
     elif filter_type == 'last_year':
         start = today.replace(year=today.year - 1, month=1,  day=1)
         end   = today.replace(year=today.year - 1, month=12, day=31)
         items_qs   = items_qs.filter(_date_q(gte=start, lte=end))
-        payment_qs = payment_qs.filter(date__gte=start, date__lte=end)
+        money_window = _Q(date__gte=start, date__lte=end)
 
     elif filter_type == 'custom':
         start_date_str = request.GET.get('start_date', '')
@@ -573,22 +665,22 @@ def spare_shop_print(request, pk):
                 sd = ed = None
             if sd and ed:
                 items_qs   = items_qs.filter(_date_q(gte=sd, lte=ed))
-                payment_qs = payment_qs.filter(
-                    date__gte=sd,
-                    date__lte=ed,
-                )
+                money_window = _Q(date__gte=sd, date__lte=ed)
         if not (start_date_str and end_date_str) or not (sd and ed):
             whole_ledger = True
     # Legacy aliases for any old bookmarked print URLs
     elif filter_type == 'month':
         sd = today - timedelta(days=30)
         items_qs   = items_qs.filter(_date_q(gte=sd))
-        payment_qs = payment_qs.filter(date__gte=sd)
+        money_window = _Q(date__gte=sd)
     elif filter_type == 'year':
         sd = today - timedelta(days=365)
         items_qs   = items_qs.filter(_date_q(gte=sd))
-        payment_qs = payment_qs.filter(date__gte=sd)
+        money_window = _Q(date__gte=sd)
     # filter_type == 'all' → no date filter applied
+
+    payment_qs = payment_qs.filter(money_window)
+    discount_qs = shop.discounts.filter(money_window)
 
     # Grand totals (pure SQL)
     total_purchases = items_qs.aggregate(
@@ -602,7 +694,14 @@ def spare_shop_print(request, pk):
     total_paid = payment_qs.aggregate(
         total_paid=Coalesce(Sum('amount'), Value(Decimal('0')), output_field=DecimalField())
     )['total_paid']
-    
+
+    # ⚠ THE DISCOUNTS ARE ADDED UP FROM THE ROWS TOO. This sheet's totals come
+    # from the rows it prints, not the cached column, so a discount left out
+    # here would print a balance short by exactly that discount.
+    total_discount = discount_qs.aggregate(
+        t=Coalesce(Sum('amount'), Value(Decimal('0')), output_field=DecimalField())
+    )['t']
+
     # ⚠ THE WHOLE-LEDGER PRINT CARRIES THE GO-LIVE OPENING BALANCE, FOR EVER.
     # These totals are re-added from the rows rather than read from the cached
     # column, and some of the payments in them paid off the opening balance —
@@ -611,7 +710,7 @@ def spare_shop_print(request, pk):
     # has no place. Unlike the shop page's line, this one never disappears once
     # the debt is paid: it is arithmetic here, not a reminder.
     opening_balance = shop.opening_balance if whole_ledger else Decimal('0')
-    total_balance = total_purchases + opening_balance - total_paid
+    total_balance = total_purchases + opening_balance - total_paid - total_discount
 
     start_date_obj = None
     end_date_obj = None
@@ -631,6 +730,8 @@ def spare_shop_print(request, pk):
         'back_url': safe_return(request),
         'items': items_qs,
         'payments': payment_qs.order_by('-date', '-created_at'),
+        'discounts': discount_qs,
+        'total_discount': total_discount,
         'filter_type': filter_type,
         'sort_by': sort_by,
         'start_date_obj': start_date_obj,

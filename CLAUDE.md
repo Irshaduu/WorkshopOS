@@ -844,11 +844,65 @@ Nothing replaced it on the bill. The column, the bill forms' discount box, the
 bill card's quick discount box (`update_bill_discount`, which also carried
 `AUD-0108`), `_reject_impossible_discount` and the `SUPPLIER_BILL_COST` floor
 are all gone; every reader sums `total_amount`. A discount a shop gives
-becomes its own record on the shop's page — ⚠ **not built yet as of
-2026-09-29**, the next step of the same change — and never reaches an item's
-cost. **Accepted trade-offs, stated:** the discount lands in
+becomes its own record on the shop's page (next entry) and never reaches an
+item's cost. **Accepted trade-offs, stated:** the discount lands in
 profit on the day it is given rather than spread as the stock is used — the
 same total over time — and the shelf values unused stock at bill price.
+
+**A SHOP'S DISCOUNT IS ITS OWN RECORD — A PAYMENT WITH NO CASH** (built
+2026-09-29, the owners' call). `SpareShopDiscount` and
+`inventory.SupplierDiscount`, recorded from a **tag symbol** on each shop
+page's header that opens a small "Record a Discount" dialog. The owners' case: a spare shop
+is owed ₹22,150 and says "just pay ₹22,000" — that is a ₹22,000 payment and a
+₹150 discount, and the shop is settled. A Supplies Shop's discount on one bill
+is recorded the same way (the bill is entered at its full line prices).
+
+- **It settles the debt exactly as a payment does.** Each shop caches
+  `total_discount_amount` beside `total_paid_amount` and the balance is billed
+  + opening − paid − discounted. ⚠ **Nothing may re-derive that sum**:
+  `SPARE_SHOP_OWED` (workshop.models) and `SUPPLIER_SHOP_OWED`
+  (inventory.models) are the query expressions every list, payable tile and
+  archive guard reads, and `get_pending_balance` is the same sum for one row.
+  "Total Paid" stays CASH — the discount shows under it as "+ ₹150 discount",
+  only when there is some.
+- **The waterfall pool is `settled_beyond_opening`** (paid + discount −
+  opening), renamed from `paid_beyond_opening`, in all three waterfalls. A pool
+  of cash alone would show a bill Unpaid at a ₹0 balance.
+- **It is PROFIT on its own date** — "Discounts from shops" in Turnover and in
+  the earnings card, `analysis_engine.shop_discounts()`, and in the monthly
+  chart and All Time's `_DATE_STREAMS`. **Cash Tracking never reads it**: no
+  money moved. It never touches `inventory/costing.py`.
+- **The rules are `workshop/discounts.py`**, one module for every ledger that
+  takes a discount: a valid amount (`<= 0` checked after `parse_money`), never more than is
+  owed, never forward-dated, Office three days back at most. The shop row is
+  `select_for_update()`d, so two discounts typed at once cannot both pass the
+  "more than owed" check. Back-dating raises `notify_dated_back` like a payment.
+- **Delete is the payment's rule exactly**: Office inside 24 hours of keying
+  it, an owner after, a reason asked for, `DeletionLog` under
+  `ENTITY_SHOP_DISCOUNT` / `ENTITY_SUPPLIER_DISCOUNT`. Both are on Change
+  History's Back-dated tab and in both purges.
+- ⚠ **A SYMBOL ONLY, LEFT OF THE HISTORY BUTTONS — this REVERSES a folded
+  "Record a Discount" line inside the payment card, which shipped for a day**
+  (the owner's call, 2026-09-30: *"it's a very rare use case section, it
+  should not make sections feel heavy or clutter"*). The line was still
+  furniture under the one control used every week. Now it is one round tag
+  (`.rdisc-sym`, 32px, no caption, `aria-label` and `title` "Record a
+  discount") left of Payments on a spare shop and left of Restock Bills on a
+  Supplies Shop, and it costs the page nothing else.
+- **The dialog asks nothing twice.** No confirmation card after it: the dialog
+  is itself the deliberate step, and its button carries the figure ("Apply
+  ₹150") at the moment it is pressed. A figure over what is owed is said in
+  the dialog and Apply greys out; the view refuses it either way.
+- **One control, three pages.** `includes/_discount_button.html` (the
+  symbol), `includes/_record_discount.html` (the dialog, included once, outside
+  every other form) and `includes/_discount_history.html` (the rows at the top
+  of each payment history), `.rdisc-*` in style.css. **Green on a shop page**:
+  a shop letting us off is profit. The partials' red `loss` variant is for the
+  Fleet Account's discount, where the workshop lets a customer off — ⚠ **not
+  built yet as of 2026-09-30**, the next step. Symbol and dialog render only
+  while money is owed, and never on an archived Supplies Shop — a door that
+  refuses is worse than none.
+→ `workshop/tests/test_shop_discounts.py`
 
 What is left in `inventory/`:
 - The costing replay prices a receipt at `total_price ÷ quantity`, at full
@@ -2236,10 +2290,11 @@ deposit dated *before the ledger starts*, and an audit finding can be older.
 The refusal names the rule **and** the route, because "you cannot" without
 "here is who can" is the half nobody can act on.
 
-**IT IS NOW ON EVERY SCREEN THAT TAKES A TYPED MONEY DATE — eight call sites**
+**IT IS NOW ON EVERY SCREEN THAT TAKES A TYPED MONEY DATE — ten screens**
 (the salary advance joined on 2026-09-22; the rent deposit's edit on
-2026-09-24), which is why the rule lives in `money_dates.py` rather than in
-`views/rent.py`:
+2026-09-24; the two shop discounts on 2026-09-29, through ONE call in
+`workshop/discounts.py`), which is why the rule lives in `money_dates.py`
+rather than in `views/rent.py`:
 
 | screen | what a back-dated row moves |
 |---|---|
@@ -2251,6 +2306,7 @@ The refusal names the rule **and** the route, because "you cannot" without
 | **Supplies Shop payment** | `cash_position()`; the side whose collector comes weekly |
 | **fleet payment** | Cash Tracking, on the largest receipts the workshop takes |
 | **salary advance** | the month's wage bill; the settled-month freeze still binds everybody first |
+| **spare-shop and Supplies Shop discount** | a closed Profit period — "Discounts from shops" is turnover on its date |
 
 ⚠ **TWO CALLERS ARE DELIBERATELY NOT GUARDED, and both would be a check that
 reads like a control:**
@@ -2326,7 +2382,7 @@ by. A red "added 9 Sep" chip went on each row keyed past the three-day limit,
 and `?added=recent` listed the log by keystroke across every month, because
 the chip was visible only once the right month was open.
 
-Change History's **Back-dated** tab now answers that question for all seven
+Change History's **Back-dated** tab now answers that question for all nine
 money tables in one place, permanently, in the same red
 (`money_dates.filed_past_limit`, judged as at the day the row was keyed), and
 its **Edited** and **Deleted** tabs keep what an owner changed afterwards. One
@@ -3365,7 +3421,11 @@ explain.
 **Nothing else earns money.** `total_bill_amount` is `Σ spares.total_price +
 labour_amount` and nothing else — no GST, no service charge, no consumables
 line — so those four streams (plus the discount, which reduces them) are the
-complete income side. Verified against the model, not assumed.
+complete income side. Verified against the model, not assumed. ⚠ **Since
+2026-09-29 there is one more, and it is not a bill: "Discounts from shops"**
+— what a spare shop or Supplies Shop let the workshop off, turnover on the
+day it was given (see "A shop's discount is its own record"). Shown in
+Turnover and in the earnings card only when there is some.
 
 **THE PAGE CARRIES NO DRILL-DOWNS, and it was carrying two.** Both left, to
 **different** places, and that difference is the rule:
@@ -5605,8 +5665,10 @@ One figure per active shop, what its own book says, **stored exactly as typed**.
   Analysis and the archive guards (a shop still owing it cannot be archived).
 - ⚠ **IT IS THE OLDEST DEBT, SO PAYMENTS PAY IT FIRST — in all three waterfalls**:
   the spare shop page, the Supplies Shop page and `ajax_supplier_bills`. Each
-  allocates `paid_beyond_opening` (paid − opening) instead of `total_paid_amount`,
-  or a payment against the opening balance would mark a real bill COVERED.
+  allocates `settled_beyond_opening` (paid + discounted − opening; it was
+  `paid_beyond_opening` until shop discounts landed on 2026-09-29) instead of
+  `total_paid_amount`, or a payment against the opening balance would mark a
+  real bill COVERED.
 - **The shop page names it only while some is unpaid** — "Opening balance from
   before the system: ₹X left" (`opening_balance_left`, `.opening-left` in
   style.css), under the four stat boxes. It falls with every instalment and
@@ -6309,11 +6371,12 @@ browsers.
 
 The whole event list is **`workshop/notifications.py`**. Add an event to `EVENTS`,
 then call `notify()` from the single place it happens — **never**
-`Notification.objects.create()` in a view. There are **27 call sites across 11
-modules** (re-counted 2026-09-24, counting `notify_dated_back()` and
+`Notification.objects.create()` in a view. There are **29 call sites across 11
+modules** (re-counted 2026-09-29 by AST, counting `notify_dated_back()` and
 `notify_changed()` as calls, and not counting `notifications.py` itself; it
-fell from 29 / 12 when the five edit doors moved behind `EditLog.record()`, and
-the Cashbook's and the rent deposit's back-dating edits added one each);
+fell from 29 / 12 when the five edit doors moved behind `EditLog.record()`, the
+Cashbook's and the rent deposit's back-dating edits added one each, and the two
+shop discounts one each);
 that file is the only way to answer "what does this thing notify about?"
 without grepping.
 
@@ -6424,7 +6487,7 @@ which is where the link already goes.
 characters). It still states that the remedy expires, which is the rule.
 
 **`DeletionLog.record()` is the deletion hook.** Every permanent delete funnels
-through it, so one call covers all fourteen entity types and any added later. Don't
+through it, so one call covers all sixteen entity types and any added later. Don't
 scatter equivalent `notify()` calls into individual delete views.
 
 **Owners only, and the actor never hears about their own action.** Floor gets
@@ -6537,12 +6600,14 @@ for.
 
 **`DeletionLog.record` builds the one body assembled from parts, and it must
 say each fact ONCE.** It printed the record type twice (the label usually opens
-with it) and the amount twice in two spellings, because **9 of the 21
-`record()` call sites already put the amount in their own label**. Both guards
-read what the LABEL carries rather than a list of which call sites do what, so
-a twenty-second cannot reintroduce either. *(It read "7 of the 18" until
-2026-09-09 — true when written, and exactly the kind of figure that goes stale
-silently, which is why the guards were built to read the label instead.)*
+with it) and the amount twice in two spellings, because **many `record()` call
+sites already put the amount in their own label** — 9 of 21 when counted on
+2026-09-09, and both shop-discount deletes added on 2026-09-29 do too, of 23
+now. Both guards read what the LABEL carries rather than a list of which call
+sites do what, so the next one cannot reintroduce either. *(It read "7 of the
+18" until 2026-09-09 — true when written, and exactly the kind of figure that
+goes stale silently, which is why the guards were built to read the label
+instead.)*
 → `TheDeletedRecordBodySaysEachFactOnceTests`
 
 **The bell opens a floating panel, fetched lazily** from `/notifications/panel/`.
@@ -6865,8 +6930,9 @@ reviving stale financial data corrupts running balances. ⚠ **One exception: a
 Cashbook or rent-deposit delete inside Office's 24 hours is NOT logged**
 (2026-09-24) — see the Cashbook section for why.
 
-**EVERY LOGGED DELETE POSTS A REASON, AND THE REASON IS OPTIONAL.** 16 of the 21
-`DeletionLog.record()` call sites read `request.POST.get('reason', '')` and the
+**EVERY LOGGED DELETE POSTS A REASON, AND THE REASON IS OPTIONAL.** 18 of the 23
+`DeletionLog.record()` call sites (the two shop-discount deletes joined on
+2026-09-29) read `request.POST.get('reason', '')` and the
 column has always stored it. ⚠ **The other five take no typed reason at all,
 and that is correct rather than a gap**: `master_data.py`'s four merge paths
 write a *generated* one (`Merged into '<survivor>'`), because a merge's reason
@@ -6956,7 +7022,7 @@ can change money:
 |---|---|
 | Cashbook edit and delete | `created_at` |
 | Supplies Shop bill edit — **refused on the GET too**, so nobody fills in a whole bill to be told at the end — and its delete | `created_at` |
-| the three payment deletes, rent deposit edit and delete, salary advance | `created_at` |
+| the three payment deletes, the two shop-discount deletes, rent deposit edit and delete, salary advance | `created_at` |
 | **a settled job card's Unlock** | **`paid_date`** — settling is when the bill entered the books as money |
 | **Settle Bill on an already-paid bill** (re-settling, or putting it back to PENDING) | **`paid_date`** — the same bill through a second door |
 
@@ -7066,9 +7132,9 @@ Four rules hold the page up:
 2026-09-24). Every money table keeps `date` (when the money moved) and
 `created_at` (when somebody typed it), and a back-dated row loses NEITHER —
 so where Edit History had to copy an overwritten figure, a table here would
-only be a second answer free to drift. `backdated_rows()` reads seven tables
+only be a second answer free to drift. `backdated_rows()` reads nine tables
 (Cashbook, rent deposit, the three payment ledgers, salary advance, owner
-withdrawal) for rows whose IST keyed day (`created_at__date`, converted in the
+withdrawal, and since 2026-09-29 the two shop discounts) for rows whose IST keyed day (`created_at__date`, converted in the
 SQL) is after their money date; red is `filed_past_limit`, judged as at the
 day each was typed. One month of KEYSTROKES at a time, like the rent log — so
 no pager — and filed by when somebody reached back, not where the money landed.
@@ -10464,7 +10530,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 87 files, 2,922 tests (counted 2026-09-29). Always SQLite (see below).
+# Full test suite — 88 files, 2,934 tests (counted 2026-09-30). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10629,7 +10695,8 @@ truncated file under a real backup's name would occupy one of the 14 retention s
 once the folder filled, evict a good backup to keep itself. Requires the PostgreSQL
 client tools on PATH.
 
-**`purge_business_data` clears ALL business tables** — job cards, shops, fleet accounts,
+**`purge_business_data` clears ALL business tables** — job cards, shops (their payments
+and discounts too), fleet accounts,
 inventory (opening stock included), cashbook, staff roster, owner withdrawals, the rent ledger,
 old bills, deletion history. A shop's go-live opening balance is a column on the shop and goes with it.
 It deliberately does *not* try to distinguish "dummy" rows from real ones, because
@@ -10971,8 +11038,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **87 files, 2,922 tests**,
-re-counted 2026-09-29. (`workshop/tests/` is 81 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **88 files, 2,934 tests**,
+re-counted 2026-09-30. (`workshop/tests/` is 82 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 
