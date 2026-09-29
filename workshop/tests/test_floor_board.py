@@ -78,15 +78,23 @@ class FloorCanMoveACardOffTheBoardTests(BoardBase):
         self.job.refresh_from_db()
         self.assertTrue(self.job.completed)
 
-    def test_floor_is_shown_no_invoice_link(self):
+    def test_the_board_menu_carries_no_invoice_for_anybody(self):
+        """
+        The owner's call (2026-09-29): the card's ⋮ is Mark Completed and the
+        hold toggle, nothing else. A car on the floor has no final bill; Office
+        reaches it from the job card the card itself opens.
+        """
+        for user in (self.floor, self.office):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                page = self.client.get(reverse('home')).content.decode()
+                self.assertNotIn(reverse('invoice_view', args=[self.job.pk]), page)
+
+    def test_mark_completed_comes_before_the_hold_toggle(self):
         self.client.force_login(self.floor)
         page = self.client.get(reverse('home')).content.decode()
-        self.assertNotIn(reverse('invoice_view', args=[self.job.pk]), page)
-
-    def test_office_is_shown_the_invoice_link(self):
-        self.client.force_login(self.office)
-        page = self.client.get(reverse('home')).content.decode()
-        self.assertIn(reverse('invoice_view', args=[self.job.pk]), page)
+        self.assertLess(page.index(reverse('mark_completed', args=[self.job.pk])),
+                        page.index(reverse('toggle_hold', args=[self.job.pk])))
 
 
 class ALongCardIsCappedAndSaysSoTests(BoardBase):

@@ -228,6 +228,10 @@ class InvoiceLinkVisibilityTests(TestCase):
     admin-access flag, not a workshop role. That hid the link from Office, whose
     job is billing, while `invoice_view` itself is @office_required. The gate now
     mirrors the decorator.
+
+    It was asserted on the home board's ⋮ until 2026-09-29, when the owner cut
+    that menu to Mark Completed and the hold toggle. The route Office keeps is
+    the job card the board card opens, so that is where the gate is held now.
     """
 
     def setUp(self):
@@ -252,13 +256,13 @@ class InvoiceLinkVisibilityTests(TestCase):
     def test_office_sees_the_invoice_link(self):
         self.client.login(username='officestaff', password='pw-for-tests-10')
 
-        response = self.client.get(reverse('home'))
+        response = self.client.get(reverse('jobcard_edit', args=[self.job.pk]))
 
         self.assertContains(response, self.invoice_url)
 
     def test_floor_does_not_see_the_invoice_link(self):
         self.client.login(username='floorstaff', password='pw-for-tests-11')
 
-        response = self.client.get(reverse('home'))
+        response = self.client.get(reverse('jobcard_edit', args=[self.job.pk]))
 
         self.assertNotContains(response, self.invoice_url)

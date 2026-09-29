@@ -890,51 +890,10 @@
         color: #94a3b8;
     }
 
-    /* ── 3-dot menu button ──────────────────────── */
     {% comment %}
-    The ⋮ was a 20x24px target on a board worked with a thumb — under half the
-    ~44px this codebase requires of anything Floor taps, and it sits beside the
-    card's own click area, so a near miss opens the job card instead of the
-    menu. Sized by INPUT METHOD rather than by screen width, because it is the
-    finger that decides how big a target must be and the Floor tablet is wider
-    than plenty of laptops. `min-width` as well as `min-height`: a target is
-    only as big as its smaller side.
-
-    The glyph does not grow with the box. It is a quiet control that should stay
-    quiet — what changes is how much of the screen answers a tap.
+    The ⋮ and its menu are `.card-dots` / `.card-menu` in static/css/style.css,
+    shared with Completed. What stays here is only how this board stacks them.
     {% endcomment %}
-    .dot-menu-btn {
-        background: none;
-        border: none;
-        color: #94a3b8;
-        min-width: 34px;
-        min-height: 34px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 8px;
-        cursor: pointer;
-        line-height: 1;
-        transition: background 0.15s, color 0.15s;
-        flex-shrink: 0;
-        -webkit-tap-highlight-color: transparent;
-    }
-
-    @media (hover: none) {
-        .dot-menu-btn { min-width: 44px; min-height: 44px; }
-    }
-
-    @media (hover: hover) {
-        .dot-menu-btn:hover {
-            background: #f1f5f9;
-            color: var(--pit-steel);
-        }
-    }
-
-    .dot-menu-btn:active {
-        background: var(--pit-blue);
-        color: #fff;
-    }
 
     /* ── Empty State ────────────────────────────── */
     .pit-empty {
@@ -973,35 +932,12 @@
     }
 
     .pit-dropdown .dropdown-menu {
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-        padding: 0.35rem 0;
-        min-width: 160px;
         z-index: 100;
         animation: none !important;
         transition: none !important;
         max-width: calc(100vw - 20px);
         margin-right: 2px !important;
     }
-
-    .pit-dropdown .dropdown-item {
-        font-family: var(--font-body);
-        font-size: 0.82rem;
-        font-weight: 500;
-        padding: 7px 14px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        transition: none !important;
-    }
-
-    .pit-dropdown .dropdown-item:hover          { background: #f8fafc; }
-    .pit-dropdown .dropdown-item.text-success   { color: #16a34a !important; }
-    .pit-dropdown .dropdown-item.text-warning   { color: #d97706 !important; }
-    .pit-dropdown .dropdown-item.text-danger    { color: #dc2626 !important; }
-    .pit-dropdown .dropdown-item.text-info      { color: #0284c7 !important; }
-    .pit-dropdown .dropdown-divider             { margin: 0.2rem 0; border-color: #f1f5f9; }
 
     /* Mobile compact */
     @media (max-width: 480px) {
@@ -1202,55 +1138,45 @@ the empty state, which would be a control with nothing to control.
                     <div class="d-flex align-items-center">
                         <!-- 3-dot Menu -->
                         <div class="dropdown pit-dropdown">
-                            <button class="dot-menu-btn" type="button"
-                                    data-bs-toggle="dropdown" 
+                            <button class="card-dots" type="button"
+                                    data-bs-toggle="dropdown"
                                     data-bs-display="static"
-                                    aria-expanded="false">
+                                    aria-expanded="false" aria-label="Actions">
                                 <i class="bi bi-three-dots-vertical"></i>
                             </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
+                            {% comment %}
+                            Two rows, the work first: Mark Completed, then the
+                            hold toggle (the owner's order, 2026-09-29). Both are
+                            Floor's too. There is NO invoice row here any more —
+                            a car on the floor has no final bill, and Office
+                            reaches it from the job card this card opens, whose
+                            header carries Invoice under the same gate.
+
+                            NEITHER ROW ASKS FIRST (the owner's call, 2026-09-29).
+                            Mark Completed carried a "Handing this car over?"
+                            card; it is pressed all day and is undone by Undo
+                            Completion on the Completed list, so the question only
+                            taught people to press through it.
+                            {% endcomment %}
+                            <ul class="dropdown-menu dropdown-menu-end card-menu">
                                 {% if user.is_authenticated %}
                                 <li>
-                                    <form method="post" action="{% url 'toggle_hold' job.pk %}" class="d-inline">
+                                    <form method="post" action="{% url 'mark_completed' job.pk %}" class="d-inline">
                                         {% csrf_token %}
-                                        <button type="submit"
-                                                class="dropdown-item {% if job.on_hold %}text-success{% else %}text-warning{% endif %}">
-                                            <i class="bi {% if job.on_hold %}bi-play-circle{% else %}bi-pause-circle{% endif %}"></i>
-                                            {% if job.on_hold %}Mark Active{% else %}Put On Hold{% endif %}
-                                        </button>
-                                    </form>
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
-                                    <form method="post" action="{% url 'mark_completed' job.pk %}" class="d-inline"
-                                          data-confirm="{{ job.registration_number }} leaves the board and moves to Completed."
-                                          data-confirm-title="Handing this car over?"
-                                          data-confirm-icon="bi-check2-circle"
-                                          data-confirm-theme="success"
-                                          data-confirm-ok="Mark completed">
-                                        {% csrf_token %}
-                                        <button type="submit" class="dropdown-item text-success">
+                                        <button type="submit" class="dropdown-item card-menu-go">
                                             <i class="bi bi-check-circle"></i> Mark Completed
                                         </button>
                                     </form>
                                 </li>
-                                {% endif %}
-                                {% comment %}
-                                Billing, for the role whose job it is. This link
-                                is the reason `InvoiceLinkVisibilityTests`
-                                exists: it was once gated on `is_staff` — Django's
-                                admin flag, not a workshop role — which hid it
-                                from Office while `invoice_view` is
-                                @office_required. Removing it outright hides it
-                                from Office just as effectively, so the gate here
-                                mirrors the decorator and nothing else.
-                                {% endcomment %}
-                                {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
-                                <li><hr class="dropdown-divider"></li>
                                 <li>
-                                    <a class="dropdown-item text-info" href="{% url 'invoice_view' job.pk %}?back={{ request.get_full_path|urlencode }}">
-                                        <i class="bi bi-receipt"></i> View Invoice
-                                    </a>
+                                    <form method="post" action="{% url 'toggle_hold' job.pk %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit"
+                                                class="dropdown-item {% if job.on_hold %}card-menu-go{% else %}card-menu-warn{% endif %}">
+                                            <i class="bi {% if job.on_hold %}bi-play-circle{% else %}bi-pause-circle{% endif %}"></i>
+                                            {% if job.on_hold %}Mark Active{% else %}Put On Hold{% endif %}
+                                        </button>
+                                    </form>
                                 </li>
                                 {% endif %}
                             </ul>

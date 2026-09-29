@@ -1178,8 +1178,10 @@ What that changes for the people using it:
 MAIN DASHBOARD (home)
   Shows: All ACTIVE cars currently on the floor
   Cards: Reg, Brand/Model, Color dot, Mechanic, Completion %
-  Actions: Create Job, Mark Completed, Toggle Hold (all three are Floor's too)
-           View Invoice — Office/Owner only, mirroring invoice_view's decorator
+  Actions: Create Job; the card's ⋮ is Mark Completed, then Put On Hold (all
+           three are Floor's too). Neither asks first — a wrong Mark Completed
+           is undone from the Completed list. No invoice row — Office opens the
+           card and uses the job card's own Invoice button.
   Drawer:  Concerns / Jobs Performed / Inventory Items / Spare Parts, each
            capped at 25 rows with the remainder named ("+7 more on the job
            card"). The heading keeps the true count, so the two add back up.
@@ -1278,7 +1280,8 @@ COMPLETED LIST
          card to the top of today the moment it was edited for an unrelated
          reason, the same defect `paid_date` exists to keep off Paid Bills.
   Filters: the standard set in §13 — Today through Last Year, plus a custom range
-  Actions: Undo completion, View invoice
+  Actions: tapping a card opens its invoice; its ⋮ is Open Job Card, then Undo
+           Completion (Office / Owner)
 
 INVOICE (Office / Owner)
   Shows: The customer's bill, laid out to match the workshop's printed letterhead —

@@ -1145,3 +1145,94 @@ form[data-ws-busy="1"] .js-ws-submit {
         z-index: 50 !important;
     }
 }
+
+/* -------------------------------------------------------------------------
+   A CAR CARD'S ⋮ AND ITS MENU  —  .card-dots / .card-menu
+   -------------------------------------------------------------------------
+   Worn by the car cards on the home board and on Completed. Here because both
+   draw it — the `.rpay-*` rule. They were two hand-rolled copies that had
+   drifted apart and were both too small where it matters: menu rows 33px and
+   29px tall at 0.82 and 0.8rem, under the 44px this app asks of anything a
+   thumb taps, and Completed's ⋮ kept its grey hover after a tap because its
+   hover was not behind `(hover: hover)`.
+
+   THE TRIGGER IS QUIET AND THE ROWS ARE NOT — the read-only job card's rule,
+   and the row values are `.dv-menu`'s. The ⋮ sits beside a card that is
+   itself a link, so it must not shout; the rows are what the thumb lands on.
+   The trigger is 34px under a pointer and 44px on a touch screen, keyed on
+   input method rather than width, because the Floor tablet is wider than
+   plenty of laptops. `min-width` as well as `min-height`: a target is only as
+   big as its smaller side.
+
+   ⚠ THE TWO COLOURS ARE THE DARK ONES, MEASURED. Bootstrap's green (#16a34a)
+   and the amber #d97706 are 3.3:1 and 3.2:1 on white, and a row label is
+   ~14.7px at weight 500 — under WCAG's large-text line, so it needs 4.5:1.
+   #15803d and #b45309 are 5.0:1 on white and 4.6:1 on the hover grey.
+
+   ⚠ A PRESS IS GREY, NOT BOOTSTRAP'S BLUE. `.dropdown-item:active` fills with
+   the primary blue and turns the label white; the ink below would win the
+   label back, leaving green on blue for the moment of the tap.
+   ------------------------------------------------------------------------- */
+.card-dots {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    min-width: 34px;
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    cursor: pointer;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+@media (hover: none) {
+    .card-dots { min-width: 44px; min-height: 44px; }
+}
+@media (hover: hover) {
+    .card-dots:hover { background: #f1f5f9; color: #1e293b; }
+}
+.card-dots:active { background: #3b82f6; color: #fff; }
+
+.dropdown-menu.card-menu {
+    --bs-dropdown-min-width: 12rem;
+    --bs-dropdown-padding-x: 6px;
+    --bs-dropdown-padding-y: 6px;
+    --bs-dropdown-border-radius: 12px;
+    --bs-dropdown-border-color: #e2e8f0;
+    --bs-dropdown-link-hover-bg: #f1f5f9;
+    --bs-dropdown-link-active-bg: #f1f5f9;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+.card-menu .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 0.75rem;
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.card-menu .dropdown-item,
+.card-menu .dropdown-item:hover,
+.card-menu .dropdown-item:focus,
+.card-menu .dropdown-item:active { color: var(--card-menu-ink, #0f172a); }
+.card-menu .dropdown-item i {
+    font-size: 1rem;
+    color: var(--card-menu-glyph, #64748b);
+}
+.card-menu .card-menu-go   { --card-menu-ink: #15803d; --card-menu-glyph: #15803d; }
+.card-menu .card-menu-warn { --card-menu-ink: #b45309; --card-menu-glyph: #b45309; }
+/* A settled card's job card opens locked. The door is still open, so this
+   ANNOTATES rather than disables — `.dv-menu-lock`'s rule. */
+.card-menu .dropdown-item i.card-menu-lock {
+    margin-left: auto;
+    color: #b91c1c;
+    font-size: 0.85rem;
+}

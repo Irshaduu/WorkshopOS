@@ -7967,7 +7967,11 @@ the wrong thing to say: **that button is pressed mostly from the Floor tablet**,
 by somebody who cannot settle a bill, cannot see one, and is shown no price, no
 cost and no payment state on any other screen in this app. It was also the rent
 steer's own defect — a third line answering a question nobody had asked. The
-card now says what happens to the car and stops.
+card then said what happens to the car and stopped. ⚠ **Since 2026-09-29 there
+is no card at all** (the owner's call): Mark Completed is pressed all day and
+undone by Undo Completion, so the question only taught people to press through
+it. The Floor board now asks nothing, and the test asserts exactly that — a
+question put back there fails it first, with this rule in its docstring.
 
 ⚠ **AND THE SAME PASS FOUND A REAL DEAD END ONE SCREEN OVER.** `jobcard_edit`
 is `@staff_required` and the auto-lock runs for every role, but **UNLOCK RECORD
@@ -7980,7 +7984,8 @@ person, in words carrying no money.
 → `NoCardEverShowsFloorMoneyTests`. ⚠ **Its board test creates a job card in
 `setUp`, and that is load-bearing** — the first version passed on an empty
 database, where the dashboard renders no car cards and therefore no questions
-to read, so putting the bill sentence back left it green.
+to read, so putting the bill sentence back left it green. It now also asserts
+the car is on the board, since "no questions" is the expected answer.
 
 ⚠ **THE CARD IS ALWAYS THE TOPMOST THING ON SCREEN — `#wcfDialog` is z-index
 2100.** The photo lightbox is 2000, deliberately above the nav bar and the
@@ -8804,6 +8809,24 @@ for the chips, both on the existing `(is_deleted, completed, -updated_at)` index
   times over (the pill's word, its red ground, the dot's colour).
 - **The ⋮ is 34px, and 44px under `@media (hover: none)`** — it sits beside the
   card's own click area, so a near miss opened the job card instead of the menu.
+
+**THE CAR CARD'S ⋮ IS ONE CONTROL ON TWO SCREENS — `.card-dots` / `.card-menu`
+in `static/css/style.css`** (2026-09-29, the owner's report that the rows were
+too small). The home board and Completed each carried a hand-rolled copy, with
+rows 33px and 29px tall; both now draw `.dv-menu`'s 44px rows. The row colours
+are the dark pair (#15803d / #b45309, 5.0:1) — Bootstrap's green and #d97706 are
+3.3:1 and 3.2:1 on white, too faint for a ~14.7px label.
+
+- **Home board: Mark Completed, then Put On Hold — and nothing else, and
+  neither asks first.** The View
+  Invoice row went on the owner's call: a car on the floor has no final bill,
+  and Office reaches the invoice from the job card the card itself opens, whose
+  header carries it under the same gate. `InvoiceLinkVisibilityTests` holds
+  that gate there now.
+- **Completed: Open Job Card, then Undo Completion.** The job-card row wore a
+  red dashed warning; opening it is everyday work after handover, so it is an
+  ordinary row, with `.dv-menu`'s lock glyph when the card is settled.
+→ `workshop/tests/test_card_menus.py`
 
 **The card says the progress ONCE loudly.** "1/1" was the second heaviest thing on
 the card, with **DONE** under it, and the ring beside it saying the same thing again
@@ -10440,7 +10463,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 86 files, 2,908 tests (counted 2026-09-29). Always SQLite (see below).
+# Full test suite — 87 files, 2,917 tests (counted 2026-09-29). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10946,8 +10969,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **86 files, 2,908 tests**,
-re-counted 2026-09-29. (`workshop/tests/` is 80 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **87 files, 2,917 tests**,
+re-counted 2026-09-29. (`workshop/tests/` is 81 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

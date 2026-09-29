@@ -237,16 +237,22 @@ class NoCardEverShowsFloorMoneyTests(TestCase):
         page = self.client.get(url, follow=True).content.decode()
         return re.findall(r'data-confirm="([^"]*)"', page)
 
-    def test_no_question_on_the_floor_board_mentions_money(self):
+    def test_the_floor_board_asks_no_question_at_all(self):
         """
-        Mark Completed is the one Floor presses all day. Undo Completion is
-        gated to Office and Owner, so it must not appear here either — a card
-        for a door this role cannot open is the same defect one level down.
+        Mark Completed is the one Floor presses all day, and since 2026-09-29 it
+        asks nothing (the owner's call): a wrong tap is undone from Completed.
+        Undo Completion is gated to Office and Owner, so no card for it may
+        appear here either.
+
+        If a question is ever put back on this board, it must not mention money
+        — that is what this class is about — and this test fails first so
+        whoever adds it reads why.
         """
+        self.assertIn(self.live.registration_number, self.client.get(reverse('home')).content.decode(),
+                      'the board rendered no car — the scan is broken')
         found = self._cards_on(reverse('home'))
-        self.assertTrue(found, 'the floor board rendered no questions — the scan is broken')
-        offenders = [t for t in found if self.MONEY.search(t)]
-        self.assertEqual(offenders, [], offenders)
+        self.assertEqual(found, [], found)
+        self.assertEqual([t for t in found if self.MONEY.search(t)], [])
 
     def test_the_locked_card_sends_floor_to_a_person_not_to_a_button(self):
         """

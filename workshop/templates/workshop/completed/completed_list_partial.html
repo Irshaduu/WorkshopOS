@@ -147,32 +147,6 @@
     .del-pay-badge.pending { background: rgba(220,38,38,0.08); color: #dc2626; border: 1px solid rgba(220,38,38,0.2); }
     .del-pay-badge.fleet   { background: rgba(91,33,182,0.1);  color: #5b21b6; border: 1px solid rgba(91,33,182,0.25); }
 
-    /* 3-dot button */
-    .del-dots-btn {
-        background: none;
-        border: none;
-        color: #94a3b8;
-        padding: 3px 5px;
-        border-radius: 6px;
-        cursor: pointer;
-        line-height: 1;
-        transition: background 0.15s, color 0.15s;
-        flex-shrink: 0;
-    }
-
-    .del-dots-btn:hover {
-        background: #f1f5f9;
-        color: #1e293b;
-    }
-
-    /* Larger tap target for mobile "Pit Master" usage */
-    @media (max-width: 768px) {
-        .del-dots-btn {
-            padding: 8px 10px;
-            font-size: 1.2rem;
-        }
-    }
-
     /* Meta footer */
     .del-meta-row {
         display: flex;
@@ -201,66 +175,10 @@
         white-space: nowrap;
     }
 
-    /* Dropdown */
-    .del-dropdown-menu {
-        border-radius: 10px;
-        border: 1px solid var(--color-border);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-        padding: 4px;
-        min-width: 0 !important;
-        width: max-content;
-        max-width: 100vw;
-        overflow: hidden;
-        z-index: 1050;
-    }
-
-    .del-dropdown-menu .dropdown-item {
-        font-family: var(--font-body);
-        font-size: 0.8rem;
-        font-weight: 500;
-        padding: 5px 8px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        white-space: nowrap;
-        width: 100%;
-        box-sizing: border-box;
-        transition: background 0.1s;
-    }
-
-    .del-dropdown-menu .dropdown-item:hover        { background: #f8fafc; }
-    .del-dropdown-menu .dropdown-item.text-info    { color: #0284c7 !important; }
-    .del-dropdown-menu .dropdown-item.text-warning { color: #d97706 !important; }
-    .del-dropdown-menu .dropdown-divider           { margin: 3px 0; border-color: #f1f5f9; }
-
-    /* Warning-styled Access Job Card button */
-    .del-access-jobcard-btn {
-        border: 1px dashed rgba(239, 68, 68, 0.45) !important;
-        border-radius: 6px !important;
-        color: #ef4444 !important;
-        background: #fef2f2 !important;
-        font-size: 0.78rem !important;
-        font-weight: 600 !important;
-        padding: 4px 8px !important;
-        margin: 0 !important;
-        width: 100% !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 6px !important;
-        white-space: nowrap !important;
-        box-sizing: border-box !important;
-        transition: background-color 0.15s ease, border-color 0.15s ease;
-    }
-    .del-access-jobcard-btn:hover {
-        background: #fee2e2 !important;
-        border-color: #ef4444 !important;
-        color: #dc2626 !important;
-    }
-    .del-access-jobcard-btn i {
-        color: #ef4444 !important;
-        font-size: 0.8rem !important;
-    }
+    /* The ⋮ and its menu are `.card-dots` / `.card-menu` in style.css, shared
+       with the home board. This only lifts the menu above the phone's tab bar
+       (1030) when it opens near the foot of the screen. */
+    .del-dropdown-menu { z-index: 1050; }
 
     /* ── Empty State ─────────────────────────────── */
     .del-empty {
@@ -343,11 +261,27 @@ see the note in base.html for why the responsive `col-*` classes went.
 
                     <!-- 3-dot dropdown -->
                     <div class="dropdown">
-                        <button class="del-dots-btn" type="button"
-                                data-bs-toggle="dropdown" aria-expanded="false">
+                        <button class="card-dots" type="button"
+                                data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions">
                             <i class="bi bi-three-dots-vertical"></i>
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end del-dropdown-menu">
+                        {% comment %}
+                        The job card first, then Undo (the owner's order,
+                        2026-09-29). Opening the job card is an ordinary,
+                        everyday act here — filling in what is left after
+                        handover — so it is drawn as one, not in the red dashed
+                        warning it used to wear. A settled card's form opens
+                        locked, and the lock glyph says so before the tap.
+                        {% endcomment %}
+                        <ul class="dropdown-menu dropdown-menu-end card-menu del-dropdown-menu">
+                            <li>
+                                <a class="dropdown-item" href="{% url 'jobcard_edit' jobcard.pk %}?back={{ request.get_full_path|urlencode }}">
+                                    <i class="bi bi-pencil-square"></i> Open Job Card
+                                    {% if jobcard.payment_status == 'PAID' or jobcard.payment_status == 'BULK_PAID' %}
+                                    <i class="bi bi-lock-fill card-menu-lock" title="Settled — unlock on the form to edit"></i>
+                                    {% endif %}
+                                </a>
+                            </li>
                             {% if request.user|has_group:"Office" or request.user|has_group:"Owner" or request.user.is_superuser %}
                             <li>
                                 <form method="post" action="{% url 'undo_completed' jobcard.pk %}" class="d-inline"
@@ -357,18 +291,12 @@ see the note in base.html for why the responsive `col-*` classes went.
                                       data-confirm-theme="warning"
                                       data-confirm-ok="Move it back">
                                     {% csrf_token %}
-                                    <button type="submit" class="dropdown-item text-warning">
+                                    <button type="submit" class="dropdown-item card-menu-warn">
                                         <i class="bi bi-arrow-counterclockwise"></i> Undo Completion
                                     </button>
                                 </form>
                             </li>
-                            <li><hr class="dropdown-divider"></li>
                             {% endif %}
-                            <li>
-                                <a class="dropdown-item del-access-jobcard-btn" href="{% url 'jobcard_edit' jobcard.pk %}?back={{ request.get_full_path|urlencode }}">
-                                    <i class="bi bi-exclamation-triangle"></i> Access Job Card
-                                </a>
-                            </li>
                         </ul>
                     </div>
                 </div>

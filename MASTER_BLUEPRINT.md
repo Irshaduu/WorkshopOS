@@ -866,7 +866,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (86 files · 2,908 tests)
+## 13. TEST SUITE (87 files · 2,917 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -874,7 +874,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (81 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (82 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -924,6 +924,7 @@ base classes.*
 | `test_jobcard_detail_view.py` | The read-only job card as the owner laid it out: data with NO labels anywhere, a missing value leaving no trace, a part carrying only its two dates and two figures, the four sections copied value-for-value from the dashboard drawer, no figure printed twice on the money line, nothing on the page posting, and the whole page Office/Owner only with its one Floor-visible link gated to match |
 | `test_car_profiles.py` | Car Profiles: totals aggregated in the database rather than summed from the page; the hero's money over COMPLETED visits only — Total billed (the invoices' own totals), Discount, Paid and Still owed, held to `billed − discount == paid + owed` — with a car on the floor as its own tile added to nothing; a discounted visit's row naming its own discount, and every row handing the job card its way back; the profile and the service history sheet rendered for one car and held to one figure per word; the search box held identical to Completed's; and the Owner-only gross-margin figure, cut from the same completed visits |
 | `test_floor_board.py` | What Floor may press on the board: hold and mark-completed are Floor's, undoing a completion is not (it can put a second active card on the floor for one registration) |
+| `test_card_menus.py` | The car card's ⋮ as ONE control on the home board and Completed: `.card-dots` / `.card-menu` in style.css with 44px rows and the measured dark colours; the board's menu is Mark Completed then the hold toggle with no invoice row, Completed's is Open Job Card (not a warning, locked glyph when settled) then Undo |
 | `test_jobcard_form_ux.py` | The form's own marks: an empty box hairlined unless it carries `jc-optional`, the amber unsaved-changes state, a date pair marked as one gap, an inventory quantity still marked when a spare one is not, and the blank-row DELETE flags recomputed rather than latched |
 | `test_paid_bills_rbac.py` | Paid Bills as Office-visible with a 7-day window enforced **in the view**, not by hiding the filter — `?filter=all` is one URL edit away — with no money total on the page for either role, while the high-discount audit stays Owner-only. The method pill prints the method's label ("UPI", "Bank Transfer"), never the stored code through `|title` ("Upi") |
 | `test_settlement_preflight.py` | `workshop/settlement.py` read by both surfaces: one gap one box, the phrases derived from the chip labels, a warehouse draw never chased for a shop's fields, no labour nag on a parts-only card, and no way to settle while leaving the car on the board |
@@ -1080,7 +1081,7 @@ WorkshopOS (Titan)/
 │   │                             notifications.js and
 │   │                             style.css live in the project-level static/
 │   ├── migrations/             ← 81 migrations
-│   └── tests/                  ← 81 test files (80 test_*.py + tests.py) + tests/js/ (node --test)
+│   └── tests/                  ← 82 test files (81 test_*.py + tests.py) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (33 URLs)
 │   ├── models.py               ← 9 Models (3 core + 5 supplier + OpeningStock)
@@ -1126,4 +1127,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-24)*: 2 Django Apps · **47 Models** (38 workshop + 9 inventory) · **177 URL Routes** (144 + 33, excluding Django admin; 178 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **86 Test Files / 2,908 tests** · **96 Migrations** (85 workshop + 11 inventory)
+> **Total** *(re-measured 2026-09-24)*: 2 Django Apps · **47 Models** (38 workshop + 9 inventory) · **177 URL Routes** (144 + 33, excluding Django admin; 178 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **87 Test Files / 2,917 tests** · **96 Migrations** (85 workshop + 11 inventory)
