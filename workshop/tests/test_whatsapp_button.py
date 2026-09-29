@@ -85,6 +85,48 @@ class OnlyAnOwnerSeesTheButtonTests(_InvoicePage):
                 self.assertNotIn('btn-whatsapp"', html)
 
 
+class TheCarProfileCarriesTheSameDoorTests(_InvoicePage):
+    """
+    The car profile puts the same icon beside the customer's number, on the same
+    rules: an Owner only, a real mobile only, the chat opened empty.
+    """
+
+    def _profile(self, username, card):
+        client = Client()
+        client.login(username=username, password='pw')
+        response = client.get(reverse('car_profile_detail', args=[card.registration_number]))
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    def test_an_owner_gets_the_chat_beside_the_number(self):
+        html = self._profile('owner', self._card('+91 92072 17978'))
+        anchor = re.search(r'<a [^>]*wa\.me[^>]*>', html).group(0)
+        self.assertIn(f'href="{CHAT}"', anchor)
+        self.assertIn('target="_blank"', anchor)
+        self.assertIn('rel="noopener"', anchor)
+        self.assertIn('aria-label="', anchor)
+        # On the number's LEFT (the owner's call): the glyph, then the number.
+        self.assertRegex(
+            html,
+            re.compile(r'<a class="cd-owner-wa" href="' + re.escape(CHAT) +
+                       r'".*?</a>\s*<a class="cd-owner-tel" href="tel:\+91 92072 17978"',
+                       re.S))
+
+    def test_office_sees_the_number_and_no_chat(self):
+        html = self._profile('office', self._card('9207217978'))
+        self.assertIn('tel:9207217978', html)
+        self.assertNotIn('wa.me', html)
+        self.assertNotIn('cd-owner-wa"', html)
+
+    def test_no_number_or_a_number_that_is_not_a_mobile_draws_nothing(self):
+        for contact in (None, '', '0483 271 2345'):
+            with self.subTest(contact=contact):
+                JobCard.objects.all().delete()
+                html = self._profile('owner', self._card(contact))
+                self.assertNotIn('wa.me', html)
+                self.assertNotIn('cd-owner-wa"', html)
+
+
 class TheWhatsAppLinkIsNotAFetchTests(_InvoicePage):
     """
     The bill loads nothing from anywhere, and this link does not change that: it

@@ -4278,6 +4278,15 @@ widths — only "Fleet · Safari" was measured.
 
 It is not the messaging integration the handover's §VII rules out: it calls
 nothing, sends nothing, and a person presses Send.
+
+**The Car Profile carries the same door, LEFT of the customer's number**
+(2026-09-29, the owner's call — right of it was tried and moved). Same
+`whatsapp_chat_url`, same Owner gate, decided in the VIEW (`car_info.whatsapp`
+is `''` for anyone else), the gross-profit pattern on that page. `.cd-owner` is
+a two-column grid — glyphs | words — so the glyph sits under the person icon
+and the number still starts under the name. The 30px target (40px on a phone)
+overhangs its 15px column by equal negative margins; measured at 375 and
+1280px, glyph and person centred to the tenth of a pixel, no sideways scroll.
 → `workshop/tests/test_whatsapp_button.py`
 
 ## Service history & All Invoices — the third and fourth documents
@@ -5499,7 +5508,7 @@ once. The button reads "Reading…" while the file goes up.
 | | |
 |---|---|
 | **Car Profiles list** | a car known only from old bills is listed and searchable (its old bills' name, make and model); counts read "6 visits · 2 old bills". Every existing car keeps exactly the order it had — measured on the development data, 63 of 63 |
-| **Car Profile** | a **yellow** "Old bills" section under the visits, numbered **#1 = oldest on its own**, so no visit number moves; one line under the money tiles, "Old bills: N · ₹X billed before the system". The money tiles and gross profit are untouched. A car known only from old bills gets **no money tiles at all** |
+| **Car Profile** | a **yellow** "Old bills" section under the visits, numbered **#1 = oldest on its own**, so no visit number moves; one line under the money tiles, "Old bills: N · ₹X billed". The money tiles and gross profit are untouched. A car known only from old bills gets **no money tiles at all** |
 | **All Invoices** | old bills follow the job cards, newest first, on the **same `_invoice_sheet.html`** via `invoice.build_old_bill` — same keys as `build_invoice`, same `_part_line`. **No PAID stamp**: the paper had none. The sheet's DATE reads `doc.date` |
 | **One old bill** | `/old-bills/<pk>/` — `all_invoices_print.html` with one sheet, an "Old bill" chip and Edit. A profile row opens this |
 | **Service History** | bands read **OLD BILL n** beside VISIT n. History facts use every record — FIRST VISIT, OVER, SERVICED EVERY, DISTANCE, part life. ⚠ **TOTAL BILLED / DISCOUNT / NET TOTAL stay the system's visits only**, so they still equal the Car Profile's tiles; the record block adds "OLD BILLS: N · ₹X" and the notes say why they are not in the total. A car known only from old bills prints no closing block — "TOTAL BILLED ₹0.00" would read as a car that cost nothing |

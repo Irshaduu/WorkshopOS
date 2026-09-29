@@ -71,16 +71,24 @@
             The owner. Their number is a `tel:` link — this page is opened on a
             phone to ring somebody about their car, and re-typing ten digits off
             a screen is the whole of the friction that stops it happening.
+
+            The WhatsApp glyph on the number's LEFT is the invoice's own door into
+            the customer's chat: an Owner only, only when the number is a real
+            mobile (the view hands back '' otherwise), and the chat opens empty.
+            It sits in the glyph column, under the person, so the number still
+            starts under the name — a two-column grid: glyphs | words.
             {% endcomment %}
             {% if car_info.customer or car_info.contact %}
             <div class="cd-owner">
                 <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 1.5c-2.7 0-5 1.4-5 3.1V14h10v-1.4c0-1.7-2.3-3.1-5-3.1z"/></svg>
-                <div>
-                    <span class="cd-owner-name">{{ car_info.customer|default:"Owner not recorded" }}</span>
-                    {% if car_info.contact %}
-                    <a class="cd-owner-tel" href="tel:{{ car_info.contact }}">{{ car_info.contact }}</a>
-                    {% endif %}
-                </div>
+                <span class="cd-owner-name">{{ car_info.customer|default:"Owner not recorded" }}</span>
+                {% if car_info.contact %}
+                {% if car_info.whatsapp %}
+                <a class="cd-owner-wa" href="{{ car_info.whatsapp }}" target="_blank" rel="noopener"
+                   aria-label="Open the customer's WhatsApp chat" title="WhatsApp the customer"><i class="bi bi-whatsapp" aria-hidden="true"></i></a>
+                {% endif %}
+                <a class="cd-owner-tel" href="tel:{{ car_info.contact }}">{{ car_info.contact }}</a>
+                {% endif %}
             </div>
             {% endif %}
         </div>
@@ -195,7 +203,7 @@
         {% if car_info.old_bills %}
         <p class="cd-oldline">
             <i class="bi bi-receipt" aria-hidden="true"></i>
-            Old bills: {{ car_info.old_bills }} · ₹{{ car_info.old_bills_total|inr }} billed before the system
+            Old bills: {{ car_info.old_bills }} · ₹{{ car_info.old_bills_total|inr }} billed
         </p>
         {% endif %}
 
@@ -660,18 +668,25 @@
         background: #22c55e;
     }
 
+    /* Two columns — glyphs | words — so the person sits beside the name and the
+       WhatsApp glyph beside the number, and the name and number start on one
+       edge whether or not the glyph is drawn. */
     .cd-owner {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.45rem;
+        display: grid;
+        grid-template-columns: 15px minmax(0, auto);
+        column-gap: 0.45rem;
+        align-items: center;
+        justify-items: start;
         min-width: 0;
     }
 
-    .cd-owner svg { width: 15px; height: 15px; margin-top: 2px; color: var(--color-text-muted); flex: none; }
-    .cd-owner-name { display: block; font-size: 0.88rem; font-weight: 600; color: var(--color-text); }
+    .cd-owner svg { grid-column: 1; width: 15px; height: 15px; color: var(--color-text-muted); }
+    .cd-owner-name { grid-column: 2; display: block; font-size: 0.88rem; font-weight: 600; color: var(--color-text); }
 
     /* 44px of tappable height on a link people ring from. */
     .cd-owner-tel {
+        grid-column: 2;
+        grid-row: 2;
         display: inline-flex;
         align-items: center;
         min-height: 30px;
@@ -681,6 +696,35 @@
         text-decoration: none;
         font-variant-numeric: tabular-nums;
     }
+
+    /* The WhatsApp glyph, left of the number and under the person. Small and
+       bare — the number is what is being read, this is a door beside it. The
+       target is as tall as the number's own link and wider than its 15px
+       column; the negative margins let it overhang both sides evenly, so the
+       glyph centres under the person and the column stays 15px. The teal is
+       the invoice's: WhatsApp's bright #25D366 is 1.98:1 on white, under the
+       3:1 a control's glyph needs; #128C7E is 4.14:1. */
+    .cd-owner-wa {
+        grid-column: 1;
+        grid-row: 2;
+        justify-self: center;
+        margin: 0 -7.5px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        font-size: 1rem;
+        color: #128c7e;
+        text-decoration: none;
+    }
+
+    @media (hover: hover) {
+        .cd-owner-wa:hover { background: #f0fdf4; color: #128c7e; }
+    }
+
+    .cd-owner-wa:active { background: #dcfce7; }
 
     /* ---------- the numbers ---------- */
     .cd-stats {
@@ -1274,6 +1318,7 @@
 
         /* A thumb, not a mouse — this is rung from a phone. */
         .cd-owner-tel { min-height: 40px; }
+        .cd-owner-wa { width: 40px; height: 40px; margin: 0 -12.5px; }
 
         /* The word "gross" STAYS on a phone (2026-09-13). It used to come off
            because the wider money column pushed the date line's badges onto a

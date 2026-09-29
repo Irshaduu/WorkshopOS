@@ -17,7 +17,7 @@ from ..models import (
 from ..decorators import office_required, is_owner
 from ..return_to import safe_return
 from ..mileage import parse_km
-from ..invoice import build_invoice, build_old_bill, document_title
+from ..invoice import build_invoice, build_old_bill, document_title, whatsapp_chat_url
 from ..service_history import build_service_history, current_km_problem
 from ..vehicle_ids import latest_recorded
 # How long a car was here, as one ready phrase. Imported rather than restated:
@@ -470,13 +470,18 @@ def car_profile_detail(request, registration):
     # A car known only from old bills is described by the newest of them. It
     # carries no colour, no phone number and is never on the floor.
     newest = latest or old_bills[0]
+    contact = latest.customer_contact if latest else ''
 
     car_info = {
         'registration': registration,
         'brand': newest.brand_name,
         'model': newest.model_name,
         'customer': newest.customer_name,
-        'contact': latest.customer_contact if latest else '',
+        'contact': contact,
+        # The invoice's own WhatsApp door, beside the number: an Owner only, and
+        # '' for anything `whatsapp_chat_url` cannot read as a mobile — so the
+        # template draws nothing rather than a chat with a guessed number.
+        'whatsapp': whatsapp_chat_url(contact) if is_owner(request.user) else '',
         # The colour is the rail down the left edge of the hero plus a wash
         # across it, and is deliberately not ALSO spelled out as a chip — "Red"
         # printed beside a red bar is the same fact twice. `has_color` /
