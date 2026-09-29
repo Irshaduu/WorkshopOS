@@ -224,7 +224,6 @@ class ASuppliesShopBillCannotBeDatedInTheFutureTests(TestCase):
 
     def _payload(self, bill_date):
         data = {
-            'discount_amount': '0',
             'qty_{}'.format(self.line.pk): '10',
             'price_{}'.format(self.line.pk): '5000',
         }

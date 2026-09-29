@@ -53,7 +53,7 @@ from .models import (
     JobCard, JobCardSpareItem, BulkPayer, SpareShop, SpareShopPayment, live_cards,
 )
 from . import analysis_engine as engine
-from .analysis_engine import MONEY, ZERO, SPARE_COST, SUPPLIER_BILL_COST, live_jobcards, _sum
+from .analysis_engine import MONEY, ZERO, SPARE_COST, live_jobcards, _sum
 
 
 # =============================================================================
@@ -798,7 +798,7 @@ def _insight_shops(start, end):
     supplier_rows = list(
         SupplierRestockBill.objects.filter(bill_date__range=(start, end))
         .values('supplier', 'supplier__name')
-        .annotate(billed=Coalesce(Sum(SUPPLIER_BILL_COST, output_field=MONEY),
+        .annotate(billed=Coalesce(Sum('total_amount', output_field=MONEY),
                                   Value(ZERO, output_field=MONEY), output_field=MONEY),
                   bills=Count('id'))
         .order_by('-billed')

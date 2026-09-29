@@ -16,10 +16,7 @@
       <!-- Top Right -->
       <div class="d-flex align-items-center gap-2 gap-sm-3 flex-shrink-0 ms-2">
         <div class="text-end">
-          <div class="fw-bold text-danger" style="font-size:0.95rem;">₹{{ bill.get_effective_amount|floatformat:"-2"|intcomma }}</div>
-          {% if bill.discount_amount > 0 %}
-            <div style="font-size:0.72rem;" class="text-success"><del class="text-muted me-1">₹{{ bill.total_amount|floatformat:"0" }}</del> -₹{{ bill.discount_amount|floatformat:"0" }} disc.</div>
-          {% endif %}
+          <div class="fw-bold text-danger" style="font-size:0.95rem;">₹{{ bill.total_amount|floatformat:"-2"|intcomma }}</div>
         </div>
         
         <!-- 3 Dot Actions Menu (Stop propagation so it doesn't toggle the accordion) -->
@@ -96,32 +93,6 @@
           {% endfor %}
         </tbody>
       </table>
-    </div>
-    {% endif %}
-
-    {% if not bill.created_at|past_office_window:request.user %}
-    <!-- Collapsible Action Forms -->
-    <div class="d-flex gap-2 mt-3 pt-3 border-top" style="border-color:var(--color-border-light)!important;">
-      <button class="btn btn-sm btn-outline-primary rounded-pill fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDiscount_{{ bill.id }}" aria-expanded="false" style="font-size: 0.75rem;">
-        <i class="bi bi-tag me-1"></i> Add Discount
-      </button>
-    </div>
-
-    <!-- Discount Form (Collapsed by default) -->
-    <div class="collapse mt-2" id="collapseDiscount_{{ bill.id }}">
-      <div class="card card-body bg-light border-0 p-3 rounded-3">
-        <div class="small fw-bold mb-2 text-primary">Update Bill Discount</div>
-        <form method="post" action="{% url 'update_bill_discount' shop.id bill.id %}">
-          {% csrf_token %}
-          <div class="d-flex gap-2 align-items-center">
-            <input type="number" name="discount_amount" class="form-control form-control-sm fw-bold"
-                   placeholder="Discount ₹" min="0" step="0.01"
-                   value="{{ bill.discount_amount|floatformat:'-2' }}"
-                   style="max-width:140px;">
-            <button type="submit" class="btn btn-sm btn-primary fw-bold rounded-pill px-4">Save</button>
-          </div>
-        </form>
-      </div>
     </div>
     {% endif %}
 

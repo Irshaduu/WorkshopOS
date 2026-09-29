@@ -365,8 +365,7 @@ class RestockCatalogGuardTests(TestCase):
         session['restock_items'] = [str(item.id)]
         session.save()
         return self.client.post(reverse('shop_restock_bill', args=[self.shop.id]),
-                                {f'qty_{item.id}': qty, f'price_{item.id}': price,
-                                 'discount_amount': '0'})
+                                {f'qty_{item.id}': qty, f'price_{item.id}': price})
 
     def test_deactivated_product_cannot_be_billed(self):
         from .models import SupplierRestockItem

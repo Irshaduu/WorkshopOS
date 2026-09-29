@@ -50,7 +50,7 @@
         box-shadow: 0 0 0 3px var(--color-primary-light);
     }
     /* Placeholders must never read as a filled-in value */
-    .field input::placeholder, .discount-input::placeholder {
+    .field input::placeholder {
         color: #a8b1bd; font-weight: 400; font-style: italic; opacity: 1;
     }
 
@@ -59,36 +59,12 @@
     .per-unit .val { font-weight: 800; font-size: 1rem; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
     .per-unit .val.on { color: var(--color-primary); }
 
-    /* ---- Discount (rare — kept out of the way until asked for) ---- */
-    .discount-toggle {
-        display: inline-flex; align-items: center; gap: 6px;
-        background: none; border: none; padding: 6px 0;
-        font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted);
-    }
-    .discount-toggle:hover { color: var(--color-primary); }
-    .discount-box {
-        display: flex; align-items: center; justify-content: space-between; gap: 12px;
-        margin-top: 8px; padding: 12px 14px;
-        background: var(--color-bg); border: 1px dashed var(--color-border); border-radius: 12px;
-    }
-    .discount-box label { font-size: 0.85rem; font-weight: 600; margin: 0; }
-    .discount-box .hint { display: block; font-size: 0.72rem; color: var(--color-text-muted); font-weight: 400; }
-    .discount-input {
-        width: 130px; min-height: 44px; text-align: right;
-        border: 1px solid var(--color-border); border-radius: 10px; padding: 9px 12px;
-        font-weight: 700; background: var(--color-card); color: var(--color-text); outline: none;
-    }
-    .discount-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); }
-
-    /* ---- Totals ---- */
-    .totals { padding: 16px 20px; border-top: 1px solid var(--color-border); }
-    .t-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.92rem; margin-bottom: 8px; color: var(--color-text-muted); }
-    .t-row strong { color: var(--color-text); font-variant-numeric: tabular-nums; }
-    .t-grand {
-        display: flex; justify-content: space-between; align-items: baseline;
-        border-top: 2px solid var(--color-border); padding-top: 12px; margin-top: 4px;
-    }
+    /* ---- Total ---- */
+    .totals { padding: 16px 20px; border-top: 2px solid var(--color-border); }
+    .t-grand { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
     .t-grand span { font-size: 0.95rem; font-weight: 700; }
+    .t-grand .t-lines { font-size: 0.78rem; font-weight: 400; color: var(--color-text-muted); }
+    .t-grand .t-lines span { font-size: inherit; font-weight: inherit; }
     .t-grand b { font-size: 1.5rem; font-weight: 800; color: var(--color-text); font-variant-numeric: tabular-nums; }
 
     .save-bar { display: flex; justify-content: flex-end; gap: 10px; margin: 18px 0 8px; }
@@ -109,8 +85,6 @@
         .per-unit .lbl::after { content: ":"; }
     }
     @media (max-width: 420px) {
-        .discount-box { flex-direction: column; align-items: stretch; }
-        .discount-input { width: 100%; }
         .save-bar { flex-direction: column; }
         .btn-save-bill { width: 100%; }
     }
@@ -159,29 +133,14 @@
             </div>
             {% endfor %}
 
+            {% comment %}
+              NO DISCOUNT HERE (removed 2026-09-29, the owners' call). A bill is
+              entered at the shop's own line prices; a discount the shop gives is
+              recorded on the shop's page, so it never changes what an item cost.
+            {% endcomment %}
             <div class="totals">
-                <div class="t-row">
-                    <span>Subtotal <span class="text-muted" style="font-size:0.78rem;">(<span id="lineCount">0</span> line<span id="lineS"></span>)</span></span>
-                    <strong id="subtotalVal">&#8377;0.00</strong>
-                </div>
-
-                {# Discount is rare — hidden behind a toggle so the common path stays clean. #}
-                <button type="button" class="discount-toggle" id="discountToggle"
-                        aria-expanded="false" aria-controls="discountBox">
-                    <i class="bi bi-plus-circle" id="discountIcon"></i>
-                    <span id="discountToggleText">Add a discount</span>
-                </button>
-                <div class="discount-box" id="discountBox" hidden>
-                    <label for="discountInput">
-                        Discount on this bill
-                        <span class="hint">Only if the supplier reduced the total.</span>
-                    </label>
-                    <input type="number" id="discountInput" name="discount_amount" class="discount-input"
-                           step="0.01" min="0" inputmode="decimal" placeholder="0.00">
-                </div>
-
                 <div class="t-grand">
-                    <span>Bill total</span>
+                    <span>Bill total <span class="t-lines">(<span id="lineCount">0</span> line<span id="lineS"></span>)</span></span>
                     <b id="grandTotalVal">&#8377;0.00</b>
                 </div>
             </div>
@@ -202,12 +161,6 @@
     document.addEventListener('DOMContentLoaded', function () {
         const form         = document.getElementById('billForm');
         const qtyInputs    = Array.from(document.querySelectorAll('.qty-input'));
-        const discountBox  = document.getElementById('discountBox');
-        const discountTgl  = document.getElementById('discountToggle');
-        const discountIcon = document.getElementById('discountIcon');
-        const discountTxt  = document.getElementById('discountToggleText');
-        const discountIn   = document.getElementById('discountInput');
-        const subtotalEl   = document.getElementById('subtotalVal');
         const grandEl      = document.getElementById('grandTotalVal');
         const lineCountEl  = document.getElementById('lineCount');
         const lineSEl      = document.getElementById('lineS');
@@ -244,30 +197,11 @@
                 priceI.required = qty > 0;
             });
 
-            const discount = parseFloat(discountIn.value) || 0;
-            subtotalEl.textContent = money(subtotal);
-            grandEl.textContent    = money(Math.max(0, subtotal - discount));
+            grandEl.textContent     = money(subtotal);
             lineCountEl.textContent = lines;
             lineSEl.textContent     = lines === 1 ? '' : 's';
             saveBtn.disabled        = lines === 0;
         }
-
-        discountTgl.addEventListener('click', function () {
-            const open = discountBox.hasAttribute('hidden');
-            if (open) {
-                discountBox.removeAttribute('hidden');
-                discountIcon.className = 'bi bi-dash-circle';
-                discountTxt.textContent = 'Remove discount';
-                discountIn.focus();
-            } else {
-                discountBox.setAttribute('hidden', '');
-                discountIcon.className = 'bi bi-plus-circle';
-                discountTxt.textContent = 'Add a discount';
-                discountIn.value = '';   // collapsing clears it, so a hidden field can't apply
-                calculate();
-            }
-            discountTgl.setAttribute('aria-expanded', String(open));
-        });
 
         form.addEventListener('input', calculate);
         form.addEventListener('submit', function (e) {

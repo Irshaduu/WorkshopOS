@@ -108,10 +108,13 @@ def cost_events(item):
                        Decimal(str(opening[1] or 0)), None))
 
     for ri in item.restock_items.select_related('bill'):
-        # `effective_unit_price`, not `per_unit_price`: a bill-level discount is
-        # part of what the stock cost, so it belongs in the average.
-        events.append((ri.bill.bill_date, 0,
-                       Decimal(str(ri.quantity or 0)), ri.effective_unit_price, None))
+        # THE LINE'S OWN PRICE, as the shop billed it — at full precision, since
+        # the replay rounds once at the end. A bill carries no discount (removed
+        # 2026-09-29): a discount a shop gives is its own record on the shop's
+        # page and never changes what an item cost.
+        qty = Decimal(str(ri.quantity or 0))
+        unit = (ri.total_price / ri.quantity) if ri.quantity and ri.quantity > 0 else Decimal('0')
+        events.append((ri.bill.bill_date, 0, qty, unit, None))
 
     draws = (
         JobCardSpareItem.objects

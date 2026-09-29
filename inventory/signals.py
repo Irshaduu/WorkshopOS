@@ -177,51 +177,36 @@ def update_stock_on_restock_save(sender, instance, created, **kwargs):
     if old_item_id:
         touched.add(old_item_id)
 
-    # On a DISCOUNTED bill the sibling lines move too: the discount is shared out
-    # pro-rata by value, so changing one line's price changes the bill total and
-    # therefore every other line's share of it. Skipped when there is no discount,
-    # where the apportionment is a no-op and only this line's product is affected.
-    if instance.bill_id and (instance.bill.discount_amount or Decimal("0")) > 0:
-        touched.update(
-            SupplierRestockItem.objects
-            .filter(bill_id=instance.bill_id)
-            .values_list("item_id", flat=True)
-        )
-
     _recost(touched)
 
 
 @receiver(pre_save, sender=SupplierRestockBill)
 def track_old_bill_terms(sender, instance, **kwargs):
-    """Snapshot the two bill-level fields that change what its stock cost."""
+    """Snapshot the one bill-level field that changes what its stock cost."""
     old = None
     if instance.pk:
-        old = SupplierRestockBill.objects.filter(pk=instance.pk).values(
-            'bill_date', 'discount_amount').first()
+        old = SupplierRestockBill.objects.filter(pk=instance.pk).values('bill_date').first()
     instance._old_bill_date = old['bill_date'] if old else None
-    instance._old_discount = old['discount_amount'] if old else None
 
 
 @receiver(post_save, sender=SupplierRestockBill)
 def recost_on_bill_terms_change(sender, instance, created, **kwargs):
     """
-    A bill's DATE and DISCOUNT both change the average, even though neither lives
-    on a line:
+    A bill's DATE changes the average even though it does not live on a line:
+    the costing replay is date-ordered, so moving a bill across an existing draw
+    changes which receipts the draw was averaged against.
 
-      • the costing replay is date-ordered, so moving a bill across an existing
-        draw changes which receipts the draw was averaged against;
-      • the discount is apportioned into each line's effective unit price.
+    It does not re-save the lines, so without this the stored average silently
+    went stale — measured at ₹2,818.18 stored against ₹2,000.00 true after a
+    date-only edit. Recompute is a full replay, so firing it once per changed
+    bill is safe and idempotent.
 
-    Neither re-saves the lines, so without this the stored average silently went
-    stale — measured at ₹2,818.18 stored against ₹2,000.00 true after a date-only
-    edit. Recompute is a full replay, so firing it once per changed bill is safe
-    and idempotent.
+    (It also re-costed on a DISCOUNT change until 2026-09-29, when a bill
+    stopped carrying one.)
     """
     if created:
         return
-    date_changed = getattr(instance, '_old_bill_date', None) != instance.bill_date
-    discount_changed = getattr(instance, '_old_discount', None) != instance.discount_amount
-    if not (date_changed or discount_changed):
+    if getattr(instance, '_old_bill_date', None) == instance.bill_date:
         return
 
     _recost(SupplierRestockItem.objects.filter(bill=instance)
@@ -272,12 +257,4 @@ def restore_stock_on_restock_delete(sender, instance, **kwargs):
     swallowed the way the old zero-clamp swallowed it."""
     if instance.item_id:
         _apply({instance.item_id: -_as_decimal(instance.quantity)})
-        # Removing a line changes the bill total, so a discounted bill re-shares
-        # its discount across whatever lines remain.
-        touched = {instance.item_id}
-        if instance.bill_id:
-            bill = SupplierRestockBill.objects.filter(pk=instance.bill_id).first()
-            if bill and (bill.discount_amount or Decimal('0')) > 0:
-                touched.update(SupplierRestockItem.objects.filter(bill_id=bill.pk)
-                               .values_list('item_id', flat=True))
-        _recost(touched)
+        _recost({instance.item_id})

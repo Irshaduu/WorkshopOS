@@ -599,7 +599,7 @@ def build(theme):
         ('ware',  'WAREHOUSE',      ['the shelf - may go negative'], FLOW['stock']),
 
         ('catal', 'SHOP CATALOG',   ['what each shop sells'],       FLOW['stock']),
-        ('rest',  'RESTOCK BILLS',  ['discount pro-rata'],          FLOW['out']),
+        ('rest',  'RESTOCK BILLS',  ['priced as billed'],           FLOW['out']),
         ('low',   'LOW STOCK',      ['under 25% - negatives'],      FLOW['stock']),
 
         ('supp',  'SUPPLIES SHOPS', ['ledger - instalments'],       FLOW['out']),

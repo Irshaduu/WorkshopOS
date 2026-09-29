@@ -37,8 +37,7 @@ urlpatterns = [
     path('shops/<int:shop_id>/restock/bill/', views_suppliers.shop_restock_bill, name='shop_restock_bill'),
     path('shops/<int:shop_id>/bill/<int:bill_id>/edit/', views_suppliers.edit_restock_bill, name='edit_restock_bill'),
     path('shops/<int:shop_id>/bill/<int:bill_id>/delete/', views_suppliers.delete_restock_bill, name='delete_restock_bill'),
-    path('shops/<int:shop_id>/bill/<int:bill_id>/discount/', views_suppliers.update_bill_discount, name='update_bill_discount'),
-    
+
     # Shop Payments
     path('shops/<int:shop_id>/payment/add/', views_suppliers.add_shop_payment, name='add_shop_payment'),
     path('shops/<int:shop_id>/payment/<int:payment_id>/delete/', views_suppliers.delete_shop_payment, name='delete_shop_payment'),

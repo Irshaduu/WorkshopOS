@@ -1,23 +1,28 @@
 """
 Supplies Shop bills → warehouse cost.
 
-Four defects found by audit on 2026-07-30, all in cost *attribution* rather than
-in money moving. Each test below is named for the thing that was wrong:
+Defects found by audit on 2026-07-30, all in cost *attribution* rather than in
+money moving. Each test below is named for the thing that was wrong:
 
-  1. a bill-level discount never reached `avg_cost`
-  2. a discount larger than its bill produced a NEGATIVE expense
-  3. changing a bill's date left the stored average stale
-  4. stock with no bill behind it was costed at ₹0 — i.e. reported as free
+  1. changing a bill's date left the stored average stale
+  2. stock with no bill behind it was costed at ₹0 — i.e. reported as free
+
+⚠ The first two classes of that audit were about a BILL DISCOUNT reaching the
+cost. A bill carries no discount since 2026-09-29 — the owners' call, because a
+discount shared into the lines made Cost / Unit disagree with the paper bill —
+so those tests were rewritten, not deleted to make red go green: they now hold
+the new rule, `ABillCostsItsOwnLinePricesTests`.
 """
 from datetime import date, timedelta
 from decimal import Decimal as D
 
 from django.contrib.auth.models import Group, User
+from django.core.exceptions import FieldDoesNotExist
 from django.test import Client, TestCase
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from inventory.costing import average_cost_for
-from inventory.models import (Category, Item, ShopCatalogItem, SupplierPayment,
+from inventory.models import (Category, Item, ShopCatalogItem,
                               SupplierRestockBill, SupplierRestockItem, SupplierShop)
 from workshop import analysis_engine as engine
 from workshop.models import JobCard, JobCardSpareItem
@@ -33,10 +38,9 @@ class SupplierCostingBase(TestCase):
         self.shop = SupplierShop.objects.create(name='Supplies A')
         self.today = date.today()
 
-    def bill(self, qty, total, discount='0', days_ago=0, item=None):
+    def bill(self, qty, total, days_ago=0, item=None):
         b = SupplierRestockBill.objects.create(
-            supplier=self.shop, bill_date=self.today - timedelta(days=days_ago),
-            discount_amount=D(str(discount)))
+            supplier=self.shop, bill_date=self.today - timedelta(days=days_ago))
         line = SupplierRestockItem.objects.create(
             bill=b, item=item or self.item,
             quantity=D(str(qty)), total_price=D(str(total)))
@@ -56,102 +60,109 @@ class SupplierCostingBase(TestCase):
         return self.item.avg_cost
 
 
-class DiscountReachesTheCostTests(SupplierCostingBase):
+class ABillCostsItsOwnLinePricesTests(SupplierCostingBase):
     """
-    Costing used the gross line price while the Profit page expensed the
-    discounted amount, so one purchase carried two different costs and every
-    discounted part looked less profitable than it really was.
+    A SUPPLIES SHOP BILL HAS NO DISCOUNT OF ITS OWN (2026-09-29, the owners'
+    call), so an item costs exactly what its line on the shop's bill says.
+
+    It used to carry one, shared into every line pro-rata: ₹100 off Oil ₹1,000 +
+    Coolant ₹1,000 costed each at ₹950. So Cost / Unit on the job card stopped
+    matching the paper bill, the suggested customer price dropped with it, and a
+    discount keyed late re-priced parts already fitted, moving past months'
+    profit. A discount a shop gives is recorded on the shop's own page instead,
+    and never reaches an item's cost.
     """
 
-    def test_the_discount_is_apportioned_into_the_unit_cost(self):
-        # 10 L billed ₹12,000 with ₹2,000 off = ₹10,000 paid = ₹1,000/L
-        _b, line = self.bill(10, 12000, discount=2000)
-        self.assertEqual(line.per_unit_price, D('1200.00'))     # gross, display only
-        self.assertEqual(line.effective_unit_price, D('1000'))  # what it actually cost
+    def setUp(self):
+        super().setUp()
+        g, _ = Group.objects.get_or_create(name='Office')
+        user = User.objects.create_user(username='off_cost', password='pw')
+        user.groups.add(g)
+        self.client = Client()
+        self.client.login(username='off_cost', password='pw')
+
+    def test_an_item_costs_its_line_price(self):
+        # 10 L billed ₹12,000 = ₹1,200/L, and that is what every litre costs.
+        _b, line = self.bill(10, 12000)
+        self.assertEqual(line.per_unit_price, D('1200.00'))
+        self.assertEqual(self.avg(), D('1200.00'))
+        self.assertEqual(self.draw(4).unit_price, D('1200.00'))
+
+    def test_a_bill_has_no_discount_to_carry(self):
+        with self.assertRaises(FieldDoesNotExist):
+            SupplierRestockBill._meta.get_field('discount_amount')
+
+    def test_the_quick_discount_door_is_gone(self):
+        with self.assertRaises(NoReverseMatch):
+            reverse('update_bill_discount', args=[self.shop.id, 1])
+        b, _line = self.bill(10, 10000)
+        resp = self.client.post(f'/inventory/shops/{self.shop.id}/bill/{b.id}/discount/',
+                                {'discount_amount': '2000'})
+        self.assertEqual(resp.status_code, 404)
         self.assertEqual(self.avg(), D('1000.00'))
 
-    def test_a_draw_is_costed_at_the_discounted_price(self):
-        self.bill(10, 12000, discount=2000)
-        self.assertEqual(self.draw(4).unit_price, D('1000.00'))
-
-    def test_the_discount_is_shared_across_lines_by_value(self):
-        other = Item.objects.create(category=self.category, name='Air Filter',
-                                    average_stock=D('10'), current_stock=D('0'))
-        b = SupplierRestockBill.objects.create(supplier=self.shop, bill_date=self.today,
-                                               discount_amount=D('2000'))
-        SupplierRestockItem.objects.create(bill=b, item=self.item,
-                                           quantity=D('10'), total_price=D('12000'))
-        SupplierRestockItem.objects.create(bill=b, item=other,
-                                           quantity=D('10'), total_price=D('8000'))
-        b.update_totals()
-
-        # ₹20,000 billed, ₹2,000 off → every line is 10% cheaper
-        other.refresh_from_db()
-        self.assertEqual(self.avg(), D('1080.00'))    # 1200 − 10%
-        self.assertEqual(other.avg_cost, D('720.00'))  # 800 − 10%
-
-    def test_editing_one_line_recosts_its_discounted_siblings(self):
-        """Changing a line moves the bill total, so every line's share moves."""
-        other = Item.objects.create(category=self.category, name='Air Filter',
-                                    average_stock=D('10'), current_stock=D('0'))
-        b = SupplierRestockBill.objects.create(supplier=self.shop, bill_date=self.today,
-                                               discount_amount=D('2000'))
-        line_a = SupplierRestockItem.objects.create(bill=b, item=self.item,
-                                                    quantity=D('10'), total_price=D('12000'))
-        SupplierRestockItem.objects.create(bill=b, item=other,
-                                           quantity=D('10'), total_price=D('8000'))
-        b.update_totals()
-        other.refresh_from_db()
-        self.assertEqual(other.avg_cost, D('720.00'))
-
-        line_a.total_price = D('28000')
-        line_a.save()
-        b.refresh_from_db()
-        other.refresh_from_db()
-        self.assertEqual(b.total_amount, D('36000.00'))
-        self.assertNotEqual(other.avg_cost, D('720.00'))
-
-
-class ImpossibleDiscountTests(SupplierCostingBase):
-    """A discount above its bill total made the expense negative and raised profit."""
-
-    def test_effective_amount_is_floored_at_zero(self):
-        b = SupplierRestockBill.objects.create(
-            supplier=self.shop, bill_date=self.today,
-            total_amount=D('5000'), discount_amount=D('9000'))
-        self.assertEqual(b.get_effective_amount, D('0'))
-
-    def test_the_restock_view_drops_it_rather_than_applying_it(self):
-        g, _ = Group.objects.get_or_create(name='Office')
-        u = User.objects.create_user(username='off_disc', password='pw')
-        u.groups.add(g)
-        client = Client()
-        client.login(username='off_disc', password='pw')
-
+    def test_a_new_bill_ignores_a_posted_discount(self):
+        """A page opened before the box went, submitted after: the bill is still
+        the shop's own line prices, and so is the shop's balance."""
         ShopCatalogItem.objects.create(shop=self.shop, item=self.item)
-        session = client.session
+        session = self.client.session
         session['restock_items'] = [str(self.item.id)]
         session.save()
 
-        client.post(reverse('shop_restock_bill', args=[self.shop.id]), {
-            'qty_%s' % self.item.id: '10',
-            'price_%s' % self.item.id: '5000',
-            'discount_amount': '9000',
+        self.client.post(reverse('shop_restock_bill', args=[self.shop.id]), {
+            f'qty_{self.item.id}': '10',
+            f'price_{self.item.id}': '12000',
+            'discount_amount': '2000',
         })
 
-        b = SupplierRestockBill.objects.filter(supplier=self.shop).first()
-        self.assertEqual(b.discount_amount, D('0'))
-        self.assertEqual(b.get_effective_amount, D('5000.00'))
+        b = SupplierRestockBill.objects.get(supplier=self.shop)
+        self.assertEqual(b.total_amount, D('12000.00'))
+        self.assertEqual(self.avg(), D('1200.00'))
         self.shop.refresh_from_db()
-        self.assertEqual(self.shop.total_billed_amount, D('5000.00'),
-                         "the supplier ledger must not go negative either")
+        self.assertEqual(self.shop.total_billed_amount, D('12000.00'))
+
+    def test_an_edited_bill_ignores_a_posted_discount(self):
+        b, line = self.bill(10, 10000, days_ago=5)
+        draw = self.draw(4, days_ago=2)
+        self.client.post(reverse('edit_restock_bill', args=[self.shop.id, b.id]), {
+            'bill_date': b.bill_date.isoformat(), 'discount_amount': '2000',
+            f'qty_{line.id}': '10', f'price_{line.id}': '10000'})
+
+        b.refresh_from_db()
+        draw.refresh_from_db()
+        self.assertEqual(b.total_amount, D('10000.00'))
+        self.assertEqual(self.avg(), D('1000.00'))
+        self.assertEqual(draw.unit_price, D('1000.00'))
+
+    def test_no_bill_screen_offers_a_discount_box(self):
+        b, _line = self.bill(10, 10000)
+        ShopCatalogItem.objects.create(shop=self.shop, item=self.item)
+        session = self.client.session
+        session['restock_items'] = [str(self.item.id)]
+        session.save()
+        pages = [
+            reverse('shop_restock_bill', args=[self.shop.id]),
+            reverse('edit_restock_bill', args=[self.shop.id, b.id]),
+            reverse('supplier_shop_detail', args=[self.shop.id]),
+            reverse('ajax_supplier_bills', args=[self.shop.id]),
+        ]
+        for url in pages:
+            html = self.client.get(url).content.decode()
+            self.assertNotIn('discount_amount', html, url)
+            self.assertNotIn('Add Discount', html, url)
+
+    def test_what_the_shops_billed_is_the_bill_total(self):
+        self.bill(10, 12000)
+        s, e, _k, _l = engine.resolve_period('this_month')
+        self.assertEqual(engine.supplier_billed(s, e), D('12000.00'))
 
 
 class BillTermsChangeRecostsTests(SupplierCostingBase):
     """
-    A bill's date and discount both change what its stock cost, and neither lives
-    on a line — so only a bill-level signal can notice. Measured stale by ₹818.18
-    before that signal existed.
+    A bill's date changes what its stock cost, and does not live on a line — so
+    only a bill-level signal can notice. Measured stale by ₹818.18 before that
+    signal existed. (It re-costed on a discount change too, until a bill stopped
+    carrying one on 2026-09-29.)
     """
 
     def test_backdating_a_bill_across_a_draw_recomputes(self):
@@ -165,13 +176,6 @@ class BillTermsChangeRecostsTests(SupplierCostingBase):
 
         self.assertEqual(self.avg(), average_cost_for(self.item))
         self.assertEqual(self.avg(), D('2000.00'))
-
-    def test_changing_only_the_discount_recomputes(self):
-        b, _line = self.bill(10, 10000, days_ago=10)
-        self.assertEqual(self.avg(), D('1000.00'))
-        b.discount_amount = D('2000')
-        b.save()
-        self.assertEqual(self.avg(), D('800.00'))    # (10000 − 2000) / 10
 
 
 class UnknownCostIsNotZeroTests(SupplierCostingBase):
@@ -293,201 +297,3 @@ class DeferredBillingTests(SupplierCostingBase):
 
         s, e, _k, _l = engine.resolve_period('all_time')
         self.assertEqual(engine.uncosted_draw_count(s, e), 1)
-
-
-class EveryDoorIntoADiscountEnforcesTheSameRuleTests(SupplierCostingBase):
-    """
-    `_reject_impossible_discount` guards bill CREATION and bill EDITING. The
-    standalone "update discount" endpoint validated only `discount >= 0` and was
-    therefore the one door left open: a mistyped extra zero there made
-    `total - discount` negative, the Supplies Shops expense went negative, and
-    reported profit ROSE on the page profit is distributed from.
-
-    Tested as a PROPERTY of the whole module rather than of one view — the rule
-    is "no route can leave a bill worth less than nothing", and the way this was
-    missed the first time is that two of the three routes were covered.
-    """
-
-    def setUp(self):
-        super().setUp()
-        g, _ = Group.objects.get_or_create(name='Office')
-        self.user = User.objects.create_user(username='off_upd', password='pw')
-        self.user.groups.add(g)
-        self.client = Client()
-        self.client.login(username='off_upd', password='pw')
-
-    def test_the_update_endpoint_refuses_a_discount_above_the_bill(self):
-        b, _line = self.bill(qty='10', total='5000')
-        self.client.post(
-            reverse('update_bill_discount', args=[self.shop.id, b.id]),
-            {'discount_amount': '50000'})
-        b.refresh_from_db()
-        self.assertEqual(b.discount_amount, D('0'), "the impossible discount was applied")
-        self.assertEqual(b.get_effective_amount, D('5000.00'))
-
-    def test_a_legitimate_discount_still_goes_through(self):
-        b, _line = self.bill(qty='10', total='5000')
-        self.client.post(
-            reverse('update_bill_discount', args=[self.shop.id, b.id]),
-            {'discount_amount': '500'})
-        b.refresh_from_db()
-        self.assertEqual(b.discount_amount, D('500'))
-        self.assertEqual(b.get_effective_amount, D('4500.00'))
-
-    def test_a_negative_discount_is_refused(self):
-        b, _line = self.bill(qty='10', total='5000')
-        self.client.post(
-            reverse('update_bill_discount', args=[self.shop.id, b.id]),
-            {'discount_amount': '-900'})
-        b.refresh_from_db()
-        self.assertEqual(b.discount_amount, D('0'))
-
-    def test_the_supplier_ledger_never_goes_negative_through_this_door(self):
-        b, _line = self.bill(qty='10', total='5000')
-        self.client.post(
-            reverse('update_bill_discount', args=[self.shop.id, b.id]),
-            {'discount_amount': '50000'})
-        self.shop.refresh_from_db()
-        self.assertGreaterEqual(self.shop.total_billed_amount, D('0'))
-
-    def test_the_profit_page_survives_a_bad_row_already_in_the_database(self):
-        """
-        The view guards are the first line; the engine floor is the second. A
-        row that predates the guard — or one left behind when `update_totals()`
-        recomputed a bill's total downward without re-checking its discount —
-        must still not produce a negative expense.
-        """
-        b, _line = self.bill(qty='10', total='5000')
-        SupplierRestockBill.objects.filter(pk=b.pk).update(discount_amount=D('50000'))
-        s, e, _k, _l = engine.resolve_period('this_month')
-        self.assertEqual(engine.supplier_billed(s, e), D('0'))
-
-    def test_the_shops_stored_BALANCE_floors_it_too(self):
-        """
-        `SupplierShop.update_totals()` was a fourth hand-rolled copy with no
-        floor, so an underwater bill SUBTRACTED from the shop's balance — real
-        debt on its other bills reading smaller than it is. The archive guard
-        reads this figure, so it would also let a shop the workshop still owes
-        be archived.
-        """
-        bad, _ = self.bill(qty='10', total='5000')
-        SupplierRestockBill.objects.filter(pk=bad.pk).update(discount_amount=D('50000'))
-        good, _ = self.bill(qty='4', total='8000')
-
-        self.shop.update_totals()
-        self.shop.refresh_from_db()
-        self.assertEqual(self.shop.total_billed_amount, D('8000'),
-                         'a broken bill ate into what another bill genuinely owes')
-        self.assertEqual(self.shop.get_pending_balance, D('8000'))
-
-    def test_the_payment_WATERFALL_floors_it_too(self):
-        """
-        THE FIFTH COPY, and the subtlest: the supplier page allocates payments
-        across bills oldest-first, and the cumulative total it allocates
-        against was hand-rolled with no floor — while `get_effective_amount`,
-        used for the per-bill figure IN THE SAME LOOP, has always floored it.
-        The two halves of one calculation disagreed about the same bill.
-
-        A negative amount in the running sum shifts the allocation for every
-        bill after it, which marks bills COVERED that nobody has paid for.
-        """
-        older, _ = self.bill(qty='10', total='5000', days_ago=10)
-        SupplierRestockBill.objects.filter(pk=older.pk).update(discount_amount=D('50000'))
-        newer, _ = self.bill(qty='4', total='8000', days_ago=1)
-        SupplierPayment.objects.create(supplier=self.shop, amount=D('3000'),
-                                       date=self.today)
-        self.shop.update_totals()
-
-        resp = self.client.get(reverse('supplier_shop_detail', args=[self.shop.id]))
-        self.assertEqual(resp.status_code, 200)
-        rows = {b.id: b for b in resp.context['bills']}
-
-        # ₹3,000 paid against a real debt of ₹8,000 — partly covered, never
-        # "covered". Un-floored, the broken bill's −₹45,000 made the pool look
-        # enormous and marked it paid in full.
-        self.assertEqual(rows[newer.id].covered_status, 'PARTIAL')
-        self.assertEqual(rows[newer.id].pending_amount, D('5000'))
-        self.assertEqual(rows[older.id].get_effective_amount, D('0'))
-
-
-class TheQuickDiscountBoxRecostsTheStockTests(SupplierCostingBase):
-    """
-    The discount box on a bill card (`update_bill_discount`) saved with
-    `.update()`, which fires no signals — so the `SupplierRestockBill`
-    pre/post_save pair that re-costs on a discount change never ran. The bill
-    total and the shop's balance took the discount; `Item.avg_cost` and every
-    warehouse draw kept the GROSS price. The Profit page's Inventory Used then
-    charged the parts at a cost the Supplies Shop was never paid.
-
-    The Edit Bill page always went through `bill.save()` and was right, so the
-    two doors are held to ONE answer.
-    """
-
-    def setUp(self):
-        super().setUp()
-        g, _ = Group.objects.get_or_create(name='Office')
-        self.user = User.objects.create_user(username='off_disc', password='pw')
-        self.user.groups.add(g)
-        self.client = Client()
-        self.client.login(username='off_disc', password='pw')
-
-    def test_a_discount_through_the_box_reaches_the_average_cost(self):
-        # 10 L billed ₹10,000 = ₹1,000/L; ₹2,000 off makes it ₹800/L.
-        b, _line = self.bill(10, 10000, days_ago=10)
-        self.assertEqual(self.avg(), D('1000.00'))
-
-        self.client.post(reverse('update_bill_discount', args=[self.shop.id, b.id]),
-                         {'discount_amount': '2000'})
-
-        b.refresh_from_db()
-        self.assertEqual(b.discount_amount, D('2000'))
-        self.assertEqual(self.avg(), D('800.00'))
-        self.assertEqual(self.avg(), average_cost_for(self.item))
-
-    def test_a_draw_made_after_the_bill_is_recosted_too(self):
-        b, _line = self.bill(10, 10000, days_ago=10)
-        draw = self.draw(4, days_ago=5)
-        self.assertEqual(draw.unit_price, D('1000.00'))
-
-        self.client.post(reverse('update_bill_discount', args=[self.shop.id, b.id]),
-                         {'discount_amount': '2000'})
-
-        draw.refresh_from_db()
-        self.assertEqual(draw.unit_price, D('800.00'),
-                         'the part fitted is still charged at the pre-discount cost')
-
-    def test_the_box_and_the_edit_page_give_the_same_answer(self):
-        """Two doors onto one discount must cost the stock identically."""
-        # Door 1 — the discount box, on this item.
-        b1, _ = self.bill(10, 10000, days_ago=10)
-        box_draw = self.draw(4, days_ago=5, reg='KL09BOX001')
-        self.client.post(reverse('update_bill_discount', args=[self.shop.id, b1.id]),
-                         {'discount_amount': '2000'})
-
-        # Door 2 — the Edit Bill page, on an identical second item.
-        other = Item.objects.create(category=self.category, name='Castrol 10w40',
-                                    average_stock=D('40'), current_stock=D('0'))
-        b2, line2 = self.bill(10, 10000, days_ago=10, item=other)
-        edit_draw = JobCardSpareItem.objects.create(
-            job_card=JobCard.objects.create(registration_number='KL09EDT001',
-                                            admitted_date=self.today - timedelta(days=5)),
-            source=INVENTORY, item=other, quantity=D('4'))
-        self.client.post(reverse('edit_restock_bill', args=[self.shop.id, b2.id]), {
-            'bill_date': b2.bill_date.isoformat(), 'discount_amount': '2000',
-            f'qty_{line2.id}': '10', f'price_{line2.id}': '10000'})
-
-        other.refresh_from_db()
-        box_draw.refresh_from_db()
-        edit_draw.refresh_from_db()
-        self.assertEqual(self.avg(), other.avg_cost)
-        self.assertEqual(box_draw.unit_price, edit_draw.unit_price)
-        self.assertEqual(other.avg_cost, D('800.00'))
-
-    def test_the_refusals_still_change_nothing(self):
-        b, _line = self.bill(10, 10000, days_ago=10)
-        for bad in ('-500', '20000'):             # negative, above the bill
-            self.client.post(reverse('update_bill_discount', args=[self.shop.id, b.id]),
-                             {'discount_amount': bad})
-        b.refresh_from_db()
-        self.assertEqual(b.discount_amount, D('0'))
-        self.assertEqual(self.avg(), D('1000.00'))

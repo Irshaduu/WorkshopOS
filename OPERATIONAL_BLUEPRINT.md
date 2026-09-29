@@ -649,10 +649,11 @@ SUPPLIES SHOP (Inventory Supplier)
    │     Bill → Line Items (inventory Item + qty + unit price)
    │     Stock auto-increases on bill creation (via signals)
    │     Stock auto-reverses on bill deletion
-   │     Optional discount per bill
+   │     No discount on a bill — it is the shop's own line prices, so every
+   │     item costs what the paper bill says (2026-09-29)
    │
    ├── Financial Ledger:
-   │     Total Billed = SUM(bill total_amount - discount_amount), each bill floored at zero
+   │     Total Billed = SUM(bill total_amount)
    │     Total Paid = SUM(payments where is_trashed=False)
    │     Pending Balance = Total Billed - Total Paid
    │
@@ -1084,10 +1085,9 @@ CHANGE HISTORY (/deletion-history/) — Owner only, READ-ONLY
     account carries is_staff (see CLAUDE.md).
   - Its EDITED tab (/deletion-history/edited/) is Edit History: every edit that
     moved money, one row each — which record, who, when, and each figure that
-    moved as before → after. Six doors write it: a Cashbook edit, a rent
-    deposit's edit, a Supplies Shop bill's edit page and its quick discount
-    box, an unlocked edit of a settled job card, and Settle Bill on an
-    already-paid bill. A note or a
+    moved as before → after. Five doors write it: a Cashbook edit, a rent
+    deposit's edit, a Supplies Shop bill's edit page, an unlocked edit of a
+    settled job card, and Settle Bill on an already-paid bill. A note or a
     spelling is not history; neither is a first settlement. Kept for good, and
     it outlives the record — a row edited and later deleted keeps its edits.
   - Its BACK-DATED tab (/deletion-history/back-dated/): money typed in on a
@@ -1101,7 +1101,7 @@ HOW OLD A RECORD MAY BE — Office corrects, an owner takes anything older
   Office may CHANGE OR DELETE a money record only within 24 HOURS of keying it
   (since 2026-09-22; it was seven days, deletes only). That covers a fleet
   payment, a spare-shop payment, a Supplies Shop payment, a restock bill (its
-  edit page — refused on the GET too — its discount box and its delete), a
+  edit page — refused on the GET too — and its delete), a
   cashbook entry (edit and delete), a rent deposit (edit and delete) and a
   salary advance. A
   settled job card's Unlock and Settle Bill on an already-paid bill count from

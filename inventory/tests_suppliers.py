@@ -50,20 +50,6 @@ class SupplierShopModelTests(TestCase):
         self.shop.refresh_from_db()
         self.assertEqual(self.shop.get_pending_balance, Decimal('-1000'))
 
-    def test_effective_amount_with_discount(self):
-        bill = SupplierRestockBill.objects.create(
-            supplier=self.shop, total_amount=10000, discount_amount=500
-        )
-        self.assertEqual(bill.get_effective_amount, Decimal('9500'))
-
-    def test_update_totals_with_discount(self):
-        """total_billed_amount should equal SUM(total_amount - discount_amount)."""
-        SupplierRestockBill.objects.create(
-            supplier=self.shop, total_amount=10000, discount_amount=500
-        )
-        self.shop.refresh_from_db()
-        self.assertEqual(self.shop.total_billed_amount, Decimal('9500'))
-
     def test_update_totals_excludes_trashed_payments(self):
         """Soft-deleted (trashed) payments must NOT count in total_paid_amount."""
         SupplierRestockBill.objects.create(supplier=self.shop, total_amount=5000)
@@ -332,8 +318,7 @@ class SupplierShopViewTests(TestCase):
 
         response = self.client.post(
             reverse('shop_restock_bill', args=[shop.id]),
-            {f'qty_{self.item1.id}': '10', f'price_{self.item1.id}': '5000',
-             'discount_amount': '0'}
+            {f'qty_{self.item1.id}': '10', f'price_{self.item1.id}': '5000'}
         )
         self.assertRedirects(
             response, reverse('supplier_shop_detail', args=[shop.id])
@@ -348,23 +333,6 @@ class SupplierShopViewTests(TestCase):
         # Shop totals updated
         shop.refresh_from_db()
         self.assertEqual(shop.total_billed_amount, Decimal('5000'))
-
-    def test_create_bill_with_discount(self):
-        shop = SupplierShop.objects.create(name='Disc Bill Shop')
-        # A bill may only contain products this shop actively stocks — the picker
-        # enforces it and so does shop_restock_bill.
-        ShopCatalogItem.objects.create(shop=shop, item=self.item1)
-        session = self.client.session
-        session['restock_items'] = [str(self.item1.id)]
-        session.save()
-
-        self.client.post(
-            reverse('shop_restock_bill', args=[shop.id]),
-            {f'qty_{self.item1.id}': '10', f'price_{self.item1.id}': '5000',
-             'discount_amount': '250'}
-        )
-        shop.refresh_from_db()
-        self.assertEqual(shop.total_billed_amount, Decimal('4750'))  # 5000 - 250
 
     def test_delete_restock_bill_reverses_stock(self):
         shop = SupplierShop.objects.create(name='Delete Bill Shop')
@@ -393,8 +361,7 @@ class SupplierShopViewTests(TestCase):
         )
         self.client.post(
             reverse('edit_restock_bill', args=[shop.id, bill.id]),
-            {f'qty_{ri.id}': '15', f'price_{ri.id}': '7500',
-             'discount_amount': '0'}
+            {f'qty_{ri.id}': '15', f'price_{ri.id}': '7500'}
         )
         self.item1.refresh_from_db()
         self.assertEqual(self.item1.current_stock, 65)  # 50 + 15
@@ -407,8 +374,7 @@ class SupplierShopViewTests(TestCase):
         )
         self.client.post(
             reverse('edit_restock_bill', args=[shop.id, bill.id]),
-            {f'qty_{ri.id}': '3', f'price_{ri.id}': '1500',
-             'discount_amount': '0'}
+            {f'qty_{ri.id}': '3', f'price_{ri.id}': '1500'}
         )
         self.item1.refresh_from_db()
         self.assertEqual(self.item1.current_stock, 53)  # 50 + 3
@@ -421,8 +387,7 @@ class SupplierShopViewTests(TestCase):
         )
         self.client.post(
             reverse('edit_restock_bill', args=[shop.id, bill.id]),
-            {f'qty_{ri.id}': '0', f'price_{ri.id}': '0',
-             'discount_amount': '0'}
+            {f'qty_{ri.id}': '0', f'price_{ri.id}': '0'}
         )
         self.item1.refresh_from_db()
         self.assertEqual(self.item1.current_stock, 50)  # Stock fully reversed
@@ -461,23 +426,6 @@ class SupplierShopViewTests(TestCase):
         )
         shop.refresh_from_db()
         self.assertEqual(shop.total_paid_amount, Decimal('0'))
-
-    # ── Discount ──
-
-    def test_update_bill_discount(self):
-        shop = SupplierShop.objects.create(name='Discount Shop')
-        bill = SupplierRestockBill.objects.create(
-            supplier=shop, total_amount=10000
-        )
-        self.client.post(
-            reverse('update_bill_discount', args=[shop.id, bill.id]),
-            {'discount_amount': '500'}
-        )
-        bill.refresh_from_db()
-        self.assertEqual(bill.discount_amount, Decimal('500'))
-        self.assertEqual(bill.get_effective_amount, Decimal('9500'))
-        shop.refresh_from_db()
-        self.assertEqual(shop.total_billed_amount, Decimal('9500'))
 
     # ── Bulk Pay Status Badges ──
 

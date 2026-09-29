@@ -39,7 +39,7 @@ class ShopCatalogItemAdmin(admin.ModelAdmin):
 
 @admin.register(SupplierRestockBill)
 class SupplierRestockBillAdmin(admin.ModelAdmin):
-    list_display = ('id', 'supplier', 'bill_date', 'total_amount', 'discount_amount')
+    list_display = ('id', 'supplier', 'bill_date', 'total_amount')
     list_filter = ('supplier', 'bill_date')
     search_fields = ('supplier__name',)
 

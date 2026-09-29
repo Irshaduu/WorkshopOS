@@ -170,37 +170,16 @@ class SupplierShop(models.Model):
         """
         Recompute what this shop has billed and been paid.
 
-        ⚠ THE BILLED SIDE IS FLOORED PER BILL, and the expression is IMPORTED.
-        This was a fourth hand-rolled copy of `total_amount − discount_amount`
-        — the exact defect CLAUDE.md records fixing in `supplier_billed`,
-        `monthly_series` and `_insight_shops` — and it was the copy that had
-        been left behind, so the model and the Profit page disagreed about the
-        same bill.
-
-        A discount larger than the bill it sits on makes that bill NEGATIVE,
-        and here that subtracts from the shop's own balance: a real debt on
-        other bills reads as smaller than it is, or vanishes. That breaks the
-        rule that money owed is always reachable from exactly one screen, and
-        it also lets `deactivate_supplier_shop` archive a shop the workshop
-        still owes, because the guard reads this figure.
-
-        The entry forms reject that input, but it is still reachable: this very
-        method's sibling `SupplierRestockBill.update_totals()` recomputes
-        `total_amount` from the bill's lines WITHOUT re-checking the discount,
-        so deleting a line from an already-discounted bill pushes the discount
-        above the new total.
-
-        Imported locally rather than at module level: `analysis_engine` imports
-        `workshop.models`, and this is the same guard `JobCard.update_totals`
-        uses for `SHOP_LINE_COST`.
+        A bill costs exactly its `total_amount` — the sum of its lines, as
+        printed on the shop's own bill. A bill carries no discount of its own
+        since 2026-09-29 (see CLAUDE.md, "A Supplies Shop bill has no discount
+        of its own").
         """
         from django.db.models import Sum
         from django.db.models.functions import Coalesce
 
-        from workshop.analysis_engine import SUPPLIER_BILL_COST
-
         billed = self.bills.aggregate(
-            total=Coalesce(Sum(SUPPLIER_BILL_COST), 0, output_field=models.DecimalField())
+            total=Coalesce(Sum('total_amount'), 0, output_field=models.DecimalField())
         )['total']
         # The go-live debt joins the billed side HERE, so every reader of the
         # cached total — this shop's pages, the Profit page's payable tile,
@@ -237,8 +216,12 @@ class ShopCatalogItem(models.Model):
 class SupplierRestockBill(models.Model):
     supplier = models.ForeignKey(SupplierShop, on_delete=models.CASCADE, related_name='bills')
     bill_date = models.DateField(default=timezone.now, db_index=True)
+    # The sum of the lines — what the shop's own bill says, and all it costs.
+    # ⚠ THERE IS NO `discount_amount` (removed 2026-09-29, the owners' call):
+    # a discount shared into the lines changed what every item cost, so Cost /
+    # Unit stopped matching the paper bill. See CLAUDE.md, "A Supplies Shop bill
+    # has no discount of its own".
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -250,27 +233,10 @@ class SupplierRestockBill(models.Model):
                 check=models.Q(total_amount__gte=0),
                 name='inventory_restockbill_total_amount_non_negative'
             ),
-            models.CheckConstraint(
-                check=models.Q(discount_amount__gte=0),
-                name='inventory_restockbill_discount_amount_non_negative'
-            ),
         ]
 
     def __str__(self):
         return f"Bill {self.id} - {self.supplier.name} ({self.bill_date})"
-
-    @property
-    def get_effective_amount(self):
-        """What this bill actually costs after its discount.
-
-        Floored at zero. A discount larger than the bill is always a typo, and
-        letting it through produced a NEGATIVE expense that *increased* reported
-        profit — a mistyped extra zero silently made the workshop look richer.
-        The views reject that input outright; this floor is the second line of
-        defence, so any row that already carries it cannot corrupt the Profit page.
-        """
-        effective = self.total_amount - self.discount_amount
-        return effective if effective > Decimal('0') else Decimal('0')
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -290,17 +256,6 @@ class SupplierRestockBill(models.Model):
             SupplierRestockBill.objects.filter(pk=self.pk).update(total_amount=new_total)
             self.supplier.update_totals()
 
-            # The bill total is the denominator when a discount is shared out across
-            # lines, so changing it changes every line's real unit cost. This has to
-            # be triggered here rather than by a signal: the total is written with
-            # `.update()` (no signal), and it is only known AFTER the lines have
-            # saved — so a line's own post_save runs while the total is still stale
-            # or zero, and would apportion against the wrong denominator.
-            if self.discount_amount and self.discount_amount > Decimal('0'):
-                from .costing import recompute_average_cost
-                for item in Item.objects.filter(restock_items__bill=self).distinct():
-                    recompute_average_cost(item)
-
 
 class SupplierRestockItem(models.Model):
     bill = models.ForeignKey(SupplierRestockBill, on_delete=models.CASCADE, related_name='items')
@@ -314,37 +269,11 @@ class SupplierRestockItem(models.Model):
 
     @property
     def per_unit_price(self):
-        """Gross price per unit, as written on the supplier's bill. Display only —
-        costing uses `effective_unit_price` below."""
+        """Price per unit, as written on the supplier's bill, to the paisa.
+        For display — the costing replay divides at full precision itself."""
         if self.quantity and self.quantity > 0:
             return (self.total_price / self.quantity).quantize(Decimal('0.01'))
         return Decimal('0')
-
-    @property
-    def effective_unit_price(self):
-        """
-        What this line ACTUALLY cost per unit, after its share of the bill's
-        discount. This is the figure warehouse costing must use.
-
-        A bill-level discount is apportioned pro-rata across its lines by value,
-        so a ₹2,000 discount on a ₹12,000 bill makes every line 1/6 cheaper.
-        Without this, `avg_cost` was computed from gross prices while the Profit
-        page expensed the discounted amount — the same purchase carried two
-        different costs, and every discounted item looked less profitable than it
-        really was.
-
-        Falls back to the gross price when the bill total is zero (nothing to
-        apportion against).
-        """
-        gross = self.per_unit_price
-        if not self.bill_id:
-            return gross
-        total = self.bill.total_amount or Decimal('0')
-        if total <= Decimal('0'):
-            return gross
-        # Full precision: the costing replay rounds once, at the end.
-        return (self.total_price / self.quantity) * (self.bill.get_effective_amount / total) \
-            if self.quantity and self.quantity > 0 else Decimal('0')
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

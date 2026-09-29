@@ -160,7 +160,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.db.models import Case, Count, DecimalField, F, Q, Sum, Value, When
-from django.db.models.functions import Coalesce, Greatest, TruncMonth
+from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 
 from .models import (
@@ -221,33 +221,11 @@ SPARE_COST = Case(
 )
 
 
-#: What a SUPPLIES SHOP bill cost — total less its discount, FLOORED AT ZERO.
-#:
-#: The floor is the whole point, and it was missing here for a month while
-#: `SupplierRestockBill.get_effective_amount` has always carried it. A discount
-#: larger than the bill it sits on makes `total − discount` negative, and a
-#: negative EXPENSE *raises* reported profit — a mistyped extra zero on one
-#: bill silently made the workshop look richer on the one page profit is
-#: distributed from. The model property refused to do that; three aggregates
-#: on this page hand-rolled the subtraction and did.
-#:
-#: Two ways a bill reaches that state even though the entry forms reject it:
-#: `update_bill_discount` validated only `discount >= 0` (fixed alongside
-#: this), and `update_totals()` recomputes `total_amount` from the bill's
-#: lines without re-checking the discount — so deleting a line from an already
-#: discounted bill can push the discount above the new total.
-#:
-#: Declared once, here, for the same reason SPARE_COST is: the expression was
-#: written out in three places (`inventory_expense`, `monthly_series`, and
-#: `_insight_shops` in `analysis_views`), which is three chances to fix one and
-#: leave two — and they would disagree exactly where it hurts, as the Profit
-#: page's Supplies Shops line and the Shops insight quoting different spend for
-#: the same bills.
-SUPPLIER_BILL_COST = Greatest(
-    F('total_amount') - F('discount_amount'),
-    Value(ZERO, output_field=MONEY),
-    output_field=MONEY,
-)
+#: ⚠ A SUPPLIES SHOP BILL COSTS ITS `total_amount`, AND NOTHING ELSE. There was a
+#: `SUPPLIER_BILL_COST` here — total less the bill's own discount, floored at
+#: zero — with five hand-rolled copies found and folded into it over time. A
+#: bill carries no discount since 2026-09-29, so every reader sums the column
+#: directly and the floor has nothing left to guard.
 
 
 def _sum(qs, expr, alias='t'):
@@ -742,16 +720,15 @@ def supplier_billed(start, end):
     always followed.
 
     Kept because "what did the supplies shops bill us this period" is a real
-    question with a real answer, and because it is the guard that keeps the
-    floored expression honest. Do NOT add it back alongside the draw cost: that
-    is the double count, one delivery charged twice.
+    question with a real answer. Do NOT add it back alongside the draw cost:
+    that is the double count, one delivery charged twice.
 
-    At the bill's effective (post-discount)
-    amount, mirroring SupplierRestockBill.get_effective_amount.
+    At each bill's `total_amount` — the shop's own line prices. A bill carries
+    no discount of its own since 2026-09-29.
     """
     from inventory.models import SupplierRestockBill
     qs = SupplierRestockBill.objects.filter(bill_date__range=(start, end))
-    return _sum(qs, SUPPLIER_BILL_COST)
+    return _sum(qs, F('total_amount'))
 
 
 def salary_expense(start, end, gaps=True):

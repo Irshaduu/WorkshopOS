@@ -70,8 +70,8 @@ payroll, evidence photos and owner analytics, in one Django application.
   supplier bill re-prices the draws it should and leaves the rest alone.
 - Stock may go negative, and is reported apart from low stock — a negative balance
   means a supplier bill has not been entered yet, not that anything needs reordering.
-- **Supplier shops** — restock bills with pro-rata discount handling, payments, and a
-  catalog per supplier.
+- **Supplier shops** — restock bills entered at the shop's own line prices, payments,
+  and a catalog per supplier.
 
 ### Customer documents
 

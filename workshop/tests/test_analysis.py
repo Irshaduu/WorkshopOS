@@ -364,22 +364,20 @@ class DoubleCountRuleTests(AnalysisBase):
 class SupplierBilledTests(AnalysisBase):
     """
     `supplier_billed()` reports what the Supplies Shops billed in a window. It
-    is NOT a profit stream — see `DoubleCountRuleTests` — but the floored
-    expression behind it still has to be right, because the shop's own balance
-    and the payment waterfall read the same declaration.
+    is NOT a profit stream — see `DoubleCountRuleTests`.
     """
 
-    def test_restock_bill_counts_at_its_effective_amount(self):
+    def test_restock_bill_counts_at_its_bill_total(self):
         cat = Category.objects.create(name='Filters')
         item = Item.objects.create(category=cat, name='Air Filter', average_stock=D('5'))
         sup = SupplierShop.objects.create(name='Bulk Supplies')
-        bill = SupplierRestockBill.objects.create(supplier=sup, bill_date=self.today,
-                                                  discount_amount=D('200'))
+        bill = SupplierRestockBill.objects.create(supplier=sup, bill_date=self.today)
         SupplierRestockItem.objects.create(bill=bill, item=item, quantity=D('10'),
                                            total_price=D('2000'))
         s, e, _k, _l = engine.resolve_period('this_month')
-        # total_amount is denormalized to 2000 by the item save; less 200 discount
-        self.assertEqual(engine.supplier_billed(s, e), D('1800'))
+        # total_amount is denormalized to 2000 by the item save. A bill carries
+        # no discount of its own since 2026-09-29.
+        self.assertEqual(engine.supplier_billed(s, e), D('2000'))
 
 
 # =============================================================================
@@ -598,83 +596,49 @@ _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
            'July', 'August', 'September', 'October', 'November', 'December']
 
 
-class ASupplierDiscountCannotRaiseProfitTests(AnalysisBase):
+class EveryReaderOfASupplierBillReadsOneTotalTests(AnalysisBase):
     """
-    A discount bigger than the bill it sits on made the Supplies Shops expense
-    NEGATIVE, which *raised* reported profit — a mistyped extra zero was enough.
+    A Supplies Shop bill is worth its `total_amount` on every screen.
 
-    `SupplierRestockBill.get_effective_amount` has always floored this at zero.
-    Three aggregates on the analysis pages hand-rolled `total - discount` and
-    did not, so the model and the page disagreed about the same bill.
+    This class used to hold the bill DISCOUNT to one floored expression
+    (`SUPPLIER_BILL_COST`), because five hand-rolled copies of `total −
+    discount` had disagreed about one bill. A bill carries no discount since
+    2026-09-29, so the expression went — and what is left to hold is that the
+    engine, the Shops insight, the shop's own balance and the payable tile all
+    still read the same figure.
     """
 
-    def _impossible_bill(self):
+    def _two_bills(self):
         shop = SupplierShop.objects.create(name='Ninoos')
         cat = Category.objects.create(name='Fluids')
         item = Item.objects.create(name='5W-30', category=cat, average_stock=D('10'))
-        bill = SupplierRestockBill.objects.create(supplier=shop, bill_date=self.today)
-        SupplierRestockItem.objects.create(bill=bill, item=item, quantity=D('1'),
-                                           total_price=D('5000'))
-        # Straight to the column, the way a bad row already in the database
-        # looks — the point is that the PAGE survives it, not that the form
-        # allows it.
-        SupplierRestockBill.objects.filter(pk=bill.pk).update(discount_amount=D('50000'))
-        return shop, bill
+        for total in ('5000', '8000'):
+            bill = SupplierRestockBill.objects.create(supplier=shop, bill_date=self.today)
+            SupplierRestockItem.objects.create(bill=bill, item=item, quantity=D('1'),
+                                               total_price=D(total))
+        shop.refresh_from_db()
+        return shop
 
-    def test_the_expense_is_floored_at_zero_never_negative(self):
-        self._impossible_bill()
+    def test_the_engine_the_insight_and_the_shop_agree(self):
+        shop = self._two_bills()
+        from workshop.analysis_views import _insight_shops
         s, e, _k, _l = engine.resolve_period('this_month')
-        self.assertEqual(engine.supplier_billed(s, e), D('0'),
-                         "a negative expense would raise reported profit")
+        self.assertEqual(engine.supplier_billed(s, e), D('13000'))
+        self.assertEqual(_insight_shops(s, e)['supplier_rows'][0]['billed'], D('13000'))
+        self.assertEqual(shop.total_billed_amount, D('13000'))
 
-    def test_the_engine_agrees_with_the_model_property(self):
-        _shop, bill = self._impossible_bill()
-        s, e, _k, _l = engine.resolve_period('this_month')
-        bill.refresh_from_db()
-        self.assertEqual(engine.supplier_billed(s, e), bill.get_effective_amount)
+    def test_the_payable_tile_agrees_with_the_shop(self):
+        shop = self._two_bills()
+        self.assertEqual(engine.financial_position()['payable_supplier'],
+                         shop.get_pending_balance)
 
     def test_the_chart_cannot_disagree_with_the_headline(self):
-        self._impossible_bill()
+        self._two_bills()
         s, e, _k, _l = engine.resolve_period('this_month')
         report = engine.build_profit_report(s, e)
         series = engine.monthly_series(s, e)
         self.assertEqual(sum((m['expenses'] for m in series), D('0')),
                          report['expense_total'])
-
-    def test_the_shops_insight_uses_the_same_floor(self):
-        self._impossible_bill()
-        from workshop.analysis_views import _insight_shops
-        s, e, _k, _l = engine.resolve_period('this_month')
-        rows = _insight_shops(s, e)['supplier_rows']
-        self.assertEqual(rows[0]['billed'], D('0'))
-
-    def test_the_shops_own_BALANCE_uses_the_same_floor(self):
-        """
-        THE FOURTH COPY, and the one left behind.
-
-        `SupplierShop.update_totals()` hand-rolled `total − discount` with no
-        floor, so an underwater bill SUBTRACTED from the shop's balance: real
-        debt on its other bills read as smaller than it is, or vanished. That
-        is the payable understating what is owed — and `deactivate_supplier_shop`
-        reads this figure, so it would also let a shop the workshop still owes
-        be archived.
-        """
-        shop, bill = self._impossible_bill()
-        # A second, ordinary bill: the whole point is that the broken one
-        # cannot eat into what this one genuinely owes.
-        good = SupplierRestockBill.objects.create(supplier=shop, bill_date=self.today)
-        SupplierRestockItem.objects.create(
-            bill=good, item=Item.objects.first(), quantity=D('1'), total_price=D('8000'))
-        shop.refresh_from_db()
-        self.assertEqual(shop.total_billed_amount, D('8000'))
-        self.assertEqual(shop.get_pending_balance, D('8000'))
-
-    def test_the_payable_tile_agrees_with_the_expense_expression(self):
-        """The model and the Profit page must not describe one bill two ways."""
-        shop, _bill = self._impossible_bill()
-        shop.refresh_from_db()
-        self.assertEqual(engine.financial_position()['payable_supplier'],
-                         shop.get_pending_balance)
 
 
 class ThreeDatesThreeJobsTests(AnalysisBase):

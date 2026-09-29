@@ -37,12 +37,9 @@
     }
     .total-row {
         display: flex; justify-content: space-between; align-items: center;
-        margin-bottom: 12px; font-size: 1.1rem; font-weight: 700;
+        font-size: 1.1rem; font-weight: 700;
     }
-    .grand-total {
-        font-size: 1.6rem; color: var(--color-danger); font-weight: 800;
-        border-top: 2px solid var(--color-border); padding-top: 12px; margin-top: 12px;
-    }
+    .grand-total { font-size: 1.6rem; color: var(--color-danger); font-weight: 800; }
     .delete-hint { font-size: 0.75rem; color: var(--color-danger); margin-top: 4px; display: block; }
     
     @media (max-width: 768px) {
@@ -106,19 +103,14 @@
             </div>
             {% endfor %}
             
+            {% comment %}
+              NO DISCOUNT HERE (removed 2026-09-29, the owners' call). The bill
+              is the shop's own line prices; a discount the shop gives is
+              recorded on the shop's page, so it never changes what an item cost.
+            {% endcomment %}
             <div class="totals-section">
-                <div class="total-row">
-                    <span>Subtotal</span>
-                    <span id="subtotalVal">₹0.00</span>
-                </div>
-                <div class="total-row align-items-center">
-                    <span>Discount applied on Bill</span>
-                    <div style="width: 150px;">
-                        <input type="number" name="discount_amount" id="discountInput" class="form-control text-end text-success fw-bold" step="0.01" min="0" value="{{ bill.discount_amount|floatformat:'-2' }}">
-                    </div>
-                </div>
                 <div class="total-row grand-total">
-                    <span>Grand Total</span>
+                    <span>Bill total</span>
                     <span id="grandTotalVal">₹0.00</span>
                 </div>
             </div>
@@ -176,8 +168,6 @@
         const form = document.getElementById('billForm');
         const qtyInputs = document.querySelectorAll('.qty-input');
         const priceInputs = document.querySelectorAll('.price-input');
-        const discountInput = document.getElementById('discountInput');
-        const subtotalEl = document.getElementById('subtotalVal');
         const grandTotalEl = document.getElementById('grandTotalVal');
         const newToggles = document.querySelectorAll('.new-item-toggle');
         
@@ -225,11 +215,7 @@
                 }
             });
             
-            const discount = parseFloat(discountInput.value) || 0;
-            const grandTotal = Math.max(0, subtotal - discount);
-            
-            subtotalEl.textContent = `₹${subtotal.toFixed(2)}`;
-            grandTotalEl.textContent = `₹${grandTotal.toFixed(2)}`;
+            grandTotalEl.textContent = `₹${subtotal.toFixed(2)}`;
         }
         
         form.addEventListener('input', calculate);

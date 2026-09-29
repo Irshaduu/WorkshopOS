@@ -347,7 +347,7 @@ class Command(BaseCommand):
                 continue
             with transaction.atomic():
                 bill = SupplierRestockBill.objects.create(
-                    supplier=shop, bill_date=when, discount_amount=D('0'))
+                    supplier=shop, bill_date=when)
                 for item, qty, total in rows:
                     SupplierRestockItem.objects.create(
                         bill=bill, item=item, quantity=qty, total_price=total)

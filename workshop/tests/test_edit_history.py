@@ -130,32 +130,27 @@ class TheSuppliesShopBillKeepsItsEditsTests(_People):
         self.bill.update_totals()
         self.bill.refresh_from_db()
 
-    def test_the_discount_box_keeps_the_discount_it_was(self):
-        self.as_(self.office).post(
-            reverse('update_bill_discount', args=[self.shop.pk, self.bill.pk]),
-            {'discount_amount': '500'})
-        log = EditLog.objects.get()
-        self.assertEqual(log.entity_type, EditLog.ENTITY_RESTOCK_BILL)
-        self.assertEqual(log.entity_label, f'Fluid manjeri · Bill #{self.bill.pk}')
-        self.assertEqual(_lines(log), {'Discount': ('0.00', '500.00')})
-        self.assertEqual(self.told(self.owner), ['RECORD_CHANGED'])
-
-    def test_the_same_discount_again_keeps_nothing(self):
-        self.as_(self.office).post(
-            reverse('update_bill_discount', args=[self.shop.pk, self.bill.pk]),
-            {'discount_amount': '0'})
-        self.assertFalse(EditLog.objects.exists())
-
     def test_the_edit_page_keeps_the_total_and_the_date_it_moved(self):
         earlier = self.today - timedelta(days=2)
         self.as_(self.office).post(
             reverse('edit_restock_bill', args=[self.shop.pk, self.bill.pk]),
-            {'bill_date': earlier.isoformat(), 'discount_amount': '0',
+            {'bill_date': earlier.isoformat(),
              f'qty_{self.line.pk}': '10', f'price_{self.line.pk}': '6000'})
-        self.assertEqual(_lines(EditLog.objects.get()), {
+        log = EditLog.objects.get()
+        self.assertEqual(log.entity_type, EditLog.ENTITY_RESTOCK_BILL)
+        self.assertEqual(log.entity_label, f'Fluid manjeri · Bill #{self.bill.pk}')
+        self.assertEqual(_lines(log), {
             'Bill total': ('5000.00', '6000.00'),
             'Bill date': (self.today.isoformat(), earlier.isoformat()),
         })
+        self.assertEqual(self.told(self.owner), ['RECORD_CHANGED'])
+
+    def test_an_edit_that_moves_nothing_keeps_nothing(self):
+        self.as_(self.office).post(
+            reverse('edit_restock_bill', args=[self.shop.pk, self.bill.pk]),
+            {'bill_date': self.today.isoformat(),
+             f'qty_{self.line.pk}': '10', f'price_{self.line.pk}': '5000'})
+        self.assertFalse(EditLog.objects.exists())
 
 
 class ASettledBillKeepsItsEditsTests(_People):

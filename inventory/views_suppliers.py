@@ -6,7 +6,6 @@ from django.db.models.functions import Coalesce
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date
 from .models import Item, Category, SupplierShop, ShopCatalogItem, SupplierRestockBill, SupplierRestockItem, SupplierPayment
-from workshop.analysis_engine import SUPPLIER_BILL_COST
 from workshop.decorators import office_required
 from workshop.models import DeletionLog, EditLog, JobCardSpareItem
 from workshop.notifications import notify, notify_dated_back
@@ -174,19 +173,10 @@ def supplier_shop_detail(request, shop_id):
         Q(bill_date__lt=OuterRef('bill_date')) |
         Q(bill_date=OuterRef('bill_date'), id__lte=OuterRef('id'))
     ).values('supplier').annotate(
-        # FLOORED PER BILL, via the one declaration in `analysis_engine`.
-        #
-        # This is the running total the payment waterfall below allocates
-        # against, and it was a hand-rolled `total_amount - discount_amount`
-        # with no floor — while `bill.get_effective_amount`, used for the
-        # per-bill figure IN THE SAME LOOP, has always floored it. So the two
-        # halves of one calculation disagreed about the same bill.
-        #
-        # An underwater bill (discount above total, reachable by deleting a
-        # line from a discounted bill) then carried a NEGATIVE amount into the
-        # cumulative sum, shifting the allocation for every bill after it and
-        # marking bills COVERED that are not paid.
-        total=Sum(SUPPLIER_BILL_COST)
+        # The running total the payment waterfall below allocates against —
+        # the same `total_amount` the loop reads per bill, so the two halves of
+        # one calculation cannot disagree about a bill.
+        total=Sum('total_amount')
     ).values('total')
 
     bills_qs = (
@@ -260,19 +250,19 @@ def supplier_shop_detail(request, shop_id):
     # bill is only marked covered once the money has actually reached it.
     paid_to_bills = shop.paid_beyond_opening
     for bill in bills_list:
-        effective_amt = bill.get_effective_amount
-        older_sum = bill.absolute_running_sum - effective_amt
+        bill_amt = bill.total_amount
+        older_sum = bill.absolute_running_sum - bill_amt
         bulk_pool = paid_to_bills - older_sum
-        
-        if bulk_pool >= effective_amt:
+
+        if bulk_pool >= bill_amt:
             bill.covered_status = 'COVERED'
             bill.pending_amount = Decimal('0')
         elif bulk_pool <= Decimal('0'):
             bill.covered_status = 'UNPAID'
-            bill.pending_amount = effective_amt
+            bill.pending_amount = bill_amt
         else:
             bill.covered_status = 'PARTIAL'
-            bill.pending_amount = effective_amt - bulk_pool
+            bill.pending_amount = bill_amt - bulk_pool
             bill.covered_amount = bulk_pool
 
     return render(request, 'inventory/suppliers/shop_detail.html', {
@@ -714,82 +704,6 @@ def shop_catalog_item_detail(request, shop_id, catalog_item_id):
 
 
 @office_required
-@transaction.atomic
-def update_bill_discount(request, shop_id, bill_id):
-    """Update the discount amount on an existing bill."""
-    shop = get_object_or_404(SupplierShop, pk=shop_id)
-    bill = get_object_or_404(SupplierRestockBill, pk=bill_id, supplier=shop)
-    if request.method == 'POST':
-        # Office within 24 hours of keying the bill; an owner after that —
-        # the same window as the bill's own edit page and its delete.
-        stop = delete_window.refusal(
-            request.user, bill.created_at, f"Bill #{bill.id}", action='change')
-        if stop:
-            messages.error(request, stop)
-            return redirect('supplier_shop_detail', shop_id=shop_id)
-
-        discount = request.POST.get('discount_amount', '0')
-        try:
-            discount = Decimal(str(discount).strip())
-        except (ValueError, InvalidOperation):
-            messages.error(request, "Invalid discount amount.")
-            return redirect('supplier_shop_detail', shop_id=shop_id)
-
-        if discount < 0:
-            messages.error(request, "Discount cannot be negative.")
-            return redirect('supplier_shop_detail', shop_id=shop_id)
-
-        # THE SAME RULE THE BILL FORMS ENFORCE, and this door was open.
-        # `_reject_impossible_discount` guards bill creation and bill editing;
-        # this endpoint validated only `discount >= 0`, so a mistyped extra
-        # zero here made `total − discount` negative and the Profit page
-        # reported a NEGATIVE Supplies Shops expense, RAISING profit on the one
-        # page profit is distributed from. Stated as a refusal rather than a
-        # clamp, so nobody has to guess which number the system kept.
-        if discount > bill.total_amount:
-            messages.error(
-                request,
-                f"Discount ₹{discount:,.2f} is more than the bill total "
-                f"₹{bill.total_amount:,.2f}, so it was NOT applied."
-            )
-            return redirect('supplier_shop_detail', shop_id=shop_id)
-
-        was = bill.discount_amount
-        # ⚠ THROUGH THE MODEL, NEVER `.update()`. A bill's discount is part of
-        # what its stock cost — it is shared into each line's effective unit
-        # price — and the only thing that re-costs on a discount change is the
-        # `SupplierRestockBill` pre/post_save pair in `inventory/signals.py`.
-        # `.update()` fires no signals, so this door moved the bill total and
-        # the shop's balance while `Item.avg_cost` and every warehouse draw kept
-        # the GROSS price: the Profit page charged parts at a cost the shop was
-        # never paid. `update_fields` keeps the write to the one column.
-        #
-        # ⚠ NO `bill.update_totals()` HERE. A discount never changes a bill's
-        # total, and that method RECOMPUTES the total from the lines — so on a
-        # bill whose stored total is not backed by lines it wrote ₹0 (caught
-        # by `test_update_bill_discount`). The Edit Bill page needs it because
-        # its lines change; this door changes none.
-        bill.discount_amount = discount
-        # One transaction: the discount, the shop's balance and the Edit
-        # History row land together or not at all.
-        with transaction.atomic():
-            bill.save(update_fields=['discount_amount'])
-            shop.update_totals()
-            EditLog.record(
-                EditLog.ENTITY_RESTOCK_BILL, bill,
-                [EditLog.change('Discount', was, discount)],
-                label=f"{shop.name} · Bill #{bill.id}",
-                user=request.user,
-                stamp=bill.created_at,
-                headline=f"{shop.name} · Bill #{bill.id} discount now ₹{discount:,.0f}",
-                detail=f"was ₹{was:,.0f} · Supplies Shop bill",
-                url=reverse('supplier_shop_detail', args=[shop.pk]) + '?filter=all',
-                object_type='SupplierRestockBill',
-            )
-        messages.success(request, f"Discount updated for Bill #{bill.id}.")
-    return redirect('supplier_shop_detail', shop_id=shop_id)
-
-@office_required
 def shop_restock_select(request, shop_id):
     shop = get_object_or_404(SupplierShop, pk=shop_id)
     catalog = shop.catalog_items.filter(is_active=True).select_related('item', 'item__category').all()
@@ -805,32 +719,6 @@ def shop_restock_select(request, shop_id):
         return redirect('shop_restock_bill', shop_id=shop.id)
         
     return render(request, 'inventory/suppliers/restock_select.html', {'shop': shop, 'catalog': catalog})
-
-def _reject_impossible_discount(request, bill):
-    """A discount larger than the bill it sits on is always a typo.
-
-    Left alone it produced a NEGATIVE bill: the supplier appeared to owe the
-    workshop money, and the Supplies Shops expense went negative, *raising*
-    reported profit. One mistyped extra zero was enough. The discount is dropped
-    rather than clamped, and said out loud, so nobody has to guess which number
-    the system decided to keep. Returns True if it rejected something.
-
-    Runs only after `bill.update_totals()` — at creation the bill exists before
-    its lines do, so there is no total to compare against until then.
-    """
-    if bill.discount_amount > bill.total_amount:
-        attempted = bill.discount_amount
-        bill.discount_amount = Decimal('0')
-        bill.save(update_fields=['discount_amount'])
-        bill.supplier.update_totals()
-        messages.error(
-            request,
-            f"Discount ₹{attempted:,.2f} is more than the bill total "
-            f"₹{bill.total_amount:,.2f}, so it was NOT applied. "
-            f"Edit the bill and enter the correct discount."
-        )
-        return True
-    return False
 
 
 @office_required
@@ -863,12 +751,7 @@ def shop_restock_bill(request, shop_id):
 
     if request.method == 'POST':
         try:
-            discount = _dec(request.POST.get('discount_amount'))
-
-            bill = SupplierRestockBill.objects.create(
-                supplier=shop,
-                discount_amount=discount
-            )
+            bill = SupplierRestockBill.objects.create(supplier=shop)
 
             for item in items:
                 qty = _dec(request.POST.get(f'qty_{item.id}'))
@@ -883,17 +766,15 @@ def shop_restock_bill(request, shop_id):
                     
             # Update bill totals which will trigger shop total update
             bill.update_totals()
-            bill.refresh_from_db()
-            _reject_impossible_discount(request, bill)
 
             # Clear session
             if 'restock_items' in request.session:
                 del request.session['restock_items']
-                
+
             messages.success(request, "Restock bill created successfully.")
             return redirect('supplier_shop_detail', shop_id=shop.id)
         except ValueError:
-            messages.error(request, "Invalid number entered for quantity, price, or discount.")
+            messages.error(request, "Invalid number entered for quantity or price.")
             return redirect('shop_restock_bill', shop_id=shop.id)
         
     return render(request, 'inventory/suppliers/restock_bill.html', {'shop': shop, 'items': items})
@@ -917,8 +798,7 @@ def edit_restock_bill(request, shop_id, bill_id):
 
     if request.method == 'POST':
         # What the bill said before, for the owners' alert and Edit History.
-        was_net, was_date = bill.get_effective_amount, bill.bill_date
-        was_total, was_discount = bill.total_amount, bill.discount_amount
+        was_total, was_date = bill.total_amount, bill.bill_date
         try:
             # 1. Update bill-level info
             #
@@ -952,9 +832,6 @@ def edit_restock_bill(request, shop_id, bill_id):
                     messages.error(request, "A bill can't be dated in the future.")
                     return redirect('edit_restock_bill', shop_id=shop.id, bill_id=bill.id)
                 bill.bill_date = billed_on
-                
-            discount = _dec(request.POST.get('discount_amount'))
-            bill.discount_amount = discount
             bill.save()
             
             # 2. Update existing items
@@ -996,45 +873,36 @@ def edit_restock_bill(request, shop_id, bill_id):
             # Trigger total update
             bill.update_totals()
             bill.refresh_from_db()
-            rejected = _reject_impossible_discount(request, bill)
 
-            # SAY SO, TO THE OWNERS, AND KEEP IT — after the discount guard, so
-            # the alert and the Edit History row quote what the bill actually
-            # says now. The bell inside Office's window, the other owner's phone
-            # past it (only an owner can). The date is not held to the back-date
+            # SAY SO, TO THE OWNERS, AND KEEP IT, quoting what the bill says
+            # now. The bell inside Office's window, the other owner's phone past
+            # it (only an owner can). The date is not held to the back-date
             # limit here: dating a bill to its delivery day is the workflow, not
             # a correction.
-            #
-            # The alert fires on what the shop is OWED (total less discount) or
-            # the date; the history row names which half moved, since lines and
-            # discount both reach the stock's cost.
             changed = []
-            if bill.get_effective_amount != was_net:
-                changed.append(f"was ₹{was_net:,.0f}")
+            if bill.total_amount != was_total:
+                changed.append(f"was ₹{was_total:,.0f}")
             if bill.bill_date != was_date:
                 changed.append(f"was dated {was_date:%d %b %Y}")
             if changed:
                 EditLog.record(
                     EditLog.ENTITY_RESTOCK_BILL, bill,
                     [EditLog.change('Bill total', was_total, bill.total_amount),
-                     EditLog.change('Discount', was_discount, bill.discount_amount),
                      EditLog.change('Bill date', was_date, bill.bill_date,
                                     kind=EditLog.KIND_DATE)],
                     label=f"{shop.name} · Bill #{bill.id}",
                     user=request.user,
                     stamp=bill.created_at,
-                    headline=f"{shop.name} · Bill #{bill.id} now ₹{bill.get_effective_amount:,.0f}",
+                    headline=f"{shop.name} · Bill #{bill.id} now ₹{bill.total_amount:,.0f}",
                     detail=' · '.join(changed),
                     url=reverse('supplier_shop_detail', args=[shop.pk]) + '?filter=all',
                     object_type='SupplierRestockBill',
                 )
 
-            if rejected:
-                return redirect('edit_restock_bill', shop_id=shop.id, bill_id=bill.id)
             messages.success(request, f"Bill #{bill.id} updated successfully.")
             return redirect('supplier_shop_detail', shop_id=shop.id)
         except ValueError:
-            messages.error(request, "Invalid number entered for quantity, price, or discount.")
+            messages.error(request, "Invalid number entered for quantity or price.")
             return redirect('edit_restock_bill', shop_id=shop.id, bill_id=bill.id)
         
     # Get items currently in the bill
@@ -1211,19 +1079,9 @@ def ajax_supplier_bills(request, shop_id):
         Q(bill_date__lt=OuterRef('bill_date')) | 
         Q(bill_date=OuterRef('bill_date'), id__lte=OuterRef('id'))
     ).values('supplier').annotate(
-        # FLOORED PER BILL, via the one declaration in `analysis_engine`.
-        #
-        # This is the running total the payment waterfall below allocates
-        # against, and it was a hand-rolled `total_amount - discount_amount`
-        # with no floor — while `bill.get_effective_amount`, used for the
-        # per-bill figure IN THE SAME LOOP, has always floored it. So the two
-        # halves of one calculation disagreed about the same bill.
-        #
-        # An underwater bill (discount above total, reachable by deleting a
-        # line from a discounted bill) then carried a NEGATIVE amount into the
-        # cumulative sum, shifting the allocation for every bill after it and
-        # marking bills COVERED that are not paid.
-        total=Sum(SUPPLIER_BILL_COST)
+        # The running total the waterfall below allocates against — the same
+        # `total_amount` the loop reads per bill, as on the shop page itself.
+        total=Sum('total_amount')
     ).values('total')
 
     bills_qs = shop.bills.prefetch_related('items__item').annotate(
@@ -1264,19 +1122,19 @@ def ajax_supplier_bills(request, shop_id):
     # bill is only marked covered once the money has actually reached it.
     paid_to_bills = shop.paid_beyond_opening
     for bill in page_bills:
-        effective_amt = bill.get_effective_amount
-        older_sum = bill.absolute_running_sum - effective_amt
+        bill_amt = bill.total_amount
+        older_sum = bill.absolute_running_sum - bill_amt
         bulk_pool = paid_to_bills - older_sum
-        
-        if bulk_pool >= effective_amt:
+
+        if bulk_pool >= bill_amt:
             bill.covered_status = 'COVERED'
             bill.pending_amount = Decimal('0')
         elif bulk_pool <= Decimal('0'):
             bill.covered_status = 'UNPAID'
-            bill.pending_amount = effective_amt
+            bill.pending_amount = bill_amt
         else:
             bill.covered_status = 'PARTIAL'
-            bill.pending_amount = effective_amt - bulk_pool
+            bill.pending_amount = bill_amt - bulk_pool
             bill.covered_amount = bulk_pool
 
     return render(request, 'inventory/suppliers/partials/bill_list_chunk.html', {

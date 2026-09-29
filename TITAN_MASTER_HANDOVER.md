@@ -210,7 +210,8 @@ groups (13 handlers)**, all using the same pre_save-snapshot + post_save-delta p
 3. **Supplier restocking** (5) — three on `SupplierRestockItem` (creation, edit,
    deletion), which with group 4 are the **only** things that move `Item.avg_cost`;
    plus a `SupplierRestockBill` pre/post_save pair that re-costs the bill's lines when
-   its **date** or its **discount** changes, since neither of those lives on a line.
+   its **date** changes, since the date does not live on a line. (A bill carries no
+   discount of its own since 2026-09-29.)
 4. **Opening stock** (3) — the go-live shelf count, added 2026-09-19. It belongs to no
    shop, so it moves the shelf without touching any balance, and it is why the count
    is a signal rather than a view writing `current_stock`: that would have been the

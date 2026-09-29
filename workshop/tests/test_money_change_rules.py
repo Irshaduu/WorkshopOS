@@ -273,50 +273,20 @@ class TheSuppliesShopBillFollowsTheWindowTests(_People):
         _age(self.bill, hours=25)
         was = self.bill.bill_date
         self.as_(self.office).post(self.edit_url, {
-            'bill_date': (self.today - timedelta(days=1)).isoformat(),
-            'discount_amount': '0'})
+            'bill_date': (self.today - timedelta(days=1)).isoformat()})
         self.bill.refresh_from_db()
         self.assertEqual(self.bill.bill_date, was)
 
     def test_an_owner_may_edit_it_and_the_other_owner_is_told(self):
         _age(self.bill, hours=25)
         self.as_(self.owner).post(self.edit_url, {
-            'bill_date': (self.today - timedelta(days=20)).isoformat(),
-            'discount_amount': '0'})
+            'bill_date': (self.today - timedelta(days=20)).isoformat()})
         self.bill.refresh_from_db()
         self.assertEqual(self.bill.bill_date, self.today - timedelta(days=20))
         self.assertEqual(self.told(self.other), ['OLD_RECORD_CHANGED'])
 
-    def _discount(self, user, amount):
-        # A bill with a real total, so ₹500 is a discount the box would
-        # otherwise accept — without one, "more than the bill total" refuses
-        # it and the test passes for the wrong reason.
-        SupplierRestockBill.objects.filter(pk=self.bill.pk).update(total_amount=D('5000'))
-        return self.as_(user).post(
-            reverse('update_bill_discount', args=[self.shop.pk, self.bill.pk]),
-            {'discount_amount': amount})
-
-    def test_the_discount_box_refuses_office_past_24_hours(self):
-        _age(self.bill, hours=25)
-        res = self._discount(self.office, '500')
-        self.bill.refresh_from_db()
-        self.assertEqual(self.bill.discount_amount, D('0'))
-        self.assertIn('ask an owner', self.said(res).lower())
-        self.assertFalse(Notification.objects.filter(
-            event__in=('RECORD_CHANGED', 'OLD_RECORD_CHANGED')).exists())
-
-    def test_the_discount_box_lets_office_in_inside_24_hours_with_a_bell_note(self):
-        self._discount(self.office, '500')
-        self.bill.refresh_from_db()
-        self.assertEqual(self.bill.discount_amount, D('500'))
-        self.assertEqual(self.told(self.owner), ['RECORD_CHANGED'])
-
-    def test_the_discount_box_lets_an_owner_in_past_24_hours_and_the_phone_is_told(self):
-        _age(self.bill, hours=25)
-        self._discount(self.owner, '500')
-        self.bill.refresh_from_db()
-        self.assertEqual(self.bill.discount_amount, D('500'))
-        self.assertEqual(self.told(self.other), ['OLD_RECORD_CHANGED'])
+    # The bill card's quick discount box was a third door here, with its own
+    # three tests. It was removed on 2026-09-29 with the bill discount itself.
 
 
 class ASettledJobCardFollowsTheWindowTests(_People):

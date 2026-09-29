@@ -826,34 +826,40 @@ say so out loud. Go-live **Opening Stock carries a cost for exactly this reason*
 (see "Legacy Data"), so expect it only for a product nobody counted, until its
 first restock bill is entered.
 
-**A Supplies Shop bill's DISCOUNT is part of what the stock cost, and its DATE
-changes the average.** Four rules, all in `inventory/`:
-- The discount is apportioned **pro-rata across the bill's lines by value** —
-  `SupplierRestockItem.effective_unit_price`, which costing uses;
-  `per_unit_price` stays gross for display. Without it, `avg_cost` came from gross
-  prices while the Profit page expensed the discounted amount, so one purchase
-  carried two costs.
-- A discount **above its bill total is dropped and reported**, never applied: it
-  made the bill negative, so the supplier appeared to owe the workshop and the
-  Supplies Shops expense went negative, *raising* profit from a mistyped zero.
-  `get_effective_amount` is floored at zero as a second line of defence.
-- `update_totals()` **re-costs the bill's items itself** when a discount exists —
-  the total is the apportionment denominator, is written with `.update()` (no
-  signal), and is only known *after* the lines save, so a line's own post_save
-  would divide by a stale or zero total.
-- A `SupplierRestockBill` pre/post_save pair **re-costs when `bill_date` or
-  `discount_amount` changes**, since neither lives on a line.
-  ⚠ **So every door that changes either must save THROUGH THE MODEL, never
-  `.update()`** — which fires no signal. The bill card's quick discount box
-  (`update_bill_discount`) did exactly that until 2026-09-22: the bill total
-  and the shop balance took the discount while `avg_cost` and every draw kept
-  the gross price (₹1,000/L where the Edit Bill page gave ₹800/L for the same
-  discount). It now does `bill.save(update_fields=['discount_amount'])`, and
-  deliberately NOT `bill.update_totals()`: a discount never changes the total,
-  and that method recomputes the total from the lines — it wrote ₹0 onto a
-  bill whose total had no lines behind it (`test_update_bill_discount`).
-→ `inventory/test_supplier_costing.py` — `TheQuickDiscountBoxRecostsTheStockTests`
-  holds the two doors to one answer.
+**A Supplies Shop bill has no discount of its own — an item costs exactly its
+line on the shop's bill.** ⚠ **This REVERSES "a bill's DISCOUNT is part of what
+the stock cost"** (the owners' decision, 2026-09-22, built 2026-09-29). The bill
+carried a `discount_amount`, shared into every line pro-rata by value
+(`effective_unit_price`), and that was the most tangled code in the area. What
+it cost, in the owners' own example — Oil ₹1,000 + Coolant ₹1,000, ₹100 off:
+
+- **Cost / Unit stopped matching the paper bill.** Each line costed ₹950, so the
+  job card showed a figure printed on no bill anywhere.
+- **The suggested customer price dropped with it** — ₹1,400 → ₹1,330 at 40% —
+  because of a one-off discount.
+- **A discount keyed or changed late re-priced parts already fitted**, quietly
+  moving a past month's profit through the costing replay.
+
+Nothing replaced it on the bill. The column, the bill forms' discount box, the
+bill card's quick discount box (`update_bill_discount`, which also carried
+`AUD-0108`), `_reject_impossible_discount` and the `SUPPLIER_BILL_COST` floor
+are all gone; every reader sums `total_amount`. A discount a shop gives
+becomes its own record on the shop's page — ⚠ **not built yet as of
+2026-09-29**, the next step of the same change — and never reaches an item's
+cost. **Accepted trade-offs, stated:** the discount lands in
+profit on the day it is given rather than spread as the stock is used — the
+same total over time — and the shelf values unused stock at bill price.
+
+What is left in `inventory/`:
+- The costing replay prices a receipt at `total_price ÷ quantity`, at full
+  precision; `per_unit_price` is that figure to the paisa, for display.
+- A `SupplierRestockBill` pre/post_save pair **re-costs when `bill_date`
+  changes**, since the date does not live on a line.
+  ⚠ **So a door that changes it must save THROUGH THE MODEL, never
+  `.update()`** — which fires no signal.
+→ `inventory/test_supplier_costing.py` — `ABillCostsItsOwnLinePricesTests`,
+including a bill page opened before the box went and submitted after: the
+posted discount is ignored.
 
 **Stock moves only via signals.** Restock bills and the go-live Opening Stock add,
 job-card draws remove. There
@@ -3010,19 +3016,15 @@ no cost is charged ₹0 and pushes profit UP. It is drawn as a warning on the pa
 for that reason. Go-live Opening Stock requires a cost so that it is not.
 → `DoubleCountRuleTests` — if it fails, the workshop is being charged twice.
 
-**A SUPPLIES SHOP BILL IS FLOORED AT ZERO, and the expression is
-`SUPPLIER_BILL_COST` — one declaration, three former copies.** A discount larger
-than the bill makes `total − discount` negative, and a negative EXPENSE *raises*
-reported profit. `SupplierRestockBill.get_effective_amount` always floored it;
-`inventory_expense`, `monthly_series` and `_insight_shops` each hand-rolled the
-subtraction and did not, so the model and the page disagreed about the same bill.
-Two ways a bill reaches that state even though the forms reject it:
-`update_bill_discount` validated only `discount >= 0` (closed in the same edit),
-and `update_totals()` recomputes `total_amount` from the lines **without
-re-checking the discount**, so deleting a line from a discounted bill can push
-the discount above the new total.
-→ `ASupplierDiscountCannotRaiseProfitTests`,
-`EveryDoorIntoADiscountEnforcesTheSameRuleTests`
+**A SUPPLIES SHOP BILL IS WORTH ITS `total_amount` ON EVERY SCREEN.** There was
+a `SUPPLIER_BILL_COST` expression here — total less the bill's discount, floored
+at zero, because a discount above the bill made a negative expense that RAISED
+profit — and five hand-rolled copies of it were found and folded in over time.
+A bill carries no discount since 2026-09-29 (see "A Supplies Shop bill has no
+discount of its own"), so the expression went with it and every reader sums the
+column directly: the engine, the Shops insight, the shop's balance, both payment
+waterfalls.
+→ `EveryReaderOfASupplierBillReadsOneTotalTests`
 
 **Revenue is `total_bill_amount − discount_amount`.** A discount is money never
 earned, not an expense; for a settled card this equals `received_amount` exactly.
@@ -3154,28 +3156,6 @@ left negative: it means a bill is missing.
 `warehouse_stock_value()` is in the engine and read by both the tile and the
 Inventory section, so one shelf cannot have two values.
 → `WhatWeOweAndWhatWeHoldSitTogetherTests`
-
-⚠ **`SUPPLIER_BILL_COST` had FIVE hand-rolled copies, not three.** The audit
-that consolidated `inventory_expense`, `monthly_series` and `_insight_shops`
-missed two, and both were in `inventory/`:
-
-- **`SupplierShop.update_totals()`** — an underwater bill *subtracted* from the
-  shop's balance, so real debt on its other bills read smaller than it is, and
-  `deactivate_supplier_shop` (which reads this figure) would let a shop the
-  workshop still owes be archived.
-- **The payment WATERFALL** in `views_suppliers.py`, twice — the supplier page
-  allocates payments across bills oldest-first, and the cumulative total it
-  allocates against was un-floored **while `get_effective_amount`, used for the
-  per-bill figure in the same loop, has always floored it.** The two halves of
-  one calculation disagreed about the same bill. Measured: a negative amount in
-  the running sum shifts the allocation for every bill after it and marks a
-  bill nobody has paid for as **COVERED** — the ledger telling the workshop a
-  live debt is settled.
-
-Both now import the declaration. **Before adding a sixth: the expression is
-`SUPPLIER_BILL_COST`, and `inventory/` may import it from `workshop`.**
-→ `test_the_shops_own_BALANCE_uses_the_same_floor`,
-`test_the_payment_WATERFALL_floors_it_too`
 
 **THE PROFIT PAGE STATES THE SAME PROFIT TWICE, AND THE SECOND ONE LANDS ON THE
 FIRST WITH NOTHING IN BETWEEN.** The equation is streams of money out; "What
@@ -6975,7 +6955,7 @@ can change money:
 | screen | the window counts from |
 |---|---|
 | Cashbook edit and delete | `created_at` |
-| Supplies Shop bill edit — **refused on the GET too**, so nobody fills in a whole bill to be told at the end — its discount box, and its delete | `created_at` |
+| Supplies Shop bill edit — **refused on the GET too**, so nobody fills in a whole bill to be told at the end — and its delete | `created_at` |
 | the three payment deletes, rent deposit edit and delete, salary advance | `created_at` |
 | **a settled job card's Unlock** | **`paid_date`** — settling is when the bill entered the books as money |
 | **Settle Bill on an already-paid bill** (re-settling, or putting it back to PENDING) | **`paid_date`** — the same bill through a second door |
@@ -7013,9 +6993,10 @@ permanent row from day one.
 ⚠ **`EditLog.record()` IS THE CHOKE POINT, the way `DeletionLog.record()` is
 for deletes.** It writes the row and then calls `notify_changed()` — its ONLY
 caller — so a door cannot announce an edit without keeping it, or keep one
-silently. All six doors go through it: the Cashbook edit, a rent deposit's
-edit, a Supplies Shop bill's edit page and its quick discount box, an unlocked
-edit of a settled job card, and Settle Bill on an already-paid bill. ⚠ The
+silently. All five doors go through it: the Cashbook edit, a rent deposit's
+edit, a Supplies Shop bill's edit page, an unlocked edit of a settled job
+card, and Settle Bill on an already-paid bill (a sixth, the bill card's quick
+discount box, went with the bill discount on 2026-09-29). ⚠ The
 Cashbook and the rent deposit pass `only_past_limits=True`, so they keep only
 an edit only an owner could make — the rule in the Cashbook section. It runs inside the same
 transaction as the save (three doors gained an `atomic()` for it), so a
@@ -10924,7 +10905,8 @@ use — never restructure the apps to dodge it.
    stock using the same snapshot+delta pattern and are the **only** thing that moves
    `Item.avg_cost` (via `recompute_average_cost`, a full replay); plus a
    `SupplierRestockBill` **pre/post_save pair** that re-costs the bill's items when
-   `bill_date` or `discount_amount` changes, since neither of those lives on a line.
+   `bill_date` changes, since the date does not live on a line (it re-costed on a
+   discount change too, until a bill stopped carrying one on 2026-09-29).
 4. **Opening stock** (`OpeningStock`, 3 handlers) — the go-live shelf count, moved the
    same snapshot+delta way as a restock line and re-costed on every change. It
    belongs to no shop, so it touches no balance. See "Legacy Data".
