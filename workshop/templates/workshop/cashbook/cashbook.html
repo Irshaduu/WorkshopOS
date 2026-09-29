@@ -348,8 +348,13 @@
            app settled on one payment-method vocabulary — invisible until
            somebody picked the one option that overflows. This grid is already
            a horizontal scroller, so the extra 43px costs scroll and nothing
-           else; `min-width` moves with it or the column just squeezes. */
-        grid-template-columns: 46px minmax(190px, 1fr) 105px 138px auto;
+           else; `min-width` moves with it or the column just squeezes.
+           The DATE column is `auto`, never a fixed 46px: the box is 46px
+           while it is today and spells the day out in amber once it is not,
+           and a fixed track left that wider box spilling over the name box
+           beside it. `auto` sizes it to the box, so it is still 46px on an
+           ordinary entry and the name box gives up the difference. */
+        grid-template-columns: auto minmax(190px, 1fr) 105px 138px auto;
         grid-template-areas: "date name amt meth go";
         min-width: 563px;
     }
@@ -976,7 +981,7 @@
 
                 <div class="cb-f-name">
                     <input type="text" name="category" id="cbName" class="cb-input"
-                           placeholder="Add expense..." maxlength="100" autocomplete="off"
+                           placeholder="Expense name..." maxlength="100" autocomplete="off"
                            required aria-label="Entry name">
                     <div class="list-group cb-autocomplete-suggestions" id="cbCategorySuggestions"></div>
                 </div>
@@ -1481,7 +1486,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 statsBox.classList.toggle('mode-out', !isIncome);
             }
             submitLabel.textContent = isIncome ? 'Add Income' : 'Add Expense';
-            nameInput.placeholder = isIncome ? 'Add income...' : 'Add expense...';
+            nameInput.placeholder = isIncome ? 'Income name...' : 'Expense name...';
         });
     });
 
