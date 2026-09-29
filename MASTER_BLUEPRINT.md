@@ -866,7 +866,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (87 files · 2,917 tests)
+## 13. TEST SUITE (87 files · 2,922 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -1127,4 +1127,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-24)*: 2 Django Apps · **47 Models** (38 workshop + 9 inventory) · **177 URL Routes** (144 + 33, excluding Django admin; 178 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **87 Test Files / 2,917 tests** · **96 Migrations** (85 workshop + 11 inventory)
+> **Total** *(re-measured 2026-09-24)*: 2 Django Apps · **47 Models** (38 workshop + 9 inventory) · **177 URL Routes** (144 + 33, excluding Django admin; 178 under `DEBUG=True`, which adds the media path) · **121 Templates** (98 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **87 Test Files / 2,922 tests** · **96 Migrations** (85 workshop + 11 inventory)

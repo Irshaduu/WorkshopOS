@@ -135,6 +135,12 @@ real need, but nothing followed the money afterwards.
 - **A bill that shrank below what was received is left alone in both cases** —
   that is an overpayment, not a shortfall, and inventing a refund would be
   guessing.
+- ⚠ **A PART-PAID (`PARTIAL`) fleet card is NOT locked, kept or announced when
+  its bill changes — the owner's call (2026-09-29), put with both sides.** Money
+  has been taken against it, so it was raised as a gap beside the fully-paid
+  card's lock, 24-hour window and Change History row. The answer: the card is
+  still being collected, so an edit there is ordinary work, and the fleet's own
+  page shows what it owes. **Do not raise it again as a defect.**
 → `EditingASettledBillKeepsThePaymentHonestTests`
 
 **Every typed rupee amount goes through `workshop/money.py`, and the bound is
@@ -183,7 +189,12 @@ The browser cannot catch it either — every one of those screens guards with
 `parse_money` is deliberately **not** changed to quantise first: rounding a
 figure UP into validity would be the function saving a number nobody typed,
 which is the rule the whole module exists for. The caller decides, in one line:
-`if amount is None or amount <= 0:`. **All six now do.**
+`if amount is None or amount <= 0:`. **All six now do.** ⚠ **Two more were
+found on 2026-09-29, both on Salary & Advance:** the advance (no constraint, so
+`0.004` wrote a ₹0 advance and raised its alert) and Set Salary (a ₹0 salary).
+The advance's fix had been written on 2026-09-22 and left uncommitted in a
+worktree — the "uncommitted edits" trap under Repo hygiene. Both carry the
+line now. → `SalaryAmountsAreBoundedByTheirColumnTests`
 
 **`JobCard.paid_date` is when a bill was actually settled.** Set only when
 `payment_status` becomes `PAID`/`BULK_PAID`, cleared when a payment is undone.
@@ -10472,7 +10483,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 87 files, 2,917 tests (counted 2026-09-29). Always SQLite (see below).
+# Full test suite — 87 files, 2,922 tests (counted 2026-09-29). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10978,7 +10989,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **87 files, 2,917 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **87 files, 2,922 tests**,
 re-counted 2026-09-29. (`workshop/tests/` is 81 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)

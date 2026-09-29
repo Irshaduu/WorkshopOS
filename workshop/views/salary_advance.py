@@ -324,7 +324,10 @@ def salary_advance_add(request):
 
         settled = _settled_month_for(advance_date)
 
-        if amount is None:
+        # `<= 0` as well as None: parse_money refuses zero BEFORE it quantises,
+        # so 0.004 comes back as 0.00 — and with no CheckConstraint on this
+        # column, that was a ₹0 advance written and announced to the owners.
+        if amount is None or amount <= 0:
             messages.error(request, "Enter a valid advance amount.")
         elif advance_date > today:
             # Cash cannot have been handed over on a day that has not arrived,
@@ -581,7 +584,9 @@ def salary_set_amount(request, staff_id):
     if request.method == 'POST':
         staff = get_object_or_404(Mechanic, pk=staff_id)
         amount = parse_money(request.POST.get('amount', '0'), Mechanic, 'current_salary')
-        if amount is None:
+        # `<= 0` for the same reason as the advance: 0.004 passes parse_money
+        # and quantises to a ₹0 salary.
+        if amount is None or amount <= 0:
             messages.error(request, "Enter a valid salary amount.")
         else:
             staff.current_salary = amount

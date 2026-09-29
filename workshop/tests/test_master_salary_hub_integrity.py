@@ -2114,6 +2114,24 @@ class SalaryAmountsAreBoundedByTheirColumnTests(WorkshopTestCase):
         self.assertEqual(SalaryAdvance.objects.count(), 0,
                          "'NaN' parses as a Decimal and would poison every SUM")
 
+    def test_a_sub_paisa_advance_is_refused_not_written_as_zero(self):
+        """parse_money refuses zero BEFORE it quantises, so 0.004 passes it and
+        comes back as 0.00. SalaryAdvance has no `amount > 0` constraint, so
+        without the caller's own `<= 0` check a ₹0 advance was written and a
+        SALARY_ADVANCE alert raised for it."""
+        staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
+        self.client.post(reverse('salary_advance_add'),
+                         {'staff_id': staff.pk, 'amount': '0.004'})
+        self.assertEqual(SalaryAdvance.objects.count(), 0)
+        self.assertFalse(Notification.objects.filter(event='SALARY_ADVANCE').exists())
+
+    def test_a_sub_paisa_salary_is_refused_not_set_to_zero(self):
+        staff = Mechanic.objects.create(name='Anil')
+        self.client.post(reverse('salary_set_amount', args=[staff.pk]),
+                         {'amount': '0.004'})
+        staff.refresh_from_db()
+        self.assertIsNone(staff.current_salary)
+
     def test_an_ordinary_amount_still_works(self):
         staff = Mechanic.objects.create(name='Anil', current_salary=Decimal('20000'))
         self.client.post(reverse('salary_advance_add'),
