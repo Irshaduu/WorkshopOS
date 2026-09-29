@@ -668,6 +668,26 @@ class TheCashbookSpeaksOnlyPastOfficesLimitsTests(TestCase):
         box = html[html.index('id="cbNote"'):]
         self.assertIn('placeholder', box[:box.index('>')])
 
+    def test_the_edit_dialog_asks_no_side_and_an_edit_keeps_it(self):
+        """
+        No Money Out / Money In box on the edit (the owner's call,
+        2026-09-29): nearly every entry is an expense, so it was a question
+        nobody had. The dialog's title says the side instead, and an edit that
+        posts no side leaves an INCOME entry as income.
+        """
+        html = self.client.get(reverse('cashbook')).content.decode()
+        form = html.split('id="cbEditForm"', 1)[1].split('</form>', 1)[0]
+        self.assertNotIn('name="entry_type"', form)
+        self.assertNotIn('>Side<', form)
+
+        CashbookEntry.objects.filter(pk=self.entry.pk).update(entry_type='INCOME')
+        payload = {'category': 'Scrap', 'amount': '900', 'payment_method': 'CASH',
+                   'date': self.entry.date.isoformat()}
+        self.client.post(reverse('manage_edit_cashbook_entry', args=[self.entry.pk]), payload)
+        self.entry.refresh_from_db()
+        self.assertEqual((self.entry.entry_type, self.entry.amount),
+                         ('INCOME', Decimal('900.00')))
+
     # -- past the limits: only an owner, kept, and the other owner's phone ------
 
     def test_an_owner_editing_an_old_entry_is_kept_and_phones_the_other_owner(self):

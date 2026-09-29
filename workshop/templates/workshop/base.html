@@ -1789,7 +1789,7 @@ widen this and the audience together.
             {% if is_owner or is_office %}
 
                 <div class="drawer-label">Money</div>
-                <a class="drawer-link accent-green{% if p|slice:':10' == '/cashbook/' %} active{% endif %}" href="{% url 'cashbook' %}">
+                <a class="drawer-link accent-red{% if p|slice:':10' == '/cashbook/' %} active{% endif %}" href="{% url 'cashbook' %}">
                     <span class="drawer-ico"><i class="bi bi-wallet2"></i></span>
                     General Cashbook
                     <i class="bi bi-chevron-right drawer-chevron"></i>

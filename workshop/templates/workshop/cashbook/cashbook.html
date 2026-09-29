@@ -15,8 +15,12 @@
 {% block extra_css %}
 <style>
     /* ─────────────────────────────────────────────────────────────
-       Cashbook. Green is the section accent (matches the drawer);
-       red = money out, emerald = money in, amber = a back-dated entry.
+       Cashbook. The section's MARK is red — the wallet, the rule under
+       the header and the count chip — matching the drawer, because
+       nearly everything recorded here is money out (2026-09-29, the
+       owner's call; it was green). `--cb-accent` stays green and is only
+       the focus and hover ring: a red ring on a box reads as an error.
+       Red = money out, emerald = money in, amber = a back-dated entry.
        ───────────────────────────────────────────────────────────── */
     .cb {
         --cb-accent: #10b981;
@@ -34,7 +38,7 @@
     }
     .cb-page-header::after {
         content: ''; position: absolute; bottom: -2px; left: 0;
-        width: 48px; height: 2px; background: var(--cb-accent);
+        width: 48px; height: 2px; background: var(--cb-out);
     }
     .cb-header-top {
         display: flex; justify-content: space-between; align-items: center;
@@ -45,13 +49,13 @@
         color: var(--color-text); line-height: 1.1;
         display: flex; align-items: center; gap: 9px; margin: 0;
     }
-    .cb-page-title .title-icon { color: var(--cb-accent); }
+    .cb-page-title .title-icon { color: var(--cb-out); }
     .cb-count-pill {
         font-size: 0.62rem; font-weight: 700; letter-spacing: 0.9px;
         text-transform: uppercase; white-space: nowrap;
-        background: rgba(16,185,129,0.1); color: #047857;
+        background: rgba(220,38,38,0.08); color: #b91c1c;
         padding: 3px 9px; border-radius: 999px;
-        border: 1px solid rgba(16,185,129,0.22); align-self: center;
+        border: 1px solid rgba(220,38,38,0.22); align-self: center;
     }
 
     /* ── Controls: search + date filter (same vocabulary as every
@@ -825,7 +829,9 @@
         .cb-ledger-head { gap: 8px; }
         .cb-chips { width: 100%; }
         .cb-chip { flex: 1; justify-content: center; }
-        .cb-field-row { grid-template-columns: 1fr; }
+        /* Stacked, the fields' own margin spaces them; a row gap on top
+           doubled the space under Amount. */
+        .cb-field-row { grid-template-columns: 1fr; row-gap: 0; }
         .cb-modal-box { padding: 18px; }
     }
 
@@ -1151,22 +1157,14 @@
                                max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}" data-floor="{{ floor_iso }}"{% endif %} required>
                     </div>
                 </div>
+                {% comment %}
+                NO SIDE BOX (2026-09-29, the owner's call). Nearly every entry
+                is money out, so a Money Out / Money In select on every edit
+                was a question nobody had. The title says which side the entry
+                is on; one keyed on the wrong side is deleted and added again
+                on the add form, whose own toggle and recap ask the side.
+                {% endcomment %}
                 <div class="cb-field-row">
-                    <div class="cb-field">
-                        {% comment %}
-                        Income keyed as an expense lands on the wrong side of
-                        the Profit page equation — a double-sized error — and
-                        the only way back used to be deleting the row and
-                        re-adding it. Rendered here because the server-side fix
-                        is unreachable otherwise: this modal is the only edit
-                        path there is.
-                        {% endcomment %}
-                        <label for="cbEditType">Side</label>
-                        <select name="entry_type" id="cbEditType" class="cb-select" required>
-                            <option value="EXPENSE">Money Out (expense)</option>
-                            <option value="INCOME">Money In (income)</option>
-                        </select>
-                    </div>
                     <div class="cb-field">
                         <label for="cbEditMethod">Method</label>
                         <select name="payment_method" id="cbEditMethod" class="cb-select" required>
@@ -1176,10 +1174,10 @@
                             <option value="TRANSFER">🏦 Bank Transfer</option>
                         </select>
                     </div>
-                </div>
-                <div class="cb-field">
-                    <label for="cbEditNote">Note (optional)</label>
-                    <input type="text" name="description" id="cbEditNote" class="cb-input">
+                    <div class="cb-field">
+                        <label for="cbEditNote">Note (optional)</label>
+                        <input type="text" name="description" id="cbEditNote" class="cb-input">
+                    </div>
                 </div>
                 <div class="cb-modal-actions" style="margin-top:14px;">
                     <button type="button" class="cb-btn-cancel" data-cb-close="cbEditModal">Cancel</button>
@@ -1743,10 +1741,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const edit = e.target.closest('.cb-js-edit');
         if (edit) {
             const d = edit.dataset;
+            // The title says which side the entry is on — there is no box for
+            // it — in the add button's own words.
+            document.getElementById('cbEditTitle').textContent =
+                d.etype === 'INCOME' ? 'Edit income' : 'Edit expense';
             document.getElementById('cbEditName').value   = d.name;
-            document.getElementById('cbEditAmount').value = d.amount;
+            // 50, not 50.00: paise are kept when there are any.
+            document.getElementById('cbEditAmount').value = (d.amount || '').replace(/\.00$/, '');
             document.getElementById('cbEditMethod').value = d.method;
-            document.getElementById('cbEditType').value   = d.etype;
             document.getElementById('cbEditNote').value   = d.note || '';
             // Without this the date opens blank; `required` would then block
             // the save, and dropping `required` would silently reset the entry

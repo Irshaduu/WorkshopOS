@@ -1563,10 +1563,19 @@ opens a date picker only from the calendar glyph, which the overlay hides, so th
 click handler calls `showPicker()`; on mobile the tap has already opened it and
 the second call throws, which is caught.
 
-**Income mis-keyed as an expense can be corrected in place.** It lands on the
-*wrong side* of the Profit equation — a double-sized error. `entry_type` is
-honoured on edit **only when a valid one is posted**, so a payload without it
-keeps what the entry already has rather than silently flipping it.
+⚠ **A WRONG SIDE IS FIXED BY DELETING AND ADDING AGAIN — THE EDIT DIALOG HAS
+NO SIDE BOX** (2026-09-29, the owner's call; it reverses "income mis-keyed as
+an expense can be corrected in place"). Income on the expense side is a
+double-sized error on the Profit page, which is why the box was there — but
+nearly every entry is an expense, so a Money Out / Money In select on every
+edit was a question nobody had, and the owner found the dialog confusing for
+it. The add form asks the side twice (its toggle, then the recap), so a wrong
+side is caught before it is saved; one that gets through is deleted and added
+again, quiet inside Office's 24 hours. The dialog's title says the side
+("Edit expense" / "Edit income"), and its amount opens as 50 rather than 50.00.
+The view still honours `entry_type` **only when a valid one is posted**, so an
+edit — which now posts none — keeps what the entry already has.
+→ `test_the_edit_dialog_asks_no_side_and_an_edit_keeps_it`
 
 **`payment_method` is validated against the list, on both the add and the edit**
 (2026-08-31). `entry_type` was checked and this was not, so a crafted POST wrote
@@ -10431,7 +10440,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 86 files, 2,907 tests (counted 2026-09-29). Always SQLite (see below).
+# Full test suite — 86 files, 2,908 tests (counted 2026-09-29). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10937,7 +10946,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **86 files, 2,907 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **86 files, 2,908 tests**,
 re-counted 2026-09-29. (`workshop/tests/` is 80 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
