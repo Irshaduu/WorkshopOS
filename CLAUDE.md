@@ -1608,6 +1608,17 @@ phone; the delete logs only when `delete_window.is_past_window()`, the test the
 refusal already uses. The delete dialog asks for a reason only for a row whose
 delete will be logged (`data-logged`), because a reason box whose value goes
 nowhere is a field silently dropped.
+
+⚠ **ONLY A DATE THAT MOVES IS HELD TO THE THREE-DAY LIMIT ON AN EDIT**
+(2026-09-29, Deposit & Rent's rule). The floor moves every night, so an entry
+Office keyed yesterday on yesterday's floor was past today's by morning, and
+the edit checked the date whether or not it changed — refusing Office a
+correction to the AMOUNT inside their own 24 hours. The view now asks
+`too_far_back()` only when the posted date differs from the stored one, and
+the edit box's `min` is lowered to the row's own date when that is older
+(`data-floor`, read by the script that fills the dialog) — or the browser's own
+check would refuse the save before the server saw it. Moving an already-old
+entry further back is still refused.
 → `TheCashbookSpeaksOnlyPastOfficesLimitsTests` (it replaced the class that
 asserted every Office edit reached the bell, AUD-0083).
 
@@ -2209,7 +2220,7 @@ The refusal names the rule **and** the route, because "you cannot" without
 | rent deposit add | the running position of every month since |
 | **rent deposit edit** | the same — but only when the edit MOVES the date (see "Editing a deposit") |
 | **cashbook add** | a closed Profit period — `cashbook_expense()` feeds the equation |
-| **cashbook edit** | the same, on the screen that exists to change a date |
+| **cashbook edit** | the same, on the screen that exists to change a date — but only when the edit MOVES the date |
 | **spare-shop payment** | that shop's own windows, and `cash_position()` |
 | **Supplies Shop payment** | `cash_position()`; the side whose collector comes weekly |
 | **fleet payment** | Cash Tracking, on the largest receipts the workshop takes |
@@ -2441,8 +2452,8 @@ Three details:
   night, so a row Office keyed yesterday for the floor of yesterday is past
   today's floor by morning; checking the untouched date would refuse Office a
   correction to the AMOUNT inside their own 24 hours. The modal's date `min`
-  is lowered to the row's own date for the same reason. (The Cashbook's edit
-  still checks its date unconditionally.)
+  is lowered to the row's own date for the same reason. The Cashbook's edit
+  follows the same rule since 2026-09-29.
 - **A payload with no date keeps the row's date** rather than falling back to
   today, which would move money on a correction that never asked to.
 - **A note is never history**, and an edit that moves a deposit into another
@@ -10420,7 +10431,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 86 files, 2,903 tests (counted 2026-09-24). Always SQLite (see below).
+# Full test suite — 86 files, 2,906 tests (counted 2026-09-29). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10926,8 +10937,8 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **86 files, 2,903 tests**,
-re-counted 2026-09-24. (`workshop/tests/` is 80 `test_*.py` plus `tests.py`;
+Tests live in `workshop/tests/` and `inventory/` — **86 files, 2,906 tests**,
+re-counted 2026-09-29. (`workshop/tests/` is 80 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)
 

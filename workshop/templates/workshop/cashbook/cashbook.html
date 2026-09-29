@@ -1148,7 +1148,7 @@
                     <div class="cb-field">
                         <label for="cbEditDate">Date money moved</label>
                         <input type="date" name="date" id="cbEditDate" class="cb-input"
-                               max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}"{% endif %} required>
+                               max="{{ today_iso }}"{% if floor_iso %} min="{{ floor_iso }}" data-floor="{{ floor_iso }}"{% endif %} required>
                     </div>
                 </div>
                 <div class="cb-field-row">
@@ -1752,7 +1752,13 @@ document.addEventListener('DOMContentLoaded', function () {
             // Without this the date opens blank; `required` would then block
             // the save, and dropping `required` would silently reset the entry
             // to today — the very bug this field exists to fix.
-            document.getElementById('cbEditDate').value   = d.date;
+            const editDate = document.getElementById('cbEditDate');
+            editDate.value = d.date;
+            // Office's floor, lowered to the row's own date when that is
+            // older, so a correction to the amount is never blocked by a date
+            // nobody touched. ISO strings compare as dates.
+            const floor = editDate.dataset.floor;
+            if (floor) { editDate.min = d.date < floor ? d.date : floor; }
             document.getElementById('cbEditForm').action  = '/cashbook/' + d.id + '/edit/';
             openModal('cbEditModal');
             return;

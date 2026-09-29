@@ -613,6 +613,51 @@ class TheCashbookSpeaksOnlyPastOfficesLimitsTests(TestCase):
         self._post(date=(self.entry.date - timedelta(days=1)).isoformat())
         self.assertTrue(self._alerts().get().url.startswith(reverse('cashbook')))
 
+    # -- only a date that MOVES is held to the three-day limit ------------------
+
+    def _set_date(self, day):
+        CashbookEntry.objects.filter(pk=self.entry.pk).update(date=day)
+        self.entry.refresh_from_db()
+
+    def test_an_untouched_date_is_never_held_to_the_limit(self):
+        """
+        ⚠ THE FLOOR MOVES EVERY NIGHT — Deposit & Rent's rule. An entry
+        Office keyed yesterday on yesterday's floor is past today's floor by
+        this morning, and holding a date nobody touched to the limit refused
+        Office a correction to the AMOUNT, inside their own 24 hours.
+        """
+        from workshop.money_dates import backdate_floor
+        self._set_date(backdate_floor() - timedelta(days=1))
+        self._post(amount='1800')
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.amount, Decimal('1800.00'))
+        self.assertEqual(self._alerts().count(), 0, 'still the day\'s work: quiet')
+        self.assertFalse(EditLog.objects.exists())
+
+    def test_office_still_cannot_MOVE_a_date_past_the_limit(self):
+        """The exemption is for a date nobody touched. Moving an already-old
+        entry further back is filing money there, and Office is refused."""
+        from workshop.money_dates import backdate_floor
+        old = backdate_floor() - timedelta(days=1)
+        self._set_date(old)
+        self._post(amount='1800', date=(old - timedelta(days=1)).isoformat())
+        self.entry.refresh_from_db()
+        self.assertEqual((self.entry.amount, self.entry.date), (Decimal('50000.00'), old))
+
+    def test_the_edit_box_carries_the_floor_for_its_script_to_lower(self):
+        """The box's `min` is today's floor, which would make the browser
+        refuse the save on an entry already older than it. The script lowers
+        it to the row's own date from `data-floor`; an owner has no floor."""
+        from workshop.money_dates import backdate_floor
+        floor = backdate_floor().isoformat()
+        html = self.client.get(reverse('cashbook')).content.decode()
+        box = html[html.index('id="cbEditDate"'):]
+        self.assertIn(f'data-floor="{floor}"', box[:box.index('>')])
+        self.client.login(username='sahad', password='pw')
+        html = self.client.get(reverse('cashbook')).content.decode()
+        box = html[html.index('id="cbEditDate"'):]
+        self.assertNotIn('data-floor', box[:box.index('>')])
+
     # -- past the limits: only an owner, kept, and the other owner's phone ------
 
     def test_an_owner_editing_an_old_entry_is_kept_and_phones_the_other_owner(self):

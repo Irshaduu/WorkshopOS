@@ -684,10 +684,17 @@ def edit_cashbook_entry(request, pk):
         # The EDIT path needs it as badly as the add path: moving an entry back
         # into a closed month is the same act as filing one there, and this is
         # the screen that exists precisely so a date can be corrected.
-        blocked = too_far_back(entry_date, request.user, "A cashbook entry")
-        if blocked:
-            messages.error(request, blocked)
-            return redirect('cashbook')
+        #
+        # ⚠ ONLY A DATE THAT MOVES IS HELD TO THE LIMIT — Deposit & Rent's
+        # rule. The floor moves every night, so an entry Office keyed
+        # yesterday on yesterday's floor is past it by this morning — and
+        # asking about a date nobody touched would refuse Office a correction
+        # to the AMOUNT, inside their own 24 hours.
+        if entry_date != entry.date:
+            blocked = too_far_back(entry_date, request.user, "A cashbook entry")
+            if blocked:
+                messages.error(request, blocked)
+                return redirect('cashbook')
 
         entry.category       = fit_text(
             _canonical_category(category, exclude_pk=entry.pk), CashbookEntry, 'category')
