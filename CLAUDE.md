@@ -10431,7 +10431,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 86 files, 2,906 tests (counted 2026-09-29). Always SQLite (see below).
+# Full test suite — 86 files, 2,907 tests (counted 2026-09-29). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10937,7 +10937,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **86 files, 2,906 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **86 files, 2,907 tests**,
 re-counted 2026-09-29. (`workshop/tests/` is 80 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)

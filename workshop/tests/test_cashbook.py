@@ -658,6 +658,16 @@ class TheCashbookSpeaksOnlyPastOfficesLimitsTests(TestCase):
         box = html[html.index('id="cbEditDate"'):]
         self.assertNotIn('data-floor', box[:box.index('>')])
 
+    def test_the_edit_note_carries_no_placeholder(self):
+        """It sits under its own "Note (optional)" label, so a hint in the box
+        is one more line of grey text (the owner's call, 2026-09-29). The add
+        form's note keeps its placeholder: that box has no label."""
+        html = self.client.get(reverse('cashbook')).content.decode()
+        box = html[html.index('id="cbEditNote"'):]
+        self.assertNotIn('placeholder', box[:box.index('>')])
+        box = html[html.index('id="cbNote"'):]
+        self.assertIn('placeholder', box[:box.index('>')])
+
     # -- past the limits: only an owner, kept, and the other owner's phone ------
 
     def test_an_owner_editing_an_old_entry_is_kept_and_phones_the_other_owner(self):
