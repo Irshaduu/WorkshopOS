@@ -441,9 +441,9 @@ def spare_shop_discount(request, pk):
 
     A payment with no cash: it settles the debt exactly as a payment does and
     is income on the Profit page on its date. The rules are
-    `workshop/discounts.py`, shared with the Supplies Shop and the Fleet
-    Account; the shop row is LOCKED so two discounts typed at once cannot both
-    pass the "no more than is owed" check.
+    `workshop/discounts.py`, shared with the Supplies Shop; the shop row is
+    LOCKED so two discounts typed at once cannot both pass the "no more than
+    is owed" check.
     """
     if request.method != 'POST':
         return redirect('spare_shop_detail', pk=pk)

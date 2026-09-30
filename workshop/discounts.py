@@ -1,12 +1,11 @@
 """
 workshop/discounts.py — the rules for RECORDING A DISCOUNT, one implementation
-for every ledger that takes one.
+for every ledger that takes one: the spare shop and the Supplies Shop. (A Fleet
+Account takes none — built and removed on 2026-09-30, the owners' call.)
 
 A DISCOUNT IS A PAYMENT WITH NO CASH (2026-09-29, the owners' call). It settles
-what an account owes exactly the way a payment does, and moves no money:
-
-    spare shop / Supplies Shop   the shop let us off   → profit UP, on its date
-    Fleet Account                we let the fleet off  → on the cards it settles
+what a shop is owed exactly the way a payment does, moves no money, and is
+profit on the day the shop let us off.
 
 So it is read the way a payment is read — the same money rules, the same
 date rules — plus the one rule a payment does not need: it can never be more

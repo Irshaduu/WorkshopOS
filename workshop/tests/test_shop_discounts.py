@@ -409,7 +409,7 @@ class TheScreensTests(ShopDiscountBase):
             with self.subTest(url=url, owed=True):
                 html = self.client.get(url).content.decode()
                 self.assertIn('id="rdiscForm"', html)
-                # A shop letting US off is profit: the green variant, not `-loss`.
+                # A shop letting US off is profit: green, never a red variant.
                 self.assertIn('class="rdisc-sym"', html)
                 self.assertNotIn('rdisc-loss', html)
 
@@ -461,6 +461,26 @@ class TheScreensTests(ShopDiscountBase):
         self.assertIn('+ ₹300 discount', html)
         self.assertIn(reverse('delete_shop_discount',
                               args=[self.fluid.pk, SupplierDiscount.objects.get().pk]), html)
+
+    def test_the_list_cards_add_up_the_way_the_shop_page_does(self):
+        """Paid is cash, so a list card read Billed ₹1,000 · Paid ₹700 over a
+        balance of ₹0 once a shop let ₹300 off — a figure that looked wrong.
+        The shop page's own line goes under Paid, only when there is one."""
+        self.bought(1000)
+        self.billed(1000)
+        lists = (reverse('spare_shop_list'), reverse('supplier_shop_list'))
+        for url in lists:
+            with self.subTest(url=url, discount=False):
+                self.assertNotIn('stat-disc-light', self.client.get(url).content.decode())
+        SpareShopPayment.objects.create(shop=self.biljo, amount=D('700'))
+        self.spare_discount(300)
+        SupplierPayment.objects.create(supplier=self.fluid, amount=D('700'))
+        self.fresh(self.fluid).update_totals()
+        self.supply_discount(300)
+        for url in lists:
+            with self.subTest(url=url, discount=True):
+                html = self.client.get(url).content.decode()
+                self.assertIn('<div class="stat-disc stat-disc-light">+ ₹300 discount</div>', html)
 
     def test_the_delete_asks_first_and_names_its_card(self):
         self.bought(1000)

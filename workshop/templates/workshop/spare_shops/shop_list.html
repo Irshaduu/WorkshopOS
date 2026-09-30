@@ -122,6 +122,7 @@
         <div class="stat-pill">
           <div class="label">Paid</div>
           <div class="value" style="color: var(--color-success);">₹{{ shop.total_paid_amount|floatformat:0 }}</div>
+          {% if shop.total_discount_amount %}<div class="stat-disc stat-disc-light">+ ₹{{ shop.total_discount_amount|floatformat:0 }} discount</div>{% endif %}
         </div>
         <div class="stat-pill">
           <div class="label">Items</div>

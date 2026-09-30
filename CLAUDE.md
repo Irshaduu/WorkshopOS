@@ -864,7 +864,9 @@ is recorded the same way (the bill is entered at its full line prices).
   (inventory.models) are the query expressions every list, payable tile and
   archive guard reads, and `get_pending_balance` is the same sum for one row.
   "Total Paid" stays CASH — the discount shows under it as "+ ₹150 discount",
-  only when there is some.
+  only when there is some: on the shop page, and under Paid on that shop's
+  card in both shop LISTS (`.stat-disc-light`), or the card read Billed −
+  Paid ≠ Balance.
 - **The waterfall pool is `settled_beyond_opening`** (paid + discount −
   opening), renamed from `paid_beyond_opening`, in all three waterfalls. A pool
   of cash alone would show a bill Unpaid at a ₹0 balance.
@@ -893,15 +895,19 @@ is recorded the same way (the bill is entered at its full line prices).
   is itself the deliberate step, and its button carries the figure ("Apply
   ₹150") at the moment it is pressed. A figure over what is owed is said in
   the dialog and Apply greys out; the view refuses it either way.
-- **One control, three pages.** `includes/_discount_button.html` (the
+- **One control, two pages.** `includes/_discount_button.html` (the
   symbol), `includes/_record_discount.html` (the dialog, included once, outside
   every other form) and `includes/_discount_history.html` (the rows at the top
-  of each payment history), `.rdisc-*` in style.css. **Green on a shop page**:
-  a shop letting us off is profit. The partials' red `loss` variant is for the
-  Fleet Account's discount, where the workshop lets a customer off — ⚠ **not
-  built yet as of 2026-09-30**, the next step. Symbol and dialog render only
-  while money is owed, and never on an archived Supplies Shop — a door that
-  refuses is worse than none.
+  of each payment history), `.rdisc-*` in style.css. **Green**: a shop letting
+  us off is profit. Symbol and dialog render only while money is owed, and
+  never on an archived Supplies Shop — a door that refuses is worse than none.
+- ⚠ **A FLEET ACCOUNT TAKES NO DISCOUNT** — see "Fleet Accounts". The red
+  variant the partials carried for it went with it.
+- ⚠ **ON THE SYSTEM MAP IT IS A CHIP, NOT A LINE** — both shop cards read
+  `ledger - discount = profit`. The true flow is shop → PROFIT and it was
+  measured as undrawable (the one lane east out of LOG.04 is full, and
+  PROFIT's left edge already takes three arrivals); the measurement is in
+  `build_system_map.py` beside the cards, per the map's own rule.
 → `workshop/tests/test_shop_discounts.py`
 
 What is left in `inventory/`:
@@ -1357,6 +1363,14 @@ Pay confirmation repeats the date **only when it is not today**.
 `received_amount > 0`.** Blocked, not auto-reversed: that money may be part of a
 lump payment shared with other cards in the same cascade, so there is no clean
 single amount to claw back. Reverse the specific `BulkPaymentHistory` entry first.
+
+⚠ **A FLEET ACCOUNT TAKES NO DISCOUNT — built and removed on 2026-09-30, the
+owners' call.** It was the spare shop's "payment with no cash" turned round
+(newest cards first, onto each card's `discount_amount`) and never shipped.
+**Do not rebuild it without the owners.** The fleet code relies on no fleet
+card carrying a discount: `FLEET_OWED` is `bill − received`, and
+`bulk_payer_pay` and `_reconcile_settled_bill` zero `discount_amount` on a
+fleet card they settle.
 
 **`advance_balance` banks any surplus** when a lump payment exceeds what is owed,
 and is pooled into the next payment before distributing — so `total_balance` can
@@ -10530,7 +10544,7 @@ python manage.py runserver
 ```
 
 ```bash
-# Full test suite — 88 files, 2,934 tests (counted 2026-09-30). Always SQLite (see below).
+# Full test suite — 88 files, 2,936 tests (counted 2026-09-30). Always SQLite (see below).
 # ⚠ IT RUNS AFTER A **MAJOR** UPDATE, NOT BEFORE EVERY COMMIT (the owner's call,
 # 2026-09-20) — and "major" is decided by BLAST RADIUS, measured, or the word
 # quietly comes to mean "never". FULL suite: any model, migration, form, signal,
@@ -10579,7 +10593,10 @@ python manage.py runserver
 #     re-run only the failing files SERIALLY before calling one a bug.
 #   • ⚠ Do not pipe it through `tail`: that buffers the whole run, so there is
 #     no progress to watch until it exits.
-# Last full run 2026-09-24: 2,903 tests, 509s on `--parallel 4`, ALL GREEN,
+# Last full run 2026-09-30: 2,936 tests, 3,264s (54.4 min) on `--parallel 4`
+# with 2.3 GB free, ALL GREEN, verifying the shop discounts on the About
+# page, the map and the shop lists, and the fleet discount removed.
+# Before it: 2026-09-24, 2,903 tests, 509s on `--parallel 4`, ALL GREEN,
 # verifying the white phone tab bar with the black capsule — in the CLOUD
 # container (4 cores, 15 GB), which is why it is a sixth of the laptop's time.
 # Before it, the same day: 2,896 tests, 511s, the same container, verifying
@@ -11038,7 +11055,7 @@ table into the general roster at `/manage/?section=staff`. Only
 
 # Testing conventions
 
-Tests live in `workshop/tests/` and `inventory/` — **88 files, 2,934 tests**,
+Tests live in `workshop/tests/` and `inventory/` — **88 files, 2,936 tests**,
 re-counted 2026-09-30. (`workshop/tests/` is 82 `test_*.py` plus `tests.py`;
 `inventory/` is 5, one of which is `tests_suppliers.py` and so is missed by a
 `test_*.py` glob — which is why the two halves used to be written down wrong.)

@@ -1,6 +1,7 @@
 {% load humanize %}{% comment %}
-RECORD A DISCOUNT — one small dialog for the spare shop, the Supplies Shop and
-(next) the Fleet Account, opened by the tag symbol (`_discount_button.html`).
+RECORD A DISCOUNT — one small dialog for the spare shop and the Supplies Shop,
+opened by the tag symbol (`_discount_button.html`). A Fleet Account takes no
+discount (the owners' call, 2026-09-30).
 CSS is `.rdisc-*` in static/css/style.css.
 
 A DISCOUNT IS A PAYMENT WITH NO CASH. It settles the debt exactly as a payment
@@ -12,8 +13,6 @@ control.
   action   where it posts
   owed     what is owed right now (a Decimal)
   name     the account's name
-  loss     the fleet page: the workshop let the customer off, so RED; on a
-           shop page the shop let us off, so GREEN
 
 ⚠ NO SECOND CONFIRMATION CARD. The dialog is itself the deliberate step, and
 the Apply button carries the figure ("Apply ₹150") at the moment it is pressed,
@@ -25,7 +24,7 @@ Include it once per page, OUTSIDE any other form, and only while money is owed.
 {% endcomment %}
 <div class="modal fade" id="rdiscModal" tabindex="-1" aria-labelledby="rdiscTitle" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered" style="max-width: 380px;">
-    <div class="modal-content rdisc-modal{% if loss %} rdisc-loss{% endif %}">
+    <div class="modal-content rdisc-modal">
       <form method="post" action="{{ action }}" id="rdiscForm"
             data-owed="{{ owed|stringformat:'s' }}" data-today="{{ today_iso }}">
         {% csrf_token %}
@@ -69,7 +68,7 @@ Include it once per page, OUTSIDE any other form, and only while money is owed.
 
         <div class="rdisc-mfoot">
           <button type="button" class="btn btn-light fw-bold rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="rpay-btn {% if loss %}rpay-btn-out{% else %}rpay-btn-in{% endif %}" id="rdiscApply">
+          <button type="submit" class="rpay-btn rpay-btn-in" id="rdiscApply">
             <i class="bi bi-tag-fill"></i> <span id="rdiscApplyTxt">Apply</span>
           </button>
         </div>

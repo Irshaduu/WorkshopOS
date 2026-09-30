@@ -532,7 +532,8 @@ Shop page → tag symbol (left of Payments / Restock Bills) → Record a Discoun
 
 - **A discount is a payment with no cash.** It comes off what is owed exactly like a
   payment, and the oldest items (or bills) are covered first. "Total Paid" stays the
-  cash; the discount shows under it as "+ ₹150 discount".
+  cash; the discount shows under it as "+ ₹150 discount" — on the shop page and
+  on that shop's card in the shop list, only when there is one.
 - **It is profit on the day it was given** — "Discounts from shops" on the Profit
   page's Turnover. It never moves Cash Tracking, and it never changes what a part or
   a stock item cost: a Supplies Shop's discount on one bill is recorded here too,

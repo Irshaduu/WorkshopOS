@@ -593,8 +593,25 @@ def build(theme):
     # INVENTORY bay has a clear run into it; in the first pass it was boxed in
     # on all four sides by its own neighbours and the connector had nowhere to
     # land. LOW STOCK sits directly under it, which is the shelf's own reading.
+    # ⚠ A SHOP DISCOUNT IS PROFIT, AND THAT IS A CHIP ON BOTH SHOPS, NOT A LINE
+    # (2026-09-30). It is income on the day the shop gave it ("Discounts from
+    # shops" in Turnover), so the true flow is shop -> PROFIT. It cannot be
+    # drawn, measured rather than guessed:
+    #
+    #   * the only way east out of this zone's top is the band y 449..494, which
+    #     already carries the expense trunk (y=449, coral, x 109..1006),
+    #     sec_spr and sec_inv (both y=478) and SHOP PAYMENTS' run into this
+    #     card (y=486, x 150..566), under both zone headers;
+    #   * past that it would cross the trunk's vertical (x=1006) and the photos
+    #     run (x=1030) to reach a PROFIT left edge already taking three
+    #     arrivals (y 516.3, 520 and 527.5).
+    #
+    # A second chip would grow this row and row 3 by 9.6px each and push the
+    # legacy row onto the sig -> cost lane at y=713, so each shop keeps ONE
+    # chip and it says the half no line can. "Pay" left it: SHOP PAYMENTS'
+    # two arrows into these cards already say it.
     _log = [
-        ('sshop', 'SPARE SHOPS',    ['ledger - balance - pay'],     FLOW['out']),
+        ('sshop', 'SPARE SHOPS',    ['ledger - discount = profit'], FLOW['out']),
         ('unass', 'UNASSIGNED',     ['floor adds - office prices'], FLOW['out']),
         ('ware',  'WAREHOUSE',      ['the shelf - may go negative'], FLOW['stock']),
 
@@ -602,7 +619,7 @@ def build(theme):
         ('rest',  'RESTOCK BILLS',  ['priced as billed'],           FLOW['out']),
         ('low',   'LOW STOCK',      ['under 25% - negatives'],      FLOW['stock']),
 
-        ('supp',  'SUPPLIES SHOPS', ['ledger - instalments'],       FLOW['out']),
+        ('supp',  'SUPPLIES SHOPS', ['ledger - discount = profit'], FLOW['out']),
         ('cats',  'CATEGORIES',     ['the generic part name'],      FLOW['stock']),
         ('cost',  'AVERAGE COST',   ['weighted - full replay'],     FLOW['stock']),
 

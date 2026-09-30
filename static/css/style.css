@@ -715,9 +715,9 @@ select.status-fixed {
    The dialog reuses the payment row's own parts (`.rpay-field`, `.rpay-input`,
    `.rpay-date`, `.rpay-btn`) — one control, not a second design.
 
-   ONE colour pair, set by a modifier, the `--rpay-btn-a/b` rule:
-     · default     — a shop let US off: profit goes UP, so GREEN
-     · `-loss`     — the workshop let a FLEET off: money never earned, RED */
+   GREEN, because a shop letting US off is profit. (A red variant for a Fleet
+   Account's discount was built and removed on 2026-09-30, the owners' call:
+   a fleet takes no discount.) */
 .rdisc-sym {
     flex: 0 0 auto;
     display: inline-flex;
@@ -735,15 +735,8 @@ select.status-fixed {
     -webkit-tap-highlight-color: transparent;
     transition: background-color 0.15s ease;
 }
-/* On a light page (the Fleet Account) rather than the dark shop header. */
-.rdisc-sym-loss {
-    border-color: #fecaca;
-    background: #fff;
-    color: #dc2626;
-}
 @media (hover: hover) {
     .rdisc-sym:hover { background: rgba(74, 222, 128, 0.18); }
-    .rdisc-sym-loss:hover { background: #fef2f2; }
 }
 .rdisc-sym:active { transform: scale(0.94); }
 .rdisc-sym:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
@@ -754,10 +747,6 @@ select.status-fixed {
     border: 0;
     border-radius: 16px;
     box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
-}
-.rdisc-modal.rdisc-loss {
-    --rdisc-ink: #b91c1c;
-    --rdisc-wash: rgba(185, 28, 28, 0.08);
 }
 .rdisc-mhead {
     display: flex;
@@ -842,7 +831,6 @@ select.status-fixed {
     text-transform: uppercase;
 }
 .rdisc-hist { --rdisc-ink: #047857; --rdisc-wash: rgba(4, 120, 87, 0.08); }
-.rdisc-hist.rdisc-loss { --rdisc-ink: #b91c1c; --rdisc-wash: rgba(185, 28, 28, 0.07); }
 
 /* Under a stat bar's Total Paid: what came off the debt WITHOUT cash. Only
    rendered when there is some, and quiet, because the figure above it is
@@ -853,6 +841,13 @@ select.status-fixed {
     font-weight: 600;
     color: rgba(255, 255, 255, 0.62);
     white-space: nowrap;
+}
+/* The same line on a shop LIST card, under Paid, so the card adds up the way
+   the shop page does. A light pill, so dark ink (#475569, 7:1 on the pill);
+   and it may wrap, because a phone gives each pill about 100px. */
+.stat-disc-light {
+    color: #475569;
+    white-space: normal;
 }
 
 /* ── Phone ───────────────────────────────────────────────────────────────

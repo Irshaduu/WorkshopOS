@@ -1,21 +1,20 @@
 {% load humanize custom_filters %}{% comment %}
-THE DISCOUNTS in a payment history — shared by the spare shop, the Supplies
-Shop and the Fleet Account, rendered at the top of each page's history panel
-and only when there are some in the window (they are rare).
+THE DISCOUNTS in a payment history — shared by the spare shop and the Supplies
+Shop, rendered at the top of each page's history panel and only when there are
+some in the window (they are rare).
 
 The payment row's own shape — amount, date, note, ⋮ — with the amount in the
 discount's ink and a DISCOUNT tag, because a bare figure here would read as
 one more payment.
 
   discounts   rows carrying `delete_url` (set in the view)
-  loss        the fleet page: red rather than green
 
 Delete follows the payment's rule exactly: Office inside 24 hours of keying
 it, an owner after, a reason asked for and the delete logged. The gate mirrors
 the views' `@office_required`.
 {% endcomment %}
 {% if discounts %}
-<div class="rdisc-hist{% if loss %} rdisc-loss{% endif %}">
+<div class="rdisc-hist">
   <div class="rdisc-hist-head">Discounts</div>
   {% for d in discounts %}
   <div class="px-3 py-3 border-bottom d-flex justify-content-between align-items-center">

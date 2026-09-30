@@ -960,7 +960,7 @@
                     <div class="bd-financials">
                         <div class="bd-fin-row">
                             <span class="bd-fin-label">Bill</span>
-                            <span class="bd-fin-value">₹{{ job.total_bill|floatformat:0|intcomma }}</span>
+                            <span class="bd-fin-value">₹{{ job.total_bill_amount|floatformat:0|intcomma }}</span>
                         </div>
                         {% if job.received_amount > 0 %}
                         <div class="bd-fin-row">

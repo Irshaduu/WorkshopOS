@@ -87,6 +87,18 @@ class FleetLedgerTestCase(TestCase):
         )
 
 
+class AnOpenFleetCardShowsItsBillTests(FleetLedgerTestCase):
+
+    def test_an_open_card_shows_its_bill(self):
+        """The card read `job.total_bill`, a name nothing sets, so every open
+        fleet card printed a bare ₹ where its bill belongs."""
+        payer = BulkPayer.objects.create(customer_name='Hafsi')
+        self.assign(payer, self.make_card('KL10AA1001', '4321', days_ago=1))
+        html = self.client.get(reverse('bulk_payer_detail', args=[payer.pk])).content.decode()
+        # The CARD's own figure — the summary bar above prints ₹4,321 too.
+        self.assertIn('<span class="bd-fin-value">₹4,321</span>', html)
+
+
 class ReversingAFleetPaymentOutOfOrderIsRefusedTests(FleetLedgerTestCase):
     """
     A Fleet payment may only be reversed while its effects are still intact.

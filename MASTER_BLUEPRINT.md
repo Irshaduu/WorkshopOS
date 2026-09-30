@@ -28,29 +28,29 @@ graph TB
     end
 
     subgraph WORKSHOP["Workshop App (Core)"]
-        W_MODELS["models.py — 38 Models"]
+        W_MODELS["models.py — 39 Models"]
         W_VIEWS["views/ — 23 Module Package"]
         W_ANALYSIS["analysis_views.py + analysis_engine.py — Owner Profit & Insights"]
         W_AUTH["auth_views.py — Auth Views"]
         W_MGMT["management_views.py — Management Views"]
         W_CASH["cashbook_views.py — 4 Cashbook Views"]
         W_CLEAN["cleanup_views.py — 5 Views"]
-        W_URLS["urls.py — 143 URL Patterns"]
+        W_URLS["urls.py — 146 URL Patterns"]
         W_FORMS["forms.py — 14 Forms + 6 Formsets"]
         W_DECO["decorators.py — 3 RBAC Guards"]
         W_MID["middleware.py — Session / NoStore / NoIndex"]
         W_TAGS["templatetags — 15 Filters"]
         W_ADMIN["admin.py — 10 Registered"]
         W_CMD["Commands — 15 management commands"]
-        W_TPL["Templates — 98 HTML Files"]
+        W_TPL["Templates — 101 HTML Files"]
     end
 
     subgraph INVENTORY["Inventory App (Warehouse + Supplier Shops)"]
-        I_MODELS["models.py — 9 Models"]
-        I_VIEWS["views.py + views_suppliers.py — 32 Views"]
-        I_URLS["urls.py — 32 URL Patterns"]
+        I_MODELS["models.py — 10 Models"]
+        I_VIEWS["views.py + views_suppliers.py — 34 Views"]
+        I_URLS["urls.py — 34 URL Patterns"]
         I_SIGNALS["signals.py — 13 Signal Handlers (4 groups)"]
-        I_ADMIN["admin.py — 8 Registered"]
+        I_ADMIN["admin.py — 9 Registered"]
         I_TPL["Templates — 20 HTML Files"]
     end
 
@@ -262,7 +262,7 @@ served by the same app.*
 ⚠ **Walk it with `DEBUG=False` or the total is one higher.**
 `formulad_workshop/urls.py` appends `MEDIA_URL` through Django's `static()` helper,
 which returns an **empty list** when `DEBUG=False` — so a development resolver reports
-**178 (145 + 33)** and production reports **177 (144 + 33)**. That one route is the
+**181 (147 + 34)** and production reports **180 (146 + 34)**. That one route is the
 media path, which is not served in production at all (§12, and `AUD-0088`).
 
 ⚠ **And filter for it on `'media/' in pattern`, not `startswith`.** It is a
@@ -565,7 +565,7 @@ stateDiagram-v2
 
 ---
 
-## 7. TEMPLATE STRUCTURE (125 HTML Files)
+## 7. TEMPLATE STRUCTURE (124 HTML Files)
 
 ### Root Templates (`templates/`) — 3 files
 
@@ -575,7 +575,7 @@ stateDiagram-v2
 | `404.html` | Custom Not Found Error |
 | `500.html` | Custom Server Error |
 
-### Workshop Templates (`workshop/templates/workshop/`) — 98 files
+### Workshop Templates (`workshop/templates/workshop/`) — 101 files
 
 | Directory | Files | Purpose |
 |-----------|-------|---------|
@@ -770,7 +770,7 @@ graph TB
 
 ---
 
-## 11. DJANGO ADMIN REGISTRATIONS (18 Total)
+## 11. DJANGO ADMIN REGISTRATIONS (19 Total)
 
 ### Workshop Admin (10)
 
@@ -791,7 +791,7 @@ graph TB
 
 *Nor is anything added since: `AccountLockout`, `PasswordResetOTP`, `Notification`, `PushSubscription`, `JobCardPhoto`, `OrphanedPhotoBlob`, the three salary models, the three estimate models, `OwnerWithdrawal`, `RentRate`, `RentDeposit` and the three old bill models. None of it is reachable in practice — no account carries `is_staff`, so `/admin/` admits nobody (see `CLAUDE.md`).*
 
-### Inventory Admin (8)
+### Inventory Admin (9)
 
 | Model | Admin Features |
 |-------|---------------|
@@ -873,7 +873,7 @@ outbound credentials are the mail API key and the VAPID pair, and both are optio
 
 ---
 
-## 13. TEST SUITE (88 files · 2,934 tests)
+## 13. TEST SUITE (88 files · 2,936 tests)
 
 *File counts by listing the directories, the test total
 by building the suite with Django's own runner
@@ -881,7 +881,7 @@ by building the suite with Django's own runner
 `def test_`, which undercounts because it cannot see tests inherited from shared
 base classes.*
 
-### Workshop Tests — `workshop/tests/` package (82 files, excluding `__init__.py`)
+### Workshop Tests — `workshop/tests/` package (83 files, excluding `__init__.py`)
 
 | File | Coverage Area |
 |------|--------------|
@@ -920,7 +920,7 @@ base classes.*
 | `test_fleet_cashbook_integrity.py` | Fleet Account + Cashbook invariants |
 | `test_master_salary_hub_integrity.py` | Master-list rename/merge and Salary hub invariants. Spare and concern renames go through Data Cleanup, the one door left (AUD-0106), and a guard fails if a retired Master Lists spare/concern URL comes back |
 | `test_spare_shop_flow.py`, `test_spare_shop_integrity.py` | Spare-shop ledger flow and its balance invariants. Plus the 2026-08-26 pass: a payment is dated by the day the money MOVED — stored, windowed and ordered by `date` rather than the keystroke, a future date refused outright, the balance still ignoring the window — and the Cashbook and the payment form answering that question by one rule (`workshop/money_dates.py`) |
-| `test_shop_discounts.py` | A shop discount is a payment with no cash (2026-09-29). The owners' case — ₹22,150 owed, ₹22,000 paid, ₹150 let off — settles to ₹0, marks the part COVERED and lets the shop be archived; the Supplies Shop the same, on both its waterfalls, and the stock's cost does not move. **balance = billed + opening − paid − discounted** on the shop, the list and the Profit page's payable tiles, the opening balance still settled first, the printed report adding up. It is turnover and profit on the day it was GIVEN, moves no cash figure, lands in the earnings card, and the monthly chart still adds up to the headline. Refused and nothing written: more than owed, nothing owed, not money (0, 0.004, NaN, Infinity), a future date, Office four days back (an owner may), Floor, an archived shop; a long note trimmed, a blank one NULL. Delete: back on the balance and logged with its reason, Office inside 24 hours only, only from its own shop. It is on the Back-dated tab and cleared by the purge; the control is one captionless tag symbol left of the history buttons, never inside the payment card, and it and its history rows render only where they should — not while nothing is owed, not on an archived Supplies Shop |
+| `test_shop_discounts.py` | A shop discount is a payment with no cash (2026-09-29). The owners' case — ₹22,150 owed, ₹22,000 paid, ₹150 let off — settles to ₹0, marks the part COVERED and lets the shop be archived; the Supplies Shop the same, on both its waterfalls, and the stock's cost does not move. **balance = billed + opening − paid − discounted** on the shop, the list and the Profit page's payable tiles, the opening balance still settled first, the printed report adding up, and both shop lists' cards carrying the "+ ₹X discount" line under Paid only when there is one. It is turnover and profit on the day it was GIVEN, moves no cash figure, lands in the earnings card, and the monthly chart still adds up to the headline. Refused and nothing written: more than owed, nothing owed, not money (0, 0.004, NaN, Infinity), a future date, Office four days back (an owner may), Floor, an archived shop; a long note trimmed, a blank one NULL. Delete: back on the balance and logged with its reason, Office inside 24 hours only, only from its own shop. It is on the Back-dated tab and cleared by the purge; the control is one captionless tag symbol left of the history buttons, never inside the payment card, and it and its history rows render only where they should — not while nothing is owed, not on an archived Supplies Shop |
 | `test_ui_regressions.py` | Layout and markup invariants that a functional test cannot see — the double-render rule, a list row never nesting a `<button>` inside an `<a>`, and the drawer/Manage-pill coverage |
 | `test_live_report.py` | The Live Report, Office/Owner only (Floor 403s): cars grouped under the mechanic holding them with "Not assigned" last, only SHOP parts chased (never a warehouse draw, a delivered car, or a spare with no card), each box's count matching the rows beneath it, and nothing on the page narrowed by a query string |
 | `test_billed_but_not_filled.py` | The critical container at the top of the Live Report: which billed cards are chased (PAID / FLEET PAID / PART PAID, never an unbilled or deleted one), what it says is missing on each, the two spare dates as ONE chip, a warehouse draw chased only for its customer price, and the DB narrowing never disagreeing with `settlement.unfilled` |
@@ -998,7 +998,7 @@ WorkshopOS (Titan)/
 │   ├── wsgi.py / asgi.py
 │
 ├── workshop/                   ← Core App (146 URL routes)
-│   ├── models.py               ← 36 Models
+│   ├── models.py               ← 39 Models
 │   ├── views/                  ← Modular views package
 │   │   ├── __init__.py         ← Re-export layer (backward compatible)
 │   │   ├── dashboard.py        ← home, live_report
@@ -1055,7 +1055,7 @@ WorkshopOS (Titan)/
 │   ├── management_views.py     ← Management views (accounts, mechanics, security)
 │   ├── cashbook_views.py       ← 4 Cashbook views (standalone ledger)
 │   ├── cleanup_views.py        ← 5 Cleanup views
-│   ├── urls.py                 ← 143 URL patterns
+│   ├── urls.py                 ← 146 URL patterns
 │   ├── forms.py                ← 11 Forms + 6 Formsets (every formset extra=0)
 │   ├── decorators.py           ← 3 RBAC decorators
 │   ├── middleware.py           ← SessionTracking / NoStore / NoIndex
@@ -1077,7 +1077,7 @@ WorkshopOS (Titan)/
 │   │   ├── sweep_photo_blobs.py       ← Storage objects whose rows are gone (dry run by default)
 │   │   ├── purge_old_photos.py        ← 1-year retention sweep; always skips an unpaid bill (dry run)
 │   │   └── copy_sqlite_to_postgres.py ← Push a seeded SQLite file up to PostgreSQL
-│   ├── templates/workshop/     ← 102 HTML files
+│   ├── templates/workshop/     ← 101 HTML files
 │   ├── static/js/              ← script.js (formsets + service-worker registration),
 │   │                             estimate.js, spare_autofill.js, sound.js,
 │   │                             confirm.js (the shared question card, and the
@@ -1089,20 +1089,20 @@ WorkshopOS (Titan)/
 │   │                             understood while typing).
 │   │                             notifications.js and
 │   │                             style.css live in the project-level static/
-│   ├── migrations/             ← 81 migrations
-│   └── tests/                  ← 82 test files (81 test_*.py + tests.py) + tests/js/ (node --test)
+│   ├── migrations/             ← 86 migrations
+│   └── tests/                  ← 83 test files (82 test_*.py + tests.py) + tests/js/ (node --test)
 │
 ├── inventory/                  ← Warehouse + Supplier Shops App (34 URLs)
-│   ├── models.py               ← 9 Models (3 core + 5 supplier + OpeningStock)
+│   ├── models.py               ← 10 Models (3 core + 6 supplier + OpeningStock)
 │   ├── views.py                ← core inventory views
 │   ├── views_suppliers.py      ← supplier shops module views
-│   ├── urls.py                 ← 32 URL patterns (10 core + 22 supplier)
+│   ├── urls.py                 ← 34 URL patterns (10 core + 24 supplier)
 │   ├── costing.py              ← Weighted-average replay, date-ordered (pure, no views)
 │   ├── signals.py              ← 13 signal handlers, 4 groups (3 consumption + 2 jobcard soft-delete reversal + 5 supplier: 3 restock-item + a bill-terms pre/post_save pair + 3 opening stock)
-│   ├── admin.py                ← 8 admin registrations
+│   ├── admin.py                ← 9 admin registrations
 │   ├── apps.py                 ← Signal registration
 │   ├── templates/inventory/    ← 20 templates
-│   ├── migrations/             ← 10 migrations
+│   ├── migrations/             ← 13 migrations
 │   └── tests.py, tests_suppliers.py, test_signals.py,
 │       test_costing.py, test_supplier_costing.py ← 5 test files
 │
@@ -1136,4 +1136,4 @@ WorkshopOS (Titan)/
 
 ---
 
-> **Total** *(re-measured 2026-09-29)*: 2 Django Apps · **49 Models** (39 workshop + 10 inventory) · **180 URL Routes** (146 + 34, excluding Django admin; 181 under `DEBUG=True`, which adds the media path) · **124 Templates** (101 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **88 Test Files / 2,934 tests** · **99 Migrations** (86 workshop + 13 inventory)
+> **Total** *(re-measured 2026-09-30)*: 2 Django Apps · **49 Models** (39 workshop + 10 inventory) · **180 URL Routes** (146 + 34, excluding Django admin; 181 under `DEBUG=True`, which adds the media path) · **124 Templates** (101 + 20 + 3) · 3 RBAC Tiers · 2 External Services (Resend HTTPS for mail, Web Push — both server-side, both optional) · **0 third-party assets in the browser** (Bootstrap, its icon font, Chart.js and Barlow are all served from `static/vendor/`) · **13 Signal Handlers** (4 groups) · **20 Notification Events** (15 CRITICAL, 5 INFO) · **88 Test Files / 2,936 tests** · **99 Migrations** (86 workshop + 13 inventory)
